@@ -45,6 +45,10 @@ Use this skill when the user needs a performance benchmark file for standalone t
 - Overwrite permission allows replacing an existing generated benchmark artifact.
 - Auto-fix mode means running the generated benchmark and repairing the generated benchmark file rather than the operator when the generated harness fails.
 
+## Generated File CLI Contract
+
+The generated benchmark file must accept `--operator-file` and `--api-name` arguments with `importlib` dynamic loading, following the entry point pattern defined in the spec files. This allows the same benchmark file to be reused for both original and optimized operator variants. Msprof mode additionally requires `--bench <N>` and `--num-bench`.
+
 ## Workflow
 
 1. Read the operator signature and infer realistic benchmark inputs.
@@ -56,7 +60,7 @@ Use this skill when the user needs a performance benchmark file for standalone t
 7. Separate setup cost from measured execution when possible.
 8. If the output file already exists, overwrite it only when explicit overwrite permission was given.
 9. If auto-fix mode is active, run the generated benchmark with `bench-run`.
-10. If that generated benchmark fails, use `bench-fix` to modify the generated benchmark file itself, then re-run the benchmark.
+10. If that generated benchmark fails, infer the failure category from the raw error output and apply the matching repair strategy (see "Self-Repair on Failure" below), then re-run the benchmark.
 11. Return a runnable script and a short assumptions summary.
 
 ## Quality Rules
@@ -66,5 +70,18 @@ Use this skill when the user needs a performance benchmark file for standalone t
 - Keep generated code easy to edit by hand.
 - Do not violate CLI, naming, warmup, artifact, or output rules from the selected spec.
 - When auto-fix mode is active, only repair the generated benchmark file; do not modify the operator file.
+
+## Self-Repair on Failure
+
+When auto-fix mode is active and the generated benchmark fails, repair the benchmark file directly — never modify the operator file. Infer the failure type from raw stdout, stderr, and traceback.
+
+| Inferred failure | Repair strategy |
+|------------------|-----------------|
+| **Timeout** | Reduce tensor shapes, case count, or benchmark workload so the script finishes within the execution limit |
+| **Compiler error** (Triton Ascend toolchain) | Regenerate a fresh benchmark for the same operator and mode rather than patching line by line |
+| **General error** (CLI, shape mismatch, runtime, etc.) | Apply a minimal targeted fix — preserve the overall benchmark structure |
+| **ModuleNotFoundError** or environment issue | Report that the benchmark cannot be fixed from inside the benchmark file alone |
+
+After any repair, always preserve the `--operator-file` / `--api-name` CLI interface and the `main()` entry point pattern.
 
 See [contracts.md](references/contracts.md) for quick guidance, and always enforce the mode-specific spec file first.

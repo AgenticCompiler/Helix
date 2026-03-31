@@ -13,21 +13,46 @@ The benchmark must call the operator API function to run the operator.
 - For an operator implemented in `<op>.py` (e.g. `abs.py`), the benchmark file **must** be named **`bench_<op>.py`** in the **same directory** as `<op>.py`.
 - Example: `dataset/Flaggems/abs/abs.py` → `dataset/Flaggems/abs/bench_abs.py`.
 
-### 2. Core benchmark logic (`run_bench`)
+### 2. Command-line interface
 
-- Create the required tensor(s) for the operator with the case’s dtype and shape(s), and call the operator API function.
+The benchmark file must accept the following arguments when run as `python bench_<op>.py`:
+
+| Argument | Required | Behavior |
+|----------|----------|----------|
+| `--operator-file <path>` | yes | Path to the operator source file to benchmark (e.g. `abs.py` or `opt_abs.py`). |
+| `--api-name <name>` | yes | Name of the operator API function to import from that file. |
+
+Example invocations:
+
+```bash
+# Benchmark the original operator
+python3 bench_abs.py --operator-file abs.py --api-name abs_
+
+# Benchmark an optimized variant with the same bench file
+python3 bench_abs.py --operator-file opt_abs.py --api-name abs_
+```
+
+### 3. Operator API loading
+
+- The benchmark file **must not** hard-code an import of the operator module. Instead it must **load the operator module by file path** specified by `--operator-file`.
+- Use `importlib.util.spec_from_file_location` and `exec_module` to load the module; then `getattr(module, "<api-name>")` to get the callable.
+
+### 4. Core benchmark logic (`run_bench`)
+
+- Create the required tensor(s) for the operator with the case's dtype and shape(s), and call the operator API function loaded via `--operator-file` and `--api-name`.
 - **All tensors must be created on device `"npu"`** (not `"cuda"`).
 - **Do not** perform any correctness check (no comparison to reference implementation).
 - **Do not** call `torch.npu.synchronize()` (or any device synchronize) in the benchmark code.
-- The benchmark file **must** contain the following entry point:
+- Iterate over all benchmark cases in the file and measure each one.
+- The benchmark file **must** contain an entry point that parses `--operator-file` and `--api-name`, loads the operator, and runs all cases:
   ```python
   if __name__ == "__main__":
-      run_bench()
+      main()
   ```
 - Use `triton.testing.do_bench_npu` to measure performance.
-- Print each test result using: `print(f"latency: {latency}")`
+- Print each case result using: `print(f"latency: {latency}")`
 
-### 3. Warmup and active policy
+### 5. Warmup and active policy
 
 - Estimate the runtime of the benchmarked callable.
 - If estimated runtime is less than 10ms:

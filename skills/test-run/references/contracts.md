@@ -1,9 +1,13 @@
 # Test Run Reporting Contract
 
-The execution contract is defined in:
+## Authoritative specs
 
 - [test-standalone-run-spec.md](test-standalone-run-spec.md)
 - [test-differential-run-spec.md](test-differential-run-spec.md)
+
+## CLI invocation
+
+Both modes require `--operator-file` and `--api-name` arguments. See the run spec files for exact command format.
 
 ## Minimum result fields
 
