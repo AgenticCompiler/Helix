@@ -1,5 +1,6 @@
 import sys
 import unittest
+from errno import EIO
 from io import StringIO
 from typing import Optional
 from unittest.mock import patch
@@ -46,6 +47,27 @@ class StreamingProcessRunnerTests(unittest.TestCase):
                             )
         self.assertEqual(stdout.getvalue(), "line one\nline two\n")
         self.assertEqual(result.stdout, "line one\nline two\n")
+
+    def test_treats_eio_after_child_exit_as_clean_eof(self) -> None:
+        stdout = StringIO()
+        process = _StreamingFakeProcess(wait_code=0)
+        with patch("triton_agent.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+                with patch("triton_agent.process_runner.select.select", side_effect=[([11], [], [])]):
+                    with patch(
+                        "triton_agent.process_runner.os.read",
+                        side_effect=OSError(EIO, "Input/output error"),
+                    ):
+                        with patch("triton_agent.process_runner.os.close"):
+                            result = run_streaming_process(
+                                ["codex", "exec"],
+                                "/tmp",
+                                stall_timeout_seconds=10,
+                                stdout=stdout,
+                            )
+        self.assertEqual(result.return_code, 0)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(stdout.getvalue(), "")
 
 
 class InteractiveProcessRunnerTests(unittest.TestCase):

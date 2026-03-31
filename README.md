@@ -27,11 +27,13 @@ uv run triton-agent gen-test --input a.py --force-overwrite
 
 - `--verbose` prints categorized diagnostics for files, skill links, and agent launch details.
 - `--show-output` streams readable non-interactive agent output to the current terminal.
+- `--show-output` exits cleanly after the agent finishes, including PTY-backed shutdown cases where Linux reports EOF as `EIO`.
 - `--force-overwrite` makes the CLI delete an existing generated output file before starting `gen-test` or `gen-bench`.
 - `--test-mode` defaults to `standalone` for `gen-test` and `run-test`.
 - `--bench-mode` defaults to `standalone` for `gen-bench` and `run-bench`.
 - For `optimize`, `--test-mode` defaults to `differential` and `--bench-mode` defaults to `standalone`.
 - Skill linking is idempotent: existing symlinks that already point to this repository's `skills/` tree are reused and left untouched.
+- Codex backend launches always include `--ephemeral` and `--skip-git-repo-check`.
 - The `optimize` workflow is expected to keep per-round artifacts under `opt-round-N/` and a top-level `opt-note.md` in the operator workspace.
 - During `optimize`, the CLI writes a temporary workspace `AGENTS.md` with optimization guardrails; if the workspace already has one, it is backed up and restored after the run.
 - The `optimize` skill is expected to choose optimization patterns through a compact pattern index before reading detailed pattern references.

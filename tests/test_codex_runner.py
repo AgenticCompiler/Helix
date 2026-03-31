@@ -34,6 +34,8 @@ class CodexRunnerTests(unittest.TestCase):
             command = runner.build_command(request)
             self.assertEqual(command[:2], ["codex", "exec"])
             self.assertIn("--cd", command)
+            self.assertIn("--ephemeral", command)
+            self.assertIn("--skip-git-repo-check", command)
             self.assertNotIn("--json", command)
             self.assertEqual(command[-1], "Prompt body")
 
@@ -59,6 +61,8 @@ class CodexRunnerTests(unittest.TestCase):
             command = runner.build_command(request)
             self.assertEqual(command[0], "codex")
             self.assertNotIn("exec", command[:2])
+            self.assertIn("--ephemeral", command)
+            self.assertIn("--skip-git-repo-check", command)
             self.assertEqual(command[-1], "Continue work")
 
     def test_interactive_mode_uses_unified_process_runner(self) -> None:

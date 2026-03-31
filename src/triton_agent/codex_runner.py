@@ -17,7 +17,13 @@ class CodexRunner(AgentRunner):
         self.stall_timeout_seconds = stall_timeout_seconds
 
     def build_command(self, request: AgentRequest) -> List[str]:
-        base = [self.executable, "--cd", str(request.workdir)]
+        base = [
+            self.executable,
+            "--cd",
+            str(request.workdir),
+            "--ephemeral",
+            "--skip-git-repo-check",
+        ]
         if request.interact:
             return base + ["--sandbox", "workspace-write", "--ask-for-approval", "on-request", request.prompt]
         return [
@@ -25,6 +31,8 @@ class CodexRunner(AgentRunner):
             "exec",
             "--cd",
             str(request.workdir),
+            "--ephemeral",
+            "--skip-git-repo-check",
             "--sandbox",
             "workspace-write",
             request.prompt,

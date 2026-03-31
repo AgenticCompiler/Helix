@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import os
 import pty
 import select
@@ -123,7 +124,15 @@ def run_streaming_process(
             # dropping the existing stall timeout behavior.
             ready, _, _ = select.select([master_fd], [], [], 0.1)
             if ready:
-                chunk = os.read(master_fd, 4096)
+                try:
+                    chunk = os.read(master_fd, 4096)
+                except OSError as error:
+                    # Linux PTYs may report EOF as EIO once the child side has
+                    # closed. Treat that as a normal shutdown after the process
+                    # has already exited, but preserve any other read failure.
+                    if error.errno == errno.EIO and process.poll() is not None:
+                        break
+                    raise
                 if chunk:
                     text = chunk.decode(errors="replace")
                     output_chunks.append(text)

@@ -51,6 +51,8 @@
 - Backend-specific command construction should stay isolated from CLI parsing and prompt construction.
 - Interactive mode should attach to the live agent UI or session.
 - Non-interactive mode should be script-friendly and return a meaningful process exit code.
+- PTY-backed non-interactive streaming should treat platform-specific PTY EOF during normal child exit as clean shutdown, while still surfacing real read failures.
+- The Codex backend should launch both interactive and non-interactive runs with `--ephemeral` and `--skip-git-repo-check`.
 
 ## Optimize Command Expectations
 
