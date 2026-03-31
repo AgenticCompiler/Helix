@@ -59,8 +59,8 @@ The generated benchmark file must accept `--operator-file` and `--api-name` argu
 6. Generate deterministic inputs and a clean benchmark harness that satisfies the selected spec.
 7. Separate setup cost from measured execution when possible.
 8. If the output file already exists, overwrite it only when explicit overwrite permission was given.
-9. If auto-fix mode is active, run the generated benchmark with `bench-run`.
-10. If that generated benchmark fails, infer the failure category from the raw error output and apply the matching repair strategy (see "Self-Repair on Failure" below), then re-run the benchmark.
+9. Do not add a separate syntax-check or compile-check step. If auto-fix mode is active, validate the generated benchmark directly with `bench-run`.
+10. If that generated benchmark fails, infer the failure category from the raw `bench-run` output and apply the matching repair strategy (see "Self-Repair on Failure" below), then re-run the benchmark.
 11. Return a runnable script and a short assumptions summary.
 
 ## Quality Rules
@@ -69,6 +69,7 @@ The generated benchmark file must accept `--operator-file` and `--api-name` argu
 - Prefer stable repeated timing over a single run.
 - Keep generated code easy to edit by hand.
 - Do not violate CLI, naming, warmup, artifact, or output rules from the selected spec.
+- Do not spend a separate step on syntax-only checking; rely on `bench-run` as the validation path.
 - When auto-fix mode is active, only repair the generated benchmark file; do not modify the operator file.
 
 ## Self-Repair on Failure

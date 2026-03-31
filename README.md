@@ -37,7 +37,7 @@ uv run triton-agent gen-test --input a.py --force-overwrite
 - For `optimize`, `--test-mode` defaults to `differential` and `--bench-mode` defaults to `standalone`.
 - Skill linking is idempotent: existing symlinks that already point to this repository's `skills/` tree are reused and left untouched.
 - Codex non-interactive launches always include `--ephemeral` and `--skip-git-repo-check`.
-- Codex uses `danger-full-access` for `run-test` and `run-bench`, while other non-interactive Codex commands keep `workspace-write`.
+- Codex uses `danger-full-access` for all non-interactive commands.
 - The `optimize` workflow is expected to keep per-round artifacts under `opt-round-N/` and a top-level `opt-note.md` in the operator workspace.
 - During `optimize`, the CLI writes a temporary workspace `AGENTS.md` with optimization guardrails; if the workspace already has one, it is backed up and restored after the run.
 - The `optimize` skill is expected to choose optimization patterns through a compact pattern index before reading detailed pattern references.

@@ -18,32 +18,25 @@ Use this skill when the user wants a new correctness test file, wants a specific
 
 ## Inputs
 
-- Operator source code or an operator file path
-- Optional explicit callable name when the wrapper API cannot be inferred safely
-- Optional requested output path for the generated test
-- Optional requested test style such as `standalone` or `differential`
-- Optional permission to overwrite an existing generated file
-- Optional request to run the generated test and repair the generated test file if it fails
+- An operator file path which contains the operator source code.
+- There are two possible test styles: `standalone` and `differential`, and the user must specify one.
+  - Requested `standalone` mode means generating an assertion-driven self-contained test that imports the operator and checks correctness directly.
+  - Requested `differential` mode means generating a comparison test against an oracle or reference implementation.
+- A requested output path should become the final destination for the generated test.
 
 ## Outputs
 
 - A complete Python test file
 - A short note describing assumptions, generated coverage, and unresolved gaps
+- Naming guidance
+  - Standalone: `test_<operator>.py`
+  - Differential: `differential_test_<operator>.py`
 
 ## Required Spec Compliance
 
 - For `standalone` mode, the generated file must follow [test-standalone-spec.md](references/test-standalone-spec.md).
 - For `differential` mode, the generated file must follow [test-differential-spec.md](references/test-differential-spec.md).
 - Treat those spec files as normative output requirements, not loose examples.
-
-## Input Semantics
-
-- Requested `standalone` mode means generating an assertion-driven self-contained test that imports the operator and checks correctness directly.
-- Requested `differential` mode means generating a comparison test against an oracle or reference implementation.
-- An explicit callable name should override uncertain inference.
-- A requested output path should become the final destination for the generated test.
-- Overwrite permission allows replacing an existing generated test artifact.
-- Auto-fix mode means running the generated test and repairing the generated test file rather than the operator when the generated test fails.
 
 ## Generated File CLI Contract
 
@@ -54,14 +47,12 @@ The generated test file must accept `--operator-file` and `--api-name` arguments
 1. Read the operator code and identify the public callable, tensor arguments, scalar arguments, shapes, dtypes, and kernel launch requirements.
 2. Confirm that the file contains a wrapper API that should be tested.
 3. If no wrapper API can be resolved, stop and report the problem instead of guessing.
-4. Infer whether the request is better served by `standalone` or `differential` mode. If the user explicitly requested a mode, honor it.
-5. Read the corresponding spec file before generating the test.
-6. Generate realistic test data, shape coverage, and edge cases that match the operator signature while staying within the selected spec.
-7. Prefer deterministic seeds and stable tolerance handling.
-8. If the output file already exists, overwrite it only when explicit overwrite permission was given.
-9. If auto-fix mode is active, run the generated test with `test-run`.
-10. If that generated test fails, infer the failure category from the raw error output and apply the matching repair strategy (see "Self-Repair on Failure" below), then re-run the test.
-11. Produce a runnable Python file, then summarize what was assumed.
+4. Read the corresponding spec file before generating the test.
+5. Generate the test file according to the selected spec.
+  -. Generate realistic test data, shape coverage, and edge cases that match the operator signature while staying within the selected spec.
+  -  Prefer deterministic seeds and stable tolerance handling.
+6. Do not add a separate syntax-check or compile-check step. Validate the generated file directly with the skill `test-run`.
+7. If that generated test fails, infer the failure category from the raw `test-run` output and fix it; loop until the test passes.
 
 ## Quality Rules
 
@@ -71,11 +62,12 @@ The generated test file must accept `--operator-file` and `--api-name` arguments
 - Add edge cases only when they are justified by the operator contract.
 - Do not invent unavailable dependencies without saying so.
 - Do not violate naming, entrypoint, artifact, or output rules from the selected spec.
+- Do not spend a separate step on syntax-only checking; rely on `test-run` as the validation path.
 - When auto-fix mode is active, only repair the generated test file; do not modify the operator file.
 
 ## Self-Repair on Failure
 
-When auto-fix mode is active and the generated test fails, repair the test file directly — never modify the operator file. Infer the failure type from raw stdout, stderr, and traceback.
+When the generated test fails, repair the test file directly — never modify the operator file. Infer the failure type from raw stdout, stderr, and traceback.
 
 | Inferred failure | Repair strategy |
 |------------------|-----------------|
@@ -91,5 +83,3 @@ After any repair, always preserve the `--operator-file` / `--api-name` CLI inter
 - If the operator signature is ambiguous, explain the ambiguity and choose the narrowest safe assumption.
 - If kernel functions exist but no wrapper API can be identified, stop and explain that the operator API is missing.
 - If there is no obvious oracle for differential mode, say so and fall back to a documented reference implementation or a clearly labeled placeholder.
-
-See [contracts.md](references/contracts.md) for quick guidance, and always enforce the mode-specific spec file first.

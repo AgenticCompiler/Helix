@@ -37,7 +37,8 @@ class CodexRunnerTests(unittest.TestCase):
             self.assertIn("--cd", command)
             self.assertIn("--ephemeral", command)
             self.assertIn("--skip-git-repo-check", command)
-            self.assertIn("workspace-write", command)
+            sandbox_index = command.index("--sandbox")
+            self.assertEqual(command[sandbox_index + 1], "danger-full-access")
             self.assertNotIn("--json", command)
             self.assertEqual(command[-1], "Prompt body")
 

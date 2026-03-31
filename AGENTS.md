@@ -56,7 +56,7 @@
 - Non-interactive mode should be script-friendly and return a meaningful process exit code.
 - PTY-backed non-interactive streaming should treat platform-specific PTY EOF during normal child exit as clean shutdown, while still surfacing real read failures.
 - The Codex backend should launch non-interactive runs with `--ephemeral` and `--skip-git-repo-check`.
-- The Codex backend should use `danger-full-access` for `run-test` and `run-bench`, and `workspace-write` for other non-interactive commands.
+- The Codex backend should use `danger-full-access` for all non-interactive commands.
 
 ## Optimize Command Expectations
 
