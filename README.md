@@ -35,6 +35,7 @@ Skill linking is idempotent: existing symlinks that already point to this reposi
 The `optimize` workflow is expected to keep per-round artifacts under `opt-round-N/` and a top-level `opt-note.md` in the operator workspace.
 During `optimize`, the CLI writes a temporary workspace `AGENTS.md` with optimization guardrails; if the workspace already has one, it is backed up and restored after the run.
 The `optimize` skill is expected to choose optimization patterns through a compact pattern index before reading detailed pattern references.
+Skills can invoke the current checkout through the bundled helper script at `skills/scripts/run-command.py` without relying on an installed console entrypoint.
 If an output file already exists and overwrite is not allowed, the CLI prints a short error and exits without a Python traceback.
 
 ## Checks

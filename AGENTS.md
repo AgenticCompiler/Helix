@@ -19,6 +19,8 @@
 - Keep prompts, comments, logs, and user-visible instructions in English.
 - Treat the local `skills/` directory as the source of truth for workflow behavior.
 - Write skills as natural-language task guides first; treat CLI flags as wrapper-specific context rather than the primary skill interface.
+- When a skill needs to invoke project commands, prefer a bundled script under `skills/scripts/` over assuming an installed console entrypoint.
+- When a skill depends on a bundled helper script, include a few short command templates instead of only mentioning the script abstractly.
 - Keep the CLI thin: it should orchestrate agent execution, not reimplement skill logic.
 - Preserve a clear separation between generic agent flow and backend-specific details.
 - Prefer optional diagnostic flags for orchestration visibility instead of always-on debug output.
