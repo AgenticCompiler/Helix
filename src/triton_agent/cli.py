@@ -9,7 +9,7 @@ from triton_agent.codex_runner import CodexRunner
 from triton_agent.models import COMMAND_TO_SKILL, AgentRequest, CommandKind
 from triton_agent.optimize_guidance import OptimizeGuidanceManager
 from triton_agent.opencode_runner import OpenCodeRunner
-from triton_agent.paths import default_generated_output_path, resolve_execution_target
+from triton_agent.paths import default_generated_output_path
 from triton_agent.prompts import build_prompt
 from triton_agent.skills import SkillLinkManager
 from triton_agent.supervisor import OptimizeSupervisor
@@ -23,7 +23,14 @@ def build_parser() -> argparse.ArgumentParser:
     for command_kind in CommandKind:
         subparser = subparsers.add_parser(command_kind.value)
         subparser.set_defaults(command_kind=command_kind)
-        subparser.add_argument("-i", "--input", required=True)
+        if command_kind == CommandKind.RUN_TEST:
+            subparser.add_argument("--test-file", required=True)
+            subparser.add_argument("--operator-file", required=True)
+        elif command_kind == CommandKind.RUN_BENCH:
+            subparser.add_argument("--bench-file", required=True)
+            subparser.add_argument("--operator-file", required=True)
+        else:
+            subparser.add_argument("-i", "--input", required=True)
         subparser.add_argument("-o", "--output")
         subparser.add_argument("--interact", action="store_true")
         subparser.add_argument("--verbose", action="store_true")
@@ -47,14 +54,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(_normalize_command_aliases(argv))
 
     command_kind: CommandKind = args.command_kind
-    input_path = Path(args.input).expanduser().resolve()
-    if not input_path.exists():
-        parser.error(f"Input path does not exist: {input_path}")
-
-    workdir = input_path.parent
+    input_path, operator_path, workdir = _resolve_request_paths(parser, command_kind, args)
     output_path = _resolve_output_path(command_kind, input_path, args.output)
     force_overwrite = getattr(args, "force_overwrite", False)
     test_mode = getattr(args, "test_mode", None)
@@ -65,10 +68,19 @@ def main(argv: Optional[list[str]] = None) -> int:
         parser.exit(2, f"{exc}\n")
     if args.verbose:
         emit_verbose_lines(sys.stderr, "files", file_messages)
-    prompt = build_prompt(command_kind, input_path, output_path, test_mode, bench_mode, force_overwrite)
+    prompt = build_prompt(
+        command_kind,
+        input_path,
+        operator_path,
+        output_path,
+        test_mode,
+        bench_mode,
+        force_overwrite,
+    )
     request = AgentRequest(
         command_kind=command_kind,
         input_path=input_path,
+        operator_path=operator_path,
         output_path=output_path,
         test_mode=test_mode,
         bench_mode=bench_mode,
@@ -130,9 +142,48 @@ def _resolve_output_path(
         return Path(explicit_output).expanduser().resolve()
     if command_kind in {CommandKind.GEN_TEST, CommandKind.GEN_BENCH, CommandKind.OPTIMIZE}:
         return default_generated_output_path(command_kind, input_path)
-    if command_kind in {CommandKind.RUN_TEST, CommandKind.RUN_BENCH}:
-        return resolve_execution_target(command_kind, input_path)
     return None
+
+
+def _resolve_request_paths(
+    parser: argparse.ArgumentParser, command_kind: CommandKind, args: argparse.Namespace
+) -> tuple[Path, Path | None, Path]:
+    if command_kind == CommandKind.RUN_TEST:
+        test_file = Path(args.test_file).expanduser().resolve()
+        if not test_file.exists():
+            parser.error(f"Test file path does not exist: {test_file}")
+        operator_file = Path(args.operator_file).expanduser().resolve()
+        if not operator_file.exists():
+            parser.error(f"Operator file path does not exist: {operator_file}")
+        return test_file, operator_file, test_file.parent
+
+    if command_kind == CommandKind.RUN_BENCH:
+        bench_file = Path(args.bench_file).expanduser().resolve()
+        if not bench_file.exists():
+            parser.error(f"Bench file path does not exist: {bench_file}")
+        operator_file = Path(args.operator_file).expanduser().resolve()
+        if not operator_file.exists():
+            parser.error(f"Operator file path does not exist: {operator_file}")
+        return bench_file, operator_file, bench_file.parent
+
+    input_path = Path(args.input).expanduser().resolve()
+    if not input_path.exists():
+        parser.error(f"Input path does not exist: {input_path}")
+    return input_path, input_path, input_path.parent
+
+
+def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]:
+    if argv is None or not argv:
+        return argv
+    aliases = {
+        "gen_test": "gen-test",
+        "run_test": "run-test",
+        "gen_bench": "gen-bench",
+        "run_bench": "run-bench",
+    }
+    normalized = list(argv)
+    normalized[0] = aliases.get(normalized[0], normalized[0])
+    return normalized
 
 
 def prepare_generation_target(

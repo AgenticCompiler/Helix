@@ -4,9 +4,9 @@
 
 ```bash
 uv run triton-agent gen-test --input a.py
-uv run triton-agent run-test --input a.py
+uv run triton-agent run-test --test-file test_a.py --operator-file a.py
 uv run triton-agent gen-bench --input a.py
-uv run triton-agent run-bench --input a.py
+uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
 uv run triton-agent optimize --input a.py
 ```
 
@@ -16,9 +16,9 @@ uv run triton-agent optimize --input a.py --output opt_a.py --interact
 uv run triton-agent gen-bench --input a.py --agent codex
 uv run triton-agent gen-test --input a.py --agent opencode
 uv run triton-agent gen-test --input a.py --test-mode standalone
-uv run triton-agent run-test --input a.py --test-mode differential
+uv run triton-agent run-test --test-file test_a.py --operator-file opt_a.py --test-mode differential
 uv run triton-agent gen-bench --input a.py --bench-mode standalone
-uv run triton-agent run-bench --input a.py --bench-mode msprof
+uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py --bench-mode msprof
 uv run triton-agent optimize --input a.py --test-mode differential --bench-mode standalone
 uv run triton-agent gen-test --input a.py --verbose
 uv run triton-agent gen-test --input a.py --show-output
@@ -29,6 +29,9 @@ uv run triton-agent gen-test --input a.py --force-overwrite
 - `--show-output` streams readable non-interactive agent output to the current terminal.
 - `--show-output` exits cleanly after the agent finishes, including PTY-backed shutdown cases where Linux reports EOF as `EIO`.
 - `--force-overwrite` makes the CLI delete an existing generated output file before starting `gen-test` or `gen-bench`.
+- The parser also accepts snake_case command aliases such as `gen_test` and `run_bench`, while help text keeps the canonical kebab-case names.
+- `run-test` requires `--test-file` and `--operator-file`.
+- `run-bench` requires `--bench-file` and `--operator-file`.
 - `--test-mode` defaults to `standalone` for `gen-test` and `run-test`.
 - `--bench-mode` defaults to `standalone` for `gen-bench` and `run-bench`.
 - For `optimize`, `--test-mode` defaults to `differential` and `--bench-mode` defaults to `standalone`.

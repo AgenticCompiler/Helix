@@ -19,6 +19,7 @@ class CodexRunnerTests(unittest.TestCase):
             request = AgentRequest(
                 command_kind=CommandKind.GEN_TEST,
                 input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
                 output_path=workspace / "test_op.py",
                 test_mode=None,
                 bench_mode=None,
@@ -46,6 +47,7 @@ class CodexRunnerTests(unittest.TestCase):
             request = AgentRequest(
                 command_kind=CommandKind.OPTIMIZE,
                 input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
                 output_path=workspace / "opt_op.py",
                 test_mode=None,
                 bench_mode=None,
@@ -72,6 +74,7 @@ class CodexRunnerTests(unittest.TestCase):
             request = AgentRequest(
                 command_kind=CommandKind.OPTIMIZE,
                 input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
                 output_path=workspace / "opt_op.py",
                 test_mode=None,
                 bench_mode=None,
@@ -95,6 +98,7 @@ class CodexRunnerTests(unittest.TestCase):
             request = AgentRequest(
                 command_kind=CommandKind.GEN_TEST,
                 input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
                 output_path=workspace / "test_op.py",
                 test_mode=None,
                 bench_mode=None,
@@ -124,6 +128,7 @@ class CodexRunnerTests(unittest.TestCase):
             request = AgentRequest(
                 command_kind=CommandKind.GEN_TEST,
                 input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
                 output_path=workspace / "test_op.py",
                 test_mode=None,
                 bench_mode=None,
@@ -148,6 +153,7 @@ class CodexRunnerTests(unittest.TestCase):
             request = AgentRequest(
                 command_kind=CommandKind.GEN_TEST,
                 input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
                 output_path=workspace / "test_op.py",
                 test_mode=None,
                 bench_mode=None,
@@ -171,6 +177,7 @@ class CodexRunnerTests(unittest.TestCase):
             request = AgentRequest(
                 command_kind=CommandKind.GEN_TEST,
                 input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
                 output_path=workspace / "test_op.py",
                 test_mode=None,
                 bench_mode=None,

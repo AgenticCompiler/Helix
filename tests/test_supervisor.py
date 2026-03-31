@@ -27,6 +27,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
         request = AgentRequest(
             command_kind=CommandKind.OPTIMIZE,
             input_path=Path("/tmp/op.py"),
+            operator_path=Path("/tmp/op.py"),
             output_path=Path("/tmp/opt_op.py"),
             test_mode=None,
             bench_mode=None,

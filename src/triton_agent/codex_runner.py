@@ -62,6 +62,7 @@ class CodexRunner(AgentRunner):
             AgentRequest(
                 command_kind=request.command_kind,
                 input_path=request.input_path,
+                operator_path=request.operator_path,
                 output_path=request.output_path,
                 test_mode=request.test_mode,
                 bench_mode=request.bench_mode,

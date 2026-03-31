@@ -13,6 +13,9 @@
 - `gen-bench`: generate performance benchmarks for an operator file
 - `run-bench`: execute generated benchmarks for an operator file
 - `optimize`: optimize an operator file with long-running supervision
+- The CLI may accept compatibility aliases such as snake_case spellings, but kebab-case remains the canonical displayed command form.
+- `run-test` should require both `--test-file` and `--operator-file`.
+- `run-bench` should require both `--bench-file` and `--operator-file`.
 
 ## Core Principles
 

@@ -27,6 +27,7 @@ COMMAND_TO_SKILL = {
 class AgentRequest:
     command_kind: CommandKind
     input_path: Path
+    operator_path: Optional[Path]
     output_path: Optional[Path]
     test_mode: Optional[str]
     bench_mode: Optional[str]

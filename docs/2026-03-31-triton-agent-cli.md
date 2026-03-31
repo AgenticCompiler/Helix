@@ -28,16 +28,24 @@ The implementation should use `argparse`, support `--input/-i`, `--output/-o`, `
 ### CLI behavior
 
 - Implement five kebab-case subcommands: `gen-test`, `run-test`, `gen-bench`, `run-bench`, `optimize`.
-- All subcommands accept:
+- `gen-test`, `gen-bench`, and `optimize` accept:
   - `--input/-i`: required path to the operator file
   - `--output/-o`: optional output artifact path
   - `--interact`: when set, attach to the live agent TUI/session instead of background-style non-interactive execution
   - `--verbose`: print the concrete code-agent launch command before execution and show skill-link creation and cleanup messages
   - `--show-output`: in non-interactive mode, stream the readable code-agent output to the current terminal while still collecting it for result handling
   - `--agent`: backend selector, default `codex`
+- `run-test` accepts:
+  - `--test-file`: required generated test file path
+  - `--operator-file`: required operator file path
+  - `--output/-o`, `--interact`, `--verbose`, `--show-output`, `--agent`, `--test-mode`
+- `run-bench` accepts:
+  - `--bench-file`: required generated benchmark file path
+  - `--operator-file`: required operator file path
+  - `--output/-o`, `--interact`, `--verbose`, `--show-output`, `--agent`, `--bench-mode`
 - `gen-test` and `gen-bench` also accept:
   - `--force-overwrite`: allow replacing an existing generated output file; otherwise the CLI refuses to overwrite
-- For `run-test` and `run-bench`, treat `--input` as the operator file path, not the generated case path. The CLI derives the expected generated artifact path by convention and fails with a clear error if the artifact is missing.
+- For `run-test` and `run-bench`, validate the explicit harness path and explicit operator path directly instead of deriving a generated artifact path by convention.
 - Use consistent default output inference for generated files when `--output` is omitted, with names based on the operator stem and command type.
 - Keep an internal explicit mapping from CLI command name to skill name even where the names are similar, so dispatch stays deterministic and easy to extend.
 
@@ -100,7 +108,8 @@ The implementation should use `argparse`, support `--input/-i`, `--output/-o`, `
 - Default decisions locked in:
   - CLI framework: `argparse`
   - subcommand naming: kebab-case
-  - `run-*` input semantics: operator file in, artifact path inferred
+  - `run-test` input semantics: explicit test file plus explicit operator file
+  - `run-bench` input semantics: explicit benchmark file plus explicit operator file
   - `--interact`: attach to live agent UI/session
   - `--verbose`: log the launch command and skill-link lifecycle without changing execution behavior
   - `--show-output`: stream readable non-interactive agent output without changing exit-code or aggregation behavior
@@ -111,7 +120,7 @@ The implementation should use `argparse`, support `--input/-i`, `--output/-o`, `
 ## Test Plan
 
 - Unit tests for argument parsing and subcommand-to-skill mapping.
-- Unit tests for output path inference and missing-artifact errors for `run-test` and `run-bench`.
+- Unit tests for run-command path validation and missing-file errors for `run-test` and `run-bench`.
 - Unit tests for skill link creation behavior:
   - missing `.codex/skills`
   - existing `.codex/skills`
