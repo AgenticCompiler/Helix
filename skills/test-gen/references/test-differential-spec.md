@@ -13,13 +13,33 @@ The differential test must call the operator API function directly and save outp
 - For an operator implemented in `<op>.py`, the test file **`differential_test_<op>.py`** should be in the **same directory** as `<op>.py`.
 - Example: `dataset/Flaggems/abs/abs.py` → `dataset/Flaggems/abs/differential_test_abs.py`.
 
-### 2. Imports and operator loading
+### 2. Command-line interface
 
-- The operator API will be imported during running so you don't need to import it in the test file.
+The test file must accept the following arguments when run as `python differential_test_<op>.py`:
+
+| Argument | Required | Behavior |
+|----------|----------|----------|
+| `--operator-file <path>` | yes | Path to the operator source file to test (e.g. `abs.py` or `opt_abs.py`). |
+| `--api-name <name>` | yes | Name of the operator API function to import from that file. |
+
+Example invocations:
+
+```bash
+# Test the original operator
+python3 differential_test_abs.py --operator-file abs.py --api-name abs_
+
+# Test an optimized variant with the same test file
+python3 differential_test_abs.py --operator-file opt_abs.py --api-name abs_
+```
+
+### 3. Operator API loading
+
+- The test file **must not** hard-code an import of the operator module. Instead it must **load the operator module by file path** specified by `--operator-file`.
+- Use `importlib.util.spec_from_file_location` and `exec_module` to load the module; then `getattr(module, "<api-name>")` to get the callable.
 - Do not introduce pytest or unittest scaffolding.
-- The test file must remain directly executable with `python differential_test_<op>.py`.
+- The test file must remain directly executable with `python differential_test_<op>.py --operator-file <path> --api-name <name>`.
 
-### 3. Test case construction
+### 4. Test case construction
 
 - Build **multiple deterministic** test cases with different shapes and dtypes and call the operator API function with each case.
 - Use **at least 3 cases**.
@@ -30,7 +50,7 @@ The differential test must call the operator API function directly and save outp
 - All tensors must be created on device **`"npu"`**.
 - Set seeds so the test data is reproducible.
 
-### 4. Differential output behavior
+### 5. Differential output behavior
 
 - For each case, call the operator API function with the constructed inputs.
 - Do **not** perform result assertions in this file.
@@ -39,7 +59,7 @@ The differential test must call the operator API function directly and save outp
 - Save the final ordered output list in a payload dict to `TEST_RESULT.pt` in the same directory as the test file:
   - `torch.save({"results": results}, Path(__file__).parent / "TEST_RESULT.pt")`
 
-### 5. Test function structure
+### 6. Test function structure
 
 - Define a single differential test entry function.
 - The function should:
@@ -50,13 +70,30 @@ The differential test must call the operator API function directly and save outp
 - Keep the code concise and practical.
 - The full generated file should stay within roughly **140 lines**.
 
-### 6. Entry point requirement
+### 7. Entry point requirement
 
-Include a direct executable entry point in the test file.
+The file must define a `main()` function that:
+1. Parses `--operator-file` and `--api-name` with `argparse`
+2. Loads the operator API via `importlib`
+3. Calls the test function with the loaded operator API
 
 ```python
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--operator-file", required=True)
+    parser.add_argument("--api-name", required=True)
+    args = parser.parse_args()
+
+    spec = importlib.util.spec_from_file_location("operator_module", args.operator_file)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    operator_api = getattr(mod, args.api_name)
+
+    test_xxx(operator_api)
+
 if __name__ == "__main__":
-    test_xxx()
+    main()
 ```
 
-Running the file directly should execute the differential test and save the payload file.
+- The test function (e.g. `test_xxx`) must accept the operator API callable as its first argument.
+- Running the file directly should execute the differential test and save the payload file.

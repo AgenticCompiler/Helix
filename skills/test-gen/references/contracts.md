@@ -1,14 +1,10 @@
 # Test Generation Contract
 
-## Expected file shape
+## CLI interface
 
-- Import the operator under test explicitly.
-- Create deterministic sample inputs.
-- Execute the operator at least once.
-- Assert correctness with a clear tolerance policy.
-- Allow direct execution with `if __name__ == "__main__":` when practical.
+All generated test files must accept `--operator-file` and `--api-name` CLI arguments and use `importlib` to dynamically load the operator. See the spec files for the full entry point pattern and code example.
 
-The full authoritative requirements live in:
+## Authoritative specs
 
 - [test-standalone-spec.md](test-standalone-spec.md)
 - [test-differential-spec.md](test-differential-spec.md)
@@ -20,11 +16,10 @@ The full authoritative requirements live in:
 
 ## Differential mode
 
-- Compare target output against a trusted oracle.
+- Save ordered outputs for downstream comparison.
 - Explain the oracle source when it is not obvious.
-- Save any large intermediate artifacts only if the user asked for them.
 
 ## Naming guidance
 
-- Default output names can follow `test_<operator>.py` for standalone mode.
-- Differential tests can follow `differential_test_<operator>.py`.
+- Standalone: `test_<operator>.py`
+- Differential: `differential_test_<operator>.py`

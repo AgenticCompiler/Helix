@@ -6,9 +6,11 @@
 - Preferred form:
 
 ```bash
-python3 differential_test_<op>.py
+python3 differential_test_<op>.py --operator-file <operator-file> --api-name <api-name>
 ```
 
+- The `--operator-file` argument specifies the operator source file to test (e.g. `abs.py` or `opt_abs.py`).
+- The `--api-name` argument specifies the operator API function name.
 - Run from the directory containing the test file when relative paths matter.
 
 ## Artifact expectations
@@ -34,10 +36,22 @@ python3 scripts/compare_differential_results.py \
 
 ## What to report
 
-- Exact command used
+- Exact command used (including `--operator-file` and `--api-name` values)
 - Whether `TEST_RESULT.pt` was produced
 - Whether the final archived result was stored under `differential_results/`
 - Final result artifact path
 - Differential compare command and compare verdict when testing an optimized operator
 - Exit code
 - Key stdout or stderr when the run fails
+
+## Summary report
+
+After the run completes, produce a concise summary including:
+
+- Operator file and API name tested
+- Test mode (differential)
+- Number of test cases executed
+- Whether `TEST_RESULT.pt` was produced and archived
+- Final verdict: pass or fail
+- For optimized operators: oracle-vs-compare comparison result and tolerance level used
+- If failed: failure classification and suspected root cause

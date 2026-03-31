@@ -1,9 +1,13 @@
 # Benchmark Run Reporting Contract
 
-The execution contract is defined in:
+## Authoritative specs
 
 - [bench-standalone-run-spec.md](bench-standalone-run-spec.md)
 - [bench-msprof-run-spec.md](bench-msprof-run-spec.md)
+
+## CLI invocation
+
+Both modes require `--operator-file` and `--api-name` arguments. See the run spec files for exact command format.
 
 ## Minimum report
 

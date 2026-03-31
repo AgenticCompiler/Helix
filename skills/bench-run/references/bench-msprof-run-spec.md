@@ -34,3 +34,15 @@ python3 bench_<op>.py --operator-file <operator-file> --api-name <api-name> --be
 - Exit code
 - Saved perf file path
 - Relevant stdout or stderr
+
+## Summary report
+
+After all cases complete, produce a concise summary including:
+
+- Operator file and API name benchmarked
+- Benchmark mode (msprof)
+- Number of benchmark cases executed
+- Latency values per case (normalized from `Task Duration(us):`)
+- Saved perf file path
+- If comparing baseline vs optimized: both latency sets and speedup ratio per case
+- If failed: which case(s) failed, failure classification and suspected root cause

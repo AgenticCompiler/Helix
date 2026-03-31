@@ -20,6 +20,7 @@ Use this skill when the user wants to run a generated benchmark, verify that the
 - Measured metric summary when available
 - A persisted performance result file under `bench_results/`
 - A short diagnosis if execution fails
+- A concise summary report with per-case latency values and (when comparing) speedup ratios
 
 ## Required Execution Contract
 
@@ -42,10 +43,16 @@ Use this skill when the user wants to run a generated benchmark, verify that the
 - Requested `msprof` mode means running a profiling-oriented benchmark.
 - The input path identifies the operator or benchmark target that should be resolved.
 
+## Generated File Invocation
+
+The generated benchmark file requires `--operator-file <path>` and `--api-name <name>` arguments. The runner must always construct the bash command with these arguments, passing the operator file path and API function name to the benchmark script.
+
+For standalone mode, the command runs all cases at once. For msprof mode, additionally use `--bench <N>` to dispatch individual cases.
+
 ## Workflow
 
 1. Resolve the benchmark artifact and execution mode.
-2. Read the corresponding run spec and build the minimum bash command needed for that mode.
+2. Read the corresponding run spec and build the bash command with `--operator-file` and `--api-name` arguments.
 3. Run the benchmark through bash.
 4. Extract performance data from the benchmark output according to the selected mode.
 5. Save normalized latency lines into the appropriate file under `bench_results/`.

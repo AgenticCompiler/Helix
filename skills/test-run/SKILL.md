@@ -22,6 +22,7 @@ Use this skill when the user wants to execute a generated test, use either `stan
 - Concise diagnosis of likely failure category
 - Suggested next action when the test fails
 - In `differential` mode, the final archived comparison artifacts under `differential_results/`
+- A concise summary report with test verdict and failure classification
 
 ## Required Execution Contract
 
@@ -38,11 +39,15 @@ Use this skill when the user wants to execute a generated test, use either `stan
 - A callable name hint should be used when the file has multiple candidates.
 - The operator path identifies the implementation that must be validated.
 
+## Generated File Invocation
+
+The generated test file requires `--operator-file <path>` and `--api-name <name>` arguments. The runner must always construct the bash command with these arguments, passing the operator file path and API function name to the test script.
+
 ## Workflow
 
 1. Resolve the operator and the expected test artifact.
 2. Honor the requested test mode.
-3. Read the corresponding run spec and construct the minimum bash command needed to run the test file.
+3. Read the corresponding run spec and construct the bash command with `--operator-file` and `--api-name` arguments.
 4. Execute the test through bash.
 5. In `differential` mode, treat `TEST_RESULT.pt` as a temporary result emitted beside the test file, then ensure the final archived result is stored under `differential_results/`.
 6. When the target is an optimized operator in `differential` mode, compare `differential_results/oracle_result_<operator-api-name>.pt` and `differential_results/compare_result_<optimized-stem>.pt` with the helper comparison script.

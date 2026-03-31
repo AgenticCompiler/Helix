@@ -45,6 +45,10 @@ Use this skill when the user wants a new correctness test file, wants a specific
 - Overwrite permission allows replacing an existing generated test artifact.
 - Auto-fix mode means running the generated test and repairing the generated test file rather than the operator when the generated test fails.
 
+## Generated File CLI Contract
+
+The generated test file must accept `--operator-file` and `--api-name` arguments with `importlib` dynamic loading, following the `main()` entry point pattern defined in the spec files. This allows the same test file to be reused for both original and optimized operator variants.
+
 ## Workflow
 
 1. Read the operator code and identify the public callable, tensor arguments, scalar arguments, shapes, dtypes, and kernel launch requirements.
@@ -56,18 +60,31 @@ Use this skill when the user wants a new correctness test file, wants a specific
 7. Prefer deterministic seeds and stable tolerance handling.
 8. If the output file already exists, overwrite it only when explicit overwrite permission was given.
 9. If auto-fix mode is active, run the generated test with `test-run`.
-10. If that generated test fails, use `test-fix` to modify the generated test file itself, then re-run the test.
+10. If that generated test fails, infer the failure category from the raw error output and apply the matching repair strategy (see "Self-Repair on Failure" below), then re-run the test.
 11. Produce a runnable Python file, then summarize what was assumed.
 
 ## Quality Rules
 
 - Keep the test executable as a normal Python script.
-- Prefer explicit imports over dynamic loading tricks.
+- Use `importlib` dynamic loading only for the operator under test (via `--operator-file` and `--api-name`). All other imports should use standard explicit imports.
 - Include at least one representative happy-path case.
 - Add edge cases only when they are justified by the operator contract.
 - Do not invent unavailable dependencies without saying so.
 - Do not violate naming, entrypoint, artifact, or output rules from the selected spec.
 - When auto-fix mode is active, only repair the generated test file; do not modify the operator file.
+
+## Self-Repair on Failure
+
+When auto-fix mode is active and the generated test fails, repair the test file directly — never modify the operator file. Infer the failure type from raw stdout, stderr, and traceback.
+
+| Inferred failure | Repair strategy |
+|------------------|-----------------|
+| **Timeout** | Reduce tensor shapes, case count, or workload size so the test finishes faster |
+| **Compiler error** (Triton Ascend toolchain) | Regenerate a fresh test for the same operator and mode rather than patching line by line |
+| **General error** (assertion, shape mismatch, etc.) | Apply a minimal targeted fix — preserve the overall test structure |
+| **ModuleNotFoundError** or environment issue | Report that the test cannot be fixed from inside the test file alone |
+
+After any repair, always preserve the `--operator-file` / `--api-name` CLI interface and the `main()` entry point pattern.
 
 ## Failure Handling
 
