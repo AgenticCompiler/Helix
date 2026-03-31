@@ -6,7 +6,7 @@ import uuid
 from typing import List, Optional, TextIO
 
 from triton_agent.agent import AgentRunner
-from triton_agent.models import AgentRequest, AgentResult
+from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.process_runner import run_process
 from triton_agent.verbose import emit_verbose_lines, format_command_messages
 
@@ -17,15 +17,8 @@ class CodexRunner(AgentRunner):
         self.stall_timeout_seconds = stall_timeout_seconds
 
     def build_command(self, request: AgentRequest) -> List[str]:
-        base = [
-            self.executable,
-            "--cd",
-            str(request.workdir),
-            "--ephemeral",
-            "--skip-git-repo-check",
-        ]
         if request.interact:
-            return base + ["--sandbox", "workspace-write", "--ask-for-approval", "on-request", request.prompt]
+            return [self.executable, "--cd", str(request.workdir), request.prompt]
         return [
             self.executable,
             "exec",
@@ -34,7 +27,7 @@ class CodexRunner(AgentRunner):
             "--ephemeral",
             "--skip-git-repo-check",
             "--sandbox",
-            "workspace-write",
+            self._sandbox_mode(request),
             request.prompt,
         ]
 
@@ -88,6 +81,11 @@ class CodexRunner(AgentRunner):
             # `--show-output` feel genuinely live instead of flushing in large chunks.
             return "streaming"
         return "buffered"
+
+    def _sandbox_mode(self, request: AgentRequest) -> str:
+        if request.command_kind in {CommandKind.RUN_TEST, CommandKind.RUN_BENCH}:
+            return "danger-full-access"
+        return "workspace-write"
 
 
 def _extract_session_id(line: str) -> Optional[str]:

@@ -37,8 +37,57 @@ class CodexRunnerTests(unittest.TestCase):
             self.assertIn("--cd", command)
             self.assertIn("--ephemeral", command)
             self.assertIn("--skip-git-repo-check", command)
+            self.assertIn("workspace-write", command)
             self.assertNotIn("--json", command)
             self.assertEqual(command[-1], "Prompt body")
+
+    def test_run_test_non_interactive_uses_danger_full_access(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = CodexRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.RUN_TEST,
+                input_path=workspace / "test_op.py",
+                operator_path=workspace / "op.py",
+                output_path=None,
+                test_mode="standalone",
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="test-run",
+                prompt="Run tests",
+                workdir=workspace,
+            )
+            command = runner.build_command(request)
+            sandbox_index = command.index("--sandbox")
+            self.assertEqual(command[sandbox_index + 1], "danger-full-access")
+
+    def test_run_bench_non_interactive_uses_danger_full_access(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = CodexRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.RUN_BENCH,
+                input_path=workspace / "bench_op.py",
+                operator_path=workspace / "op.py",
+                output_path=None,
+                test_mode=None,
+                bench_mode="standalone",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="bench-run",
+                prompt="Run benchmark",
+                workdir=workspace,
+            )
+            command = runner.build_command(request)
+            sandbox_index = command.index("--sandbox")
+            self.assertEqual(command[sandbox_index + 1], "danger-full-access")
 
     def test_interactive_command_uses_tui(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -63,8 +112,11 @@ class CodexRunnerTests(unittest.TestCase):
             command = runner.build_command(request)
             self.assertEqual(command[0], "codex")
             self.assertNotIn("exec", command[:2])
-            self.assertIn("--ephemeral", command)
-            self.assertIn("--skip-git-repo-check", command)
+            self.assertEqual(command[:3], ["codex", "--cd", str(workspace)])
+            self.assertNotIn("--ephemeral", command)
+            self.assertNotIn("--skip-git-repo-check", command)
+            self.assertNotIn("--sandbox", command)
+            self.assertNotIn("--ask-for-approval", command)
             self.assertEqual(command[-1], "Continue work")
 
     def test_interactive_mode_uses_unified_process_runner(self) -> None:
