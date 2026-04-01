@@ -19,11 +19,10 @@ Use this skill when the user needs a performance benchmark file for standalone t
 ## Inputs
 
 - Operator source code or an operator file path
-- Optional explicit callable name
-- Optional requested benchmark style such as `standalone` or `msprof`
-- Optional requested output path
-- Optional permission to overwrite an existing generated file
-- Optional request to run the generated benchmark and repair the generated benchmark file if it fails
+- Requested `standalone` mode means generating a local timing benchmark with repeated execution.
+- Requested `msprof` mode means generating a profiling-friendly benchmark intended for profiler capture.
+- A requested output path should become the final destination for the benchmark.
+- Auto-fix means running the generated benchmark and repairing the generated benchmark file rather than the operator when the generated harness fails.
 
 ## Outputs
 
@@ -36,18 +35,26 @@ Use this skill when the user needs a performance benchmark file for standalone t
 - For `msprof` mode, the generated file must follow [bench-msprof-spec.md](references/bench-msprof-spec.md).
 - Treat those spec files as mandatory output contracts.
 
-## Input Semantics
+## Generated File Metadata and CLI Contract
 
-- Requested `standalone` mode means generating a local timing benchmark with repeated execution.
-- Requested `msprof` mode means generating a profiling-friendly benchmark intended for profiler capture.
-- An explicit callable name should override uncertain inference.
-- A requested output path should become the final destination for the benchmark.
-- Overwrite permission allows replacing an existing generated benchmark artifact.
-- Auto-fix mode means running the generated benchmark and repairing the generated benchmark file rather than the operator when the generated harness fails.
+The generated benchmark file must include a short metadata header near the top of the file:
 
-## Generated File CLI Contract
+- `# bench-mode: <mode>`
+- `# api-name: <resolved-wrapper-api>`
+- `# kernel: <resolved-primary-triton-kernel>`
 
-The generated benchmark file must accept `--operator-file` and `--api-name` arguments with `importlib` dynamic loading, following the entry point pattern defined in the spec files. This allows the same benchmark file to be reused for both original and optimized operator variants. Msprof mode additionally requires `--bench <N>` and `--num-bench`.
+The generated benchmark file must accept only `--operator-file` at runtime for standalone mode, use `importlib` dynamic loading, and load the callable named by the embedded `api-name` metadata. Msprof mode additionally requires `--bench <N>` and `--num-bench`.
+
+## Validation Commands
+
+When validating a generated benchmark, use the repository CLI subcommand `run-bench` and pass both the generated benchmark file and the operator file explicitly.
+
+- Standalone example on the original operator:
+  - `python3 ../scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench-mode standalone`
+- Standalone example on an optimized operator:
+  - `python3 ../scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode standalone`
+- Msprof example:
+  - `python3 ../scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof`
 
 ## Workflow
 
@@ -59,8 +66,8 @@ The generated benchmark file must accept `--operator-file` and `--api-name` argu
 6. Generate deterministic inputs and a clean benchmark harness that satisfies the selected spec.
 7. Separate setup cost from measured execution when possible.
 8. If the output file already exists, overwrite it only when explicit overwrite permission was given.
-9. Do not add a separate syntax-check or compile-check step. If auto-fix mode is active, validate the generated benchmark directly with `bench-run`.
-10. If that generated benchmark fails, infer the failure category from the raw `bench-run` output and apply the matching repair strategy (see "Self-Repair on Failure" below), then re-run the benchmark.
+9. Do not add a separate syntax-check or compile-check step. If auto-fix is active, validate the generated benchmark directly with the CLI subcommand `run-bench` using one of the command patterns above.
+10. If that generated benchmark fails, infer the failure category from the raw `run-bench` output and apply the matching repair strategy (see "Self-Repair on Failure" below), then re-run the benchmark.
 11. Return a runnable script and a short assumptions summary.
 
 ## Quality Rules
@@ -69,7 +76,7 @@ The generated benchmark file must accept `--operator-file` and `--api-name` argu
 - Prefer stable repeated timing over a single run.
 - Keep generated code easy to edit by hand.
 - Do not violate CLI, naming, warmup, artifact, or output rules from the selected spec.
-- Do not spend a separate step on syntax-only checking; rely on `bench-run` as the validation path.
+- Do not spend a separate step on syntax-only checking; rely on `run-bench` as the validation path.
 - When auto-fix mode is active, only repair the generated benchmark file; do not modify the operator file.
 
 ## Self-Repair on Failure
@@ -83,6 +90,6 @@ When auto-fix mode is active and the generated benchmark fails, repair the bench
 | **General error** (CLI, shape mismatch, runtime, etc.) | Apply a minimal targeted fix — preserve the overall benchmark structure |
 | **ModuleNotFoundError** or environment issue | Report that the benchmark cannot be fixed from inside the benchmark file alone |
 
-After any repair, always preserve the `--operator-file` / `--api-name` CLI interface and the `main()` entry point pattern.
+After any repair, always preserve the metadata header, the runtime `--operator-file` interface, and the `main()` entry point pattern.
 
-See [contracts.md](references/contracts.md) for quick guidance, and always enforce the mode-specific spec file first.
+Always enforce the mode-specific spec file first.

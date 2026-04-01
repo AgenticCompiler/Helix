@@ -5,9 +5,15 @@ from pathlib import Path
 from triton_agent.models import CommandKind
 
 
-def default_generated_output_path(command_kind: CommandKind, input_path: Path) -> Path:
+def default_generated_output_path(
+    command_kind: CommandKind,
+    input_path: Path,
+    test_mode: str | None = None,
+) -> Path:
     stem = input_path.stem
     if command_kind == CommandKind.GEN_TEST:
+        if test_mode == "differential":
+            return input_path.with_name(f"differential_test_{stem}.py")
         return input_path.with_name(f"test_{stem}.py")
     if command_kind == CommandKind.GEN_BENCH:
         return input_path.with_name(f"bench_{stem}.py")

@@ -59,8 +59,8 @@ Use the bundled helper script to execute project subcommands from this repositor
 
 ```bash
 python3 ../scripts/run-command.py gen-test --input <operator.py> --test-mode <mode>
-python3 ../scripts/run-command.py run-test --input <candidate.py> --test-mode <mode>
-python3 ../scripts/run-command.py run-bench --input <candidate.py> --bench-mode <mode>
+python3 ../scripts/run-command.py run-test --test-file <test.py> --operator-file <candidate.py> --test-mode <mode>
+python3 ../scripts/run-command.py run-bench --bench-file <bench.py> --operator-file <candidate.py> --bench-mode <mode>
 ```
 
 Use the resolved optimize modes when filling `<mode>`. Pass explicit `--output` only when the workflow needs a non-default artifact path.
@@ -83,10 +83,10 @@ Use the resolved optimize modes when filling `<mode>`. Pass explicit `--output` 
 12. Read only the one or two detailed pattern references that match the chosen round hypothesis.
 13. Apply one coherent optimization theme for the round.
 14. Run correctness validation through the bundled helper script using the `run-test` subcommand with the resolved correctness mode:
-   `python3 ../scripts/run-command.py run-test --input <candidate.py> --test-mode <mode>`
+   `python3 ../scripts/run-command.py run-test --test-file <test.py> --operator-file <candidate.py> --test-mode <mode>`
 15. If correctness fails, repair the optimized operator in place, record the failure and repair in `attempts.md`, and re-run `run-test` until it passes or the round direction is no longer viable.
 16. After correctness passes, run performance validation through the bundled helper script using the `run-bench` subcommand with the resolved benchmark mode:
-   `python3 ../scripts/run-command.py run-bench --input <candidate.py> --bench-mode <mode>`
+   `python3 ../scripts/run-command.py run-bench --bench-file <bench.py> --operator-file <candidate.py> --bench-mode <mode>`
 17. If performance regresses or does not improve enough, record the result in `attempts.md`, keep iterating within the same round, or abandon that direction and choose another validated parent for a later round.
 18. When a round achieves a real performance win, finalize the round `summary.md`, update `opt-note.md`, and keep the round artifacts intact for reuse.
 

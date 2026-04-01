@@ -4,6 +4,7 @@ import unittest
 from io import StringIO
 from pathlib import Path
 from contextlib import redirect_stderr
+from contextlib import redirect_stdout
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -59,10 +60,14 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("run-test", help_text)
         self.assertIn("gen-bench", help_text)
         self.assertIn("run-bench", help_text)
+        self.assertIn("compare-result", help_text)
+        self.assertIn("compare-perf", help_text)
         self.assertNotIn("gen_test", help_text)
         self.assertNotIn("run_test", help_text)
         self.assertNotIn("gen_bench", help_text)
         self.assertNotIn("run_bench", help_text)
+        self.assertNotIn("compare_result", help_text)
+        self.assertNotIn("compare_perf", help_text)
 
     def test_run_bench_has_common_options(self) -> None:
         parser = build_parser()
@@ -75,12 +80,11 @@ class CliParserTests(unittest.TestCase):
                 "kernel.py",
                 "-o",
                 "out.txt",
-                "--interact",
             ]
         )
         self.assertEqual(args.command_kind, CommandKind.RUN_BENCH)
         self.assertEqual(args.output, "out.txt")
-        self.assertTrue(args.interact)
+        self.assertFalse(hasattr(args, "interact"))
 
     def test_run_test_requires_test_and_operator_files(self) -> None:
         parser = build_parser()
@@ -106,6 +110,61 @@ class CliParserTests(unittest.TestCase):
             parser.parse_args(["run-test", "-i", "kernel.py"])
         with self.assertRaises(SystemExit):
             parser.parse_args(["run-bench", "-i", "kernel.py"])
+
+    def test_run_commands_reject_interact_flag(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(
+                [
+                    "run-test",
+                    "--test-file",
+                    "test_kernel.py",
+                    "--operator-file",
+                    "kernel.py",
+                    "--interact",
+                ]
+            )
+        with self.assertRaises(SystemExit):
+            parser.parse_args(
+                [
+                    "run-bench",
+                    "--bench-file",
+                    "bench_kernel.py",
+                    "--operator-file",
+                    "kernel.py",
+                    "--interact",
+                ]
+            )
+
+    def test_compare_result_requires_oracle_and_new_paths(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "compare-result",
+                "--oracle-result",
+                "oracle_result.pt",
+                "--new-result",
+                "new_result.pt",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.COMPARE_RESULT)
+        self.assertEqual(args.oracle_result, "oracle_result.pt")
+        self.assertEqual(args.new_result, "new_result.pt")
+
+    def test_compare_perf_requires_baseline_and_compare_paths(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "compare-perf",
+                "--baseline",
+                "baseline_perf.txt",
+                "--compare",
+                "candidate_perf.txt",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.COMPARE_PERF)
+        self.assertEqual(args.baseline, "baseline_perf.txt")
+        self.assertEqual(args.compare, "candidate_perf.txt")
 
     def test_verbose_option_is_available(self) -> None:
         parser = build_parser()
@@ -203,8 +262,12 @@ class PathResolutionTests(unittest.TestCase):
     def test_default_generated_paths_follow_convention(self) -> None:
         operator = Path("/tmp/add.py")
         self.assertEqual(
-            default_generated_output_path(CommandKind.GEN_TEST, operator),
+            default_generated_output_path(CommandKind.GEN_TEST, operator, test_mode="standalone"),
             Path("/tmp/test_add.py"),
+        )
+        self.assertEqual(
+            default_generated_output_path(CommandKind.GEN_TEST, operator, test_mode="differential"),
+            Path("/tmp/differential_test_add.py"),
         )
         self.assertEqual(
             default_generated_output_path(CommandKind.GEN_BENCH, operator),
@@ -245,20 +308,44 @@ class PathResolutionTests(unittest.TestCase):
             operator.write_text("print('x')", encoding="utf-8")
             test_file.write_text("print('test')", encoding="utf-8")
 
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.cli.run_local_test", return_value=(fake_result, None)) as mocked:
+                exit_code = main(
+                    [
+                        "run-test",
+                        "--test-file",
+                        str(test_file),
+                        "--operator-file",
+                        str(operator),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                test_file.resolve(),
+                operator.resolve(),
+                "standalone",
+            )
+
+    def test_main_gen_test_differential_uses_differential_default_output_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+
             captured = {}
 
             def _fake_build_prompt(
                 command_kind, input_path, operator_path, output_path, test_mode, bench_mode, force_overwrite
             ):
-                captured["prompt_input"] = input_path
-                captured["prompt_operator"] = operator_path
-                captured["prompt_output"] = output_path
+                captured["output_path"] = output_path
                 return "Prompt body"
 
             def _fake_create_runner(_agent_name):
                 class _Runner:
                     def run(self, request):
-                        captured["request"] = request
+                        captured["request_output"] = request.output_path
                         return AgentResult(return_code=0, stdout="", stderr="")
 
                 return _Runner()
@@ -269,20 +356,18 @@ class PathResolutionTests(unittest.TestCase):
                         with patch("triton_agent.cli.SkillLinkManager.cleanup", return_value=[]):
                             exit_code = main(
                                 [
-                                    "run-test",
-                                    "--test-file",
-                                    str(test_file),
-                                    "--operator-file",
+                                    "gen-test",
+                                    "-i",
                                     str(operator),
+                                    "--test-mode",
+                                    "differential",
                                 ]
                             )
 
             self.assertEqual(exit_code, 0)
-            self.assertEqual(captured["prompt_input"], test_file.resolve())
-            self.assertEqual(captured["prompt_operator"], operator.resolve())
-            self.assertEqual(captured["request"].input_path, test_file.resolve())
-            self.assertEqual(captured["request"].operator_path, operator.resolve())
-            self.assertEqual(captured["request"].workdir, harness_dir.resolve())
+            expected_output = (root / "differential_test_kernel.py").resolve()
+            self.assertEqual(captured["output_path"], expected_output)
+            self.assertEqual(captured["request_output"], expected_output)
 
     def test_main_run_bench_reports_missing_bench_file_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -307,6 +392,171 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(exc.exception.code, 2)
             self.assertIn("Bench file path does not exist", stderr.getvalue())
             self.assertNotIn("Traceback", stderr.getvalue())
+
+    def test_main_run_test_executes_locally_and_prints_return_code(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("print('test')", encoding="utf-8")
+
+            stdout = StringIO()
+            stderr = StringIO()
+            fake_result = AgentResult(return_code=0, stdout="test stdout\n", stderr="test stderr\n")
+
+            with patch("triton_agent.cli.run_local_test", return_value=(fake_result, None)) as mocked:
+                with redirect_stdout(stdout), redirect_stderr(stderr):
+                    exit_code = main(
+                        [
+                            "run-test",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                        ]
+                    )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once()
+            self.assertIn("Return code: 0", stdout.getvalue())
+            self.assertNotIn("test stdout", stdout.getvalue())
+            self.assertIn("test stderr", stderr.getvalue())
+
+    def test_main_run_test_reports_archived_differential_result(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            archive = root / "kernel_result.pt"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("print('test')", encoding="utf-8")
+
+            stdout = StringIO()
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.cli.run_local_test", return_value=(fake_result, archive)):
+                with redirect_stdout(stdout):
+                    exit_code = main(
+                        [
+                            "run-test",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                            "--test-mode",
+                            "differential",
+                        ]
+                    )
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn(f"Archived result: {archive}", stdout.getvalue())
+
+    def test_main_run_bench_executes_locally_and_prints_perf_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            perf_file = root / "kernel_perf.txt"
+            operator.write_text("print('x')", encoding="utf-8")
+            bench_file.write_text("print('bench')", encoding="utf-8")
+
+            stdout = StringIO()
+            stderr = StringIO()
+            fake_result = AgentResult(return_code=0, stdout="latency-a: 1.0\n", stderr="bench stderr\n")
+
+            with patch("triton_agent.cli.run_local_bench", return_value=(fake_result, perf_file)) as mocked:
+                with redirect_stdout(stdout), redirect_stderr(stderr):
+                    exit_code = main(
+                        [
+                            "run-bench",
+                            "--bench-file",
+                            str(bench_file),
+                            "--operator-file",
+                            str(operator),
+                        ]
+                    )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                bench_file.resolve(),
+                operator.resolve(),
+                "standalone",
+            )
+            self.assertIn("Return code: 0", stdout.getvalue())
+            self.assertIn(f"Perf file: {perf_file}", stdout.getvalue())
+            self.assertNotIn("latency-a", stdout.getvalue())
+            self.assertIn("bench stderr", stderr.getvalue())
+
+    def test_main_run_bench_reports_missing_perf_artifact_without_traceback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            bench_file.write_text("print('bench')", encoding="utf-8")
+
+            stderr = StringIO()
+            with patch("triton_agent.cli.run_local_bench", side_effect=FileNotFoundError("missing perf")):
+                with redirect_stderr(stderr):
+                    exit_code = main(
+                        [
+                            "run-bench",
+                            "--bench-file",
+                            str(bench_file),
+                            "--operator-file",
+                            str(operator),
+                            "--bench-mode",
+                            "msprof",
+                        ]
+                    )
+
+            self.assertEqual(exit_code, 1)
+            self.assertIn("missing perf", stderr.getvalue())
+
+    def test_main_compare_result_uses_local_comparison(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            oracle = root / "abs_result.pt"
+            new = root / "opt_abs_result.pt"
+            oracle.write_text("oracle", encoding="utf-8")
+            new.write_text("new", encoding="utf-8")
+
+            with patch("triton_agent.cli.compare_result_files", return_value=0) as mocked:
+                exit_code = main(
+                    [
+                        "compare-result",
+                        "--oracle-result",
+                        str(oracle),
+                        "--new-result",
+                        str(new),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(oracle.resolve(), new.resolve(), "balanced")
+
+    def test_main_compare_perf_uses_local_comparison(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "candidate_perf.txt"
+            baseline.write_text("latency-a: 10\n", encoding="utf-8")
+            compare.write_text("latency-a: 11\n", encoding="utf-8")
+
+            with patch("triton_agent.cli.compare_perf_files", return_value=0) as mocked:
+                exit_code = main(
+                    [
+                        "compare-perf",
+                        "--baseline",
+                        str(baseline),
+                        "--compare",
+                        str(compare),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(baseline.resolve(), compare.resolve())
 
     def test_main_run_test_reports_missing_operator_file_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

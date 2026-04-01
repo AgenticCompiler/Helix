@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Optional, TextIO
 
 from triton_agent.codex_runner import CodexRunner
+from triton_agent.local_bench_runner import compare_perf_files, run_local_bench
+from triton_agent.local_test_runner import compare_result_files, run_local_test
 from triton_agent.models import COMMAND_TO_SKILL, AgentRequest, CommandKind
 from triton_agent.optimize_guidance import OptimizeGuidanceManager
 from triton_agent.opencode_runner import OpenCodeRunner
@@ -29,13 +31,26 @@ def build_parser() -> argparse.ArgumentParser:
         elif command_kind == CommandKind.RUN_BENCH:
             subparser.add_argument("--bench-file", required=True)
             subparser.add_argument("--operator-file", required=True)
+        elif command_kind == CommandKind.COMPARE_RESULT:
+            subparser.add_argument("--oracle-result", required=True)
+            subparser.add_argument("--new-result", required=True)
+            subparser.add_argument(
+                "--compare-level",
+                default="balanced",
+                choices=["strict", "balanced", "relaxed"],
+            )
+        elif command_kind == CommandKind.COMPARE_PERF:
+            subparser.add_argument("--baseline", required=True)
+            subparser.add_argument("--compare", required=True)
         else:
             subparser.add_argument("-i", "--input", required=True)
-        subparser.add_argument("-o", "--output")
-        subparser.add_argument("--interact", action="store_true")
-        subparser.add_argument("--verbose", action="store_true")
-        subparser.add_argument("--show-output", action="store_true")
-        subparser.add_argument("--agent", default="codex", choices=["codex", "opencode"])
+        if command_kind not in {CommandKind.COMPARE_RESULT, CommandKind.COMPARE_PERF}:
+            subparser.add_argument("-o", "--output")
+            subparser.add_argument("--verbose", action="store_true")
+            if command_kind not in {CommandKind.RUN_TEST, CommandKind.RUN_BENCH}:
+                subparser.add_argument("--interact", action="store_true")
+                subparser.add_argument("--show-output", action="store_true")
+            subparser.add_argument("--agent", default="codex", choices=["codex", "opencode"])
         if command_kind in {CommandKind.GEN_TEST, CommandKind.RUN_TEST, CommandKind.OPTIMIZE}:
             subparser.add_argument(
                 "--test-mode",
@@ -57,11 +72,59 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(_normalize_command_aliases(argv))
 
     command_kind: CommandKind = args.command_kind
+    if command_kind == CommandKind.COMPARE_RESULT:
+        oracle_result = Path(args.oracle_result).expanduser().resolve()
+        if not oracle_result.exists():
+            parser.error(f"Oracle result path does not exist: {oracle_result}")
+        new_result = Path(args.new_result).expanduser().resolve()
+        if not new_result.exists():
+            parser.error(f"New result path does not exist: {new_result}")
+        return compare_result_files(oracle_result, new_result, args.compare_level)
+    if command_kind == CommandKind.COMPARE_PERF:
+        baseline_perf = Path(args.baseline).expanduser().resolve()
+        if not baseline_perf.exists():
+            parser.error(f"Baseline perf path does not exist: {baseline_perf}")
+        compare_perf = Path(args.compare).expanduser().resolve()
+        if not compare_perf.exists():
+            parser.error(f"Compare perf path does not exist: {compare_perf}")
+        return compare_perf_files(baseline_perf, compare_perf)
+
     input_path, operator_path, workdir = _resolve_request_paths(parser, command_kind, args)
-    output_path = _resolve_output_path(command_kind, input_path, args.output)
-    force_overwrite = getattr(args, "force_overwrite", False)
+    if command_kind == CommandKind.RUN_TEST:
+        try:
+            result, archived_result = run_local_test(
+                input_path,
+                operator_path or input_path,
+                args.test_mode,
+            )
+        except FileNotFoundError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        render_result(result, show_output=True)
+        print(f"Return code: {result.return_code}")
+        if archived_result is not None:
+            print(f"Archived result: {archived_result}")
+        return result.return_code
+    if command_kind == CommandKind.RUN_BENCH:
+        try:
+            result, perf_path = run_local_bench(
+                input_path,
+                operator_path or input_path,
+                args.bench_mode,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        render_result(result, show_output=True)
+        print(f"Return code: {result.return_code}")
+        if perf_path is not None:
+            print(f"Perf file: {perf_path}")
+        return result.return_code
+
     test_mode = getattr(args, "test_mode", None)
     bench_mode = getattr(args, "bench_mode", None)
+    output_path = _resolve_output_path(command_kind, input_path, args.output, test_mode)
+    force_overwrite = getattr(args, "force_overwrite", False)
     try:
         file_messages = prepare_generation_target(command_kind, output_path, force_overwrite)
     except (FileExistsError, IsADirectoryError) as exc:
@@ -136,12 +199,15 @@ def main(argv: Optional[list[str]] = None) -> int:
 
 
 def _resolve_output_path(
-    command_kind: CommandKind, input_path: Path, explicit_output: str | None
+    command_kind: CommandKind,
+    input_path: Path,
+    explicit_output: str | None,
+    test_mode: str | None = None,
 ) -> Path | None:
     if explicit_output:
         return Path(explicit_output).expanduser().resolve()
     if command_kind in {CommandKind.GEN_TEST, CommandKind.GEN_BENCH, CommandKind.OPTIMIZE}:
-        return default_generated_output_path(command_kind, input_path)
+        return default_generated_output_path(command_kind, input_path, test_mode=test_mode)
     return None
 
 
@@ -180,6 +246,8 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "run_test": "run-test",
         "gen_bench": "gen-bench",
         "run_bench": "run-bench",
+        "compare_result": "compare-result",
+        "compare_perf": "compare-perf",
     }
     normalized = list(argv)
     normalized[0] = aliases.get(normalized[0], normalized[0])

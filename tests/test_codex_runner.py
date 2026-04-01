@@ -58,7 +58,7 @@ class CodexRunnerTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="test-run",
+                skill_name="",
                 prompt="Run tests",
                 workdir=workspace,
             )
@@ -82,7 +82,7 @@ class CodexRunnerTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="bench-run",
+                skill_name="",
                 prompt="Run benchmark",
                 workdir=workspace,
             )

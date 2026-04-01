@@ -17,22 +17,31 @@ The benchmark must call the operator API function to run the operator.
 
 The benchmark module must support two usages when run as `python -m bench_<op>` (from the directory containing `bench_<op>.py`):
 
+The benchmark file must include this metadata header near the top of the file:
+
+```python
+# bench-mode: msprof
+# api-name: <name>
+# kernel: <name>
+```
+
 | Command | Behavior |
 |--------|----------|
-| `python -m bench_<op> --operator-file <operator-file> --api-name <api-name> --bench <N>` | Load the **API function** from the `<operator-file>` in the same directory (e.g. an optimized variant like `opt_abs_method1.py`). Then run the **N-th** benchmark case (1-based). |
+| `python -m bench_<op> --operator-file <operator-file> --bench <N>` | Load the **API function** named by the embedded `# api-name:` metadata from the `<operator-file>` in the same directory (e.g. an optimized variant like `opt_abs_method1.py`). Then run the **N-th** benchmark case (1-based). |
 | `python -m bench_<op> --num-bench` | Print the **total number** of benchmark cases for this op and exit. |
 
 - When `--num-bench` is provided, **all other arguments MUST be optional**. The script
-  **must NOT** require `--operator-file` or `--api-name` in this mode; the following
+  **must NOT** require `--operator-file` in this mode; the following
   command must work without error:
   - `python bench_<op>.py --num-bench`
-- If `--bench N` is provided, then `--operator-file` and `--api-name` are required.
+- If `--bench N` is provided, then `--operator-file` is required.
 
 ### 3. Operator API loading
 
 - The benchmark file **must not** rely on package imports that depend on run context, instead it must **load the operator module by file path** specified by `--operator-file`.
-- If `--operator-file` is set: load `<operator-file>` from that directory, and then from the loaded module, use the **API function** specified by `--api-name` as the operator API. For example, if `--api-name` is `abs_`, then the benchmark always calls this same function name (e.g. `abs_`) on the loaded module.
-- Use `importlib.util.spec_from_file_location` and `exec_module` to load the module; then `getattr(module, "<api-name>")` to get the callable.
+- If `--operator-file` is set: load `<operator-file>` from that directory, and then from the loaded module, use the **API function** specified by the embedded `# api-name:` metadata as the operator API. For example, if `# api-name: abs_` is present, then the benchmark always calls this same function name on the loaded module.
+- Use `importlib.util.spec_from_file_location` and `exec_module` to load the module; then `getattr(module, "<embedded-api-name>")` to get the callable.
+- If that named API does not exist in the runtime operator file, fail explicitly instead of guessing.
 
 ### 4. Benchmark case data (no external input)
 
@@ -49,6 +58,38 @@ The benchmark module must support two usages when run as `python -m bench_<op>` 
 
 - The benchmark file **must** have a **single core function** (e.g. `run_bench(operator_api, dtype, shape)`) that takes the operator api function and the case parameters (dtype, shape(s)).
 - **Do not** define one function per case (e.g. no `bench_1` ... `bench_K`). In `main()`, use the `--bench N` argument (1-based) to select the N-th case from the embedded list and call `run_bench(kernel_fn, *CASES[N - 1])` directly.
+- Each embedded case should carry a stable case id so normalized benchmark output can be compared by id rather than only by positional order.
+
+Example entry-point structure:
+
+```python
+# bench-mode: msprof
+# api-name: <resolved_wrapper_api>
+# kernel: <resolved_kernel_name>
+
+API_NAME = "<resolved_wrapper_api>"
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--operator-file")
+    parser.add_argument("--bench", type=int)
+    parser.add_argument("--num-bench", action="store_true")
+    args = parser.parse_args()
+
+    if args.num_bench:
+        print(len(CASES))
+        return
+
+    if args.operator_file is None or args.bench is None:
+        raise SystemExit("--operator-file and --bench are required unless --num-bench is used")
+
+    operator_api = load_operator_api(args.operator_file, API_NAME)
+    run_bench(operator_api, *CASES[args.bench - 1])
+
+
+if __name__ == "__main__":
+    main()
+```
 
 ### 6. Core benchmark logic (e.g. `run_bench`)
 

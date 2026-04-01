@@ -11,14 +11,18 @@ class CommandKind(str, Enum):
     RUN_TEST = "run-test"
     GEN_BENCH = "gen-bench"
     RUN_BENCH = "run-bench"
+    COMPARE_RESULT = "compare-result"
+    COMPARE_PERF = "compare-perf"
     OPTIMIZE = "optimize"
 
 
 COMMAND_TO_SKILL = {
     CommandKind.GEN_TEST: "test-gen",
-    CommandKind.RUN_TEST: "test-run",
+    CommandKind.RUN_TEST: "",
     CommandKind.GEN_BENCH: "bench-gen",
-    CommandKind.RUN_BENCH: "bench-run",
+    CommandKind.RUN_BENCH: "",
+    CommandKind.COMPARE_RESULT: "",
+    CommandKind.COMPARE_PERF: "",
     CommandKind.OPTIMIZE: "optimize",
 }
 

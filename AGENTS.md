@@ -12,6 +12,8 @@
 - `run-test`: execute generated correctness tests for an operator file
 - `gen-bench`: generate performance benchmarks for an operator file
 - `run-bench`: execute generated benchmarks for an operator file
+- `compare-result`: compare archived differential result payload files
+- `compare-perf`: compare archived performance data files
 - `optimize`: optimize an operator file with long-running supervision
 - The CLI may accept compatibility aliases such as snake_case spellings, but kebab-case remains the canonical displayed command form.
 - `run-test` should require both `--test-file` and `--operator-file`.
@@ -25,6 +27,7 @@
 - When a skill needs to invoke project commands, prefer a bundled script under `skills/scripts/` over assuming an installed console entrypoint.
 - When a skill depends on a bundled helper script, include a few short command templates instead of only mentioning the script abstractly.
 - Keep the CLI thin: it should orchestrate agent execution, not reimplement skill logic.
+- Local execution and comparison flows such as `run-test`, `run-bench`, `compare-result`, and `compare-perf` may live directly in the CLI when no code-agent orchestration is involved.
 - Preserve a clear separation between generic agent flow and backend-specific details.
 - Prefer optional diagnostic flags for orchestration visibility instead of always-on debug output.
 - When adding orchestration flags, keep them additive: they may increase visibility, but should not change the underlying agent task semantics.

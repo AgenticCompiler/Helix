@@ -15,29 +15,38 @@ The differential test must call the operator API function directly and save outp
 
 ### 2. Command-line interface
 
+The test file must include this metadata header near the top of the file:
+
+```python
+# test-mode: differential
+# api-name: <name>
+# kernel: <name>
+```
+
 The test file must accept the following arguments when run as `python differential_test_<op>.py`:
 
 | Argument | Required | Behavior |
 |----------|----------|----------|
 | `--operator-file <path>` | yes | Path to the operator source file to test (e.g. `abs.py` or `opt_abs.py`). |
-| `--api-name <name>` | yes | Name of the operator API function to import from that file. |
 
 Example invocations:
 
 ```bash
 # Test the original operator
-python3 differential_test_abs.py --operator-file abs.py --api-name abs_
+python3 differential_test_abs.py --operator-file abs.py
 
 # Test an optimized variant with the same test file
-python3 differential_test_abs.py --operator-file opt_abs.py --api-name abs_
+python3 differential_test_abs.py --operator-file opt_abs.py
 ```
 
 ### 3. Operator API loading
 
 - The test file **must not** hard-code an import of the operator module. Instead it must **load the operator module by file path** specified by `--operator-file`.
-- Use `importlib.util.spec_from_file_location` and `exec_module` to load the module; then `getattr(module, "<api-name>")` to get the callable.
+- Use `importlib.util.spec_from_file_location` and `exec_module` to load the module; then `getattr(module, "<embedded-api-name>")` to get the callable.
+- The generated file's `# api-name:` metadata is the source of truth for the wrapper API name.
+- If that named API does not exist in the runtime operator file, fail explicitly instead of guessing.
 - Do not introduce pytest or unittest scaffolding.
-- The test file must remain directly executable with `python differential_test_<op>.py --operator-file <path> --api-name <name>`.
+- The test file must remain directly executable with `python differential_test_<op>.py --operator-file <path>`.
 
 ### 4. Test case construction
 
@@ -73,21 +82,26 @@ python3 differential_test_abs.py --operator-file opt_abs.py --api-name abs_
 ### 7. Entry point requirement
 
 The file must define a `main()` function that:
-1. Parses `--operator-file` and `--api-name` with `argparse`
+1. Parses `--operator-file` with `argparse`
 2. Loads the operator API via `importlib`
 3. Calls the test function with the loaded operator API
 
 ```python
+# test-mode: differential
+# api-name: <resolved_wrapper_api>
+# kernel: <resolved_kernel_name>
+
+API_NAME = "<resolved_wrapper_api>"
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--operator-file", required=True)
-    parser.add_argument("--api-name", required=True)
     args = parser.parse_args()
 
     spec = importlib.util.spec_from_file_location("operator_module", args.operator_file)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    operator_api = getattr(mod, args.api_name)
+    operator_api = getattr(mod, API_NAME)
 
     test_xxx(operator_api)
 

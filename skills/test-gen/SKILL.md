@@ -38,9 +38,26 @@ Use this skill when the user wants a new correctness test file, wants a specific
 - For `differential` mode, the generated file must follow [test-differential-spec.md](references/test-differential-spec.md).
 - Treat those spec files as normative output requirements, not loose examples.
 
-## Generated File CLI Contract
+## Generated File Metadata and CLI Contract
 
-The generated test file must accept `--operator-file` and `--api-name` arguments with `importlib` dynamic loading, following the `main()` entry point pattern defined in the spec files. This allows the same test file to be reused for both original and optimized operator variants.
+The generated test file must include a short metadata header near the top of the file:
+
+- `# test-mode: <mode>`
+- `# api-name: <resolved-wrapper-api>`
+- `# kernel: <resolved-primary-triton-kernel>`
+
+The generated test file must accept only `--operator-file` at runtime, use `importlib` dynamic loading, and load the callable named by the embedded `api-name` metadata.
+
+## Validation Commands
+
+When validating a generated test, use the repository CLI subcommand `run-test` and pass both the generated test file and the operator file explicitly.
+
+- Standalone example:
+  - `python3 ../scripts/run-command.py run-test --test-file test_<operator>.py --operator-file <operator>.py --test-mode standalone`
+- Differential example against the original operator:
+  - `python3 ../scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file <operator>.py --test-mode differential`
+- Differential example against an optimized operator:
+  - `python3 ../scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode differential`
 
 ## Workflow
 
@@ -51,18 +68,18 @@ The generated test file must accept `--operator-file` and `--api-name` arguments
 5. Generate the test file according to the selected spec.
   -. Generate realistic test data, shape coverage, and edge cases that match the operator signature while staying within the selected spec.
   -  Prefer deterministic seeds and stable tolerance handling.
-6. Do not add a separate syntax-check or compile-check step. Validate the generated file directly with the skill `test-run`.
-7. If that generated test fails, infer the failure category from the raw `test-run` output and fix it; loop until the test passes.
+6. Do not add a separate syntax-check or compile-check step. Validate the generated file directly with the CLI subcommand `run-test` using one of the command patterns above.
+7. If that generated test fails, infer the failure category from the raw `run-test` output and fix it; loop until the test passes.
 
 ## Quality Rules
 
 - Keep the test executable as a normal Python script.
-- Use `importlib` dynamic loading only for the operator under test (via `--operator-file` and `--api-name`). All other imports should use standard explicit imports.
+- Use `importlib` dynamic loading only for the operator under test via `--operator-file`. The target callable name must come from the generated file's embedded `# api-name:` metadata. All other imports should use standard explicit imports.
 - Include at least one representative happy-path case.
 - Add edge cases only when they are justified by the operator contract.
 - Do not invent unavailable dependencies without saying so.
 - Do not violate naming, entrypoint, artifact, or output rules from the selected spec.
-- Do not spend a separate step on syntax-only checking; rely on `test-run` as the validation path.
+- Do not spend a separate step on syntax-only checking; rely on `run-test` as the validation path.
 - When auto-fix mode is active, only repair the generated test file; do not modify the operator file.
 
 ## Self-Repair on Failure
@@ -76,7 +93,7 @@ When the generated test fails, repair the test file directly — never modify th
 | **General error** (assertion, shape mismatch, etc.) | Apply a minimal targeted fix — preserve the overall test structure |
 | **ModuleNotFoundError** or environment issue | Report that the test cannot be fixed from inside the test file alone |
 
-After any repair, always preserve the `--operator-file` / `--api-name` CLI interface and the `main()` entry point pattern.
+After any repair, always preserve the metadata header, the `--operator-file` runtime CLI, and the `main()` entry point pattern.
 
 ## Failure Handling
 
