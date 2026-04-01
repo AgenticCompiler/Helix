@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.local_test_runner import (
+from triton_agent.test_runner import (
     archive_differential_result,
     find_case_insensitive_result_file,
 )
@@ -72,10 +72,10 @@ class LocalTestRunnerTests(unittest.TestCase):
             oracle.write_text("placeholder", encoding="utf-8")
             new.write_text("placeholder", encoding="utf-8")
 
-            from triton_agent.local_test_runner import compare_result_files
+            from triton_agent.test_runner import compare_result_files
 
             with patch(
-                "triton_agent.local_test_runner._load_result_payload",
+                "triton_agent.test_runner._load_result_payload",
                 side_effect=[
                     {"results": [[1.0, 2.0], {"x": 3.0}]},
                     {"results": [[1.0, 2.0], {"x": 3.0}]},

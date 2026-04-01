@@ -38,11 +38,23 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("## Validation Commands", test_gen)
         self.assertIn("python3 ../scripts/run-command.py run-test --test-file", test_gen)
         self.assertIn("python3 differential_test_<operator>.py --operator-file", test_gen)
+        self.assertIn("--remote user@host:2222", test_gen)
+        self.assertIn("--remote-workdir /tmp/triton-agent", test_gen)
 
         bench_gen = _read("skills/bench-gen/SKILL.md")
         self.assertIn("## Validation Commands", bench_gen)
         self.assertIn("python3 ../scripts/run-command.py run-bench --bench-file", bench_gen)
         self.assertIn("python3 bench_<operator>.py --num-bench", bench_gen)
+        self.assertIn("--remote user@host:2222", bench_gen)
+        self.assertIn("--remote-workdir /tmp/triton-agent", bench_gen)
+
+    def test_optimize_skill_includes_remote_command_examples(self) -> None:
+        optimize = _read("skills/optimize/SKILL.md")
+        self.assertIn("gen-test --input <operator.py> --test-mode <mode> --remote", optimize)
+        self.assertIn("gen-bench --input <operator.py> --bench-mode <mode> --remote", optimize)
+        self.assertIn("run-test --test-file <test.py> --operator-file <candidate.py>", optimize)
+        self.assertIn("run-bench --bench-file <bench.py> --operator-file <candidate.py>", optimize)
+        self.assertIn("--remote-workdir /tmp/triton-agent", optimize)
 
     def test_test_generation_specs_use_only_operator_file_cli(self) -> None:
         standalone = _read("skills/test-gen/references/test-standalone-spec.md")
@@ -68,6 +80,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("parses `--operator-file`", standalone.lower())
         self.assertIn("def load_operator_api(operator_file: str, api_name: str):", standalone)
         self.assertIn("def run_bench(operator_api):", standalone)
+        self.assertIn("triton.backends.ascend.testing.do_bench_npu", standalone)
         self.assertIn('print(f"latency-{case_id}: {latency}")', standalone)
 
         self.assertIn("# bench-mode: msprof", msprof)
@@ -89,9 +102,14 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("# bench-mode:", bench_example)
         self.assertIn("# api-name:", bench_example)
         self.assertIn("# kernel:", bench_example)
-        self.assertIn('parser.add_argument("--operator-file", required=True)', bench_example)
+        self.assertIn('parser.add_argument("--operator-file"', bench_example)
         self.assertNotIn('parser.add_argument("--api-name"', bench_example)
-        self.assertIn("latency-", bench_example)
+        if "# bench-mode: msprof" in bench_example:
+            self.assertIn('parser.add_argument("--bench", type=int)', bench_example)
+            self.assertIn('parser.add_argument("--num-bench", action="store_true")', bench_example)
+        if "# bench-mode: standalone" in bench_example:
+            self.assertIn("triton.backends.ascend.testing.do_bench_npu", bench_example)
+            self.assertIn('print(f"latency-', bench_example)
 
 
 if __name__ == "__main__":

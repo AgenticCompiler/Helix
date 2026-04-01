@@ -8,6 +8,7 @@ from typing import Iterable, TextIO
 RESET = "\033[0m"
 COLORS = {
     "agent": "\033[36m",
+    "remote": "\033[35m",
     "skills": "\033[32m",
     "files": "\033[33m",
 }

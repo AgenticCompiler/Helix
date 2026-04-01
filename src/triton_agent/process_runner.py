@@ -7,9 +7,13 @@ import select
 import subprocess
 import sys
 import time
-from typing import Callable, Optional, TextIO
+from typing import Callable, Optional, Protocol, TextIO
 
 from triton_agent.models import AgentResult
+
+
+class OutputFilter(Protocol):
+    def feed(self, text: str, *, flush: bool = False) -> str: ...
 
 
 def run_process(
@@ -19,6 +23,7 @@ def run_process(
     stall_timeout_seconds: int = 0,
     session_id_extractor: Optional[Callable[[str], Optional[str]]] = None,
     stdout: Optional[TextIO] = None,
+    output_filter: Optional[OutputFilter] = None,
 ) -> AgentResult:
     if mode == "interactive":
         return run_interactive_process(command, workdir)
@@ -28,6 +33,7 @@ def run_process(
             workdir,
             stall_timeout_seconds=stall_timeout_seconds,
             stdout=stdout,
+            output_filter=output_filter,
         )
     if mode == "buffered":
         return run_buffered_process(
@@ -35,6 +41,7 @@ def run_process(
             workdir,
             stall_timeout_seconds=stall_timeout_seconds,
             session_id_extractor=session_id_extractor or (lambda _line: None),
+            output_filter=output_filter,
         )
     raise ValueError(f"Unsupported process runner mode: {mode}")
 
@@ -55,6 +62,7 @@ def run_buffered_process(
     workdir: str,
     stall_timeout_seconds: int,
     session_id_extractor: Callable[[str], Optional[str]],
+    output_filter: Optional[OutputFilter] = None,
 ) -> AgentResult:
     process = subprocess.Popen(
         command,
@@ -70,7 +78,9 @@ def run_buffered_process(
     while True:
         line = process.stdout.readline() if process.stdout is not None else ""
         if line:
-            stdout_lines.append(line)
+            filtered = output_filter.feed(line) if output_filter is not None else line
+            if filtered:
+                stdout_lines.append(filtered)
             start = time.monotonic()
             session_id = session_id or session_id_extractor(line)
         elif process.poll() is not None:
@@ -87,6 +97,10 @@ def run_buffered_process(
             )
 
     stderr_text = process.stderr.read() if process.stderr is not None else ""
+    if output_filter is not None:
+        trailing = output_filter.feed("", flush=True)
+        if trailing:
+            stdout_lines.append(trailing)
     return AgentResult(
         return_code=process.returncode or 0,
         stdout="".join(stdout_lines),
@@ -101,6 +115,7 @@ def run_streaming_process(
     workdir: str,
     stall_timeout_seconds: int,
     stdout: Optional[TextIO] = None,
+    output_filter: Optional[OutputFilter] = None,
 ) -> AgentResult:
     # Route stdout/stderr through one PTY so the child behaves as if it were
     # attached to a terminal and flushes output incrementally.
@@ -135,8 +150,10 @@ def run_streaming_process(
                     raise
                 if chunk:
                     text = chunk.decode(errors="replace")
-                    output_chunks.append(text)
-                    print(text, file=stdout or sys.stdout, end="")
+                    filtered = output_filter.feed(text) if output_filter is not None else text
+                    if filtered:
+                        output_chunks.append(filtered)
+                        print(filtered, file=stdout or sys.stdout, end="")
                     start = time.monotonic()
                 elif process.poll() is not None:
                     break
@@ -151,7 +168,11 @@ def run_streaming_process(
                     stalled=True,
                     session_id=None,
                 )
-
+        if output_filter is not None:
+            trailing = output_filter.feed("", flush=True)
+            if trailing:
+                output_chunks.append(trailing)
+                print(trailing, file=stdout or sys.stdout, end="")
         return AgentResult(
             return_code=process.wait(),
             stdout="".join(output_chunks),

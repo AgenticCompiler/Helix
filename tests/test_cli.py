@@ -85,6 +85,7 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.RUN_BENCH)
         self.assertEqual(args.output, "out.txt")
         self.assertFalse(hasattr(args, "interact"))
+        self.assertFalse(hasattr(args, "agent"))
 
     def test_run_test_requires_test_and_operator_files(self) -> None:
         parser = build_parser()
@@ -94,6 +95,7 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.RUN_TEST)
         self.assertEqual(args.test_file, "test_kernel.py")
         self.assertEqual(args.operator_file, "kernel.py")
+        self.assertFalse(hasattr(args, "agent"))
 
     def test_run_bench_requires_bench_and_operator_files(self) -> None:
         parser = build_parser()
@@ -103,6 +105,120 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.RUN_BENCH)
         self.assertEqual(args.bench_file, "bench_kernel.py")
         self.assertEqual(args.operator_file, "kernel.py")
+
+    def test_run_commands_accept_remote_options(self) -> None:
+        parser = build_parser()
+        test_args = parser.parse_args(
+            [
+                "run-test",
+                "--test-file",
+                "test_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--remote",
+                "alice@example.com:2200",
+                "--remote-workdir",
+                "/tmp/runs",
+            ]
+        )
+        bench_args = parser.parse_args(
+            [
+                "run-bench",
+                "--bench-file",
+                "bench_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--remote",
+                "alice@example.com",
+            ]
+        )
+        compare_args = parser.parse_args(
+            [
+                "compare-result",
+                "--oracle-result",
+                "oracle_result.pt",
+                "--new-result",
+                "new_result.pt",
+                "--remote",
+                "alice@example.com",
+            ]
+        )
+        self.assertEqual(test_args.remote, "alice@example.com:2200")
+        self.assertEqual(test_args.remote_workdir, "/tmp/runs")
+        self.assertFalse(test_args.keep_remote_workdir)
+        self.assertEqual(bench_args.remote, "alice@example.com")
+        self.assertIsNone(bench_args.remote_workdir)
+        self.assertFalse(bench_args.keep_remote_workdir)
+        self.assertEqual(compare_args.remote, "alice@example.com")
+
+    def test_run_commands_accept_keep_remote_workdir(self) -> None:
+        parser = build_parser()
+        test_args = parser.parse_args(
+            [
+                "run-test",
+                "--test-file",
+                "test_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--remote",
+                "alice@example.com",
+                "--keep-remote-workdir",
+            ]
+        )
+        bench_args = parser.parse_args(
+            [
+                "run-bench",
+                "--bench-file",
+                "bench_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--remote",
+                "alice@example.com",
+                "--keep-remote-workdir",
+            ]
+        )
+        self.assertTrue(test_args.keep_remote_workdir)
+        self.assertTrue(bench_args.keep_remote_workdir)
+
+    def test_agent_commands_accept_remote_options(self) -> None:
+        parser = build_parser()
+        gen_test_args = parser.parse_args(
+            [
+                "gen-test",
+                "-i",
+                "kernel.py",
+                "--remote",
+                "alice@example.com:2200",
+                "--remote-workdir",
+                "/tmp/runs",
+            ]
+        )
+        gen_bench_args = parser.parse_args(
+            [
+                "gen-bench",
+                "-i",
+                "kernel.py",
+                "--remote",
+                "alice@example.com",
+            ]
+        )
+        optimize_args = parser.parse_args(
+            [
+                "optimize",
+                "-i",
+                "kernel.py",
+                "--remote",
+                "alice@example.com",
+                "--remote-workdir",
+                "/tmp/opt",
+            ]
+        )
+        self.assertEqual(gen_test_args.remote, "alice@example.com:2200")
+        self.assertEqual(gen_test_args.remote_workdir, "/tmp/runs")
+        self.assertEqual(gen_bench_args.remote, "alice@example.com")
+        self.assertIsNone(gen_bench_args.remote_workdir)
+        self.assertEqual(optimize_args.remote, "alice@example.com")
+        self.assertEqual(optimize_args.remote_workdir, "/tmp/opt")
 
     def test_run_commands_reject_input_flag(self) -> None:
         parser = build_parser()
@@ -207,7 +323,7 @@ class CliParserTests(unittest.TestCase):
             ["run-test", "--test-file", "test_kernel.py", "--operator-file", "kernel.py"]
         )
         self.assertEqual(gen_args.test_mode, "standalone")
-        self.assertEqual(run_args.test_mode, "standalone")
+        self.assertIsNone(run_args.test_mode)
 
     def test_bench_mode_option_is_available_for_bench_commands(self) -> None:
         parser = build_parser()
@@ -233,7 +349,7 @@ class CliParserTests(unittest.TestCase):
             ["run-bench", "--bench-file", "bench_kernel.py", "--operator-file", "kernel.py"]
         )
         self.assertEqual(gen_args.bench_mode, "standalone")
-        self.assertEqual(run_args.bench_mode, "standalone")
+        self.assertIsNone(run_args.bench_mode)
 
     def test_optimize_command_supports_mode_options(self) -> None:
         parser = build_parser()
@@ -306,7 +422,7 @@ class PathResolutionTests(unittest.TestCase):
             operator = root / "kernel.py"
             test_file = harness_dir / "test_kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
-            test_file.write_text("print('test')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
@@ -328,6 +444,33 @@ class PathResolutionTests(unittest.TestCase):
                 "standalone",
             )
 
+    def test_main_run_test_reads_mode_from_metadata_when_flag_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch("triton_agent.cli.run_local_test", return_value=(fake_result, None)) as mocked:
+                exit_code = main(
+                    [
+                        "run-test",
+                        "--test-file",
+                        str(test_file),
+                        "--operator-file",
+                        str(operator),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                test_file.resolve(),
+                operator.resolve(),
+                "differential",
+            )
+
     def test_main_gen_test_differential_uses_differential_default_output_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -337,9 +480,19 @@ class PathResolutionTests(unittest.TestCase):
             captured = {}
 
             def _fake_build_prompt(
-                command_kind, input_path, operator_path, output_path, test_mode, bench_mode, force_overwrite
+                command_kind,
+                input_path,
+                operator_path,
+                output_path,
+                test_mode,
+                bench_mode,
+                force_overwrite,
+                remote,
+                remote_workdir,
             ):
                 captured["output_path"] = output_path
+                captured["remote"] = remote
+                captured["remote_workdir"] = remote_workdir
                 return "Prompt body"
 
             def _fake_create_runner(_agent_name):
@@ -399,7 +552,7 @@ class PathResolutionTests(unittest.TestCase):
             operator = root / "kernel.py"
             test_file = root / "test_kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
-            test_file.write_text("print('test')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')", encoding="utf-8")
 
             stdout = StringIO()
             stderr = StringIO()
@@ -430,7 +583,7 @@ class PathResolutionTests(unittest.TestCase):
             test_file = root / "differential_test_kernel.py"
             archive = root / "kernel_result.pt"
             operator.write_text("print('x')", encoding="utf-8")
-            test_file.write_text("print('test')", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')", encoding="utf-8")
 
             stdout = StringIO()
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
@@ -452,6 +605,76 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertIn(f"Archived result: {archive}", stdout.getvalue())
 
+    def test_main_run_test_uses_remote_runner_when_requested(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch(
+                "triton_agent.cli.run_remote_test",
+                return_value=(fake_result, None, "/tmp/triton-agent-abc"),
+            ) as mocked:
+                exit_code = main(
+                    [
+                        "run-test",
+                        "--test-file",
+                        str(test_file),
+                        "--operator-file",
+                        str(operator),
+                        "--remote",
+                        "alice@example.com:2200",
+                        "--remote-workdir",
+                        "/tmp/runs",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                test_file.resolve(),
+                operator.resolve(),
+                "standalone",
+                "alice@example.com:2200",
+                "/tmp/runs",
+                keep_remote_workdir=False,
+                verbose=False,
+                stderr=sys.stderr,
+            )
+
+    def test_main_run_test_prints_remote_workspace_when_kept(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')", encoding="utf-8")
+
+            stdout = StringIO()
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch(
+                "triton_agent.cli.run_remote_test",
+                return_value=(fake_result, None, "/tmp/triton-agent-keep"),
+            ):
+                with redirect_stdout(stdout):
+                    exit_code = main(
+                        [
+                            "run-test",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                            "--remote",
+                            "alice@example.com",
+                            "--keep-remote-workdir",
+                        ]
+                    )
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("Remote workspace: /tmp/triton-agent-keep", stdout.getvalue())
+
     def test_main_run_bench_executes_locally_and_prints_perf_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -459,7 +682,7 @@ class PathResolutionTests(unittest.TestCase):
             bench_file = root / "bench_kernel.py"
             perf_file = root / "kernel_perf.txt"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("print('bench')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
 
             stdout = StringIO()
             stderr = StringIO()
@@ -488,13 +711,108 @@ class PathResolutionTests(unittest.TestCase):
             self.assertNotIn("latency-a", stdout.getvalue())
             self.assertIn("bench stderr", stderr.getvalue())
 
+    def test_main_run_bench_reads_mode_from_metadata_when_flag_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\n# kernel: k\nprint('bench')", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch("triton_agent.cli.run_local_bench", return_value=(fake_result, None)) as mocked:
+                exit_code = main(
+                    [
+                        "run-bench",
+                        "--bench-file",
+                        str(bench_file),
+                        "--operator-file",
+                        str(operator),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                bench_file.resolve(),
+                operator.resolve(),
+                "msprof",
+            )
+
+    def test_main_run_bench_uses_remote_runner_when_requested(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch(
+                "triton_agent.cli.run_remote_bench",
+                return_value=(fake_result, None, "/tmp/triton-agent-bench"),
+            ) as mocked:
+                exit_code = main(
+                    [
+                        "run-bench",
+                        "--bench-file",
+                        str(bench_file),
+                        "--operator-file",
+                        str(operator),
+                        "--remote",
+                        "alice@example.com",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                bench_file.resolve(),
+                operator.resolve(),
+                "standalone",
+                "alice@example.com",
+                None,
+                keep_remote_workdir=False,
+                verbose=False,
+                stderr=sys.stderr,
+            )
+
+    def test_main_run_bench_prints_remote_workspace_when_kept(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+
+            stdout = StringIO()
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch(
+                "triton_agent.cli.run_remote_bench",
+                return_value=(fake_result, None, "/tmp/triton-agent-keep-bench"),
+            ):
+                with redirect_stdout(stdout):
+                    exit_code = main(
+                        [
+                            "run-bench",
+                            "--bench-file",
+                            str(bench_file),
+                            "--operator-file",
+                            str(operator),
+                            "--remote",
+                            "alice@example.com",
+                            "--keep-remote-workdir",
+                        ]
+                    )
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("Remote workspace: /tmp/triton-agent-keep-bench", stdout.getvalue())
+
     def test_main_run_bench_reports_missing_perf_artifact_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
             bench_file = root / "bench_kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("print('bench')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
 
             stderr = StringIO()
             with patch("triton_agent.cli.run_local_bench", side_effect=FileNotFoundError("missing perf")):
@@ -536,6 +854,38 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             mocked.assert_called_once_with(oracle.resolve(), new.resolve(), "balanced")
 
+    def test_main_compare_result_uses_remote_comparison_when_requested(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            oracle = root / "abs_result.pt"
+            new = root / "opt_abs_result.pt"
+            oracle.write_text("oracle", encoding="utf-8")
+            new.write_text("new", encoding="utf-8")
+
+            with patch("triton_agent.cli.compare_remote_result_files", return_value=0) as mocked:
+                exit_code = main(
+                    [
+                        "compare-result",
+                        "--oracle-result",
+                        str(oracle),
+                        "--new-result",
+                        str(new),
+                        "--remote",
+                        "alice@example.com:2200",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                oracle.resolve(),
+                new.resolve(),
+                "balanced",
+                "alice@example.com:2200",
+                None,
+                verbose=False,
+                stderr=sys.stderr,
+            )
+
     def test_main_compare_perf_uses_local_comparison(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -562,7 +912,7 @@ class PathResolutionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             test_file = root / "test_kernel.py"
-            test_file.write_text("print('test')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')", encoding="utf-8")
             missing_operator = root / "kernel.py"
 
             stderr = StringIO()
@@ -695,6 +1045,49 @@ class PromptTests(unittest.TestCase):
             force_overwrite=False,
         )
         self.assertIn("Requested bench mode: standalone", prompt)
+
+    def test_gen_test_prompt_requires_execute_and_autofix(self) -> None:
+        prompt = build_prompt(
+            CommandKind.GEN_TEST,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/test_op.py"),
+            test_mode="standalone",
+            bench_mode=None,
+            force_overwrite=False,
+        )
+        self.assertIn("After generating the artifact, execute the generated test or benchmark case", prompt)
+        self.assertIn("repair the generated artifact and retry automatically", prompt)
+
+    def test_gen_bench_prompt_requires_execute_and_autofix(self) -> None:
+        prompt = build_prompt(
+            CommandKind.GEN_BENCH,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/bench_op.py"),
+            test_mode=None,
+            bench_mode="standalone",
+            force_overwrite=False,
+        )
+        self.assertIn("After generating the artifact, execute the generated test or benchmark case", prompt)
+        self.assertIn("repair the generated artifact and retry automatically", prompt)
+
+    def test_prompt_mentions_remote_execution_context(self) -> None:
+        prompt = build_prompt(
+            CommandKind.GEN_TEST,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/test_op.py"),
+            test_mode="standalone",
+            bench_mode=None,
+            force_overwrite=False,
+            remote="alice@example.com:2200",
+            remote_workdir="/tmp/triton-agent",
+        )
+        self.assertIn("Remote execution target: alice@example.com:2200", prompt)
+        self.assertIn("Remote execution root: /tmp/triton-agent", prompt)
+        self.assertIn("When you execute generated test cases or benchmark cases", prompt)
+        self.assertIn("include the same `--remote` setting", prompt)
 
     def test_optimize_prompt_mentions_requested_modes(self) -> None:
         prompt = build_prompt(

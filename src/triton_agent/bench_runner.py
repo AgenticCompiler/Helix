@@ -7,6 +7,13 @@ from pathlib import Path
 
 from triton_agent.models import AgentResult
 from triton_agent.process_runner import run_process
+from triton_agent.remote_execution import (
+    cleanup_remote_workspace,
+    copy_file_to_remote,
+    create_remote_workspace,
+    run_remote_command_buffered,
+    run_remote_command_streaming,
+)
 
 
 def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
@@ -77,6 +84,52 @@ def run_local_bench(
     )
 
 
+def run_remote_bench(
+    bench_file: Path,
+    operator_file: Path,
+    bench_mode: str,
+    remote: str,
+    remote_workdir: str | None,
+    keep_remote_workdir: bool = False,
+    verbose: bool = False,
+    stderr=None,
+) -> tuple[AgentResult, Path | None, str]:
+    spec, remote_workspace = create_remote_workspace(
+        remote, remote_workdir, verbose=verbose, stderr=stderr
+    )
+    try:
+        copy_file_to_remote(
+            spec, bench_file, f"{remote_workspace}/{bench_file.name}", verbose=verbose, stderr=stderr
+        )
+        copy_file_to_remote(
+            spec,
+            operator_file,
+            f"{remote_workspace}/{operator_file.name}",
+            verbose=verbose,
+            stderr=stderr,
+        )
+        if bench_mode == "msprof":
+            return _run_remote_bench_msprof(
+                spec,
+                remote_workspace,
+                bench_file,
+                operator_file,
+                verbose=verbose,
+                stderr=stderr,
+            )
+        return _run_remote_bench_standalone(
+            spec,
+            remote_workspace,
+            bench_file,
+            operator_file,
+            verbose=verbose,
+            stderr=stderr,
+        )
+    finally:
+        if not keep_remote_workdir:
+            cleanup_remote_workspace(spec, remote_workspace, verbose=verbose, stderr=stderr)
+
+
 def _run_local_bench_standalone(
     bench_file: Path,
     operator_file: Path,
@@ -90,6 +143,30 @@ def _run_local_bench_standalone(
         _extract_latency_lines(f"{result.stdout}\n{result.stderr}"),
     )
     return result, perf_path
+
+
+def _run_remote_bench_standalone(
+    spec,
+    remote_workspace: str,
+    bench_file: Path,
+    operator_file: Path,
+    verbose: bool = False,
+    stderr=None,
+) -> tuple[AgentResult, Path | None, str]:
+    result = run_remote_command_streaming(
+        spec,
+        remote_workspace,
+        f"python3 {bench_file.name} --operator-file {operator_file.name}",
+        verbose=verbose,
+        stderr=stderr,
+    )
+    if not result.succeeded:
+        return result, None, remote_workspace
+    perf_path = _write_perf_lines(
+        _perf_output_path(bench_file, operator_file),
+        _extract_latency_lines(f"{result.stdout}\n{result.stderr}"),
+    )
+    return result, perf_path, remote_workspace
 
 
 def _run_local_bench_msprof(
@@ -154,6 +231,77 @@ def _run_local_bench_msprof(
             stderr="".join(stderr_chunks),
         ),
         perf_path,
+    )
+
+
+def _run_remote_bench_msprof(
+    spec,
+    remote_workspace: str,
+    bench_file: Path,
+    operator_file: Path,
+    verbose: bool = False,
+    stderr=None,
+) -> tuple[AgentResult, Path | None, str]:
+    metadata = parse_bench_metadata(bench_file)
+    kernel_name = metadata.get("kernel")
+    if not kernel_name:
+        raise ValueError(f"Benchmark metadata is missing required 'kernel' entry: {bench_file}")
+
+    count_result = run_remote_command_buffered(
+        spec,
+        remote_workspace,
+        f"python3 {bench_file.name} --num-bench",
+        verbose=verbose,
+        stderr=stderr,
+    )
+    if not count_result.succeeded:
+        return count_result, None, remote_workspace
+
+    case_count = _parse_case_count(count_result.stdout)
+    stdout_chunks = [count_result.stdout]
+    stderr_chunks = [count_result.stderr]
+    normalized_lines: list[str] = []
+
+    for case_idx in range(1, case_count + 1):
+        result = run_remote_command_streaming(
+            spec,
+            remote_workspace,
+            (
+                f"msprof op --kernel-name={kernel_name} "
+                f"python3 {bench_file.name} "
+                f"--operator-file {operator_file.name} "
+                f"--bench {case_idx}"
+            ),
+            verbose=verbose,
+            stderr=stderr,
+        )
+        stdout_chunks.append(result.stdout)
+        stderr_chunks.append(result.stderr)
+        if not result.succeeded:
+            return (
+                AgentResult(
+                    return_code=result.return_code,
+                    stdout="".join(stdout_chunks),
+                    stderr="".join(stderr_chunks),
+                    stalled=result.stalled,
+                    session_id=result.session_id,
+                ),
+                None,
+                remote_workspace,
+            )
+
+        duration = _extract_msprof_duration(f"{result.stdout}\n{result.stderr}")
+        normalized_lines.append(f"latency-case-{case_idx}: {duration}")
+
+    perf_path = _write_perf_lines(_perf_output_path(bench_file, operator_file), normalized_lines)
+    return (
+        AgentResult(
+            return_code=0,
+            stdout="".join(stdout_chunks),
+            stderr="".join(stderr_chunks),
+        ),
+        perf_path,
+        remote_workspace,
     )
 
 

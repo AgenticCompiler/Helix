@@ -28,6 +28,31 @@ class BufferedProcessRunnerTests(unittest.TestCase):
         self.assertEqual(result.stdout, "hello\n")
         self.assertEqual(result.session_id, "session-1")
 
+    def test_buffered_filter_can_remove_diff_blocks(self) -> None:
+        from triton_agent.codex_runner import _UnifiedDiffFilter
+
+        process = _BufferedFakeProcess(
+            stdout_lines=[
+                "before\n",
+                "diff --git a/x b/x\n",
+                "new file mode 100644\n",
+                "@@ -0,0 +1 @@\n",
+                "+hello\n",
+                "after\n",
+            ],
+            stderr_text="",
+            returncode=0,
+        )
+        with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+            result = run_buffered_process(
+                ["codex", "exec"],
+                "/tmp",
+                stall_timeout_seconds=10,
+                session_id_extractor=lambda _line: None,
+                output_filter=_UnifiedDiffFilter(),
+            )
+        self.assertEqual(result.stdout, "before\nafter\n")
+
 
 class StreamingProcessRunnerTests(unittest.TestCase):
     def test_streams_chunks_and_collects_stdout(self) -> None:
@@ -47,6 +72,30 @@ class StreamingProcessRunnerTests(unittest.TestCase):
                             )
         self.assertEqual(stdout.getvalue(), "line one\nline two\n")
         self.assertEqual(result.stdout, "line one\nline two\n")
+
+    def test_streaming_filter_can_remove_diff_blocks(self) -> None:
+        from triton_agent.codex_runner import _UnifiedDiffFilter
+
+        stdout = StringIO()
+        process = _StreamingFakeProcess(wait_code=0)
+        chunks = [b"before\n", b"diff --git a/x b/x\n@@ -0,0 +1 @@\n+hello\n", b"after\n", b""]
+        with patch("triton_agent.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+                with patch(
+                    "triton_agent.process_runner.select.select",
+                    side_effect=[([11], [], []), ([11], [], []), ([11], [], []), ([11], [], [])],
+                ):
+                    with patch("triton_agent.process_runner.os.read", side_effect=chunks):
+                        with patch("triton_agent.process_runner.os.close"):
+                            result = run_streaming_process(
+                                ["codex", "exec"],
+                                "/tmp",
+                                stall_timeout_seconds=10,
+                                stdout=stdout,
+                                output_filter=_UnifiedDiffFilter(),
+                            )
+        self.assertEqual(stdout.getvalue(), "before\nafter\n")
+        self.assertEqual(result.stdout, "before\nafter\n")
 
     def test_treats_eio_after_child_exit_as_clean_eof(self) -> None:
         stdout = StringIO()

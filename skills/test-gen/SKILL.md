@@ -59,6 +59,18 @@ When validating a generated test, use the repository CLI subcommand `run-test` a
 - Differential example against an optimized operator:
   - `python3 ../scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode differential`
 
+If the outer task is marked for remote execution, carry the same remote flags into validation commands.
+
+- Remote standalone example:
+  - `python3 ../scripts/run-command.py run-test --test-file test_<operator>.py --operator-file <operator>.py --remote user@host:2222`
+- Remote differential example with a fixed remote root:
+  - `python3 ../scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --remote user@host:2222 --remote-workdir /tmp/triton-agent`
+
+The generated test itself is also directly runnable:
+
+- `python3 test_<operator>.py --operator-file <operator>.py`
+- `python3 differential_test_<operator>.py --operator-file opt_<operator>.py`
+
 ## Workflow
 
 1. Read the operator code and identify the public callable, tensor arguments, scalar arguments, shapes, dtypes, and kernel launch requirements.

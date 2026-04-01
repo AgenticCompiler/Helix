@@ -18,6 +18,10 @@
 - The CLI may accept compatibility aliases such as snake_case spellings, but kebab-case remains the canonical displayed command form.
 - `run-test` should require both `--test-file` and `--operator-file`.
 - `run-bench` should require both `--bench-file` and `--operator-file`.
+- `run-test`, `run-bench`, and `compare-result` may optionally execute on a remote machine through `--remote user@host[:port]`.
+- If `--remote-workdir` is provided, the CLI should create a per-run subdirectory under that remote directory instead of using a one-off temp root.
+- `run-test` and `run-bench` may optionally keep the generated remote workspace for debugging through a dedicated flag instead of always cleaning it up.
+- `gen-test`, `gen-bench`, and `optimize` may also accept the same remote options, but they should pass that requirement through prompt context to the code agent instead of moving agent execution itself to the remote machine.
 
 ## Core Principles
 
@@ -36,7 +40,8 @@
 - When a command writes generated artifacts, default to protecting existing files and require an explicit overwrite flag to replace them.
 - If overwrite is explicitly requested for a generated artifact, remove the old file in the CLI layer before launching the agent.
 - Keep command-specific mode flags scoped narrowly; for example, test-mode selection belongs only to test generation and test execution.
-- Default command-specific modes to an explicit value instead of leaving them implicit; use `standalone` for test and benchmark flows unless the user asks for another mode.
+- Default generation modes to an explicit value; use `standalone` for `gen-test` and `gen-bench` unless the user asks for another mode.
+- For `run-test` and `run-bench`, prefer reading mode metadata from the generated harness when the user does not pass an explicit override.
 - For `optimize`, default to `differential` test validation and `standalone` benchmark validation unless the user asks for another combination.
 - Likewise, benchmark-mode selection belongs only to benchmark generation and benchmark execution.
 - For expected CLI validation failures, prefer short actionable error messages over Python tracebacks.

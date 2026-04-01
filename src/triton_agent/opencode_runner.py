@@ -16,8 +16,23 @@ class OpenCodeRunner(AgentRunner):
 
     def build_command(self, request: AgentRequest) -> List[str]:
         if request.interact:
-            return [self.executable, str(request.workdir), "--prompt", request.prompt]
-        return [self.executable, "run", "--dir", str(request.workdir), request.prompt]
+            return [
+                self.executable,
+                str(request.workdir),
+                "--pure",
+                "--thinking",
+                "--prompt",
+                request.prompt,
+            ]
+        return [
+            self.executable,
+            "run",
+            "--dir",
+            str(request.workdir),
+            "--pure",
+            "--thinking",
+            request.prompt,
+        ]
 
     def run(
         self,

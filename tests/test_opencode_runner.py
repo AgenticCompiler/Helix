@@ -34,6 +34,8 @@ class OpenCodeRunnerTests(unittest.TestCase):
             )
             command = runner.build_command(request)
             self.assertEqual(command[:3], ["opencode", "run", "--dir"])
+            self.assertIn("--pure", command)
+            self.assertIn("--thinking", command)
             self.assertEqual(command[-1], "Prompt body")
 
     def test_interactive_command_uses_project_mode(self) -> None:
@@ -59,6 +61,8 @@ class OpenCodeRunnerTests(unittest.TestCase):
             command = runner.build_command(request)
             self.assertEqual(command[0], "opencode")
             self.assertEqual(command[1], str(workspace))
+            self.assertIn("--pure", command)
+            self.assertIn("--thinking", command)
             self.assertIn("--prompt", command)
 
     def test_run_uses_unified_process_runner(self) -> None:
@@ -110,6 +114,8 @@ class OpenCodeRunnerTests(unittest.TestCase):
                 runner.run(request, stderr=stderr)
             self.assertIn("[agent]", stderr.getvalue())
             self.assertIn("opencode run", stderr.getvalue())
+            self.assertIn("--pure", stderr.getvalue())
+            self.assertIn("--thinking", stderr.getvalue())
 
 
 def _ok_result() -> AgentResult:

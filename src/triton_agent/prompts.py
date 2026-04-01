@@ -22,9 +22,14 @@ def build_prompt(
     test_mode: str | None,
     bench_mode: str | None,
     force_overwrite: bool,
+    remote: str | None = None,
+    remote_workdir: str | None = None,
 ) -> str:
     skill_name = COMMAND_TO_SKILL[command_kind]
-    lines = [PROMPT_INTROS[command_kind], f"Use the local skill `{skill_name}` from the workspace skills directory."]
+    lines = [
+        PROMPT_INTROS[command_kind],
+        f"Use the local skill `{skill_name}` from the workspace skills directory.",
+    ]
     if command_kind == CommandKind.RUN_TEST:
         lines.append(f"Operator file: {operator_path}")
         lines.append(f"Test file: {input_path}")
@@ -41,6 +46,19 @@ def build_prompt(
         lines.append(f"Requested bench mode: {bench_mode}")
     if force_overwrite:
         lines.append("Overwrite the requested output file if it already exists.")
+    if remote is not None:
+        lines.append(f"Remote execution target: {remote}")
+        if remote_workdir is not None:
+            lines.append(f"Remote execution root: {remote_workdir}")
+        lines.append(
+            "When you execute generated test cases or benchmark cases in this task, include the "
+            "same `--remote` setting and reuse `--remote-workdir` when provided."
+        )
+    if command_kind in {CommandKind.GEN_TEST, CommandKind.GEN_BENCH}:
+        lines.append(
+            "After generating the artifact, execute the generated test or benchmark case. "
+            "If execution fails, repair the generated artifact and retry automatically."
+        )
 
     if command_kind == CommandKind.OPTIMIZE:
         lines.extend(

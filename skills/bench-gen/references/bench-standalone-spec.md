@@ -74,7 +74,9 @@ python3 bench_abs.py --operator-file opt_abs.py
               return operator_api(*make_inputs(case))
 
           warmup, active = select_bench_config(bench_fn)
-          latency = triton.testing.do_bench_npu(bench_fn, warmup=warmup, active=active)
+          latency = triton.backends.ascend.testing.do_bench_npu(
+              bench_fn, warmup=warmup, active=active
+          )
           print(f"latency-{case_id}: {latency}")
 
   def main():
@@ -87,7 +89,7 @@ python3 bench_abs.py --operator-file opt_abs.py
   if __name__ == "__main__":
       main()
   ```
-- Use `triton.testing.do_bench_npu` to measure performance.
+- Use `triton.backends.ascend.testing.do_bench_npu` to measure performance.
 - Print each case result using: `print(f"latency-<id>: {latency}")`
 
 ### 5. Warmup and active policy

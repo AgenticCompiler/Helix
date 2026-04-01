@@ -18,7 +18,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            from triton_agent.local_bench_runner import parse_bench_metadata
+            from triton_agent.bench_runner import parse_bench_metadata
 
             metadata = parse_bench_metadata(bench_file)
 
@@ -34,8 +34,8 @@ class LocalBenchRunnerTests(unittest.TestCase):
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="latency-a: 1.0\nlatency-b: 2.0\n", stderr="")
-            with patch("triton_agent.local_bench_runner.run_process", return_value=fake_result) as mocked:
-                from triton_agent.local_bench_runner import run_local_bench
+            with patch("triton_agent.bench_runner.run_process", return_value=fake_result) as mocked:
+                from triton_agent.bench_runner import run_local_bench
 
                 result, perf_path = run_local_bench(
                     bench_file,
@@ -59,8 +59,8 @@ class LocalBenchRunnerTests(unittest.TestCase):
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="latency-a: 1.0\n", stderr="")
-            with patch("triton_agent.local_bench_runner.run_process", return_value=fake_result):
-                from triton_agent.local_bench_runner import run_local_bench
+            with patch("triton_agent.bench_runner.run_process", return_value=fake_result):
+                from triton_agent.bench_runner import run_local_bench
 
                 _, perf_path = run_local_bench(
                     bench_file,
@@ -86,8 +86,8 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 AgentResult(return_code=0, stdout="Task Duration(us): 10.5\n", stderr=""),
                 AgentResult(return_code=0, stdout="Task Duration(us): 11.5\n", stderr=""),
             ]
-            with patch("triton_agent.local_bench_runner.run_process", side_effect=results) as mocked:
-                from triton_agent.local_bench_runner import run_local_bench
+            with patch("triton_agent.bench_runner.run_process", side_effect=results) as mocked:
+                from triton_agent.bench_runner import run_local_bench
 
                 result, perf_path = run_local_bench(
                     bench_file,
@@ -108,6 +108,38 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(case_command[:3], ["msprof", "op", "--kernel-name=abs_kernel"])
             self.assertIn("--bench", case_command)
 
+    def test_run_local_bench_msprof_accepts_zero_duration_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            bench_file.write_text(
+                "# bench-mode: msprof\n# api-name: abs_\n# kernel: abs_kernel\n",
+                encoding="utf-8",
+            )
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+
+            results = [
+                AgentResult(return_code=0, stdout="1\n", stderr=""),
+                AgentResult(return_code=0, stdout="Task Duration(us): 0.000000\n", stderr=""),
+            ]
+            with patch("triton_agent.bench_runner.run_process", side_effect=results):
+                from triton_agent.bench_runner import run_local_bench
+
+                result, perf_path = run_local_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                )
+
+            self.assertEqual(result.return_code, 0)
+            if perf_path is None:
+                self.fail("expected msprof perf path")
+            self.assertEqual(
+                perf_path.read_text(encoding="utf-8"),
+                "latency-case-1: 0.000000\n",
+            )
+
     def test_run_local_bench_msprof_requires_kernel_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -116,7 +148,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             bench_file.write_text("# bench-mode: msprof\n", encoding="utf-8")
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
-            from triton_agent.local_bench_runner import run_local_bench
+            from triton_agent.bench_runner import run_local_bench
 
             with self.assertRaises(ValueError):
                 run_local_bench(
@@ -133,7 +165,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             baseline.write_text("latency-a: 10\nlatency-b: 20\n", encoding="utf-8")
             compare.write_text("latency-a: 11\nlatency-b: 18\n", encoding="utf-8")
 
-            from triton_agent.local_bench_runner import compare_perf_files
+            from triton_agent.bench_runner import compare_perf_files
 
             stdout_path = Path(tmp) / "stdout.txt"
             original_stdout = sys.stdout
@@ -159,7 +191,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             baseline.write_text("latency-a: 10\n", encoding="utf-8")
             compare.write_text("latency-b: 11\n", encoding="utf-8")
 
-            from triton_agent.local_bench_runner import compare_perf_files
+            from triton_agent.bench_runner import compare_perf_files
 
             stdout_path = Path(tmp) / "stdout.txt"
             original_stdout = sys.stdout

@@ -16,15 +16,21 @@ uv run triton-agent optimize --input a.py --output opt_a.py --interact
 uv run triton-agent gen-bench --input a.py --agent codex
 uv run triton-agent gen-test --input a.py --agent opencode
 uv run triton-agent gen-test --input a.py --test-mode standalone
-uv run triton-agent run-test --test-file test_a.py --operator-file opt_a.py --test-mode differential
+uv run triton-agent run-test --test-file differential_test_a.py --operator-file opt_a.py
 uv run triton-agent gen-bench --input a.py --bench-mode standalone
-uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py --bench-mode msprof
+uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py
 uv run triton-agent optimize --input a.py --test-mode differential --bench-mode standalone
 uv run triton-agent gen-test --input a.py --verbose
 uv run triton-agent gen-test --input a.py --show-output
 uv run triton-agent gen-test --input a.py --force-overwrite
 uv run triton-agent compare-result --oracle-result abs_result.pt --new-result opt_abs_result.pt
 uv run triton-agent compare-perf --baseline abs_perf.txt --compare opt_abs_perf.txt
+uv run triton-agent run-test --test-file test_a.py --operator-file a.py --remote user@host:2222
+uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py --remote user@host
+uv run triton-agent compare-result --oracle-result abs_result.pt --new-result opt_abs_result.pt --remote user@host --remote-workdir /tmp/triton-agent
+uv run triton-agent gen-test --input a.py --remote user@host:2222
+uv run triton-agent gen-bench --input a.py --remote user@host --remote-workdir /tmp/triton-agent
+uv run triton-agent optimize --input a.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
 ```
 
 Generated harnesses record their resolved wrapper API, target kernel, and mode in a small file header such as `# test-mode: ...`, `# bench-mode: ...`, `# api-name: ...`, and `# kernel: ...`.
@@ -40,18 +46,28 @@ Generated harnesses record their resolved wrapper API, target kernel, and mode i
 - `run-test` requires `--test-file` and `--operator-file`.
 - `run-test` executes the generated test file locally instead of launching a code agent.
 - `run-test` streams local process output by default and does not support `--interact`.
+- `run-test` no longer accepts `--agent`.
 - `run-test` prints the local process stdout, stderr, and return code.
+- `run-test` reads `# test-mode: ...` from the test file metadata when `--test-mode` is omitted.
 - In `differential` mode, `run-test` archives the generated result payload beside the input operator file as `<operator-filename>_result.pt`.
+- `run-test`, `run-bench`, and `compare-result` accept `--remote user@host[:port]` to execute through SSH on a remote machine.
+- `--remote-workdir <path>` makes each remote run create a subdirectory under the given remote root; otherwise the CLI uses a temporary remote directory.
+- `run-test` and `run-bench` accept `--keep-remote-workdir` to skip remote cleanup and print the retained remote workspace path for debugging.
+- `gen-test`, `gen-bench`, and `optimize` also accept `--remote user@host[:port]` and optional `--remote-workdir <path>`.
+- For `gen-test`, `gen-bench`, and `optimize`, the code agent still runs locally; the remote settings are passed through prompt context so the skills use remote-aware repository commands during validation.
+- Under `--verbose`, remote runs print the concrete `ssh` and `scp` commands they execute.
 - `run-bench` requires `--bench-file` and `--operator-file`.
 - `run-bench` executes the generated benchmark file locally instead of launching a code agent.
 - `run-bench` streams local process output by default and does not support `--interact`.
+- `run-bench` no longer accepts `--agent`.
+- `run-bench` reads `# bench-mode: ...` from the benchmark file metadata when `--bench-mode` is omitted.
 - In `standalone` mode, `run-bench` saves parsed `latency-<id>:` lines beside the input operator file as `<operator-filename>_perf.txt`.
 - In `msprof` mode, `run-bench` first queries `--num-bench`, then executes one `msprof op --kernel-name=...` command per case using the benchmark metadata header.
 - `compare-result` compares two archived differential result payload files directly.
 - `compare-perf` compares two perf data files by `latency-<id>` and reports per-case deltas without relying on line order.
 - The repository no longer keeps separate `test-run` or `bench-run` skills; `run-test` and `run-bench` are implemented directly in the CLI.
-- `--test-mode` defaults to `standalone` for `gen-test` and `run-test`.
-- `--bench-mode` defaults to `standalone` for `gen-bench` and `run-bench`.
+- `--test-mode` defaults to `standalone` for `gen-test`; `run-test` infers it from test metadata unless you override it.
+- `--bench-mode` defaults to `standalone` for `gen-bench`; `run-bench` infers it from benchmark metadata unless you override it.
 - For `optimize`, `--test-mode` defaults to `differential` and `--bench-mode` defaults to `standalone`.
 - Skill linking is idempotent: existing symlinks that already point to this repository's `skills/` tree are reused and left untouched.
 - Codex non-interactive launches always include `--ephemeral` and `--skip-git-repo-check`.

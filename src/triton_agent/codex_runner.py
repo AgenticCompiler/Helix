@@ -47,6 +47,7 @@ class CodexRunner(AgentRunner):
             stall_timeout_seconds=self.stall_timeout_seconds,
             session_id_extractor=_extract_session_id,
             stdout=stdout,
+            output_filter=self._build_output_filter(request),
         )
 
     def resume(self, request: AgentRequest, summary: str) -> AgentResult:
@@ -81,6 +82,80 @@ class CodexRunner(AgentRunner):
             # `--show-output` feel genuinely live instead of flushing in large chunks.
             return "streaming"
         return "buffered"
+
+    def _build_output_filter(self, request: AgentRequest) -> "_UnifiedDiffFilter | None":
+        if request.interact:
+            return None
+        return _UnifiedDiffFilter()
+
+
+class _UnifiedDiffFilter:
+    _DIFF_PREFIXES = (
+        "diff --git ",
+        "index ",
+        "--- ",
+        "+++ ",
+        "@@ ",
+        "new file mode ",
+        "deleted file mode ",
+        "similarity index ",
+        "rename from ",
+        "rename to ",
+        "old mode ",
+        "new mode ",
+        "Binary files ",
+        "\\ No newline at end of file",
+    )
+
+    def __init__(self) -> None:
+        self._buffer = ""
+        self._in_diff = False
+
+    def feed(self, text: str, *, flush: bool = False) -> str:
+        self._buffer += text
+        emitted: list[str] = []
+
+        while True:
+            newline_index = self._buffer.find("\n")
+            if newline_index == -1:
+                break
+            line = self._buffer[: newline_index + 1]
+            self._buffer = self._buffer[newline_index + 1 :]
+            kept = self._process_line(line)
+            if kept:
+                emitted.append(kept)
+
+        if flush and self._buffer:
+            kept = self._process_line(self._buffer)
+            self._buffer = ""
+            if kept:
+                emitted.append(kept)
+
+        return "".join(emitted)
+
+    def _process_line(self, line: str) -> str:
+        bare = line.rstrip("\n")
+        if not self._in_diff:
+            if bare.startswith("diff --git "):
+                self._in_diff = True
+                return ""
+            return line
+
+        if self._is_diff_line(bare):
+            return ""
+
+        self._in_diff = False
+        if bare.startswith("diff --git "):
+            self._in_diff = True
+            return ""
+        return line
+
+    def _is_diff_line(self, line: str) -> bool:
+        if line.startswith(self._DIFF_PREFIXES):
+            return True
+        if line.startswith(("+", "-", " ")):
+            return True
+        return False
 
 
 

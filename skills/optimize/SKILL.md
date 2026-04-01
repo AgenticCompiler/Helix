@@ -65,6 +65,15 @@ python3 ../scripts/run-command.py run-bench --bench-file <bench.py> --operator-f
 
 Use the resolved optimize modes when filling `<mode>`. Pass explicit `--output` only when the workflow needs a non-default artifact path.
 
+If the outer optimize task is marked for remote execution, carry the same remote flags into every generated, validation, and comparison command:
+
+```bash
+python3 ../scripts/run-command.py gen-test --input <operator.py> --test-mode <mode> --remote user@host:2222
+python3 ../scripts/run-command.py gen-bench --input <operator.py> --bench-mode <mode> --remote user@host:2222
+python3 ../scripts/run-command.py run-test --test-file <test.py> --operator-file <candidate.py> --test-mode <mode> --remote user@host:2222 --remote-workdir /tmp/triton-agent
+python3 ../scripts/run-command.py run-bench --bench-file <bench.py> --operator-file <candidate.py> --bench-mode <mode> --remote user@host:2222 --remote-workdir /tmp/triton-agent
+```
+
 ## Workflow
 
 1. Inspect the operator workspace and confirm the current test and benchmark artifacts.

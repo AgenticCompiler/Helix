@@ -56,6 +56,19 @@ When validating a generated benchmark, use the repository CLI subcommand `run-be
 - Msprof example:
   - `python3 ../scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof`
 
+If the outer task is marked for remote execution, carry the same remote flags into validation commands.
+
+- Remote standalone example:
+  - `python3 ../scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --remote user@host:2222`
+- Remote msprof example with a fixed remote root:
+  - `python3 ../scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --remote user@host:2222 --remote-workdir /tmp/triton-agent`
+
+The generated benchmark itself is also directly runnable:
+
+- `python3 bench_<operator>.py --operator-file <operator>.py`
+- `python3 bench_<operator>.py --num-bench`
+- `python3 bench_<operator>.py --operator-file opt_<operator>.py --bench <N>`
+
 ## Workflow
 
 1. Read the operator signature and infer realistic benchmark inputs.
@@ -75,6 +88,7 @@ When validating a generated benchmark, use the repository CLI subcommand `run-be
 - Measure the operator body, not one-time setup.
 - Prefer stable repeated timing over a single run.
 - Keep generated code easy to edit by hand.
+- In `standalone` mode, use `triton.backends.ascend.testing.do_bench_npu` for the timing measurement helper.
 - Do not violate CLI, naming, warmup, artifact, or output rules from the selected spec.
 - Do not spend a separate step on syntax-only checking; rely on `run-bench` as the validation path.
 - When auto-fix mode is active, only repair the generated benchmark file; do not modify the operator file.
