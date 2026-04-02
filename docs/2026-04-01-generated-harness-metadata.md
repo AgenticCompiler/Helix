@@ -3,7 +3,7 @@
 ## Summary
 
 - Generated test and benchmark harnesses should no longer require a runtime `--api-name` flag.
-- The generator resolves the wrapper API once, then records it in a small comment header near the top of the generated file.
+- The generator resolves the public entrypoint once, then records it in a small comment header near the top of the generated file.
 - The generated harness remains reusable across original and optimized operator variants by accepting only `--operator-file` at runtime plus any existing benchmark-only flags.
 
 ## User-visible behavior
@@ -22,10 +22,12 @@
 
 - Test files must include:
   - `# test-mode: <mode>`
-  - `# api-name: <resolved-wrapper-api>`
+  - `# api-name: <resolved-entrypoint>`
+  - `# api-kind: <triton-wrapper|torch-function|torch-module>`
 - Benchmark files must include:
   - `# bench-mode: <mode>`
-  - `# api-name: <resolved-wrapper-api>`
+  - `# api-name: <resolved-entrypoint>`
+  - `# api-kind: <triton-wrapper|torch-function|torch-module>`
 
 These lines are intended for both human inspection and future machine parsing.
 
@@ -33,7 +35,9 @@ These lines are intended for both human inspection and future machine parsing.
 
 - The generated harness loads the operator module from `--operator-file` with `importlib`.
 - The generated harness loads the callable named by its embedded `api-name` metadata.
-- Runtime does not re-infer the wrapper API from the target operator file.
+- The generated harness uses `api-kind` to decide whether to call the symbol directly or instantiate it first.
+- Runtime does not re-infer the entrypoint type from the target operator file.
+- `torch-module` entrypoints are limited to no-argument construction in the generated harness contract.
 - If the named API is missing from the runtime operator file, the harness must fail explicitly with an actionable error instead of guessing.
 
 ## Scope for this change

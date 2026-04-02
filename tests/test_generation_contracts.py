@@ -14,6 +14,7 @@ class GenerationContractTests(unittest.TestCase):
         content = _read("skills/test-gen/SKILL.md")
         self.assertIn("# test-mode:", content)
         self.assertIn("# api-name:", content)
+        self.assertIn("# api-kind:", content)
         self.assertIn("# kernel:", content)
         self.assertIn("accept only `--operator-file`", content)
         self.assertNotIn("must accept `--operator-file` and `--api-name`", content)
@@ -22,9 +23,21 @@ class GenerationContractTests(unittest.TestCase):
         content = _read("skills/bench-gen/SKILL.md")
         self.assertIn("# bench-mode:", content)
         self.assertIn("# api-name:", content)
+        self.assertIn("# api-kind:", content)
         self.assertIn("# kernel:", content)
         self.assertIn("accept only `--operator-file` at runtime for standalone mode", content)
         self.assertNotIn("must accept `--operator-file` and `--api-name`", content)
+
+    def test_generation_skills_support_entrypoint_kinds(self) -> None:
+        for relative_path in ("skills/test-gen/SKILL.md", "skills/bench-gen/SKILL.md"):
+            content = _read(relative_path)
+            with self.subTest(path=relative_path):
+                self.assertIn("triton-wrapper", content)
+                self.assertIn("torch-function", content)
+                self.assertIn("torch-module", content)
+                self.assertIn("public entrypoint", content)
+                self.assertIn("Do not", content)
+                self.assertIn("constructor", content)
 
     def test_generation_and_optimize_skills_do_not_reference_removed_run_skills(self) -> None:
         self.assertNotIn("skill `test-run`", _read("skills/test-gen/SKILL.md"))
@@ -38,7 +51,8 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("## Validation Commands", test_gen)
         self.assertIn("Use the run-validation skill to execute generated test cases.", test_gen)
         self.assertIn("python3 ../run-validation/scripts/run-command.py run-test --test-file", test_gen)
-        self.assertIn("compare-result", test_gen)
+        self.assertIn("Do not run `compare-result` during test generation.", test_gen)
+        self.assertNotIn("run `compare-result` after `run-test` succeeds", test_gen)
 
         bench_gen = _read("skills/bench-gen/SKILL.md")
         self.assertIn("## Validation Commands", bench_gen)
@@ -58,31 +72,44 @@ class GenerationContractTests(unittest.TestCase):
         for content in (standalone, differential):
             with self.subTest(spec=content[:40]):
                 self.assertIn("# api-name: <name>", content)
+                self.assertIn("# api-kind: <triton-wrapper|torch-function|torch-module>", content)
                 self.assertIn("# kernel: <name>", content)
-                self.assertIn("# api-name: <resolved_wrapper_api>", content)
+                self.assertIn("# api-name: <resolved_entrypoint>", content)
+                self.assertIn("# api-kind: <resolved_api_kind>", content)
                 self.assertIn("# kernel: <resolved_kernel_name>", content)
                 self.assertNotIn("| `--api-name <name>` | yes |", content)
                 self.assertIn("Parses `--operator-file`", content)
+                self.assertIn("triton-wrapper", content)
+                self.assertIn("torch-function", content)
+                self.assertIn("torch-module", content)
 
     def test_benchmark_generation_specs_use_header_metadata_and_no_runtime_api_flag(self) -> None:
         standalone = _read("skills/bench-gen/references/bench-standalone-spec.md")
         msprof = _read("skills/bench-gen/references/bench-msprof-spec.md")
 
         self.assertIn("# bench-mode: standalone", standalone)
-        self.assertIn("# api-name: <resolved_wrapper_api>", standalone)
+        self.assertIn("# api-name: <resolved_entrypoint>", standalone)
+        self.assertIn("# api-kind: <resolved_api_kind>", standalone)
         self.assertIn("# kernel: <resolved_kernel_name>", standalone)
         self.assertNotIn("| `--api-name <name>` | yes |", standalone)
         self.assertIn("parses `--operator-file`", standalone.lower())
+        self.assertIn("#### 3.1 `triton-wrapper`", standalone)
+        self.assertIn("#### 3.2 `torch-function`", standalone)
+        self.assertIn("#### 3.3 `torch-module`", standalone)
         self.assertIn("def load_operator_api(operator_file: str, api_name: str):", standalone)
         self.assertIn("def run_bench(operator_api):", standalone)
         self.assertIn("triton.backends.ascend.testing.do_bench_npu", standalone)
         self.assertIn('print(f"latency-{case_id}: {latency}")', standalone)
+        self.assertIn("torch-module", standalone)
+        self.assertIn("constructor arguments", standalone)
 
         self.assertIn("# bench-mode: msprof", msprof)
-        self.assertIn("# api-name: <resolved_wrapper_api>", msprof)
+        self.assertIn("# api-name: <resolved_entrypoint>", msprof)
+        self.assertIn("# api-kind: <resolved_api_kind>", msprof)
         self.assertIn("# kernel: <resolved_kernel_name>", msprof)
         self.assertNotIn("--api-name <api-name>", msprof)
         self.assertIn("If `--bench N` is provided, then `--operator-file` is required.", msprof)
+        self.assertIn("torch-function", msprof)
 
     def test_contracts_do_not_depend_on_workspace_placeholder_examples(self) -> None:
         test_spec = _read("skills/test-gen/references/test-standalone-spec.md")
@@ -90,12 +117,14 @@ class GenerationContractTests(unittest.TestCase):
 
         self.assertIn("# test-mode:", test_spec)
         self.assertIn("# api-name:", test_spec)
+        self.assertIn("# api-kind:", test_spec)
         self.assertIn("# kernel:", test_spec)
         self.assertIn('parser.add_argument("--operator-file", required=True)', test_spec)
         self.assertNotIn('parser.add_argument("--api-name"', test_spec)
 
         self.assertIn("# bench-mode:", bench_spec)
         self.assertIn("# api-name:", bench_spec)
+        self.assertIn("# api-kind:", bench_spec)
         self.assertIn("# kernel:", bench_spec)
         self.assertIn('parser.add_argument("--operator-file"', bench_spec)
         self.assertNotIn('parser.add_argument("--api-name"', bench_spec)

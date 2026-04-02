@@ -139,6 +139,8 @@ def build_parser() -> argparse.ArgumentParser:
                 default="standalone" if command_kind != CommandKind.RUN_BENCH else None,
                 choices=["standalone", "msprof"],
             )
+        if command_kind == CommandKind.OPTIMIZE:
+            subparser.add_argument("--min-rounds", type=int)
         if command_kind in {CommandKind.GEN_TEST, CommandKind.GEN_BENCH}:
             subparser.add_argument("--force-overwrite", action="store_true")
 
@@ -150,6 +152,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(_normalize_command_aliases(argv))
 
     command_kind: CommandKind = args.command_kind
+    if command_kind == CommandKind.OPTIMIZE and args.min_rounds is not None and args.min_rounds < 1:
+        parser.error("--min-rounds must be at least 1")
+
     if command_kind == CommandKind.COMPARE_RESULT:
         oracle_result = Path(args.oracle_result).expanduser().resolve()
         if not oracle_result.exists():
@@ -263,6 +268,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         force_overwrite,
         getattr(args, "remote", None),
         getattr(args, "remote_workdir", None),
+        getattr(args, "min_rounds", None),
     )
     request = AgentRequest(
         command_kind=command_kind,
@@ -279,6 +285,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         skill_name=COMMAND_TO_SKILL[command_kind],
         prompt=prompt,
         workdir=workdir,
+        min_rounds=getattr(args, "min_rounds", None),
     )
 
     repo_root = Path(__file__).resolve().parents[2]

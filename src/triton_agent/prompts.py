@@ -24,6 +24,7 @@ def build_prompt(
     force_overwrite: bool,
     remote: str | None = None,
     remote_workdir: str | None = None,
+    min_rounds: int | None = None,
 ) -> str:
     skill_name = COMMAND_TO_SKILL[command_kind]
     lines = [
@@ -67,6 +68,10 @@ def build_prompt(
                 "Keep making progress until the optimized operator is complete.",
             ]
         )
+        if min_rounds is not None:
+            lines.append(
+                f"Complete at least {min_rounds} optimization rounds by creating `opt-round-*` directories before finishing."
+            )
     else:
         lines.append("Complete the requested task and summarize assumptions briefly.")
     return "\n".join(lines)

@@ -43,6 +43,7 @@ class AgentRequest:
     skill_name: str
     prompt: str
     workdir: Path
+    min_rounds: Optional[int] = None
 
 
 @dataclass

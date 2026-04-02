@@ -12,9 +12,13 @@ Use this skill when the user needs a performance benchmark file for standalone t
 ## Operator File Assumption
 
 - An operator file may contain multiple `@triton.jit` kernel functions.
-- The operator file must also contain a wrapper API function that calls those kernel functions.
-- Benchmark generation targets the wrapper API, not the raw kernel functions.
-- If no valid wrapper API can be identified, stop and explain that benchmark generation cannot proceed safely.
+- The operator file must expose one public entrypoint that should be benchmarked.
+- The supported entrypoint kinds are:
+  - `triton-wrapper`: a Python wrapper function that calls Triton kernel functions
+  - `torch-function`: a plain PyTorch-facing function or operator entrypoint that may internally call Triton kernels
+  - `torch-module`: a `torch.nn.Module` class that represents the operator or model entrypoint and supports no-argument construction
+- Benchmark generation targets the resolved public entrypoint, not the raw kernel functions.
+- If no valid public entrypoint can be identified, stop and explain that benchmark generation cannot proceed safely.
 
 ## Inputs
 
@@ -40,10 +44,11 @@ Use this skill when the user needs a performance benchmark file for standalone t
 The generated benchmark file must include a short metadata header near the top of the file:
 
 - `# bench-mode: <mode>`
-- `# api-name: <resolved-wrapper-api>`
+- `# api-name: <resolved-entrypoint>`
+- `# api-kind: <triton-wrapper|torch-function|torch-module>`
 - `# kernel: <resolved-primary-triton-kernel>`
 
-The generated benchmark file must accept only `--operator-file` at runtime for standalone mode, use `importlib` dynamic loading, and load the callable named by the embedded `api-name` metadata. Msprof mode additionally requires `--bench <N>` and `--num-bench`.
+The generated benchmark file must accept only `--operator-file` at runtime for standalone mode, use `importlib` dynamic loading, and load the runtime callable according to the embedded `api-name` and `api-kind` metadata. Msprof mode additionally requires `--bench <N>` and `--num-bench`.
 
 ## Validation Commands
 
@@ -60,17 +65,12 @@ If the outer task is marked for remote execution, carry the same remote flags in
 
 ## Workflow
 
-1. Read the operator signature and infer realistic benchmark inputs.
-2. Confirm that the file contains a wrapper API that should be benchmarked.
-3. If no wrapper API can be resolved, stop and report the problem instead of guessing.
-4. Select the benchmark style from the requested mode.
-5. Read the corresponding benchmark spec before generating code.
-6. Generate deterministic inputs and a clean benchmark harness that satisfies the selected spec.
-7. Separate setup cost from measured execution when possible.
-8. If the output file already exists, overwrite it only when explicit overwrite permission was given.
-9. Do not add a separate syntax-check or compile-check step. If auto-fix is active, validate the generated benchmark through the CLI subcommand `run-bench` using one of the command patterns above.
-10. If that generated benchmark fails, infer the failure category from the raw `run-bench` output and apply the matching repair strategy (see "Self-Repair on Failure" below), then re-run the benchmark.
-11. Return a runnable script and a short assumptions summary.
+1. Read the operator file and resolve the public entrypoint, `api-kind`, primary Triton kernel, and realistic benchmark inputs.
+2. If the public entrypoint is missing, ambiguous, or unsafe to use, stop and report the problem instead of guessing.
+3. Select the requested benchmark mode and read the corresponding spec before generating code.
+4. Generate a benchmark harness that follows the selected spec, keeps setup separate from measurement when practical, and writes the required metadata header.
+5. If auto-fix is active, validate the generated benchmark with `run-bench` using one of the command patterns above instead of doing a separate syntax-only check.
+6. If validation fails, repair only the benchmark file according to the self-repair rules below, retry, and then return a runnable script plus a short assumptions summary.
 
 ## Quality Rules
 
@@ -81,6 +81,9 @@ If the outer task is marked for remote execution, carry the same remote flags in
 - Do not violate CLI, naming, warmup, artifact, or output rules from the selected spec.
 - Do not spend a separate step on syntax-only checking; rely on `run-bench` as the validation path.
 - When auto-fix mode is active, only repair the generated benchmark file; do not modify the operator file.
+- Do not treat raw `@triton.jit` kernel functions as direct harness APIs.
+- Do not guess constructor arguments for `torch-module`; if no-argument construction is not safe, stop with an explicit explanation.
+- For `msprof`, fail explicitly if the public entrypoint is usable but the Triton kernel name cannot be resolved safely.
 
 ## Self-Repair on Failure
 

@@ -28,6 +28,7 @@
 - Keep prompts, comments, logs, and user-visible instructions in English.
 - Treat the local `skills/` directory as the source of truth for workflow behavior.
 - Write skills as natural-language task guides first; treat CLI flags as wrapper-specific context rather than the primary skill interface.
+- For generation skills, treat the public operator entrypoint as the API surface; it may be a Triton wrapper function, a PyTorch function, or a no-argument `torch.nn.Module` class.
 - When a skill needs to invoke project commands, prefer a bundled script under `skills/run-validation/scripts/` over assuming an installed console entrypoint.
 - When a skill depends on a bundled helper script, include a few short command templates instead of only mentioning the script abstractly.
 - Keep the CLI thin: it should orchestrate agent execution and dispatch into skill-owned helpers, not reimplement skill logic.
@@ -42,6 +43,7 @@
 - Keep command-specific mode flags scoped narrowly; for example, test-mode selection belongs only to test generation and test execution.
 - Default generation modes to an explicit value; use `standalone` for `gen-test` and `gen-bench` unless the user asks for another mode.
 - For `run-test` and `run-bench`, prefer reading mode metadata from the generated harness when the user does not pass an explicit override.
+- Generated test and benchmark harness metadata should include both `api-name` and `api-kind`; `api-kind` should support `triton-wrapper`, `torch-function`, and `torch-module`.
 - For `optimize`, default to `differential` test validation and `standalone` benchmark validation unless the user asks for another combination.
 - Likewise, benchmark-mode selection belongs only to benchmark generation and benchmark execution.
 - For expected CLI validation failures, prefer short actionable error messages over Python tracebacks.
@@ -73,6 +75,8 @@
 - `optimize` is treated as a long-running workflow.
 - Supervision should detect stalls conservatively and attempt recovery without hiding failures.
 - Automatic recovery should prefer continuing from recent progress before starting over.
+- `optimize` may require a minimum number of round directories through a dedicated CLI option; when the agent exits before that threshold is reached, supervision should restart the agent in continuation mode.
+- Continuation prompts should explicitly tell the code agent to keep going from existing workspace state and to inspect `opt-note.md` plus prior `opt-round-N/` artifacts before starting the next round.
 - The `optimize` skill should search over validated candidate branches, not assume every new round must continue from the current best version.
 - The `optimize` knowledge base should offer a compact pattern index first and only then drill into one or two detailed optimization pattern references.
 - The `optimize` command may install a temporary workspace `AGENTS.md` with run-specific guardrails; if the workspace already has one, back it up first and restore it after the run.

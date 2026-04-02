@@ -53,7 +53,12 @@ class OpenCodeRunner(AgentRunner):
         )
 
     def resume(self, request: AgentRequest, summary: str) -> AgentResult:
-        resumed_prompt = f"Continue the task.\n\nProgress summary:\n{summary}"
+        resumed_prompt = (
+            "Continue the existing optimize task instead of restarting from scratch.\n"
+            "Read `opt-note.md`, existing `opt-round-*` directories, and any round summaries "
+            "or attempt logs before making the next change.\n\n"
+            f"Progress summary:\n{summary}"
+        )
         return self.run(
             AgentRequest(
                 command_kind=request.command_kind,
@@ -70,6 +75,7 @@ class OpenCodeRunner(AgentRunner):
                 skill_name=request.skill_name,
                 prompt=resumed_prompt,
                 workdir=request.workdir,
+                min_rounds=request.min_rounds,
             )
         )
 

@@ -374,6 +374,11 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.test_mode, "differential")
         self.assertEqual(args.bench_mode, "standalone")
 
+    def test_optimize_command_accepts_min_rounds(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--min-rounds", "3"])
+        self.assertEqual(args.min_rounds, 3)
+
 
 class PathResolutionTests(unittest.TestCase):
     def test_default_generated_paths_follow_convention(self) -> None:
@@ -518,10 +523,12 @@ class PathResolutionTests(unittest.TestCase):
                 force_overwrite,
                 remote,
                 remote_workdir,
+                min_rounds,
             ):
                 captured["output_path"] = output_path
                 captured["remote"] = remote
                 captured["remote_workdir"] = remote_workdir
+                captured["min_rounds"] = min_rounds
                 return "Prompt body"
 
             def _fake_create_runner(_agent_name):
@@ -1158,6 +1165,19 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("Requested test mode: differential", prompt)
         self.assertIn("Requested bench mode: standalone", prompt)
+
+    def test_optimize_prompt_mentions_min_rounds(self) -> None:
+        prompt = build_prompt(
+            CommandKind.OPTIMIZE,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            force_overwrite=False,
+            min_rounds=4,
+        )
+        self.assertIn("Complete at least 4 optimization rounds", prompt)
 
 
 class OutputRenderingTests(unittest.TestCase):

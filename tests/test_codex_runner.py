@@ -247,6 +247,35 @@ class CodexRunnerTests(unittest.TestCase):
                 runner.run(request)
             mocked.assert_called_once()
 
+    def test_resume_prompt_references_opt_note_and_round_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = CodexRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="optimize",
+                prompt="Original prompt",
+                workdir=workspace,
+                min_rounds=3,
+            )
+            with patch("triton_agent.codex_runner.run_process", return_value=_ok_result()) as mocked:
+                runner.resume(request, "one round done")
+
+            resumed_request = mocked.call_args.args[0][-1]
+            self.assertIn("Continue the existing optimize task", resumed_request)
+            self.assertIn("Read `opt-note.md`", resumed_request)
+            self.assertIn("existing `opt-round-*` directories", resumed_request)
+
 
 def _ok_result() -> AgentResult:
     return AgentResult(return_code=0, stdout="", stderr="")

@@ -31,12 +31,15 @@ uv run triton-agent compare-result --oracle-result abs_result.pt --new-result op
 uv run triton-agent gen-test --input a.py --remote user@host:2222
 uv run triton-agent gen-bench --input a.py --remote user@host --remote-workdir /tmp/triton-agent
 uv run triton-agent optimize --input a.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
+uv run triton-agent optimize --input a.py --min-rounds 3
 ```
 
-Generated harnesses record their resolved wrapper API, target kernel, and mode in a small file header such as `# test-mode: ...`, `# bench-mode: ...`, `# api-name: ...`, and `# kernel: ...`.
+Generated harnesses record their resolved public entrypoint, entrypoint kind, target kernel, and mode in a small file header such as `# test-mode: ...`, `# bench-mode: ...`, `# api-name: ...`, `# api-kind: ...`, and `# kernel: ...`.
 - Generated tests are expected to run directly as `python3 test_<op>.py --operator-file <path>` or `python3 differential_test_<op>.py --operator-file <path>`.
 - Generated benchmarks are expected to run directly as `python3 bench_<op>.py --operator-file <path>` or, for msprof mode, `python3 bench_<op>.py --num-bench` and `python3 bench_<op>.py --operator-file <path> --bench <N>`.
-- Generated harnesses should not require a runtime `--api-name` flag; the API comes from the generated file metadata.
+- Generated harnesses should not require a runtime `--api-name` flag; the runtime entrypoint comes from the generated file metadata.
+- `# api-kind:` distinguishes `triton-wrapper`, `torch-function`, and `torch-module` entrypoints so the harness can load or instantiate the target correctly.
+- `torch-module` entrypoints currently require no-argument construction; the generators should fail explicitly instead of guessing constructor arguments.
 
 - `--verbose` prints categorized diagnostics for files, skill staging, and agent launch details.
 - `--show-output` streams readable non-interactive agent output to the current terminal.
@@ -69,6 +72,9 @@ Generated harnesses record their resolved wrapper API, target kernel, and mode i
 - `--test-mode` defaults to `standalone` for `gen-test`; `run-test` infers it from test metadata unless you override it.
 - `--bench-mode` defaults to `standalone` for `gen-bench`; `run-bench` infers it from benchmark metadata unless you override it.
 - For `optimize`, `--test-mode` defaults to `differential` and `--bench-mode` defaults to `standalone`.
+- `optimize` accepts `--min-rounds <N>` to require at least `N` `opt-round-*` directories before the run may finish successfully.
+- If an `optimize` agent exits successfully before the workspace reaches the requested minimum round count, the supervisor automatically restarts the agent in continuation mode.
+- Continuation mode tells the agent to continue the existing optimization session and inspect `opt-note.md` plus existing `opt-round-*` artifacts before starting more work.
 - Skill staging uses copied workspace content rather than symlinks, so code agents read ordinary workspace files without resolving back to the source repository.
 - If a target workspace skill path already exists as a symlink, the CLI fails explicitly instead of reusing it.
 - `workspace/` is a placeholder directory for local experimentation only; it is excluded from repository linting, static type checks, and test expectations.
