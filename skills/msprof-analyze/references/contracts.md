@@ -43,7 +43,7 @@ Benchmark comparison:
 
 Binary parsing (parse_bin.py):
 - Python 3.9+
-- tabulate (pip install tabulate)
+- No extra third-party Python packages required
 
 Benchmark analysis (benchmark_analyzer.py):
 - Python 3.7+

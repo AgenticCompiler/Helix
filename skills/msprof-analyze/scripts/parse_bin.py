@@ -1,6 +1,31 @@
 import json
 from typing import Any, Optional, Iterable
-from tabulate import tabulate
+
+
+def _format_markdown_cell(value: Any) -> str:
+    return str(value).replace("|", "\\|").replace("\n", "<br>")
+
+
+def _format_markdown_table(rows: Iterable[Iterable[Any]], headers: Iterable[Any]) -> str:
+    header_cells = [_format_markdown_cell(cell) for cell in headers]
+    body_rows = [[_format_markdown_cell(cell) for cell in row] for row in rows]
+    column_count = max(
+        [len(header_cells)] + [len(row) for row in body_rows],
+        default=len(header_cells),
+    )
+
+    if len(header_cells) < column_count:
+        header_cells.extend([""] * (column_count - len(header_cells)))
+
+    lines = [
+        "| " + " | ".join(header_cells) + " |",
+        "| " + " | ".join(["---"] * column_count) + " |",
+    ]
+    for row in body_rows:
+        if len(row) < column_count:
+            row = row + [""] * (column_count - len(row))
+        lines.append("| " + " | ".join(row[:column_count]) + " |")
+    return "\n".join(lines)
 
 
 class BinaryJsonExtractor:
@@ -188,13 +213,13 @@ class BaseInfo:
         res += f"**Block Dim:** {self.block_dim}\n\n"
         if self.op_type == "vector":
             res += "#### Block Detail (at most 20 printed)\n\n"
-            res += tabulate(self.block_detail[:20], self.head_name, tablefmt="pipe") + "\n"
+            res += _format_markdown_table(self.block_detail[:20], self.head_name) + "\n"
         elif self.op_type == "mix":
             res += "#### Mix Block Detail (at most 20 printed)\n\n"
-            res += tabulate(self.block_detail[:20], self.head_name, tablefmt="pipe") + "\n"
+            res += _format_markdown_table(self.block_detail[:20], self.head_name) + "\n"
         elif self.op_type == "cube":
             res += "#### Block Detail (at most 20 printed)\n\n"
-            res += tabulate(self.block_detail[:20], self.head_name, tablefmt="pipe") + "\n"
+            res += _format_markdown_table(self.block_detail[:20], self.head_name) + "\n"
         else:
             raise AssertionError(f"op_type = {self.op_type}")
 
@@ -210,11 +235,11 @@ class WorkloadAnalysis:
         res = ""
         res += "#### Pipe utilization (at most 20 printed)\n\n"
         headers = ["Block ID", "Name", "Utilization (%)"]
-        res += tabulate(self.pipe_utilization[:20], headers, tablefmt="pipe") + "\n\n"
+        res += _format_markdown_table(self.pipe_utilization[:20], headers) + "\n\n"
         if block_id in self.details:
             res += f"#### Details for block {block_id} (at most 20 printed)\n\n"
             headers = ["VECTOR", "Instructions", "Duration (us)", "Data volume (byte)"]
-            res += tabulate(self.details[block_id][:20], headers, tablefmt="pipe") + "\n"
+            res += _format_markdown_table(self.details[block_id][:20], headers) + "\n"
         return res
 
 
@@ -269,7 +294,7 @@ class CoreMemoryMap:
             res += f"**Cube Ratio:** {float(self.cube['ratio']):.2f}%\n\n"
         res += "#### Data paths\n\n"
         headers = ["Path", "Bandwidth (GB/s)", "Request"]
-        res += tabulate(self.data_paths, headers, tablefmt="pipe") + "\n\n"
+        res += _format_markdown_table(self.data_paths, headers) + "\n\n"
         return res
 
 
@@ -291,7 +316,7 @@ class MemoryWorkloadTable:
             for row in table['row']:
                 data.append([row['name']] + row['value'])
             res += f"#### {table['table_name']}\n\n"
-            res += tabulate(data, headers, tablefmt="pipe") + "\n\n"
+            res += _format_markdown_table(data, headers) + "\n\n"
         return res
 
 
