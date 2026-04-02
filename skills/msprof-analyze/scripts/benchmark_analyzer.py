@@ -15,12 +15,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
-from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Union
+from typing import Dict, List
 from dataclasses import dataclass
 import json
 import argparse
-from datetime import datetime
 
 # Set style for plots
 sns.set_style("whitegrid")
@@ -366,7 +364,7 @@ class BenchmarkReporter:
         print(f"📈 Metric analyzed: {self.config.metric}")
 
         if not self.comparison_df.empty:
-            print(f"\n📋 Comparison Results:")
+            print("\n📋 Comparison Results:")
             print(self.comparison_df.to_string(index=False, float_format='%.2f'))
 
             if 'improvement_%' in self.comparison_df.columns:
@@ -441,7 +439,7 @@ def main():
     reporter = BenchmarkReporter(analyzer, visualizer, config)
 
     # Save results and print summary
-    saved_files = reporter.save_results()
+    reporter.save_results()
     reporter.print_summary()
 
     print(f"\n✅ Analysis complete! Check {config.output_dir} for detailed results.")

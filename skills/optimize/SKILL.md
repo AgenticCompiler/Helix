@@ -44,7 +44,7 @@ Use this skill when the user wants the operator itself improved rather than only
 - Read [opt-note-format.md](references/opt-note-format.md) before editing `opt-note.md`.
 - Read [contracts.md](references/contracts.md) when correctness or benchmark validation fails.
 - Read [patterns/index.md](references/patterns/index.md) before choosing any optimization pattern reference.
-- Use the bundled helper script at [`../scripts/run-command.py`](../scripts/run-command.py) whenever the skill needs to execute project subcommands from this repository.
+- Use the bundled helper script at [`../run-validation/scripts/run-command.py`](../run-validation/scripts/run-command.py) whenever the skill needs to execute project subcommands from this repository.
 - Treat `references/knowledge/` as optional background material for future expansion, not part of the minimum optimize workflow.
 
 ## Pattern References
@@ -55,23 +55,21 @@ Use [patterns/index.md](references/patterns/index.md) to choose the most relevan
 
 ## Helper Script Usage
 
-Use the bundled helper script to execute project subcommands from this repository:
+Use the run-validation skill whenever the workflow needs to run correctness tests, benchmarks, or comparison commands.
 
 ```bash
-python3 ../scripts/run-command.py gen-test --input <operator.py> --test-mode <mode>
-python3 ../scripts/run-command.py run-test --test-file <test.py> --operator-file <candidate.py> --test-mode <mode>
-python3 ../scripts/run-command.py run-bench --bench-file <bench.py> --operator-file <candidate.py> --bench-mode <mode>
+python3 ../run-validation/scripts/run-command.py gen-test --input <operator.py> --test-mode <mode>
+python3 ../run-validation/scripts/run-command.py run-test --test-file <test.py> --operator-file <candidate.py> --test-mode <mode>
+python3 ../run-validation/scripts/run-command.py run-bench --bench-file <bench.py> --operator-file <candidate.py> --bench-mode <mode>
 ```
-
-Use the resolved optimize modes when filling `<mode>`. Pass explicit `--output` only when the workflow needs a non-default artifact path.
 
 If the outer optimize task is marked for remote execution, carry the same remote flags into every generated, validation, and comparison command:
 
 ```bash
-python3 ../scripts/run-command.py gen-test --input <operator.py> --test-mode <mode> --remote user@host:2222
-python3 ../scripts/run-command.py gen-bench --input <operator.py> --bench-mode <mode> --remote user@host:2222
-python3 ../scripts/run-command.py run-test --test-file <test.py> --operator-file <candidate.py> --test-mode <mode> --remote user@host:2222 --remote-workdir /tmp/triton-agent
-python3 ../scripts/run-command.py run-bench --bench-file <bench.py> --operator-file <candidate.py> --bench-mode <mode> --remote user@host:2222 --remote-workdir /tmp/triton-agent
+python3 ../run-validation/scripts/run-command.py gen-test --input <operator.py> --test-mode <mode> --remote user@host:2222
+python3 ../run-validation/scripts/run-command.py gen-bench --input <operator.py> --bench-mode <mode> --remote user@host:2222
+python3 ../run-validation/scripts/run-command.py run-test --test-file <test.py> --operator-file <candidate.py> --test-mode <mode> --remote user@host:2222 --remote-workdir /tmp/triton-agent
+python3 ../run-validation/scripts/run-command.py run-bench --bench-file <bench.py> --operator-file <candidate.py> --bench-mode <mode> --remote user@host:2222 --remote-workdir /tmp/triton-agent
 ```
 
 ## Workflow
@@ -80,9 +78,9 @@ python3 ../scripts/run-command.py run-bench --bench-file <bench.py> --operator-f
 2. Resolve the correctness mode, defaulting to `differential` unless the task explicitly says otherwise.
 3. Resolve the benchmark mode, defaulting to `standalone` unless the task explicitly says otherwise.
 4. Generate missing correctness tests through the bundled helper script using the `gen-test` subcommand with the resolved correctness mode:
-   `python3 ../scripts/run-command.py gen-test --input <operator.py> --test-mode <mode>`
+   `python3 ../run-validation/scripts/run-command.py gen-test --input <operator.py> --test-mode <mode>`
 5. Generate missing benchmark cases through the bundled helper script using the `gen-bench` subcommand with the resolved benchmark mode:
-   `python3 ../scripts/run-command.py gen-bench --input <operator.py> --bench-mode <mode>`
+   `python3 ../run-validation/scripts/run-command.py gen-bench --input <operator.py> --bench-mode <mode>`
 6. Treat the original operator as validated candidate `round 0`.
 7. Build a candidate pool from validated versions instead of assuming the current best version is always the right parent.
 8. For the next optimization attempt, choose one validated parent candidate and record that parent explicitly.
@@ -92,10 +90,10 @@ python3 ../scripts/run-command.py run-bench --bench-file <bench.py> --operator-f
 12. Read only the one or two detailed pattern references that match the chosen round hypothesis.
 13. Apply one coherent optimization theme for the round.
 14. Run correctness validation through the bundled helper script using the `run-test` subcommand with the resolved correctness mode:
-   `python3 ../scripts/run-command.py run-test --test-file <test.py> --operator-file <candidate.py> --test-mode <mode>`
+   `python3 ../run-validation/scripts/run-command.py run-test --test-file <test.py> --operator-file <candidate.py> --test-mode <mode>`
 15. If correctness fails, repair the optimized operator in place, record the failure and repair in `attempts.md`, and re-run `run-test` until it passes or the round direction is no longer viable.
 16. After correctness passes, run performance validation through the bundled helper script using the `run-bench` subcommand with the resolved benchmark mode:
-   `python3 ../scripts/run-command.py run-bench --bench-file <bench.py> --operator-file <candidate.py> --bench-mode <mode>`
+   `python3 ../run-validation/scripts/run-command.py run-bench --bench-file <bench.py> --operator-file <candidate.py> --bench-mode <mode>`
 17. If performance regresses or does not improve enough, record the result in `attempts.md`, keep iterating within the same round, or abandon that direction and choose another validated parent for a later round.
 18. When a round achieves a real performance win, finalize the round `summary.md`, update `opt-note.md`, and keep the round artifacts intact for reuse.
 

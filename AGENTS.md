@@ -28,10 +28,10 @@
 - Keep prompts, comments, logs, and user-visible instructions in English.
 - Treat the local `skills/` directory as the source of truth for workflow behavior.
 - Write skills as natural-language task guides first; treat CLI flags as wrapper-specific context rather than the primary skill interface.
-- When a skill needs to invoke project commands, prefer a bundled script under `skills/scripts/` over assuming an installed console entrypoint.
+- When a skill needs to invoke project commands, prefer a bundled script under `skills/run-validation/scripts/` over assuming an installed console entrypoint.
 - When a skill depends on a bundled helper script, include a few short command templates instead of only mentioning the script abstractly.
-- Keep the CLI thin: it should orchestrate agent execution, not reimplement skill logic.
-- Local execution and comparison flows such as `run-test`, `run-bench`, `compare-result`, and `compare-perf` may live directly in the CLI when no code-agent orchestration is involved.
+- Keep the CLI thin: it should orchestrate agent execution and dispatch into skill-owned helpers, not reimplement skill logic.
+- Local execution and comparison flows such as `run-test`, `run-bench`, `compare-result`, and `compare-perf` should live in the unified `skills/run-validation/` skill scripts, with the CLI limited to parsing, validation, loading, and result rendering.
 - Preserve a clear separation between generic agent flow and backend-specific details.
 - Prefer optional diagnostic flags for orchestration visibility instead of always-on debug output.
 - When adding orchestration flags, keep them additive: they may increase visibility, but should not change the underlying agent task semantics.
@@ -51,10 +51,12 @@
 
 - Before launching a code agent, expose this repository's `skills/` directory inside the target workspace in the backend-specific location.
 - For Codex, use `.codex/skills`.
-- For OpenCode, use `.opencode/skills/<name>/SKILL.md` via per-skill directory links.
-- If an existing skill symlink already points to this repository's source skill directory, treat it as satisfied and skip recreating it.
-- Clean up only the symlinks created by the current run.
+- For OpenCode, use `.opencode/skills/<name>/SKILL.md` via copied per-skill directories.
+- Stage skills by copying content into the workspace instead of creating symlinks.
+- If an existing skill target path is already a symlink, fail explicitly instead of reusing it.
+- Clean up only the copied skill paths created by the current run.
 - Never delete or replace user-owned files or directories during cleanup.
+- Treat the top-level `workspace/` directory as a placeholder area for local experimentation, not as repository-owned source, fixture, or verification input.
 
 ## Agent Backend Expectations
 

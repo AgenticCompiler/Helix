@@ -6,27 +6,71 @@ from pathlib import Path
 from typing import Optional, TextIO
 
 from triton_agent.codex_runner import CodexRunner
-from triton_agent.bench_runner import (
-    compare_perf_files,
-    parse_bench_metadata,
-    run_local_bench,
-    run_remote_bench,
-)
-from triton_agent.test_runner import (
-    compare_remote_result_files,
-    compare_result_files,
-    parse_test_metadata,
-    run_local_test,
-    run_remote_test,
-)
-from triton_agent.models import COMMAND_TO_SKILL, AgentRequest, CommandKind
+from triton_agent.models import AgentResult, COMMAND_TO_SKILL, AgentRequest, CommandKind
 from triton_agent.optimize_guidance import OptimizeGuidanceManager
 from triton_agent.opencode_runner import OpenCodeRunner
 from triton_agent.paths import default_generated_output_path
 from triton_agent.prompts import build_prompt
+from triton_agent.run_skill import load_run_skill_module
 from triton_agent.skills import SkillLinkManager
 from triton_agent.supervisor import OptimizeSupervisor
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
+
+
+def run_local_test(*args, **kwargs):
+    result, archived = load_run_skill_module("test_runner").run_local_test(*args, **kwargs)
+    return _normalize_agent_result(result), archived
+
+
+def run_remote_test(*args, **kwargs):
+    result, archived, remote_workspace = load_run_skill_module("test_runner").run_remote_test(
+        *args, **kwargs
+    )
+    return _normalize_agent_result(result), archived, remote_workspace
+
+
+def parse_test_metadata(*args, **kwargs):
+    return load_run_skill_module("test_runner").parse_test_metadata(*args, **kwargs)
+
+
+def compare_result_files(*args, **kwargs):
+    return load_run_skill_module("compare_result").compare_result_files(*args, **kwargs)
+
+
+def compare_remote_result_files(*args, **kwargs):
+    return load_run_skill_module("compare_result").compare_remote_result_files(*args, **kwargs)
+
+
+def run_local_bench(*args, **kwargs):
+    result, perf_path = load_run_skill_module("bench_runner").run_local_bench(*args, **kwargs)
+    return _normalize_agent_result(result), perf_path
+
+
+def run_remote_bench(*args, **kwargs):
+    result, perf_path, remote_workspace = load_run_skill_module("bench_runner").run_remote_bench(
+        *args, **kwargs
+    )
+    return _normalize_agent_result(result), perf_path, remote_workspace
+
+
+def parse_bench_metadata(*args, **kwargs):
+    return load_run_skill_module("bench_runner").parse_bench_metadata(*args, **kwargs)
+
+
+def compare_perf_files(*args, **kwargs):
+    return load_run_skill_module("compare_perf").compare_perf_files(*args, **kwargs)
+
+
+def _normalize_agent_result(result) -> AgentResult:
+    if isinstance(result, AgentResult):
+        return result
+    return AgentResult(
+        return_code=int(result["return_code"]),
+        stdout=str(result["stdout"]),
+        stderr=str(result["stderr"]),
+        stalled=bool(result.get("stalled", False)),
+        session_id=result.get("session_id"),
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:

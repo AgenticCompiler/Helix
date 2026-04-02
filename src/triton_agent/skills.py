@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List
-
-from triton_agent.verbose import format_symlink
 
 
 @dataclass
@@ -27,31 +26,25 @@ class SkillLinkManager:
         created: List[Path] = []
         codex_dir.mkdir(parents=True, exist_ok=True)
 
-        # When the workspace has no Codex skills directory yet, link the whole source
-        # tree so the agent sees the repository skills as-is.
         if not target.exists():
-            target.symlink_to(self.skills_root, target_is_directory=True)
+            shutil.copytree(self.skills_root, target, symlinks=False)
             created.append(target)
             return SkillLinkSet(created)
 
-        # Reusing an existing root symlink keeps repeated runs idempotent and avoids
-        # trying to add per-skill links inside the linked source tree itself.
-        if target.is_symlink() and target.resolve() == self.skills_root:
-            return SkillLinkSet(created)
+        if target.is_symlink():
+            raise RuntimeError(f"Existing Codex skills path must not be a symlink: {target}")
 
         if not target.is_dir():
             raise RuntimeError(f"Existing Codex skills path is not a directory: {target}")
 
-        # If `.codex/skills` already exists, only add missing per-skill links so we do
-        # not disturb any pre-existing workspace-local content.
         for skill_dir in self._iter_skill_dirs():
-            link_path = target / skill_dir.name
-            if link_path.exists():
-                if link_path.is_symlink() and link_path.resolve() == skill_dir.resolve():
-                    continue
-                raise RuntimeError(f"Skill path already exists and cannot be replaced: {link_path}")
-            link_path.symlink_to(skill_dir, target_is_directory=True)
-            created.append(link_path)
+            staged_path = target / skill_dir.name
+            if staged_path.exists():
+                if staged_path.is_symlink():
+                    raise RuntimeError(f"Skill path already exists as a symlink: {staged_path}")
+                continue
+            shutil.copytree(skill_dir, staged_path, symlinks=False)
+            created.append(staged_path)
 
         return SkillLinkSet(created)
 
@@ -62,13 +55,13 @@ class SkillLinkManager:
 
         # OpenCode expects one skill directory per entry under `.opencode/skills`.
         for skill_dir in self._iter_skill_dirs():
-            link_path = opencode_dir / skill_dir.name
-            if link_path.exists():
-                if link_path.is_symlink() and link_path.resolve() == skill_dir.resolve():
-                    continue
-                raise RuntimeError(f"Skill path already exists and cannot be replaced: {link_path}")
-            link_path.symlink_to(skill_dir, target_is_directory=True)
-            created.append(link_path)
+            staged_path = opencode_dir / skill_dir.name
+            if staged_path.exists():
+                if staged_path.is_symlink():
+                    raise RuntimeError(f"Skill path already exists as a symlink: {staged_path}")
+                continue
+            shutil.copytree(skill_dir, staged_path, symlinks=False)
+            created.append(staged_path)
 
         return SkillLinkSet(created)
 
@@ -83,18 +76,20 @@ class SkillLinkManager:
         warnings = []
         for path in reversed(link_set.created_paths):
             try:
-                if path.is_symlink():
+                if path.is_dir() and not path.is_symlink():
+                    shutil.rmtree(path)
+                elif path.exists():
                     path.unlink()
             except OSError as exc:
-                warnings.append(f"Failed to remove symlink {path}: {exc}")
+                warnings.append(f"Failed to remove skill copy {path}: {exc}")
         return warnings
 
     def describe_prepare(self, link_set: SkillLinkSet) -> list[str]:
         if not link_set.created_paths:
-            return ["No new skill links were created."]
-        return [f"created skill link {format_symlink(path)}" for path in link_set.created_paths]
+            return ["No new skill copies were created."]
+        return [f"created skill copy {path}" for path in link_set.created_paths]
 
     def describe_cleanup(self, link_set: SkillLinkSet) -> list[str]:
         if not link_set.created_paths:
-            return ["No skill links needed cleanup."]
-        return [f"removed skill link {format_symlink(path)}" for path in reversed(link_set.created_paths)]
+            return ["No skill copies needed cleanup."]
+        return [f"removed skill copy {path}" for path in reversed(link_set.created_paths)]

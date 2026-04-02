@@ -38,13 +38,13 @@ Generated harnesses record their resolved wrapper API, target kernel, and mode i
 - Generated benchmarks are expected to run directly as `python3 bench_<op>.py --operator-file <path>` or, for msprof mode, `python3 bench_<op>.py --num-bench` and `python3 bench_<op>.py --operator-file <path> --bench <N>`.
 - Generated harnesses should not require a runtime `--api-name` flag; the API comes from the generated file metadata.
 
-- `--verbose` prints categorized diagnostics for files, skill links, and agent launch details.
+- `--verbose` prints categorized diagnostics for files, skill staging, and agent launch details.
 - `--show-output` streams readable non-interactive agent output to the current terminal.
 - `--show-output` exits cleanly after the agent finishes, including PTY-backed shutdown cases where Linux reports EOF as `EIO`.
 - `--force-overwrite` makes the CLI delete an existing generated output file before starting `gen-test` or `gen-bench`.
 - The parser also accepts snake_case command aliases such as `gen_test` and `run_bench`, while help text keeps the canonical kebab-case names.
 - `run-test` requires `--test-file` and `--operator-file`.
-- `run-test` executes the generated test file locally instead of launching a code agent.
+- `run-test` executes the generated test file through the unified `skills/run-validation/` execution helpers instead of launching a code agent.
 - `run-test` streams local process output by default and does not support `--interact`.
 - `run-test` no longer accepts `--agent`.
 - `run-test` prints the local process stdout, stderr, and return code.
@@ -57,25 +57,28 @@ Generated harnesses record their resolved wrapper API, target kernel, and mode i
 - For `gen-test`, `gen-bench`, and `optimize`, the code agent still runs locally; the remote settings are passed through prompt context so the skills use remote-aware repository commands during validation.
 - Under `--verbose`, remote runs print the concrete `ssh` and `scp` commands they execute.
 - `run-bench` requires `--bench-file` and `--operator-file`.
-- `run-bench` executes the generated benchmark file locally instead of launching a code agent.
+- `run-bench` executes the generated benchmark file through the unified `skills/run-validation/` execution helpers instead of launching a code agent.
 - `run-bench` streams local process output by default and does not support `--interact`.
 - `run-bench` no longer accepts `--agent`.
 - `run-bench` reads `# bench-mode: ...` from the benchmark file metadata when `--bench-mode` is omitted.
 - In `standalone` mode, `run-bench` saves parsed `latency-<id>:` lines beside the input operator file as `<operator-filename>_perf.txt`.
 - In `msprof` mode, `run-bench` first queries `--num-bench`, then executes one `msprof op --kernel-name=...` command per case using the benchmark metadata header.
-- `compare-result` compares two archived differential result payload files directly.
+- `compare-result` compares two archived differential result payload files through the unified `skills/run-validation/` helpers.
 - `compare-perf` compares two perf data files by `latency-<id>` and reports per-case deltas without relying on line order.
-- The repository no longer keeps separate `test-run` or `bench-run` skills; `run-test` and `run-bench` are implemented directly in the CLI.
+- The repository keeps a unified `run` skill for execution and comparison flows; the CLI stays thin and loads those skill-owned helpers dynamically.
 - `--test-mode` defaults to `standalone` for `gen-test`; `run-test` infers it from test metadata unless you override it.
 - `--bench-mode` defaults to `standalone` for `gen-bench`; `run-bench` infers it from benchmark metadata unless you override it.
 - For `optimize`, `--test-mode` defaults to `differential` and `--bench-mode` defaults to `standalone`.
-- Skill linking is idempotent: existing symlinks that already point to this repository's `skills/` tree are reused and left untouched.
+- Skill staging uses copied workspace content rather than symlinks, so code agents read ordinary workspace files without resolving back to the source repository.
+- If a target workspace skill path already exists as a symlink, the CLI fails explicitly instead of reusing it.
+- `workspace/` is a placeholder directory for local experimentation only; it is excluded from repository linting, static type checks, and test expectations.
 - Codex non-interactive launches always include `--ephemeral` and `--skip-git-repo-check`.
 - Codex uses `danger-full-access` for all non-interactive commands.
 - The `optimize` workflow is expected to keep per-round artifacts under `opt-round-N/` and a top-level `opt-note.md` in the operator workspace.
 - During `optimize`, the CLI writes a temporary workspace `AGENTS.md` with optimization guardrails; if the workspace already has one, it is backed up and restored after the run.
 - The `optimize` skill is expected to choose optimization patterns through a compact pattern index before reading detailed pattern references.
-- Skills can invoke the current checkout through the bundled helper script at `skills/scripts/run-command.py` without relying on an installed console entrypoint.
+- Skills can invoke the current checkout through the bundled helper script at `skills/run-validation/scripts/run-command.py` without relying on an installed console entrypoint.
+- The scripts under `skills/run-validation/scripts/` are standalone runtime modules and do not import `triton_agent`; the dependency direction is `triton_agent -> skills/run-validation/scripts` only.
 - If an output file already exists and overwrite is not allowed, the CLI prints a short error and exits without a Python traceback.
 
 ## Checks

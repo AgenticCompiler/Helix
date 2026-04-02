@@ -21,7 +21,7 @@ The implementation should use `argparse`, support `--input/-i`, `--output/-o`, `
   - CLI parsing and subcommand dispatch
   - agent abstraction and shared request/result types
   - Codex-specific runner
-  - skill link preparation/cleanup
+  - skill staging preparation/cleanup
   - optimize watchdog/supervisor
 - Use English for all prompts, comments, log messages, and internal docs.
 
@@ -69,18 +69,18 @@ The implementation should use `argparse`, support `--input/-i`, `--output/-o`, `
   - interactive mode uses `codex` TUI-style launch in the target working directory
 - Keep prompt construction centralized so each subcommand has a deterministic English instruction template that tells the agent which local skill to use and what files to read/write.
 
-### Skill linking lifecycle
+### Skill staging lifecycle
 
 - Before launching the agent, ensure the working directory exposes this repo’s local skills in the backend-specific expected location.
 - For Codex:
   - target path is `.codex/skills` under the agent working directory
-  - if `.codex/skills` does not exist, create the parent directory if needed and create a symlink from `.codex/skills` to this repo’s `skills/`
-  - if `.codex/skills` already exists, create per-skill symlinks inside it for each folder from this repo’s `skills/`
-- Track which symlinks were created by this run so cleanup deletes only owned links.
+  - if `.codex/skills` does not exist, create the parent directory if needed and copy this repo’s `skills/` tree into `.codex/skills`
+  - if `.codex/skills` already exists, copy only missing per-skill directories from this repo’s `skills/`
+- Track which copied paths were created by this run so cleanup deletes only owned staged content.
 - Handle partial failure safely:
   - creation failures should abort with a clear error
   - cleanup failures should be reported but should not hide the main command result
-  - never delete pre-existing non-symlink content
+  - never delete pre-existing non-staged content
 
 ### Optimize supervision
 
@@ -121,11 +121,11 @@ The implementation should use `argparse`, support `--input/-i`, `--output/-o`, `
 
 - Unit tests for argument parsing and subcommand-to-skill mapping.
 - Unit tests for run-command path validation and missing-file errors for `run-test` and `run-bench`.
-- Unit tests for skill link creation behavior:
+- Unit tests for skill staging behavior:
   - missing `.codex/skills`
   - existing `.codex/skills`
   - mixed pre-existing content
-  - cleanup of only owned symlinks
+  - cleanup of only owned copied paths
 - Unit tests for prompt generation to ensure the correct skill and file arguments are included.
 - Unit tests for `CodexRunner` command construction in interactive and non-interactive modes.
 - Unit tests for `OptimizeSupervisor` stall detection and recovery policy.

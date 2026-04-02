@@ -1,5 +1,5 @@
 import json
-from typing import List, Dict, Any, Optional, Iterable
+from typing import Any, Optional, Iterable
 from tabulate import tabulate
 
 
@@ -41,7 +41,7 @@ class BinaryJsonExtractor:
                         json_str = json_bytes.decode(self.encoding, errors='replace')
                         json_obj = json.loads(json_str)
                         json_blocks.append(json_obj)
-                    except:
+                    except (UnicodeDecodeError, json.JSONDecodeError):
                         continue
 
         return json_blocks
@@ -267,7 +267,7 @@ class CoreMemoryMap:
             res += f"**Vector1 Ratio:** {float(self.vector1['ratio']):.2f}%\n\n"
         if self.cube:
             res += f"**Cube Ratio:** {float(self.cube['ratio']):.2f}%\n\n"
-        res += f"#### Data paths\n\n"
+        res += "#### Data paths\n\n"
         headers = ["Path", "Bandwidth (GB/s)", "Request"]
         res += tabulate(self.data_paths, headers, tablefmt="pipe") + "\n\n"
         return res

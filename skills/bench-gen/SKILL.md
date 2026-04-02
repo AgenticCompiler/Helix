@@ -47,27 +47,16 @@ The generated benchmark file must accept only `--operator-file` at runtime for s
 
 ## Validation Commands
 
-When validating a generated benchmark, use the repository CLI subcommand `run-bench` and pass both the generated benchmark file and the operator file explicitly.
+Use the run-validation skill to execute generated benchmark cases.
+Use `run-bench` as the standard execution command for generated benchmarks.
 
 - Standalone example on the original operator:
-  - `python3 ../scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench-mode standalone`
+  - `python3 ../run-validation/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench-mode standalone`
 - Standalone example on an optimized operator:
-  - `python3 ../scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode standalone`
+  - `python3 ../run-validation/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode standalone`
 - Msprof example:
-  - `python3 ../scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof`
-
-If the outer task is marked for remote execution, carry the same remote flags into validation commands.
-
-- Remote standalone example:
-  - `python3 ../scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --remote user@host:2222`
-- Remote msprof example with a fixed remote root:
-  - `python3 ../scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --remote user@host:2222 --remote-workdir /tmp/triton-agent`
-
-The generated benchmark itself is also directly runnable:
-
-- `python3 bench_<operator>.py --operator-file <operator>.py`
-- `python3 bench_<operator>.py --num-bench`
-- `python3 bench_<operator>.py --operator-file opt_<operator>.py --bench <N>`
+  - `python3 ../run-validation/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof`
+If the outer task is marked for remote execution, carry the same remote flags into these commands.
 
 ## Workflow
 
@@ -79,7 +68,7 @@ The generated benchmark itself is also directly runnable:
 6. Generate deterministic inputs and a clean benchmark harness that satisfies the selected spec.
 7. Separate setup cost from measured execution when possible.
 8. If the output file already exists, overwrite it only when explicit overwrite permission was given.
-9. Do not add a separate syntax-check or compile-check step. If auto-fix is active, validate the generated benchmark directly with the CLI subcommand `run-bench` using one of the command patterns above.
+9. Do not add a separate syntax-check or compile-check step. If auto-fix is active, validate the generated benchmark through the CLI subcommand `run-bench` using one of the command patterns above.
 10. If that generated benchmark fails, infer the failure category from the raw `run-bench` output and apply the matching repair strategy (see "Self-Repair on Failure" below), then re-run the benchmark.
 11. Return a runnable script and a short assumptions summary.
 

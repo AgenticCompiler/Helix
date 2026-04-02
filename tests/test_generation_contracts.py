@@ -36,25 +36,20 @@ class GenerationContractTests(unittest.TestCase):
     def test_generation_skills_include_explicit_run_command_examples(self) -> None:
         test_gen = _read("skills/test-gen/SKILL.md")
         self.assertIn("## Validation Commands", test_gen)
-        self.assertIn("python3 ../scripts/run-command.py run-test --test-file", test_gen)
-        self.assertIn("python3 differential_test_<operator>.py --operator-file", test_gen)
-        self.assertIn("--remote user@host:2222", test_gen)
-        self.assertIn("--remote-workdir /tmp/triton-agent", test_gen)
+        self.assertIn("Use the run-validation skill to execute generated test cases.", test_gen)
+        self.assertIn("python3 ../run-validation/scripts/run-command.py run-test --test-file", test_gen)
+        self.assertIn("compare-result", test_gen)
 
         bench_gen = _read("skills/bench-gen/SKILL.md")
         self.assertIn("## Validation Commands", bench_gen)
-        self.assertIn("python3 ../scripts/run-command.py run-bench --bench-file", bench_gen)
-        self.assertIn("python3 bench_<operator>.py --num-bench", bench_gen)
-        self.assertIn("--remote user@host:2222", bench_gen)
-        self.assertIn("--remote-workdir /tmp/triton-agent", bench_gen)
+        self.assertIn("Use the run-validation skill to execute generated benchmark cases.", bench_gen)
+        self.assertIn("python3 ../run-validation/scripts/run-command.py run-bench --bench-file", bench_gen)
 
     def test_optimize_skill_includes_remote_command_examples(self) -> None:
         optimize = _read("skills/optimize/SKILL.md")
-        self.assertIn("gen-test --input <operator.py> --test-mode <mode> --remote", optimize)
-        self.assertIn("gen-bench --input <operator.py> --bench-mode <mode> --remote", optimize)
+        self.assertIn("Use the run-validation skill whenever the workflow needs to run correctness tests, benchmarks, or comparison commands.", optimize)
         self.assertIn("run-test --test-file <test.py> --operator-file <candidate.py>", optimize)
         self.assertIn("run-bench --bench-file <bench.py> --operator-file <candidate.py>", optimize)
-        self.assertIn("--remote-workdir /tmp/triton-agent", optimize)
 
     def test_test_generation_specs_use_only_operator_file_cli(self) -> None:
         standalone = _read("skills/test-gen/references/test-standalone-spec.md")
@@ -89,27 +84,23 @@ class GenerationContractTests(unittest.TestCase):
         self.assertNotIn("--api-name <api-name>", msprof)
         self.assertIn("If `--bench N` is provided, then `--operator-file` is required.", msprof)
 
-    def test_workspace_examples_follow_metadata_header_contract(self) -> None:
-        test_example = _read("workspace/matmul/test_matmul.py")
-        bench_example = _read("workspace/matmul/bench_matmul.py")
+    def test_contracts_do_not_depend_on_workspace_placeholder_examples(self) -> None:
+        test_spec = _read("skills/test-gen/references/test-standalone-spec.md")
+        bench_spec = _read("skills/bench-gen/references/bench-standalone-spec.md")
 
-        self.assertIn("# test-mode:", test_example)
-        self.assertIn("# api-name:", test_example)
-        self.assertIn("# kernel:", test_example)
-        self.assertIn('parser.add_argument("--operator-file", required=True)', test_example)
-        self.assertNotIn('parser.add_argument("--api-name"', test_example)
+        self.assertIn("# test-mode:", test_spec)
+        self.assertIn("# api-name:", test_spec)
+        self.assertIn("# kernel:", test_spec)
+        self.assertIn('parser.add_argument("--operator-file", required=True)', test_spec)
+        self.assertNotIn('parser.add_argument("--api-name"', test_spec)
 
-        self.assertIn("# bench-mode:", bench_example)
-        self.assertIn("# api-name:", bench_example)
-        self.assertIn("# kernel:", bench_example)
-        self.assertIn('parser.add_argument("--operator-file"', bench_example)
-        self.assertNotIn('parser.add_argument("--api-name"', bench_example)
-        if "# bench-mode: msprof" in bench_example:
-            self.assertIn('parser.add_argument("--bench", type=int)', bench_example)
-            self.assertIn('parser.add_argument("--num-bench", action="store_true")', bench_example)
-        if "# bench-mode: standalone" in bench_example:
-            self.assertIn("triton.backends.ascend.testing.do_bench_npu", bench_example)
-            self.assertIn('print(f"latency-', bench_example)
+        self.assertIn("# bench-mode:", bench_spec)
+        self.assertIn("# api-name:", bench_spec)
+        self.assertIn("# kernel:", bench_spec)
+        self.assertIn('parser.add_argument("--operator-file"', bench_spec)
+        self.assertNotIn('parser.add_argument("--api-name"', bench_spec)
+        self.assertIn("triton.backends.ascend.testing.do_bench_npu", bench_spec)
+        self.assertIn('print(f"latency-', bench_spec)
 
 
 if __name__ == "__main__":

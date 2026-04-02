@@ -50,26 +50,20 @@ The generated test file must accept only `--operator-file` at runtime, use `impo
 
 ## Validation Commands
 
-When validating a generated test, use the repository CLI subcommand `run-test` and pass both the generated test file and the operator file explicitly.
+Use the run-validation skill to execute generated test cases.
+Use `run-test` as the standard execution command for generated tests.
 
 - Standalone example:
-  - `python3 ../scripts/run-command.py run-test --test-file test_<operator>.py --operator-file <operator>.py --test-mode standalone`
+  - `python3 ../run-validation/scripts/run-command.py run-test --test-file test_<operator>.py --operator-file <operator>.py --test-mode standalone`
 - Differential example against the original operator:
-  - `python3 ../scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file <operator>.py --test-mode differential`
+  - `python3 ../run-validation/scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file <operator>.py --test-mode differential`
 - Differential example against an optimized operator:
-  - `python3 ../scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode differential`
+  - `python3 ../run-validation/scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode differential`
+If the test mode is `differential`, run `compare-result` after `run-test` succeeds:
 
-If the outer task is marked for remote execution, carry the same remote flags into validation commands.
+- `python3 ../run-validation/scripts/run-command.py compare-result --oracle-result <oracle_result.pt> --new-result <new_result.pt>`
 
-- Remote standalone example:
-  - `python3 ../scripts/run-command.py run-test --test-file test_<operator>.py --operator-file <operator>.py --remote user@host:2222`
-- Remote differential example with a fixed remote root:
-  - `python3 ../scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --remote user@host:2222 --remote-workdir /tmp/triton-agent`
-
-The generated test itself is also directly runnable:
-
-- `python3 test_<operator>.py --operator-file <operator>.py`
-- `python3 differential_test_<operator>.py --operator-file opt_<operator>.py`
+If the outer task is marked for remote execution, carry the same remote flags into these commands.
 
 ## Workflow
 
@@ -80,7 +74,7 @@ The generated test itself is also directly runnable:
 5. Generate the test file according to the selected spec.
   -. Generate realistic test data, shape coverage, and edge cases that match the operator signature while staying within the selected spec.
   -  Prefer deterministic seeds and stable tolerance handling.
-6. Do not add a separate syntax-check or compile-check step. Validate the generated file directly with the CLI subcommand `run-test` using one of the command patterns above.
+6. Do not add a separate syntax-check or compile-check step. Validate the generated file through the CLI subcommand `run-test` using one of the command patterns above.
 7. If that generated test fails, infer the failure category from the raw `run-test` output and fix it; loop until the test passes.
 
 ## Quality Rules

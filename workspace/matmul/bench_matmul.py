@@ -1,91 +1,64 @@
+import argparse
+import importlib.util
+import time
+
+import torch
+import triton.backends.ascend.testing
+
 # bench-mode: standalone
 # api-name: matmul
 # kernel: matmul_kernel
 
-import argparse
-import importlib.util
-from pathlib import Path
-
-import torch
-import triton
-
 API_NAME = "matmul"
-CASES = (
-    {
-        "case_id": "case-1",
-        "seed": 101,
-        "m": 16,
-        "n": 16,
-        "k": 16,
-        "dtype": torch.float32,
-    },
-    {
-        "case_id": "case-2",
-        "seed": 202,
-        "m": 32,
-        "n": 48,
-        "k": 32,
-        "dtype": torch.float32,
-    },
-    {
-        "case_id": "case-3",
-        "seed": 303,
-        "m": 64,
-        "n": 64,
-        "k": 32,
-        "dtype": torch.float32,
-    },
-)
+CASES = [
+    ("case-1", {"m": 32, "k": 64, "n": 128, "dtype": torch.float32, "seed": 42}),
+    ("case-2", {"m": 64, "k": 64, "n": 64, "dtype": torch.float32, "seed": 123}),
+    ("case-3", {"m": 64, "k": 128, "n": 256, "dtype": torch.float32, "seed": 456}),
+    ("case-4", {"m": 128, "k": 256, "n": 64, "dtype": torch.float32, "seed": 789}),
+]
 
 
 def load_operator_api(operator_file: str, api_name: str):
-    operator_path = Path(operator_file)
-    spec = importlib.util.spec_from_file_location("operator_module", operator_path)
+    spec = importlib.util.spec_from_file_location("operator_module", operator_file)
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load operator module from {operator_path}")
-
+        raise RuntimeError(f"Unable to load operator module from {operator_file}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-
     try:
         return getattr(module, api_name)
     except AttributeError as exc:
-        raise RuntimeError(
-            f"Operator file does not define API '{api_name}': {operator_path}"
-        ) from exc
+        raise RuntimeError(f"Operator file does not define API '{api_name}': {operator_file}") from exc
 
 
 def make_inputs(case: dict[str, object]) -> tuple[torch.Tensor, torch.Tensor]:
-    torch.manual_seed(int(case["seed"]))
     dtype = case["dtype"]
-    m = int(case["m"])
-    n = int(case["n"])
-    k = int(case["k"])
-    a = torch.randn((m, k), device="npu", dtype=dtype)
-    b = torch.randn((k, n), device="npu", dtype=dtype)
+    seed = case["seed"]
+    m = case["m"]
+    k = case["k"]
+    n = case["n"]
+    torch.manual_seed(seed)
+    a = torch.randn((m, k), dtype=dtype, device="npu")
+    b = torch.randn((k, n), dtype=dtype, device="npu")
     return a, b
 
 
-def select_bench_config(case: dict[str, object]) -> tuple[int, int]:
-    # Heuristic runtime estimate from GEMM work. Small cases use the longer policy.
-    m = int(case["m"])
-    n = int(case["n"])
-    k = int(case["k"])
-    estimated_ops = 2 * m * n * k
-    if estimated_ops < 2_000_000:
+def select_bench_config(bench_fn) -> tuple[int, int]:
+    started_at = time.perf_counter()
+    bench_fn()
+    elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+    if elapsed_ms < 10.0:
         return 1000, 10000
     return 100, 1000
 
 
 def run_bench(operator_api) -> None:
-    for case in CASES:
-        case_id = str(case["case_id"])
-        a, b = make_inputs(case)
+    for case_id, case in CASES:
+        inputs = make_inputs(case)
 
         def bench_fn():
-            return operator_api(a, b)
+            return operator_api(*inputs)
 
-        warmup, active = select_bench_config(case)
+        warmup, active = select_bench_config(bench_fn)
         latency = triton.backends.ascend.testing.do_bench_npu(
             bench_fn,
             warmup=warmup,
@@ -98,7 +71,6 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--operator-file", required=True)
     args = parser.parse_args()
-
     operator_api = load_operator_api(args.operator_file, API_NAME)
     run_bench(operator_api)
 

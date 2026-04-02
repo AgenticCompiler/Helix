@@ -6,6 +6,7 @@ from pathlib import Path
 from contextlib import redirect_stderr
 from contextlib import redirect_stdout
 from unittest.mock import patch
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -471,6 +472,34 @@ class PathResolutionTests(unittest.TestCase):
                 "differential",
             )
 
+    def test_run_test_wrapper_calls_loaded_skill_module(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            runtime = SimpleNamespace(
+                parse_test_metadata=lambda _path: {"test-mode": "standalone"},
+                run_local_test=lambda *_args, **_kwargs: (fake_result, None),
+            )
+
+            with patch("triton_agent.cli.load_run_skill_module", return_value=runtime) as mocked_loader:
+                exit_code = main(
+                    [
+                        "run-test",
+                        "--test-file",
+                        str(test_file),
+                        "--operator-file",
+                        str(operator),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked_loader.assert_called_with("test_runner")
+
     def test_main_gen_test_differential_uses_differential_default_output_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -737,6 +766,34 @@ class PathResolutionTests(unittest.TestCase):
                 operator.resolve(),
                 "msprof",
             )
+
+    def test_run_bench_wrapper_calls_loaded_skill_module(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            runtime = SimpleNamespace(
+                parse_bench_metadata=lambda _path: {"bench-mode": "standalone"},
+                run_local_bench=lambda *_args, **_kwargs: (fake_result, None),
+            )
+
+            with patch("triton_agent.cli.load_run_skill_module", return_value=runtime) as mocked_loader:
+                exit_code = main(
+                    [
+                        "run-bench",
+                        "--bench-file",
+                        str(bench_file),
+                        "--operator-file",
+                        str(operator),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked_loader.assert_called_with("bench_runner")
 
     def test_main_run_bench_uses_remote_runner_when_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
