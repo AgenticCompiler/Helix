@@ -59,6 +59,48 @@ class RemoteExecutionTests(unittest.TestCase):
         self.assertIn("[remote]", stderr.getvalue())
         self.assertIn("scp -P 2200 /tmp/local.txt alice@example.com:/tmp/remote.txt", stderr.getvalue())
 
+    def test_run_runtime_buffered_none_returncode_defaults_to_failure(self) -> None:
+        module = load_run_skill_module("run_runtime")
+
+        class _FakeStdout:
+            def readline(self) -> str:
+                return ""
+
+        class _FakeStderr:
+            def read(self) -> str:
+                return ""
+
+        class _FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = _FakeStdout()
+                self.stderr = _FakeStderr()
+                self.returncode = None
+
+            def poll(self):
+                return 0
+
+        with patch.object(module.subprocess, "Popen", return_value=_FakeProcess()):
+            result = module.run_buffered_process(["ssh", "alice@example.com"], ".", 10)
+
+        self.assertEqual(result["return_code"], 1)
+
+    def test_run_remote_command_streaming_shell_joins_sequence_args(self) -> None:
+        module = load_run_skill_module("run_runtime")
+
+        with patch.object(module, "run_streaming_process", return_value=make_skill_result(0, "", "")) as mocked:
+            module.run_remote_command_streaming(
+                module.parse_remote_spec("alice@example.com"),
+                "/tmp/remote dir",
+                ["python3", "test kernel.py", "--operator-file", "kernel name.py"],
+            )
+
+        command = mocked.call_args.args[0]
+        self.assertIn("/tmp/remote dir", command[-1])
+        self.assertIn("python3", command[-1])
+        self.assertIn("test kernel.py", command[-1])
+        self.assertIn("kernel name.py", command[-1])
+        self.assertNotIn("[", command[-1])
+
     def test_run_remote_test_keeps_workspace_when_requested(self) -> None:
         module = load_test_runner_module()
 
@@ -92,6 +134,79 @@ class RemoteExecutionTests(unittest.TestCase):
         self.assertEqual(remote_workspace, "/tmp/remote-keep")
         cleanup.assert_not_called()
 
+    def test_run_remote_test_quotes_filenames_with_spaces(self) -> None:
+        module = load_test_runner_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            test_file = root / "test kernel.py"
+            operator_file = root / "kernel op.py"
+            test_file.write_text("# test-mode: standalone\n", encoding="utf-8")
+            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
+
+            with patch.object(
+                module,
+                "create_remote_workspace",
+                return_value=("spec", "/tmp/remote-space"),
+            ), patch.object(module, "copy_file_to_remote"), patch.object(
+                module,
+                "run_remote_command_streaming",
+                return_value=make_skill_result(0, "", ""),
+            ) as remote_run, patch.object(module, "cleanup_remote_workspace"):
+                module.run_remote_test(
+                    test_file,
+                    operator_file,
+                    "standalone",
+                    "alice@example.com",
+                    None,
+                )
+
+        self.assertEqual(
+            remote_run.call_args.args[2],
+            ["python3", "test kernel.py", "--operator-file", "kernel op.py"],
+        )
+
+    def test_compare_remote_result_files_quotes_filenames_with_spaces(self) -> None:
+        module = load_test_runner_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            oracle = root / "oracle result.pt"
+            new = root / "new result.pt"
+            oracle.write_text("oracle", encoding="utf-8")
+            new.write_text("new", encoding="utf-8")
+
+            with patch.object(
+                module,
+                "create_remote_workspace",
+                return_value=("spec", "/tmp/remote-compare"),
+            ), patch.object(module, "copy_file_to_remote"), patch.object(
+                module,
+                "run_remote_command_streaming",
+                return_value=make_skill_result(0, "", ""),
+            ) as remote_run, patch.object(module, "cleanup_remote_workspace"):
+                module.compare_remote_result_files(
+                    oracle,
+                    new,
+                    "balanced",
+                    "alice@example.com",
+                    None,
+                )
+
+        self.assertEqual(
+            remote_run.call_args.args[2],
+            [
+                "python3",
+                "compare_result_payloads.py",
+                "--oracle-result",
+                "oracle result.pt",
+                "--new-result",
+                "new result.pt",
+                "--compare-level",
+                "balanced",
+            ],
+        )
+
     def test_run_remote_bench_cleans_workspace_by_default(self) -> None:
         module = load_bench_runner_module()
 
@@ -123,6 +238,38 @@ class RemoteExecutionTests(unittest.TestCase):
         self.assertIsNotNone(perf_path)
         self.assertEqual(remote_workspace, "/tmp/remote-clean")
         cleanup.assert_called_once_with("spec", "/tmp/remote-clean", verbose=False, stderr=None)
+
+    def test_run_remote_bench_quotes_filenames_with_spaces(self) -> None:
+        module = load_bench_runner_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench kernel.py"
+            operator_file = root / "kernel op.py"
+            bench_file.write_text("# bench-mode: standalone\n# kernel: k\n", encoding="utf-8")
+            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
+
+            with patch.object(
+                module,
+                "create_remote_workspace",
+                return_value=("spec", "/tmp/remote-bench-space"),
+            ), patch.object(module, "copy_file_to_remote"), patch.object(
+                module,
+                "run_remote_command_streaming",
+                return_value=make_skill_result(0, "latency-a: 1.0\n", ""),
+            ) as remote_run, patch.object(module, "cleanup_remote_workspace"):
+                module.run_remote_bench(
+                    bench_file,
+                    operator_file,
+                    "standalone",
+                    "alice@example.com",
+                    None,
+                )
+
+        self.assertEqual(
+            remote_run.call_args.args[2],
+            ["python3", "bench kernel.py", "--operator-file", "kernel op.py"],
+        )
 
 
 if __name__ == "__main__":

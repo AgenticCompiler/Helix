@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Optional, TextIO
 
@@ -64,6 +65,18 @@ def compare_perf_files(*args, **kwargs):
 def _normalize_agent_result(result) -> AgentResult:
     if isinstance(result, AgentResult):
         return result
+    if not isinstance(result, Mapping):
+        raise ValueError(
+            "Run skill result payload must be an AgentResult or mapping with "
+            "'return_code', 'stdout', and 'stderr' keys."
+        )
+    required_keys = ("return_code", "stdout", "stderr")
+    missing_keys = [key for key in required_keys if key not in result]
+    if missing_keys:
+        raise ValueError(
+            "Run skill result payload is missing required keys: "
+            + ", ".join(sorted(missing_keys))
+        )
     return AgentResult(
         return_code=int(result["return_code"]),
         stdout=str(result["stdout"]),
@@ -127,20 +140,23 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument(
                 "--test-mode",
                 default=(
-                    "differential"
-                    if command_kind == CommandKind.OPTIMIZE
-                    else "standalone" if command_kind == CommandKind.GEN_TEST else None
+                    "standalone"
+                    if command_kind == CommandKind.GEN_TEST
+                    else None
                 ),
                 choices=["standalone", "differential"],
             )
         if command_kind in {CommandKind.GEN_BENCH, CommandKind.RUN_BENCH, CommandKind.OPTIMIZE}:
             subparser.add_argument(
                 "--bench-mode",
-                default="standalone" if command_kind != CommandKind.RUN_BENCH else None,
+                default=(
+                    "standalone" if command_kind == CommandKind.GEN_BENCH else None
+                ),
                 choices=["standalone", "msprof"],
             )
         if command_kind == CommandKind.OPTIMIZE:
             subparser.add_argument("--min-rounds", type=int)
+            subparser.add_argument("--continue", dest="continue_optimize", action="store_true")
         if command_kind in {CommandKind.GEN_TEST, CommandKind.GEN_BENCH}:
             subparser.add_argument("--force-overwrite", action="store_true")
 
@@ -154,6 +170,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     command_kind: CommandKind = args.command_kind
     if command_kind == CommandKind.OPTIMIZE and args.min_rounds is not None and args.min_rounds < 1:
         parser.error("--min-rounds must be at least 1")
+    continue_optimize = bool(getattr(args, "continue_optimize", False))
 
     if command_kind == CommandKind.COMPARE_RESULT:
         oracle_result = Path(args.oracle_result).expanduser().resolve()
@@ -250,6 +267,16 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     test_mode = getattr(args, "test_mode", None)
     bench_mode = getattr(args, "bench_mode", None)
+    if command_kind == CommandKind.OPTIMIZE:
+        if continue_optimize:
+            if test_mode is not None:
+                parser.error("--continue cannot be combined with --test-mode")
+            if bench_mode is not None:
+                parser.error("--continue cannot be combined with --bench-mode")
+            test_mode, bench_mode = _resolve_continue_optimize_modes(parser, input_path, workdir)
+        else:
+            test_mode = test_mode or "differential"
+            bench_mode = bench_mode or "standalone"
     output_path = _resolve_output_path(command_kind, input_path, args.output, test_mode)
     force_overwrite = getattr(args, "force_overwrite", False)
     try:
@@ -269,6 +296,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         getattr(args, "remote", None),
         getattr(args, "remote_workdir", None),
         getattr(args, "min_rounds", None),
+        continue_optimize,
     )
     request = AgentRequest(
         command_kind=command_kind,
@@ -286,6 +314,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         prompt=prompt,
         workdir=workdir,
         min_rounds=getattr(args, "min_rounds", None),
+        continue_optimize=continue_optimize,
     )
 
     repo_root = Path(__file__).resolve().parents[2]
@@ -399,6 +428,48 @@ def _resolve_bench_mode_from_metadata(bench_file: Path) -> str:
     if mode not in {"standalone", "msprof"}:
         raise ValueError(f"Benchmark metadata is missing required 'bench-mode' entry: {bench_file}")
     return mode
+
+
+def _resolve_continue_optimize_modes(
+    parser: argparse.ArgumentParser, input_path: Path, workdir: Path
+) -> tuple[str, str]:
+    opt_note_path = workdir / "opt-note.md"
+    if not opt_note_path.exists():
+        parser.error(f"Continue optimize requires existing opt-note.md: {opt_note_path}")
+    if not any(path.is_dir() for path in workdir.glob("opt-round-*")):
+        parser.error(
+            f"Continue optimize requires at least one existing opt-round-* directory in {workdir}"
+        )
+
+    test_mode = _resolve_test_mode_from_metadata(_resolve_continue_test_harness(parser, input_path))
+    bench_mode = _resolve_bench_mode_from_metadata(_resolve_continue_bench_harness(parser, input_path))
+    return test_mode, bench_mode
+
+
+def _resolve_continue_test_harness(parser: argparse.ArgumentParser, input_path: Path) -> Path:
+    candidates = [
+        input_path.with_name(f"differential_test_{input_path.stem}.py"),
+        input_path.with_name(f"test_{input_path.stem}.py"),
+    ]
+    existing = [path for path in candidates if path.exists()]
+    if not existing:
+        parser.error(
+            f"Continue optimize requires an existing generated test harness for {input_path.name}"
+        )
+    if len(existing) > 1:
+        parser.error(
+            "Continue optimize found multiple test harnesses. Keep only the active optimize test harness."
+        )
+    return existing[0]
+
+
+def _resolve_continue_bench_harness(parser: argparse.ArgumentParser, input_path: Path) -> Path:
+    harness = input_path.with_name(f"bench_{input_path.stem}.py")
+    if not harness.exists():
+        parser.error(
+            f"Continue optimize requires an existing generated benchmark harness: {harness}"
+        )
+    return harness
 
 
 def prepare_generation_target(

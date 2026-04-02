@@ -1,8 +1,8 @@
-# Remove `tabulate` From `msprof-analyze` Parser
+# Remove `tabulate` From The Ascend Profiler Parser
 
 ## Goal
 
-Make `skills/msprof-analyze/scripts/parse_bin.py` run without the third-party `tabulate` package while preserving the current Markdown-oriented report output.
+Make `skills/ascend-npu-operator-profiler/scripts/parse_bin.py` run without the third-party `tabulate` package while preserving the current Markdown-oriented report output.
 
 ## User-Visible Semantics
 

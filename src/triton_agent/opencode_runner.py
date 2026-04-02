@@ -76,6 +76,7 @@ class OpenCodeRunner(AgentRunner):
                 prompt=resumed_prompt,
                 workdir=request.workdir,
                 min_rounds=request.min_rounds,
+                continue_optimize=request.continue_optimize,
             )
         )
 

@@ -44,6 +44,7 @@ class AgentRequest:
     prompt: str
     workdir: Path
     min_rounds: Optional[int] = None
+    continue_optimize: bool = False
 
 
 @dataclass

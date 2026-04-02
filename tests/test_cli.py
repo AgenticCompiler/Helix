@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.cli import (
     _normalize_command_aliases,
+    _normalize_agent_result,
     build_parser,
     main,
     prepare_generation_target,
@@ -368,16 +369,21 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.test_mode, "standalone")
         self.assertEqual(args.bench_mode, "msprof")
 
-    def test_optimize_command_defaults_to_optimize_modes(self) -> None:
+    def test_optimize_command_defers_mode_defaults_to_runtime(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize", "-i", "kernel.py"])
-        self.assertEqual(args.test_mode, "differential")
-        self.assertEqual(args.bench_mode, "standalone")
+        self.assertIsNone(args.test_mode)
+        self.assertIsNone(args.bench_mode)
 
     def test_optimize_command_accepts_min_rounds(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize", "-i", "kernel.py", "--min-rounds", "3"])
         self.assertEqual(args.min_rounds, 3)
+
+    def test_optimize_command_accepts_continue_mode(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--continue"])
+        self.assertTrue(args.continue_optimize)
 
 
 class PathResolutionTests(unittest.TestCase):
@@ -524,11 +530,13 @@ class PathResolutionTests(unittest.TestCase):
                 remote,
                 remote_workdir,
                 min_rounds,
+                continue_optimize,
             ):
                 captured["output_path"] = output_path
                 captured["remote"] = remote
                 captured["remote_workdir"] = remote_workdir
                 captured["min_rounds"] = min_rounds
+                captured["continue_optimize"] = continue_optimize
                 return "Prompt body"
 
             def _fake_create_runner(_agent_name):
@@ -557,6 +565,183 @@ class PathResolutionTests(unittest.TestCase):
             expected_output = (root / "differential_test_kernel.py").resolve()
             self.assertEqual(captured["output_path"], expected_output)
             self.assertEqual(captured["request_output"], expected_output)
+
+    def test_main_optimize_continue_rejects_explicit_test_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(
+                        [
+                            "optimize",
+                            "-i",
+                            str(operator),
+                            "--continue",
+                            "--test-mode",
+                            "differential",
+                        ]
+                    )
+
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn("--continue cannot be combined with --test-mode", stderr.getvalue())
+
+    def test_main_optimize_continue_rejects_explicit_bench_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(
+                        [
+                            "optimize",
+                            "-i",
+                            str(operator),
+                            "--continue",
+                            "--bench-mode",
+                            "standalone",
+                        ]
+                    )
+
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn("--continue cannot be combined with --bench-mode", stderr.getvalue())
+
+    def test_main_optimize_continue_requires_opt_note(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(["optimize", "-i", str(operator), "--continue"])
+
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn("Continue optimize requires existing opt-note.md", stderr.getvalue())
+
+    def test_main_optimize_continue_requires_round_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            (root / "opt-note.md").write_text("history\n", encoding="utf-8")
+
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(["optimize", "-i", str(operator), "--continue"])
+
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn(
+                "Continue optimize requires at least one existing opt-round-* directory",
+                stderr.getvalue(),
+            )
+
+    def test_main_optimize_continue_rejects_multiple_test_harnesses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            (root / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (root / "opt-round-1").mkdir()
+            (root / "test_kernel.py").write_text(
+                "# test-mode: standalone\nprint('test')\n", encoding="utf-8"
+            )
+            (root / "differential_test_kernel.py").write_text(
+                "# test-mode: differential\nprint('test')\n", encoding="utf-8"
+            )
+            (root / "bench_kernel.py").write_text(
+                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n", encoding="utf-8"
+            )
+
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(["optimize", "-i", str(operator), "--continue"])
+
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn("Continue optimize found multiple test harnesses", stderr.getvalue())
+
+    def test_main_optimize_continue_requires_existing_bench_harness(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            (root / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (root / "opt-round-1").mkdir()
+            (root / "differential_test_kernel.py").write_text(
+                "# test-mode: differential\nprint('test')\n", encoding="utf-8"
+            )
+
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(["optimize", "-i", str(operator), "--continue"])
+
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn(
+                "Continue optimize requires an existing generated benchmark harness",
+                stderr.getvalue(),
+            )
+
+    def test_main_optimize_continue_resolves_modes_from_existing_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            (root / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (root / "opt-round-1").mkdir()
+            (root / "differential_test_kernel.py").write_text(
+                "# test-mode: differential\nprint('test')\n", encoding="utf-8"
+            )
+            (root / "bench_kernel.py").write_text(
+                "# bench-mode: msprof\n# kernel: k\nprint('bench')\n", encoding="utf-8"
+            )
+
+            captured = {}
+
+            def _fake_build_prompt(
+                command_kind,
+                input_path,
+                operator_path,
+                output_path,
+                test_mode,
+                bench_mode,
+                force_overwrite,
+                remote,
+                remote_workdir,
+                min_rounds,
+                continue_optimize,
+            ):
+                captured["test_mode"] = test_mode
+                captured["bench_mode"] = bench_mode
+                captured["continue_optimize"] = continue_optimize
+                return "Prompt body"
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch("triton_agent.cli.build_prompt", side_effect=_fake_build_prompt):
+                with patch("triton_agent.cli.OptimizeSupervisor.run", return_value=fake_result) as mocked:
+                    with patch("triton_agent.cli.create_runner", return_value=object()):
+                        with patch("triton_agent.cli.SkillLinkManager.prepare_skills", return_value=[]):
+                            with patch("triton_agent.cli.SkillLinkManager.cleanup", return_value=[]):
+                                exit_code = main(
+                                    ["optimize", "-i", str(operator), "--continue"]
+                                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["test_mode"], "differential")
+            self.assertEqual(captured["bench_mode"], "msprof")
+            self.assertTrue(captured["continue_optimize"])
+            request = mocked.call_args.args[1]
+            self.assertEqual(request.test_mode, "differential")
+            self.assertEqual(request.bench_mode, "msprof")
 
     def test_main_run_bench_reports_missing_bench_file_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1179,6 +1364,20 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("Complete at least 4 optimization rounds", prompt)
 
+    def test_optimize_prompt_mentions_continue_mode(self) -> None:
+        prompt = build_prompt(
+            CommandKind.OPTIMIZE,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            force_overwrite=False,
+            continue_optimize=True,
+        )
+        self.assertIn("Continue the existing optimization session", prompt)
+        self.assertIn("Read `opt-note.md`", prompt)
+
 
 class OutputRenderingTests(unittest.TestCase):
     def test_render_result_skips_duplicate_stdout_when_show_output_enabled(self) -> None:
@@ -1194,6 +1393,12 @@ class OutputRenderingTests(unittest.TestCase):
         result = AgentResult(return_code=0, stdout="final\n", stderr="")
         render_result(result, show_output=False, stdout=stdout, stderr=stderr)
         self.assertEqual(stdout.getvalue(), "final\n")
+
+
+class ResultNormalizationTests(unittest.TestCase):
+    def test_invalid_skill_result_payload_raises_actionable_error(self) -> None:
+        with self.assertRaisesRegex(ValueError, "missing required keys"):
+            _normalize_agent_result({"stdout": "", "stderr": ""})
 
 
 if __name__ == "__main__":

@@ -79,6 +79,52 @@ class OptimizeSupervisorTests(unittest.TestCase):
         self.assertEqual(len(runner.prompts), 2)
         self.assertIn("working...", runner.prompts[1])
 
+    def test_repeated_stalls_keep_using_resume_path(self) -> None:
+        request = AgentRequest(
+            command_kind=CommandKind.OPTIMIZE,
+            input_path=Path("/tmp/op.py"),
+            operator_path=Path("/tmp/op.py"),
+            output_path=Path("/tmp/opt_op.py"),
+            test_mode=None,
+            bench_mode=None,
+            interact=False,
+            verbose=False,
+            show_output=False,
+            force_overwrite=False,
+            agent_name="codex",
+            skill_name="optimize",
+            prompt="Optimize this operator",
+            workdir=Path("/tmp"),
+            min_rounds=None,
+        )
+
+        class RepeatedStallRunner:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+                self.resume_summaries: list[str] = []
+                self._resume_count = 0
+
+            def run(self, request: AgentRequest) -> AgentResult:
+                self.calls.append("run")
+                return AgentResult(return_code=1, stdout="first stall", stderr="", stalled=True)
+
+            def resume(self, request: AgentRequest, summary: str) -> AgentResult:
+                self.calls.append("resume")
+                self.resume_summaries.append(summary)
+                self._resume_count += 1
+                if self._resume_count == 1:
+                    return AgentResult(return_code=1, stdout="second stall", stderr="", stalled=True)
+                return AgentResult(return_code=0, stdout="done", stderr="", stalled=False)
+
+        runner = RepeatedStallRunner()
+        supervisor = OptimizeSupervisor(max_recovery_attempts=2)
+
+        result = supervisor.run(runner, request)
+
+        self.assertEqual(result.return_code, 0)
+        self.assertEqual(runner.calls, ["run", "resume", "resume"])
+        self.assertEqual(runner.resume_summaries, ["first stall", "second stall"])
+
     def test_restarts_when_successful_run_has_too_few_rounds(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)

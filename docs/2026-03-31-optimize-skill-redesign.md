@@ -22,6 +22,7 @@
 - Use a candidate-pool search strategy to preserve optimization diversity and avoid overcommitting to a single local optimum.
 - Restrict parent selection to validated candidates so every new round starts from code that already passes correctness checks.
 - Keep the top-level `SKILL.md` concise and move detailed workflow rules, artifact contracts, and note format into `references/`.
+- Keep command templates and remote-command variants out of the top-level `SKILL.md` unless they are essential to triggering or routing; prefer one short pointer to the bundled helper script instead.
 - Reuse the existing optimization pattern reference files as optional idea sources after the workflow contract is established.
 
 ## Planned Skill Structure

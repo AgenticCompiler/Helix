@@ -26,5 +26,7 @@ class AgentRunner(ABC):
             skill_name=request.skill_name,
             prompt=f"{request.prompt}\n\nContinue from this progress summary:\n{summary}",
             workdir=request.workdir,
+            min_rounds=request.min_rounds,
+            continue_optimize=request.continue_optimize,
         )
         return self.run(resumed_request)

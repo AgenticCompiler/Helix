@@ -25,6 +25,7 @@ def build_prompt(
     remote: str | None = None,
     remote_workdir: str | None = None,
     min_rounds: int | None = None,
+    continue_optimize: bool = False,
 ) -> str:
     skill_name = COMMAND_TO_SKILL[command_kind]
     lines = [
@@ -68,6 +69,13 @@ def build_prompt(
                 "Keep making progress until the optimized operator is complete.",
             ]
         )
+        if continue_optimize:
+            lines.extend(
+                [
+                    "Continue the existing optimization session instead of restarting from scratch.",
+                    "Read `opt-note.md`, existing `opt-round-*` directories, and existing round logs before making changes.",
+                ]
+            )
         if min_rounds is not None:
             lines.append(
                 f"Complete at least {min_rounds} optimization rounds by creating `opt-round-*` directories before finishing."

@@ -100,10 +100,20 @@ def _compare_values(expected: Any, actual: Any, path: str, rtol: float, atol: fl
                 return mismatch
         return None
 
-    if isinstance(expected, float):
-        if not isinstance(actual, (int, float)):
-            return f"{path} type mismatch: expected float-like, got {type(actual).__name__}"
-        if abs(expected - float(actual)) > (atol + rtol * abs(expected)):
+    if isinstance(expected, bool) or isinstance(actual, bool):
+        if type(expected) is not type(actual) or expected != actual:
+            return f"{path} value mismatch: expected {expected!r}, got {actual!r}"
+        return None
+
+    if isinstance(expected, (int, float)) and isinstance(actual, (int, float)):
+        exp_f, act_f = float(expected), float(actual)
+        import math
+        exp_nan, act_nan = math.isnan(exp_f), math.isnan(act_f)
+        if exp_nan or act_nan:
+            if exp_nan != act_nan:
+                return f"{path} NaN mismatch: expected {expected}, got {actual}"
+            return None
+        if abs(exp_f - act_f) > (atol + rtol * abs(exp_f)):
             return f"{path} scalar mismatch: expected {expected}, got {actual}"
         return None
 

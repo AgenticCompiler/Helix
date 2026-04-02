@@ -1,6 +1,6 @@
 ---
 name: optimize
-description: Iteratively optimize a Triton Ascend NPU operator with correctness and performance gates. Use when Codex needs to improve an operator implementation, generate missing validation artifacts, run multi-round optimization experiments, record per-round summaries, and maintain reusable optimization notes for later engineers.
+description: Iteratively optimize a Triton Ascend NPU operator with correctness and performance gates. Use for operator optimization tasks that need repeated correctness validation, benchmark validation, multi-round experiment tracking, reusable optimization notes, and profiler-backed performance analysis when benchmark results need deeper explanation.
 ---
 
 # Optimize
@@ -12,10 +12,6 @@ Use this skill when the user wants the operator itself improved rather than only
 ## Inputs
 
 - Operator source code or an operator file path
-- Optional requested destination for a final promoted optimized file
-- Optional requested correctness validation mode
-- Optional requested benchmark validation mode
-- Optional note that the outer wrapper is running in an interactive session
 
 ## Outputs
 
@@ -24,17 +20,12 @@ Use this skill when the user wants the operator itself improved rather than only
 - One `attempts.md` inside each round directory, updated throughout the round
 - One `summary.md` inside each completed round directory
 - Updated `opt-note.md` in the operator workspace
-- Correctness and benchmark evidence produced through `run-test` and `run-bench`
+- Correctness and benchmark evidence produced through the `run-validate` skill
 
 ## Required Preconditions
 
-- Ensure the operator workspace has correctness tests.
-- Ensure the operator workspace has benchmark cases.
-- Default to `differential` correctness validation unless the outer request specifies another mode.
-- Default to `standalone` benchmark validation unless the outer request specifies another mode.
-- If tests are missing, generate them with `test-gen` using the resolved correctness mode.
-- If benchmarks are missing, generate them with `bench-gen` using the resolved benchmark mode.
-- If the outer request explicitly specifies test or benchmark modes for optimization, keep the workflow aligned with those resolved modes and reflect them in the round guidance.
+- Ensure the operator workspace has correctness tests. If not, generate them with `test-gen` skill.
+- Ensure the operator workspace has benchmark cases. If not, generate them with `bench-gen` skill.
 - Do not start optimization rounds until both validation artifacts exist.
 
 ## Required References
@@ -44,7 +35,8 @@ Use this skill when the user wants the operator itself improved rather than only
 - Read [opt-note-format.md](references/opt-note-format.md) before editing `opt-note.md`.
 - Read [contracts.md](references/contracts.md) when correctness or benchmark validation fails.
 - Read [patterns/index.md](references/patterns/index.md) before choosing any optimization pattern reference.
-- Use the bundled helper script at [`../run-validation/scripts/run-command.py`](../run-validation/scripts/run-command.py) whenever the skill needs to execute project subcommands from this repository.
+- Use the sibling `ascend-npu-operator-profiler` skill when benchmark numbers need operator-level performance evidence, hotspot diagnosis, bottleneck analysis, or profiler-backed comparison across runs.
+- Use the bundled helper script at [`../run-validation/scripts/run-command.py`](../run-validation/scripts/run-command.py) for generation, validation, and comparison commands; if the outer optimize task is remote-aware, carry the same remote flags through those commands.
 - Treat `references/knowledge/` as optional background material for future expansion, not part of the minimum optimize workflow.
 
 ## Pattern References
@@ -53,54 +45,22 @@ Do not read all pattern references at once.
 
 Use [patterns/index.md](references/patterns/index.md) to choose the most relevant optimization direction first. Treat that index as the single entry point for detailed pattern references under `references/patterns/`.
 
-## Helper Script Usage
-
-Use the run-validation skill whenever the workflow needs to run correctness tests, benchmarks, or comparison commands.
-
-```bash
-python3 ../run-validation/scripts/run-command.py gen-test --input <operator.py> --test-mode <mode>
-python3 ../run-validation/scripts/run-command.py run-test --test-file <test.py> --operator-file <candidate.py> --test-mode <mode>
-python3 ../run-validation/scripts/run-command.py run-bench --bench-file <bench.py> --operator-file <candidate.py> --bench-mode <mode>
-```
-
-If the outer optimize task is marked for remote execution, carry the same remote flags into every generated, validation, and comparison command:
-
-```bash
-python3 ../run-validation/scripts/run-command.py gen-test --input <operator.py> --test-mode <mode> --remote user@host:2222
-python3 ../run-validation/scripts/run-command.py gen-bench --input <operator.py> --bench-mode <mode> --remote user@host:2222
-python3 ../run-validation/scripts/run-command.py run-test --test-file <test.py> --operator-file <candidate.py> --test-mode <mode> --remote user@host:2222 --remote-workdir /tmp/triton-agent
-python3 ../run-validation/scripts/run-command.py run-bench --bench-file <bench.py> --operator-file <candidate.py> --bench-mode <mode> --remote user@host:2222 --remote-workdir /tmp/triton-agent
-```
-
 ## Workflow
 
-1. Inspect the operator workspace and confirm the current test and benchmark artifacts.
-2. Resolve the correctness mode, defaulting to `differential` unless the task explicitly says otherwise.
-3. Resolve the benchmark mode, defaulting to `standalone` unless the task explicitly says otherwise.
-4. Generate missing correctness tests through the bundled helper script using the `gen-test` subcommand with the resolved correctness mode:
-   `python3 ../run-validation/scripts/run-command.py gen-test --input <operator.py> --test-mode <mode>`
-5. Generate missing benchmark cases through the bundled helper script using the `gen-bench` subcommand with the resolved benchmark mode:
-   `python3 ../run-validation/scripts/run-command.py gen-bench --input <operator.py> --bench-mode <mode>`
-6. Treat the original operator as validated candidate `round 0`.
-7. Build a candidate pool from validated versions instead of assuming the current best version is always the right parent.
-8. For the next optimization attempt, choose one validated parent candidate and record that parent explicitly.
-9. Create a new `opt-round-N/` directory and copy the chosen parent operator into that directory before editing it.
-10. Create or update `opt-round-N/attempts.md` from the start of the round and append every meaningful attempt, failure, repair, and measurement.
-11. Read `references/patterns/index.md` and select one primary optimization pattern for the current round.
-12. Read only the one or two detailed pattern references that match the chosen round hypothesis.
-13. Apply one coherent optimization theme for the round.
-14. Run correctness validation through the bundled helper script using the `run-test` subcommand with the resolved correctness mode:
-   `python3 ../run-validation/scripts/run-command.py run-test --test-file <test.py> --operator-file <candidate.py> --test-mode <mode>`
-15. If correctness fails, repair the optimized operator in place, record the failure and repair in `attempts.md`, and re-run `run-test` until it passes or the round direction is no longer viable.
-16. After correctness passes, run performance validation through the bundled helper script using the `run-bench` subcommand with the resolved benchmark mode:
-   `python3 ../run-validation/scripts/run-command.py run-bench --bench-file <bench.py> --operator-file <candidate.py> --bench-mode <mode>`
-17. If performance regresses or does not improve enough, record the result in `attempts.md`, keep iterating within the same round, or abandon that direction and choose another validated parent for a later round.
-18. When a round achieves a real performance win, finalize the round `summary.md`, update `opt-note.md`, and keep the round artifacts intact for reuse.
+1. Inspect the operator workspace, resolve the correctness and benchmark modes, and confirm which validation artifacts already exist.
+2. Generate missing tests or benchmarks through `../run-validation/scripts/run-command.py` before starting any optimization round.
+3. Treat the original operator as validated candidate `round 0`, then choose one validated parent candidate for the next round instead of assuming the current best version is always the right parent.
+4. Create `opt-round-N/`, copy the chosen parent operator into it, and start `attempts.md` immediately so every meaningful attempt and measurement is recorded.
+5. Read `references/patterns/index.md`, pick one optimization hypothesis, and read only the one or two detailed pattern references that match that hypothesis.
+6. Apply one coherent optimization theme for the round, then run correctness validation before trusting any performance result.
+7. After correctness passes, run benchmark validation; when benchmark timing alone does not explain the result well enough, use `ascend-npu-operator-profiler` to gather operator-level evidence.
+8. Use the benchmark and profiler evidence to decide whether to keep iterating, abandon the direction, or finalize the round `summary.md` and update `opt-note.md`.
 
 ## Quality Rules
 
 - Optimize the operator file itself, not the generated tests or benchmark harness.
 - Always run correctness before trusting performance results.
+- Use profiler evidence when benchmark timing alone does not explain the result well enough.
 - Keep parent-child traceability explicit so later engineers can understand which idea produced each round.
 - Prefer multiple diverse optimization directions over a single greedy chain from the current best version.
 - Prefer selective pattern reading over bulk-loading all optimization references.

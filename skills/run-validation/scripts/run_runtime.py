@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import sys
 import time
+from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
 from typing import Optional, TextIO, TypedDict
 
@@ -67,7 +68,7 @@ def run_buffered_process(
 
     stderr_text = process.stderr.read() if process.stderr is not None else ""
     return make_result(
-        return_code=process.returncode or 0,
+        return_code=_resolved_returncode(process.returncode),
         stdout="".join(stdout_lines),
         stderr=stderr_text,
     )
@@ -203,11 +204,14 @@ def copy_file_from_remote(
 def run_remote_command_streaming(
     spec: RemoteSpec,
     remote_workspace: str,
-    remote_command: str,
+    remote_command: str | Sequence[str],
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> ResultPayload:
-    command = _ssh_command(spec, f"cd {shlex.quote(remote_workspace)} && {remote_command}")
+    command = _ssh_command(
+        spec,
+        f"cd {shlex.quote(remote_workspace)} && {_normalize_remote_command(remote_command)}",
+    )
     _maybe_emit_remote_command(command, verbose, stderr)
     return run_streaming_process(command, ".", stall_timeout_seconds=900)
 
@@ -215,11 +219,14 @@ def run_remote_command_streaming(
 def run_remote_command_buffered(
     spec: RemoteSpec,
     remote_workspace: str,
-    remote_command: str,
+    remote_command: str | Sequence[str],
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> ResultPayload:
-    command = _ssh_command(spec, f"cd {shlex.quote(remote_workspace)} && {remote_command}")
+    command = _ssh_command(
+        spec,
+        f"cd {shlex.quote(remote_workspace)} && {_normalize_remote_command(remote_command)}",
+    )
     _maybe_emit_remote_command(command, verbose, stderr)
     return run_buffered_process(command, ".", stall_timeout_seconds=900)
 
@@ -273,3 +280,13 @@ def make_result(
 
 def result_succeeded(result: ResultPayload) -> bool:
     return result["return_code"] == 0 and not result["stalled"]
+
+
+def _normalize_remote_command(remote_command: str | Sequence[str]) -> str:
+    if isinstance(remote_command, str):
+        return remote_command
+    return shlex.join(str(part) for part in remote_command)
+
+
+def _resolved_returncode(returncode: int | None) -> int:
+    return returncode if returncode is not None else 1

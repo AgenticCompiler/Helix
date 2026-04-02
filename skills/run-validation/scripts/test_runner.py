@@ -78,7 +78,7 @@ def run_remote_test(
         result = run_remote_command_streaming(
             spec,
             remote_workspace,
-            f"python3 {test_file.name} --operator-file {operator_file.name}",
+            ["python3", test_file.name, "--operator-file", operator_file.name],
             verbose=verbose,
             stderr=stderr,
         )
@@ -147,12 +147,16 @@ def compare_remote_result_files(
         result = run_remote_command_streaming(
             spec,
             remote_workspace,
-            (
-                f"python3 {compare_script.name} "
-                f"--oracle-result {oracle_result.name} "
-                f"--new-result {new_result.name} "
-                f"--compare-level {compare_level}"
-            ),
+            [
+                "python3",
+                compare_script.name,
+                "--oracle-result",
+                oracle_result.name,
+                "--new-result",
+                new_result.name,
+                "--compare-level",
+                compare_level,
+            ],
             verbose=verbose,
             stderr=stderr,
         )
@@ -261,10 +265,20 @@ def _compare_values(expected: Any, actual: Any, path: str, rtol: float, atol: fl
                 return mismatch
         return None
 
-    if isinstance(expected, float):
-        if not isinstance(actual, (int, float)):
-            return f"{path} type mismatch: expected float-like, got {type(actual).__name__}"
-        if abs(expected - float(actual)) > (atol + rtol * abs(expected)):
+    if isinstance(expected, bool) or isinstance(actual, bool):
+        if type(expected) is not type(actual) or expected != actual:
+            return f"{path} value mismatch: expected {expected!r}, got {actual!r}"
+        return None
+
+    if isinstance(expected, (int, float)) and isinstance(actual, (int, float)):
+        exp_f, act_f = float(expected), float(actual)
+        import math
+        exp_nan, act_nan = math.isnan(exp_f), math.isnan(act_f)
+        if exp_nan or act_nan:
+            if exp_nan != act_nan:
+                return f"{path} NaN mismatch: expected {expected}, got {actual}"
+            return None
+        if abs(exp_f - act_f) > (atol + rtol * abs(exp_f)):
             return f"{path} scalar mismatch: expected {expected}, got {actual}"
         return None
 

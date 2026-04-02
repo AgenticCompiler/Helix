@@ -74,6 +74,7 @@ class CodexRunner(AgentRunner):
                 prompt=resumed_prompt,
                 workdir=request.workdir,
                 min_rounds=request.min_rounds,
+                continue_optimize=request.continue_optimize,
             )
         )
 
@@ -96,12 +97,11 @@ class CodexRunner(AgentRunner):
 
 
 class _UnifiedDiffFilter:
-    _DIFF_PREFIXES = (
+    _DIFF_METADATA_PREFIXES = (
         "diff --git ",
         "index ",
         "--- ",
         "+++ ",
-        "@@ ",
         "new file mode ",
         "deleted file mode ",
         "similarity index ",
@@ -116,6 +116,7 @@ class _UnifiedDiffFilter:
     def __init__(self) -> None:
         self._buffer = ""
         self._in_diff = False
+        self._in_hunk = False
 
     def feed(self, text: str, *, flush: bool = False) -> str:
         self._buffer += text
@@ -144,23 +145,34 @@ class _UnifiedDiffFilter:
         if not self._in_diff:
             if bare.startswith("diff --git "):
                 self._in_diff = True
+                self._in_hunk = False
                 return ""
             return line
 
-        if self._is_diff_line(bare):
+        if bare.startswith("@@ "):
+            self._in_hunk = True
+            return ""
+        if bare.startswith(self._DIFF_METADATA_PREFIXES):
+            self._in_hunk = False
+            return ""
+        if self._in_hunk and self._is_hunk_line(bare):
             return ""
 
         self._in_diff = False
+        self._in_hunk = False
         if bare.startswith("diff --git "):
             self._in_diff = True
+            self._in_hunk = False
             return ""
         return line
 
-    def _is_diff_line(self, line: str) -> bool:
-        if line.startswith(self._DIFF_PREFIXES):
+    def _is_hunk_line(self, line: str) -> bool:
+        if line.startswith(("+", "-")):
             return True
-        if line.startswith(("+", "-", " ")):
+        if line == "\\ No newline at end of file":
             return True
+        if line.startswith(" "):
+            return len(line) == 1 or not line.startswith("  ")
         return False
 
 

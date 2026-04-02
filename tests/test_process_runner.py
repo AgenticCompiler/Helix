@@ -53,6 +53,17 @@ class BufferedProcessRunnerTests(unittest.TestCase):
             )
         self.assertEqual(result.stdout, "before\nafter\n")
 
+    def test_buffered_none_returncode_defaults_to_failure(self) -> None:
+        process = _BufferedFakeProcess(stdout_lines=[], stderr_text="", returncode=None)
+        with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+            result = run_buffered_process(
+                ["codex", "exec"],
+                "/tmp",
+                stall_timeout_seconds=10,
+                session_id_extractor=lambda _line: None,
+            )
+        self.assertEqual(result.return_code, 1)
+
 
 class StreamingProcessRunnerTests(unittest.TestCase):
     def test_streams_chunks_and_collects_stdout(self) -> None:
@@ -97,6 +108,40 @@ class StreamingProcessRunnerTests(unittest.TestCase):
         self.assertEqual(stdout.getvalue(), "before\nafter\n")
         self.assertEqual(result.stdout, "before\nafter\n")
 
+    def test_streaming_filter_preserves_indented_output_after_diff(self) -> None:
+        from triton_agent.codex_runner import _UnifiedDiffFilter
+
+        stdout = StringIO()
+        process = _StreamingFakeProcess(wait_code=0, poll_values=[None, 0])
+        chunks = [
+            b"before\n",
+            b"diff --git a/x b/x\n@@ -0,0 +1 @@\n+hello\n",
+            b"  indented note\nafter\n",
+        ]
+        with patch("triton_agent.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+                with patch(
+                    "triton_agent.process_runner.select.select",
+                    side_effect=[
+                        ([11], [], []),
+                        ([11], [], []),
+                        ([11], [], []),
+                        ([], [], []),
+                        ([], [], []),
+                    ],
+                ):
+                    with patch("triton_agent.process_runner.os.read", side_effect=chunks):
+                        with patch("triton_agent.process_runner.os.close"):
+                            result = run_streaming_process(
+                                ["codex", "exec"],
+                                "/tmp",
+                                stall_timeout_seconds=10,
+                                stdout=stdout,
+                                output_filter=_UnifiedDiffFilter(),
+                            )
+        self.assertEqual(stdout.getvalue(), "before\n  indented note\nafter\n")
+        self.assertEqual(result.stdout, "before\n  indented note\nafter\n")
+
     def test_treats_eio_after_child_exit_as_clean_eof(self) -> None:
         stdout = StringIO()
         process = _StreamingFakeProcess(wait_code=0)
@@ -117,6 +162,26 @@ class StreamingProcessRunnerTests(unittest.TestCase):
         self.assertEqual(result.return_code, 0)
         self.assertEqual(result.stdout, "")
         self.assertEqual(stdout.getvalue(), "")
+
+    def test_zero_timeout_disables_streaming_stall_detection(self) -> None:
+        stdout = StringIO()
+        process = _StreamingFakeProcess(wait_code=0, poll_values=[None, 0, 0])
+        with patch("triton_agent.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+                with patch(
+                    "triton_agent.process_runner.select.select",
+                    side_effect=[([], [], []), ([], [], [])],
+                ):
+                    with patch("triton_agent.process_runner.time.monotonic", side_effect=[0.0, 1.0]):
+                        with patch("triton_agent.process_runner.os.close"):
+                            result = run_streaming_process(
+                                ["codex", "exec"],
+                                "/tmp",
+                                stall_timeout_seconds=0,
+                                stdout=stdout,
+                            )
+        self.assertFalse(result.stalled)
+        self.assertEqual(result.return_code, 0)
 
 
 class InteractiveProcessRunnerTests(unittest.TestCase):
@@ -171,7 +236,7 @@ class _BufferedFakeStderr:
 
 
 class _BufferedFakeProcess:
-    def __init__(self, stdout_lines: list[str], stderr_text: str, returncode: int) -> None:
+    def __init__(self, stdout_lines: list[str], stderr_text: str, returncode: Optional[int]) -> None:
         self.stdout = _BufferedFakeStdout(stdout_lines)
         self.stderr = _BufferedFakeStderr(stderr_text)
         self.returncode = returncode
@@ -179,17 +244,20 @@ class _BufferedFakeProcess:
     def poll(self) -> Optional[int]:
         if self.stdout._lines:
             return None
-        return self.returncode
+        return 0 if self.returncode is None else self.returncode
 
     def terminate(self) -> None:
         self.returncode = 1
 
 
 class _StreamingFakeProcess:
-    def __init__(self, wait_code: int) -> None:
+    def __init__(self, wait_code: int, poll_values: Optional[list[Optional[int]]] = None) -> None:
         self._wait_code = wait_code
+        self._poll_values = list(poll_values or [])
 
     def poll(self) -> Optional[int]:
+        if self._poll_values:
+            return self._poll_values.pop(0)
         return 0
 
     def wait(self) -> int:

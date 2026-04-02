@@ -22,16 +22,19 @@ class OptimizeSupervisor:
     def run(self, runner: SupportsOptimizeRecovery, request: AgentRequest) -> AgentResult:
         attempt = 0
         current_request = request
+        resume_summary: str | None = None
 
         while True:
-            result = runner.run(current_request)
-            while result.succeeded and self._needs_more_rounds(current_request):
-                summary = self._build_rounds_summary(current_request)
-                current_request = replace(
-                    current_request,
-                    prompt=self._build_continue_prompt(request.prompt, summary),
-                )
-                result = runner.resume(current_request, summary)
+            if resume_summary is None:
+                result = runner.run(current_request)
+            else:
+                result = runner.resume(current_request, resume_summary)
+            result, current_request = self._resume_until_round_requirement_satisfied(
+                runner,
+                request,
+                current_request,
+                result,
+            )
             if result.succeeded:
                 return result
             if current_request.interact:
@@ -40,28 +43,27 @@ class OptimizeSupervisor:
                 return result
 
             attempt += 1
-            summary = self._build_summary(result)
+            resume_summary = self._build_summary(result)
             current_request = replace(
                 current_request,
-                prompt=self._build_continue_prompt(request.prompt, summary),
+                prompt=self._build_continue_prompt(request.prompt, resume_summary),
+            )
+
+    def _resume_until_round_requirement_satisfied(
+        self,
+        runner: SupportsOptimizeRecovery,
+        base_request: AgentRequest,
+        current_request: AgentRequest,
+        result: AgentResult,
+    ) -> tuple[AgentResult, AgentRequest]:
+        while result.succeeded and self._needs_more_rounds(current_request):
+            summary = self._build_rounds_summary(current_request)
+            current_request = replace(
+                current_request,
+                prompt=self._build_continue_prompt(base_request.prompt, summary),
             )
             result = runner.resume(current_request, summary)
-            while result.succeeded and self._needs_more_rounds(current_request):
-                summary = self._build_rounds_summary(current_request)
-                current_request = replace(
-                    current_request,
-                    prompt=self._build_continue_prompt(request.prompt, summary),
-                )
-                result = runner.resume(current_request, summary)
-            if result.succeeded or not result.stalled or attempt >= self.max_recovery_attempts:
-                return result
-            current_request = replace(
-                current_request,
-                prompt=self._build_continue_prompt(
-                    request.prompt,
-                    f"Retry optimize task after stall.\n\nKnown progress:\n{summary}",
-                ),
-            )
+        return result, current_request
 
     def _build_summary(self, result: AgentResult) -> str:
         output = result.stdout.strip() or result.stderr.strip() or "No progress output was captured."

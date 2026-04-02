@@ -61,9 +61,15 @@ class GenerationContractTests(unittest.TestCase):
 
     def test_optimize_skill_includes_remote_command_examples(self) -> None:
         optimize = _read("skills/optimize/SKILL.md")
-        self.assertIn("Use the run-validation skill whenever the workflow needs to run correctness tests, benchmarks, or comparison commands.", optimize)
-        self.assertIn("run-test --test-file <test.py> --operator-file <candidate.py>", optimize)
-        self.assertIn("run-bench --bench-file <bench.py> --operator-file <candidate.py>", optimize)
+        self.assertIn(
+            "Use the bundled helper script at [`../run-validation/scripts/run-command.py`](../run-validation/scripts/run-command.py) for generation, validation, and comparison commands; if the outer optimize task is remote-aware, carry the same remote flags through those commands.",
+            optimize,
+        )
+        self.assertIn(
+            "Generate missing tests or benchmarks through `../run-validation/scripts/run-command.py` before starting any optimization round.",
+            optimize,
+        )
+        self.assertIn("ascend-npu-operator-profiler", optimize)
 
     def test_test_generation_specs_use_only_operator_file_cli(self) -> None:
         standalone = _read("skills/test-gen/references/test-standalone-spec.md")

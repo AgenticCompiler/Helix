@@ -85,7 +85,7 @@ def run_buffered_process(
             session_id = session_id or session_id_extractor(line)
         elif process.poll() is not None:
             break
-        elif time.monotonic() - start > stall_timeout_seconds:
+        elif stall_timeout_seconds > 0 and time.monotonic() - start > stall_timeout_seconds:
             process.terminate()
             stderr_text = process.stderr.read() if process.stderr is not None else ""
             return AgentResult(
@@ -102,7 +102,7 @@ def run_buffered_process(
         if trailing:
             stdout_lines.append(trailing)
     return AgentResult(
-        return_code=process.returncode or 0,
+        return_code=_resolved_returncode(process.returncode),
         stdout="".join(stdout_lines),
         stderr=stderr_text,
         stalled=False,
@@ -159,7 +159,7 @@ def run_streaming_process(
                     break
             elif process.poll() is not None:
                 break
-            elif time.monotonic() - start > stall_timeout_seconds:
+            elif stall_timeout_seconds > 0 and time.monotonic() - start > stall_timeout_seconds:
                 process.terminate()
                 return AgentResult(
                     return_code=1,
@@ -182,3 +182,7 @@ def run_streaming_process(
         )
     finally:
         os.close(master_fd)
+
+
+def _resolved_returncode(returncode: int | None) -> int:
+    return returncode if returncode is not None else 1

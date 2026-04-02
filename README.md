@@ -32,6 +32,7 @@ uv run triton-agent gen-test --input a.py --remote user@host:2222
 uv run triton-agent gen-bench --input a.py --remote user@host --remote-workdir /tmp/triton-agent
 uv run triton-agent optimize --input a.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
 uv run triton-agent optimize --input a.py --min-rounds 3
+uv run triton-agent optimize --input a.py --continue
 ```
 
 Generated harnesses record their resolved public entrypoint, entrypoint kind, target kernel, and mode in a small file header such as `# test-mode: ...`, `# bench-mode: ...`, `# api-name: ...`, `# api-kind: ...`, and `# kernel: ...`.
@@ -73,6 +74,10 @@ Generated harnesses record their resolved public entrypoint, entrypoint kind, ta
 - `--bench-mode` defaults to `standalone` for `gen-bench`; `run-bench` infers it from benchmark metadata unless you override it.
 - For `optimize`, `--test-mode` defaults to `differential` and `--bench-mode` defaults to `standalone`.
 - `optimize` accepts `--min-rounds <N>` to require at least `N` `opt-round-*` directories before the run may finish successfully.
+- `optimize` accepts `--continue` to resume an existing optimization session instead of starting a fresh one.
+- `optimize --continue` requires an existing `opt-note.md`, at least one `opt-round-*` directory, an existing generated test harness with readable `# test-mode: ...`, and an existing generated benchmark harness with readable `# bench-mode: ...`.
+- `optimize --continue` rejects `--test-mode` and `--bench-mode`; it reuses the modes recorded in the existing harness metadata.
+- If continue mode finds both `test_<op>.py` and `differential_test_<op>.py`, the CLI fails explicitly instead of guessing which harness should drive the resumed optimize run.
 - If an `optimize` agent exits successfully before the workspace reaches the requested minimum round count, the supervisor automatically restarts the agent in continuation mode.
 - Continuation mode tells the agent to continue the existing optimization session and inspect `opt-note.md` plus existing `opt-round-*` artifacts before starting more work.
 - Skill staging uses copied workspace content rather than symlinks, so code agents read ordinary workspace files without resolving back to the source repository.
@@ -83,6 +88,7 @@ Generated harnesses record their resolved public entrypoint, entrypoint kind, ta
 - The `optimize` workflow is expected to keep per-round artifacts under `opt-round-N/` and a top-level `opt-note.md` in the operator workspace.
 - During `optimize`, the CLI writes a temporary workspace `AGENTS.md` with optimization guardrails; if the workspace already has one, it is backed up and restored after the run.
 - The `optimize` skill is expected to choose optimization patterns through a compact pattern index before reading detailed pattern references.
+- The `ascend-npu-operator-profiler` skill is expected to run profiling through direct `msprof <command>` invocation and summarize the generated `PROF_*/mindstudio_profiler_output/` CSV files instead of maintaining a separate benchmark-comparison analyzer.
 - Skills can invoke the current checkout through the bundled helper script at `skills/run-validation/scripts/run-command.py` without relying on an installed console entrypoint.
 - The scripts under `skills/run-validation/scripts/` are standalone runtime modules and do not import `triton_agent`; the dependency direction is `triton_agent -> skills/run-validation/scripts` only.
 - If an output file already exists and overwrite is not allowed, the CLI prints a short error and exits without a Python traceback.

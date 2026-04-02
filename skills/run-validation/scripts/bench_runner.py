@@ -152,7 +152,7 @@ def _run_remote_bench_standalone(
     result = run_remote_command_streaming(
         spec,
         remote_workspace,
-        f"python3 {bench_file.name} --operator-file {operator_file.name}",
+        ["python3", bench_file.name, "--operator-file", operator_file.name],
         verbose=verbose,
         stderr=stderr,
     )
@@ -238,7 +238,7 @@ def _run_remote_bench_msprof(
     count_result = run_remote_command_buffered(
         spec,
         remote_workspace,
-        f"python3 {bench_file.name} --num-bench",
+        ["python3", bench_file.name, "--num-bench"],
         verbose=verbose,
         stderr=stderr,
     )
@@ -254,12 +254,17 @@ def _run_remote_bench_msprof(
         result = run_remote_command_streaming(
             spec,
             remote_workspace,
-            (
-                f"msprof op --kernel-name={kernel_name} "
-                f"python3 {bench_file.name} "
-                f"--operator-file {operator_file.name} "
-                f"--bench {case_idx}"
-            ),
+            [
+                "msprof",
+                "op",
+                f"--kernel-name={kernel_name}",
+                "python3",
+                bench_file.name,
+                "--operator-file",
+                operator_file.name,
+                "--bench",
+                str(case_idx),
+            ],
             verbose=verbose,
             stderr=stderr,
         )

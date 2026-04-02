@@ -31,6 +31,7 @@
 - For generation skills, treat the public operator entrypoint as the API surface; it may be a Triton wrapper function, a PyTorch function, or a no-argument `torch.nn.Module` class.
 - When a skill needs to invoke project commands, prefer a bundled script under `skills/run-validation/scripts/` over assuming an installed console entrypoint.
 - When a skill depends on a bundled helper script, include a few short command templates instead of only mentioning the script abstractly.
+- The generic Ascend NPU profiler skill should prefer `msprof <command>` execution and summarize `PROF_*/mindstudio_profiler_output/op_statistic_*.csv` plus `op_summary_*.csv` rather than owning a separate benchmark-comparison workflow.
 - Keep the CLI thin: it should orchestrate agent execution and dispatch into skill-owned helpers, not reimplement skill logic.
 - Local execution and comparison flows such as `run-test`, `run-bench`, `compare-result`, and `compare-perf` should live in the unified `skills/run-validation/` skill scripts, with the CLI limited to parsing, validation, loading, and result rendering.
 - Preserve a clear separation between generic agent flow and backend-specific details.
@@ -76,6 +77,9 @@
 - Supervision should detect stalls conservatively and attempt recovery without hiding failures.
 - Automatic recovery should prefer continuing from recent progress before starting over.
 - `optimize` may require a minimum number of round directories through a dedicated CLI option; when the agent exits before that threshold is reached, supervision should restart the agent in continuation mode.
+- `optimize` should also support an explicit continue mode that resumes an existing optimization session instead of starting fresh.
+- Explicit continue mode should reject new `--test-mode` and `--bench-mode` overrides and should reuse the modes recorded in the existing generated harness metadata.
+- Explicit continue mode should fail fast unless the workspace already contains `opt-note.md`, at least one `opt-round-*` directory, one unambiguous generated test harness, and one generated benchmark harness.
 - Continuation prompts should explicitly tell the code agent to keep going from existing workspace state and to inspect `opt-note.md` plus prior `opt-round-N/` artifacts before starting the next round.
 - The `optimize` skill should search over validated candidate branches, not assume every new round must continue from the current best version.
 - The `optimize` knowledge base should offer a compact pattern index first and only then drill into one or two detailed optimization pattern references.
