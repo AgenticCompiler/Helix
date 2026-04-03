@@ -9,13 +9,13 @@ Profile Ascend NPU operators with `msprof` and summarize the resulting timing da
 
 ## Default workflow
 
-1. Run the target command by putting `msprof` directly in front of it.
+1. Profile benchmark harnesses through the unified operator-eval helper.
 
    ```bash
-   msprof python3 bench_matmul.py --operator-file matmul.py
+   python3 ../operator-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file matmul.py
    ```
 
-2. Find the generated `PROF_*` directory near the command's working directory.
+2. Let the helper print or copy back the generated local `PROF_*` directory.
 
 3. Summarize the profile output with the bundled script.
 
@@ -31,12 +31,38 @@ Profile Ascend NPU operators with `msprof` and summarize the resulting timing da
 
 ## Working rules
 
-- Prefer the direct `msprof <command>` form unless the user explicitly needs another invocation style.
+- Prefer `python3 ../operator-eval/scripts/run-command.py profile-bench ...` for benchmark profiling, especially when the workflow is remote-aware.
+- If the benchmark metadata says `# bench-mode: standalone`, profile `python3 bench_<op>.py --operator-file <operator-file>` and do not pass `--bench`; standalone mode must not receive `--bench` or `--num-bench`.
+- If the benchmark metadata says `# bench-mode: msprof`, first query `--num-bench`, then profile one selected `--bench <N>` case; this mode requires resolvable `# kernel:` metadata in the benchmark header.
+- When the outer task is remote-aware, pass the same `--remote` and `--remote-workdir` settings through `profile-bench` so profiling runs on the remote machine while the resulting `PROF_*` directory is copied back locally.
+- Keep direct `msprof <command>` only as a local fallback when there is no generated benchmark harness or when the user explicitly wants a manual invocation.
 - Treat `op_summary_*.csv` as potentially large. Do not dump it into the conversation or read it naively line-by-line into memory if a streaming pass is enough.
 - Prefer the bundled summary script over ad hoc shell parsing so the report stays consistent.
 - If the user names the operator, pass it through `--target-op`.
 - If the user does not name the operator, let the script infer the hottest operator from `op_statistic` and state that this is an inference.
 - Always show the final Markdown summary in the conversation instead of only mentioning generated files.
+
+## Bench mode contract
+
+- `standalone`
+  - Use:
+    ```bash
+    python3 ../operator-eval/scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py
+    ```
+  - Runtime command shape inside the helper:
+    ```bash
+    msprof python3 bench_<operator>.py --operator-file <operator>.py
+    ```
+  - Do not pass `--bench` or `--num-bench`.
+
+- `msprof`
+  - Use:
+    ```bash
+    python3 ../operator-eval/scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench 1
+    ```
+  - The helper will first query `python3 bench_<operator>.py --num-bench`.
+  - The helper then profiles one selected `--bench <N>` case and defaults to case `1` when `--bench` is omitted.
+  - This mode requires benchmark metadata with `# kernel: <resolved_kernel_name>`.
 
 ## Validation checks
 
@@ -72,11 +98,22 @@ Profile Ascend NPU operators with `msprof` and summarize the resulting timing da
 Profile a benchmark and summarize the hottest operator:
 
 ```bash
-msprof python3 bench_matmul.py --operator-file matmul.py
-python3 <skill-path>/scripts/profile_summary.py .
+python3 ../operator-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file matmul.py
 ```
 
 Profile a benchmark and summarize a known operator:
+
+```bash
+python3 ../operator-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file matmul.py --target-op MatMul
+```
+
+Profile one `msprof` benchmark case on a remote machine and keep the remote workspace:
+
+```bash
+python3 ../operator-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file opt_matmul.py --bench 2 --remote user@host:2222 --remote-workdir /tmp/triton-agent --keep-remote-workdir
+```
+
+Fallback manual profiling when no benchmark harness exists:
 
 ```bash
 msprof python3 bench_matmul.py --operator-file matmul.py

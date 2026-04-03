@@ -12,7 +12,7 @@ def repo_root() -> Path:
 
 
 def run_skill_root() -> Path:
-    return repo_root() / "skills" / "run-validation"
+    return repo_root() / "skills" / "operator-eval"
 
 
 def run_skill_script_path(script_name: str) -> Path:

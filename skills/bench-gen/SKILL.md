@@ -52,15 +52,15 @@ The generated benchmark file must accept only `--operator-file` at runtime for s
 
 ## Validation Commands
 
-Use the run-validation skill to execute generated benchmark cases.
+Use the operator-eval skill to execute generated benchmark cases.
 Use `run-bench` as the standard execution command for generated benchmarks.
 
 - Standalone example on the original operator:
-  - `python3 ../run-validation/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench-mode standalone`
+  - `python3 ../operator-eval/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench-mode standalone`
 - Standalone example on an optimized operator:
-  - `python3 ../run-validation/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode standalone`
+  - `python3 ../operator-eval/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode standalone`
 - Msprof example:
-  - `python3 ../run-validation/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof`
+  - `python3 ../operator-eval/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof`
 If the outer task is marked for remote execution, carry the same remote flags into these commands.
 
 ## Workflow

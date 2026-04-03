@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -29,6 +30,17 @@ def build_parser() -> argparse.ArgumentParser:
     run_bench.add_argument("--keep-remote-workdir", action="store_true")
     run_bench.add_argument("--verbose", action="store_true")
     run_bench.add_argument("--bench-mode", choices=["standalone", "msprof"])
+
+    profile_bench = subparsers.add_parser("profile-bench")
+    profile_bench.add_argument("--bench-file", required=True)
+    profile_bench.add_argument("--operator-file", required=True)
+    profile_bench.add_argument("--bench-mode", choices=["standalone", "msprof"])
+    profile_bench.add_argument("--bench", type=int)
+    profile_bench.add_argument("--target-op")
+    profile_bench.add_argument("--remote")
+    profile_bench.add_argument("--remote-workdir")
+    profile_bench.add_argument("--keep-remote-workdir", action="store_true")
+    profile_bench.add_argument("--verbose", action="store_true")
 
     compare_result = subparsers.add_parser("compare-result")
     compare_result.add_argument("--oracle-result", required=True)
@@ -106,6 +118,43 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Return code: {result['return_code']}")
         if archived_result is not None:
             print(f"Archived result: {archived_result}")
+        if args.remote and args.keep_remote_workdir:
+            print(f"Remote workspace: {remote_workspace}")
+        return int(result["return_code"])
+
+    if args.command == "profile-bench":
+        run_local_profile_bench, run_remote_profile_bench = _load_profile_functions()
+        bench_file = _resolve_existing_path(parser, args.bench_file, "Bench file")
+        operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
+        resolved_bench_mode = args.bench_mode or _resolve_bench_mode_from_metadata(bench_file)
+        try:
+            if args.remote:
+                result, profile_dir, remote_workspace = run_remote_profile_bench(
+                    bench_file,
+                    operator_file,
+                    resolved_bench_mode,
+                    args.remote,
+                    args.remote_workdir,
+                    bench_case=args.bench,
+                    keep_remote_workdir=args.keep_remote_workdir,
+                    verbose=args.verbose,
+                    stderr=sys.stderr,
+                )
+            else:
+                result, profile_dir = run_local_profile_bench(
+                    bench_file,
+                    operator_file,
+                    resolved_bench_mode,
+                    bench_case=args.bench,
+                )
+        except (FileNotFoundError, RuntimeError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        _render_result(result, show_output=True)
+        print(f"Return code: {result['return_code']}")
+        if profile_dir is not None:
+            print(f"Profile directory: {profile_dir}")
+            print(_build_profile_report(profile_dir, args.target_op))
         if args.remote and args.keep_remote_workdir:
             print(f"Remote workspace: {remote_workspace}")
         return int(result["return_code"])
@@ -204,6 +253,23 @@ def _load_compare_perf_function():
     from compare_perf import compare_perf_files
 
     return compare_perf_files
+
+
+def _load_profile_functions():
+    _ensure_script_dir_on_path()
+    from profile_runner import run_local_profile_bench, run_remote_profile_bench
+
+    return run_local_profile_bench, run_remote_profile_bench
+
+
+def _build_profile_report(profile_dir: Path, target_op: str | None) -> str:
+    script = SCRIPT_DIR.parents[1] / "ascend-npu-operator-profiler" / "scripts" / "profile_summary.py"
+    spec = importlib.util.spec_from_file_location("profile_summary_runtime", script)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load profiler summary script: {script}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.build_profile_report(profile_dir, target_op=target_op)
 
 
 def _ensure_script_dir_on_path() -> None:

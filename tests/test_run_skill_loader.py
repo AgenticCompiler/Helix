@@ -12,7 +12,7 @@ class RunSkillLoaderTests(unittest.TestCase):
         path = run_skill_script_path("run-command")
         self.assertEqual(path.name, "run-command.py")
         self.assertEqual(path.parent.name, "scripts")
-        self.assertEqual(path.parent.parent.name, "run-validation")
+        self.assertEqual(path.parent.parent.name, "operator-eval")
 
     def test_load_run_skill_module_returns_cached_module(self) -> None:
         first = load_run_skill_module("test_runner")
@@ -21,7 +21,7 @@ class RunSkillLoaderTests(unittest.TestCase):
         self.assertTrue(hasattr(first, "run_local_test"))
 
     def test_run_skill_scripts_do_not_import_triton_agent(self) -> None:
-        scripts_dir = Path(__file__).resolve().parents[1] / "skills" / "run-validation" / "scripts"
+        scripts_dir = Path(__file__).resolve().parents[1] / "skills" / "operator-eval" / "scripts"
         for path in sorted(scripts_dir.glob("*.py")):
             with self.subTest(path=path.name):
                 content = path.read_text(encoding="utf-8")

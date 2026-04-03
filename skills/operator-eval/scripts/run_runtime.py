@@ -201,6 +201,23 @@ def copy_file_from_remote(
         raise RuntimeError(result["stderr"] or result["stdout"] or f"Failed to copy {remote_path} from remote.")
 
 
+def copy_directory_from_remote(
+    spec: RemoteSpec,
+    remote_path: str,
+    local_path: Path,
+    verbose: bool = False,
+    stderr: TextIO | None = None,
+) -> None:
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    command = _scp_from_remote_command(spec, remote_path, local_path, recursive=True)
+    _maybe_emit_remote_command(command, verbose, stderr)
+    result = run_buffered_process(command, ".", stall_timeout_seconds=300)
+    if not result_succeeded(result):
+        raise RuntimeError(
+            result["stderr"] or result["stdout"] or f"Failed to copy directory {remote_path} from remote."
+        )
+
+
 def run_remote_command_streaming(
     spec: RemoteSpec,
     remote_workspace: str,
@@ -247,8 +264,15 @@ def _scp_to_remote_command(spec: RemoteSpec, local_path: Path, remote_path: str)
     return command
 
 
-def _scp_from_remote_command(spec: RemoteSpec, remote_path: str, local_path: Path) -> list[str]:
+def _scp_from_remote_command(
+    spec: RemoteSpec,
+    remote_path: str,
+    local_path: Path,
+    recursive: bool = False,
+) -> list[str]:
     command = ["scp"]
+    if recursive:
+        command.append("-r")
     if spec["port"] is not None:
         command.extend(["-P", str(spec["port"])])
     command.extend([f"{spec['user_host']}:{remote_path}", str(local_path)])

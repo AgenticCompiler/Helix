@@ -54,7 +54,7 @@ Generated harnesses record their resolved public entrypoint, entrypoint kind, ta
 - `--force-overwrite` makes the CLI delete an existing generated output file before starting `gen-test` or `gen-bench`.
 - The parser also accepts snake_case command aliases such as `gen_test` and `run_bench`, while help text keeps the canonical kebab-case names.
 - `run-test` requires `--test-file` and `--operator-file`.
-- `run-test` executes the generated test file through the unified `skills/run-validation/` execution helpers instead of launching a code agent.
+- `run-test` executes the generated test file through the unified `skills/operator-eval/` execution helpers instead of launching a code agent.
 - `run-test` streams local process output by default and does not support `--interact`.
 - `run-test` no longer accepts `--agent`.
 - `run-test` prints the local process stdout, stderr, and return code.
@@ -67,13 +67,18 @@ Generated harnesses record their resolved public entrypoint, entrypoint kind, ta
 - For `gen-test`, `gen-bench`, and `optimize`, the code agent still runs locally; the remote settings are passed through prompt context so the skills use remote-aware repository commands during validation.
 - Under `--verbose`, remote runs print the concrete `ssh` and `scp` commands they execute.
 - `run-bench` requires `--bench-file` and `--operator-file`.
-- `run-bench` executes the generated benchmark file through the unified `skills/run-validation/` execution helpers instead of launching a code agent.
+- `run-bench` executes the generated benchmark file through the unified `skills/operator-eval/` execution helpers instead of launching a code agent.
 - `run-bench` streams local process output by default and does not support `--interact`.
 - `run-bench` no longer accepts `--agent`.
 - `run-bench` reads `# bench-mode: ...` from the benchmark file metadata when `--bench-mode` is omitted.
 - In `standalone` mode, `run-bench` saves parsed `latency-<id>:` lines beside the input operator file as `<operator-filename>_perf.txt`.
 - In `msprof` mode, `run-bench` first queries `--num-bench`, then executes one `msprof op --kernel-name=...` command per case using the benchmark metadata header.
-- `compare-result` compares two archived differential result payload files through the unified `skills/run-validation/` helpers.
+- The helper script `python3 skills/operator-eval/scripts/run-command.py profile-bench --bench-file <bench> --operator-file <operator>` profiles benchmark harnesses and prints a local `Profile directory: ...` plus the summarized operator report.
+- `profile-bench` reads `# bench-mode: ...` from benchmark metadata when `--bench-mode` is omitted.
+- In `standalone` mode, `profile-bench` wraps `python3 bench_<op>.py --operator-file <operator-file>` with `msprof` and must not receive `--bench`.
+- In `msprof` mode, `profile-bench` first queries `--num-bench`, then profiles one selected `--bench <N>` case; this flow requires `# kernel: ...` metadata in the benchmark header.
+- `profile-bench` also accepts `--remote user@host[:port]`, optional `--remote-workdir <path>`, and `--keep-remote-workdir`; remote runs copy the resulting `PROF_*` directory back beside the operator file before summarizing it locally.
+- `compare-result` compares two archived differential result payload files through the unified `skills/operator-eval/` helpers.
 - `compare-perf` compares two perf data files by `latency-<id>` and reports per-case deltas without relying on line order.
 - The repository keeps a unified `run` skill for execution and comparison flows; the CLI stays thin and loads those skill-owned helpers dynamically.
 - `--test-mode` defaults to `standalone` for `gen-test`; `run-test` infers it from test metadata unless you override it.
@@ -113,8 +118,9 @@ Generated harnesses record their resolved public entrypoint, entrypoint kind, ta
 - During `optimize`, the CLI writes a temporary workspace `AGENTS.md` with optimization guardrails; if the workspace already has one, it is backed up and restored after the run.
 - The `optimize` skill is expected to choose optimization patterns through a compact pattern index before reading detailed pattern references.
 - The `ascend-npu-operator-profiler` skill is expected to run profiling through direct `msprof <command>` invocation and summarize the generated `PROF_*/mindstudio_profiler_output/` CSV files instead of maintaining a separate benchmark-comparison analyzer.
-- Skills can invoke the current checkout through the bundled helper script at `skills/run-validation/scripts/run-command.py` without relying on an installed console entrypoint.
-- The scripts under `skills/run-validation/scripts/` are standalone runtime modules and do not import `triton_agent`; the dependency direction is `triton_agent -> skills/run-validation/scripts` only.
+- The `ascend-npu-operator-profiler` skill should prefer `python3 skills/operator-eval/scripts/run-command.py profile-bench ...` for generated benchmark harnesses, branch behavior by benchmark mode, and keep direct `msprof <command>` only as a manual fallback.
+- Skills can invoke the current checkout through the bundled helper script at `skills/operator-eval/scripts/run-command.py` without relying on an installed console entrypoint.
+- The scripts under `skills/operator-eval/scripts/` are standalone runtime modules and do not import `triton_agent`; the dependency direction is `triton_agent -> skills/operator-eval/scripts` only.
 - If an output file already exists and overwrite is not allowed, the CLI prints a short error and exits without a Python traceback.
 
 ## Checks

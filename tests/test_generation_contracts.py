@@ -54,24 +54,24 @@ class GenerationContractTests(unittest.TestCase):
     def test_generation_skills_include_explicit_run_command_examples(self) -> None:
         test_gen = _read("skills/test-gen/SKILL.md")
         self.assertIn("## Validation Commands", test_gen)
-        self.assertIn("Use the run-validation skill to execute generated test cases.", test_gen)
-        self.assertIn("python3 ../run-validation/scripts/run-command.py run-test --test-file", test_gen)
+        self.assertIn("Use the operator-eval skill to execute generated test cases.", test_gen)
+        self.assertIn("python3 ../operator-eval/scripts/run-command.py run-test --test-file", test_gen)
         self.assertIn("Do not run `compare-result` during test generation.", test_gen)
         self.assertNotIn("run `compare-result` after `run-test` succeeds", test_gen)
 
         bench_gen = _read("skills/bench-gen/SKILL.md")
         self.assertIn("## Validation Commands", bench_gen)
-        self.assertIn("Use the run-validation skill to execute generated benchmark cases.", bench_gen)
-        self.assertIn("python3 ../run-validation/scripts/run-command.py run-bench --bench-file", bench_gen)
+        self.assertIn("Use the operator-eval skill to execute generated benchmark cases.", bench_gen)
+        self.assertIn("python3 ../operator-eval/scripts/run-command.py run-bench --bench-file", bench_gen)
 
     def test_optimize_skill_includes_remote_command_examples(self) -> None:
         optimize = _read("skills/optimize/SKILL.md")
         self.assertIn(
-            "Use the bundled helper script at [`../run-validation/scripts/run-command.py`](../run-validation/scripts/run-command.py) for generation, validation, and comparison commands; if the outer optimize task is remote-aware, carry the same remote flags through those commands.",
+            "Use the bundled helper script at [`../operator-eval/scripts/run-command.py`](../operator-eval/scripts/run-command.py) for generation, validation, profiling, and comparison commands; if the outer optimize task is remote-aware, carry the same remote flags through those commands.",
             optimize,
         )
         self.assertIn(
-            "Generate missing tests or benchmarks through `../run-validation/scripts/run-command.py` before starting any optimization round.",
+            "Generate missing tests or benchmarks through `../operator-eval/scripts/run-command.py` before starting any optimization round.",
             optimize,
         )
         self.assertIn("ascend-npu-operator-profiler", optimize)
@@ -88,6 +88,15 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("record learned lessons whenever you discover reusable knowledge", optimize)
         self.assertIn("compiler error repairs", optimize)
         self.assertIn("profile-guided optimization lessons", optimize)
+
+    def test_profiler_skill_documents_profile_bench_mode_contracts(self) -> None:
+        profiler = _read("skills/ascend-npu-operator-profiler/SKILL.md")
+        self.assertIn("../operator-eval/scripts/run-command.py profile-bench", profiler)
+        self.assertIn("standalone", profiler)
+        self.assertIn("msprof", profiler)
+        self.assertIn("must not receive `--bench` or `--num-bench`", profiler)
+        self.assertIn("first query `--num-bench`", profiler)
+        self.assertIn("profile one selected `--bench <N>` case", profiler)
 
     def test_test_generation_specs_use_only_operator_file_cli(self) -> None:
         standalone = _read("skills/test-gen/references/test-standalone-spec.md")

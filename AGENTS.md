@@ -35,11 +35,13 @@
 - Treat the local `skills/` directory as the source of truth for workflow behavior.
 - Write skills as natural-language task guides first; treat CLI flags as wrapper-specific context rather than the primary skill interface.
 - For generation skills, treat the public operator entrypoint as the API surface; it may be a Triton wrapper function, a PyTorch function, or a no-argument `torch.nn.Module` class.
-- When a skill needs to invoke project commands, prefer a bundled script under `skills/run-validation/scripts/` over assuming an installed console entrypoint.
+- When a skill needs to invoke project commands, prefer a bundled script under `skills/operator-eval/scripts/` over assuming an installed console entrypoint.
 - When a skill depends on a bundled helper script, include a few short command templates instead of only mentioning the script abstractly.
 - The generic Ascend NPU profiler skill should prefer `msprof <command>` execution and summarize `PROF_*/mindstudio_profiler_output/op_statistic_*.csv` plus `op_summary_*.csv` rather than owning a separate benchmark-comparison workflow.
+- The Ascend NPU profiler skill should prefer the unified `skills/operator-eval/scripts/run-command.py profile-bench` helper for generated benchmark harnesses, including remote-aware profiling runs.
+- When profiling benchmark harnesses, branch argument rules by benchmark mode: `standalone` profiles the plain `--operator-file` invocation and must not pass `--bench`, while `msprof` mode must query `--num-bench`, profile one selected `--bench <N>` case, and require `# kernel:` metadata.
 - Keep the CLI thin: it should orchestrate agent execution and dispatch into skill-owned helpers, not reimplement skill logic.
-- Local execution and comparison flows such as `run-test`, `run-bench`, `compare-result`, and `compare-perf` should live in the unified `skills/run-validation/` skill scripts, with the CLI limited to parsing, validation, loading, and result rendering.
+- Local execution, comparison, and benchmark-profiling flows such as `run-test`, `run-bench`, `profile-bench`, `compare-result`, and `compare-perf` should live in the unified `skills/operator-eval/` skill scripts, with the CLI limited to parsing, validation, loading, and result rendering.
 - Preserve a clear separation between generic agent flow and backend-specific details.
 - Prefer optional diagnostic flags for orchestration visibility instead of always-on debug output.
 - When adding orchestration flags, keep them additive: they may increase visibility, but should not change the underlying agent task semantics.

@@ -17,6 +17,10 @@ def load_bench_runner_module():
     return load_run_skill_module("bench_runner")
 
 
+def load_profile_runner_module():
+    return load_run_skill_module("profile_runner")
+
+
 def make_skill_result(
     return_code: int,
     stdout: str,

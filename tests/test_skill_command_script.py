@@ -12,7 +12,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "run-validation"
+            / "operator-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -50,7 +50,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "run-validation"
+            / "operator-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -64,20 +64,21 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertIn("triton-agent", completed.stdout)
         self.assertIn("run-test", completed.stdout)
         self.assertIn("compare-perf", completed.stdout)
+        self.assertIn("profile-bench", completed.stdout)
         self.assertNotIn("optimize", completed.stdout)
         self.assertNotIn("gen-test", completed.stdout)
 
     def test_script_resolves_real_repo_root_when_called_through_symlink(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         source_skills = repo_root / "skills"
-        source_script = source_skills / "run-validation" / "scripts" / "run-command.py"
+        source_script = source_skills / "operator-eval" / "scripts" / "run-command.py"
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
             symlinked_skills = workspace / "skills"
             symlinked_skills.symlink_to(source_skills, target_is_directory=True)
-            symlinked_script = symlinked_skills / "run-validation" / "scripts" / "run-command.py"
+            symlinked_script = symlinked_skills / "operator-eval" / "scripts" / "run-command.py"
 
             completed = subprocess.run(
                 [sys.executable, str(symlinked_script), "--help"],
@@ -95,7 +96,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "run-validation"
+            / "operator-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -108,6 +109,27 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0)
         self.assertIn("--test-file", completed.stdout)
         self.assertIn("--operator-file", completed.stdout)
+        self.assertIn("--keep-remote-workdir", completed.stdout)
+
+    def test_script_exposes_profile_bench_help(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "operator-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        completed = subprocess.run(
+            [sys.executable, str(script), "profile-bench", "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0)
+        self.assertIn("--bench-file", completed.stdout)
+        self.assertIn("--operator-file", completed.stdout)
+        self.assertIn("--bench", completed.stdout)
+        self.assertIn("--target-op", completed.stdout)
         self.assertIn("--keep-remote-workdir", completed.stdout)
 
 

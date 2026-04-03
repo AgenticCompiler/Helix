@@ -21,7 +21,7 @@ Use this skill when the user wants the operator itself improved rather than only
 - One `summary.md` inside each completed round directory
 - Updated `opt-note.md` in the operator workspace
 - Updated `learned_lessons.md` in the operator workspace whenever the run discovers reusable optimization knowledge
-- Correctness and benchmark evidence produced through the `run-validate` skill
+- Correctness, benchmark, and profiling evidence produced through the `operator-eval` skill
 
 ## Required Preconditions
 
@@ -37,7 +37,8 @@ Use this skill when the user wants the operator itself improved rather than only
 - Read [contracts.md](references/contracts.md) when correctness or benchmark validation fails.
 - Read [patterns/index.md](references/patterns/index.md) before choosing any optimization pattern reference.
 - Use the sibling `ascend-npu-operator-profiler` skill when benchmark numbers need operator-level performance evidence, hotspot diagnosis, bottleneck analysis, or profiler-backed comparison across runs.
-- Use the bundled helper script at [`../run-validation/scripts/run-command.py`](../run-validation/scripts/run-command.py) for generation, validation, and comparison commands; if the outer optimize task is remote-aware, carry the same remote flags through those commands.
+- Use the bundled helper script at [`../operator-eval/scripts/run-command.py`](../operator-eval/scripts/run-command.py) for generation, validation, profiling, and comparison commands; if the outer optimize task is remote-aware, carry the same remote flags through those commands.
+- When profiling benchmark harnesses, prefer `../operator-eval/scripts/run-command.py profile-bench ...`; carry the same `--remote` and `--remote-workdir` settings through profiler runs as well.
 - Treat `references/knowledge/` as optional background material for future expansion, not part of the minimum optimize workflow.
 
 ## Pattern References
@@ -69,7 +70,7 @@ Use it for concise notes such as:
 ## Workflow
 
 1. Inspect the operator workspace, resolve the correctness and benchmark modes, and confirm which validation artifacts already exist.
-2. Generate missing tests or benchmarks through `../run-validation/scripts/run-command.py` before starting any optimization round.
+2. Generate missing tests or benchmarks through `../operator-eval/scripts/run-command.py` before starting any optimization round.
 3. Treat the original operator as validated candidate `round 0`, then choose one validated parent candidate for the next round instead of assuming the current best version is always the right parent.
 4. Create `opt-round-N/`, copy the chosen parent operator into it, and start `attempts.md` immediately so every meaningful attempt and measurement is recorded.
 5. Read `references/patterns/index.md`, pick one optimization hypothesis, and read only the one or two detailed pattern references that match that hypothesis when they are relevant; if a better hypothesis comes from your own Triton or NPU optimization knowledge, use that hypothesis directly and document it clearly.
