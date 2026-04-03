@@ -65,15 +65,75 @@ class SkillLinkManager:
 
         return SkillLinkSet(created)
 
+    def prepare_pi_skills(self, workdir: Path) -> SkillLinkSet:
+        pi_dir = workdir / ".pi"
+        target = pi_dir / "skills"
+        created: List[Path] = []
+        pi_dir.mkdir(parents=True, exist_ok=True)
+
+        if not target.exists():
+            shutil.copytree(self.skills_root, target, symlinks=False)
+            created.append(target)
+            return SkillLinkSet(created)
+
+        if target.is_symlink():
+            raise RuntimeError(f"Existing Pi skills path must not be a symlink: {target}")
+
+        if not target.is_dir():
+            raise RuntimeError(f"Existing Pi skills path is not a directory: {target}")
+
+        for skill_dir in self._iter_skill_dirs():
+            staged_path = target / skill_dir.name
+            if staged_path.exists():
+                if staged_path.is_symlink():
+                    raise RuntimeError(f"Skill path already exists as a symlink: {staged_path}")
+                continue
+            shutil.copytree(skill_dir, staged_path, symlinks=False)
+            created.append(staged_path)
+
+        return SkillLinkSet(created)
+
+    def prepare_claude_skills(self, workdir: Path) -> SkillLinkSet:
+        claude_dir = workdir / ".claude"
+        target = claude_dir / "skills"
+        created: List[Path] = []
+        claude_dir.mkdir(parents=True, exist_ok=True)
+
+        if not target.exists():
+            shutil.copytree(self.skills_root, target, symlinks=False)
+            created.append(target)
+            return SkillLinkSet(created)
+
+        if target.is_symlink():
+            raise RuntimeError(f"Existing Claude skills path must not be a symlink: {target}")
+
+        if not target.is_dir():
+            raise RuntimeError(f"Existing Claude skills path is not a directory: {target}")
+
+        for skill_dir in self._iter_skill_dirs():
+            staged_path = target / skill_dir.name
+            if staged_path.exists():
+                if staged_path.is_symlink():
+                    raise RuntimeError(f"Skill path already exists as a symlink: {staged_path}")
+                continue
+            shutil.copytree(skill_dir, staged_path, symlinks=False)
+            created.append(staged_path)
+
+        return SkillLinkSet(created)
+
     def prepare_skills(self, backend: str, workdir: Path) -> SkillLinkSet:
         if backend == "codex":
             return self.prepare_codex_skills(workdir)
         if backend == "opencode":
             return self.prepare_opencode_skills(workdir)
+        if backend == "pi":
+            return self.prepare_pi_skills(workdir)
+        if backend == "claude":
+            return self.prepare_claude_skills(workdir)
         raise RuntimeError(f"Unsupported skill backend: {backend}")
 
     def cleanup(self, link_set: SkillLinkSet) -> list[str]:
-        warnings = []
+        warnings: list[str] = []
         for path in reversed(link_set.created_paths):
             try:
                 if path.is_dir() and not path.is_symlink():

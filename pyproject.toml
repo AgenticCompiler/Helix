@@ -43,3 +43,4 @@ exclude = [
 ]
 extraPaths = ["src"]
 typeCheckingMode = "basic"
+strict = ["src"]

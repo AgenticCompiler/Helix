@@ -65,6 +65,32 @@ class OpenCodeRunnerTests(unittest.TestCase):
             self.assertIn("--thinking", command)
             self.assertIn("--prompt", command)
 
+    def test_optimize_no_agent_session_is_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = OpenCodeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="opencode",
+                skill_name="optimize",
+                prompt="Continue work",
+                workdir=workspace,
+                no_agent_session=True,
+            )
+            command = runner.build_command(request)
+            self.assertEqual(command[:3], ["opencode", "run", "--dir"])
+            self.assertNotIn("--no-session", command)
+            self.assertNotIn("--ephemeral", command)
+
     def test_run_uses_unified_process_runner(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)

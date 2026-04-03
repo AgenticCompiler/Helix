@@ -10,6 +10,11 @@ def _read(relative_path: str) -> str:
 
 
 class GenerationContractTests(unittest.TestCase):
+    def test_pyright_configuration_keeps_tests_basic_while_src_is_strict(self) -> None:
+        content = _read("pyproject.toml")
+        self.assertIn('typeCheckingMode = "basic"', content)
+        self.assertIn('strict = ["src"]', content)
+
     def test_test_gen_skill_requires_header_metadata_and_no_runtime_api_flag(self) -> None:
         content = _read("skills/test-gen/SKILL.md")
         self.assertIn("# test-mode:", content)
@@ -70,6 +75,19 @@ class GenerationContractTests(unittest.TestCase):
             optimize,
         )
         self.assertIn("ascend-npu-operator-profiler", optimize)
+
+    def test_optimize_skill_allows_non_pattern_optimization_knowledge(self) -> None:
+        optimize = _read("skills/optimize/SKILL.md")
+        self.assertIn("Pattern references are helpful guidance, not the only allowed source of ideas.", optimize)
+        self.assertIn("If your own Triton, Ascend NPU, or kernel-optimization knowledge suggests a stronger direction", optimize)
+        self.assertIn("You do not need an existing pattern file to justify every optimization round.", optimize)
+
+    def test_optimize_skill_records_learned_lessons(self) -> None:
+        optimize = _read("skills/optimize/SKILL.md")
+        self.assertIn("learned_lessons.md", optimize)
+        self.assertIn("record learned lessons whenever you discover reusable knowledge", optimize)
+        self.assertIn("compiler error repairs", optimize)
+        self.assertIn("profile-guided optimization lessons", optimize)
 
     def test_test_generation_specs_use_only_operator_file_cli(self) -> None:
         standalone = _read("skills/test-gen/references/test-standalone-spec.md")

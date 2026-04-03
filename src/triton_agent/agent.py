@@ -28,5 +28,6 @@ class AgentRunner(ABC):
             workdir=request.workdir,
             min_rounds=request.min_rounds,
             continue_optimize=request.continue_optimize,
+            no_agent_session=request.no_agent_session,
         )
         return self.run(resumed_request)

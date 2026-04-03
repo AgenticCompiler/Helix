@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import sys
 import uuid
-from typing import List, Optional, TextIO
+from collections.abc import Mapping
+from typing import List, Optional, TextIO, cast
 
 from triton_agent.agent import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult
@@ -18,18 +19,24 @@ class CodexRunner(AgentRunner):
 
     def build_command(self, request: AgentRequest) -> List[str]:
         if request.interact:
-            return [self.executable, "--cd", str(request.workdir), request.prompt]
-        return [
+            command = [self.executable, "--cd", str(request.workdir)]
+            if request.command_kind == request.command_kind.OPTIMIZE and request.no_agent_session:
+                command.append("--ephemeral")
+            command.append(request.prompt)
+            return command
+        command = [
             self.executable,
             "exec",
             "--cd",
             str(request.workdir),
-            "--ephemeral",
             "--skip-git-repo-check",
             "--sandbox",
             "danger-full-access",
-            request.prompt,
         ]
+        if request.command_kind != request.command_kind.OPTIMIZE or request.no_agent_session:
+            command.append("--ephemeral")
+        command.append(request.prompt)
+        return command
 
     def run(
         self,
@@ -75,6 +82,7 @@ class CodexRunner(AgentRunner):
                 workdir=request.workdir,
                 min_rounds=request.min_rounds,
                 continue_optimize=request.continue_optimize,
+                no_agent_session=request.no_agent_session,
             )
         )
 
@@ -179,20 +187,15 @@ class _UnifiedDiffFilter:
 
 def _extract_session_id(line: str) -> Optional[str]:
     try:
-        payload = json.loads(line)
+        payload: object = json.loads(line)
     except json.JSONDecodeError:
         payload = None
 
-    candidates = []
-    if isinstance(payload, dict):
-        candidates.extend(
-            [
-                payload.get("session_id"),
-                payload.get("sessionId"),
-                payload.get("thread_id"),
-                payload.get("threadId"),
-            ]
-        )
+    candidates: list[object] = []
+    if isinstance(payload, Mapping):
+        payload_map = cast(Mapping[str, object], payload)
+        for key in ("session_id", "sessionId", "thread_id", "threadId"):
+            candidates.append(payload_map.get(key))
     candidates.append(line.strip())
 
     for candidate in candidates:

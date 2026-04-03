@@ -9,6 +9,7 @@ Expected long-lived artifacts:
 - `test_<operator-stem>.py` or the mode-specific generated correctness artifact
 - `bench_<operator-stem>.py` or the mode-specific generated benchmark artifact
 - `opt-note.md`
+- `learned_lessons.md`
 - `opt-round-1/`
 - `opt-round-2/`
 - ...
@@ -75,3 +76,16 @@ Keep entries chronological so another engineer can reconstruct how the round evo
 - Treat the original input file as round 0.
 - Never edit the original file in place during optimization rounds.
 - Use copied operator files inside round directories for experimental edits.
+
+## Learned Lessons Log
+
+`learned_lessons.md` is a top-level reusable knowledge log for the whole optimization session.
+
+Use it for durable notes that should survive beyond one round, such as:
+
+- compiler error repairs that are likely to recur
+- profile-to-optimization mappings
+- new Triton code patterns that suggest an optimization opportunity
+- validated heuristics that are not yet documented in the pattern library
+
+Keep entries short and reusable. Prefer durable lessons over round-specific narrative.

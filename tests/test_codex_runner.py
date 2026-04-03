@@ -120,6 +120,55 @@ class CodexRunnerTests(unittest.TestCase):
             self.assertNotIn("--ask-for-approval", command)
             self.assertEqual(command[-1], "Continue work")
 
+    def test_optimize_non_interactive_omits_ephemeral_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = CodexRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="optimize",
+                prompt="Continue work",
+                workdir=workspace,
+                no_agent_session=False,
+            )
+            command = runner.build_command(request)
+            self.assertNotIn("--ephemeral", command)
+            self.assertIn("--skip-git-repo-check", command)
+
+    def test_optimize_no_agent_session_adds_ephemeral(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = CodexRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="optimize",
+                prompt="Continue work",
+                workdir=workspace,
+                no_agent_session=True,
+            )
+            command = runner.build_command(request)
+            self.assertIn("--ephemeral", command)
+
     def test_interactive_mode_uses_unified_process_runner(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)

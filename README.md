@@ -8,6 +8,7 @@ uv run triton-agent run-test --test-file test_a.py --operator-file a.py
 uv run triton-agent gen-bench --input a.py
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
 uv run triton-agent optimize --input a.py
+uv run triton-agent optimize-batch --input operators_root
 ```
 
 ```bash
@@ -15,6 +16,8 @@ uv run triton-agent gen-test --input a.py --output test_a.py
 uv run triton-agent optimize --input a.py --output opt_a.py --interact
 uv run triton-agent gen-bench --input a.py --agent codex
 uv run triton-agent gen-test --input a.py --agent opencode
+uv run triton-agent gen-test --input a.py --agent pi
+uv run triton-agent gen-test --input a.py --agent claude
 uv run triton-agent gen-test --input a.py --test-mode standalone
 uv run triton-agent run-test --test-file differential_test_a.py --operator-file opt_a.py
 uv run triton-agent gen-bench --input a.py --bench-mode standalone
@@ -33,6 +36,9 @@ uv run triton-agent gen-bench --input a.py --remote user@host --remote-workdir /
 uv run triton-agent optimize --input a.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
 uv run triton-agent optimize --input a.py --min-rounds 3
 uv run triton-agent optimize --input a.py --continue
+uv run triton-agent optimize --input a.py --no-agent-session
+uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
+uv run triton-agent optimize-batch --input operators_root --agent pi --test-mode differential --bench-mode standalone
 ```
 
 Generated harnesses record their resolved public entrypoint, entrypoint kind, target kernel, and mode in a small file header such as `# test-mode: ...`, `# bench-mode: ...`, `# api-name: ...`, `# api-kind: ...`, and `# kernel: ...`.
@@ -75,16 +81,34 @@ Generated harnesses record their resolved public entrypoint, entrypoint kind, ta
 - For `optimize`, `--test-mode` defaults to `differential` and `--bench-mode` defaults to `standalone`.
 - `optimize` accepts `--min-rounds <N>` to require at least `N` `opt-round-*` directories before the run may finish successfully.
 - `optimize` accepts `--continue` to resume an existing optimization session instead of starting a fresh one.
+- `optimize` accepts `--no-agent-session` to request a non-persistent code-agent session when the selected backend supports it.
+- `optimize-batch` scans the immediate child directories under `--input` and treats each child directory as one operator workspace.
+- In each batch workspace, `optimize-batch` auto-selects the only remaining `.py` file after excluding generated artifacts such as `test_*.py`, `differential_test_*.py`, `bench_*.py`, `opt_*.py`, and `__init__.py`.
+- If a batch workspace has zero or multiple remaining `.py` candidates, `optimize-batch` reports that workspace as a failure and keeps processing the rest of the batch.
+- `optimize-batch` accepts the same optimize orchestration flags as `optimize`, plus `--max-concurrency <N>` for bounded parallel execution.
+- `optimize-batch` does not support `--output`, `--interact`, or `--show-output`; it prints a compact per-workspace summary after the batch finishes.
+- For `optimize --no-agent-session`, Codex uses `--ephemeral`, Pi uses `--no-session`, and OpenCode ignores the flag.
 - `optimize --continue` requires an existing `opt-note.md`, at least one `opt-round-*` directory, an existing generated test harness with readable `# test-mode: ...`, and an existing generated benchmark harness with readable `# bench-mode: ...`.
 - `optimize --continue` rejects `--test-mode` and `--bench-mode`; it reuses the modes recorded in the existing harness metadata.
 - If continue mode finds both `test_<op>.py` and `differential_test_<op>.py`, the CLI fails explicitly instead of guessing which harness should drive the resumed optimize run.
 - If an `optimize` agent exits successfully before the workspace reaches the requested minimum round count, the supervisor automatically restarts the agent in continuation mode.
+- `optimize-batch --continue` applies the same continue-mode validation to each workspace independently and summarizes workspace-level failures at the end.
 - Continuation mode tells the agent to continue the existing optimization session and inspect `opt-note.md` plus existing `opt-round-*` artifacts before starting more work.
 - Skill staging uses copied workspace content rather than symlinks, so code agents read ordinary workspace files without resolving back to the source repository.
 - If a target workspace skill path already exists as a symlink, the CLI fails explicitly instead of reusing it.
 - `workspace/` is a placeholder directory for local experimentation only; it is excluded from repository linting, static type checks, and test expectations.
-- Codex non-interactive launches always include `--ephemeral` and `--skip-git-repo-check`.
+- `uv run pyright` keeps repository-wide analysis enabled, applies strict checking to `src/`, and leaves `tests/` at the default basic level.
+- Codex non-interactive launches always include `--skip-git-repo-check`.
+- Codex non-interactive generation commands still include `--ephemeral`; `optimize` adds it only when `--no-agent-session` is requested.
 - Codex uses `danger-full-access` for all non-interactive commands.
+- Pi is available as an additional `--agent` backend on the existing agent-backed commands.
+- Pi launches use `--thinking high` and `--no-extensions`.
+- Pi generation commands still use `--no-session`; `optimize` adds it only when `--no-agent-session` is requested.
+- Pi launches receive the staged workspace skill directory through `--skill .pi/skills` with `--no-skills` so repository-local skills stay authoritative.
+- Claude is available as an additional `--agent` backend on the existing agent-backed commands.
+- Claude discovers copied project skills from `.claude/skills`.
+- Claude non-interactive launches use `--print --dangerously-skip-permissions`.
+- For `optimize --no-agent-session`, Claude adds `--no-session-persistence` only in non-interactive mode; interactive Claude runs ignore that flag.
 - The `optimize` workflow is expected to keep per-round artifacts under `opt-round-N/` and a top-level `opt-note.md` in the operator workspace.
 - During `optimize`, the CLI writes a temporary workspace `AGENTS.md` with optimization guardrails; if the workspace already has one, it is backed up and restored after the run.
 - The `optimize` skill is expected to choose optimization patterns through a compact pattern index before reading detailed pattern references.
@@ -100,3 +124,5 @@ uv run --group dev ruff check
 uv run pyright
 uv run python -m unittest discover -s tests -v
 ```
+
+`uv run pyright` uses `typeCheckingMode = "basic"` for the repository by default and upgrades `src/` to strict checking through the `strict = ["src"]` path list, so contributor tests can stay less noisy while production code gets tighter enforcement.

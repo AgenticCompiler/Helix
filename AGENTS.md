@@ -4,7 +4,7 @@
 
 - This repository provides a small `uv`-managed CLI for Triton Ascend NPU operator workflows.
 - The CLI is a wrapper around code agents plus local skills, not a replacement for the skills themselves.
-- The current supported backends are `codex` and `opencode`.
+- The current supported backends are `codex`, `opencode`, `pi`, and `claude`.
 
 ## User-Facing Commands
 
@@ -15,6 +15,7 @@
 - `compare-result`: compare archived differential result payload files
 - `compare-perf`: compare archived performance data files
 - `optimize`: optimize an operator file with long-running supervision
+- `optimize-batch`: scan a root directory and optimize multiple operator workspaces concurrently
 - The CLI may accept compatibility aliases such as snake_case spellings, but kebab-case remains the canonical displayed command form.
 - `run-test` should require both `--test-file` and `--operator-file`.
 - `run-bench` should require both `--bench-file` and `--operator-file`.
@@ -22,6 +23,11 @@
 - If `--remote-workdir` is provided, the CLI should create a per-run subdirectory under that remote directory instead of using a one-off temp root.
 - `run-test` and `run-bench` may optionally keep the generated remote workspace for debugging through a dedicated flag instead of always cleaning it up.
 - `gen-test`, `gen-bench`, and `optimize` may also accept the same remote options, but they should pass that requirement through prompt context to the code agent instead of moving agent execution itself to the remote machine.
+- `optimize-batch` should accept the same remote and optimize orchestration options as `optimize`, apply them per workspace, and add a dedicated maximum-concurrency flag.
+- `optimize-batch` should scan immediate child directories only; each child directory is treated as one operator workspace candidate.
+- In each batch workspace, the CLI should auto-detect the operator input file by excluding generated artifacts such as `test_*.py`, `differential_test_*.py`, `bench_*.py`, `opt_*.py`, and `__init__.py`, then requiring exactly one remaining `.py` file.
+- When a batch workspace has zero or multiple remaining operator candidates, report that workspace as a failure and continue the rest of the batch.
+- `optimize-batch` should be non-interactive orchestration only; do not expose batch-level `--output`, `--interact`, or `--show-output`.
 
 ## Core Principles
 
@@ -55,6 +61,8 @@
 - Before launching a code agent, expose this repository's `skills/` directory inside the target workspace in the backend-specific location.
 - For Codex, use `.codex/skills`.
 - For OpenCode, use `.opencode/skills/<name>/SKILL.md` via copied per-skill directories.
+- For Pi, use `.pi/skills`.
+- For Claude Code, use `.claude/skills/<name>/SKILL.md`.
 - Stage skills by copying content into the workspace instead of creating symlinks.
 - If an existing skill target path is already a symlink, fail explicitly instead of reusing it.
 - Clean up only the copied skill paths created by the current run.
@@ -68,18 +76,25 @@
 - Interactive mode should attach to the live agent UI or session.
 - Non-interactive mode should be script-friendly and return a meaningful process exit code.
 - PTY-backed non-interactive streaming should treat platform-specific PTY EOF during normal child exit as clean shutdown, while still surfacing real read failures.
-- The Codex backend should launch non-interactive runs with `--ephemeral` and `--skip-git-repo-check`.
+- The Codex backend should launch non-interactive runs with `--skip-git-repo-check`.
 - The Codex backend should use `danger-full-access` for all non-interactive commands.
+- The Pi backend should launch with `--thinking high` and `--no-extensions`.
+- The Claude Code backend should launch non-interactive runs with `--print --dangerously-skip-permissions`.
 
 ## Optimize Command Expectations
 
 - `optimize` is treated as a long-running workflow.
+- `optimize-batch` should reuse the same per-workspace optimize lifecycle instead of creating a separate backend flow.
 - Supervision should detect stalls conservatively and attempt recovery without hiding failures.
 - Automatic recovery should prefer continuing from recent progress before starting over.
 - `optimize` may require a minimum number of round directories through a dedicated CLI option; when the agent exits before that threshold is reached, supervision should restart the agent in continuation mode.
 - `optimize` should also support an explicit continue mode that resumes an existing optimization session instead of starting fresh.
+- `optimize` should support `--no-agent-session` to request a non-persistent code-agent session when the selected backend supports it.
+- For `optimize --no-agent-session`, Codex should use `--ephemeral`, Pi should use `--no-session`, and OpenCode should ignore the flag.
+- For `optimize --no-agent-session`, Claude Code should use `--no-session-persistence` only in non-interactive mode and should ignore the flag in interactive mode.
 - Explicit continue mode should reject new `--test-mode` and `--bench-mode` overrides and should reuse the modes recorded in the existing generated harness metadata.
 - Explicit continue mode should fail fast unless the workspace already contains `opt-note.md`, at least one `opt-round-*` directory, one unambiguous generated test harness, and one generated benchmark harness.
+- `optimize-batch --continue` should validate those continuation requirements per workspace and report failures in the batch summary without aborting unrelated workspaces.
 - Continuation prompts should explicitly tell the code agent to keep going from existing workspace state and to inspect `opt-note.md` plus prior `opt-round-N/` artifacts before starting the next round.
 - The `optimize` skill should search over validated candidate branches, not assume every new round must continue from the current best version.
 - The `optimize` knowledge base should offer a compact pattern index first and only then drill into one or two detailed optimization pattern references.
@@ -88,7 +103,7 @@
 ## Verification
 
 - Use `uv run --group dev ruff check` for lint checks.
-- Use `uv run pyright` for static type checks.
+- Use `uv run pyright` for static type checks; keep repository-wide checking at `basic` and raise `src/` to `strict` through the config path list so `tests/` stay at the default level.
 - Use `uv run python -m unittest discover -s tests -v` for the current test suite.
 
 ## Design And Documentation Style

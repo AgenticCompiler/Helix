@@ -1,5 +1,6 @@
 import sys
 import tempfile
+import threading
 import unittest
 from io import StringIO
 from pathlib import Path
@@ -43,6 +44,7 @@ class CliParserTests(unittest.TestCase):
             ("run_test", CommandKind.RUN_TEST),
             ("gen_bench", CommandKind.GEN_BENCH),
             ("run_bench", CommandKind.RUN_BENCH),
+            ("optimize_batch", CommandKind.OPTIMIZE_BATCH),
         ]
 
         for alias, expected_kind in cases:
@@ -64,12 +66,14 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("run-bench", help_text)
         self.assertIn("compare-result", help_text)
         self.assertIn("compare-perf", help_text)
+        self.assertIn("optimize-batch", help_text)
         self.assertNotIn("gen_test", help_text)
         self.assertNotIn("run_test", help_text)
         self.assertNotIn("gen_bench", help_text)
         self.assertNotIn("run_bench", help_text)
         self.assertNotIn("compare_result", help_text)
         self.assertNotIn("compare_perf", help_text)
+        self.assertNotIn("optimize_batch", help_text)
 
     def test_run_bench_has_common_options(self) -> None:
         parser = build_parser()
@@ -107,6 +111,24 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.RUN_BENCH)
         self.assertEqual(args.bench_file, "bench_kernel.py")
         self.assertEqual(args.operator_file, "kernel.py")
+
+    def test_agent_commands_accept_pi_backend(self) -> None:
+        parser = build_parser()
+        gen_test_args = parser.parse_args(["gen-test", "-i", "kernel.py", "--agent", "pi"])
+        gen_bench_args = parser.parse_args(["gen-bench", "-i", "kernel.py", "--agent", "pi"])
+        optimize_args = parser.parse_args(["optimize", "-i", "kernel.py", "--agent", "pi"])
+        self.assertEqual(gen_test_args.agent, "pi")
+        self.assertEqual(gen_bench_args.agent, "pi")
+        self.assertEqual(optimize_args.agent, "pi")
+
+    def test_agent_commands_accept_claude_backend(self) -> None:
+        parser = build_parser()
+        gen_test_args = parser.parse_args(["gen-test", "-i", "kernel.py", "--agent", "claude"])
+        gen_bench_args = parser.parse_args(["gen-bench", "-i", "kernel.py", "--agent", "claude"])
+        optimize_args = parser.parse_args(["optimize", "-i", "kernel.py", "--agent", "claude"])
+        self.assertEqual(gen_test_args.agent, "claude")
+        self.assertEqual(gen_bench_args.agent, "claude")
+        self.assertEqual(optimize_args.agent, "claude")
 
     def test_run_commands_accept_remote_options(self) -> None:
         parser = build_parser()
@@ -385,8 +407,167 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["optimize", "-i", "kernel.py", "--continue"])
         self.assertTrue(args.continue_optimize)
 
+    def test_optimize_command_accepts_no_agent_session(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--no-agent-session"])
+        self.assertTrue(args.no_agent_session)
+
+    def test_optimize_batch_maps_to_command_kind(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-batch", "-i", "kernels"])
+        self.assertEqual(args.command_kind, CommandKind.OPTIMIZE_BATCH)
+        self.assertEqual(args.max_concurrency, 2)
+        self.assertEqual(args.agent, "codex")
+        self.assertFalse(hasattr(args, "interact"))
+        self.assertFalse(hasattr(args, "show_output"))
+
+    def test_optimize_batch_accepts_optimize_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "optimize-batch",
+                "-i",
+                "kernels",
+                "--agent",
+                "pi",
+                "--remote",
+                "alice@example.com",
+                "--remote-workdir",
+                "/tmp/opt",
+                "--test-mode",
+                "standalone",
+                "--bench-mode",
+                "msprof",
+                "--min-rounds",
+                "4",
+                "--continue",
+                "--no-agent-session",
+                "--max-concurrency",
+                "3",
+            ]
+        )
+        self.assertEqual(args.agent, "pi")
+        self.assertEqual(args.remote, "alice@example.com")
+        self.assertEqual(args.remote_workdir, "/tmp/opt")
+        self.assertEqual(args.test_mode, "standalone")
+        self.assertEqual(args.bench_mode, "msprof")
+        self.assertEqual(args.min_rounds, 4)
+        self.assertTrue(args.continue_optimize)
+        self.assertTrue(args.no_agent_session)
+        self.assertEqual(args.max_concurrency, 3)
+
 
 class PathResolutionTests(unittest.TestCase):
+    def test_main_optimize_batch_auto_detects_operator_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = root / "first"
+            second = root / "second"
+            first.mkdir()
+            second.mkdir()
+            (first / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+            (first / "test_kernel.py").write_text("", encoding="utf-8")
+            (first / "differential_test_kernel.py").write_text("", encoding="utf-8")
+            (first / "bench_kernel.py").write_text("", encoding="utf-8")
+            (first / "opt_kernel.py").write_text("", encoding="utf-8")
+            (first / "__init__.py").write_text("", encoding="utf-8")
+            (second / "matmul_impl.py").write_text("print('y')\n", encoding="utf-8")
+
+            seen_inputs: list[Path] = []
+
+            def _fake_run(request):
+                seen_inputs.append(request.input_path)
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.cli._run_optimize_request", side_effect=_fake_run):
+                exit_code = main(["optimize-batch", "-i", str(root)])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(
+                seen_inputs,
+                [
+                    (first / "kernel.py").resolve(),
+                    (second / "matmul_impl.py").resolve(),
+                ],
+            )
+
+    def test_main_optimize_batch_reports_workspace_selection_failures(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bad = root / "bad"
+            good = root / "good"
+            bad.mkdir()
+            good.mkdir()
+            (bad / "a.py").write_text("print('a')\n", encoding="utf-8")
+            (bad / "b.py").write_text("print('b')\n", encoding="utf-8")
+            (good / "kernel.py").write_text("print('ok')\n", encoding="utf-8")
+
+            stdout = StringIO()
+            seen_inputs: list[Path] = []
+
+            def _fake_run(request):
+                seen_inputs.append(request.input_path)
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.cli._run_optimize_request", side_effect=_fake_run):
+                with redirect_stdout(stdout):
+                    exit_code = main(["optimize-batch", "-i", str(root)])
+
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(seen_inputs, [(good / "kernel.py").resolve()])
+            self.assertIn("bad", stdout.getvalue())
+            self.assertIn("found multiple candidate operator files", stdout.getvalue())
+            self.assertIn("Summary: 1 succeeded, 1 failed", stdout.getvalue())
+
+    def test_main_optimize_batch_honors_max_concurrency(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("one", "two", "three"):
+                workspace = root / name
+                workspace.mkdir()
+                (workspace / f"{name}.py").write_text("print('x')\n", encoding="utf-8")
+
+            active = 0
+            max_active = 0
+            launched = 0
+            lock = threading.Lock()
+            first_pair_ready = threading.Event()
+            release_gate = threading.Event()
+
+            def _fake_run(_request):
+                nonlocal active, max_active, launched
+                with lock:
+                    launched += 1
+                    active += 1
+                    max_active = max(max_active, active)
+                    if launched >= 2:
+                        first_pair_ready.set()
+                first_pair_ready.wait(timeout=1)
+                release_gate.wait(timeout=0.1)
+                with lock:
+                    active -= 1
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.cli._run_optimize_request", side_effect=_fake_run):
+                exit_code = main(
+                    ["optimize-batch", "-i", str(root), "--max-concurrency", "2"]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(max_active, 2)
+
+    def test_main_optimize_batch_rejects_invalid_concurrency(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            stderr = StringIO()
+
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(["optimize-batch", "-i", str(root), "--max-concurrency", "0"])
+
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn("--max-concurrency must be at least 1", stderr.getvalue())
+
     def test_default_generated_paths_follow_convention(self) -> None:
         operator = Path("/tmp/add.py")
         self.assertEqual(
@@ -742,6 +923,26 @@ class PathResolutionTests(unittest.TestCase):
             request = mocked.call_args.args[1]
             self.assertEqual(request.test_mode, "differential")
             self.assertEqual(request.bench_mode, "msprof")
+
+    def test_main_optimize_passes_no_agent_session_to_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch("triton_agent.cli.build_prompt", return_value="Prompt body"):
+                with patch("triton_agent.cli.OptimizeSupervisor.run", return_value=fake_result) as mocked:
+                    with patch("triton_agent.cli.create_runner", return_value=object()):
+                        with patch("triton_agent.cli.SkillLinkManager.prepare_skills", return_value=[]):
+                            with patch("triton_agent.cli.SkillLinkManager.cleanup", return_value=[]):
+                                exit_code = main(
+                                    ["optimize", "-i", str(operator), "--no-agent-session"]
+                                )
+
+            self.assertEqual(exit_code, 0)
+            request = mocked.call_args.args[1]
+            self.assertTrue(request.no_agent_session)
 
     def test_main_run_bench_reports_missing_bench_file_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

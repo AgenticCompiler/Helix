@@ -14,6 +14,7 @@ class CommandKind(str, Enum):
     COMPARE_RESULT = "compare-result"
     COMPARE_PERF = "compare-perf"
     OPTIMIZE = "optimize"
+    OPTIMIZE_BATCH = "optimize-batch"
 
 
 COMMAND_TO_SKILL = {
@@ -24,6 +25,7 @@ COMMAND_TO_SKILL = {
     CommandKind.COMPARE_RESULT: "",
     CommandKind.COMPARE_PERF: "",
     CommandKind.OPTIMIZE: "optimize",
+    CommandKind.OPTIMIZE_BATCH: "",
 }
 
 
@@ -45,6 +47,7 @@ class AgentRequest:
     workdir: Path
     min_rounds: Optional[int] = None
     continue_optimize: bool = False
+    no_agent_session: bool = False
 
 
 @dataclass
