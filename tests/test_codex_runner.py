@@ -169,6 +169,31 @@ class CodexRunnerTests(unittest.TestCase):
             command = runner.build_command(request)
             self.assertIn("--ephemeral", command)
 
+    def test_optimize_run_enables_graceful_interrupt_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = CodexRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="optimize",
+                prompt="Continue work",
+                workdir=workspace,
+            )
+            with patch("triton_agent.codex_runner.run_process", return_value=_ok_result()) as mocked:
+                runner.run(request)
+
+            self.assertIsNotNone(mocked.call_args.kwargs["interrupt_policy"])
+
     def test_interactive_mode_uses_unified_process_runner(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)

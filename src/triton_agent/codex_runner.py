@@ -55,6 +55,7 @@ class CodexRunner(AgentRunner):
             session_id_extractor=_extract_session_id,
             stdout=stdout,
             output_filter=self._build_output_filter(request),
+            interrupt_policy=self.interrupt_policy(request),
         )
 
     def resume(

@@ -2,17 +2,22 @@ import sys
 import unittest
 from errno import EIO
 from io import StringIO
-from typing import Optional
+from typing import Any, Optional, cast
 from unittest.mock import patch
+import signal
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.process_runner import (
+    InterruptPolicy,
     run_buffered_process,
     run_interactive_process,
     run_process,
     run_streaming_process,
 )
+
+
+_USE_RETURNCODE = object()
 
 
 class BufferedProcessRunnerTests(unittest.TestCase):
@@ -63,6 +68,44 @@ class BufferedProcessRunnerTests(unittest.TestCase):
                 session_id_extractor=lambda _line: None,
             )
         self.assertEqual(result.return_code, 1)
+
+    def test_keyboard_interrupt_sends_two_sigints_then_force_kills(self) -> None:
+        process = _BufferedFakeProcess(
+            stdout_lines=[],
+            stderr_text="",
+            returncode=None,
+            poll_values=[None, None, None, None],
+            pid=4321,
+            default_poll_return=None,
+        )
+        with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+            with patch("triton_agent.process_runner.os.killpg") as mocked_killpg:
+                with patch("triton_agent.process_runner.time.sleep"):
+                    with patch.object(
+                        process.stdout,
+                        "readline",
+                        side_effect=KeyboardInterrupt,
+                    ):
+                        result = run_buffered_process(
+                            ["codex", "exec"],
+                            "/tmp",
+                            stall_timeout_seconds=10,
+                            session_id_extractor=lambda _line: None,
+                            interrupt_policy=InterruptPolicy(
+                                first_sigint_grace_seconds=0.01,
+                                second_sigint_grace_seconds=0.01,
+                            ),
+                        )
+        self.assertEqual(result.return_code, 130)
+        self.assertFalse(result.stalled)
+        self.assertEqual(
+            mocked_killpg.call_args_list,
+            [
+                ((4321, signal.SIGINT),),
+                ((4321, signal.SIGINT),),
+                ((4321, signal.SIGKILL),),
+            ],
+        )
 
 
 class StreamingProcessRunnerTests(unittest.TestCase):
@@ -183,6 +226,44 @@ class StreamingProcessRunnerTests(unittest.TestCase):
         self.assertFalse(result.stalled)
         self.assertEqual(result.return_code, 0)
 
+    def test_streaming_keyboard_interrupt_uses_interrupt_escalation(self) -> None:
+        stdout = StringIO()
+        process = _StreamingFakeProcess(
+            wait_code=0,
+            poll_values=[None, None, None, None],
+            pid=1234,
+            default_poll_return=None,
+        )
+        with patch("triton_agent.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+                with patch(
+                    "triton_agent.process_runner.select.select",
+                    side_effect=KeyboardInterrupt,
+                ):
+                    with patch("triton_agent.process_runner.os.killpg") as mocked_killpg:
+                        with patch("triton_agent.process_runner.time.sleep"):
+                            with patch("triton_agent.process_runner.os.close"):
+                                result = run_streaming_process(
+                                    ["codex", "exec"],
+                                    "/tmp",
+                                    stall_timeout_seconds=10,
+                                    stdout=stdout,
+                                    interrupt_policy=InterruptPolicy(
+                                        first_sigint_grace_seconds=0.01,
+                                        second_sigint_grace_seconds=0.01,
+                                    ),
+                                )
+        self.assertEqual(result.return_code, 130)
+        self.assertFalse(result.stalled)
+        self.assertEqual(
+            mocked_killpg.call_args_list,
+            [
+                ((1234, signal.SIGINT),),
+                ((1234, signal.SIGINT),),
+                ((1234, signal.SIGKILL),),
+            ],
+        )
+
 
 class InteractiveProcessRunnerTests(unittest.TestCase):
     def test_returns_interactive_result(self) -> None:
@@ -236,12 +317,27 @@ class _BufferedFakeStderr:
 
 
 class _BufferedFakeProcess:
-    def __init__(self, stdout_lines: list[str], stderr_text: str, returncode: Optional[int]) -> None:
+    def __init__(
+        self,
+        stdout_lines: list[str],
+        stderr_text: str,
+        returncode: Optional[int],
+        poll_values: Optional[list[Optional[int]]] = None,
+        pid: int = 1,
+        default_poll_return: Any = _USE_RETURNCODE,
+    ) -> None:
         self.stdout = _BufferedFakeStdout(stdout_lines)
         self.stderr = _BufferedFakeStderr(stderr_text)
         self.returncode = returncode
+        self._poll_values = list(poll_values or [])
+        self.pid = pid
+        self._default_poll_return = default_poll_return
 
     def poll(self) -> Optional[int]:
+        if self._poll_values:
+            return self._poll_values.pop(0)
+        if self._default_poll_return is not _USE_RETURNCODE:
+            return cast(Optional[int], self._default_poll_return)
         if self.stdout._lines:
             return None
         return 0 if self.returncode is None else self.returncode
@@ -251,14 +347,22 @@ class _BufferedFakeProcess:
 
 
 class _StreamingFakeProcess:
-    def __init__(self, wait_code: int, poll_values: Optional[list[Optional[int]]] = None) -> None:
+    def __init__(
+        self,
+        wait_code: int,
+        poll_values: Optional[list[Optional[int]]] = None,
+        pid: int = 1,
+        default_poll_return: Any = 0,
+    ) -> None:
         self._wait_code = wait_code
         self._poll_values = list(poll_values or [])
+        self.pid = pid
+        self._default_poll_return = default_poll_return
 
     def poll(self) -> Optional[int]:
         if self._poll_values:
             return self._poll_values.pop(0)
-        return 0
+        return cast(Optional[int], self._default_poll_return)
 
     def wait(self) -> int:
         return self._wait_code

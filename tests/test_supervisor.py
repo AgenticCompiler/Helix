@@ -162,6 +162,42 @@ class OptimizeSupervisorTests(unittest.TestCase):
             self.assertIn("Continue the existing optimization work", runner.resume_requests[0].prompt)
             self.assertIn("Read `opt-note.md`", runner.resume_requests[0].prompt)
 
+    def test_user_interrupt_does_not_trigger_recovery(self) -> None:
+        request = AgentRequest(
+            command_kind=CommandKind.OPTIMIZE,
+            input_path=Path("/tmp/op.py"),
+            operator_path=Path("/tmp/op.py"),
+            output_path=Path("/tmp/opt_op.py"),
+            test_mode=None,
+            bench_mode=None,
+            interact=False,
+            verbose=False,
+            show_output=False,
+            force_overwrite=False,
+            agent_name="codex",
+            skill_name="optimize",
+            prompt="Optimize this operator",
+            workdir=Path("/tmp"),
+            min_rounds=None,
+        )
+        runner = FakeRunner(
+            [
+                AgentResult(
+                    return_code=130,
+                    stdout="",
+                    stderr="Interrupted",
+                    stalled=False,
+                    session_id=None,
+                )
+            ]
+        )
+
+        result = OptimizeSupervisor(max_recovery_attempts=2).run(runner, request)
+
+        self.assertEqual(result.return_code, 130)
+        self.assertEqual(runner.prompts, ["Optimize this operator"])
+        self.assertEqual(runner.resume_requests, [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -50,6 +50,7 @@ class OpenCodeRunner(AgentRunner):
             stall_timeout_seconds=self.stall_timeout_seconds,
             session_id_extractor=lambda _line: None,
             stdout=stdout,
+            interrupt_policy=self.interrupt_policy(request),
         )
 
     def resume(

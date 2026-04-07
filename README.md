@@ -89,6 +89,9 @@ Generated harnesses record their resolved public entrypoint, entrypoint kind, ta
 - `optimize` accepts `--min-rounds <N>` to require at least `N` `opt-round-*` directories before the run may finish successfully.
 - `optimize` accepts `--continue` to resume an existing optimization session instead of starting a fresh one.
 - `optimize` accepts `--no-agent-session` to request a non-persistent code-agent session when the selected backend supports it.
+- During non-interactive `optimize`, pressing `Ctrl+C` once asks the CLI to stop the running code agent gracefully.
+- That optimize interrupt path sends two `SIGINT` signals to the code agent with short waits, then force-kills it if it still has not exited.
+- A user-interrupted optimize run exits as an interrupt and does not enter optimize stall recovery.
 - `optimize-status` scans the immediate child directories under `--input` and treats each child directory as one operator workspace candidate.
 - `optimize-status` is a local read-only summary command; it does not launch a code agent, support remote execution, or expose `--output` or `--interact`.
 - `optimize-status` reports per-workspace numeric summaries including baseline mean latency, best mean latency, average improvement across per-case latency improvements, and both numeric-best and logged-best rounds when available.

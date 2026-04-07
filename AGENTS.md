@@ -95,6 +95,8 @@
 - `optimize-batch` should reuse the same per-workspace optimize lifecycle instead of creating a separate backend flow.
 - Supervision should detect stalls conservatively and attempt recovery without hiding failures.
 - Automatic recovery should prefer continuing from recent progress before starting over.
+- During non-interactive `optimize`, one user `Ctrl+C` should trigger graceful code-agent shutdown: send `SIGINT`, wait briefly, send a second `SIGINT`, then force-kill if the agent still has not exited.
+- User-triggered optimize interrupts should terminate the active code-agent run instead of entering stall recovery or automatic continuation.
 - `optimize` may require a minimum number of round directories through a dedicated CLI option; when the agent exits before that threshold is reached, supervision should restart the agent in continuation mode.
 - `optimize` should also support an explicit continue mode that resumes an existing optimization session instead of starting fresh.
 - `optimize` should support `--no-agent-session` to request a non-persistent code-agent session when the selected backend supports it.
