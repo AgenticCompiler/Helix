@@ -27,7 +27,8 @@
 - `optimize-batch` should scan immediate child directories only; each child directory is treated as one operator workspace candidate.
 - In each batch workspace, the CLI should auto-detect the operator input file by excluding generated artifacts such as `test_*.py`, `differential_test_*.py`, `bench_*.py`, `opt_*.py`, and `__init__.py`, then requiring exactly one remaining `.py` file.
 - When a batch workspace has zero or multiple remaining operator candidates, report that workspace as a failure and continue the rest of the batch.
-- `optimize-batch` should be non-interactive orchestration only; do not expose batch-level `--output`, `--interact`, or `--show-output`.
+- `optimize-batch` should be non-interactive orchestration only; do not expose batch-level `--output` or `--interact`.
+- `optimize-batch` may expose additive batch-level `--show-output` streaming as long as concurrent output stays attributable, for example with `[workspace-name]` line prefixes.
 
 ## Core Principles
 

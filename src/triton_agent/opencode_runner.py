@@ -52,7 +52,13 @@ class OpenCodeRunner(AgentRunner):
             stdout=stdout,
         )
 
-    def resume(self, request: AgentRequest, summary: str) -> AgentResult:
+    def resume(
+        self,
+        request: AgentRequest,
+        summary: str,
+        stdout: Optional[TextIO] = None,
+        stderr: Optional[TextIO] = None,
+    ) -> AgentResult:
         resumed_prompt = (
             "Continue the existing optimize task instead of restarting from scratch.\n"
             "Read `opt-note.md`, existing `opt-round-*` directories, and any round summaries "
@@ -78,7 +84,9 @@ class OpenCodeRunner(AgentRunner):
                 min_rounds=request.min_rounds,
                 continue_optimize=request.continue_optimize,
                 no_agent_session=request.no_agent_session,
-            )
+            ),
+            stdout=stdout,
+            stderr=stderr,
         )
 
     def _log_launch_command(self, command: List[str], stream: TextIO) -> None:

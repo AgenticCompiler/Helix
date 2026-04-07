@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import argparse
 import sys
+import threading
+from io import TextIOBase
 from collections.abc import Mapping
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Protocol, TextIO, cast
+from typing import Any, Optional, Protocol, TextIO, cast
 
 from triton_agent.agent import AgentRunner
 from triton_agent.claude_runner import ClaudeRunner
@@ -39,6 +41,58 @@ class BatchOptimizeResult:
     workspace: Path
     succeeded: bool
     message: str
+
+
+class _PrefixedTextStream(TextIOBase):
+    def __init__(self, stream: TextIO, prefix: str, lock: threading.Lock) -> None:
+        self._stream = stream
+        self._prefix = prefix
+        self._lock = lock
+        self._at_line_start = True
+
+    def write(self, text: str) -> int:
+        if not text:
+            return 0
+        with self._lock:
+            for chunk in text.splitlines(keepends=True):
+                if self._at_line_start:
+                    self._stream.write(self._prefix)
+                self._stream.write(chunk)
+                self._at_line_start = chunk.endswith("\n")
+            if text and not text.endswith(("\n", "\r")):
+                self._at_line_start = False
+            return len(text)
+
+    def flush(self) -> None:
+        with self._lock:
+            self._stream.flush()
+
+    def isatty(self) -> bool:
+        isatty = getattr(self._stream, "isatty", None)
+        return bool(callable(isatty) and isatty())
+
+
+class _RunnerWithStreams:
+    def __init__(
+        self,
+        runner: AgentRunner,
+        stdout: TextIO | None = None,
+        stderr: TextIO | None = None,
+    ) -> None:
+        self._runner = runner
+        self._stdout = stdout
+        self._stderr = stderr
+
+    def run(self, request: AgentRequest) -> AgentResult:
+        return cast(Any, self._runner).run(request, stdout=self._stdout, stderr=self._stderr)
+
+    def resume(self, request: AgentRequest, summary: str) -> AgentResult:
+        return cast(Any, self._runner).resume(
+            request,
+            summary,
+            stdout=self._stdout,
+            stderr=self._stderr,
+        )
 
 
 class _TestRunnerModule(Protocol):
@@ -293,9 +347,9 @@ def build_parser() -> argparse.ArgumentParser:
             if command_kind not in {
                 CommandKind.RUN_TEST,
                 CommandKind.RUN_BENCH,
-                CommandKind.OPTIMIZE_BATCH,
             }:
-                subparser.add_argument("--interact", action="store_true")
+                if command_kind != CommandKind.OPTIMIZE_BATCH:
+                    subparser.add_argument("--interact", action="store_true")
                 subparser.add_argument("--show-output", action="store_true")
             if command_kind not in {CommandKind.RUN_TEST, CommandKind.RUN_BENCH}:
                 subparser.add_argument(
@@ -584,7 +638,11 @@ def _build_optimize_request(
     )
 
 
-def _run_optimize_request(request: AgentRequest) -> AgentResult:
+def _run_optimize_request(
+    request: AgentRequest,
+    stdout: TextIO | None = None,
+    stderr: TextIO | None = None,
+) -> AgentResult:
     repo_root = Path(__file__).resolve().parents[2]
     manager = SkillLinkManager(repo_root / "skills")
     links = manager.prepare_skills(request.agent_name, request.workdir)
@@ -595,24 +653,27 @@ def _run_optimize_request(request: AgentRequest) -> AgentResult:
         test_mode=request.test_mode or "differential",
         bench_mode=request.bench_mode or "standalone",
     )
+    verbose_stream = stderr or sys.stderr
     if request.verbose:
-        emit_verbose_lines(sys.stderr, "skills", manager.describe_prepare(links))
+        emit_verbose_lines(verbose_stream, "skills", manager.describe_prepare(links))
     if request.verbose:
-        emit_verbose_lines(sys.stderr, "agents", guidance_manager.describe_prepare(guidance_state))
+        emit_verbose_lines(verbose_stream, "agents", guidance_manager.describe_prepare(guidance_state))
     try:
         runner = create_runner(request.agent_name)
+        if stdout is not None or stderr is not None:
+            return OptimizeSupervisor().run(_RunnerWithStreams(runner, stdout=stdout, stderr=stderr), request)
         return OptimizeSupervisor().run(runner, request)
     finally:
         if request.verbose:
-            emit_verbose_lines(sys.stderr, "agents", guidance_manager.describe_cleanup(guidance_state))
+            emit_verbose_lines(verbose_stream, "agents", guidance_manager.describe_cleanup(guidance_state))
         warnings = guidance_manager.cleanup(guidance_state)
         for warning in warnings:
-            emit_verbose(sys.stderr, "agents", warning)
+            emit_verbose(verbose_stream, "agents", warning)
         if request.verbose:
-            emit_verbose_lines(sys.stderr, "skills", manager.describe_cleanup(links))
+            emit_verbose_lines(verbose_stream, "skills", manager.describe_cleanup(links))
         warnings = manager.cleanup(links)
         for warning in warnings:
-            emit_verbose(sys.stderr, "skills", warning)
+            emit_verbose(verbose_stream, "skills", warning)
 
 
 def _run_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -637,6 +698,8 @@ def _run_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namespac
             continue
         runnable.append(BatchOptimizeWorkspace(workspace=workspace, operator_file=operator_file))
 
+    output_lock = threading.Lock()
+
     with ThreadPoolExecutor(max_workers=args.max_concurrency) as executor:
         futures: dict[Future[AgentResult], BatchOptimizeWorkspace] = {}
         for item in runnable:
@@ -651,7 +714,13 @@ def _run_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namespac
                     )
                 )
                 continue
-            futures[executor.submit(_run_optimize_request, request)] = item
+            if args.show_output:
+                prefix = f"[{item.workspace.name}] "
+                prefixed_stream = _PrefixedTextStream(sys.stdout, prefix, output_lock)
+                stream = cast(TextIO, prefixed_stream)
+                futures[executor.submit(_run_optimize_request, request, stream, stream)] = item
+            else:
+                futures[executor.submit(_run_optimize_request, request)] = item
 
         for future in as_completed(futures):
             item = futures[future]

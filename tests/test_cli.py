@@ -419,7 +419,7 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.max_concurrency, 2)
         self.assertEqual(args.agent, "codex")
         self.assertFalse(hasattr(args, "interact"))
-        self.assertFalse(hasattr(args, "show_output"))
+        self.assertFalse(args.show_output)
 
     def test_optimize_batch_accepts_optimize_options(self) -> None:
         parser = build_parser()
@@ -444,6 +444,7 @@ class CliParserTests(unittest.TestCase):
                 "--no-agent-session",
                 "--max-concurrency",
                 "3",
+                "--show-output",
             ]
         )
         self.assertEqual(args.agent, "pi")
@@ -455,6 +456,7 @@ class CliParserTests(unittest.TestCase):
         self.assertTrue(args.continue_optimize)
         self.assertTrue(args.no_agent_session)
         self.assertEqual(args.max_concurrency, 3)
+        self.assertTrue(args.show_output)
 
 
 class PathResolutionTests(unittest.TestCase):
@@ -555,6 +557,33 @@ class PathResolutionTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(max_active, 2)
+
+    def test_main_optimize_batch_show_output_prefixes_workspace_streams(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("alpha", "beta"):
+                workspace = root / name
+                workspace.mkdir()
+                (workspace / f"{name}.py").write_text("print('x')\n", encoding="utf-8")
+
+            stdout = StringIO()
+
+            def _fake_run(request, stdout=None, stderr=None):
+                if stdout is not None:
+                    stdout.write("round 1 start\n")
+                if stderr is not None:
+                    stderr.write("warn line\n")
+                return AgentResult(return_code=0, stdout="round 1 start\n", stderr="warn line\n")
+
+            with patch("triton_agent.cli._run_optimize_request", side_effect=_fake_run):
+                with redirect_stdout(stdout):
+                    exit_code = main(["optimize-batch", "-i", str(root), "--show-output"])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertIn("[alpha] round 1 start", rendered)
+            self.assertIn("[beta] round 1 start", rendered)
+            self.assertIn("Summary: 2 succeeded, 0 failed", rendered)
 
     def test_main_optimize_batch_rejects_invalid_concurrency(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

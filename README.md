@@ -91,7 +91,8 @@ Generated harnesses record their resolved public entrypoint, entrypoint kind, ta
 - In each batch workspace, `optimize-batch` auto-selects the only remaining `.py` file after excluding generated artifacts such as `test_*.py`, `differential_test_*.py`, `bench_*.py`, `opt_*.py`, and `__init__.py`.
 - If a batch workspace has zero or multiple remaining `.py` candidates, `optimize-batch` reports that workspace as a failure and keeps processing the rest of the batch.
 - `optimize-batch` accepts the same optimize orchestration flags as `optimize`, plus `--max-concurrency <N>` for bounded parallel execution.
-- `optimize-batch` does not support `--output`, `--interact`, or `--show-output`; it prints a compact per-workspace summary after the batch finishes.
+- `optimize-batch` does not support `--output` or `--interact`.
+- `optimize-batch --show-output` streams live per-workspace output into the current terminal with `[workspace-name] ` prefixes while still printing the compact batch summary at the end.
 - For `optimize --no-agent-session`, Codex uses `--ephemeral`, Pi uses `--no-session`, and OpenCode ignores the flag.
 - `optimize --continue` requires an existing `opt-note.md`, at least one `opt-round-*` directory, an existing generated test harness with readable `# test-mode: ...`, and an existing generated benchmark harness with readable `# bench-mode: ...`.
 - `optimize --continue` rejects `--test-mode` and `--bench-mode`; it reuses the modes recorded in the existing harness metadata.
