@@ -13,7 +13,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.cli import (
     _normalize_command_aliases,
-    _normalize_agent_result,
     build_parser,
     main,
     prepare_generation_target,
@@ -26,6 +25,7 @@ from triton_agent.paths import (
     resolve_execution_target,
 )
 from triton_agent.prompts import build_prompt
+from triton_agent.result_normalization import normalize_agent_result
 
 
 class CliParserTests(unittest.TestCase):
@@ -604,7 +604,7 @@ class PathResolutionTests(unittest.TestCase):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.cli._run_optimize_request", side_effect=_fake_run):
+            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 exit_code = main(["optimize-batch", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
@@ -634,7 +634,7 @@ class PathResolutionTests(unittest.TestCase):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.cli._run_optimize_request", side_effect=_fake_run):
+            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
                     exit_code = main(["optimize-batch", "-i", str(root)])
 
@@ -673,7 +673,7 @@ class PathResolutionTests(unittest.TestCase):
                     active -= 1
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.cli._run_optimize_request", side_effect=_fake_run):
+            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 exit_code = main(
                     ["optimize-batch", "-i", str(root), "--max-concurrency", "2"]
                 )
@@ -698,7 +698,7 @@ class PathResolutionTests(unittest.TestCase):
                     stderr.write("warn line\n")
                 return AgentResult(return_code=0, stdout="round 1 start\n", stderr="warn line\n")
 
-            with patch("triton_agent.cli._run_optimize_request", side_effect=_fake_run):
+            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
                     exit_code = main(["optimize-batch", "-i", str(root), "--show-output"])
 
@@ -771,7 +771,7 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.cli.run_local_test", return_value=(fake_result, None)) as mocked:
+            with patch("triton_agent.commands.execution.run_local_test", return_value=(fake_result, None)) as mocked:
                 exit_code = main(
                     [
                         "run-test",
@@ -798,7 +798,7 @@ class PathResolutionTests(unittest.TestCase):
             test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.cli.run_local_test", return_value=(fake_result, None)) as mocked:
+            with patch("triton_agent.commands.execution.run_local_test", return_value=(fake_result, None)) as mocked:
                 exit_code = main(
                     [
                         "run-test",
@@ -830,7 +830,7 @@ class PathResolutionTests(unittest.TestCase):
                 run_local_test=lambda *_args, **_kwargs: (fake_result, None),
             )
 
-            with patch("triton_agent.cli.load_run_skill_module", return_value=runtime) as mocked_loader:
+            with patch("triton_agent.execution.load_run_skill_module", return_value=runtime) as mocked_loader:
                 exit_code = main(
                     [
                         "run-test",
@@ -880,10 +880,10 @@ class PathResolutionTests(unittest.TestCase):
 
                 return _Runner()
 
-            with patch("triton_agent.cli.build_prompt", side_effect=_fake_build_prompt):
-                with patch("triton_agent.cli.create_runner", side_effect=_fake_create_runner):
-                    with patch("triton_agent.cli.SkillLinkManager.prepare_skills", return_value=[]):
-                        with patch("triton_agent.cli.SkillLinkManager.cleanup", return_value=[]):
+            with patch("triton_agent.generation.build_prompt", side_effect=_fake_build_prompt):
+                with patch("triton_agent.generation.create_runner", side_effect=_fake_create_runner):
+                    with patch("triton_agent.generation.SkillLinkManager.prepare_skills", return_value=[]):
+                        with patch("triton_agent.generation.SkillLinkManager.cleanup", return_value=[]):
                             exit_code = main(
                                 [
                                     "gen-test",
@@ -1059,11 +1059,20 @@ class PathResolutionTests(unittest.TestCase):
                 return "Prompt body"
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.cli.build_prompt", side_effect=_fake_build_prompt):
-                with patch("triton_agent.cli.OptimizeSupervisor.run", return_value=fake_result) as mocked:
-                    with patch("triton_agent.cli.create_runner", return_value=object()):
-                        with patch("triton_agent.cli.SkillLinkManager.prepare_skills", return_value=[]):
-                            with patch("triton_agent.cli.SkillLinkManager.cleanup", return_value=[]):
+            with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
+                with patch(
+                    "triton_agent.optimize.runtime.OptimizeSupervisor.run",
+                    return_value=fake_result,
+                ) as mocked:
+                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                        with patch(
+                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            return_value=[],
+                        ):
+                            with patch(
+                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                return_value=[],
+                            ):
                                 exit_code = main(
                                     ["optimize", "-i", str(operator), "--continue"]
                                 )
@@ -1083,11 +1092,20 @@ class PathResolutionTests(unittest.TestCase):
             operator.write_text("print('x')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.cli.build_prompt", return_value="Prompt body"):
-                with patch("triton_agent.cli.OptimizeSupervisor.run", return_value=fake_result) as mocked:
-                    with patch("triton_agent.cli.create_runner", return_value=object()):
-                        with patch("triton_agent.cli.SkillLinkManager.prepare_skills", return_value=[]):
-                            with patch("triton_agent.cli.SkillLinkManager.cleanup", return_value=[]):
+            with patch("triton_agent.optimize.runtime.build_prompt", return_value="Prompt body"):
+                with patch(
+                    "triton_agent.optimize.runtime.OptimizeSupervisor.run",
+                    return_value=fake_result,
+                ) as mocked:
+                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                        with patch(
+                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            return_value=[],
+                        ):
+                            with patch(
+                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                return_value=[],
+                            ):
                                 exit_code = main(
                                     ["optimize", "-i", str(operator), "--no-agent-session"]
                                 )
@@ -1132,7 +1150,7 @@ class PathResolutionTests(unittest.TestCase):
             stderr = StringIO()
             fake_result = AgentResult(return_code=0, stdout="test stdout\n", stderr="test stderr\n")
 
-            with patch("triton_agent.cli.run_local_test", return_value=(fake_result, None)) as mocked:
+            with patch("triton_agent.commands.execution.run_local_test", return_value=(fake_result, None)) as mocked:
                 with redirect_stdout(stdout), redirect_stderr(stderr):
                     exit_code = main(
                         [
@@ -1162,7 +1180,7 @@ class PathResolutionTests(unittest.TestCase):
             stdout = StringIO()
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.cli.run_local_test", return_value=(fake_result, archive)):
+            with patch("triton_agent.commands.execution.run_local_test", return_value=(fake_result, archive)):
                 with redirect_stdout(stdout):
                     exit_code = main(
                         [
@@ -1189,7 +1207,7 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch(
-                "triton_agent.cli.run_remote_test",
+                "triton_agent.commands.execution.run_remote_test",
                 return_value=(fake_result, None, "/tmp/triton-agent-abc"),
             ) as mocked:
                 exit_code = main(
@@ -1229,7 +1247,7 @@ class PathResolutionTests(unittest.TestCase):
             stdout = StringIO()
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch(
-                "triton_agent.cli.run_remote_test",
+                "triton_agent.commands.execution.run_remote_test",
                 return_value=(fake_result, None, "/tmp/triton-agent-keep"),
             ):
                 with redirect_stdout(stdout):
@@ -1262,7 +1280,7 @@ class PathResolutionTests(unittest.TestCase):
             stderr = StringIO()
             fake_result = AgentResult(return_code=0, stdout="latency-a: 1.0\n", stderr="bench stderr\n")
 
-            with patch("triton_agent.cli.run_local_bench", return_value=(fake_result, perf_file)) as mocked:
+            with patch("triton_agent.commands.execution.run_local_bench", return_value=(fake_result, perf_file)) as mocked:
                 with redirect_stdout(stdout), redirect_stderr(stderr):
                     exit_code = main(
                         [
@@ -1294,7 +1312,7 @@ class PathResolutionTests(unittest.TestCase):
             bench_file.write_text("# bench-mode: msprof\n# kernel: k\nprint('bench')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.cli.run_local_bench", return_value=(fake_result, None)) as mocked:
+            with patch("triton_agent.commands.execution.run_local_bench", return_value=(fake_result, None)) as mocked:
                 exit_code = main(
                     [
                         "run-bench",
@@ -1326,7 +1344,7 @@ class PathResolutionTests(unittest.TestCase):
                 run_local_bench=lambda *_args, **_kwargs: (fake_result, None),
             )
 
-            with patch("triton_agent.cli.load_run_skill_module", return_value=runtime) as mocked_loader:
+            with patch("triton_agent.execution.load_run_skill_module", return_value=runtime) as mocked_loader:
                 exit_code = main(
                     [
                         "run-bench",
@@ -1350,7 +1368,7 @@ class PathResolutionTests(unittest.TestCase):
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch(
-                "triton_agent.cli.run_remote_bench",
+                "triton_agent.commands.execution.run_remote_bench",
                 return_value=(fake_result, None, "/tmp/triton-agent-bench"),
             ) as mocked:
                 exit_code = main(
@@ -1388,7 +1406,7 @@ class PathResolutionTests(unittest.TestCase):
             stdout = StringIO()
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch(
-                "triton_agent.cli.run_remote_bench",
+                "triton_agent.commands.execution.run_remote_bench",
                 return_value=(fake_result, None, "/tmp/triton-agent-keep-bench"),
             ):
                 with redirect_stdout(stdout):
@@ -1417,7 +1435,7 @@ class PathResolutionTests(unittest.TestCase):
             bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
 
             stderr = StringIO()
-            with patch("triton_agent.cli.run_local_bench", side_effect=FileNotFoundError("missing perf")):
+            with patch("triton_agent.commands.execution.run_local_bench", side_effect=FileNotFoundError("missing perf")):
                 with redirect_stderr(stderr):
                     exit_code = main(
                         [
@@ -1442,7 +1460,7 @@ class PathResolutionTests(unittest.TestCase):
             oracle.write_text("oracle", encoding="utf-8")
             new.write_text("new", encoding="utf-8")
 
-            with patch("triton_agent.cli.compare_result_files", return_value=0) as mocked:
+            with patch("triton_agent.commands.comparison.compare_result_files", return_value=0) as mocked:
                 exit_code = main(
                     [
                         "compare-result",
@@ -1464,7 +1482,7 @@ class PathResolutionTests(unittest.TestCase):
             oracle.write_text("oracle", encoding="utf-8")
             new.write_text("new", encoding="utf-8")
 
-            with patch("triton_agent.cli.compare_remote_result_files", return_value=0) as mocked:
+            with patch("triton_agent.commands.comparison.compare_remote_result_files", return_value=0) as mocked:
                 exit_code = main(
                     [
                         "compare-result",
@@ -1496,7 +1514,7 @@ class PathResolutionTests(unittest.TestCase):
             baseline.write_text("latency-a: 10\n", encoding="utf-8")
             compare.write_text("latency-a: 11\n", encoding="utf-8")
 
-            with patch("triton_agent.cli.compare_perf_files", return_value=0) as mocked:
+            with patch("triton_agent.commands.comparison.compare_perf_files", return_value=0) as mocked:
                 exit_code = main(
                     [
                         "compare-perf",
@@ -1751,7 +1769,7 @@ class OutputRenderingTests(unittest.TestCase):
 class ResultNormalizationTests(unittest.TestCase):
     def test_invalid_skill_result_payload_raises_actionable_error(self) -> None:
         with self.assertRaisesRegex(ValueError, "missing required keys"):
-            _normalize_agent_result({"stdout": "", "stderr": ""})
+            normalize_agent_result({"stdout": "", "stderr": ""})
 
 
 if __name__ == "__main__":

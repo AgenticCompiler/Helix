@@ -1,208 +1,35 @@
 from __future__ import annotations
 
 import argparse
-import re
-import sys
-import threading
-from io import TextIOBase
-from collections.abc import Mapping
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Protocol, TextIO, cast
+from typing import Optional, TextIO
 
 from triton_agent.agent import AgentRunner
-from triton_agent.claude_runner import ClaudeRunner
-from triton_agent.codex_runner import CodexRunner
-from triton_agent.models import AgentResult, COMMAND_TO_SKILL, AgentRequest, CommandKind
-from triton_agent.optimize_guidance import OptimizeGuidanceManager
-from triton_agent.opencode_runner import OpenCodeRunner
-from triton_agent.paths import default_generated_output_path
-from triton_agent.pi_runner import PiRunner
-from triton_agent.prompts import build_prompt
-from triton_agent.run_skill import load_run_skill_module
-from triton_agent.skills import SkillLinkManager
-from triton_agent.supervisor import OptimizeSupervisor
-from triton_agent.verbose import emit_verbose, emit_verbose_lines
-
-
-_BATCH_OPTIMIZE_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")
-_BATCH_OPTIMIZE_EXCLUDED_NAMES = {"__init__.py"}
-_RunSkillPayload = Mapping[str, object]
-
-
-@dataclass(frozen=True)
-class BatchOptimizeWorkspace:
-    workspace: Path
-    operator_file: Path
-
-
-@dataclass(frozen=True)
-class BatchOptimizeResult:
-    workspace: Path
-    succeeded: bool
-    message: str
-
-
-@dataclass(frozen=True)
-class OptimizeStatusRound:
-    round_name: str
-    score: float
-    mean_latency: float
-
-
-@dataclass(frozen=True)
-class OptimizeStatusWorkspace:
-    workspace: Path
-    state: str
-    baseline_mean: float | None
-    best_mean: float | None
-    avg_improvement: float | None
-    best_round: str | None
-    logged_best: str | None
-    warnings: tuple[str, ...]
-
-
-class _PrefixedTextStream(TextIOBase):
-    def __init__(self, stream: TextIO, prefix: str, lock: threading.Lock) -> None:
-        self._stream = stream
-        self._prefix = prefix
-        self._lock = lock
-        self._at_line_start = True
-
-    def write(self, text: str) -> int:
-        if not text:
-            return 0
-        with self._lock:
-            for chunk in text.splitlines(keepends=True):
-                if self._at_line_start:
-                    self._stream.write(self._prefix)
-                self._stream.write(chunk)
-                self._at_line_start = chunk.endswith("\n")
-            if text and not text.endswith(("\n", "\r")):
-                self._at_line_start = False
-            return len(text)
-
-    def flush(self) -> None:
-        with self._lock:
-            self._stream.flush()
-
-    def isatty(self) -> bool:
-        isatty = getattr(self._stream, "isatty", None)
-        return bool(callable(isatty) and isatty())
-
-
-class _RunnerWithStreams:
-    def __init__(
-        self,
-        runner: AgentRunner,
-        stdout: TextIO | None = None,
-        stderr: TextIO | None = None,
-    ) -> None:
-        self._runner = runner
-        self._stdout = stdout
-        self._stderr = stderr
-
-    def run(self, request: AgentRequest) -> AgentResult:
-        return cast(Any, self._runner).run(request, stdout=self._stdout, stderr=self._stderr)
-
-    def resume(self, request: AgentRequest, summary: str) -> AgentResult:
-        return cast(Any, self._runner).resume(
-            request,
-            summary,
-            stdout=self._stdout,
-            stderr=self._stderr,
-        )
-
-
-class _TestRunnerModule(Protocol):
-    def run_local_test(
-        self,
-        test_file: Path,
-        operator_file: Path,
-        test_mode: str,
-    ) -> tuple[_RunSkillPayload, Path | None]: ...
-
-    def run_remote_test(
-        self,
-        test_file: Path,
-        operator_file: Path,
-        test_mode: str,
-        remote: str,
-        remote_workdir: str | None,
-        keep_remote_workdir: bool = False,
-        verbose: bool = False,
-        stderr: TextIO | None = None,
-    ) -> tuple[_RunSkillPayload, Path | None, str]: ...
-
-    def parse_test_metadata(self, test_file: Path) -> dict[str, str]: ...
-
-
-class _CompareResultModule(Protocol):
-    def compare_result_files(
-        self, oracle_result: Path, new_result: Path, compare_level: str
-    ) -> int: ...
-
-    def compare_remote_result_files(
-        self,
-        oracle_result: Path,
-        new_result: Path,
-        compare_level: str,
-        remote: str,
-        remote_workdir: str | None,
-        verbose: bool = False,
-        stderr: TextIO | None = None,
-    ) -> int: ...
-
-
-class _BenchRunnerModule(Protocol):
-    def run_local_bench(
-        self,
-        bench_file: Path,
-        operator_file: Path,
-        bench_mode: str,
-    ) -> tuple[_RunSkillPayload, Path | None]: ...
-
-    def run_remote_bench(
-        self,
-        bench_file: Path,
-        operator_file: Path,
-        bench_mode: str,
-        remote: str,
-        remote_workdir: str | None,
-        keep_remote_workdir: bool = False,
-        verbose: bool = False,
-        stderr: TextIO | None = None,
-    ) -> tuple[_RunSkillPayload, Path | None, str]: ...
-
-    def parse_bench_metadata(self, bench_file: Path) -> dict[str, str]: ...
-
-    def parse_perf_file(self, path: Path) -> dict[str, float]: ...
-
-
-class _ComparePerfModule(Protocol):
-    def compare_perf_files(self, baseline_perf: Path, compare_perf: Path) -> int: ...
-
-
-def _load_test_runner() -> _TestRunnerModule:
-    return cast(_TestRunnerModule, load_run_skill_module("test_runner"))
-
-
-def _load_compare_result() -> _CompareResultModule:
-    return cast(_CompareResultModule, load_run_skill_module("compare_result"))
-
-
-def _load_bench_runner() -> _BenchRunnerModule:
-    return cast(_BenchRunnerModule, load_run_skill_module("bench_runner"))
-
-
-def _load_compare_perf() -> _ComparePerfModule:
-    return cast(_ComparePerfModule, load_run_skill_module("compare_perf"))
+from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
+from triton_agent.commands.execution import handle_run_bench, handle_run_test
+from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
+from triton_agent.commands.optimize import (
+    handle_optimize,
+    handle_optimize_batch,
+    handle_optimize_status,
+)
+from triton_agent.comparison import (
+    compare_perf_files as _compare_perf_files,
+    compare_remote_result_files as _compare_remote_result_files,
+    compare_result_files as _compare_result_files,
+)
+from triton_agent.execution import run_local_bench as _run_local_bench
+from triton_agent.execution import run_local_test as _run_local_test
+from triton_agent.execution import run_remote_bench as _run_remote_bench
+from triton_agent.execution import run_remote_test as _run_remote_test
+from triton_agent.generation import prepare_generation_target as _prepare_generation_target
+from triton_agent.models import AgentResult, CommandKind
+from triton_agent.output import render_result as _render_result
+from triton_agent.runner_factory import create_runner as _create_runner
 
 
 def run_local_test(test_file: Path, operator_file: Path, test_mode: str) -> tuple[AgentResult, Path | None]:
-    result, archived = _load_test_runner().run_local_test(test_file, operator_file, test_mode)
-    return _normalize_agent_result(result), archived
+    return _run_local_test(test_file, operator_file, test_mode)
 
 
 def run_remote_test(
@@ -216,7 +43,7 @@ def run_remote_test(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[AgentResult, Path | None, str]:
-    result, archived, remote_workspace = _load_test_runner().run_remote_test(
+    return _run_remote_test(
         test_file,
         operator_file,
         test_mode,
@@ -226,15 +53,10 @@ def run_remote_test(
         verbose=verbose,
         stderr=stderr,
     )
-    return _normalize_agent_result(result), archived, remote_workspace
-
-
-def parse_test_metadata(test_file: Path) -> dict[str, str]:
-    return _load_test_runner().parse_test_metadata(test_file)
 
 
 def compare_result_files(oracle_result: Path, new_result: Path, compare_level: str) -> int:
-    return _load_compare_result().compare_result_files(oracle_result, new_result, compare_level)
+    return _compare_result_files(oracle_result, new_result, compare_level)
 
 
 def compare_remote_result_files(
@@ -247,7 +69,7 @@ def compare_remote_result_files(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> int:
-    return _load_compare_result().compare_remote_result_files(
+    return _compare_remote_result_files(
         oracle_result,
         new_result,
         compare_level,
@@ -261,8 +83,7 @@ def compare_remote_result_files(
 def run_local_bench(
     bench_file: Path, operator_file: Path, bench_mode: str
 ) -> tuple[AgentResult, Path | None]:
-    result, perf_path = _load_bench_runner().run_local_bench(bench_file, operator_file, bench_mode)
-    return _normalize_agent_result(result), perf_path
+    return _run_local_bench(bench_file, operator_file, bench_mode)
 
 
 def run_remote_bench(
@@ -276,7 +97,7 @@ def run_remote_bench(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[AgentResult, Path | None, str]:
-    result, perf_path, remote_workspace = _load_bench_runner().run_remote_bench(
+    return _run_remote_bench(
         bench_file,
         operator_file,
         bench_mode,
@@ -286,40 +107,16 @@ def run_remote_bench(
         verbose=verbose,
         stderr=stderr,
     )
-    return _normalize_agent_result(result), perf_path, remote_workspace
-
-
-def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
-    return _load_bench_runner().parse_bench_metadata(bench_file)
 
 
 def parse_perf_file(path: Path) -> dict[str, float]:
-    return _load_bench_runner().parse_perf_file(path)
+    from triton_agent.bench_runner import parse_perf_file as _parse_perf_file
+
+    return _parse_perf_file(path)
 
 
 def compare_perf_files(baseline_perf: Path, compare_perf: Path) -> int:
-    return _load_compare_perf().compare_perf_files(baseline_perf, compare_perf)
-
-
-def _normalize_agent_result(result: AgentResult | _RunSkillPayload) -> AgentResult:
-    if isinstance(result, AgentResult):
-        return result
-    payload = result
-    required_keys = ("return_code", "stdout", "stderr")
-    missing_keys = [key for key in required_keys if key not in payload]
-    if missing_keys:
-        raise ValueError(
-            "Run skill result payload is missing required keys: "
-            + ", ".join(sorted(missing_keys))
-        )
-    session_id = payload.get("session_id")
-    return AgentResult(
-        return_code=int(str(payload["return_code"])),
-        stdout=str(payload["stdout"]),
-        stderr=str(payload["stderr"]),
-        stalled=bool(payload.get("stalled", False)),
-        session_id=None if session_id is None else str(session_id),
-    )
+    return _compare_perf_files(baseline_perf, compare_perf)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -431,654 +228,25 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(_normalize_command_aliases(argv))
 
     command_kind: CommandKind = args.command_kind
-    if command_kind in {CommandKind.OPTIMIZE, CommandKind.OPTIMIZE_BATCH}:
-        _validate_optimize_arguments(parser, args)
-    if command_kind == CommandKind.OPTIMIZE_BATCH:
-        return _run_optimize_batch(parser, args)
-    if command_kind == CommandKind.OPTIMIZE_STATUS:
-        return _run_optimize_status(parser, args)
-    continue_optimize = bool(getattr(args, "continue_optimize", False))
-
+    if command_kind == CommandKind.GEN_TEST:
+        return handle_gen_test(parser, args)
+    if command_kind == CommandKind.GEN_BENCH:
+        return handle_gen_bench(parser, args)
+    if command_kind == CommandKind.RUN_TEST:
+        return handle_run_test(parser, args)
+    if command_kind == CommandKind.RUN_BENCH:
+        return handle_run_bench(parser, args)
     if command_kind == CommandKind.COMPARE_RESULT:
-        oracle_result = Path(args.oracle_result).expanduser().resolve()
-        if not oracle_result.exists():
-            parser.error(f"Oracle result path does not exist: {oracle_result}")
-        new_result = Path(args.new_result).expanduser().resolve()
-        if not new_result.exists():
-            parser.error(f"New result path does not exist: {new_result}")
-        if args.remote:
-            try:
-                return compare_remote_result_files(
-                    oracle_result,
-                    new_result,
-                    args.compare_level,
-                    args.remote,
-                    args.remote_workdir,
-                    verbose=args.verbose,
-                    stderr=sys.stderr,
-                )
-            except (RuntimeError, ValueError) as exc:
-                print(str(exc), file=sys.stderr)
-                return 1
-        return compare_result_files(oracle_result, new_result, args.compare_level)
+        return handle_compare_result(parser, args)
     if command_kind == CommandKind.COMPARE_PERF:
-        baseline_perf = Path(args.baseline).expanduser().resolve()
-        if not baseline_perf.exists():
-            parser.error(f"Baseline perf path does not exist: {baseline_perf}")
-        compare_perf = Path(args.compare).expanduser().resolve()
-        if not compare_perf.exists():
-            parser.error(f"Compare perf path does not exist: {compare_perf}")
-        return compare_perf_files(baseline_perf, compare_perf)
-
-    input_path, operator_path, workdir = _resolve_request_paths(parser, command_kind, args)
-    if command_kind == CommandKind.RUN_TEST:
-        resolved_test_mode = args.test_mode or _resolve_test_mode_from_metadata(input_path)
-        remote_workspace: str | None = None
-        try:
-            if args.remote:
-                result, archived_result, remote_workspace = run_remote_test(
-                    input_path,
-                    operator_path or input_path,
-                    resolved_test_mode,
-                    args.remote,
-                    args.remote_workdir,
-                    keep_remote_workdir=args.keep_remote_workdir,
-                    verbose=args.verbose,
-                    stderr=sys.stderr,
-                )
-            else:
-                result, archived_result = run_local_test(
-                    input_path,
-                    operator_path or input_path,
-                    resolved_test_mode,
-                )
-        except (FileNotFoundError, RuntimeError, ValueError) as exc:
-            print(str(exc), file=sys.stderr)
-            return 1
-        render_result(result, show_output=True)
-        print(f"Return code: {result.return_code}")
-        if archived_result is not None:
-            print(f"Archived result: {archived_result}")
-        if args.remote and args.keep_remote_workdir and remote_workspace is not None:
-            print(f"Remote workspace: {remote_workspace}")
-        return result.return_code
-    if command_kind == CommandKind.RUN_BENCH:
-        resolved_bench_mode = args.bench_mode or _resolve_bench_mode_from_metadata(input_path)
-        remote_workspace: str | None = None
-        try:
-            if args.remote:
-                result, perf_path, remote_workspace = run_remote_bench(
-                    input_path,
-                    operator_path or input_path,
-                    resolved_bench_mode,
-                    args.remote,
-                    args.remote_workdir,
-                    keep_remote_workdir=args.keep_remote_workdir,
-                    verbose=args.verbose,
-                    stderr=sys.stderr,
-                )
-            else:
-                result, perf_path = run_local_bench(
-                    input_path,
-                    operator_path or input_path,
-                    resolved_bench_mode,
-                )
-        except (FileNotFoundError, ValueError, RuntimeError) as exc:
-            print(str(exc), file=sys.stderr)
-            return 1
-        render_result(result, show_output=True)
-        print(f"Return code: {result.return_code}")
-        if perf_path is not None:
-            print(f"Perf file: {perf_path}")
-        if args.remote and args.keep_remote_workdir and remote_workspace is not None:
-            print(f"Remote workspace: {remote_workspace}")
-        return result.return_code
-
+        return handle_compare_perf(parser, args)
     if command_kind == CommandKind.OPTIMIZE:
-        try:
-            request = _build_optimize_request(args, input_path, workdir)
-        except ValueError as exc:
-            parser.error(str(exc))
-        result = _run_optimize_request(request)
-        render_result(result, show_output=request.show_output)
-        return result.return_code
-
-    test_mode = getattr(args, "test_mode", None)
-    bench_mode = getattr(args, "bench_mode", None)
-    output_path = _resolve_output_path(command_kind, input_path, args.output, test_mode)
-    force_overwrite = getattr(args, "force_overwrite", False)
-    try:
-        file_messages = prepare_generation_target(command_kind, output_path, force_overwrite)
-    except (FileExistsError, IsADirectoryError) as exc:
-        parser.exit(2, f"{exc}\n")
-    if args.verbose:
-        emit_verbose_lines(sys.stderr, "files", file_messages)
-    prompt = build_prompt(
-        command_kind,
-        input_path,
-        operator_path,
-        output_path,
-        test_mode,
-        bench_mode,
-        force_overwrite,
-        getattr(args, "remote", None),
-        getattr(args, "remote_workdir", None),
-        getattr(args, "min_rounds", None),
-        continue_optimize,
-    )
-    request = AgentRequest(
-        command_kind=command_kind,
-        input_path=input_path,
-        operator_path=operator_path,
-        output_path=output_path,
-        test_mode=test_mode,
-        bench_mode=bench_mode,
-        interact=args.interact,
-        verbose=args.verbose,
-        show_output=args.show_output,
-        force_overwrite=force_overwrite,
-        agent_name=args.agent,
-        skill_name=COMMAND_TO_SKILL[command_kind],
-        prompt=prompt,
-        workdir=workdir,
-        min_rounds=getattr(args, "min_rounds", None),
-        continue_optimize=continue_optimize,
-        no_agent_session=bool(getattr(args, "no_agent_session", False)),
-    )
-
-    repo_root = Path(__file__).resolve().parents[2]
-    manager = SkillLinkManager(repo_root / "skills")
-    links = manager.prepare_skills(args.agent, workdir)
-    if request.verbose:
-        emit_verbose_lines(sys.stderr, "skills", manager.describe_prepare(links))
-    try:
-        runner = create_runner(args.agent)
-        result = runner.run(request)
-    finally:
-        if request.verbose:
-            emit_verbose_lines(sys.stderr, "skills", manager.describe_cleanup(links))
-        warnings = manager.cleanup(links)
-        for warning in warnings:
-            emit_verbose(sys.stderr, "skills", warning)
-
-    render_result(result, show_output=request.show_output)
-    return result.return_code
-
-
-def _validate_optimize_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    if args.min_rounds is not None and args.min_rounds < 1:
-        parser.error("--min-rounds must be at least 1")
-    if getattr(args, "command_kind", None) == CommandKind.OPTIMIZE_BATCH:
-        if args.max_concurrency < 1:
-            parser.error("--max-concurrency must be at least 1")
-    if getattr(args, "continue_optimize", False):
-        if getattr(args, "test_mode", None) is not None:
-            parser.error("--continue cannot be combined with --test-mode")
-        if getattr(args, "bench_mode", None) is not None:
-            parser.error("--continue cannot be combined with --bench-mode")
-
-
-def _build_optimize_request(
-    args: argparse.Namespace,
-    input_path: Path,
-    workdir: Path,
-) -> AgentRequest:
-    continue_optimize = bool(getattr(args, "continue_optimize", False))
-    test_mode = getattr(args, "test_mode", None)
-    bench_mode = getattr(args, "bench_mode", None)
-    if continue_optimize:
-        test_mode, bench_mode = _resolve_continue_optimize_modes(input_path, workdir)
-    else:
-        test_mode = test_mode or "differential"
-        bench_mode = bench_mode or "standalone"
-    output_path = _resolve_output_path(
-        CommandKind.OPTIMIZE,
-        input_path,
-        getattr(args, "output", None),
-        test_mode,
-    )
-    prompt = build_prompt(
-        CommandKind.OPTIMIZE,
-        input_path,
-        input_path,
-        output_path,
-        test_mode,
-        bench_mode,
-        False,
-        getattr(args, "remote", None),
-        getattr(args, "remote_workdir", None),
-        getattr(args, "min_rounds", None),
-        continue_optimize,
-    )
-    return AgentRequest(
-        command_kind=CommandKind.OPTIMIZE,
-        input_path=input_path,
-        operator_path=input_path,
-        output_path=output_path,
-        test_mode=test_mode,
-        bench_mode=bench_mode,
-        interact=bool(getattr(args, "interact", False)),
-        verbose=bool(getattr(args, "verbose", False)),
-        show_output=bool(getattr(args, "show_output", False)),
-        force_overwrite=False,
-        agent_name=args.agent,
-        skill_name=COMMAND_TO_SKILL[CommandKind.OPTIMIZE],
-        prompt=prompt,
-        workdir=workdir,
-        min_rounds=getattr(args, "min_rounds", None),
-        continue_optimize=continue_optimize,
-        no_agent_session=bool(getattr(args, "no_agent_session", False)),
-    )
-
-
-def _run_optimize_request(
-    request: AgentRequest,
-    stdout: TextIO | None = None,
-    stderr: TextIO | None = None,
-) -> AgentResult:
-    repo_root = Path(__file__).resolve().parents[2]
-    manager = SkillLinkManager(repo_root / "skills")
-    links = manager.prepare_skills(request.agent_name, request.workdir)
-    guidance_manager = OptimizeGuidanceManager()
-    guidance_state = guidance_manager.prepare(
-        request.workdir,
-        request.input_path,
-        test_mode=request.test_mode or "differential",
-        bench_mode=request.bench_mode or "standalone",
-    )
-    verbose_stream = stderr or sys.stderr
-    if request.verbose:
-        emit_verbose_lines(verbose_stream, "skills", manager.describe_prepare(links))
-    if request.verbose:
-        emit_verbose_lines(verbose_stream, "agents", guidance_manager.describe_prepare(guidance_state))
-    try:
-        runner = create_runner(request.agent_name)
-        if stdout is not None or stderr is not None:
-            return OptimizeSupervisor().run(_RunnerWithStreams(runner, stdout=stdout, stderr=stderr), request)
-        return OptimizeSupervisor().run(runner, request)
-    finally:
-        if request.verbose:
-            emit_verbose_lines(verbose_stream, "agents", guidance_manager.describe_cleanup(guidance_state))
-        warnings = guidance_manager.cleanup(guidance_state)
-        for warning in warnings:
-            emit_verbose(verbose_stream, "agents", warning)
-        if request.verbose:
-            emit_verbose_lines(verbose_stream, "skills", manager.describe_cleanup(links))
-        warnings = manager.cleanup(links)
-        for warning in warnings:
-            emit_verbose(verbose_stream, "skills", warning)
-
-
-def _run_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
-    root = Path(args.input).expanduser().resolve()
-    if not root.exists():
-        parser.error(f"Input path does not exist: {root}")
-    if not root.is_dir():
-        parser.error(f"Input path is not a directory: {root}")
-
-    workspace_candidates = sorted(path for path in root.iterdir() if path.is_dir())
-    if not workspace_candidates:
-        print(f"No operator workspaces found under {root}", file=sys.stderr)
-        return 1
-
-    results: list[BatchOptimizeResult] = []
-    runnable: list[BatchOptimizeWorkspace] = []
-    for workspace in workspace_candidates:
-        try:
-            operator_file = _resolve_batch_optimize_operator_file(workspace)
-        except ValueError as exc:
-            results.append(BatchOptimizeResult(workspace=workspace, succeeded=False, message=str(exc)))
-            continue
-        runnable.append(BatchOptimizeWorkspace(workspace=workspace, operator_file=operator_file))
-
-    output_lock = threading.Lock()
-
-    with ThreadPoolExecutor(max_workers=args.max_concurrency) as executor:
-        futures: dict[Future[AgentResult], BatchOptimizeWorkspace] = {}
-        for item in runnable:
-            try:
-                request = _build_optimize_request(args, item.operator_file, item.workspace)
-            except ValueError as exc:
-                results.append(
-                    BatchOptimizeResult(
-                        workspace=item.workspace,
-                        succeeded=False,
-                        message=str(exc),
-                    )
-                )
-                continue
-            if args.show_output:
-                prefix = f"[{item.workspace.name}] "
-                prefixed_stream = _PrefixedTextStream(sys.stdout, prefix, output_lock)
-                stream = cast(TextIO, prefixed_stream)
-                futures[executor.submit(_run_optimize_request, request, stream, stream)] = item
-            else:
-                futures[executor.submit(_run_optimize_request, request)] = item
-
-        for future in as_completed(futures):
-            item = futures[future]
-            try:
-                result = future.result()
-            except Exception as exc:  # pragma: no cover - defensive boundary
-                results.append(
-                    BatchOptimizeResult(
-                        workspace=item.workspace,
-                        succeeded=False,
-                        message=f"unexpected optimize failure: {exc}",
-                    )
-                )
-                continue
-            if result.succeeded:
-                results.append(
-                    BatchOptimizeResult(
-                        workspace=item.workspace,
-                        succeeded=True,
-                        message=f"optimized {item.operator_file.name}",
-                    )
-                )
-            else:
-                results.append(
-                    BatchOptimizeResult(
-                        workspace=item.workspace,
-                        succeeded=False,
-                        message=_summarize_batch_optimize_failure(result),
-                    )
-                )
-
-    return _render_batch_optimize_results(results)
-
-
-def _run_optimize_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
-    root = Path(args.input).expanduser().resolve()
-    if not root.exists():
-        parser.error(f"Input path does not exist: {root}")
-    if not root.is_dir():
-        parser.error(f"Input path is not a directory: {root}")
-
-    workspace_candidates = sorted(path for path in root.iterdir() if path.is_dir())
-    if not workspace_candidates:
-        print(f"No operator workspaces found under {root}", file=sys.stderr)
-        return 1
-
-    results = [
-        _inspect_optimize_status_workspace(workspace, verbose=bool(getattr(args, "verbose", False)))
-        for workspace in workspace_candidates
-    ]
-    return _render_optimize_status_results(results)
-
-
-def _resolve_batch_optimize_operator_file(workspace: Path) -> Path:
-    candidates = [
-        path
-        for path in sorted(workspace.iterdir())
-        if path.is_file() and _is_batch_optimize_operator_candidate(path)
-    ]
-    if not candidates:
-        raise ValueError("found no candidate operator file after excluding generated artifacts")
-    if len(candidates) > 1:
-        names = ", ".join(path.name for path in candidates)
-        raise ValueError(f"found multiple candidate operator files: {names}")
-    return candidates[0]
-
-
-def _is_batch_optimize_operator_candidate(path: Path) -> bool:
-    if path.suffix != ".py":
-        return False
-    if path.name in _BATCH_OPTIMIZE_EXCLUDED_NAMES:
-        return False
-    return not any(path.name.startswith(prefix) for prefix in _BATCH_OPTIMIZE_EXCLUDED_PREFIXES)
-
-
-def _summarize_batch_optimize_failure(result: AgentResult) -> str:
-    for output in (result.stderr, result.stdout):
-        lines = [line.strip() for line in output.splitlines() if line.strip()]
-        if lines:
-            return lines[-1]
-    return f"optimize exited with return code {result.return_code}"
-
-
-def _render_batch_optimize_results(results: list[BatchOptimizeResult]) -> int:
-    ordered_results = sorted(results, key=lambda item: item.workspace.name)
-    succeeded = sum(1 for item in ordered_results if item.succeeded)
-    failed = len(ordered_results) - succeeded
-    for item in ordered_results:
-        status = "OK" if item.succeeded else "FAIL"
-        print(f"[{status}] {item.workspace.name}: {item.message}")
-    print(f"Summary: {succeeded} succeeded, {failed} failed")
-    return 0 if failed == 0 and ordered_results else 1
-
-
-def _inspect_optimize_status_workspace(
-    workspace: Path,
-    *,
-    verbose: bool = False,
-) -> OptimizeStatusWorkspace:
-    del verbose
-    opt_note = workspace / "opt-note.md"
-    round_dirs = sorted(
-        (path for path in workspace.iterdir() if path.is_dir() and _round_number(path.name) is not None),
-        key=lambda path: (_round_number(path.name) or 0),
-    )
-    top_level_perf_files = sorted(workspace.glob("*_perf.txt"))
-
-    has_artifacts = bool(opt_note.exists() or round_dirs or top_level_perf_files)
-    if not has_artifacts:
-        return OptimizeStatusWorkspace(
-            workspace=workspace,
-            state="no-session",
-            baseline_mean=None,
-            best_mean=None,
-            avg_improvement=None,
-            best_round=None,
-            logged_best=None,
-            warnings=(),
-        )
-
-    warnings: list[str] = []
-    baseline_path = _select_baseline_perf_file(top_level_perf_files, warnings)
-    baseline_values: dict[str, float] | None = None
-    baseline_mean: float | None = None
-    if baseline_path is not None:
-        try:
-            baseline_values = parse_perf_file(baseline_path)
-            baseline_mean = _mean_value(baseline_values.values())
-        except ValueError as exc:
-            warnings.append(str(exc))
-
-    logged_best = _parse_logged_best_round(opt_note) if opt_note.exists() else None
-    comparable_rounds: list[OptimizeStatusRound] = []
-
-    for round_dir in round_dirs:
-        if baseline_values is None:
-            continue
-        perf_path = _find_round_perf_file(round_dir)
-        if perf_path is None:
-            warnings.append(f"missing perf artifact for {round_dir.name}")
-            continue
-        try:
-            round_values = parse_perf_file(perf_path)
-        except ValueError as exc:
-            warnings.append(str(exc))
-            continue
-        if set(baseline_values) != set(round_values):
-            warnings.append("latency ids do not match for comparable perf data")
-            continue
-
-        score_values: list[float] = []
-        for latency_id in sorted(baseline_values):
-            baseline_value = baseline_values[latency_id]
-            if baseline_value <= 0:
-                warnings.append(f"baseline latency must be > 0 for {latency_id}")
-                continue
-            score_values.append((baseline_value - round_values[latency_id]) / baseline_value)
-        if not score_values:
-            continue
-        comparable_rounds.append(
-            OptimizeStatusRound(
-                round_name=f"round-{_round_number(round_dir.name)}",
-                score=_mean_value(score_values),
-                mean_latency=_mean_value(round_values.values()),
-            )
-        )
-
-    if comparable_rounds:
-        best_round = max(comparable_rounds, key=lambda item: (item.score, -item.mean_latency))
-        if logged_best is not None and logged_best != best_round.round_name:
-            warnings.append("numeric best round differs from logged best round")
-        return OptimizeStatusWorkspace(
-            workspace=workspace,
-            state="ok",
-            baseline_mean=baseline_mean,
-            best_mean=best_round.mean_latency,
-            avg_improvement=best_round.score,
-            best_round=best_round.round_name,
-            logged_best=logged_best,
-            warnings=tuple(dict.fromkeys(warnings)),
-        )
-
-    if baseline_path is None:
-        warnings.append("missing baseline perf data")
-    elif baseline_values is not None and round_dirs:
-        warnings.append("missing comparable round perf data")
-
-    return OptimizeStatusWorkspace(
-        workspace=workspace,
-        state="warning",
-        baseline_mean=baseline_mean,
-        best_mean=None,
-        avg_improvement=None,
-        best_round=None,
-        logged_best=logged_best,
-        warnings=tuple(dict.fromkeys(warnings)),
-    )
-
-
-def _select_baseline_perf_file(paths: list[Path], warnings: list[str]) -> Path | None:
-    if not paths:
-        return None
-    if len(paths) > 1:
-        warnings.append("found multiple baseline perf files")
-        return None
-    return paths[0]
-
-
-def _find_round_perf_file(round_dir: Path) -> Path | None:
-    perf_txt = round_dir / "perf.txt"
-    if perf_txt.is_file():
-        return perf_txt
-    perf_files = sorted(round_dir.glob("*_perf.txt"))
-    if len(perf_files) == 1:
-        return perf_files[0]
-    return None
-
-
-def _parse_logged_best_round(path: Path) -> str | None:
-    current_round: str | None = None
-    logged_best: str | None = None
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        match = re.match(r"##\s+Round\s+(\d+)", line)
-        if match:
-            current_round = f"round-{match.group(1)}"
-            continue
-        if line.lower().startswith("best status:") and "current best" in line.lower():
-            logged_best = current_round
-    return logged_best
-
-
-def _round_number(name: str) -> int | None:
-    match = re.fullmatch(r"opt-round-(\d+)", name)
-    if match is None:
-        return None
-    return int(match.group(1))
-
-
-def _mean_value(values: Any) -> float:
-    items = list(values)
-    return sum(items) / len(items)
-
-
-def _format_optimize_status_float(value: float | None) -> str:
-    if value is None:
-        return "unknown"
-    return f"{value:.6f}"
-
-
-def _format_optimize_status_percent(value: float | None) -> str:
-    if value is None:
-        return "unknown"
-    return f"{value * 100:+.1f}%"
-
-
-def _render_optimize_status_results(results: list[OptimizeStatusWorkspace]) -> int:
-    ordered_results = sorted(results, key=lambda item: item.workspace.name)
-    ok_count = sum(1 for item in ordered_results if item.state == "ok")
-    warning_count = sum(1 for item in ordered_results if item.state == "warning")
-    no_session_count = sum(1 for item in ordered_results if item.state == "no-session")
-
-    for item in ordered_results:
-        status = {
-            "ok": "OK",
-            "warning": "WARN",
-            "no-session": "NO-SESSION",
-        }[item.state]
-        print(f"[{status}] {item.workspace.name}")
-        if item.state == "no-session":
-            continue
-        print(f"  Baseline mean: {_format_optimize_status_float(item.baseline_mean)}")
-        print(f"  Best mean: {_format_optimize_status_float(item.best_mean)}")
-        print(f"  Avg improvement: {_format_optimize_status_percent(item.avg_improvement)}")
-        print(f"  Best round: {item.best_round or 'unknown'}")
-        if item.logged_best is not None:
-            print(f"  Logged best: {item.logged_best}")
-        for warning in item.warnings:
-            print(f"  Warning: {warning}")
-
-    print(
-        "Summary: "
-        f"{ok_count} ok, {warning_count} warning, {no_session_count} no-session"
-    )
-    return 0 if ordered_results else 1
-
-
-def _resolve_output_path(
-    command_kind: CommandKind,
-    input_path: Path,
-    explicit_output: str | None,
-    test_mode: str | None = None,
-) -> Path | None:
-    if explicit_output:
-        return Path(explicit_output).expanduser().resolve()
-    if command_kind in {CommandKind.GEN_TEST, CommandKind.GEN_BENCH, CommandKind.OPTIMIZE}:
-        return default_generated_output_path(command_kind, input_path, test_mode=test_mode)
-    return None
-
-
-def _resolve_request_paths(
-    parser: argparse.ArgumentParser, command_kind: CommandKind, args: argparse.Namespace
-) -> tuple[Path, Path | None, Path]:
-    if command_kind == CommandKind.RUN_TEST:
-        test_file = Path(args.test_file).expanduser().resolve()
-        if not test_file.exists():
-            parser.error(f"Test file path does not exist: {test_file}")
-        operator_file = Path(args.operator_file).expanduser().resolve()
-        if not operator_file.exists():
-            parser.error(f"Operator file path does not exist: {operator_file}")
-        return test_file, operator_file, test_file.parent
-
-    if command_kind == CommandKind.RUN_BENCH:
-        bench_file = Path(args.bench_file).expanduser().resolve()
-        if not bench_file.exists():
-            parser.error(f"Bench file path does not exist: {bench_file}")
-        operator_file = Path(args.operator_file).expanduser().resolve()
-        if not operator_file.exists():
-            parser.error(f"Operator file path does not exist: {operator_file}")
-        return bench_file, operator_file, bench_file.parent
-
-    input_path = Path(args.input).expanduser().resolve()
-    if not input_path.exists():
-        parser.error(f"Input path does not exist: {input_path}")
-    return input_path, input_path, input_path.parent
+        return handle_optimize(parser, args)
+    if command_kind == CommandKind.OPTIMIZE_BATCH:
+        return handle_optimize_batch(parser, args)
+    if command_kind == CommandKind.OPTIMIZE_STATUS:
+        return handle_optimize_status(parser, args)
+    raise AssertionError(f"Unhandled command kind: {command_kind}")
 
 
 def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]:
@@ -1099,83 +267,10 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
     return normalized
 
 
-def _resolve_test_mode_from_metadata(test_file: Path) -> str:
-    metadata = parse_test_metadata(test_file)
-    mode = metadata.get("test-mode")
-    if mode not in {"standalone", "differential"}:
-        raise ValueError(f"Test metadata is missing required 'test-mode' entry: {test_file}")
-    return mode
-
-
-def _resolve_bench_mode_from_metadata(bench_file: Path) -> str:
-    metadata = parse_bench_metadata(bench_file)
-    mode = metadata.get("bench-mode")
-    if mode not in {"standalone", "msprof"}:
-        raise ValueError(f"Benchmark metadata is missing required 'bench-mode' entry: {bench_file}")
-    return mode
-
-
-def _resolve_continue_optimize_modes(input_path: Path, workdir: Path) -> tuple[str, str]:
-    opt_note_path = workdir / "opt-note.md"
-    if not opt_note_path.exists():
-        raise ValueError(f"Continue optimize requires existing opt-note.md: {opt_note_path}")
-    if not any(path.is_dir() for path in workdir.glob("opt-round-*")):
-        raise ValueError(
-            f"Continue optimize requires at least one existing opt-round-* directory in {workdir}"
-        )
-
-    test_mode = _resolve_test_mode_from_metadata(_resolve_continue_test_harness(input_path))
-    bench_mode = _resolve_bench_mode_from_metadata(_resolve_continue_bench_harness(input_path))
-    return test_mode, bench_mode
-
-
-def _resolve_continue_test_harness(input_path: Path) -> Path:
-    candidates = [
-        input_path.with_name(f"differential_test_{input_path.stem}.py"),
-        input_path.with_name(f"test_{input_path.stem}.py"),
-    ]
-    existing = [path for path in candidates if path.exists()]
-    if not existing:
-        raise ValueError(
-            f"Continue optimize requires an existing generated test harness for {input_path.name}"
-        )
-    if len(existing) > 1:
-        raise ValueError(
-            "Continue optimize found multiple test harnesses. Keep only the active optimize test harness."
-        )
-    return existing[0]
-
-
-def _resolve_continue_bench_harness(input_path: Path) -> Path:
-    harness = input_path.with_name(f"bench_{input_path.stem}.py")
-    if not harness.exists():
-        raise ValueError(
-            f"Continue optimize requires an existing generated benchmark harness: {harness}"
-        )
-    return harness
-
-
 def prepare_generation_target(
     command_kind: CommandKind, output_path: Path | None, force_overwrite: bool
 ) -> list[str]:
-    if output_path is None:
-        return []
-    if command_kind not in {CommandKind.GEN_TEST, CommandKind.GEN_BENCH}:
-        return []
-    if not output_path.exists():
-        return []
-    if output_path.is_dir():
-        raise IsADirectoryError(
-            f"Output path is a directory: {output_path}. Choose a file path instead."
-        )
-    if not force_overwrite:
-        raise FileExistsError(
-            f"Output file already exists: {output_path}. Use --force-overwrite to replace it."
-        )
-    # Remove the old artifact before launching the agent so generation starts from a
-    # clean file instead of editing whatever happened to be there before.
-    output_path.unlink()
-    return [f"removed existing output file {output_path}"]
+    return _prepare_generation_target(command_kind, output_path, force_overwrite)
 
 
 def render_result(
@@ -1184,26 +279,11 @@ def render_result(
     stdout: Optional[TextIO] = None,
     stderr: Optional[TextIO] = None,
 ) -> None:
-    stdout_stream = stdout or sys.stdout
-    stderr_stream = stderr or sys.stderr
-    # `--show-output` already streamed stdout live, so printing it again here would
-    # duplicate the transcript at the end of the run.
-    if result.stdout and not show_output:
-        print(result.stdout, file=stdout_stream, end="" if result.stdout.endswith("\n") else "\n")
-    if result.stderr:
-        print(result.stderr, file=stderr_stream, end="" if result.stderr.endswith("\n") else "\n")
+    _render_result(result, show_output=show_output, stdout=stdout, stderr=stderr)
 
 
 def create_runner(agent_name: str) -> AgentRunner:
-    if agent_name == "codex":
-        return CodexRunner()
-    if agent_name == "opencode":
-        return OpenCodeRunner()
-    if agent_name == "pi":
-        return PiRunner()
-    if agent_name == "claude":
-        return ClaudeRunner()
-    raise ValueError(f"Unsupported agent backend: {agent_name}")
+    return _create_runner(agent_name)
 
 
 if __name__ == "__main__":
