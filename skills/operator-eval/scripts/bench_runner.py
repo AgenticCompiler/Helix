@@ -70,6 +70,10 @@ def compare_perf_files(baseline_perf: Path, compare_perf: Path) -> int:
     return 0
 
 
+def parse_perf_file(path: Path) -> dict[str, float]:
+    return _parse_perf_file(path)
+
+
 def run_local_bench(
     bench_file: Path,
     operator_file: Path,

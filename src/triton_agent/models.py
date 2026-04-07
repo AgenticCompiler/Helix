@@ -13,6 +13,7 @@ class CommandKind(str, Enum):
     RUN_BENCH = "run-bench"
     COMPARE_RESULT = "compare-result"
     COMPARE_PERF = "compare-perf"
+    OPTIMIZE_STATUS = "optimize-status"
     OPTIMIZE = "optimize"
     OPTIMIZE_BATCH = "optimize-batch"
 
@@ -24,6 +25,7 @@ COMMAND_TO_SKILL = {
     CommandKind.RUN_BENCH: "",
     CommandKind.COMPARE_RESULT: "",
     CommandKind.COMPARE_PERF: "",
+    CommandKind.OPTIMIZE_STATUS: "",
     CommandKind.OPTIMIZE: "optimize",
     CommandKind.OPTIMIZE_BATCH: "",
 }

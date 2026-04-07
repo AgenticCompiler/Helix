@@ -8,6 +8,7 @@ uv run triton-agent run-test --test-file test_a.py --operator-file a.py
 uv run triton-agent gen-bench --input a.py
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
 uv run triton-agent optimize --input a.py
+uv run triton-agent optimize-status --input operators_root
 uv run triton-agent optimize-batch --input operators_root
 ```
 
@@ -37,6 +38,7 @@ uv run triton-agent optimize --input a.py --remote user@host:2222 --remote-workd
 uv run triton-agent optimize --input a.py --min-rounds 3
 uv run triton-agent optimize --input a.py --continue
 uv run triton-agent optimize --input a.py --no-agent-session
+uv run triton-agent optimize-status --input operators_root
 uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
 uv run triton-agent optimize-batch --input operators_root --agent pi --test-mode differential --bench-mode standalone
 ```
@@ -87,6 +89,10 @@ Generated harnesses record their resolved public entrypoint, entrypoint kind, ta
 - `optimize` accepts `--min-rounds <N>` to require at least `N` `opt-round-*` directories before the run may finish successfully.
 - `optimize` accepts `--continue` to resume an existing optimization session instead of starting a fresh one.
 - `optimize` accepts `--no-agent-session` to request a non-persistent code-agent session when the selected backend supports it.
+- `optimize-status` scans the immediate child directories under `--input` and treats each child directory as one operator workspace candidate.
+- `optimize-status` is a local read-only summary command; it does not launch a code agent, support remote execution, or expose `--output` or `--interact`.
+- `optimize-status` reports per-workspace numeric summaries including baseline mean latency, best mean latency, average improvement across per-case latency improvements, and both numeric-best and logged-best rounds when available.
+- `optimize-status` keeps scanning when a workspace has missing or malformed optimize artifacts and reports those cases as warnings or no-session entries instead of aborting the whole batch.
 - `optimize-batch` scans the immediate child directories under `--input` and treats each child directory as one operator workspace.
 - In each batch workspace, `optimize-batch` auto-selects the only remaining `.py` file after excluding generated artifacts such as `test_*.py`, `differential_test_*.py`, `bench_*.py`, `opt_*.py`, and `__init__.py`.
 - If a batch workspace has zero or multiple remaining `.py` candidates, `optimize-batch` reports that workspace as a failure and keeps processing the rest of the batch.

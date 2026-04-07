@@ -15,6 +15,7 @@
 - `compare-result`: compare archived differential result payload files
 - `compare-perf`: compare archived performance data files
 - `optimize`: optimize an operator file with long-running supervision
+- `optimize-status`: scan a root directory and summarize current optimization status numerically
 - `optimize-batch`: scan a root directory and optimize multiple operator workspaces concurrently
 - The CLI may accept compatibility aliases such as snake_case spellings, but kebab-case remains the canonical displayed command form.
 - `run-test` should require both `--test-file` and `--operator-file`.
@@ -24,6 +25,10 @@
 - `run-test` and `run-bench` may optionally keep the generated remote workspace for debugging through a dedicated flag instead of always cleaning it up.
 - `gen-test`, `gen-bench`, and `optimize` may also accept the same remote options, but they should pass that requirement through prompt context to the code agent instead of moving agent execution itself to the remote machine.
 - `optimize-batch` should accept the same remote and optimize orchestration options as `optimize`, apply them per workspace, and add a dedicated maximum-concurrency flag.
+- `optimize-status` should scan immediate child directories only; each child directory is treated as one operator workspace candidate.
+- `optimize-status` should be local-only and read-only; do not expose agent-selection, remote-execution, output-generation, or interactive flags on it.
+- `optimize-status` should report numeric summaries rather than per-round prose by default, including baseline mean latency, best mean latency, mean per-case improvement, numeric best round, and logged best round when available.
+- `optimize-status` should continue across workspaces with missing or malformed optimize artifacts and classify them as warnings or no-session results instead of aborting the whole command.
 - `optimize-batch` should scan immediate child directories only; each child directory is treated as one operator workspace candidate.
 - In each batch workspace, the CLI should auto-detect the operator input file by excluding generated artifacts such as `test_*.py`, `differential_test_*.py`, `bench_*.py`, `opt_*.py`, and `__init__.py`, then requiring exactly one remaining `.py` file.
 - When a batch workspace has zero or multiple remaining operator candidates, report that workspace as a failure and continue the rest of the batch.

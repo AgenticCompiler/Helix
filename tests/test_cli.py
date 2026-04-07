@@ -44,6 +44,7 @@ class CliParserTests(unittest.TestCase):
             ("run_test", CommandKind.RUN_TEST),
             ("gen_bench", CommandKind.GEN_BENCH),
             ("run_bench", CommandKind.RUN_BENCH),
+            ("optimize_status", CommandKind.OPTIMIZE_STATUS),
             ("optimize_batch", CommandKind.OPTIMIZE_BATCH),
         ]
 
@@ -66,6 +67,7 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("run-bench", help_text)
         self.assertIn("compare-result", help_text)
         self.assertIn("compare-perf", help_text)
+        self.assertIn("optimize-status", help_text)
         self.assertIn("optimize-batch", help_text)
         self.assertNotIn("gen_test", help_text)
         self.assertNotIn("run_test", help_text)
@@ -73,6 +75,7 @@ class CliParserTests(unittest.TestCase):
         self.assertNotIn("run_bench", help_text)
         self.assertNotIn("compare_result", help_text)
         self.assertNotIn("compare_perf", help_text)
+        self.assertNotIn("optimize_status", help_text)
         self.assertNotIn("optimize_batch", help_text)
 
     def test_run_bench_has_common_options(self) -> None:
@@ -421,6 +424,16 @@ class CliParserTests(unittest.TestCase):
         self.assertFalse(hasattr(args, "interact"))
         self.assertFalse(args.show_output)
 
+    def test_optimize_status_maps_to_command_kind(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-status", "-i", "kernels"])
+        self.assertEqual(args.command_kind, CommandKind.OPTIMIZE_STATUS)
+        self.assertTrue(args.verbose is False)
+        self.assertFalse(hasattr(args, "agent"))
+        self.assertFalse(hasattr(args, "interact"))
+        self.assertFalse(hasattr(args, "remote"))
+        self.assertFalse(hasattr(args, "output"))
+
     def test_optimize_batch_accepts_optimize_options(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
@@ -460,6 +473,116 @@ class CliParserTests(unittest.TestCase):
 
 
 class PathResolutionTests(unittest.TestCase):
+    def test_main_optimize_status_rejects_missing_root(self) -> None:
+        stderr = StringIO()
+        with redirect_stderr(stderr):
+            with self.assertRaises(SystemExit) as exc:
+                main(["optimize-status", "-i", "/tmp/definitely-missing-triton-agent-root"])
+
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn("Input path does not exist", stderr.getvalue())
+
+    def test_main_optimize_status_reports_empty_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            stderr = StringIO()
+
+            with redirect_stderr(stderr):
+                exit_code = main(["optimize-status", "-i", str(root)])
+
+            self.assertEqual(exit_code, 1)
+            self.assertIn("No operator workspaces found under", stderr.getvalue())
+
+    def test_main_optimize_status_reports_no_session_workspaces(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "fresh").mkdir()
+            stdout = StringIO()
+
+            with redirect_stdout(stdout):
+                exit_code = main(["optimize-status", "-i", str(root)])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertIn("[NO-SESSION] fresh", rendered)
+            self.assertIn("Summary: 0 ok, 0 warning, 1 no-session", rendered)
+
+    def test_main_optimize_status_reports_numeric_best_and_logged_best(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "matmul"
+            workspace.mkdir()
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            (workspace / "opt-note.md").write_text(
+                "\n".join(
+                    [
+                        "## Round 1",
+                        "Best status: current best",
+                        "## Round 2",
+                        "Best status: validated branch",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_two = workspace / "opt-round-2"
+            round_one.mkdir()
+            round_two.mkdir()
+            (round_one / "perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 18\n",
+                encoding="utf-8",
+            )
+            (round_two / "perf.txt").write_text(
+                "latency-a: 9\nlatency-b: 10\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(["optimize-status", "-i", str(root)])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertIn("[OK] matmul", rendered)
+            self.assertIn("Baseline mean: 15.000000", rendered)
+            self.assertIn("Best mean: 9.500000", rendered)
+            self.assertIn("Avg improvement: +30.0%", rendered)
+            self.assertIn("Best round: round-2", rendered)
+            self.assertIn("Logged best: round-1", rendered)
+            self.assertIn("Warning: numeric best round differs from logged best round", rendered)
+
+    def test_main_optimize_status_warns_when_perf_ids_do_not_match(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "layernorm"
+            workspace.mkdir()
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_one.mkdir()
+            (round_one / "perf.txt").write_text(
+                "latency-a: 8\nlatency-c: 18\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(["optimize-status", "-i", str(root)])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertIn("[WARN] layernorm", rendered)
+            self.assertIn("Best mean: unknown", rendered)
+            self.assertIn("Avg improvement: unknown", rendered)
+            self.assertIn("Warning: latency ids do not match for comparable perf data", rendered)
+            self.assertIn("Summary: 0 ok, 1 warning, 0 no-session", rendered)
+
     def test_main_optimize_batch_auto_detects_operator_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

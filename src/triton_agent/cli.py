@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import threading
 from io import TextIOBase
@@ -41,6 +42,25 @@ class BatchOptimizeResult:
     workspace: Path
     succeeded: bool
     message: str
+
+
+@dataclass(frozen=True)
+class OptimizeStatusRound:
+    round_name: str
+    score: float
+    mean_latency: float
+
+
+@dataclass(frozen=True)
+class OptimizeStatusWorkspace:
+    workspace: Path
+    state: str
+    baseline_mean: float | None
+    best_mean: float | None
+    avg_improvement: float | None
+    best_round: str | None
+    logged_best: str | None
+    warnings: tuple[str, ...]
 
 
 class _PrefixedTextStream(TextIOBase):
@@ -157,6 +177,8 @@ class _BenchRunnerModule(Protocol):
 
     def parse_bench_metadata(self, bench_file: Path) -> dict[str, str]: ...
 
+    def parse_perf_file(self, path: Path) -> dict[str, float]: ...
+
 
 class _ComparePerfModule(Protocol):
     def compare_perf_files(self, baseline_perf: Path, compare_perf: Path) -> int: ...
@@ -271,6 +293,10 @@ def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
     return _load_bench_runner().parse_bench_metadata(bench_file)
 
 
+def parse_perf_file(path: Path) -> dict[str, float]:
+    return _load_bench_runner().parse_perf_file(path)
+
+
 def compare_perf_files(baseline_perf: Path, compare_perf: Path) -> int:
     return _load_compare_perf().compare_perf_files(baseline_perf, compare_perf)
 
@@ -338,12 +364,17 @@ def build_parser() -> argparse.ArgumentParser:
         if command_kind not in {
             CommandKind.COMPARE_RESULT,
             CommandKind.COMPARE_PERF,
+            CommandKind.OPTIMIZE_STATUS,
             CommandKind.OPTIMIZE_BATCH,
         }:
             subparser.add_argument("-o", "--output")
         if command_kind != CommandKind.COMPARE_PERF:
             subparser.add_argument("--verbose", action="store_true")
-        if command_kind not in {CommandKind.COMPARE_RESULT, CommandKind.COMPARE_PERF}:
+        if command_kind not in {
+            CommandKind.COMPARE_RESULT,
+            CommandKind.COMPARE_PERF,
+            CommandKind.OPTIMIZE_STATUS,
+        }:
             if command_kind not in {
                 CommandKind.RUN_TEST,
                 CommandKind.RUN_BENCH,
@@ -404,6 +435,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         _validate_optimize_arguments(parser, args)
     if command_kind == CommandKind.OPTIMIZE_BATCH:
         return _run_optimize_batch(parser, args)
+    if command_kind == CommandKind.OPTIMIZE_STATUS:
+        return _run_optimize_status(parser, args)
     continue_optimize = bool(getattr(args, "continue_optimize", False))
 
     if command_kind == CommandKind.COMPARE_RESULT:
@@ -755,6 +788,25 @@ def _run_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namespac
     return _render_batch_optimize_results(results)
 
 
+def _run_optimize_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    root = Path(args.input).expanduser().resolve()
+    if not root.exists():
+        parser.error(f"Input path does not exist: {root}")
+    if not root.is_dir():
+        parser.error(f"Input path is not a directory: {root}")
+
+    workspace_candidates = sorted(path for path in root.iterdir() if path.is_dir())
+    if not workspace_candidates:
+        print(f"No operator workspaces found under {root}", file=sys.stderr)
+        return 1
+
+    results = [
+        _inspect_optimize_status_workspace(workspace, verbose=bool(getattr(args, "verbose", False)))
+        for workspace in workspace_candidates
+    ]
+    return _render_optimize_status_results(results)
+
+
 def _resolve_batch_optimize_operator_file(workspace: Path) -> Path:
     candidates = [
         path
@@ -794,6 +846,199 @@ def _render_batch_optimize_results(results: list[BatchOptimizeResult]) -> int:
         print(f"[{status}] {item.workspace.name}: {item.message}")
     print(f"Summary: {succeeded} succeeded, {failed} failed")
     return 0 if failed == 0 and ordered_results else 1
+
+
+def _inspect_optimize_status_workspace(
+    workspace: Path,
+    *,
+    verbose: bool = False,
+) -> OptimizeStatusWorkspace:
+    del verbose
+    opt_note = workspace / "opt-note.md"
+    round_dirs = sorted(
+        (path for path in workspace.iterdir() if path.is_dir() and _round_number(path.name) is not None),
+        key=lambda path: (_round_number(path.name) or 0),
+    )
+    top_level_perf_files = sorted(workspace.glob("*_perf.txt"))
+
+    has_artifacts = bool(opt_note.exists() or round_dirs or top_level_perf_files)
+    if not has_artifacts:
+        return OptimizeStatusWorkspace(
+            workspace=workspace,
+            state="no-session",
+            baseline_mean=None,
+            best_mean=None,
+            avg_improvement=None,
+            best_round=None,
+            logged_best=None,
+            warnings=(),
+        )
+
+    warnings: list[str] = []
+    baseline_path = _select_baseline_perf_file(top_level_perf_files, warnings)
+    baseline_values: dict[str, float] | None = None
+    baseline_mean: float | None = None
+    if baseline_path is not None:
+        try:
+            baseline_values = parse_perf_file(baseline_path)
+            baseline_mean = _mean_value(baseline_values.values())
+        except ValueError as exc:
+            warnings.append(str(exc))
+
+    logged_best = _parse_logged_best_round(opt_note) if opt_note.exists() else None
+    comparable_rounds: list[OptimizeStatusRound] = []
+
+    for round_dir in round_dirs:
+        if baseline_values is None:
+            continue
+        perf_path = _find_round_perf_file(round_dir)
+        if perf_path is None:
+            warnings.append(f"missing perf artifact for {round_dir.name}")
+            continue
+        try:
+            round_values = parse_perf_file(perf_path)
+        except ValueError as exc:
+            warnings.append(str(exc))
+            continue
+        if set(baseline_values) != set(round_values):
+            warnings.append("latency ids do not match for comparable perf data")
+            continue
+
+        score_values: list[float] = []
+        for latency_id in sorted(baseline_values):
+            baseline_value = baseline_values[latency_id]
+            if baseline_value <= 0:
+                warnings.append(f"baseline latency must be > 0 for {latency_id}")
+                continue
+            score_values.append((baseline_value - round_values[latency_id]) / baseline_value)
+        if not score_values:
+            continue
+        comparable_rounds.append(
+            OptimizeStatusRound(
+                round_name=f"round-{_round_number(round_dir.name)}",
+                score=_mean_value(score_values),
+                mean_latency=_mean_value(round_values.values()),
+            )
+        )
+
+    if comparable_rounds:
+        best_round = max(comparable_rounds, key=lambda item: (item.score, -item.mean_latency))
+        if logged_best is not None and logged_best != best_round.round_name:
+            warnings.append("numeric best round differs from logged best round")
+        return OptimizeStatusWorkspace(
+            workspace=workspace,
+            state="ok",
+            baseline_mean=baseline_mean,
+            best_mean=best_round.mean_latency,
+            avg_improvement=best_round.score,
+            best_round=best_round.round_name,
+            logged_best=logged_best,
+            warnings=tuple(dict.fromkeys(warnings)),
+        )
+
+    if baseline_path is None:
+        warnings.append("missing baseline perf data")
+    elif baseline_values is not None and round_dirs:
+        warnings.append("missing comparable round perf data")
+
+    return OptimizeStatusWorkspace(
+        workspace=workspace,
+        state="warning",
+        baseline_mean=baseline_mean,
+        best_mean=None,
+        avg_improvement=None,
+        best_round=None,
+        logged_best=logged_best,
+        warnings=tuple(dict.fromkeys(warnings)),
+    )
+
+
+def _select_baseline_perf_file(paths: list[Path], warnings: list[str]) -> Path | None:
+    if not paths:
+        return None
+    if len(paths) > 1:
+        warnings.append("found multiple baseline perf files")
+        return None
+    return paths[0]
+
+
+def _find_round_perf_file(round_dir: Path) -> Path | None:
+    perf_txt = round_dir / "perf.txt"
+    if perf_txt.is_file():
+        return perf_txt
+    perf_files = sorted(round_dir.glob("*_perf.txt"))
+    if len(perf_files) == 1:
+        return perf_files[0]
+    return None
+
+
+def _parse_logged_best_round(path: Path) -> str | None:
+    current_round: str | None = None
+    logged_best: str | None = None
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        match = re.match(r"##\s+Round\s+(\d+)", line)
+        if match:
+            current_round = f"round-{match.group(1)}"
+            continue
+        if line.lower().startswith("best status:") and "current best" in line.lower():
+            logged_best = current_round
+    return logged_best
+
+
+def _round_number(name: str) -> int | None:
+    match = re.fullmatch(r"opt-round-(\d+)", name)
+    if match is None:
+        return None
+    return int(match.group(1))
+
+
+def _mean_value(values: Any) -> float:
+    items = list(values)
+    return sum(items) / len(items)
+
+
+def _format_optimize_status_float(value: float | None) -> str:
+    if value is None:
+        return "unknown"
+    return f"{value:.6f}"
+
+
+def _format_optimize_status_percent(value: float | None) -> str:
+    if value is None:
+        return "unknown"
+    return f"{value * 100:+.1f}%"
+
+
+def _render_optimize_status_results(results: list[OptimizeStatusWorkspace]) -> int:
+    ordered_results = sorted(results, key=lambda item: item.workspace.name)
+    ok_count = sum(1 for item in ordered_results if item.state == "ok")
+    warning_count = sum(1 for item in ordered_results if item.state == "warning")
+    no_session_count = sum(1 for item in ordered_results if item.state == "no-session")
+
+    for item in ordered_results:
+        status = {
+            "ok": "OK",
+            "warning": "WARN",
+            "no-session": "NO-SESSION",
+        }[item.state]
+        print(f"[{status}] {item.workspace.name}")
+        if item.state == "no-session":
+            continue
+        print(f"  Baseline mean: {_format_optimize_status_float(item.baseline_mean)}")
+        print(f"  Best mean: {_format_optimize_status_float(item.best_mean)}")
+        print(f"  Avg improvement: {_format_optimize_status_percent(item.avg_improvement)}")
+        print(f"  Best round: {item.best_round or 'unknown'}")
+        if item.logged_best is not None:
+            print(f"  Logged best: {item.logged_best}")
+        for warning in item.warnings:
+            print(f"  Warning: {warning}")
+
+    print(
+        "Summary: "
+        f"{ok_count} ok, {warning_count} warning, {no_session_count} no-session"
+    )
+    return 0 if ordered_results else 1
 
 
 def _resolve_output_path(
@@ -846,6 +1091,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "run_bench": "run-bench",
         "compare_result": "compare-result",
         "compare_perf": "compare-perf",
+        "optimize_status": "optimize-status",
         "optimize_batch": "optimize-batch",
     }
     normalized = list(argv)
