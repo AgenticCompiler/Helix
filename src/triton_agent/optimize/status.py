@@ -46,7 +46,17 @@ def inspect_optimize_status_workspace(
         except ValueError as exc:
             warnings.append(str(exc))
 
-    logged_best = parse_logged_best_round(opt_note) if opt_note.exists() else None
+    logged_best: str | None = None
+    legacy_logged_best: str | None = None
+    if opt_note.exists():
+        summary_logged_best, legacy_logged_best = parse_logged_best_rounds(opt_note)
+        logged_best = summary_logged_best or legacy_logged_best
+        if (
+            summary_logged_best is not None
+            and legacy_logged_best is not None
+            and summary_logged_best != legacy_logged_best
+        ):
+            warnings.append("overall summary best round differs from legacy current best marker")
     comparable_rounds: list[OptimizeStatusRound] = []
 
     for round_dir in round_dirs:
@@ -141,17 +151,56 @@ def find_round_perf_file(round_dir: Path) -> Path | None:
 
 
 def parse_logged_best_round(path: Path) -> str | None:
+    summary_best, legacy_best = parse_logged_best_rounds(path)
+    return summary_best or legacy_best
+
+
+def parse_logged_best_rounds(path: Path) -> tuple[str | None, str | None]:
     current_round: str | None = None
-    logged_best: str | None = None
+    legacy_best: str | None = None
+    summary_best: str | None = None
+    in_overall_summary = False
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         match = re.match(r"##\s+Round\s+(\d+)", line)
         if match:
             current_round = f"round-{match.group(1)}"
+            in_overall_summary = False
+            continue
+        if re.match(r"##\s+Overall\s+Summary\b", line, flags=re.IGNORECASE):
+            current_round = None
+            in_overall_summary = True
+            continue
+        if line.startswith("##"):
+            current_round = None
+            in_overall_summary = False
+            continue
+        if in_overall_summary:
+            summary_match = re.match(r"Final\s+best\s+round:\s*(.+)", line, flags=re.IGNORECASE)
+            if summary_match:
+                normalized = normalize_round_name(summary_match.group(1))
+                if normalized is not None:
+                    summary_best = normalized
             continue
         if line.lower().startswith("best status:") and "current best" in line.lower():
-            logged_best = current_round
-    return logged_best
+            legacy_best = current_round
+    return summary_best, legacy_best
+
+
+def normalize_round_name(value: str) -> str | None:
+    text = value.strip()
+    if not text:
+        return None
+
+    for pattern in (
+        r"round-(\d+)",
+        r"round\s+(\d+)",
+        r"opt-round-(\d+)",
+    ):
+        match = re.fullmatch(pattern, text, flags=re.IGNORECASE)
+        if match is not None:
+            return f"round-{match.group(1)}"
+    return None
 
 
 def round_number(name: str) -> int | None:

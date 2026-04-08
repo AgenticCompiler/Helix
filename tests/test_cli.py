@@ -555,6 +555,57 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("Logged best: round-1", rendered)
             self.assertIn("Warning: numeric best round differs from logged best round", rendered)
 
+    def test_main_optimize_status_prefers_overall_summary_logged_best(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "matmul"
+            workspace.mkdir()
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            (workspace / "opt-note.md").write_text(
+                "\n".join(
+                    [
+                        "## Round 1",
+                        "Best status: current best",
+                        "## Round 2",
+                        "Best status: validated branch",
+                        "",
+                        "## Overall Summary",
+                        "Final best round: round-2",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_two = workspace / "opt-round-2"
+            round_one.mkdir()
+            round_two.mkdir()
+            (round_one / "perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 18\n",
+                encoding="utf-8",
+            )
+            (round_two / "perf.txt").write_text(
+                "latency-a: 9\nlatency-b: 10\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(["optimize-status", "-i", str(root)])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertIn("[OK] matmul", rendered)
+            self.assertIn("Best round: round-2", rendered)
+            self.assertIn("Logged best: round-2", rendered)
+            self.assertIn(
+                "Warning: overall summary best round differs from legacy current best marker",
+                rendered,
+            )
+
     def test_main_optimize_status_warns_when_perf_ids_do_not_match(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

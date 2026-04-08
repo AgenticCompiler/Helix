@@ -153,5 +153,6 @@ class OptimizeGuidanceManager:
                 "- Write `summary.md` for every completed round.",
                 "- Write optimization points and measured outcome in each summary.",
                 "- Update `opt-note.md` after every completed round.",
+                "- Leave `opt-note.md` ending with one `## Overall Summary` block that states the final best round, the overall benchmark outcome, any useful validated branches, and the recommended next step.",
             ]
         ) + "\n"
