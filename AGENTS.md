@@ -4,126 +4,54 @@
 
 - This repository provides a small `uv`-managed CLI for Triton Ascend NPU operator workflows.
 - The CLI is a wrapper around code agents plus local skills, not a replacement for the skills themselves.
-- The current supported backends are `codex`, `opencode`, `pi`, and `claude`.
-
-## User-Facing Commands
-
-- `gen-test`: generate correctness tests for an operator file
-- `run-test`: execute generated correctness tests for an operator file
-- `gen-bench`: generate performance benchmarks for an operator file
-- `run-bench`: execute generated benchmarks for an operator file
-- `compare-result`: compare archived differential result payload files
-- `compare-perf`: compare archived performance data files
-- `optimize`: optimize an operator file with long-running supervision
-- `optimize-status`: scan a root directory and summarize current optimization status numerically
-- `optimize-batch`: scan a root directory and optimize multiple operator workspaces concurrently
-- The CLI may accept compatibility aliases such as snake_case spellings, but kebab-case remains the canonical displayed command form.
-- `run-test` should require both `--test-file` and `--operator-file`.
-- `run-bench` should require both `--bench-file` and `--operator-file`.
-- `run-test`, `run-bench`, and `compare-result` may optionally execute on a remote machine through `--remote user@host[:port]`.
-- If `--remote-workdir` is provided, the CLI should create a per-run subdirectory under that remote directory instead of using a one-off temp root.
-- `run-test` and `run-bench` may optionally keep the generated remote workspace for debugging through a dedicated flag instead of always cleaning it up.
-- `gen-test`, `gen-bench`, and `optimize` may also accept the same remote options, but they should pass that requirement through prompt context to the code agent instead of moving agent execution itself to the remote machine.
-- `optimize-batch` should accept the same remote and optimize orchestration options as `optimize`, apply them per workspace, and add a dedicated maximum-concurrency flag.
-- `optimize-status` should scan immediate child directories only; each child directory is treated as one operator workspace candidate.
-- `optimize-status` should be local-only and read-only; do not expose agent-selection, remote-execution, output-generation, or interactive flags on it.
-- `optimize-status` should report numeric summaries rather than per-round prose by default, including baseline mean latency, best mean latency, mean per-case improvement, numeric best round, and logged best round when available.
-- `optimize-status` should continue across workspaces with missing or malformed optimize artifacts and classify them as warnings or no-session results instead of aborting the whole command.
-- `optimize-batch` should scan immediate child directories only; each child directory is treated as one operator workspace candidate.
-- In each batch workspace, the CLI should auto-detect the operator input file by excluding generated artifacts such as `test_*.py`, `differential_test_*.py`, `bench_*.py`, `opt_*.py`, and `__init__.py`, then requiring exactly one remaining `.py` file.
-- When a batch workspace has zero or multiple remaining operator candidates, report that workspace as a failure and continue the rest of the batch.
-- `optimize-batch` should be non-interactive orchestration only; do not expose batch-level `--output` or `--interact`.
-- `optimize-batch` may expose additive batch-level `--show-output` streaming as long as concurrent output stays attributable, for example with `[workspace-name]` line prefixes.
+- The supported backends are `codex`, `opencode`, `pi`, and `claude`.
 
 ## Core Principles
 
 - Keep prompts, comments, logs, and user-visible instructions in English.
 - Treat the local `skills/` directory as the source of truth for workflow behavior.
-- Write skills as natural-language task guides first; treat CLI flags as wrapper-specific context rather than the primary skill interface.
-- For generation skills, treat the public operator entrypoint as the API surface; it may be a Triton wrapper function, a PyTorch function, or a no-argument `torch.nn.Module` class.
-- When a skill needs to invoke project commands, prefer a bundled script under `skills/operator-eval/scripts/` over assuming an installed console entrypoint.
-- When a skill depends on a bundled helper script, include a few short command templates instead of only mentioning the script abstractly.
-- The generic Ascend NPU profiler skill should prefer `msprof <command>` execution and summarize `PROF_*/mindstudio_profiler_output/op_statistic_*.csv` plus `op_summary_*.csv` rather than owning a separate benchmark-comparison workflow.
-- The Ascend NPU profiler skill should prefer the unified `skills/operator-eval/scripts/run-command.py profile-bench` helper for generated benchmark harnesses, including remote-aware profiling runs.
-- When profiling benchmark harnesses, branch argument rules by benchmark mode: `standalone` profiles the plain `--operator-file` invocation and must not pass `--bench`, while `msprof` mode must query `--num-bench`, profile one selected `--bench <N>` case, and require `# kernel:` metadata.
-- Keep the CLI thin: it should orchestrate agent execution and dispatch into skill-owned helpers, not reimplement skill logic.
-- Local execution, comparison, and benchmark-profiling flows such as `run-test`, `run-bench`, `profile-bench`, `compare-result`, and `compare-perf` should live in the unified `skills/operator-eval/` skill scripts, with the CLI limited to parsing, validation, loading, and result rendering.
+- Write skills as natural-language task guides first; CLI flags are wrapper-specific context, not the primary workflow interface.
+- Treat the public operator entrypoint as the API surface for generation workflows.
+- When a skill needs to invoke project commands, prefer bundled helper scripts over assuming installed console entrypoints.
+- Keep the CLI thin: orchestration belongs in the CLI, while evaluation and workflow logic should remain in the skills unless the CLI truly needs it.
 - Preserve a clear separation between generic agent flow and backend-specific details.
-- Prefer optional diagnostic flags for orchestration visibility instead of always-on debug output.
-- When adding orchestration flags, keep them additive: they may increase visibility, but should not change the underlying agent task semantics.
-- When verbose diagnostics cover workspace preparation, include both setup and cleanup visibility so link lifecycle is auditable.
-- Make verbose output readable first: short categories, visible link targets, and separate command/prompt display beat raw shell dumps.
-- When a command writes generated artifacts, default to protecting existing files and require an explicit overwrite flag to replace them.
-- If overwrite is explicitly requested for a generated artifact, remove the old file in the CLI layer before launching the agent.
-- Keep command-specific mode flags scoped narrowly; for example, test-mode selection belongs only to test generation and test execution.
-- Default generation modes to an explicit value; use `standalone` for `gen-test` and `gen-bench` unless the user asks for another mode.
-- For `run-test` and `run-bench`, prefer reading mode metadata from the generated harness when the user does not pass an explicit override.
-- Generated test and benchmark harness metadata should include both `api-name` and `api-kind`; `api-kind` should support `triton-wrapper`, `torch-function`, and `torch-module`.
-- For `optimize`, default to `differential` test validation and `standalone` benchmark validation unless the user asks for another combination.
-- Likewise, benchmark-mode selection belongs only to benchmark generation and benchmark execution.
-- For expected CLI validation failures, prefer short actionable error messages over Python tracebacks.
-- Prefer explicit failures over silent fallbacks when an expected file or artifact is missing.
+- Prefer additive diagnostics that improve visibility without changing command semantics.
+- Default to protecting existing generated artifacts and require explicit overwrite behavior to replace them.
+- Keep mode selection scoped to the commands that own it, use explicit defaults for generation and optimize flows, and prefer reusing generated metadata when continuing or executing existing harnesses.
+- Prefer short actionable CLI validation errors over Python tracebacks.
+- Prefer explicit failures over silent fallbacks when expected artifacts or metadata are missing.
 
-## Workspace and Skill Handling
+## Workspace And Skills
 
-- Before launching a code agent, expose this repository's `skills/` directory inside the target workspace in the backend-specific location.
-- For Codex, use `.codex/skills`.
-- For OpenCode, use `.opencode/skills/<name>/SKILL.md` via copied per-skill directories.
-- For Pi, use `.pi/skills`.
-- For Claude Code, use `.claude/skills/<name>/SKILL.md`.
+- Before launching a code agent, stage this repository's `skills/` directory into the target workspace in the backend-native location.
 - Stage skills by copying content into the workspace instead of creating symlinks.
-- If an existing skill target path is already a symlink, fail explicitly instead of reusing it.
+- If a target skill path already exists as a symlink, fail explicitly instead of reusing it.
 - Clean up only the copied skill paths created by the current run.
 - Never delete or replace user-owned files or directories during cleanup.
 - Treat the top-level `workspace/` directory as a placeholder area for local experimentation, not as repository-owned source, fixture, or verification input.
 
-## Agent Backend Expectations
+## Agent Backends
 
-- New backends should follow the same high-level lifecycle: prepare workspace, launch agent, collect result, clean up.
+- New backends should follow the same high-level lifecycle: prepare workspace, launch agent, collect result, and clean up.
 - Backend-specific command construction should stay isolated from CLI parsing and prompt construction.
 - Interactive mode should attach to the live agent UI or session.
 - Non-interactive mode should be script-friendly and return a meaningful process exit code.
-- PTY-backed non-interactive streaming should treat platform-specific PTY EOF during normal child exit as clean shutdown, while still surfacing real read failures.
-- The Codex backend should launch non-interactive runs with `--skip-git-repo-check`.
-- The Codex backend should use `danger-full-access` for all non-interactive commands.
-- The Pi backend should launch with `--thinking high` and `--no-extensions`.
-- The Claude Code backend should launch non-interactive runs with `--print --dangerously-skip-permissions`.
-
-## Optimize Command Expectations
-
-- `optimize` is treated as a long-running workflow.
-- `optimize-batch` should reuse the same per-workspace optimize lifecycle instead of creating a separate backend flow.
-- Supervision should detect stalls conservatively and attempt recovery without hiding failures.
-- Automatic recovery should prefer continuing from recent progress before starting over.
-- During non-interactive `optimize`, one user `Ctrl+C` should trigger graceful code-agent shutdown: send `SIGINT`, wait briefly, send a second `SIGINT`, then force-kill if the agent still has not exited.
-- User-triggered optimize interrupts should terminate the active code-agent run instead of entering stall recovery or automatic continuation.
-- `optimize` may require a minimum number of round directories through a dedicated CLI option; when the agent exits before that threshold is reached, supervision should restart the agent in continuation mode.
-- `optimize` should also support an explicit continue mode that resumes an existing optimization session instead of starting fresh.
-- `optimize` should support `--no-agent-session` to request a non-persistent code-agent session when the selected backend supports it.
-- For `optimize --no-agent-session`, Codex should use `--ephemeral`, Pi should use `--no-session`, and OpenCode should ignore the flag.
-- For `optimize --no-agent-session`, Claude Code should use `--no-session-persistence` only in non-interactive mode and should ignore the flag in interactive mode.
-- Explicit continue mode should reject new `--test-mode` and `--bench-mode` overrides and should reuse the modes recorded in the existing generated harness metadata.
-- Explicit continue mode should fail fast unless the workspace already contains `opt-note.md`, at least one `opt-round-*` directory, one unambiguous generated test harness, and one generated benchmark harness.
-- `optimize-batch --continue` should validate those continuation requirements per workspace and report failures in the batch summary without aborting unrelated workspaces.
-- Continuation prompts should explicitly tell the code agent to keep going from existing workspace state and to inspect `opt-note.md` plus prior `opt-round-N/` artifacts before starting the next round.
-- The `optimize` skill should search over validated candidate branches, not assume every new round must continue from the current best version.
-- The `optimize` knowledge base should offer a compact pattern index first and only then drill into one or two detailed optimization pattern references.
-- The `optimize` command may install a temporary workspace `AGENTS.md` with run-specific guardrails; if the workspace already has one, back it up first and restore it after the run.
+- PTY-backed non-interactive streaming should treat platform-specific PTY EOF during normal child exit as clean shutdown while still surfacing real read failures.
+- Backend-specific launch flags and invocation details belong in `README.md` or focused docs, not here.
 
 ## Verification
 
 - Use `uv run --group dev ruff check` for lint checks.
-- Use `uv run pyright` for static type checks; keep repository-wide checking at `basic` and raise `src/` to `strict` through the config path list so `tests/` stay at the default level.
+- Use `uv run pyright` for static type checks.
 - Use `uv run python -m unittest discover -s tests -v` for the current test suite.
 
 ## Design And Documentation Style
 
 - Write a short design document before implementing behavior changes.
 - Keep design and behavior documents under `docs/` with date-prefixed filenames such as `YYYY-MM-DD-<topic>.md`.
-- When behavior changes, update the corresponding design doc, `README.md`, tests, and `AGENTS.md` together.
-- Document behavior in terms of user-visible semantics first, then implementation details second.
-- Use `AGENTS.md` for durable project rules and workflow expectations.
-- Use `docs/` for detailed behavior descriptions and per-change design decisions.
+- Update `AGENTS.md` when durable project rules change; keep implementation detail in `README.md` and focused docs.
+- Document behavior in terms of user-visible semantics first and implementation details second.
+- Use `AGENTS.md` for stable project rules and workflow expectations.
 
 ## Scope Guardrails
 

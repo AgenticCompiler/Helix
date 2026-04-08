@@ -107,6 +107,7 @@ def run_optimize_request(
         request.input_path,
         test_mode=request.test_mode or "differential",
         bench_mode=request.bench_mode or "standalone",
+        agent_name=request.agent_name,
     )
     verbose_stream = stderr or sys.stderr
     if request.verbose:

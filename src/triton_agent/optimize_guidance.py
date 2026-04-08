@@ -7,92 +7,132 @@ from typing import List, Optional
 
 @dataclass
 class OptimizeGuidanceState:
-    agents_path: Path
+    guidance_path: Path
     backup_path: Optional[Path]
-    created_agents: bool
+    created_guidance: bool
 
 
 class OptimizeGuidanceManager:
     def prepare(
-        self, workdir: Path, operator_path: Path, test_mode: str, bench_mode: str
+        self,
+        workdir: Path,
+        operator_path: Path,
+        test_mode: str,
+        bench_mode: str,
+        agent_name: str,
     ) -> OptimizeGuidanceState:
-        agents_path = workdir / "AGENTS.md"
+        guidance_path = workdir / self._guidance_filename(agent_name)
         backup_path: Optional[Path] = None
 
-        if agents_path.exists():
-            backup_path = self._next_backup_path(workdir)
-            backup_path.write_text(agents_path.read_text(encoding="utf-8"), encoding="utf-8")
+        if guidance_path.exists():
+            backup_path = self._next_backup_path(guidance_path)
+            backup_path.write_text(guidance_path.read_text(encoding="utf-8"), encoding="utf-8")
 
-        agents_path.write_text(
-            self._render_guidance(operator_path, test_mode=test_mode, bench_mode=bench_mode),
+        guidance_path.write_text(
+            self._render_guidance(
+                operator_path,
+                test_mode=test_mode,
+                bench_mode=bench_mode,
+                guidance_filename=guidance_path.name,
+            ),
             encoding="utf-8",
         )
         return OptimizeGuidanceState(
-            agents_path=agents_path,
+            guidance_path=guidance_path,
             backup_path=backup_path,
-            created_agents=True,
+            created_guidance=True,
         )
 
     def cleanup(self, state: OptimizeGuidanceState) -> list[str]:
         warnings: list[str] = []
         try:
-            if state.created_agents and state.agents_path.exists():
-                state.agents_path.unlink()
+            if state.created_guidance and state.guidance_path.exists():
+                state.guidance_path.unlink()
         except OSError as exc:
-            warnings.append(f"Failed to remove temporary AGENTS file {state.agents_path}: {exc}")
+            warnings.append(
+                f"Failed to remove temporary guidance file {state.guidance_path}: {exc}"
+            )
 
         if state.backup_path is not None:
             try:
-                state.agents_path.write_text(
+                state.guidance_path.write_text(
                     state.backup_path.read_text(encoding="utf-8"), encoding="utf-8"
                 )
                 state.backup_path.unlink()
             except OSError as exc:
-                warnings.append(f"Failed to restore original AGENTS file from {state.backup_path}: {exc}")
+                warnings.append(
+                    "Failed to restore original guidance file "
+                    f"from {state.backup_path}: {exc}"
+                )
         return warnings
 
     def describe_prepare(self, state: OptimizeGuidanceState) -> list[str]:
         messages: List[str] = []
         if state.backup_path is not None:
-            messages.append(f"backed up workspace AGENTS file to {state.backup_path}")
-        messages.append(f"wrote optimize guidance file {state.agents_path}")
+            messages.append(f"backed up workspace guidance file to {state.backup_path}")
+        messages.append(f"wrote optimize guidance file {state.guidance_path}")
         return messages
 
     def describe_cleanup(self, state: OptimizeGuidanceState) -> list[str]:
-        messages: List[str] = [f"removed temporary optimize guidance file {state.agents_path}"]
+        messages: List[str] = [f"removed temporary optimize guidance file {state.guidance_path}"]
         if state.backup_path is not None:
-            messages.append(f"restored workspace AGENTS file from {state.backup_path}")
+            messages.append(f"restored workspace guidance file from {state.backup_path}")
         return messages
 
-    def _next_backup_path(self, workdir: Path) -> Path:
+    def _guidance_filename(self, agent_name: str) -> str:
+        if agent_name == "claude":
+            return "CLAUDE.md"
+        return "AGENTS.md"
+
+    def _next_backup_path(self, guidance_path: Path) -> Path:
+        workdir = guidance_path.parent
+        backup_stem = guidance_path.stem
+        suffix = guidance_path.suffix
         for index in range(1000):
             candidate = workdir / (
-                ".triton-agent-AGENTS.backup.md"
+                f".triton-agent-{backup_stem}.backup{suffix}"
                 if index == 0
-                else f".triton-agent-AGENTS.backup.{index}.md"
+                else f".triton-agent-{backup_stem}.backup.{index}{suffix}"
             )
             if not candidate.exists():
                 return candidate
-        raise RuntimeError(f"Could not allocate AGENTS backup path in {workdir}")
+        raise RuntimeError(f"Could not allocate guidance backup path in {workdir}")
 
-    def _render_guidance(self, operator_path: Path, test_mode: str, bench_mode: str) -> str:
+    def _render_guidance(
+        self,
+        operator_path: Path,
+        test_mode: str,
+        bench_mode: str,
+        guidance_filename: str,
+    ) -> str:
         return "\n".join(
             [
-                "# AGENTS.md",
+                f"# {guidance_filename}",
                 "",
                 "## Triton Agent Optimize Session",
                 "",
                 "## Mission",
-                f"- Improve the operator at `{operator_path}` while preserving correctness.",
+                f"- Improve the Triton operator for Ascend NPU at `{operator_path}` while preserving correctness.",
                 "- Work only in derived round directories.",
                 "- Never edit the original operator in place.",
+                "- Optimize only the existing NPU Triton operator implementation.",
+                "- Preserve the Triton operator call path as the thing being optimized.",
+                "- Do not delete or bypass the Triton operator call path.",
+                "- Do not replace Triton operator calls with direct PyTorch operator calls or `torch.nn.Module` implementations.",
                 "",
                 "## Baseline",
                 "- Treat the original operator as round 0.",
                 "- Ensure correctness tests and benchmark cases exist before optimization starts.",
                 f"- Use `{test_mode}` correctness validation for this optimize run.",
                 f"- Use `{bench_mode}` benchmark validation for this optimize run.",
+                "- If you need to generate or regenerate correctness tests, include multiple test cases that cover representative shapes, inputs, or edge conditions instead of a single case.",
+                "- If you need to generate or regenerate benchmark cases, include multiple benchmark cases instead of a single case.",
                 "- Record a baseline correctness and benchmark result before evaluating optimization wins.",
+                "",
+                "## Investigation",
+                "- Start by consulting the staged `optimize` skill to understand the existing Triton NPU optimization rules and search patterns available in this repository.",
+                "- Use the staged `ascend-npu-operator-profiler` skill when you need hotspot evidence, bottleneck measurements, or benchmark-driven profiling data to guide optimization choices.",
+                "- Use the staged `ascend-operator-ir-analyzer` skill when you need to inspect Triton or Bisheng IR, confirm lowering behavior, or understand why an optimization did or did not take effect.",
                 "",
                 "## Gates",
                 "- Run correctness validation before every benchmark check.",
