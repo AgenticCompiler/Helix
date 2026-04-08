@@ -180,7 +180,7 @@ class RemoteExecutionTests(unittest.TestCase):
                 module,
                 "create_remote_workspace",
                 return_value=("spec", "/tmp/remote-compare"),
-            ), patch.object(module, "copy_file_to_remote"), patch.object(
+            ), patch.object(module, "copy_file_to_remote") as copy_to_remote, patch.object(
                 module,
                 "run_remote_command_streaming",
                 return_value=make_skill_result(0, "", ""),
@@ -193,6 +193,15 @@ class RemoteExecutionTests(unittest.TestCase):
                     None,
                 )
 
+        compare_script = copy_to_remote.call_args_list[0].args[1]
+        self.assertEqual(
+            compare_script,
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "operator-eval"
+            / "scripts"
+            / "compare_result_payloads.py",
+        )
         self.assertEqual(
             remote_run.call_args.args[2],
             [

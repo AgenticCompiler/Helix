@@ -2,7 +2,7 @@
 
 ## Bug 1 (CRITICAL): Scalar float NaN comparison silently passes
 
-**Files:** `skills/run-validation/scripts/test_runner.py:268`, `scripts/compare_result_payloads.py:103`
+**Files:** `skills/operator-eval/scripts/test_runner.py`, `skills/operator-eval/scripts/compare_result_payloads.py`
 
 **Problem:** The scalar float comparison used `abs(expected - float(actual)) > threshold`. When either side is NaN, all arithmetic produces NaN, and `NaN > anything` is always `False`. This meant:
 - NaN oracle vs any actual value → **silently passes**
@@ -38,15 +38,15 @@ This is undesirable for scalar result payloads because boolean values should sta
 
 ## Bug 4 (MINOR): Duplicated `ORACLE_COMPARE_LEVELS`
 
-**Files:** `skills/run-validation/scripts/test_runner.py:22`, `scripts/compare_result_payloads.py:9`
+**Files:** `skills/operator-eval/scripts/test_runner.py`, `skills/operator-eval/scripts/compare_result_payloads.py`
 
 **Problem:** The same tolerance dict is defined independently in both files. If one is updated without the other, local and remote comparisons will use different tolerances.
 
-**Status:** Not fixed. Noted for future cleanup — `compare_result_payloads.py` is only used for remote execution and ideally should import from a shared location.
+**Status:** Fixed. The comparison helper now lives in `skills/operator-eval/scripts/compare_result_payloads.py`, and `test_runner.py` reuses that shared implementation for both local and remote compare flows.
 
 ## What changed
 
-### `skills/run-validation/scripts/test_runner.py` (line 268)
+### `skills/operator-eval/scripts/test_runner.py`
 
 Before:
 ```python
@@ -78,9 +78,9 @@ if isinstance(expected, (int, float)) and isinstance(actual, (int, float)):
     return None
 ```
 
-### `scripts/compare_result_payloads.py` (line 103)
+### `skills/operator-eval/scripts/compare_result_payloads.py`
 
-Same change applied identically.
+The scalar comparison logic now lives here as the shared implementation, and `test_runner.py` reuses it instead of keeping a second copy.
 
 ## Regression tests added
 
@@ -97,7 +97,7 @@ Current verification after the follow-up fix:
 $ uv run python -m unittest tests.test_test_runner tests.test_remote_execution -v
 Ran 19 tests in 0.009s — OK
 
-$ uv run --group dev ruff check tests/test_test_runner.py skills/run-validation/scripts/test_runner.py scripts/compare_result_payloads.py
+$ uv run --group dev ruff check tests/test_test_runner.py tests/test_remote_execution.py skills/operator-eval/scripts/test_runner.py skills/operator-eval/scripts/compare_result_payloads.py
 All checks passed!
 
 $ uv run pyright

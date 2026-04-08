@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import importlib
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 
@@ -17,34 +18,64 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--oracle-result", required=True)
     parser.add_argument("--new-result", required=True)
-    parser.add_argument("--compare-level", default="balanced", choices=["strict", "balanced", "relaxed"])
+    parser.add_argument(
+        "--compare-level",
+        default="balanced",
+        choices=["strict", "balanced", "relaxed"],
+    )
     args = parser.parse_args()
     return compare_result_files(args.oracle_result, args.new_result, args.compare_level)
 
 
-def compare_result_files(oracle_result: str, new_result: str, compare_level: str) -> int:
-    rtol, atol = ORACLE_COMPARE_LEVELS[compare_level]
+def compare_result_files(
+    oracle_result: str | Path,
+    new_result: str | Path,
+    compare_level: str,
+) -> int:
+    try:
+        rtol, atol = _resolve_compare_tolerances(compare_level)
+    except ValueError:
+        print(
+            f"FAIL: invalid compare level '{compare_level}', "
+            f"expected one of {sorted(ORACLE_COMPARE_LEVELS)}"
+        )
+        return 2
+
     expected_payload = _load_result_payload(oracle_result)
     actual_payload = _load_result_payload(new_result)
+
     expected, expected_error = _extract_ordered_results(expected_payload, "oracle")
     if expected_error:
         print(f"FAIL: {expected_error}")
         return 1
+
     actual, actual_error = _extract_ordered_results(actual_payload, "compare")
     if actual_error:
         print(f"FAIL: {actual_error}")
         return 1
+
     mismatch = _compare_values(expected, actual, "output", rtol, atol)
     if mismatch:
         print(f"FAIL: {mismatch}")
         return 1
-    print(f"PASS: ordered outputs match (level={compare_level}, rtol={rtol}, atol={atol})")
+
+    print(
+        "PASS: ordered outputs match "
+        f"(level={compare_level.strip().lower()}, rtol={rtol}, atol={atol})"
+    )
     return 0
 
 
-def _load_result_payload(path: str) -> Any:
+def _resolve_compare_tolerances(level: str) -> tuple[float, float]:
+    normalized = level.strip().lower()
+    if normalized not in ORACLE_COMPARE_LEVELS:
+        raise ValueError(normalized)
+    return ORACLE_COMPARE_LEVELS[normalized]
+
+
+def _load_result_payload(path: str | Path) -> Any:
     torch = importlib.import_module("torch")
-    return torch.load(path, map_location="cpu")
+    return torch.load(Path(path), map_location="cpu")
 
 
 def _extract_ordered_results(payload: Any, label: str) -> tuple[list[Any] | None, str | None]:
@@ -108,6 +139,7 @@ def _compare_values(expected: Any, actual: Any, path: str, rtol: float, atol: fl
     if isinstance(expected, (int, float)) and isinstance(actual, (int, float)):
         exp_f, act_f = float(expected), float(actual)
         import math
+
         exp_nan, act_nan = math.isnan(exp_f), math.isnan(act_f)
         if exp_nan or act_nan:
             if exp_nan != act_nan:

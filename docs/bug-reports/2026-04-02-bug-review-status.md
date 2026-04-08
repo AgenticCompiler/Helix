@@ -37,9 +37,9 @@ Both `src/triton_agent/process_runner.py` and `skills/run-validation/scripts/run
 ## Re-Triaged Items
 
 ### 7. Broken remote comparison script path
-**Status:** Not reproduced
+**Status:** Fixed
 
-`skills/run-validation/scripts/test_runner.py` resolves `compare_result_payloads.py` to `<repo>/scripts/compare_result_payloads.py`, and that file exists in the repository.
+`skills/operator-eval/scripts/test_runner.py` now resolves `compare_result_payloads.py` from its own sibling script directory, so remote comparison no longer depends on a top-level repository `scripts/` path.
 
 ### 8. Unbounded `lru_cache` on run-skill loading
 **Status:** Still a design tradeoff
