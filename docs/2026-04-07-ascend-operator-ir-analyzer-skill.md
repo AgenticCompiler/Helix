@@ -12,7 +12,7 @@ Add a new repository-owned skill that helps a code agent capture complete Triton
   - `TRITON_DEBUG=1`
   - `TRITON_ALWAYS_COMPILE=1`
 - The script should accept:
-  - an archive directory path
+  - an IR directory path
   - `--bench-file <path>`
   - `--operator-file <path>`
   - optional remote settings matching the repository's existing remote execution semantics
@@ -22,15 +22,15 @@ Add a new repository-owned skill that helps a code agent capture complete Triton
   - the dumped Triton intermediate directory from a line that starts with `Dumping intermediate results to `
   - the Bisheng IR compile command from a line that starts with `[DEBUG] cmd_list: `
 - The script should normalize the extracted compile command so `--append-bisheng-options=...` preserves embedded spaces as one argument when the command is replayed.
-- The script should copy the dumped Triton IR directory into the archive directory before replaying the compiler.
-- The script should replay the Bisheng compile command against the archived `kernel.ttadapter.mlir`, remove one-shot print filters such as `--bishengir-print-ir-after=...`, add `--mlir-print-ir-after-all`, add `--mlir-print-ir-tree-dir=<archive>/bishengir_stages`, and redirect stderr to `<archive>/all-ir.txt`.
-- After capture completes, the archive directory should contain enough metadata for later analysis without re-running the benchmark command.
+- The script should copy the dumped Triton IR directory into the IR directory before replaying the compiler.
+- The script should replay the Bisheng compile command against the archived `kernel.ttadapter.mlir`, remove one-shot print filters such as `--bishengir-print-ir-after=...`, add `--mlir-print-ir-after-all`, add `--mlir-print-ir-tree-dir=<ir-dir>/bishengir_stages`, and redirect stderr to `<ir-dir>/all-ir.txt`.
+- After capture completes, the IR directory should contain enough metadata for later analysis without re-running the benchmark command.
 - The skill should instruct the code agent to inspect the archived IR and analyze likely performance issues directly from the artifacts.
 - If the user already has profiler output or needs timing evidence for hotspot attribution, the skill should tell the agent to also use `skills/ascend-npu-operator-profiler/`.
 
 ## Archive layout
 
-The capture script should create an archive directory with a stable, analysis-friendly layout:
+The capture script should create an IR directory with a stable, analysis-friendly layout:
 
 - `triton_dump/`
   - copy of the extracted `dumped_ir_dir`
@@ -58,10 +58,10 @@ If useful during implementation, the script may also persist the raw stdout or a
   - accept `--remote user@host[:port]`
   - accept optional `--remote-workdir`
   - optionally keep the remote workspace through a dedicated keep flag
-- Remote mode should run both the initial debug command and the Bisheng replay on the remote machine, then copy the archive directory back locally.
+- Remote mode should run both the initial debug command and the Bisheng replay on the remote machine, then copy the IR directory back locally.
 - If `--remote-workdir` is set, create a per-run subdirectory below that remote root instead of using a one-off temporary directory.
 - Remote cleanup should remove only the workspace created by the current run, unless the keep flag is set.
-- The local archive path should still be the canonical artifact location presented back to the agent and user.
+- The local IR directory path should still be the canonical artifact location presented back to the agent and user.
 - Remote mode should copy the selected benchmark harness and operator file into the remote workspace before execution.
 
 ## Design notes

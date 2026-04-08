@@ -272,8 +272,8 @@ def capture_remote_archive(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Capture Triton Ascend IR into an archive directory.")
-    parser.add_argument("--archive-dir", required=True)
+    parser = argparse.ArgumentParser(description="Capture Triton Ascend IR into an IR directory.")
+    parser.add_argument("--ir-dir", required=True)
     parser.add_argument("--bench-file", required=True)
     parser.add_argument("--operator-file", required=True)
     parser.add_argument("--remote")
@@ -285,7 +285,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    archive_dir = Path(args.archive_dir).expanduser().resolve()
+    archive_dir = Path(args.ir_dir).expanduser().resolve()
     bench_file = _resolve_existing_path(args.bench_file, "Bench file")
     operator_file = _resolve_existing_path(args.operator_file, "Operator file")
     try:
@@ -319,13 +319,13 @@ def main(argv: list[str] | None = None) -> int:
 
 def _prepare_empty_archive_dir(archive_dir: Path) -> None:
     if archive_dir.exists():
-        raise FileExistsError(f"Archive directory already exists: {archive_dir}")
+        raise FileExistsError(f"IR directory already exists: {archive_dir}")
     archive_dir.mkdir(parents=True)
 
 
 def _prepare_archive_destination(archive_dir: Path) -> None:
     if archive_dir.exists():
-        raise FileExistsError(f"Archive directory already exists: {archive_dir}")
+        raise FileExistsError(f"IR directory already exists: {archive_dir}")
     archive_dir.parent.mkdir(parents=True, exist_ok=True)
 
 

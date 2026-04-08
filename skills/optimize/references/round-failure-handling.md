@@ -1,4 +1,4 @@
-# Optimize Validation And Repair Contract
+# Optimize Round Failure Handling
 
 ## Typical Triggers
 
@@ -14,7 +14,7 @@
 - the parent round identifier
 - the round hypothesis or optimization theme
 
-## Repair Priorities
+## Handling Priorities
 
 1. Preserve the round operator path.
 2. Repair the optimized operator itself, not the generated test or benchmark harness, unless the evidence clearly shows the harness is wrong.

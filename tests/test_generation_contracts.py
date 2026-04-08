@@ -76,6 +76,12 @@ class GenerationContractTests(unittest.TestCase):
         )
         self.assertIn("ascend-npu-operator-profiler", optimize)
 
+    def test_optimize_skill_documents_round_local_ir_commands(self) -> None:
+        optimize = _read("skills/optimize/SKILL.md")
+        self.assertIn("python3 ../ascend-operator-ir-analyzer/scripts/capture_ir.py", optimize)
+        self.assertIn("--ir-dir opt-round-N/ir", optimize)
+        self.assertIn("python3 ../ascend-operator-ir-analyzer/scripts/inspect_ir.py", optimize)
+
     def test_optimize_skill_allows_non_pattern_optimization_knowledge(self) -> None:
         optimize = _read("skills/optimize/SKILL.md")
         self.assertIn("Pattern references are helpful guidance, not the only allowed source of ideas.", optimize)

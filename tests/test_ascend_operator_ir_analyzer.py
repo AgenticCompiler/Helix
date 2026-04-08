@@ -26,6 +26,17 @@ def _load_capture_ir_module():
 
 
 class AscendOperatorIrAnalyzerTests(unittest.TestCase):
+    def test_build_parser_accepts_ir_dir_argument(self) -> None:
+        module = _load_capture_ir_module()
+
+        args = module.build_parser().parse_args(
+            ["--ir-dir", "ir", "--bench-file", "bench.py", "--operator-file", "kernel.py"]
+        )
+
+        self.assertEqual(args.ir_dir, "ir")
+        self.assertEqual(args.bench_file, "bench.py")
+        self.assertEqual(args.operator_file, "kernel.py")
+
     def test_build_execution_command_uses_bench_and_operator_names(self) -> None:
         module = _load_capture_ir_module()
 

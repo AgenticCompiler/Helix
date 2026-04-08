@@ -56,5 +56,6 @@
 ## Scope Guardrails
 
 - Do not move implementation detail from skills into the CLI unless the CLI truly needs it for orchestration.
+- Keep archived IR capture and inspection flows in `skills/ascend-operator-ir-analyzer/scripts/`; use `capture_ir.py --ir-dir ...` for collection and `inspect_ir.py --ir-dir ...` for stage navigation, summaries, and diffs instead of growing new CLI subcommands.
 - Do not couple the project to a single operator style beyond what the existing skills already assume.
 - Keep documentation at the overview and workflow level unless a file explicitly needs lower-level implementation detail.

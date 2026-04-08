@@ -19,6 +19,7 @@ Use this skill when the user wants the operator itself improved rather than only
 - One optimized operator file inside each completed round directory
 - One `attempts.md` inside each round directory, updated throughout the round
 - One `summary.md` inside each completed round directory
+- Round-local benchmark evidence, with optional `profile/` and `ir/` evidence directories when deeper investigation is needed
 - Updated `opt-note.md` in the operator workspace
 - Updated `learned_lessons.md` in the operator workspace whenever the run discovers reusable optimization knowledge
 - Correctness, benchmark, and profiling evidence produced through the `operator-eval` skill
@@ -34,9 +35,14 @@ Use this skill when the user wants the operator itself improved rather than only
 - Read [workflow.md](references/workflow.md) before starting the first optimization round.
 - Read [artifacts.md](references/artifacts.md) before creating any round directory or updating `opt-note.md`.
 - Read [opt-note-format.md](references/opt-note-format.md) before editing `opt-note.md`.
-- Read [contracts.md](references/contracts.md) when correctness or benchmark validation fails.
+- Read [round-failure-handling.md](references/round-failure-handling.md) when correctness or benchmark validation fails.
 - Read [patterns/index.md](references/patterns/index.md) before choosing any optimization pattern reference.
 - Use the sibling `ascend-npu-operator-profiler` skill when benchmark numbers need operator-level performance evidence, hotspot diagnosis, bottleneck analysis, or profiler-backed comparison across runs.
+- Use the sibling `ascend-operator-ir-analyzer` skill when compiler lowering details, stage-to-stage IR changes, or round-local IR evidence are needed to explain benchmark behavior. In optimize rounds, keep that evidence under `opt-round-N/ir/`, for example:
+  ```bash
+  python3 ../ascend-operator-ir-analyzer/scripts/capture_ir.py --ir-dir opt-round-N/ir --bench-file bench_<operator>.py --operator-file opt-round-N/<optimized-operator>.py
+  python3 ../ascend-operator-ir-analyzer/scripts/inspect_ir.py list-stages --ir-dir opt-round-N/ir --sort-by interesting --limit 20
+  ```
 - Use the bundled helper script at [`../operator-eval/scripts/run-command.py`](../operator-eval/scripts/run-command.py) for generation, validation, profiling, and comparison commands; if the outer optimize task is remote-aware, carry the same remote flags through those commands.
 - When profiling benchmark harnesses, prefer `../operator-eval/scripts/run-command.py profile-bench ...`; carry the same `--remote` and `--remote-workdir` settings through profiler runs as well.
 - Treat `references/knowledge/` as optional background material for future expansion, not part of the minimum optimize workflow.
@@ -76,14 +82,16 @@ Use it for concise notes such as:
 5. Read `references/patterns/index.md`, pick one optimization hypothesis, and read only the one or two detailed pattern references that match that hypothesis when they are relevant; if a better hypothesis comes from your own Triton or NPU optimization knowledge, use that hypothesis directly and document it clearly.
 6. Apply one coherent optimization theme for the round, then run correctness validation before trusting any performance result.
 7. Whenever you discover reusable debugging or optimization knowledge, append a short note to `learned_lessons.md` immediately instead of waiting for the round summary.
-8. After correctness passes, run benchmark validation; when benchmark timing alone does not explain the result well enough, use `ascend-npu-operator-profiler` to gather operator-level evidence.
-9. Use the benchmark and profiler evidence to decide whether to keep iterating, abandon the direction, or finalize the round `summary.md`, update `opt-note.md`, and preserve any reusable insight in `learned_lessons.md`.
+8. After correctness passes, run benchmark validation; when benchmark timing alone does not explain the result well enough, use `ascend-npu-operator-profiler` to gather operator-level evidence and keep the resulting profiler artifacts under the current round directory.
+9. When IR inspection is needed to understand compiler lowering or confirm an optimization effect, use `ascend-operator-ir-analyzer`, capture into `opt-round-N/ir/`, and inspect that same directory directly.
+10. Use the benchmark, profiler, and IR evidence to decide whether to keep iterating, abandon the direction, or finalize the round `summary.md`, update `opt-note.md`, and preserve any reusable insight in `learned_lessons.md`.
 
 ## Quality Rules
 
 - Optimize the operator file itself, not the generated tests or benchmark harness.
 - Always run correctness before trusting performance results.
 - Use profiler evidence when benchmark timing alone does not explain the result well enough.
+- Keep round-specific profiler evidence under `opt-round-N/profile/` and IR evidence under `opt-round-N/ir/` when they are collected.
 - Keep parent-child traceability explicit so later engineers can understand which idea produced each round.
 - Prefer multiple diverse optimization directions over a single greedy chain from the current best version.
 - Prefer selective pattern reading over bulk-loading all optimization references.

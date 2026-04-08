@@ -22,7 +22,8 @@ Each completed round directory must contain:
 - `attempts.md`
 - `summary.md`
 - performance result text copied or summarized from the benchmark run
-- any small auxiliary logs or artifacts needed to understand the round outcome
+- any profiler or IR evidence collected for that round, kept in stable round-local directories
+- any small auxiliary logs needed to understand the round outcome
 
 Recommended layout:
 
@@ -32,10 +33,21 @@ opt-round-N/
   attempts.md
   summary.md
   perf.txt
+  profile/
+  ir/
   logs/
 ```
 
 Keep the layout simple. Do not create unnecessary nested documentation.
+
+Use these subdirectories consistently:
+
+- `profile/`
+  Keep profiler artifacts for the round here, for example a copied-back `PROF_*` directory or a stable local wrapper directory that contains the profiler output.
+- `ir/`
+  Keep archived IR capture artifacts for the round here, for example `triton_dump/`, `bishengir_stages/`, `all-ir.txt`, and `capture-manifest.json`.
+- `logs/`
+  Use this only for small auxiliary logs that do not justify a dedicated contract of their own.
 
 ## Summary Requirements
 
@@ -70,6 +82,19 @@ Keep entries chronological so another engineer can reconstruct how the round evo
 - Preserve the normalized benchmark result from `run-bench`.
 - If `run-bench` already writes a perf file under `bench_results/`, either copy the relevant result into the round directory or summarize it in `perf.txt` with a clear reference back to the source file.
 - Keep enough evidence to reconstruct the performance claim without rerunning the entire round immediately.
+- Keep `perf.txt` even when profiler or IR evidence also exists; richer evidence does not replace the round's basic benchmark summary.
+
+## Profile And IR Evidence
+
+- When profiling is needed for a round decision, keep the resulting profiler artifacts under `opt-round-N/profile/`.
+- When IR capture is needed for a round decision, keep the resulting IR directory under `opt-round-N/ir/`.
+- A standard round-local IR workflow looks like:
+  ```bash
+  python3 ../ascend-operator-ir-analyzer/scripts/capture_ir.py --ir-dir opt-round-N/ir --bench-file bench_<operator>.py --operator-file opt-round-N/<optimized-operator>.py
+  python3 ../ascend-operator-ir-analyzer/scripts/inspect_ir.py find-changes --ir-dir opt-round-N/ir --limit 20
+  ```
+- Prefer preserving profiler and IR evidence inside the round that motivated it instead of scattering those artifacts at the workspace top level.
+- If the same evidence informs multiple later rounds, mention the reused path explicitly in `attempts.md` or `summary.md` rather than copying large directories repeatedly.
 
 ## Original Operator
 

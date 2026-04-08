@@ -57,10 +57,16 @@ Avoid selecting a parent that:
 10. If correctness fails, record the failure in `attempts.md`, repair the operator in place, and retry.
 11. After correctness passes, run the benchmark with the resolved benchmark mode.
 12. Record the benchmark result in `attempts.md`.
-13. If the benchmark regresses, either:
+13. If profiling or IR capture is needed to explain or validate the round, archive that evidence under `opt-round-N/profile/` or `opt-round-N/ir/`.
+    - For IR capture, prefer commands shaped like:
+      ```bash
+      python3 ../ascend-operator-ir-analyzer/scripts/capture_ir.py --ir-dir opt-round-N/ir --bench-file bench_<operator>.py --operator-file opt-round-N/<optimized-operator>.py
+      python3 ../ascend-operator-ir-analyzer/scripts/inspect_ir.py list-stages --ir-dir opt-round-N/ir --sort-by interesting --limit 20
+      ```
+14. If the benchmark regresses, either:
    - revise the round in place if the optimization idea is still promising, or
    - stop advancing that round and return to candidate selection for a new branch
-14. Complete the round only after the optimized candidate shows a measurable win over the chosen comparison target.
+15. Complete the round only after the optimized candidate shows a measurable win over the chosen comparison target.
 
 ## Comparison Target
 
@@ -82,11 +88,12 @@ A round is complete only when all of the following are true:
 - the optimized operator passes correctness validation
 - `attempts.md` captures the meaningful intermediate trials within the round
 - benchmark evidence is saved
+- any profiler or IR evidence used in the round decision is saved under the round directory
 - the round summary explains the optimization points and measured outcome
 - `opt-note.md` is updated with a concise entry
 
 ## Failure Handling
 
-- Use [contracts.md](contracts.md) when correctness or benchmark execution fails.
+- Use [round-failure-handling.md](round-failure-handling.md) when correctness or benchmark execution fails.
 - Do not overwrite the original operator.
 - Do not erase a useful failed attempt if its summary would help a future branch; keep the artifacts when they contain reusable learning.

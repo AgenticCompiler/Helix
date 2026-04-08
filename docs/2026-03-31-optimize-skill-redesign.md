@@ -31,7 +31,7 @@
 - `skills/optimize/references/workflow.md`: round lifecycle, candidate selection, and recovery rules
 - `skills/optimize/references/artifacts.md`: required directory layout and per-round artifacts
 - `skills/optimize/references/opt-note-format.md`: expected `opt-note.md` structure and entry content
-- `skills/optimize/references/contracts.md`: fix and retry contract for correctness and benchmark regressions
+- `skills/optimize/references/round-failure-handling.md`: round failure handling guidance for correctness failures, benchmark failures, and regressions
 
 ## Validation
 
