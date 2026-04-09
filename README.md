@@ -37,6 +37,7 @@ For batch workflows, point `--input` at a directory whose immediate child direct
 ```bash
 uv run triton-agent gen-eval-batch --input operators_root
 uv run triton-agent optimize-status --input operators_root
+uv run triton-agent optimize-status --input operators_root --format markdown
 uv run triton-agent optimize-batch --input operators_root
 ```
 
@@ -232,11 +233,21 @@ Common options:
 
 ```bash
 uv run triton-agent optimize-status --input operators_root
+uv run triton-agent optimize-status --input operators_root --format markdown
 ```
 
 Use this command to get a read-only summary of optimization progress across workspaces.
 It keeps baseline perf files strict, but round `perf.txt` artifacts may include extra metrics such as
 `mean_ms` as long as the required `latency-*` entries are still present.
+
+`--format markdown` emits a compact table with:
+
+- `名称`
+- `Geomean speedup`
+- `Total speedup`
+
+The Markdown table excludes `NO-SESSION` workspaces. Workspaces with optimize artifacts but missing
+comparable speedup data stay in the table and render those cells as `-`.
 
 ### Optimize In Batch
 

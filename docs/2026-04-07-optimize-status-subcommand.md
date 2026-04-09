@@ -40,12 +40,29 @@ Example shape:
 Summary: 1 ok, 1 warning, 0 no-session
 ```
 
+Markdown table mode:
+
+```text
+| 名称 | Geomean speedup | Total speedup |
+| --- | --- | --- |
+| layernorm | - | - |
+| matmul | 1.18x | 1.22x |
+```
+
 ## CLI Contract
 
 - `optimize-status` accepts `--input/-i` as the batch root directory.
 - `optimize-status` accepts `--verbose` for parsing diagnostics and artifact-source hints.
+- `optimize-status` accepts `--format text|markdown`, defaulting to `text`.
 - Do not add agent-selection, remote, output-generation, or interactive flags in this change.
 - JSON output is out of scope for the first version.
+
+In `markdown` mode:
+
+- render only the Markdown table
+- exclude `no-session` workspaces
+- keep `warning` and `ok` workspaces in the usual sort order
+- use `-` when a workspace cannot produce one or both speedup values
 
 ## Workspace Discovery
 

@@ -559,10 +559,16 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["optimize-status", "-i", "kernels"])
         self.assertEqual(args.command_kind, CommandKind.OPTIMIZE_STATUS)
         self.assertTrue(args.verbose is False)
+        self.assertEqual(args.format, "text")
         self.assertFalse(hasattr(args, "agent"))
         self.assertFalse(hasattr(args, "interact"))
         self.assertFalse(hasattr(args, "remote"))
         self.assertFalse(hasattr(args, "output"))
+
+    def test_optimize_status_accepts_markdown_format(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-status", "-i", "kernels", "--format", "markdown"])
+        self.assertEqual(args.format, "markdown")
 
     def test_optimize_batch_accepts_optimize_options(self) -> None:
         parser = build_parser()
@@ -851,6 +857,44 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("[OK] matmul", rendered)
             self.assertIn("Best round: round-1", rendered)
             self.assertNotIn("Warning: found multiple baseline perf files", rendered)
+
+    def test_main_optimize_status_renders_markdown_table(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "fresh").mkdir()
+
+            warning_workspace = root / "alpha"
+            warning_workspace.mkdir()
+            (warning_workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            (warning_workspace / "opt-round-1").mkdir()
+
+            ok_workspace = root / "beta"
+            ok_workspace.mkdir()
+            (ok_workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            ok_round = ok_workspace / "opt-round-1"
+            ok_round.mkdir()
+            (ok_round / "perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(["optimize-status", "-i", str(root), "--format", "markdown"])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertIn("| 名称 | Geomean speedup | Total speedup |", rendered)
+            self.assertIn("| alpha | - | - |", rendered)
+            self.assertIn("| beta | 1.25x | 1.25x |", rendered)
+            self.assertNotIn("fresh", rendered)
+            self.assertNotIn("Summary:", rendered)
 
     def test_main_optimize_batch_auto_detects_operator_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

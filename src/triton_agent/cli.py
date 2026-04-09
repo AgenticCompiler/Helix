@@ -147,6 +147,12 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--compare", required=True)
         else:
             subparser.add_argument("-i", "--input", required=True)
+        if command_kind == CommandKind.OPTIMIZE_STATUS:
+            subparser.add_argument(
+                "--format",
+                default="text",
+                choices=["text", "markdown"],
+            )
         if command_kind in {
             CommandKind.GEN_EVAL,
             CommandKind.GEN_EVAL_BATCH,
