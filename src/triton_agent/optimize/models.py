@@ -37,7 +37,9 @@ class BatchOptimizeResult:
 @dataclass(frozen=True)
 class OptimizeStatusRound:
     round_name: str
-    score: float
+    avg_improvement: float
+    geomean_speedup: float
+    total_speedup: float
     mean_latency: float
 
 
@@ -48,6 +50,8 @@ class OptimizeStatusWorkspace:
     baseline_mean: float | None
     best_mean: float | None
     avg_improvement: float | None
+    geomean_speedup: float | None
+    total_speedup: float | None
     best_round: str | None
     logged_best: str | None
     warnings: tuple[str, ...]

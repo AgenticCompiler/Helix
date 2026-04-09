@@ -23,6 +23,10 @@
   - baseline value
   - compare value
   - percentage delta relative to baseline
+- After the per-id lines, also print:
+  - `Avg improvement = mean((baseline_i - compare_i) / baseline_i)`
+  - `Geomean speedup = geomean(baseline_i / compare_i)`
+  - `Total speedup = sum(baseline_i) / sum(compare_i)`
 - Return `0` for a successful comparison run and `1` for malformed data or missing required ids.
 
 ## Scope

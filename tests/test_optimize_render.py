@@ -24,6 +24,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 baseline_mean=10.0,
                 best_mean=8.0,
                 avg_improvement=0.2,
+                geomean_speedup=1.25,
+                total_speedup=1.3,
                 best_round="round-2",
                 logged_best="round-2",
                 warnings=(),
@@ -34,6 +36,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 baseline_mean=None,
                 best_mean=None,
                 avg_improvement=None,
+                geomean_speedup=None,
+                total_speedup=None,
                 best_round=None,
                 logged_best=None,
                 warnings=(),
@@ -44,6 +48,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 baseline_mean=12.0,
                 best_mean=None,
                 avg_improvement=None,
+                geomean_speedup=None,
+                total_speedup=None,
                 best_round=None,
                 logged_best=None,
                 warnings=("missing perf artifact for opt-round-28",),
@@ -65,6 +71,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 baseline_mean=12.0,
                 best_mean=None,
                 avg_improvement=None,
+                geomean_speedup=None,
+                total_speedup=None,
                 best_round=None,
                 logged_best=None,
                 warnings=("missing perf artifact for opt-round-28",),
@@ -76,6 +84,8 @@ class OptimizeRenderTests(unittest.TestCase):
         rendered = stream.getvalue()
         self.assertIn("[WARN] layernorm", rendered)
         self.assertIn("  Warning: missing perf artifact for opt-round-28", rendered)
+        self.assertIn("  Geomean speedup: unknown", rendered)
+        self.assertIn("  Total speedup: unknown", rendered)
         self.assertNotIn("\033[", rendered)
 
     def test_render_optimize_status_uses_tty_colors_for_titles_and_faint_warnings(self) -> None:
@@ -87,6 +97,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 baseline_mean=12.0,
                 best_mean=None,
                 avg_improvement=None,
+                geomean_speedup=None,
+                total_speedup=None,
                 best_round=None,
                 logged_best=None,
                 warnings=("missing perf artifact for opt-round-28",),
@@ -98,6 +110,8 @@ class OptimizeRenderTests(unittest.TestCase):
         rendered = stream.getvalue()
         self.assertIn("\033[36m[WARN] layernorm\033[0m", rendered)
         self.assertIn("\033[37m  Baseline mean: 12.000000\033[0m", rendered)
+        self.assertIn("\033[37m  Geomean speedup: unknown\033[0m", rendered)
+        self.assertIn("\033[37m  Total speedup: unknown\033[0m", rendered)
         self.assertIn(
             "\033[90m  Warning: missing perf artifact for opt-round-28\033[0m",
             rendered,

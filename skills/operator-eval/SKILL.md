@@ -57,6 +57,27 @@ Remote example:
 python3 ./scripts/run-command.py compare-result --oracle-result <oracle_result.pt> --new-result <new_result.pt> --remote user@host:2222 --remote-workdir /tmp/triton-agent
 ```
 
+## Compare Performance Results
+
+Use `compare-perf` after you already have two perf artifacts for the same benchmark cases, typically:
+
+- after `run-bench` on a baseline operator and an optimized operator
+- during optimize workflows when you want both per-case deltas and a headline speed summary
+
+Run:
+
+```bash
+python3 ./scripts/run-command.py compare-perf --baseline <baseline_perf.txt> --compare <candidate_perf.txt>
+```
+
+Notes:
+- Keep the baseline file in the standard `latency-<id>: <float>` format.
+- The compare-side file may include extra summary lines such as `mean_ms: ...`; the helper ignores them unless they replace a required latency entry.
+- The command prints per-case deltas plus:
+  - `Avg improvement`
+  - `Geomean speedup`
+  - `Total speedup`
+
 ## Run Bench
 
 Run a generated benchmark with:

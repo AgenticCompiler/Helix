@@ -734,6 +734,8 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("Baseline mean: 15.000000", rendered)
             self.assertIn("Best mean: 9.500000", rendered)
             self.assertIn("Avg improvement: +30.0%", rendered)
+            self.assertIn("Geomean speedup: 1.49x", rendered)
+            self.assertIn("Total speedup: 1.58x", rendered)
             self.assertIn("Best round: round-2", rendered)
             self.assertIn("Logged best: round-1", rendered)
             self.assertIn("Warning: numeric best round differs from logged best round", rendered)
@@ -814,9 +816,41 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("[WARN] layernorm", rendered)
             self.assertIn("Best mean: unknown", rendered)
             self.assertIn("Avg improvement: unknown", rendered)
+            self.assertIn("Geomean speedup: unknown", rendered)
+            self.assertIn("Total speedup: unknown", rendered)
             self.assertIn("Warning: ", rendered)
             self.assertIn("missing required latency ids", rendered)
             self.assertIn("Summary: 0 ok, 1 warning, 0 no-session", rendered)
+
+    def test_main_optimize_status_prefers_non_opt_top_level_perf_as_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "matmul"
+            workspace.mkdir()
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            (workspace / "opt_kernel_perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 18\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_one.mkdir()
+            (round_one / "perf.txt").write_text(
+                "latency-a: 9\nlatency-b: 15\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(["optimize-status", "-i", str(root)])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertIn("[OK] matmul", rendered)
+            self.assertIn("Best round: round-1", rendered)
+            self.assertNotIn("Warning: found multiple baseline perf files", rendered)
 
     def test_main_optimize_batch_auto_detects_operator_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

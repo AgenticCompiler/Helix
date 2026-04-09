@@ -29,6 +29,12 @@ def format_optimize_status_percent(value: float | None) -> str:
     return f"{value * 100:+.1f}%"
 
 
+def format_optimize_status_speedup(value: float | None) -> str:
+    if value is None:
+        return "unknown"
+    return f"{value:.2f}x"
+
+
 def render_batch_optimize_results(
     results: list[BatchOptimizeResult],
     stdout: TextIO | None = None,
@@ -75,6 +81,22 @@ def render_optimize_status_results(
             _style(
                 stream,
                 f"  Avg improvement: {format_optimize_status_percent(item.avg_improvement)}",
+                _BODY_COLOR,
+            ),
+            file=stream,
+        )
+        print(
+            _style(
+                stream,
+                f"  Geomean speedup: {format_optimize_status_speedup(item.geomean_speedup)}",
+                _BODY_COLOR,
+            ),
+            file=stream,
+        )
+        print(
+            _style(
+                stream,
+                f"  Total speedup: {format_optimize_status_speedup(item.total_speedup)}",
                 _BODY_COLOR,
             ),
             file=stream,

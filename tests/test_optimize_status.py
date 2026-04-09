@@ -94,6 +94,8 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertAlmostEqual(status.baseline_mean or 0.0, 15.0)
             self.assertAlmostEqual(status.best_mean or 0.0, 9.5)
             self.assertAlmostEqual(status.avg_improvement or 0.0, 0.3)
+            self.assertAlmostEqual(status.geomean_speedup or 0.0, (10 / 9 * 20 / 10) ** 0.5)
+            self.assertAlmostEqual(status.total_speedup or 0.0, 30 / 19)
             self.assertIn("numeric best round differs from logged best round", status.warnings)
 
     def test_inspect_optimize_status_workspace_prefers_overall_summary_and_warns_on_legacy_mismatch(
@@ -179,7 +181,61 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertEqual(status.best_round, "round-1")
             self.assertAlmostEqual(status.best_mean or 0.0, 11.0)
             self.assertAlmostEqual(status.avg_improvement or 0.0, 0.275)
+            self.assertAlmostEqual(status.geomean_speedup or 0.0, (10 / 7 * 20 / 15) ** 0.5)
+            self.assertAlmostEqual(status.total_speedup or 0.0, 30 / 22)
             self.assertEqual(status.warnings, ())
+
+    def test_inspect_optimize_status_workspace_prefers_best_geomean_speedup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 1\nlatency-b: 100\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_two = workspace / "opt-round-2"
+            round_one.mkdir()
+            round_two.mkdir()
+            (round_one / "perf.txt").write_text(
+                "latency-a: 0.5\nlatency-b: 100\n",
+                encoding="utf-8",
+            )
+            (round_two / "perf.txt").write_text(
+                "latency-a: 0.9\nlatency-b: 60\n",
+                encoding="utf-8",
+            )
+
+            status = inspect_optimize_status_workspace(workspace)
+
+            self.assertEqual(status.state, "ok")
+            self.assertEqual(status.best_round, "round-1")
+            self.assertAlmostEqual(status.avg_improvement or 0.0, 0.25)
+            self.assertAlmostEqual(status.geomean_speedup or 0.0, (1 / 0.5 * 100 / 100) ** 0.5)
+            self.assertAlmostEqual(status.total_speedup or 0.0, 101 / 100.5)
+
+    def test_inspect_optimize_status_workspace_prefers_non_opt_baseline_perf_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            (workspace / "opt_kernel_perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 18\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_one.mkdir()
+            (round_one / "perf.txt").write_text(
+                "latency-a: 9\nlatency-b: 15\n",
+                encoding="utf-8",
+            )
+
+            status = inspect_optimize_status_workspace(workspace)
+
+            self.assertEqual(status.state, "ok")
+            self.assertEqual(status.best_round, "round-1")
+            self.assertNotIn("found multiple baseline perf files", status.warnings)
 
 
 if __name__ == "__main__":

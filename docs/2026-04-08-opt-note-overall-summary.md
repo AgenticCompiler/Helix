@@ -18,6 +18,7 @@
 - The summary should answer:
   - which round is the final best candidate
   - what benchmark improvement it achieved versus baseline
+  - what geomean and total speedup it achieved versus baseline
   - which other validated branches remain useful
   - what follow-up direction is recommended, if any
 - Continue-optimize flows should refresh the existing overall summary after new rounds are completed instead of appending duplicate final sections.
@@ -32,6 +33,8 @@ Final best round: round-N
 Baseline mean: <value or unknown>
 Best mean: <value or unknown>
 Avg improvement: <value or unknown>
+Geomean speedup: <value or unknown>
+Total speedup: <value or unknown>
 Validated branches: <comma-separated round names or none>
 Outcome: <plain-English optimization result>
 Next step: <plain-English follow-up or none>
@@ -39,7 +42,7 @@ Next step: <plain-English follow-up or none>
 
 ## Data Sources
 
-- `Final best round` should come from the round currently marked as the effective winner for the session.
+- `Final best round` should come from the round currently marked as the effective winner for the session, using geomean speedup as the headline metric.
 - Numeric values should prefer concrete perf artifacts already used by `optimize-status`.
 - `Validated branches` should list rounds recorded as `validated branch` in `opt-note.md`.
 - `Outcome` and `Next step` remain short natural-language lines written by the optimizing agent.
@@ -54,7 +57,7 @@ Next step: <plain-English follow-up or none>
 
 - Do not introduce a separate `final-summary.md`.
 - Do not replace round summaries or `attempts.md`.
-- Do not invent numeric calculations that differ from the existing optimize-status metric.
+- Do not invent numeric calculations that differ from the existing optimize-status metrics.
 
 ## Verification
 

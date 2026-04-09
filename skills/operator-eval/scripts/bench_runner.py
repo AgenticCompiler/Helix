@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import re
 import sys
@@ -66,6 +67,10 @@ def compare_perf_files(baseline_perf: Path, compare_perf: Path) -> int:
             f"compare={compare_value:.1f}, "
             f"delta={_format_delta_percent(baseline_value, compare_value)}"
         )
+    avg_improvement, geomean_speedup, total_speedup = _summarize_perf_metrics(baseline, compare)
+    print(f"Avg improvement: {_format_improvement_percent(avg_improvement)}")
+    print(f"Geomean speedup: {_format_speedup(geomean_speedup)}")
+    print(f"Total speedup: {_format_speedup(total_speedup)}")
     print(f"PASS: compared {len(baseline)} latency entries")
     return 0
 
@@ -394,3 +399,38 @@ def _format_delta_percent(baseline: float, compare: float) -> str:
         return "inf"
     delta = ((compare - baseline) / baseline) * 100.0
     return f"{delta:.2f}%"
+
+
+def _summarize_perf_metrics(
+    baseline: dict[str, float],
+    compare: dict[str, float],
+) -> tuple[float | None, float | None, float | None]:
+    pairs = [(baseline[latency_id], compare[latency_id]) for latency_id in sorted(baseline)]
+    if not pairs:
+        return None, None, None
+    if any(baseline_value <= 0 or compare_value <= 0 for baseline_value, compare_value in pairs):
+        return None, None, None
+
+    improvements = [
+        (baseline_value - compare_value) / baseline_value
+        for baseline_value, compare_value in pairs
+    ]
+    ratios = [baseline_value / compare_value for baseline_value, compare_value in pairs]
+    avg_improvement = sum(improvements) / len(improvements)
+    geomean_speedup = math.exp(sum(math.log(ratio) for ratio in ratios) / len(ratios))
+    total_speedup = sum(baseline_value for baseline_value, _ in pairs) / sum(
+        compare_value for _, compare_value in pairs
+    )
+    return avg_improvement, geomean_speedup, total_speedup
+
+
+def _format_improvement_percent(value: float | None) -> str:
+    if value is None:
+        return "unknown"
+    return f"{value * 100:+.1f}%"
+
+
+def _format_speedup(value: float | None) -> str:
+    if value is None:
+        return "unknown"
+    return f"{value:.2f}x"

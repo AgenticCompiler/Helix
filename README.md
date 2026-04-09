@@ -287,6 +287,12 @@ uv run triton-agent compare-perf \
 
 The baseline file should stay in the standard `latency-<id>: <float>` format. The compare-side file may
 include extra summary fields, which are ignored unless they replace a required latency entry.
+The command prints:
+
+- one comparison line per latency id with baseline, compare, and delta
+- `Avg improvement` for case-equal percentage improvement
+- `Geomean speedup` for benchmark-style speedup aggregation
+- `Total speedup` for whole-workload elapsed-time aggregation
 
 ## Shared Options
 

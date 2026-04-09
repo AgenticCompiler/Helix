@@ -164,7 +164,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             baseline = root / "baseline_perf.txt"
             compare = root / "compare_perf.txt"
             baseline.write_text("latency-a: 10\nlatency-b: 20\n", encoding="utf-8")
-            compare.write_text("latency-a: 11\nlatency-b: 18\n", encoding="utf-8")
+            compare.write_text("latency-a: 8\nlatency-b: 10\n", encoding="utf-8")
 
             stdout_path = Path(tmp) / "stdout.txt"
             original_stdout = sys.stdout
@@ -179,8 +179,11 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(return_code, 0)
             self.assertIn("latency-a", output)
             self.assertIn("baseline=10.0", output)
-            self.assertIn("compare=11.0", output)
-            self.assertIn("delta=10.00%", output)
+            self.assertIn("compare=8.0", output)
+            self.assertIn("delta=-20.00%", output)
+            self.assertIn("Avg improvement: +35.0%", output)
+            self.assertIn("Geomean speedup: 1.58x", output)
+            self.assertIn("Total speedup: 1.67x", output)
 
     def test_compare_perf_files_fails_when_case_ids_do_not_match(self) -> None:
         module = load_bench_runner_module()
