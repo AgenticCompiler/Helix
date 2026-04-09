@@ -15,6 +15,10 @@ from triton_agent.output import render_result
 from triton_agent.verbose import emit_verbose_lines
 
 
+def handle_gen_eval(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    return _handle_generation_command(parser, args, CommandKind.GEN_EVAL)
+
+
 def handle_gen_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     return _handle_generation_command(parser, args, CommandKind.GEN_TEST)
 

@@ -4,6 +4,7 @@
 
 ```bash
 uv run triton-agent gen-test --input a.py
+uv run triton-agent gen-eval --input a.py
 uv run triton-agent run-test --test-file test_a.py --operator-file a.py
 uv run triton-agent gen-bench --input a.py
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
@@ -14,6 +15,7 @@ uv run triton-agent optimize-batch --input operators_root
 
 ```bash
 uv run triton-agent gen-test --input a.py --output test_a.py
+uv run triton-agent gen-eval --input a.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
 uv run triton-agent optimize --input a.py --output opt_a.py --interact
 uv run triton-agent gen-bench --input a.py --agent codex
 uv run triton-agent gen-test --input a.py --agent opencode
@@ -54,6 +56,9 @@ Generated harnesses record their resolved public entrypoint, entrypoint kind, ta
 - `--show-output` streams readable non-interactive agent output to the current terminal.
 - `--show-output` exits cleanly after the agent finishes, including PTY-backed shutdown cases where Linux reports EOF as `EIO`.
 - `--force-overwrite` makes the CLI delete an existing generated output file before starting `gen-test` or `gen-bench`.
+- `gen-eval` launches one agent task that may repair the original operator file directly, generate both a test harness and a benchmark harness, and validate both artifacts before finishing.
+- `gen-eval` defaults to `--test-mode differential` and `--bench-mode standalone`.
+- `gen-eval` accepts the same `--remote user@host[:port]` and optional `--remote-workdir <path>` context as the other agent-backed generation commands and passes that context through to generated validation commands.
 - The parser also accepts snake_case command aliases such as `gen_test` and `run_bench`, while help text keeps the canonical kebab-case names.
 - `run-test` requires `--test-file` and `--operator-file`.
 - `run-test` executes the generated test file through the unified `skills/operator-eval/` execution helpers instead of launching a code agent.

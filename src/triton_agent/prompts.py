@@ -3,9 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from triton_agent.models import COMMAND_TO_SKILL, CommandKind
+from triton_agent.paths import default_generated_output_path
 
 
 PROMPT_INTROS = {
+    CommandKind.GEN_EVAL: "Repair the operator when needed, then generate correctness tests and a benchmark.",
     CommandKind.GEN_TEST: "Generate correctness tests for the operator file.",
     CommandKind.RUN_TEST: "Run the generated correctness tests for the operator file.",
     CommandKind.GEN_BENCH: "Generate a benchmark for the operator file.",
@@ -44,6 +46,15 @@ def build_prompt(
         lines.append(f"Benchmark file: {input_path}")
     else:
         lines.append(f"Operator input: {input_path}")
+    if command_kind == CommandKind.GEN_EVAL:
+        test_output = default_generated_output_path(CommandKind.GEN_TEST, input_path, test_mode=test_mode)
+        bench_output = default_generated_output_path(CommandKind.GEN_BENCH, input_path)
+        lines.extend(
+            [
+                f"Requested test output: {test_output}",
+                f"Requested benchmark output: {bench_output}",
+            ]
+        )
     if output_path is not None:
         lines.append(f"Requested output: {output_path}")
     if test_mode is not None:
@@ -64,6 +75,15 @@ def build_prompt(
         lines.append(
             "After generating the artifact, execute the generated test or benchmark case. "
             "If execution fails, repair the generated artifact and retry automatically."
+        )
+    if command_kind == CommandKind.GEN_EVAL:
+        lines.extend(
+            [
+                "You may edit the original operator file directly when the operator implementation is at fault.",
+                "Generate both the test harness and the benchmark harness in this task.",
+                "After generating them, both generated artifacts must be executed before the task finishes.",
+                "If validation fails, repair the generated harness when the harness is at fault, or repair the original operator file when the operator is at fault, then retry.",
+            ]
         )
 
     if command_kind == CommandKind.OPTIMIZE:

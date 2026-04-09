@@ -37,5 +37,6 @@ class AgentRunner(ABC):
             min_rounds=request.min_rounds,
             continue_optimize=request.continue_optimize,
             no_agent_session=request.no_agent_session,
+            staged_skill_names=request.staged_skill_names,
         )
         return self.run(resumed_request)

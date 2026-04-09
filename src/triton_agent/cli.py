@@ -8,6 +8,7 @@ from triton_agent.agent import AgentRunner
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
 from triton_agent.commands.execution import handle_run_bench, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
+from triton_agent.commands.generation import handle_gen_eval
 from triton_agent.commands.optimize import (
     handle_optimize,
     handle_optimize_batch,
@@ -146,6 +147,7 @@ def build_parser() -> argparse.ArgumentParser:
         else:
             subparser.add_argument("-i", "--input", required=True)
         if command_kind in {
+            CommandKind.GEN_EVAL,
             CommandKind.GEN_TEST,
             CommandKind.GEN_BENCH,
             CommandKind.OPTIMIZE,
@@ -184,6 +186,7 @@ def build_parser() -> argparse.ArgumentParser:
                     "--agent", default="codex", choices=["codex", "opencode", "pi", "claude"]
                 )
         if command_kind in {
+            CommandKind.GEN_EVAL,
             CommandKind.GEN_TEST,
             CommandKind.RUN_TEST,
             CommandKind.OPTIMIZE,
@@ -192,13 +195,16 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument(
                 "--test-mode",
                 default=(
-                    "standalone"
+                    "differential"
+                    if command_kind == CommandKind.GEN_EVAL
+                    else "standalone"
                     if command_kind == CommandKind.GEN_TEST
                     else None
                 ),
                 choices=["standalone", "differential"],
             )
         if command_kind in {
+            CommandKind.GEN_EVAL,
             CommandKind.GEN_BENCH,
             CommandKind.RUN_BENCH,
             CommandKind.OPTIMIZE,
@@ -207,7 +213,9 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument(
                 "--bench-mode",
                 default=(
-                    "standalone" if command_kind == CommandKind.GEN_BENCH else None
+                    "standalone"
+                    if command_kind in {CommandKind.GEN_EVAL, CommandKind.GEN_BENCH}
+                    else None
                 ),
                 choices=["standalone", "msprof"],
             )
@@ -234,6 +242,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     command_kind: CommandKind = args.command_kind
     if command_kind == CommandKind.GEN_TEST:
         return handle_gen_test(parser, args)
+    if command_kind == CommandKind.GEN_EVAL:
+        return handle_gen_eval(parser, args)
     if command_kind == CommandKind.GEN_BENCH:
         return handle_gen_bench(parser, args)
     if command_kind == CommandKind.RUN_TEST:
@@ -257,6 +267,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
     if argv is None or not argv:
         return argv
     aliases = {
+        "gen_eval": "gen-eval",
         "gen_test": "gen-test",
         "run_test": "run-test",
         "gen_bench": "gen-bench",

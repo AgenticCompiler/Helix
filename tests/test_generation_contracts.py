@@ -64,6 +64,16 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("Use the operator-eval skill to execute generated benchmark cases.", bench_gen)
         self.assertIn("python3 ../operator-eval/scripts/run-command.py run-bench --bench-file", bench_gen)
 
+    def test_eval_gen_skill_documents_direct_operator_repair_and_remote_validation(self) -> None:
+        eval_gen = _read("skills/eval-gen/SKILL.md")
+        self.assertIn("repair the original operator file", eval_gen)
+        self.assertIn("test-gen", eval_gen)
+        self.assertIn("bench-gen", eval_gen)
+        self.assertIn("operator-eval", eval_gen)
+        self.assertIn("carry the same remote flags", eval_gen)
+        self.assertIn("Do not", eval_gen)
+        self.assertIn("opt-round", eval_gen)
+
     def test_optimize_skill_includes_remote_command_examples(self) -> None:
         optimize = _read("skills/optimize/SKILL.md")
         self.assertIn(

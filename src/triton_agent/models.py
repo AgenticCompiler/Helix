@@ -7,6 +7,7 @@ from typing import Optional
 
 
 class CommandKind(str, Enum):
+    GEN_EVAL = "gen-eval"
     GEN_TEST = "gen-test"
     RUN_TEST = "run-test"
     GEN_BENCH = "gen-bench"
@@ -19,6 +20,7 @@ class CommandKind(str, Enum):
 
 
 COMMAND_TO_SKILL = {
+    CommandKind.GEN_EVAL: "eval-gen",
     CommandKind.GEN_TEST: "test-gen",
     CommandKind.RUN_TEST: "",
     CommandKind.GEN_BENCH: "bench-gen",
@@ -50,6 +52,7 @@ class AgentRequest:
     min_rounds: Optional[int] = None
     continue_optimize: bool = False
     no_agent_session: bool = False
+    staged_skill_names: tuple[str, ...] | None = None
 
 
 @dataclass

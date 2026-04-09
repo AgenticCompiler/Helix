@@ -49,7 +49,9 @@
 ## Design And Documentation Style
 
 - Write a short design document before implementing behavior changes.
-- Keep design and behavior documents under `docs/` with date-prefixed filenames such as `YYYY-MM-DD-<topic>.md`.
+- Keep design/spec documents under `docs/specs/`.
+- Keep implementation plans under `docs/plans/`.
+- Keep behavior and workflow documents under `docs/` with date-prefixed filenames such as `YYYY-MM-DD-<topic>.md`.
 - Update `AGENTS.md` when durable project rules change; keep implementation detail in `README.md` and focused docs.
 - Document behavior in terms of user-visible semantics first and implementation details second.
 - Use `AGENTS.md` for stable project rules and workflow expectations.

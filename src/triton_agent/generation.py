@@ -12,6 +12,9 @@ from triton_agent.skills import SkillLinkManager
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
+GEN_EVAL_STAGED_SKILLS = ("eval-gen", "test-gen", "bench-gen", "operator-eval")
+
+
 @dataclass(frozen=True)
 class GenerationOptions:
     interact: bool
@@ -37,7 +40,14 @@ def resolve_generation_output_path(
 ) -> Path | None:
     if explicit_output:
         return Path(explicit_output).expanduser().resolve()
-    if command_kind in {CommandKind.GEN_TEST, CommandKind.GEN_BENCH, CommandKind.OPTIMIZE}:
+    if command_kind in {
+        CommandKind.GEN_EVAL,
+        CommandKind.GEN_TEST,
+        CommandKind.GEN_BENCH,
+        CommandKind.OPTIMIZE,
+    }:
+        if command_kind == CommandKind.GEN_EVAL:
+            return default_generated_output_path(CommandKind.OPTIMIZE, input_path, test_mode=test_mode)
         return default_generated_output_path(command_kind, input_path, test_mode=test_mode)
     return None
 
@@ -72,6 +82,7 @@ def build_generation_request(
     workdir: Path,
     options: GenerationOptions,
 ) -> AgentRequest:
+    staged_skill_names = GEN_EVAL_STAGED_SKILLS if command_kind == CommandKind.GEN_EVAL else None
     output_path = resolve_generation_output_path(
         command_kind,
         input_path,
@@ -109,13 +120,18 @@ def build_generation_request(
         min_rounds=options.min_rounds,
         continue_optimize=options.continue_optimize,
         no_agent_session=False,
+        staged_skill_names=staged_skill_names,
     )
 
 
 def run_generation_request(request: AgentRequest) -> AgentResult:
     repo_root = Path(__file__).resolve().parents[2]
     manager = SkillLinkManager(repo_root / "skills")
-    links = manager.prepare_skills(request.agent_name, request.workdir)
+    links = manager.prepare_skills(
+        request.agent_name,
+        request.workdir,
+        skill_names=request.staged_skill_names,
+    )
     if request.verbose:
         emit_verbose_lines(sys.stderr, "skills", manager.describe_prepare(links))
     try:

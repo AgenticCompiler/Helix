@@ -29,6 +29,16 @@ from triton_agent.result_normalization import normalize_agent_result
 
 
 class CliParserTests(unittest.TestCase):
+    def test_gen_eval_maps_to_command_kind(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["gen-eval", "-i", "kernel.py"])
+        self.assertEqual(args.command, "gen-eval")
+        self.assertEqual(args.command_kind, CommandKind.GEN_EVAL)
+        self.assertEqual(args.test_mode, "differential")
+        self.assertEqual(args.bench_mode, "standalone")
+        self.assertEqual(args.agent, "codex")
+        self.assertFalse(args.interact)
+
     def test_gen_test_maps_to_command_kind(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["gen-test", "-i", "kernel.py"])
@@ -40,6 +50,7 @@ class CliParserTests(unittest.TestCase):
     def test_snake_case_aliases_map_to_same_command_kind(self) -> None:
         parser = build_parser()
         cases = [
+            ("gen_eval", CommandKind.GEN_EVAL),
             ("gen_test", CommandKind.GEN_TEST),
             ("run_test", CommandKind.RUN_TEST),
             ("gen_bench", CommandKind.GEN_BENCH),
@@ -61,6 +72,7 @@ class CliParserTests(unittest.TestCase):
     def test_help_keeps_only_canonical_kebab_case_commands(self) -> None:
         parser = build_parser()
         help_text = parser.format_help()
+        self.assertIn("gen-eval", help_text)
         self.assertIn("gen-test", help_text)
         self.assertIn("run-test", help_text)
         self.assertIn("gen-bench", help_text)
@@ -69,6 +81,7 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("compare-perf", help_text)
         self.assertIn("optimize-status", help_text)
         self.assertIn("optimize-batch", help_text)
+        self.assertNotIn("gen_eval", help_text)
         self.assertNotIn("gen_test", help_text)
         self.assertNotIn("run_test", help_text)
         self.assertNotIn("gen_bench", help_text)
@@ -117,18 +130,22 @@ class CliParserTests(unittest.TestCase):
 
     def test_agent_commands_accept_pi_backend(self) -> None:
         parser = build_parser()
+        gen_eval_args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--agent", "pi"])
         gen_test_args = parser.parse_args(["gen-test", "-i", "kernel.py", "--agent", "pi"])
         gen_bench_args = parser.parse_args(["gen-bench", "-i", "kernel.py", "--agent", "pi"])
         optimize_args = parser.parse_args(["optimize", "-i", "kernel.py", "--agent", "pi"])
+        self.assertEqual(gen_eval_args.agent, "pi")
         self.assertEqual(gen_test_args.agent, "pi")
         self.assertEqual(gen_bench_args.agent, "pi")
         self.assertEqual(optimize_args.agent, "pi")
 
     def test_agent_commands_accept_claude_backend(self) -> None:
         parser = build_parser()
+        gen_eval_args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--agent", "claude"])
         gen_test_args = parser.parse_args(["gen-test", "-i", "kernel.py", "--agent", "claude"])
         gen_bench_args = parser.parse_args(["gen-bench", "-i", "kernel.py", "--agent", "claude"])
         optimize_args = parser.parse_args(["optimize", "-i", "kernel.py", "--agent", "claude"])
+        self.assertEqual(gen_eval_args.agent, "claude")
         self.assertEqual(gen_test_args.agent, "claude")
         self.assertEqual(gen_bench_args.agent, "claude")
         self.assertEqual(optimize_args.agent, "claude")
@@ -209,6 +226,17 @@ class CliParserTests(unittest.TestCase):
 
     def test_agent_commands_accept_remote_options(self) -> None:
         parser = build_parser()
+        gen_eval_args = parser.parse_args(
+            [
+                "gen-eval",
+                "-i",
+                "kernel.py",
+                "--remote",
+                "alice@example.com:2200",
+                "--remote-workdir",
+                "/tmp/runs",
+            ]
+        )
         gen_test_args = parser.parse_args(
             [
                 "gen-test",
@@ -240,6 +268,8 @@ class CliParserTests(unittest.TestCase):
                 "/tmp/opt",
             ]
         )
+        self.assertEqual(gen_eval_args.remote, "alice@example.com:2200")
+        self.assertEqual(gen_eval_args.remote_workdir, "/tmp/runs")
         self.assertEqual(gen_test_args.remote, "alice@example.com:2200")
         self.assertEqual(gen_test_args.remote_workdir, "/tmp/runs")
         self.assertEqual(gen_bench_args.remote, "alice@example.com")
@@ -328,6 +358,7 @@ class CliParserTests(unittest.TestCase):
 
     def test_test_mode_option_is_available_for_test_commands(self) -> None:
         parser = build_parser()
+        eval_args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--test-mode", "standalone"])
         gen_args = parser.parse_args(["gen-test", "-i", "kernel.py", "--test-mode", "standalone"])
         run_args = parser.parse_args(
             [
@@ -340,6 +371,7 @@ class CliParserTests(unittest.TestCase):
                 "differential",
             ]
         )
+        self.assertEqual(eval_args.test_mode, "standalone")
         self.assertEqual(gen_args.test_mode, "standalone")
         self.assertEqual(run_args.test_mode, "differential")
 
@@ -352,8 +384,14 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(gen_args.test_mode, "standalone")
         self.assertIsNone(run_args.test_mode)
 
+    def test_gen_eval_defaults_to_differential_test_mode(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["gen-eval", "-i", "kernel.py"])
+        self.assertEqual(args.test_mode, "differential")
+
     def test_bench_mode_option_is_available_for_bench_commands(self) -> None:
         parser = build_parser()
+        eval_args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--bench-mode", "msprof"])
         gen_args = parser.parse_args(["gen-bench", "-i", "kernel.py", "--bench-mode", "standalone"])
         run_args = parser.parse_args(
             [
@@ -366,6 +404,7 @@ class CliParserTests(unittest.TestCase):
                 "msprof",
             ]
         )
+        self.assertEqual(eval_args.bench_mode, "msprof")
         self.assertEqual(gen_args.bench_mode, "standalone")
         self.assertEqual(run_args.bench_mode, "msprof")
 
@@ -377,6 +416,11 @@ class CliParserTests(unittest.TestCase):
         )
         self.assertEqual(gen_args.bench_mode, "standalone")
         self.assertIsNone(run_args.bench_mode)
+
+    def test_gen_eval_defaults_to_standalone_bench_mode(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["gen-eval", "-i", "kernel.py"])
+        self.assertEqual(args.bench_mode, "standalone")
 
     def test_optimize_command_supports_mode_options(self) -> None:
         parser = build_parser()
@@ -1715,6 +1759,22 @@ class PathResolutionTests(unittest.TestCase):
 
 
 class PromptTests(unittest.TestCase):
+    def test_gen_eval_prompt_mentions_operator_repair_and_dual_outputs(self) -> None:
+        prompt = build_prompt(
+            CommandKind.GEN_EVAL,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            force_overwrite=False,
+        )
+        self.assertIn("eval-gen", prompt)
+        self.assertIn("Requested test output: /tmp/differential_test_op.py", prompt)
+        self.assertIn("Requested benchmark output: /tmp/bench_op.py", prompt)
+        self.assertIn("may edit the original operator file directly", prompt)
+        self.assertIn("both generated artifacts must be executed", prompt)
+
     def test_prompt_mentions_skill_and_output(self) -> None:
         prompt = build_prompt(
             CommandKind.GEN_TEST,
@@ -1834,6 +1894,23 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Remote execution target: alice@example.com:2200", prompt)
         self.assertIn("Remote execution root: /tmp/triton-agent", prompt)
         self.assertIn("When you execute generated test cases or benchmark cases", prompt)
+        self.assertIn("include the same `--remote` setting", prompt)
+
+    def test_gen_eval_prompt_mentions_remote_execution_context(self) -> None:
+        prompt = build_prompt(
+            CommandKind.GEN_EVAL,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            force_overwrite=False,
+            remote="alice@example.com:2200",
+            remote_workdir="/tmp/triton-agent",
+        )
+        self.assertIn("Remote execution target: alice@example.com:2200", prompt)
+        self.assertIn("Remote execution root: /tmp/triton-agent", prompt)
+        self.assertIn("both generated artifacts must be executed", prompt)
         self.assertIn("include the same `--remote` setting", prompt)
 
     def test_optimize_prompt_mentions_requested_modes(self) -> None:
