@@ -14,14 +14,16 @@
 
 ## Comparison behavior
 
-- Parse both perf files as `latency-<id>: <float>` records.
-- Fail if either file is malformed, empty, or contains duplicate latency ids.
-- Fail if the two files do not contain the same latency ids.
+- Parse the baseline perf file as strict `latency-<id>: <float>` records.
+- Parse the compare perf file by extracting only the latency ids required by the baseline.
+- Ignore extra compare-side fields such as `mean_ms` or free-form summary entries.
+- Fail if the baseline file is malformed, empty, or contains duplicate latency ids.
+- Fail if the compare file is missing any baseline latency id or provides an invalid value for one.
 - When ids match, print one comparison line per id with:
   - baseline value
   - compare value
   - percentage delta relative to baseline
-- Return `0` for a successful comparison run and `1` for malformed data or mismatched ids.
+- Return `0` for a successful comparison run and `1` for malformed data or missing required ids.
 
 ## Scope
 

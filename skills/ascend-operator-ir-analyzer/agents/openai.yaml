@@ -1,4 +1,0 @@
-interface:
-  display_name: "Ascend IR Analyzer"
-  short_description: "Capture Triton Ascend IR archives"
-  default_prompt: "Use $ascend-operator-ir-analyzer to capture and inspect archived Triton Ascend compiler IR for a performance investigation."

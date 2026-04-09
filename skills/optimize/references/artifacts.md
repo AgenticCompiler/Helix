@@ -55,6 +55,8 @@ Use these subdirectories consistently:
 
 - parent round or parent candidate
 - optimization hypothesis
+- why that hypothesis looked plausible
+- what evidence motivated the round
 - code changes that mattered
 - correctness validation result
 - benchmark comparison
@@ -70,6 +72,9 @@ The optimization points section is required. This is the part future engineers a
 Record at least:
 
 - the initial round hypothesis
+- why the hypothesis may help
+- what evidence supports the round direction
+- why profiling or IR capture was skipped, when those tools were not used
 - each meaningful code change or optimization attempt
 - correctness failures and how they were repaired
 - benchmark outcomes, including regressions or inconclusive results

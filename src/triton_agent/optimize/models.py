@@ -13,7 +13,8 @@ class OptimizeRunOptions:
     remote: str | None
     remote_workdir: str | None
     min_rounds: int | None
-    continue_optimize: bool
+    resume_mode: str
+    require_analysis: bool
     no_agent_session: bool
     output: str | None
     test_mode: str | None

@@ -26,8 +26,10 @@ Use this skill when the user wants the operator itself improved rather than only
 
 ## Required Preconditions
 
-- Ensure the operator workspace has correctness tests. If not, generate them with `test-gen` skill.
-- Ensure the operator workspace has benchmark cases. If not, generate them with `bench-gen` skill.
+- Check whether the operator workspace already has reusable correctness tests and benchmark cases.
+- Reuse existing validation artifacts when they already cover the current optimize run.
+- Generate missing correctness tests with `test-gen` only when the workspace does not already contain a usable harness.
+- Generate missing benchmark cases with `bench-gen` only when the workspace does not already contain a usable harness.
 - Do not start optimization rounds until both validation artifacts exist.
 
 ## Required References
@@ -78,23 +80,30 @@ Use it for concise notes such as:
 1. Inspect the operator workspace, resolve the correctness and benchmark modes, and confirm which validation artifacts already exist.
 2. Generate missing tests or benchmarks through `../operator-eval/scripts/run-command.py` before starting any optimization round.
 3. Treat the original operator as validated candidate `round 0`, then choose one validated parent candidate for the next round instead of assuming the current best version is always the right parent.
-4. Create `opt-round-N/`, copy the chosen parent operator into it, and start `attempts.md` immediately so every meaningful attempt and measurement is recorded.
-5. Read `references/patterns/index.md`, pick one optimization hypothesis, and read only the one or two detailed pattern references that match that hypothesis when they are relevant; if a better hypothesis comes from your own Triton or NPU optimization knowledge, use that hypothesis directly and document it clearly.
-6. Apply one coherent optimization theme for the round, then run correctness validation before trusting any performance result.
-7. Whenever you discover reusable debugging or optimization knowledge, append a short note to `learned_lessons.md` immediately instead of waiting for the round summary.
-8. After correctness passes, run benchmark validation; when benchmark timing alone does not explain the result well enough, use `ascend-npu-operator-profiler` to gather operator-level evidence and keep the resulting profiler artifacts under the current round directory.
-9. When IR inspection is needed to understand compiler lowering or confirm an optimization effect, use `ascend-operator-ir-analyzer`, capture into `opt-round-N/ir/`, and inspect that same directory directly.
-10. Use the benchmark, profiler, and IR evidence to decide whether to keep iterating, abandon the direction, or finalize the round `summary.md`, update `opt-note.md`, and preserve any reusable insight in `learned_lessons.md`.
+4. Record a short diagnosis before the first code-changing round. The diagnosis should name the suspected bottleneck, the current evidence, and what kind of optimization direction looks justified.
+5. Create `opt-round-N/`, copy the chosen parent operator into it, and start `attempts.md` immediately so every meaningful attempt and measurement is recorded.
+6. Before editing code, state the optimization hypothesis for the round, explain why it may help, and cite the supporting evidence. Evidence may come from code inspection, benchmark behavior, profiling, IR inspection, or a combination of them.
+7. If you skip profiling or IR capture for a round, explain in `attempts.md` why the existing evidence is already sufficient.
+8. Read `references/patterns/index.md`, pick one optimization hypothesis, and read only the one or two detailed pattern references that match that hypothesis when they are relevant; if a better hypothesis comes from your own Triton or NPU optimization knowledge, use that hypothesis directly and document it clearly.
+9. Apply one coherent optimization theme for the round, then run correctness validation before trusting any performance result.
+10. Whenever you discover reusable debugging or optimization knowledge, append a short note to `learned_lessons.md` immediately instead of waiting for the round summary.
+11. After correctness passes, run benchmark validation; when benchmark timing alone does not explain the result well enough, use `ascend-npu-operator-profiler` to gather operator-level evidence and keep the resulting profiler artifacts under the current round directory.
+12. When IR inspection is needed to understand compiler lowering or confirm an optimization effect, use `ascend-operator-ir-analyzer`, capture into `opt-round-N/ir/`, and inspect that same directory directly.
+13. Use the benchmark, profiler, and IR evidence to decide whether to keep iterating, abandon the direction, or finalize the round `summary.md`, update `opt-note.md`, and preserve any reusable insight in `learned_lessons.md`.
 
 ## Quality Rules
 
 - Optimize the operator file itself, not the generated tests or benchmark harness.
+- Reuse existing tests and benchmark harnesses when they are already available for the workspace; generate new ones only when required artifacts are missing.
 - Always run correctness before trusting performance results.
+- Always explain why a proposed optimization may help before editing code for that round.
+- Always record what evidence supports the chosen optimization direction.
 - Use profiler evidence when benchmark timing alone does not explain the result well enough.
 - Keep round-specific profiler evidence under `opt-round-N/profile/` and IR evidence under `opt-round-N/ir/` when they are collected.
 - Keep parent-child traceability explicit so later engineers can understand which idea produced each round.
 - Prefer multiple diverse optimization directions over a single greedy chain from the current best version.
 - Prefer selective pattern reading over bulk-loading all optimization references.
+- Do not begin with blind tiling, autotune, or launch-parameter search when the available evidence does not justify that direction.
 - Prefer the strongest validated optimization idea, whether it comes from the pattern library or your own Triton and Ascend NPU knowledge.
 - Do not silently discard optimization intent; preserve important comments that explain why a change helps.
 - Record within-round attempts continuously so long-running rounds do not lose intermediate learning.

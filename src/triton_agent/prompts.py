@@ -3,9 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from triton_agent.models import COMMAND_TO_SKILL, CommandKind
+from triton_agent.paths import default_generated_output_path
 
 
 PROMPT_INTROS = {
+    CommandKind.GEN_EVAL: "Repair the operator when needed, then generate correctness tests and a benchmark.",
     CommandKind.GEN_TEST: "Generate correctness tests for the operator file.",
     CommandKind.RUN_TEST: "Run the generated correctness tests for the operator file.",
     CommandKind.GEN_BENCH: "Generate a benchmark for the operator file.",
@@ -26,7 +28,12 @@ def build_prompt(
     remote_workdir: str | None = None,
     min_rounds: int | None = None,
     continue_optimize: bool = False,
+    resume_existing_session: bool | None = None,
+    require_analysis: bool = False,
 ) -> str:
+    should_resume_existing_session = (
+        continue_optimize if resume_existing_session is None else resume_existing_session
+    )
     skill_name = COMMAND_TO_SKILL[command_kind]
     lines = [
         PROMPT_INTROS[command_kind],
@@ -40,14 +47,28 @@ def build_prompt(
         lines.append(f"Benchmark file: {input_path}")
     else:
         lines.append(f"Operator input: {input_path}")
-    if output_path is not None:
+    if command_kind == CommandKind.GEN_EVAL:
+        test_output = default_generated_output_path(CommandKind.GEN_TEST, input_path, test_mode=test_mode)
+        bench_output = default_generated_output_path(CommandKind.GEN_BENCH, input_path)
+        lines.extend(
+            [
+                f"Requested test output: {test_output}",
+                f"Requested benchmark output: {bench_output}",
+            ]
+        )
+    if output_path is not None and command_kind != CommandKind.GEN_EVAL:
         lines.append(f"Requested output: {output_path}")
     if test_mode is not None:
         lines.append(f"Requested test mode: {test_mode}")
     if bench_mode is not None:
         lines.append(f"Requested bench mode: {bench_mode}")
     if force_overwrite:
-        lines.append("Overwrite the requested output file if it already exists.")
+        if command_kind == CommandKind.GEN_EVAL:
+            lines.append(
+                "Overwrite any existing generated test, benchmark, or archived execution output files before starting."
+            )
+        else:
+            lines.append("Overwrite the requested output file if it already exists.")
     if remote is not None:
         lines.append(f"Remote execution target: {remote}")
         if remote_workdir is not None:
@@ -61,19 +82,39 @@ def build_prompt(
             "After generating the artifact, execute the generated test or benchmark case. "
             "If execution fails, repair the generated artifact and retry automatically."
         )
+    if command_kind == CommandKind.GEN_EVAL:
+        lines.extend(
+            [
+                "You may edit the original operator file directly when the operator implementation is at fault.",
+                "Generate both the test harness and the benchmark harness in this task.",
+                "After generating them, both generated artifacts must be executed before the task finishes.",
+                "If validation fails, repair the generated harness when the harness is at fault, or repair the original operator file when the operator is at fault, then retry.",
+            ]
+        )
 
     if command_kind == CommandKind.OPTIMIZE:
         lines.extend(
             [
                 "Treat this as a long-running task.",
                 "Keep making progress until the optimized operator is complete.",
+                "Reuse existing correctness tests and benchmark cases when they already exist; generate them only when required artifacts are missing.",
+                "State the optimization hypothesis and why it may help before editing code for each round.",
+                "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
+                "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
             ]
         )
-        if continue_optimize:
+        if should_resume_existing_session:
             lines.extend(
                 [
                     "Continue the existing optimization session instead of restarting from scratch.",
                     "Read `opt-note.md`, existing `opt-round-*` directories, and existing round logs before making changes.",
+                ]
+            )
+        if require_analysis:
+            lines.extend(
+                [
+                    "Before the first code-changing round, gather profiling or IR-backed evidence, or record a concrete reason why one analysis path is unavailable and the remaining evidence is sufficient.",
+                    "Do not begin with blind tiling or launch-parameter search.",
                 ]
             )
         if min_rounds is not None:
@@ -82,4 +123,18 @@ def build_prompt(
             )
     else:
         lines.append("Complete the requested task and summarize assumptions briefly.")
+    return "\n".join(lines)
+
+
+def build_optimize_resume_prompt(summary: str, *, require_analysis: bool = False) -> str:
+    lines = [
+        "Continue the existing optimize task instead of restarting from scratch.",
+        "Read `opt-note.md`, existing `opt-round-*` directories, and any round summaries or attempt logs before making the next change.",
+        "Keep the optimize workflow hypothesis-driven: explain why each next change may help and what evidence supports it.",
+    ]
+    if require_analysis:
+        lines.append(
+            "Before the next code-changing round, gather profiling or IR-backed evidence, or record why the existing evidence is already sufficient."
+        )
+    lines.extend(["", f"Progress summary:\n{summary}"])
     return "\n".join(lines)

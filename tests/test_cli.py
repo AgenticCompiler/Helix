@@ -29,6 +29,28 @@ from triton_agent.result_normalization import normalize_agent_result
 
 
 class CliParserTests(unittest.TestCase):
+    def test_gen_eval_batch_maps_to_command_kind(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["gen-eval-batch", "-i", "kernels"])
+        self.assertEqual(args.command, "gen-eval-batch")
+        self.assertEqual(args.command_kind, CommandKind.GEN_EVAL_BATCH)
+        self.assertEqual(args.max_concurrency, 2)
+        self.assertEqual(args.test_mode, "differential")
+        self.assertEqual(args.bench_mode, "standalone")
+        self.assertEqual(args.agent, "codex")
+        self.assertFalse(hasattr(args, "interact"))
+        self.assertFalse(hasattr(args, "output"))
+
+    def test_gen_eval_maps_to_command_kind(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["gen-eval", "-i", "kernel.py"])
+        self.assertEqual(args.command, "gen-eval")
+        self.assertEqual(args.command_kind, CommandKind.GEN_EVAL)
+        self.assertEqual(args.test_mode, "differential")
+        self.assertEqual(args.bench_mode, "standalone")
+        self.assertEqual(args.agent, "codex")
+        self.assertFalse(args.interact)
+
     def test_gen_test_maps_to_command_kind(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["gen-test", "-i", "kernel.py"])
@@ -40,6 +62,8 @@ class CliParserTests(unittest.TestCase):
     def test_snake_case_aliases_map_to_same_command_kind(self) -> None:
         parser = build_parser()
         cases = [
+            ("gen_eval_batch", CommandKind.GEN_EVAL_BATCH),
+            ("gen_eval", CommandKind.GEN_EVAL),
             ("gen_test", CommandKind.GEN_TEST),
             ("run_test", CommandKind.RUN_TEST),
             ("gen_bench", CommandKind.GEN_BENCH),
@@ -61,6 +85,8 @@ class CliParserTests(unittest.TestCase):
     def test_help_keeps_only_canonical_kebab_case_commands(self) -> None:
         parser = build_parser()
         help_text = parser.format_help()
+        self.assertIn("gen-eval-batch", help_text)
+        self.assertIn("gen-eval", help_text)
         self.assertIn("gen-test", help_text)
         self.assertIn("run-test", help_text)
         self.assertIn("gen-bench", help_text)
@@ -69,6 +95,8 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("compare-perf", help_text)
         self.assertIn("optimize-status", help_text)
         self.assertIn("optimize-batch", help_text)
+        self.assertNotIn("gen_eval_batch", help_text)
+        self.assertNotIn("gen_eval", help_text)
         self.assertNotIn("gen_test", help_text)
         self.assertNotIn("run_test", help_text)
         self.assertNotIn("gen_bench", help_text)
@@ -117,18 +145,28 @@ class CliParserTests(unittest.TestCase):
 
     def test_agent_commands_accept_pi_backend(self) -> None:
         parser = build_parser()
+        gen_eval_batch_args = parser.parse_args(["gen-eval-batch", "-i", "kernels", "--agent", "pi"])
+        gen_eval_args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--agent", "pi"])
         gen_test_args = parser.parse_args(["gen-test", "-i", "kernel.py", "--agent", "pi"])
         gen_bench_args = parser.parse_args(["gen-bench", "-i", "kernel.py", "--agent", "pi"])
         optimize_args = parser.parse_args(["optimize", "-i", "kernel.py", "--agent", "pi"])
+        self.assertEqual(gen_eval_batch_args.agent, "pi")
+        self.assertEqual(gen_eval_args.agent, "pi")
         self.assertEqual(gen_test_args.agent, "pi")
         self.assertEqual(gen_bench_args.agent, "pi")
         self.assertEqual(optimize_args.agent, "pi")
 
     def test_agent_commands_accept_claude_backend(self) -> None:
         parser = build_parser()
+        gen_eval_batch_args = parser.parse_args(
+            ["gen-eval-batch", "-i", "kernels", "--agent", "claude"]
+        )
+        gen_eval_args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--agent", "claude"])
         gen_test_args = parser.parse_args(["gen-test", "-i", "kernel.py", "--agent", "claude"])
         gen_bench_args = parser.parse_args(["gen-bench", "-i", "kernel.py", "--agent", "claude"])
         optimize_args = parser.parse_args(["optimize", "-i", "kernel.py", "--agent", "claude"])
+        self.assertEqual(gen_eval_batch_args.agent, "claude")
+        self.assertEqual(gen_eval_args.agent, "claude")
         self.assertEqual(gen_test_args.agent, "claude")
         self.assertEqual(gen_bench_args.agent, "claude")
         self.assertEqual(optimize_args.agent, "claude")
@@ -209,6 +247,28 @@ class CliParserTests(unittest.TestCase):
 
     def test_agent_commands_accept_remote_options(self) -> None:
         parser = build_parser()
+        gen_eval_batch_args = parser.parse_args(
+            [
+                "gen-eval-batch",
+                "-i",
+                "kernels",
+                "--remote",
+                "alice@example.com",
+                "--remote-workdir",
+                "/tmp/runs",
+            ]
+        )
+        gen_eval_args = parser.parse_args(
+            [
+                "gen-eval",
+                "-i",
+                "kernel.py",
+                "--remote",
+                "alice@example.com:2200",
+                "--remote-workdir",
+                "/tmp/runs",
+            ]
+        )
         gen_test_args = parser.parse_args(
             [
                 "gen-test",
@@ -240,6 +300,10 @@ class CliParserTests(unittest.TestCase):
                 "/tmp/opt",
             ]
         )
+        self.assertEqual(gen_eval_batch_args.remote, "alice@example.com")
+        self.assertEqual(gen_eval_batch_args.remote_workdir, "/tmp/runs")
+        self.assertEqual(gen_eval_args.remote, "alice@example.com:2200")
+        self.assertEqual(gen_eval_args.remote_workdir, "/tmp/runs")
         self.assertEqual(gen_test_args.remote, "alice@example.com:2200")
         self.assertEqual(gen_test_args.remote_workdir, "/tmp/runs")
         self.assertEqual(gen_bench_args.remote, "alice@example.com")
@@ -321,13 +385,16 @@ class CliParserTests(unittest.TestCase):
 
     def test_force_overwrite_option_is_available_for_generators(self) -> None:
         parser = build_parser()
+        gen_eval_args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--force-overwrite"])
         gen_test_args = parser.parse_args(["gen-test", "-i", "kernel.py", "--force-overwrite"])
         gen_bench_args = parser.parse_args(["gen-bench", "-i", "kernel.py", "--force-overwrite"])
+        self.assertTrue(gen_eval_args.force_overwrite)
         self.assertTrue(gen_test_args.force_overwrite)
         self.assertTrue(gen_bench_args.force_overwrite)
 
     def test_test_mode_option_is_available_for_test_commands(self) -> None:
         parser = build_parser()
+        eval_args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--test-mode", "standalone"])
         gen_args = parser.parse_args(["gen-test", "-i", "kernel.py", "--test-mode", "standalone"])
         run_args = parser.parse_args(
             [
@@ -340,6 +407,7 @@ class CliParserTests(unittest.TestCase):
                 "differential",
             ]
         )
+        self.assertEqual(eval_args.test_mode, "standalone")
         self.assertEqual(gen_args.test_mode, "standalone")
         self.assertEqual(run_args.test_mode, "differential")
 
@@ -352,8 +420,19 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(gen_args.test_mode, "standalone")
         self.assertIsNone(run_args.test_mode)
 
+    def test_gen_eval_defaults_to_differential_test_mode(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["gen-eval", "-i", "kernel.py"])
+        self.assertEqual(args.test_mode, "differential")
+
+    def test_gen_eval_batch_defaults_to_differential_test_mode(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["gen-eval-batch", "-i", "kernels"])
+        self.assertEqual(args.test_mode, "differential")
+
     def test_bench_mode_option_is_available_for_bench_commands(self) -> None:
         parser = build_parser()
+        eval_args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--bench-mode", "msprof"])
         gen_args = parser.parse_args(["gen-bench", "-i", "kernel.py", "--bench-mode", "standalone"])
         run_args = parser.parse_args(
             [
@@ -366,6 +445,7 @@ class CliParserTests(unittest.TestCase):
                 "msprof",
             ]
         )
+        self.assertEqual(eval_args.bench_mode, "msprof")
         self.assertEqual(gen_args.bench_mode, "standalone")
         self.assertEqual(run_args.bench_mode, "msprof")
 
@@ -377,6 +457,46 @@ class CliParserTests(unittest.TestCase):
         )
         self.assertEqual(gen_args.bench_mode, "standalone")
         self.assertIsNone(run_args.bench_mode)
+
+    def test_gen_eval_defaults_to_standalone_bench_mode(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["gen-eval", "-i", "kernel.py"])
+        self.assertEqual(args.bench_mode, "standalone")
+
+    def test_gen_eval_batch_defaults_to_standalone_bench_mode(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["gen-eval-batch", "-i", "kernels"])
+        self.assertEqual(args.bench_mode, "standalone")
+
+    def test_gen_eval_batch_accepts_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "gen-eval-batch",
+                "-i",
+                "kernels",
+                "--agent",
+                "pi",
+                "--remote",
+                "alice@example.com",
+                "--remote-workdir",
+                "/tmp/eval",
+                "--test-mode",
+                "standalone",
+                "--bench-mode",
+                "msprof",
+                "--max-concurrency",
+                "3",
+                "--show-output",
+            ]
+        )
+        self.assertEqual(args.agent, "pi")
+        self.assertEqual(args.remote, "alice@example.com")
+        self.assertEqual(args.remote_workdir, "/tmp/eval")
+        self.assertEqual(args.test_mode, "standalone")
+        self.assertEqual(args.bench_mode, "msprof")
+        self.assertEqual(args.max_concurrency, 3)
+        self.assertTrue(args.show_output)
 
     def test_optimize_command_supports_mode_options(self) -> None:
         parser = build_parser()
@@ -405,15 +525,25 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["optimize", "-i", "kernel.py", "--min-rounds", "3"])
         self.assertEqual(args.min_rounds, 3)
 
-    def test_optimize_command_accepts_continue_mode(self) -> None:
+    def test_optimize_command_defaults_resume_to_auto(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize", "-i", "kernel.py", "--continue"])
-        self.assertTrue(args.continue_optimize)
+        args = parser.parse_args(["optimize", "-i", "kernel.py"])
+        self.assertEqual(args.resume, "auto")
+
+    def test_optimize_command_accepts_resume_modes(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--resume", "fresh"])
+        self.assertEqual(args.resume, "fresh")
 
     def test_optimize_command_accepts_no_agent_session(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize", "-i", "kernel.py", "--no-agent-session"])
         self.assertTrue(args.no_agent_session)
+
+    def test_optimize_command_accepts_require_analysis(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--require-analysis"])
+        self.assertTrue(args.require_analysis)
 
     def test_optimize_batch_maps_to_command_kind(self) -> None:
         parser = build_parser()
@@ -453,7 +583,9 @@ class CliParserTests(unittest.TestCase):
                 "msprof",
                 "--min-rounds",
                 "4",
-                "--continue",
+                "--resume",
+                "continue",
+                "--require-analysis",
                 "--no-agent-session",
                 "--max-concurrency",
                 "3",
@@ -466,10 +598,21 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.test_mode, "standalone")
         self.assertEqual(args.bench_mode, "msprof")
         self.assertEqual(args.min_rounds, 4)
-        self.assertTrue(args.continue_optimize)
+        self.assertEqual(args.resume, "continue")
+        self.assertTrue(args.require_analysis)
         self.assertTrue(args.no_agent_session)
         self.assertEqual(args.max_concurrency, 3)
         self.assertTrue(args.show_output)
+
+    def test_optimize_batch_defaults_resume_to_auto(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-batch", "-i", "kernels"])
+        self.assertEqual(args.resume, "auto")
+
+    def test_optimize_batch_accepts_require_analysis(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-batch", "-i", "kernels", "--require-analysis"])
+        self.assertTrue(args.require_analysis)
 
 
 class PathResolutionTests(unittest.TestCase):
@@ -506,6 +649,46 @@ class PathResolutionTests(unittest.TestCase):
             rendered = stdout.getvalue()
             self.assertIn("[NO-SESSION] fresh", rendered)
             self.assertIn("Summary: 0 ok, 0 warning, 1 no-session", rendered)
+
+    def test_main_optimize_status_groups_no_session_then_warning_then_ok(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "zeta").mkdir()
+
+            warning_workspace = root / "alpha"
+            warning_workspace.mkdir()
+            (warning_workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            warning_round = warning_workspace / "opt-round-1"
+            warning_round.mkdir()
+            (warning_round / "perf.txt").write_text(
+                "latency-a: 8\n",
+                encoding="utf-8",
+            )
+
+            ok_workspace = root / "beta"
+            ok_workspace.mkdir()
+            (ok_workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            ok_round = ok_workspace / "opt-round-1"
+            ok_round.mkdir()
+            (ok_round / "perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(["optimize-status", "-i", str(root)])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertLess(rendered.index("[NO-SESSION] zeta"), rendered.index("[WARN] alpha"))
+            self.assertLess(rendered.index("[WARN] alpha"), rendered.index("[OK] beta"))
 
     def test_main_optimize_status_reports_numeric_best_and_logged_best(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -631,7 +814,8 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("[WARN] layernorm", rendered)
             self.assertIn("Best mean: unknown", rendered)
             self.assertIn("Avg improvement: unknown", rendered)
-            self.assertIn("Warning: latency ids do not match for comparable perf data", rendered)
+            self.assertIn("Warning: ", rendered)
+            self.assertIn("missing required latency ids", rendered)
             self.assertIn("Summary: 0 ok, 1 warning, 0 no-session", rendered)
 
     def test_main_optimize_batch_auto_detects_operator_files(self) -> None:
@@ -642,9 +826,6 @@ class PathResolutionTests(unittest.TestCase):
             first.mkdir()
             second.mkdir()
             (first / "kernel.py").write_text("print('x')\n", encoding="utf-8")
-            (first / "test_kernel.py").write_text("", encoding="utf-8")
-            (first / "differential_test_kernel.py").write_text("", encoding="utf-8")
-            (first / "bench_kernel.py").write_text("", encoding="utf-8")
             (first / "opt_kernel.py").write_text("", encoding="utf-8")
             (first / "__init__.py").write_text("", encoding="utf-8")
             (second / "matmul_impl.py").write_text("print('y')\n", encoding="utf-8")
@@ -656,7 +837,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
-                exit_code = main(["optimize-batch", "-i", str(root)])
+                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(
@@ -767,6 +948,138 @@ class PathResolutionTests(unittest.TestCase):
             with redirect_stderr(stderr):
                 with self.assertRaises(SystemExit) as exc:
                     main(["optimize-batch", "-i", str(root), "--max-concurrency", "0"])
+
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn("--max-concurrency must be at least 1", stderr.getvalue())
+
+    def test_main_gen_eval_batch_auto_detects_operator_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = root / "first"
+            second = root / "second"
+            first.mkdir()
+            second.mkdir()
+            (first / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+            (first / "opt_kernel.py").write_text("", encoding="utf-8")
+            (first / "__init__.py").write_text("", encoding="utf-8")
+            (second / "matmul_impl.py").write_text("print('y')\n", encoding="utf-8")
+
+            seen_inputs: list[Path] = []
+
+            def _fake_run(request, stdout=None, stderr=None):
+                seen_inputs.append(request.input_path)
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.generation_batch.run_generation_request", side_effect=_fake_run):
+                exit_code = main(["gen-eval-batch", "-i", str(root)])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(
+                seen_inputs,
+                [
+                    (first / "kernel.py").resolve(),
+                    (second / "matmul_impl.py").resolve(),
+                ],
+            )
+
+    def test_main_gen_eval_batch_reports_workspace_selection_failures(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bad = root / "bad"
+            good = root / "good"
+            bad.mkdir()
+            good.mkdir()
+            (bad / "a.py").write_text("print('a')\n", encoding="utf-8")
+            (bad / "b.py").write_text("print('b')\n", encoding="utf-8")
+            (good / "kernel.py").write_text("print('ok')\n", encoding="utf-8")
+
+            stdout = StringIO()
+            seen_inputs: list[Path] = []
+
+            def _fake_run(request, stdout=None, stderr=None):
+                seen_inputs.append(request.input_path)
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.generation_batch.run_generation_request", side_effect=_fake_run):
+                with redirect_stdout(stdout):
+                    exit_code = main(["gen-eval-batch", "-i", str(root)])
+
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(seen_inputs, [(good / "kernel.py").resolve()])
+            self.assertIn("bad", stdout.getvalue())
+            self.assertIn("found multiple candidate operator files", stdout.getvalue())
+            self.assertIn("Summary: 1 succeeded, 1 failed", stdout.getvalue())
+
+    def test_main_gen_eval_batch_honors_max_concurrency(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("one", "two", "three"):
+                workspace = root / name
+                workspace.mkdir()
+                (workspace / f"{name}.py").write_text("print('x')\n", encoding="utf-8")
+
+            active = 0
+            max_active = 0
+            launched = 0
+            lock = threading.Lock()
+            first_pair_ready = threading.Event()
+            release_gate = threading.Event()
+
+            def _fake_run(_request, stdout=None, stderr=None):
+                nonlocal active, max_active, launched
+                with lock:
+                    launched += 1
+                    active += 1
+                    max_active = max(max_active, active)
+                    if launched >= 2:
+                        first_pair_ready.set()
+                first_pair_ready.wait(timeout=1)
+                release_gate.wait(timeout=0.1)
+                with lock:
+                    active -= 1
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.generation_batch.run_generation_request", side_effect=_fake_run):
+                exit_code = main(["gen-eval-batch", "-i", str(root), "--max-concurrency", "2"])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(max_active, 2)
+
+    def test_main_gen_eval_batch_show_output_prefixes_workspace_streams(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("alpha", "beta"):
+                workspace = root / name
+                workspace.mkdir()
+                (workspace / f"{name}.py").write_text("print('x')\n", encoding="utf-8")
+
+            stdout = StringIO()
+
+            def _fake_run(request, stdout=None, stderr=None):
+                if stdout is not None:
+                    stdout.write("repair start\n")
+                if stderr is not None:
+                    stderr.write("warn line\n")
+                return AgentResult(return_code=0, stdout="repair start\n", stderr="warn line\n")
+
+            with patch("triton_agent.generation_batch.run_generation_request", side_effect=_fake_run):
+                with redirect_stdout(stdout):
+                    exit_code = main(["gen-eval-batch", "-i", str(root), "--show-output"])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertIn("[alpha] repair start", rendered)
+            self.assertIn("[beta] repair start", rendered)
+            self.assertIn("Summary: 2 succeeded, 0 failed", rendered)
+
+    def test_main_gen_eval_batch_rejects_invalid_concurrency(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            stderr = StringIO()
+
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(["gen-eval-batch", "-i", str(root), "--max-concurrency", "0"])
 
             self.assertEqual(exc.exception.code, 2)
             self.assertIn("--max-concurrency must be at least 1", stderr.getvalue())
@@ -915,12 +1228,14 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 continue_optimize,
+                require_analysis=False,
             ):
                 captured["output_path"] = output_path
                 captured["remote"] = remote
                 captured["remote_workdir"] = remote_workdir
                 captured["min_rounds"] = min_rounds
                 captured["continue_optimize"] = continue_optimize
+                captured["require_analysis"] = require_analysis
                 return "Prompt body"
 
             def _fake_create_runner(_agent_name):
@@ -950,7 +1265,7 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(captured["output_path"], expected_output)
             self.assertEqual(captured["request_output"], expected_output)
 
-    def test_main_optimize_continue_rejects_explicit_test_mode(self) -> None:
+    def test_main_optimize_resume_continue_rejects_explicit_test_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
@@ -964,16 +1279,20 @@ class PathResolutionTests(unittest.TestCase):
                             "optimize",
                             "-i",
                             str(operator),
-                            "--continue",
+                            "--resume",
+                            "continue",
                             "--test-mode",
                             "differential",
                         ]
                     )
 
             self.assertEqual(exc.exception.code, 2)
-            self.assertIn("--continue cannot be combined with --test-mode", stderr.getvalue())
+            self.assertIn(
+                "--resume continue cannot be combined with --test-mode",
+                stderr.getvalue(),
+            )
 
-    def test_main_optimize_continue_rejects_explicit_bench_mode(self) -> None:
+    def test_main_optimize_resume_continue_rejects_explicit_bench_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
@@ -987,16 +1306,20 @@ class PathResolutionTests(unittest.TestCase):
                             "optimize",
                             "-i",
                             str(operator),
-                            "--continue",
+                            "--resume",
+                            "continue",
                             "--bench-mode",
                             "standalone",
                         ]
                     )
 
             self.assertEqual(exc.exception.code, 2)
-            self.assertIn("--continue cannot be combined with --bench-mode", stderr.getvalue())
+            self.assertIn(
+                "--resume continue cannot be combined with --bench-mode",
+                stderr.getvalue(),
+            )
 
-    def test_main_optimize_continue_requires_opt_note(self) -> None:
+    def test_main_optimize_resume_continue_requires_opt_note(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
@@ -1005,12 +1328,78 @@ class PathResolutionTests(unittest.TestCase):
             stderr = StringIO()
             with redirect_stderr(stderr):
                 with self.assertRaises(SystemExit) as exc:
-                    main(["optimize", "-i", str(operator), "--continue"])
+                    main(["optimize", "-i", str(operator), "--resume", "continue"])
 
             self.assertEqual(exc.exception.code, 2)
-            self.assertIn("Continue optimize requires existing opt-note.md", stderr.getvalue())
+            self.assertIn(
+                "resume continue requires existing opt-note.md",
+                stderr.getvalue(),
+            )
 
-    def test_main_optimize_continue_requires_round_directories(self) -> None:
+    def test_main_optimize_resume_auto_uses_fresh_for_no_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+
+            captured = {}
+
+            def _fake_build_prompt(
+                command_kind,
+                input_path,
+                operator_path,
+                output_path,
+                test_mode,
+                bench_mode,
+                force_overwrite,
+                remote,
+                remote_workdir,
+                min_rounds,
+                resume_existing_session,
+                require_analysis=False,
+            ):
+                captured["test_mode"] = test_mode
+                captured["bench_mode"] = bench_mode
+                captured["resume_existing_session"] = resume_existing_session
+                captured["require_analysis"] = require_analysis
+                return "Prompt body"
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
+                with patch(
+                    "triton_agent.optimize.runtime.OptimizeSupervisor.run",
+                    return_value=fake_result,
+                ):
+                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                        with patch(
+                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            return_value=[],
+                        ):
+                            with patch(
+                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                return_value=[],
+                            ):
+                                exit_code = main(
+                                    [
+                                        "optimize",
+                                        "-i",
+                                        str(operator),
+                                        "--resume",
+                                        "auto",
+                                        "--test-mode",
+                                        "standalone",
+                                        "--bench-mode",
+                                        "msprof",
+                                    ]
+                                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["test_mode"], "standalone")
+            self.assertEqual(captured["bench_mode"], "msprof")
+            self.assertFalse(captured["resume_existing_session"])
+            self.assertFalse(captured["require_analysis"])
+
+    def test_main_optimize_resume_auto_rejects_partial_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
@@ -1020,15 +1409,15 @@ class PathResolutionTests(unittest.TestCase):
             stderr = StringIO()
             with redirect_stderr(stderr):
                 with self.assertRaises(SystemExit) as exc:
-                    main(["optimize", "-i", str(operator), "--continue"])
+                    main(["optimize", "-i", str(operator), "--resume", "auto"])
 
             self.assertEqual(exc.exception.code, 2)
             self.assertIn(
-                "Continue optimize requires at least one existing opt-round-* directory",
+                "resume auto found partial optimize state",
                 stderr.getvalue(),
             )
 
-    def test_main_optimize_continue_rejects_multiple_test_harnesses(self) -> None:
+    def test_main_optimize_resume_continue_rejects_multiple_test_harnesses(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
@@ -1048,34 +1437,31 @@ class PathResolutionTests(unittest.TestCase):
             stderr = StringIO()
             with redirect_stderr(stderr):
                 with self.assertRaises(SystemExit) as exc:
-                    main(["optimize", "-i", str(operator), "--continue"])
+                    main(["optimize", "-i", str(operator), "--resume", "continue"])
 
             self.assertEqual(exc.exception.code, 2)
-            self.assertIn("Continue optimize found multiple test harnesses", stderr.getvalue())
+            self.assertIn("resume continue found multiple test harnesses", stderr.getvalue())
 
-    def test_main_optimize_continue_requires_existing_bench_harness(self) -> None:
+    def test_main_optimize_resume_fresh_rejects_existing_optimize_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
             (root / "opt-note.md").write_text("history\n", encoding="utf-8")
             (root / "opt-round-1").mkdir()
-            (root / "differential_test_kernel.py").write_text(
-                "# test-mode: differential\nprint('test')\n", encoding="utf-8"
-            )
 
             stderr = StringIO()
             with redirect_stderr(stderr):
                 with self.assertRaises(SystemExit) as exc:
-                    main(["optimize", "-i", str(operator), "--continue"])
+                    main(["optimize", "-i", str(operator), "--resume", "fresh"])
 
             self.assertEqual(exc.exception.code, 2)
             self.assertIn(
-                "Continue optimize requires an existing generated benchmark harness",
+                "resume fresh refused because optimize artifacts already exist",
                 stderr.getvalue(),
             )
 
-    def test_main_optimize_continue_resolves_modes_from_existing_metadata(self) -> None:
+    def test_main_optimize_resume_auto_uses_continue_for_resumable_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
@@ -1102,11 +1488,13 @@ class PathResolutionTests(unittest.TestCase):
                 remote,
                 remote_workdir,
                 min_rounds,
-                continue_optimize,
+                resume_existing_session,
+                require_analysis=False,
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
-                captured["continue_optimize"] = continue_optimize
+                captured["resume_existing_session"] = resume_existing_session
+                captured["require_analysis"] = require_analysis
                 return "Prompt body"
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
@@ -1125,16 +1513,66 @@ class PathResolutionTests(unittest.TestCase):
                                 return_value=[],
                             ):
                                 exit_code = main(
-                                    ["optimize", "-i", str(operator), "--continue"]
+                                    ["optimize", "-i", str(operator), "--resume", "auto"]
                                 )
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(captured["test_mode"], "differential")
             self.assertEqual(captured["bench_mode"], "msprof")
-            self.assertTrue(captured["continue_optimize"])
+            self.assertTrue(captured["resume_existing_session"])
+            self.assertFalse(captured["require_analysis"])
             request = mocked.call_args.args[1]
             self.assertEqual(request.test_mode, "differential")
             self.assertEqual(request.bench_mode, "msprof")
+
+    def test_main_optimize_passes_require_analysis_to_prompt_and_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+
+            captured = {}
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+
+            def _fake_build_prompt(
+                command_kind,
+                input_path,
+                operator_path,
+                output_path,
+                test_mode,
+                bench_mode,
+                force_overwrite,
+                remote,
+                remote_workdir,
+                min_rounds,
+                resume_existing_session,
+                require_analysis=False,
+            ):
+                captured["require_analysis"] = require_analysis
+                return "Prompt body"
+
+            with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
+                with patch(
+                    "triton_agent.optimize.runtime.OptimizeSupervisor.run",
+                    return_value=fake_result,
+                ) as mocked:
+                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                        with patch(
+                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            return_value=[],
+                        ):
+                            with patch(
+                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                return_value=[],
+                            ):
+                                exit_code = main(
+                                    ["optimize", "-i", str(operator), "--require-analysis"]
+                                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(captured["require_analysis"])
+            request = mocked.call_args.args[1]
+            self.assertTrue(request.require_analysis)
 
     def test_main_optimize_passes_no_agent_session_to_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1639,6 +2077,23 @@ class PathResolutionTests(unittest.TestCase):
 
 
 class PromptTests(unittest.TestCase):
+    def test_gen_eval_prompt_mentions_operator_repair_and_dual_outputs(self) -> None:
+        prompt = build_prompt(
+            CommandKind.GEN_EVAL,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            force_overwrite=False,
+        )
+        self.assertIn("eval-gen", prompt)
+        self.assertIn("Requested test output: /tmp/differential_test_op.py", prompt)
+        self.assertIn("Requested benchmark output: /tmp/bench_op.py", prompt)
+        self.assertIn("may edit the original operator file directly", prompt)
+        self.assertIn("both generated artifacts must be executed", prompt)
+        self.assertNotIn("Requested output:", prompt)
+
     def test_prompt_mentions_skill_and_output(self) -> None:
         prompt = build_prompt(
             CommandKind.GEN_TEST,
@@ -1664,6 +2119,18 @@ class PromptTests(unittest.TestCase):
             force_overwrite=True,
         )
         self.assertIn("overwrite", prompt.lower())
+
+    def test_gen_eval_prompt_mentions_force_overwrite_for_both_outputs(self) -> None:
+        prompt = build_prompt(
+            CommandKind.GEN_EVAL,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            None,
+            test_mode="differential",
+            bench_mode="standalone",
+            force_overwrite=True,
+        )
+        self.assertIn("Overwrite any existing generated test, benchmark, or archived execution output files", prompt)
 
     def test_prompt_mentions_requested_test_mode(self) -> None:
         prompt = build_prompt(
@@ -1760,6 +2227,23 @@ class PromptTests(unittest.TestCase):
         self.assertIn("When you execute generated test cases or benchmark cases", prompt)
         self.assertIn("include the same `--remote` setting", prompt)
 
+    def test_gen_eval_prompt_mentions_remote_execution_context(self) -> None:
+        prompt = build_prompt(
+            CommandKind.GEN_EVAL,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            force_overwrite=False,
+            remote="alice@example.com:2200",
+            remote_workdir="/tmp/triton-agent",
+        )
+        self.assertIn("Remote execution target: alice@example.com:2200", prompt)
+        self.assertIn("Remote execution root: /tmp/triton-agent", prompt)
+        self.assertIn("both generated artifacts must be executed", prompt)
+        self.assertIn("include the same `--remote` setting", prompt)
+
     def test_optimize_prompt_mentions_requested_modes(self) -> None:
         prompt = build_prompt(
             CommandKind.OPTIMIZE,
@@ -1772,6 +2256,10 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("Requested test mode: differential", prompt)
         self.assertIn("Requested bench mode: standalone", prompt)
+        self.assertIn("Reuse existing correctness tests and benchmark cases when they already exist", prompt)
+        self.assertIn("State the optimization hypothesis and why it may help", prompt)
+        self.assertIn("Explain what evidence supports the change", prompt)
+        self.assertIn("If you skip profiling or IR capture", prompt)
 
     def test_optimize_prompt_mentions_min_rounds(self) -> None:
         prompt = build_prompt(
@@ -1786,7 +2274,7 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("Complete at least 4 optimization rounds", prompt)
 
-    def test_optimize_prompt_mentions_continue_mode(self) -> None:
+    def test_optimize_prompt_mentions_continue_mode_for_resolved_resume(self) -> None:
         prompt = build_prompt(
             CommandKind.OPTIMIZE,
             Path("/tmp/op.py"),
@@ -1795,10 +2283,25 @@ class PromptTests(unittest.TestCase):
             test_mode="differential",
             bench_mode="standalone",
             force_overwrite=False,
-            continue_optimize=True,
+            resume_existing_session=True,
         )
         self.assertIn("Continue the existing optimization session", prompt)
         self.assertIn("Read `opt-note.md`", prompt)
+
+    def test_optimize_prompt_strict_analysis_mentions_first_round_gate(self) -> None:
+        prompt = build_prompt(
+            CommandKind.OPTIMIZE,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            force_overwrite=False,
+            require_analysis=True,
+        )
+        self.assertIn("Before the first code-changing round", prompt)
+        self.assertIn("profiling or IR-backed evidence", prompt)
+        self.assertIn("Do not begin with blind tiling or launch-parameter search", prompt)
 
 
 class OutputRenderingTests(unittest.TestCase):

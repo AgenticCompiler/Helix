@@ -6,10 +6,11 @@ Read this index first. Then read only the one or two most relevant detailed patt
 
 ## How To Use This Index
 
-1. Identify the dominant symptom from code inspection, benchmark evidence, or profiling evidence.
+1. Identify the dominant symptom from code inspection, benchmark evidence, profiling evidence, or IR evidence.
 2. Pick the most relevant pattern or the smallest useful set of patterns.
 3. Read only those detailed pattern files.
 4. Avoid bulk-loading all pattern references unless the operator genuinely shows multiple independent bottlenecks.
+5. Do not choose a pattern only because it is easy to try; record the evidence that makes the pattern plausible for this round.
 
 ## Pattern Selection Table
 
@@ -23,6 +24,7 @@ Read this index first. Then read only the one or two most relevant detailed patt
   - large `BLOCK_SIZE`
   - multiple tensor loads per tile
   - boundary-heavy memory handling
+  - benchmark or IR evidence suggests UB pressure or poor locality instead of a pure launch-parameter problem
 - Expected benefit:
   - lower on-chip memory pressure
   - better locality
@@ -75,6 +77,7 @@ Read this index first. Then read only the one or two most relevant detailed patt
 - Signals:
   - block sizes, warps, or stages are hand-picked with no evidence they are near-optimal
   - there are a few bounded parameter dimensions worth exploring
+  - benchmark, profiling, or prior round evidence suggests the kernel is otherwise structurally healthy
 - Expected benefit:
   - stronger parameter selection without rewriting the whole kernel
 - Main risk:
@@ -218,8 +221,8 @@ Read this index first. Then read only the one or two most relevant detailed patt
 - If the bottleneck looks memory-bandwidth or latency bound, start with:
   - `reorder-load`
   - `software-pipeline`
-  - `tiling`
   - `cache-use`
+  - `tiling`
 - If the bottleneck looks gather or scatter heavy, start with:
   - `gather-load`
   - `discrete-memory-access`
@@ -242,3 +245,4 @@ Read this index first. Then read only the one or two most relevant detailed patt
 - Prefer one primary pattern and at most one secondary pattern per round.
 - If multiple patterns look relevant, choose the one that best matches the current round hypothesis.
 - Return to this index between rounds instead of carrying every pattern file forward in context.
+- When the current evidence is weak, gather stronger evidence before defaulting to tiling, autotune, or launch-parameter exploration.

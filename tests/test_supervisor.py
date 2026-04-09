@@ -159,8 +159,44 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
             self.assertEqual(result.return_code, 0)
             self.assertEqual(len(runner.resume_requests), 1)
-            self.assertIn("Continue the existing optimization work", runner.resume_requests[0].prompt)
+            self.assertIn("Continue the existing optimize task", runner.resume_requests[0].prompt)
             self.assertIn("Read `opt-note.md`", runner.resume_requests[0].prompt)
+
+    def test_restarts_with_strict_analysis_wording_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "opt-round-1").mkdir()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="optimize",
+                prompt="Optimize this operator",
+                workdir=workspace,
+                min_rounds=2,
+                require_analysis=True,
+            )
+            runner = RoundCreatingRunner(
+                [
+                    AgentResult(return_code=0, stdout="finished one round", stderr=""),
+                    AgentResult(return_code=0, stdout="finished two rounds", stderr=""),
+                ],
+                workspace,
+            )
+
+            result = OptimizeSupervisor(max_recovery_attempts=1).run(runner, request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertEqual(len(runner.resume_requests), 1)
+            self.assertIn("profiling or IR-backed evidence", runner.resume_requests[0].prompt)
 
     def test_user_interrupt_does_not_trigger_recovery(self) -> None:
         request = AgentRequest(

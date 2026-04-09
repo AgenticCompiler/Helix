@@ -21,7 +21,7 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
             CommandKind.OPTIMIZE,
             min_rounds=options.min_rounds,
             max_concurrency=None,
-            continue_optimize=options.continue_optimize,
+            resume_mode=options.resume_mode,
             test_mode=options.test_mode,
             bench_mode=options.bench_mode,
         )
@@ -48,7 +48,7 @@ def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
             CommandKind.OPTIMIZE_BATCH,
             min_rounds=options.min_rounds,
             max_concurrency=args.max_concurrency,
-            continue_optimize=options.continue_optimize,
+            resume_mode=options.resume_mode,
             test_mode=options.test_mode,
             bench_mode=options.bench_mode,
         )
@@ -86,7 +86,8 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         remote=getattr(args, "remote", None),
         remote_workdir=getattr(args, "remote_workdir", None),
         min_rounds=getattr(args, "min_rounds", None),
-        continue_optimize=bool(getattr(args, "continue_optimize", False)),
+        resume_mode=str(getattr(args, "resume", "auto")),
+        require_analysis=bool(getattr(args, "require_analysis", False)),
         no_agent_session=bool(getattr(args, "no_agent_session", False)),
         output=getattr(args, "output", None),
         test_mode=getattr(args, "test_mode", None),

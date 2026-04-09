@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Protocol
 
 from triton_agent.models import AgentRequest, AgentResult
+from triton_agent.prompts import build_optimize_resume_prompt
 
 
 class SupportsOptimizeRecovery(Protocol):
@@ -46,7 +47,11 @@ class OptimizeSupervisor:
             resume_summary = self._build_summary(result)
             current_request = replace(
                 current_request,
-                prompt=self._build_continue_prompt(request.prompt, resume_summary),
+                prompt=self._build_continue_prompt(
+                    request.prompt,
+                    resume_summary,
+                    require_analysis=request.require_analysis,
+                ),
             )
 
     def _resume_until_round_requirement_satisfied(
@@ -60,7 +65,11 @@ class OptimizeSupervisor:
             summary = self._build_rounds_summary(current_request)
             current_request = replace(
                 current_request,
-                prompt=self._build_continue_prompt(base_request.prompt, summary),
+                prompt=self._build_continue_prompt(
+                    base_request.prompt,
+                    summary,
+                    require_analysis=base_request.require_analysis,
+                ),
             )
             result = runner.resume(current_request, summary)
         return result, current_request
@@ -85,11 +94,12 @@ class OptimizeSupervisor:
             f"under the workspace and at least {required_rounds} are required."
         )
 
-    def _build_continue_prompt(self, base_prompt: str, summary: str) -> str:
-        return (
-            f"{base_prompt}\n\n"
-            "Continue the existing optimization work instead of restarting from scratch.\n"
-            "Read `opt-note.md`, existing `opt-round-*` directories, and their round summaries "
-            "or attempt logs before choosing the next step.\n\n"
-            f"Continuation context:\n{summary}"
-        )
+    def _build_continue_prompt(
+        self,
+        base_prompt: str,
+        summary: str,
+        *,
+        require_analysis: bool = False,
+    ) -> str:
+        del base_prompt
+        return build_optimize_resume_prompt(summary, require_analysis=require_analysis)

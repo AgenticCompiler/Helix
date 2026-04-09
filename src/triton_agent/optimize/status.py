@@ -4,7 +4,7 @@ import re
 from collections.abc import Iterable
 from pathlib import Path
 
-from triton_agent.bench_runner import parse_perf_file
+from triton_agent.bench_runner import parse_perf_file, parse_required_perf_file
 from triton_agent.optimize.models import OptimizeStatusRound, OptimizeStatusWorkspace
 
 
@@ -67,7 +67,7 @@ def inspect_optimize_status_workspace(
             warnings.append(f"missing perf artifact for {round_dir.name}")
             continue
         try:
-            round_values = parse_perf_file(perf_path)
+            round_values = parse_required_perf_file(perf_path, baseline_values.keys())
         except ValueError as exc:
             warnings.append(str(exc))
             continue

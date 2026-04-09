@@ -6,6 +6,7 @@ from typing import List, Optional, TextIO
 from triton_agent.agent import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult
 from triton_agent.process_runner import run_process
+from triton_agent.prompts import build_optimize_resume_prompt
 from triton_agent.verbose import emit_verbose_lines, format_command_messages
 
 
@@ -60,11 +61,9 @@ class OpenCodeRunner(AgentRunner):
         stdout: Optional[TextIO] = None,
         stderr: Optional[TextIO] = None,
     ) -> AgentResult:
-        resumed_prompt = (
-            "Continue the existing optimize task instead of restarting from scratch.\n"
-            "Read `opt-note.md`, existing `opt-round-*` directories, and any round summaries "
-            "or attempt logs before making the next change.\n\n"
-            f"Progress summary:\n{summary}"
+        resumed_prompt = build_optimize_resume_prompt(
+            summary,
+            require_analysis=request.require_analysis,
         )
         return self.run(
             AgentRequest(
@@ -84,7 +83,9 @@ class OpenCodeRunner(AgentRunner):
                 workdir=request.workdir,
                 min_rounds=request.min_rounds,
                 continue_optimize=request.continue_optimize,
+                require_analysis=request.require_analysis,
                 no_agent_session=request.no_agent_session,
+                staged_skill_names=request.staged_skill_names,
             ),
             stdout=stdout,
             stderr=stderr,

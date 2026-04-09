@@ -7,12 +7,29 @@ from pathlib import Path
 from triton_agent.generation import (
     GenerationOptions,
     build_generation_request,
-    prepare_generation_target,
+    prepare_generation_targets,
     run_generation_request,
 )
+from triton_agent.generation_batch import run_gen_eval_batch
 from triton_agent.models import CommandKind
 from triton_agent.output import render_result
 from triton_agent.verbose import emit_verbose_lines
+
+
+def handle_gen_eval(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    return _handle_generation_command(parser, args, CommandKind.GEN_EVAL)
+
+
+def handle_gen_eval_batch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    root = Path(args.input).expanduser().resolve()
+    if not root.exists():
+        parser.error(f"Input path does not exist: {root}")
+    if not root.is_dir():
+        parser.error(f"Input path is not a directory: {root}")
+    max_concurrency = args.max_concurrency
+    if max_concurrency < 1:
+        parser.error("--max-concurrency must be at least 1")
+    return run_gen_eval_batch(root, generation_options_from_args(args), max_concurrency=max_concurrency)
 
 
 def handle_gen_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -41,10 +58,12 @@ def _handle_generation_command(
         options,
     )
     try:
-        file_messages = prepare_generation_target(
+        file_messages = prepare_generation_targets(
             command_kind,
+            input_path,
             request.output_path,
-            options.force_overwrite,
+            test_mode=request.test_mode,
+            force_overwrite=options.force_overwrite,
         )
     except (FileExistsError, IsADirectoryError) as exc:
         parser.exit(2, f"{exc}\n")

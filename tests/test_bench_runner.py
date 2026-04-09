@@ -204,6 +204,33 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(return_code, 1)
             self.assertIn("FAIL", output)
             self.assertIn("latency-a", output)
+            self.assertIn("missing required latency ids", output)
+
+    def test_compare_perf_files_ignores_extra_compare_fields(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "compare_perf.txt"
+            baseline.write_text("latency-a: 10\nlatency-b: 20\n", encoding="utf-8")
+            compare.write_text(
+                "latency-a: 9\nmean_ms: 14.5\nlatency-b: 18\nnotes: candidate\n",
+                encoding="utf-8",
+            )
+
+            stdout_path = Path(tmp) / "stdout.txt"
+            original_stdout = sys.stdout
+            try:
+                with stdout_path.open("w", encoding="utf-8") as handle:
+                    sys.stdout = handle
+                    return_code = module.compare_perf_files(baseline, compare)
+            finally:
+                sys.stdout = original_stdout
+
+            output = stdout_path.read_text(encoding="utf-8")
+            self.assertEqual(return_code, 0)
+            self.assertIn("PASS: compared 2 latency entries", output)
+            self.assertIn("latency-a", output)
             self.assertIn("latency-b", output)
 
 

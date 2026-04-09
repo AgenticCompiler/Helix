@@ -8,7 +8,7 @@ def validate_optimize_options(
     *,
     min_rounds: int | None,
     max_concurrency: int | None,
-    continue_optimize: bool,
+    resume_mode: str,
     test_mode: str | None,
     bench_mode: str | None,
 ) -> None:
@@ -16,8 +16,8 @@ def validate_optimize_options(
         raise ValueError("--min-rounds must be at least 1")
     if command_kind == CommandKind.OPTIMIZE_BATCH and max_concurrency is not None and max_concurrency < 1:
         raise ValueError("--max-concurrency must be at least 1")
-    if continue_optimize:
+    if resume_mode == "continue":
         if test_mode is not None:
-            raise ValueError("--continue cannot be combined with --test-mode")
+            raise ValueError("--resume continue cannot be combined with --test-mode")
         if bench_mode is not None:
-            raise ValueError("--continue cannot be combined with --bench-mode")
+            raise ValueError("--resume continue cannot be combined with --bench-mode")

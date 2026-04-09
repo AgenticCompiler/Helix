@@ -10,7 +10,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="triton-agent")
+    parser = argparse.ArgumentParser(prog=Path(__file__).name)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     run_test = subparsers.add_parser("run-test")

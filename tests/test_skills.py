@@ -9,6 +9,46 @@ from triton_agent.skills import SkillLinkManager
 
 
 class SkillLinkManagerTests(unittest.TestCase):
+    def test_copy_only_requested_skill_dirs_when_codex_skills_dir_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            source = Path(tmp) / "skills-source"
+            workspace.mkdir()
+            source.mkdir()
+            for name in ("eval-gen", "test-gen", "bench-gen", "operator-eval", "optimize"):
+                (source / name).mkdir()
+                (source / name / "SKILL.md").write_text(f"{name}\n", encoding="utf-8")
+
+            manager = SkillLinkManager(source)
+            links = manager.prepare_codex_skills(
+                workspace,
+                skill_names=("eval-gen", "test-gen", "bench-gen", "operator-eval"),
+            )
+
+            target = workspace / ".codex" / "skills"
+            self.assertTrue((target / "eval-gen").exists())
+            self.assertTrue((target / "test-gen").exists())
+            self.assertTrue((target / "bench-gen").exists())
+            self.assertTrue((target / "operator-eval").exists())
+            self.assertFalse((target / "optimize").exists())
+            self.assertEqual(links.created_paths, [target])
+            manager.cleanup(links)
+            self.assertFalse(target.exists())
+
+    def test_reject_missing_requested_skill_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            source = Path(tmp) / "skills-source"
+            workspace.mkdir()
+            source.mkdir()
+            (source / "test-gen").mkdir()
+            (source / "test-gen" / "SKILL.md").write_text("test\n", encoding="utf-8")
+
+            manager = SkillLinkManager(source)
+
+            with self.assertRaisesRegex(RuntimeError, "Requested skill does not exist"):
+                manager.prepare_codex_skills(workspace, skill_names=("missing-skill",))
+
     def test_reject_existing_root_skills_symlink(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
