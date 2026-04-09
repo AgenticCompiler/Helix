@@ -385,8 +385,10 @@ class CliParserTests(unittest.TestCase):
 
     def test_force_overwrite_option_is_available_for_generators(self) -> None:
         parser = build_parser()
+        gen_eval_args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--force-overwrite"])
         gen_test_args = parser.parse_args(["gen-test", "-i", "kernel.py", "--force-overwrite"])
         gen_bench_args = parser.parse_args(["gen-bench", "-i", "kernel.py", "--force-overwrite"])
+        self.assertTrue(gen_eval_args.force_overwrite)
         self.assertTrue(gen_test_args.force_overwrite)
         self.assertTrue(gen_bench_args.force_overwrite)
 
@@ -1980,6 +1982,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Requested benchmark output: /tmp/bench_op.py", prompt)
         self.assertIn("may edit the original operator file directly", prompt)
         self.assertIn("both generated artifacts must be executed", prompt)
+        self.assertNotIn("Requested output:", prompt)
 
     def test_prompt_mentions_skill_and_output(self) -> None:
         prompt = build_prompt(
@@ -2006,6 +2009,18 @@ class PromptTests(unittest.TestCase):
             force_overwrite=True,
         )
         self.assertIn("overwrite", prompt.lower())
+
+    def test_gen_eval_prompt_mentions_force_overwrite_for_both_outputs(self) -> None:
+        prompt = build_prompt(
+            CommandKind.GEN_EVAL,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            None,
+            test_mode="differential",
+            bench_mode="standalone",
+            force_overwrite=True,
+        )
+        self.assertIn("Overwrite any existing generated test, benchmark, or archived execution output files", prompt)
 
     def test_prompt_mentions_requested_test_mode(self) -> None:
         prompt = build_prompt(

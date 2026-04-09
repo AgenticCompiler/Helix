@@ -7,7 +7,7 @@ from pathlib import Path
 from triton_agent.generation import (
     GenerationOptions,
     build_generation_request,
-    prepare_generation_target,
+    prepare_generation_targets,
     run_generation_request,
 )
 from triton_agent.generation_batch import run_gen_eval_batch
@@ -58,10 +58,12 @@ def _handle_generation_command(
         options,
     )
     try:
-        file_messages = prepare_generation_target(
+        file_messages = prepare_generation_targets(
             command_kind,
+            input_path,
             request.output_path,
-            options.force_overwrite,
+            test_mode=request.test_mode,
+            force_overwrite=options.force_overwrite,
         )
     except (FileExistsError, IsADirectoryError) as exc:
         parser.exit(2, f"{exc}\n")

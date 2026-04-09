@@ -61,7 +61,8 @@ class SkillCommandScriptTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(completed.returncode, 0)
-        self.assertIn("triton-agent", completed.stdout)
+        self.assertIn("run-command.py", completed.stdout)
+        self.assertNotIn("usage: triton-agent", completed.stdout)
         self.assertIn("run-test", completed.stdout)
         self.assertIn("compare-perf", completed.stdout)
         self.assertIn("profile-bench", completed.stdout)
@@ -107,6 +108,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(completed.returncode, 0)
+        self.assertIn("usage: run-command.py run-test", completed.stdout)
         self.assertIn("--test-file", completed.stdout)
         self.assertIn("--operator-file", completed.stdout)
         self.assertIn("--keep-remote-workdir", completed.stdout)

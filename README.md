@@ -31,6 +31,7 @@ uv run triton-agent optimize --input a.py --test-mode differential --bench-mode 
 uv run triton-agent gen-test --input a.py --verbose
 uv run triton-agent gen-test --input a.py --show-output
 uv run triton-agent gen-test --input a.py --force-overwrite
+uv run triton-agent gen-eval --input a.py --force-overwrite
 uv run triton-agent compare-result --oracle-result abs_result.pt --new-result opt_abs_result.pt
 uv run triton-agent compare-perf --baseline abs_perf.txt --compare opt_abs_perf.txt
 uv run triton-agent run-test --test-file test_a.py --operator-file a.py --remote user@host:2222
@@ -57,7 +58,9 @@ Generated harnesses record their resolved public entrypoint, entrypoint kind, ta
 - `--verbose` prints categorized diagnostics for files, skill staging, and agent launch details.
 - `--show-output` streams readable non-interactive agent output to the current terminal.
 - `--show-output` exits cleanly after the agent finishes, including PTY-backed shutdown cases where Linux reports EOF as `EIO`.
-- `--force-overwrite` makes the CLI delete an existing generated output file before starting `gen-test` or `gen-bench`.
+- `--force-overwrite` makes the CLI delete existing generated output files before starting `gen-test`, `gen-bench`, or `gen-eval`.
+- For `gen-eval`, `--force-overwrite` removes the generated correctness-test file, benchmark file, and related archived execution artifacts for the same operator, including `*_result.pt` and `*_perf.txt`.
+- `gen-eval --force-overwrite` still does not delete the original operator file.
 - `gen-eval` launches one agent task that may repair the original operator file directly, generate both a test harness and a benchmark harness, and validate both artifacts before finishing.
 - `gen-eval` defaults to `--test-mode differential` and `--bench-mode standalone`.
 - `gen-eval` accepts the same `--remote user@host[:port]` and optional `--remote-workdir <path>` context as the other agent-backed generation commands and passes that context through to generated validation commands.

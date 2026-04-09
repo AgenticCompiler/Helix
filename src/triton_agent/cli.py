@@ -238,7 +238,7 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--max-concurrency", type=int, default=2)
         if command_kind == CommandKind.OPTIMIZE_BATCH:
             subparser.add_argument("--max-concurrency", type=int, default=2)
-        if command_kind in {CommandKind.GEN_TEST, CommandKind.GEN_BENCH}:
+        if command_kind in {CommandKind.GEN_EVAL, CommandKind.GEN_TEST, CommandKind.GEN_BENCH}:
             subparser.add_argument("--force-overwrite", action="store_true")
 
     return parser

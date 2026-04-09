@@ -55,14 +55,19 @@ def build_prompt(
                 f"Requested benchmark output: {bench_output}",
             ]
         )
-    if output_path is not None:
+    if output_path is not None and command_kind != CommandKind.GEN_EVAL:
         lines.append(f"Requested output: {output_path}")
     if test_mode is not None:
         lines.append(f"Requested test mode: {test_mode}")
     if bench_mode is not None:
         lines.append(f"Requested bench mode: {bench_mode}")
     if force_overwrite:
-        lines.append("Overwrite the requested output file if it already exists.")
+        if command_kind == CommandKind.GEN_EVAL:
+            lines.append(
+                "Overwrite any existing generated test, benchmark, or archived execution output files before starting."
+            )
+        else:
+            lines.append("Overwrite the requested output file if it already exists.")
     if remote is not None:
         lines.append(f"Remote execution target: {remote}")
         if remote_workdir is not None:
