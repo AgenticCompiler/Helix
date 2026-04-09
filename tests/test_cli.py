@@ -29,6 +29,18 @@ from triton_agent.result_normalization import normalize_agent_result
 
 
 class CliParserTests(unittest.TestCase):
+    def test_gen_eval_batch_maps_to_command_kind(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["gen-eval-batch", "-i", "kernels"])
+        self.assertEqual(args.command, "gen-eval-batch")
+        self.assertEqual(args.command_kind, CommandKind.GEN_EVAL_BATCH)
+        self.assertEqual(args.max_concurrency, 2)
+        self.assertEqual(args.test_mode, "differential")
+        self.assertEqual(args.bench_mode, "standalone")
+        self.assertEqual(args.agent, "codex")
+        self.assertFalse(hasattr(args, "interact"))
+        self.assertFalse(hasattr(args, "output"))
+
     def test_gen_eval_maps_to_command_kind(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["gen-eval", "-i", "kernel.py"])
@@ -50,6 +62,7 @@ class CliParserTests(unittest.TestCase):
     def test_snake_case_aliases_map_to_same_command_kind(self) -> None:
         parser = build_parser()
         cases = [
+            ("gen_eval_batch", CommandKind.GEN_EVAL_BATCH),
             ("gen_eval", CommandKind.GEN_EVAL),
             ("gen_test", CommandKind.GEN_TEST),
             ("run_test", CommandKind.RUN_TEST),
@@ -72,6 +85,7 @@ class CliParserTests(unittest.TestCase):
     def test_help_keeps_only_canonical_kebab_case_commands(self) -> None:
         parser = build_parser()
         help_text = parser.format_help()
+        self.assertIn("gen-eval-batch", help_text)
         self.assertIn("gen-eval", help_text)
         self.assertIn("gen-test", help_text)
         self.assertIn("run-test", help_text)
@@ -81,6 +95,7 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("compare-perf", help_text)
         self.assertIn("optimize-status", help_text)
         self.assertIn("optimize-batch", help_text)
+        self.assertNotIn("gen_eval_batch", help_text)
         self.assertNotIn("gen_eval", help_text)
         self.assertNotIn("gen_test", help_text)
         self.assertNotIn("run_test", help_text)
@@ -130,10 +145,12 @@ class CliParserTests(unittest.TestCase):
 
     def test_agent_commands_accept_pi_backend(self) -> None:
         parser = build_parser()
+        gen_eval_batch_args = parser.parse_args(["gen-eval-batch", "-i", "kernels", "--agent", "pi"])
         gen_eval_args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--agent", "pi"])
         gen_test_args = parser.parse_args(["gen-test", "-i", "kernel.py", "--agent", "pi"])
         gen_bench_args = parser.parse_args(["gen-bench", "-i", "kernel.py", "--agent", "pi"])
         optimize_args = parser.parse_args(["optimize", "-i", "kernel.py", "--agent", "pi"])
+        self.assertEqual(gen_eval_batch_args.agent, "pi")
         self.assertEqual(gen_eval_args.agent, "pi")
         self.assertEqual(gen_test_args.agent, "pi")
         self.assertEqual(gen_bench_args.agent, "pi")
@@ -141,10 +158,14 @@ class CliParserTests(unittest.TestCase):
 
     def test_agent_commands_accept_claude_backend(self) -> None:
         parser = build_parser()
+        gen_eval_batch_args = parser.parse_args(
+            ["gen-eval-batch", "-i", "kernels", "--agent", "claude"]
+        )
         gen_eval_args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--agent", "claude"])
         gen_test_args = parser.parse_args(["gen-test", "-i", "kernel.py", "--agent", "claude"])
         gen_bench_args = parser.parse_args(["gen-bench", "-i", "kernel.py", "--agent", "claude"])
         optimize_args = parser.parse_args(["optimize", "-i", "kernel.py", "--agent", "claude"])
+        self.assertEqual(gen_eval_batch_args.agent, "claude")
         self.assertEqual(gen_eval_args.agent, "claude")
         self.assertEqual(gen_test_args.agent, "claude")
         self.assertEqual(gen_bench_args.agent, "claude")
@@ -226,6 +247,17 @@ class CliParserTests(unittest.TestCase):
 
     def test_agent_commands_accept_remote_options(self) -> None:
         parser = build_parser()
+        gen_eval_batch_args = parser.parse_args(
+            [
+                "gen-eval-batch",
+                "-i",
+                "kernels",
+                "--remote",
+                "alice@example.com",
+                "--remote-workdir",
+                "/tmp/runs",
+            ]
+        )
         gen_eval_args = parser.parse_args(
             [
                 "gen-eval",
@@ -268,6 +300,8 @@ class CliParserTests(unittest.TestCase):
                 "/tmp/opt",
             ]
         )
+        self.assertEqual(gen_eval_batch_args.remote, "alice@example.com")
+        self.assertEqual(gen_eval_batch_args.remote_workdir, "/tmp/runs")
         self.assertEqual(gen_eval_args.remote, "alice@example.com:2200")
         self.assertEqual(gen_eval_args.remote_workdir, "/tmp/runs")
         self.assertEqual(gen_test_args.remote, "alice@example.com:2200")
@@ -389,6 +423,11 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["gen-eval", "-i", "kernel.py"])
         self.assertEqual(args.test_mode, "differential")
 
+    def test_gen_eval_batch_defaults_to_differential_test_mode(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["gen-eval-batch", "-i", "kernels"])
+        self.assertEqual(args.test_mode, "differential")
+
     def test_bench_mode_option_is_available_for_bench_commands(self) -> None:
         parser = build_parser()
         eval_args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--bench-mode", "msprof"])
@@ -421,6 +460,41 @@ class CliParserTests(unittest.TestCase):
         parser = build_parser()
         args = parser.parse_args(["gen-eval", "-i", "kernel.py"])
         self.assertEqual(args.bench_mode, "standalone")
+
+    def test_gen_eval_batch_defaults_to_standalone_bench_mode(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["gen-eval-batch", "-i", "kernels"])
+        self.assertEqual(args.bench_mode, "standalone")
+
+    def test_gen_eval_batch_accepts_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "gen-eval-batch",
+                "-i",
+                "kernels",
+                "--agent",
+                "pi",
+                "--remote",
+                "alice@example.com",
+                "--remote-workdir",
+                "/tmp/eval",
+                "--test-mode",
+                "standalone",
+                "--bench-mode",
+                "msprof",
+                "--max-concurrency",
+                "3",
+                "--show-output",
+            ]
+        )
+        self.assertEqual(args.agent, "pi")
+        self.assertEqual(args.remote, "alice@example.com")
+        self.assertEqual(args.remote_workdir, "/tmp/eval")
+        self.assertEqual(args.test_mode, "standalone")
+        self.assertEqual(args.bench_mode, "msprof")
+        self.assertEqual(args.max_concurrency, 3)
+        self.assertTrue(args.show_output)
 
     def test_optimize_command_supports_mode_options(self) -> None:
         parser = build_parser()
@@ -819,6 +893,138 @@ class PathResolutionTests(unittest.TestCase):
             with redirect_stderr(stderr):
                 with self.assertRaises(SystemExit) as exc:
                     main(["optimize-batch", "-i", str(root), "--max-concurrency", "0"])
+
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn("--max-concurrency must be at least 1", stderr.getvalue())
+
+    def test_main_gen_eval_batch_auto_detects_operator_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = root / "first"
+            second = root / "second"
+            first.mkdir()
+            second.mkdir()
+            (first / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+            (first / "opt_kernel.py").write_text("", encoding="utf-8")
+            (first / "__init__.py").write_text("", encoding="utf-8")
+            (second / "matmul_impl.py").write_text("print('y')\n", encoding="utf-8")
+
+            seen_inputs: list[Path] = []
+
+            def _fake_run(request, stdout=None, stderr=None):
+                seen_inputs.append(request.input_path)
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.generation_batch.run_generation_request", side_effect=_fake_run):
+                exit_code = main(["gen-eval-batch", "-i", str(root)])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(
+                seen_inputs,
+                [
+                    (first / "kernel.py").resolve(),
+                    (second / "matmul_impl.py").resolve(),
+                ],
+            )
+
+    def test_main_gen_eval_batch_reports_workspace_selection_failures(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bad = root / "bad"
+            good = root / "good"
+            bad.mkdir()
+            good.mkdir()
+            (bad / "a.py").write_text("print('a')\n", encoding="utf-8")
+            (bad / "b.py").write_text("print('b')\n", encoding="utf-8")
+            (good / "kernel.py").write_text("print('ok')\n", encoding="utf-8")
+
+            stdout = StringIO()
+            seen_inputs: list[Path] = []
+
+            def _fake_run(request, stdout=None, stderr=None):
+                seen_inputs.append(request.input_path)
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.generation_batch.run_generation_request", side_effect=_fake_run):
+                with redirect_stdout(stdout):
+                    exit_code = main(["gen-eval-batch", "-i", str(root)])
+
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(seen_inputs, [(good / "kernel.py").resolve()])
+            self.assertIn("bad", stdout.getvalue())
+            self.assertIn("found multiple candidate operator files", stdout.getvalue())
+            self.assertIn("Summary: 1 succeeded, 1 failed", stdout.getvalue())
+
+    def test_main_gen_eval_batch_honors_max_concurrency(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("one", "two", "three"):
+                workspace = root / name
+                workspace.mkdir()
+                (workspace / f"{name}.py").write_text("print('x')\n", encoding="utf-8")
+
+            active = 0
+            max_active = 0
+            launched = 0
+            lock = threading.Lock()
+            first_pair_ready = threading.Event()
+            release_gate = threading.Event()
+
+            def _fake_run(_request, stdout=None, stderr=None):
+                nonlocal active, max_active, launched
+                with lock:
+                    launched += 1
+                    active += 1
+                    max_active = max(max_active, active)
+                    if launched >= 2:
+                        first_pair_ready.set()
+                first_pair_ready.wait(timeout=1)
+                release_gate.wait(timeout=0.1)
+                with lock:
+                    active -= 1
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.generation_batch.run_generation_request", side_effect=_fake_run):
+                exit_code = main(["gen-eval-batch", "-i", str(root), "--max-concurrency", "2"])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(max_active, 2)
+
+    def test_main_gen_eval_batch_show_output_prefixes_workspace_streams(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("alpha", "beta"):
+                workspace = root / name
+                workspace.mkdir()
+                (workspace / f"{name}.py").write_text("print('x')\n", encoding="utf-8")
+
+            stdout = StringIO()
+
+            def _fake_run(request, stdout=None, stderr=None):
+                if stdout is not None:
+                    stdout.write("repair start\n")
+                if stderr is not None:
+                    stderr.write("warn line\n")
+                return AgentResult(return_code=0, stdout="repair start\n", stderr="warn line\n")
+
+            with patch("triton_agent.generation_batch.run_generation_request", side_effect=_fake_run):
+                with redirect_stdout(stdout):
+                    exit_code = main(["gen-eval-batch", "-i", str(root), "--show-output"])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertIn("[alpha] repair start", rendered)
+            self.assertIn("[beta] repair start", rendered)
+            self.assertIn("Summary: 2 succeeded, 0 failed", rendered)
+
+    def test_main_gen_eval_batch_rejects_invalid_concurrency(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            stderr = StringIO()
+
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(["gen-eval-batch", "-i", str(root), "--max-concurrency", "0"])
 
             self.assertEqual(exc.exception.code, 2)
             self.assertIn("--max-concurrency must be at least 1", stderr.getvalue())

@@ -9,6 +9,7 @@ from triton_agent.commands.comparison import handle_compare_perf, handle_compare
 from triton_agent.commands.execution import handle_run_bench, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
 from triton_agent.commands.generation import handle_gen_eval
+from triton_agent.commands.generation import handle_gen_eval_batch
 from triton_agent.commands.optimize import (
     handle_optimize,
     handle_optimize_batch,
@@ -148,6 +149,7 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("-i", "--input", required=True)
         if command_kind in {
             CommandKind.GEN_EVAL,
+            CommandKind.GEN_EVAL_BATCH,
             CommandKind.GEN_TEST,
             CommandKind.GEN_BENCH,
             CommandKind.OPTIMIZE,
@@ -165,6 +167,7 @@ def build_parser() -> argparse.ArgumentParser:
             CommandKind.COMPARE_PERF,
             CommandKind.OPTIMIZE_STATUS,
             CommandKind.OPTIMIZE_BATCH,
+            CommandKind.GEN_EVAL_BATCH,
         }:
             subparser.add_argument("-o", "--output")
         if command_kind != CommandKind.COMPARE_PERF:
@@ -179,7 +182,8 @@ def build_parser() -> argparse.ArgumentParser:
                 CommandKind.RUN_BENCH,
             }:
                 if command_kind != CommandKind.OPTIMIZE_BATCH:
-                    subparser.add_argument("--interact", action="store_true")
+                    if command_kind != CommandKind.GEN_EVAL_BATCH:
+                        subparser.add_argument("--interact", action="store_true")
                 subparser.add_argument("--show-output", action="store_true")
             if command_kind not in {CommandKind.RUN_TEST, CommandKind.RUN_BENCH}:
                 subparser.add_argument(
@@ -187,6 +191,7 @@ def build_parser() -> argparse.ArgumentParser:
                 )
         if command_kind in {
             CommandKind.GEN_EVAL,
+            CommandKind.GEN_EVAL_BATCH,
             CommandKind.GEN_TEST,
             CommandKind.RUN_TEST,
             CommandKind.OPTIMIZE,
@@ -196,7 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
                 "--test-mode",
                 default=(
                     "differential"
-                    if command_kind == CommandKind.GEN_EVAL
+                    if command_kind in {CommandKind.GEN_EVAL, CommandKind.GEN_EVAL_BATCH}
                     else "standalone"
                     if command_kind == CommandKind.GEN_TEST
                     else None
@@ -205,6 +210,7 @@ def build_parser() -> argparse.ArgumentParser:
             )
         if command_kind in {
             CommandKind.GEN_EVAL,
+            CommandKind.GEN_EVAL_BATCH,
             CommandKind.GEN_BENCH,
             CommandKind.RUN_BENCH,
             CommandKind.OPTIMIZE,
@@ -214,7 +220,8 @@ def build_parser() -> argparse.ArgumentParser:
                 "--bench-mode",
                 default=(
                     "standalone"
-                    if command_kind in {CommandKind.GEN_EVAL, CommandKind.GEN_BENCH}
+                    if command_kind
+                    in {CommandKind.GEN_EVAL, CommandKind.GEN_EVAL_BATCH, CommandKind.GEN_BENCH}
                     else None
                 ),
                 choices=["standalone", "msprof"],
@@ -227,6 +234,8 @@ def build_parser() -> argparse.ArgumentParser:
                 choices=["auto", "continue", "fresh"],
             )
             subparser.add_argument("--no-agent-session", action="store_true")
+        if command_kind == CommandKind.GEN_EVAL_BATCH:
+            subparser.add_argument("--max-concurrency", type=int, default=2)
         if command_kind == CommandKind.OPTIMIZE_BATCH:
             subparser.add_argument("--max-concurrency", type=int, default=2)
         if command_kind in {CommandKind.GEN_TEST, CommandKind.GEN_BENCH}:
@@ -244,6 +253,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         return handle_gen_test(parser, args)
     if command_kind == CommandKind.GEN_EVAL:
         return handle_gen_eval(parser, args)
+    if command_kind == CommandKind.GEN_EVAL_BATCH:
+        return handle_gen_eval_batch(parser, args)
     if command_kind == CommandKind.GEN_BENCH:
         return handle_gen_bench(parser, args)
     if command_kind == CommandKind.RUN_TEST:
@@ -268,6 +279,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         return argv
     aliases = {
         "gen_eval": "gen-eval",
+        "gen_eval_batch": "gen-eval-batch",
         "gen_test": "gen-test",
         "run_test": "run-test",
         "gen_bench": "gen-bench",

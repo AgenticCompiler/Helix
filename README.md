@@ -5,6 +5,7 @@
 ```bash
 uv run triton-agent gen-test --input a.py
 uv run triton-agent gen-eval --input a.py
+uv run triton-agent gen-eval-batch --input operators_root
 uv run triton-agent run-test --test-file test_a.py --operator-file a.py
 uv run triton-agent gen-bench --input a.py
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
@@ -16,6 +17,7 @@ uv run triton-agent optimize-batch --input operators_root
 ```bash
 uv run triton-agent gen-test --input a.py --output test_a.py
 uv run triton-agent gen-eval --input a.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
+uv run triton-agent gen-eval-batch --input operators_root --max-concurrency 4
 uv run triton-agent optimize --input a.py --output opt_a.py --interact
 uv run triton-agent gen-bench --input a.py --agent codex
 uv run triton-agent gen-test --input a.py --agent opencode
@@ -59,6 +61,11 @@ Generated harnesses record their resolved public entrypoint, entrypoint kind, ta
 - `gen-eval` launches one agent task that may repair the original operator file directly, generate both a test harness and a benchmark harness, and validate both artifacts before finishing.
 - `gen-eval` defaults to `--test-mode differential` and `--bench-mode standalone`.
 - `gen-eval` accepts the same `--remote user@host[:port]` and optional `--remote-workdir <path>` context as the other agent-backed generation commands and passes that context through to generated validation commands.
+- `gen-eval-batch` scans the immediate child directories under `--input` and treats each child directory as one operator workspace.
+- In each batch workspace, `gen-eval-batch` auto-selects the only remaining `.py` file after excluding generated artifacts such as `test_*.py`, `differential_test_*.py`, `bench_*.py`, `opt_*.py`, and `__init__.py`.
+- If a batch workspace has zero or multiple remaining `.py` candidates, `gen-eval-batch` reports that workspace as a failure and keeps processing the rest of the batch.
+- `gen-eval-batch` accepts the same `gen-eval` orchestration flags except `--output` and `--interact`, plus `--max-concurrency <N>` for bounded parallel execution.
+- `gen-eval-batch --show-output` streams live per-workspace output into the current terminal with `[workspace-name] ` prefixes while still printing the compact batch summary at the end.
 - The parser also accepts snake_case command aliases such as `gen_test` and `run_bench`, while help text keeps the canonical kebab-case names.
 - `run-test` requires `--test-file` and `--operator-file`.
 - `run-test` executes the generated test file through the unified `skills/operator-eval/` execution helpers instead of launching a code agent.

@@ -10,6 +10,7 @@ from triton_agent.generation import (
     prepare_generation_target,
     run_generation_request,
 )
+from triton_agent.generation_batch import run_gen_eval_batch
 from triton_agent.models import CommandKind
 from triton_agent.output import render_result
 from triton_agent.verbose import emit_verbose_lines
@@ -17,6 +18,18 @@ from triton_agent.verbose import emit_verbose_lines
 
 def handle_gen_eval(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     return _handle_generation_command(parser, args, CommandKind.GEN_EVAL)
+
+
+def handle_gen_eval_batch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    root = Path(args.input).expanduser().resolve()
+    if not root.exists():
+        parser.error(f"Input path does not exist: {root}")
+    if not root.is_dir():
+        parser.error(f"Input path is not a directory: {root}")
+    max_concurrency = args.max_concurrency
+    if max_concurrency < 1:
+        parser.error("--max-concurrency must be at least 1")
+    return run_gen_eval_batch(root, generation_options_from_args(args), max_concurrency=max_concurrency)
 
 
 def handle_gen_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:

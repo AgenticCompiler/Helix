@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, TextIO, cast
 
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
 from triton_agent.paths import default_generated_output_path
@@ -124,7 +125,11 @@ def build_generation_request(
     )
 
 
-def run_generation_request(request: AgentRequest) -> AgentResult:
+def run_generation_request(
+    request: AgentRequest,
+    stdout: TextIO | None = None,
+    stderr: TextIO | None = None,
+) -> AgentResult:
     repo_root = Path(__file__).resolve().parents[2]
     manager = SkillLinkManager(repo_root / "skills")
     links = manager.prepare_skills(
@@ -133,13 +138,15 @@ def run_generation_request(request: AgentRequest) -> AgentResult:
         skill_names=request.staged_skill_names,
     )
     if request.verbose:
-        emit_verbose_lines(sys.stderr, "skills", manager.describe_prepare(links))
+        emit_verbose_lines(stderr or sys.stderr, "skills", manager.describe_prepare(links))
     try:
         runner = create_runner(request.agent_name)
+        if stdout is not None or stderr is not None:
+            return cast(Any, runner).run(request, stdout=stdout, stderr=stderr)
         return runner.run(request)
     finally:
         if request.verbose:
-            emit_verbose_lines(sys.stderr, "skills", manager.describe_cleanup(links))
+            emit_verbose_lines(stderr or sys.stderr, "skills", manager.describe_cleanup(links))
         warnings = manager.cleanup(links)
         for warning in warnings:
-            emit_verbose(sys.stderr, "skills", warning)
+            emit_verbose(stderr or sys.stderr, "skills", warning)
