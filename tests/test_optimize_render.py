@@ -1,0 +1,108 @@
+import sys
+import unittest
+from io import StringIO
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from triton_agent.optimize.models import OptimizeStatusWorkspace
+from triton_agent.optimize.render import render_optimize_status_results
+
+
+class _TTYStringIO(StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
+class OptimizeRenderTests(unittest.TestCase):
+    def test_render_optimize_status_groups_no_session_then_warning_then_ok(self) -> None:
+        stream = StringIO()
+        results = [
+            OptimizeStatusWorkspace(
+                workspace=Path("/tmp/beta"),
+                state="ok",
+                baseline_mean=10.0,
+                best_mean=8.0,
+                avg_improvement=0.2,
+                best_round="round-2",
+                logged_best="round-2",
+                warnings=(),
+            ),
+            OptimizeStatusWorkspace(
+                workspace=Path("/tmp/zeta"),
+                state="no-session",
+                baseline_mean=None,
+                best_mean=None,
+                avg_improvement=None,
+                best_round=None,
+                logged_best=None,
+                warnings=(),
+            ),
+            OptimizeStatusWorkspace(
+                workspace=Path("/tmp/alpha"),
+                state="warning",
+                baseline_mean=12.0,
+                best_mean=None,
+                avg_improvement=None,
+                best_round=None,
+                logged_best=None,
+                warnings=("missing perf artifact for opt-round-28",),
+            ),
+        ]
+
+        render_optimize_status_results(results, stdout=stream)
+
+        rendered = stream.getvalue()
+        self.assertLess(rendered.index("[NO-SESSION] zeta"), rendered.index("[WARN] alpha"))
+        self.assertLess(rendered.index("[WARN] alpha"), rendered.index("[OK] beta"))
+
+    def test_render_optimize_status_uses_plain_text_when_not_tty(self) -> None:
+        stream = StringIO()
+        results = [
+            OptimizeStatusWorkspace(
+                workspace=Path("/tmp/layernorm"),
+                state="warning",
+                baseline_mean=12.0,
+                best_mean=None,
+                avg_improvement=None,
+                best_round=None,
+                logged_best=None,
+                warnings=("missing perf artifact for opt-round-28",),
+            )
+        ]
+
+        render_optimize_status_results(results, stdout=stream)
+
+        rendered = stream.getvalue()
+        self.assertIn("[WARN] layernorm", rendered)
+        self.assertIn("  Warning: missing perf artifact for opt-round-28", rendered)
+        self.assertNotIn("\033[", rendered)
+
+    def test_render_optimize_status_uses_tty_colors_for_titles_and_faint_warnings(self) -> None:
+        stream = _TTYStringIO()
+        results = [
+            OptimizeStatusWorkspace(
+                workspace=Path("/tmp/layernorm"),
+                state="warning",
+                baseline_mean=12.0,
+                best_mean=None,
+                avg_improvement=None,
+                best_round=None,
+                logged_best=None,
+                warnings=("missing perf artifact for opt-round-28",),
+            )
+        ]
+
+        render_optimize_status_results(results, stdout=stream)
+
+        rendered = stream.getvalue()
+        self.assertIn("\033[36m[WARN] layernorm\033[0m", rendered)
+        self.assertIn("\033[37m  Baseline mean: 12.000000\033[0m", rendered)
+        self.assertIn(
+            "\033[90m  Warning: missing perf artifact for opt-round-28\033[0m",
+            rendered,
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

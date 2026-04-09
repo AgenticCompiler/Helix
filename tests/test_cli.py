@@ -650,6 +650,46 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("[NO-SESSION] fresh", rendered)
             self.assertIn("Summary: 0 ok, 0 warning, 1 no-session", rendered)
 
+    def test_main_optimize_status_groups_no_session_then_warning_then_ok(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "zeta").mkdir()
+
+            warning_workspace = root / "alpha"
+            warning_workspace.mkdir()
+            (warning_workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            warning_round = warning_workspace / "opt-round-1"
+            warning_round.mkdir()
+            (warning_round / "perf.txt").write_text(
+                "latency-a: 8\n",
+                encoding="utf-8",
+            )
+
+            ok_workspace = root / "beta"
+            ok_workspace.mkdir()
+            (ok_workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            ok_round = ok_workspace / "opt-round-1"
+            ok_round.mkdir()
+            (ok_round / "perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(["optimize-status", "-i", str(root)])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertLess(rendered.index("[NO-SESSION] zeta"), rendered.index("[WARN] alpha"))
+            self.assertLess(rendered.index("[WARN] alpha"), rendered.index("[OK] beta"))
+
     def test_main_optimize_status_reports_numeric_best_and_logged_best(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
