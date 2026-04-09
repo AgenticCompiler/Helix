@@ -70,7 +70,7 @@ Avoid selecting a parent that:
    - revise the round in place if the optimization idea is still promising, or
    - stop advancing that round and return to candidate selection for a new branch
 16. Complete the round only after the optimized candidate shows a measurable win over the chosen comparison target.
-17. When the optimize session is pausing or ending, refresh the final `## Overall Summary` block in `opt-note.md` so the top-level note states the best round, overall outcome, any useful validated branches, and why that round was pursued.
+17. When the optimize session is pausing or ending, refresh the final `## Overall Summary` block in `opt-note.md` so the top-level note states the best round, overall outcome, `Avg improvement`, `Geomean speedup`, `Total speedup`, any useful validated branches, and why that round was pursued.
 
 ## Comparison Target
 
@@ -95,6 +95,7 @@ A round is complete only when all of the following are true:
 - any profiler or IR evidence used in the round decision is saved under the round directory
 - the round summary explains the optimization points and measured outcome
 - `opt-note.md` is updated with a concise entry
+- the final best round is judged by `Geomean speedup`
 - `opt-note.md` ends with one current `## Overall Summary` block for the whole session
 
 ## Failure Handling

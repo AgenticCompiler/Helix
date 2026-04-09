@@ -3,36 +3,37 @@ from __future__ import annotations
 import sys
 from typing import List, Optional, TextIO
 
-from triton_agent.agent import AgentRunner
+from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult
 from triton_agent.process_runner import run_process
 from triton_agent.prompts import build_optimize_resume_prompt
 from triton_agent.verbose import emit_verbose_lines, format_command_messages
 
 
-class PiRunner(AgentRunner):
-    def __init__(self, executable: str = "pi", stall_timeout_seconds: int = 900) -> None:
+class OpenCodeRunner(AgentRunner):
+    def __init__(self, executable: str = "opencode", stall_timeout_seconds: int = 900) -> None:
         self.executable = executable
         self.stall_timeout_seconds = stall_timeout_seconds
 
     def build_command(self, request: AgentRequest) -> List[str]:
-        command = [self.executable]
-        if not request.interact:
-            command.append("--print")
-        command.extend(
-            [
+        if request.interact:
+            return [
+                self.executable,
+                str(request.workdir),
+                "--pure",
                 "--thinking",
-                "high",
-                "--no-extensions",
-                "--no-skills",
-                "--skill",
-                str(request.workdir / ".pi" / "skills"),
+                "--prompt",
+                request.prompt,
             ]
-        )
-        if request.command_kind != request.command_kind.OPTIMIZE or request.no_agent_session:
-            command.append("--no-session")
-        command.append(request.prompt)
-        return command
+        return [
+            self.executable,
+            "run",
+            "--dir",
+            str(request.workdir),
+            "--pure",
+            "--thinking",
+            request.prompt,
+        ]
 
     def run(
         self,

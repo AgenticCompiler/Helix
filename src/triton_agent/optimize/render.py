@@ -29,6 +29,12 @@ def format_optimize_status_percent(value: float | None) -> str:
     return f"{value * 100:+.1f}%"
 
 
+def format_optimize_status_speedup(value: float | None) -> str:
+    if value is None:
+        return "unknown"
+    return f"{value:.2f}x"
+
+
 def render_batch_optimize_results(
     results: list[BatchOptimizeResult],
     stdout: TextIO | None = None,
@@ -47,7 +53,10 @@ def render_batch_optimize_results(
 def render_optimize_status_results(
     results: list[OptimizeStatusWorkspace],
     stdout: TextIO | None = None,
+    output_format: str = "text",
 ) -> int:
+    if output_format == "markdown":
+        return render_optimize_status_markdown_table(results, stdout=stdout)
     stream = stdout or sys.stdout
     ordered_results = sorted(results, key=_optimize_status_sort_key)
     ok_count = sum(1 for item in ordered_results if item.state == "ok")
@@ -79,6 +88,22 @@ def render_optimize_status_results(
             ),
             file=stream,
         )
+        print(
+            _style(
+                stream,
+                f"  Geomean speedup: {format_optimize_status_speedup(item.geomean_speedup)}",
+                _BODY_COLOR,
+            ),
+            file=stream,
+        )
+        print(
+            _style(
+                stream,
+                f"  Total speedup: {format_optimize_status_speedup(item.total_speedup)}",
+                _BODY_COLOR,
+            ),
+            file=stream,
+        )
         print(_style(stream, f"  Best round: {item.best_round or 'unknown'}", _BODY_COLOR), file=stream)
         if item.logged_best is not None:
             print(_style(stream, f"  Logged best: {item.logged_best}", _BODY_COLOR), file=stream)
@@ -97,8 +122,37 @@ def render_optimize_status_results(
     return 0 if ordered_results else 1
 
 
+def render_optimize_status_markdown_table(
+    results: list[OptimizeStatusWorkspace],
+    stdout: TextIO | None = None,
+) -> int:
+    stream = stdout or sys.stdout
+    rows = [
+        item
+        for item in sorted(results, key=_optimize_status_sort_key)
+        if item.state != "no-session"
+    ]
+    print("| 名称 | Geomean speedup | Total speedup |", file=stream)
+    print("| --- | --- | --- |", file=stream)
+    for item in rows:
+        print(
+            "| "
+            f"{item.workspace.name} | "
+            f"{format_optimize_status_speedup_cell(item.geomean_speedup)} | "
+            f"{format_optimize_status_speedup_cell(item.total_speedup)} |",
+            file=stream,
+        )
+    return 0 if results else 1
+
+
 def _optimize_status_sort_key(item: OptimizeStatusWorkspace) -> tuple[int, str]:
     return (_STATE_PRIORITY.get(item.state, len(_STATE_PRIORITY)), item.workspace.name)
+
+
+def format_optimize_status_speedup_cell(value: float | None) -> str:
+    if value is None:
+        return "-"
+    return format_optimize_status_speedup(value)
 
 
 def _style(stream: TextIO, text: str, color: str) -> str:

@@ -9,12 +9,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.cli import build_parser
 from triton_agent.commands.generation import handle_gen_eval, handle_gen_test
-from triton_agent.generation import (
-    GenerationOptions,
-    build_generation_request,
+from triton_agent.generation.models import GenerationOptions
+from triton_agent.generation.outputs import (
     prepare_generation_targets,
     resolve_generation_output_path,
 )
+from triton_agent.generation.runtime import build_generation_request
 from triton_agent.models import AgentResult, CommandKind
 
 

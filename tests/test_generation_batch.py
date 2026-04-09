@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.generation_batch import (
+from triton_agent.generation.batch import (
     is_batch_gen_eval_operator_candidate,
     resolve_batch_gen_eval_operator_file,
     summarize_batch_gen_eval_failure,

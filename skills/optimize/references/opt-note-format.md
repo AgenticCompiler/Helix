@@ -45,6 +45,8 @@ Final best round: round-N
 Baseline mean: <value or unknown>
 Best mean: <value or unknown>
 Avg improvement: <value or unknown>
+Geomean speedup: <value or unknown>
+Total speedup: <value or unknown>
 Validated branches: <comma-separated round names or none>
 Outcome: <plain-English optimization result>
 Next step: <plain-English follow-up or none>
@@ -66,6 +68,8 @@ Final best round: round-3
 Baseline mean: 1.82 ms
 Best mean: 1.57 ms
 Avg improvement: +13.7%
+Geomean speedup: 1.16x
+Total speedup: 1.18x
 Validated branches: round-1
 Outcome: round-3 is the fastest validated candidate and preserves correctness.
 Next step: profile round-3 if more latency reduction is needed.
@@ -77,5 +81,6 @@ Next step: profile round-3 if more latency reduction is needed.
 - Keep the note readable as a project history log.
 - Put detailed reasoning, code snippets, and deeper analysis in the per-round summary instead of the top-level note.
 - Keep the top-level note concise, but make sure a reader can still tell why the chosen round direction was reasonable.
+- Use `Geomean speedup` as the headline metric for the final best round and include `Total speedup` as the whole-workload view.
 - Use `Validated branches` to list non-best rounds that are still worth revisiting later.
 - Keep `Outcome` and `Next step` short enough that a reader can understand the session result in one screen.

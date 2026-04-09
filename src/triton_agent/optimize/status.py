@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Iterable
 from pathlib import Path
@@ -29,6 +30,8 @@ def inspect_optimize_status_workspace(
             baseline_mean=None,
             best_mean=None,
             avg_improvement=None,
+            geomean_speedup=None,
+            total_speedup=None,
             best_round=None,
             logged_best=None,
             warnings=(),
@@ -75,25 +78,40 @@ def inspect_optimize_status_workspace(
             warnings.append("latency ids do not match for comparable perf data")
             continue
 
-        score_values: list[float] = []
+        improvement_values: list[float] = []
+        speedup_values: list[float] = []
+        valid_baseline_values: list[float] = []
+        valid_round_values: list[float] = []
         for latency_id in sorted(baseline_values):
             baseline_value = baseline_values[latency_id]
             if baseline_value <= 0:
                 warnings.append(f"baseline latency must be > 0 for {latency_id}")
                 continue
-            score_values.append((baseline_value - round_values[latency_id]) / baseline_value)
-        if not score_values:
+            round_value = round_values[latency_id]
+            if round_value <= 0:
+                warnings.append(f"round latency must be > 0 for {round_dir.name}:{latency_id}")
+                continue
+            improvement_values.append((baseline_value - round_value) / baseline_value)
+            speedup_values.append(baseline_value / round_value)
+            valid_baseline_values.append(baseline_value)
+            valid_round_values.append(round_value)
+        if not improvement_values:
             continue
         comparable_rounds.append(
             OptimizeStatusRound(
                 round_name=f"round-{round_number(round_dir.name)}",
-                score=mean_value(score_values),
-                mean_latency=mean_value(round_values.values()),
+                avg_improvement=mean_value(improvement_values),
+                geomean_speedup=geomean_value(speedup_values),
+                total_speedup=sum(valid_baseline_values) / sum(valid_round_values),
+                mean_latency=mean_value(valid_round_values),
             )
         )
 
     if comparable_rounds:
-        best_round = max(comparable_rounds, key=lambda item: (item.score, -item.mean_latency))
+        best_round = max(
+            comparable_rounds,
+            key=lambda item: (item.geomean_speedup, item.total_speedup, -item.mean_latency),
+        )
         if logged_best is not None and logged_best != best_round.round_name:
             warnings.append("numeric best round differs from logged best round")
         return OptimizeStatusWorkspace(
@@ -101,7 +119,9 @@ def inspect_optimize_status_workspace(
             state="ok",
             baseline_mean=baseline_mean,
             best_mean=best_round.mean_latency,
-            avg_improvement=best_round.score,
+            avg_improvement=best_round.avg_improvement,
+            geomean_speedup=best_round.geomean_speedup,
+            total_speedup=best_round.total_speedup,
             best_round=best_round.round_name,
             logged_best=logged_best,
             warnings=tuple(dict.fromkeys(warnings)),
@@ -118,6 +138,8 @@ def inspect_optimize_status_workspace(
         baseline_mean=baseline_mean,
         best_mean=None,
         avg_improvement=None,
+        geomean_speedup=None,
+        total_speedup=None,
         best_round=None,
         logged_best=logged_best,
         warnings=tuple(dict.fromkeys(warnings)),
@@ -134,10 +156,16 @@ def scan_optimize_status_workspaces(root: Path, *, verbose: bool = False) -> lis
 def select_baseline_perf_file(paths: list[Path], warnings: list[str]) -> Path | None:
     if not paths:
         return None
-    if len(paths) > 1:
+    if len(paths) == 1:
+        return paths[0]
+    non_opt_paths = [path for path in paths if not path.stem.startswith("opt_")]
+    if len(non_opt_paths) == 1:
+        return non_opt_paths[0]
+    if len(non_opt_paths) > 1:
         warnings.append("found multiple baseline perf files")
         return None
-    return paths[0]
+    warnings.append("found multiple baseline perf files")
+    return None
 
 
 def find_round_perf_file(round_dir: Path) -> Path | None:
@@ -213,3 +241,8 @@ def round_number(name: str) -> int | None:
 def mean_value(values: Iterable[float]) -> float:
     items = list(values)
     return sum(items) / len(items)
+
+
+def geomean_value(values: Iterable[float]) -> float:
+    items = list(values)
+    return math.exp(sum(math.log(item) for item in items) / len(items))

@@ -5,7 +5,7 @@
 - Add a new read-only `optimize-status` subcommand for scanning batch optimize workspaces and summarizing current optimization progress.
 - Reuse the `optimize-batch` root-directory scan model: each immediate child directory under `--input` is one operator workspace candidate.
 - Report optimization status primarily through benchmark numbers instead of round narrative text.
-- Use mean improvement across matched per-case latency deltas as the primary ranking metric for the best optimization round.
+- Use geomean speedup across matched per-case latency ratios as the primary ranking metric for the best optimization round.
 
 ## User-Visible Behavior
 
@@ -23,6 +23,8 @@ Example shape:
   Baseline mean: 1.82
   Best mean: 1.49
   Avg improvement: +14.6%
+  Geomean speedup: 1.18x
+  Total speedup: 1.22x
   Best round: round-3
   Logged best: round-3
 
@@ -30,18 +32,37 @@ Example shape:
   Baseline mean: 2.31
   Best mean: unknown
   Avg improvement: unknown
+  Geomean speedup: unknown
+  Total speedup: unknown
   Best round: unknown
   Warning: missing comparable round perf data
 
 Summary: 1 ok, 1 warning, 0 no-session
 ```
 
+Markdown table mode:
+
+```text
+| 名称 | Geomean speedup | Total speedup |
+| --- | --- | --- |
+| layernorm | - | - |
+| matmul | 1.18x | 1.22x |
+```
+
 ## CLI Contract
 
 - `optimize-status` accepts `--input/-i` as the batch root directory.
 - `optimize-status` accepts `--verbose` for parsing diagnostics and artifact-source hints.
+- `optimize-status` accepts `--format text|markdown`, defaulting to `text`.
 - Do not add agent-selection, remote, output-generation, or interactive flags in this change.
 - JSON output is out of scope for the first version.
+
+In `markdown` mode:
+
+- render only the Markdown table
+- exclude `no-session` workspaces
+- keep `warning` and `ok` workspaces in the usual sort order
+- use `-` when a workspace cannot produce one or both speedup values
 
 ## Workspace Discovery
 
@@ -61,6 +82,7 @@ Summary: 1 ok, 1 warning, 0 no-session
 ### Baseline Perf
 
 - The baseline perf source is the original operator benchmark result saved beside the original operator file using the existing `<operator-file-stem>_perf.txt` format.
+- When multiple top-level `*_perf.txt` files exist, prefer the unique file whose stem does not start with `opt_`; only warn when baseline selection is still ambiguous.
 - Parse perf files using the same `latency-<id>: <float>` contract already used by `compare-perf`.
 - The baseline mean shown in output is the arithmetic mean of baseline latency values.
 
@@ -73,7 +95,7 @@ Summary: 1 ok, 1 warning, 0 no-session
 - Prefer round-local normalized perf data over free-form text in `summary.md`.
 - Only use `summary.md` for warnings or provenance, not as the primary numeric source.
 
-### Improvement Metric
+### Improvement And Speedup Metrics
 
 - For each latency id shared by the baseline perf and one round perf, compute per-case relative improvement:
 
@@ -81,17 +103,33 @@ Summary: 1 ok, 1 warning, 0 no-session
 improvement(id) = (baseline(id) - round(id)) / baseline(id)
 ```
 
-- The round's primary optimization score is:
+- Compute benchmark-suite style speedup as:
+
+```text
+speedup(id) = baseline(id) / round(id)
+geomean(speedup(id) for all matched ids)
+```
+
+- Compute total-workload speedup as:
+
+```text
+sum(baseline(id) for all matched ids) / sum(round(id) for all matched ids)
+```
+
+- Keep the existing per-case improvement score as:
 
 ```text
 mean(improvement(id) for all matched ids)
 ```
 
-- Display that value as `Avg improvement: +X%`.
+- Display these values as:
+  - `Avg improvement: +X%`
+  - `Geomean speedup: Yx`
+  - `Total speedup: Zx`
 - Also display:
   - `Baseline mean`, computed from the baseline perf values
   - `Best mean`, computed from the selected round perf values
-- This keeps the main ranking metric aligned with average improvement rate while still showing absolute latency numbers.
+- This keeps the main ranking metric aligned with standard speedup reporting while still showing both case-equal improvement and absolute latency numbers.
 
 ## Comparability Rules
 
@@ -106,8 +144,9 @@ mean(improvement(id) for all matched ids)
 
 ## Best Round Resolution
 
-- Compute one numeric score per comparable round from the mean of per-case improvement rates.
-- Select the round with the highest numeric score as `Best round`.
+- Compute one numeric score per comparable round from geomean speedup.
+- Select the round with the highest geomean speedup as `Best round`.
+- Use total speedup and then lower best mean as tiebreakers.
 - Independently parse logged best status from `opt-note.md` when available by reading the latest round marked `Best status: current best`.
 - Display both:
   - `Best round`: numeric best round from perf comparison

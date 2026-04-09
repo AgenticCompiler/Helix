@@ -4,14 +4,14 @@ import sys
 from pathlib import Path
 from typing import Any, TextIO, cast
 
-from triton_agent.agent import AgentRunner
+from triton_agent.backends.base import AgentRunner
+from triton_agent.backends.factory import create_runner
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
 from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.resume import resolve_optimize_resume
 from triton_agent.optimize_guidance import OptimizeGuidanceManager
 from triton_agent.paths import default_generated_output_path
 from triton_agent.prompts import build_prompt
-from triton_agent.runner_factory import create_runner
 from triton_agent.skills import SkillLinkManager
 from triton_agent.supervisor import OptimizeSupervisor
 from triton_agent.verbose import emit_verbose, emit_verbose_lines

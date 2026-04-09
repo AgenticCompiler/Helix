@@ -32,11 +32,13 @@ uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
 uv run triton-agent optimize --input a.py
 ```
 
-For batch workflows, point `--input` at a directory whose immediate child directories are operator workspaces:
+For batch workflows, point `--input` at either a directory whose immediate child directories are operator workspaces, or a single operator workspace directory:
 
 ```bash
 uv run triton-agent gen-eval-batch --input operators_root
+uv run triton-agent gen-eval-batch --input .
 uv run triton-agent optimize-status --input operators_root
+uv run triton-agent optimize-status --input operators_root --format markdown
 uv run triton-agent optimize-batch --input operators_root
 ```
 
@@ -210,7 +212,7 @@ Optimize behavior:
 
 ## Work On Many Operators
 
-Use the batch commands when `--input` points to a directory of operator workspaces.
+Use the batch commands when `--input` points to a directory of operator workspaces. `gen-eval-batch` and `optimize-batch` can also accept one operator workspace directory directly.
 
 ### Generate Evaluation Assets In Batch
 
@@ -232,16 +234,27 @@ Common options:
 
 ```bash
 uv run triton-agent optimize-status --input operators_root
+uv run triton-agent optimize-status --input operators_root --format markdown
 ```
 
 Use this command to get a read-only summary of optimization progress across workspaces.
 It keeps baseline perf files strict, but round `perf.txt` artifacts may include extra metrics such as
 `mean_ms` as long as the required `latency-*` entries are still present.
 
+`--format markdown` emits a compact table with:
+
+- `名称`
+- `Geomean speedup`
+- `Total speedup`
+
+The Markdown table excludes `NO-SESSION` workspaces. Workspaces with optimize artifacts but missing
+comparable speedup data stay in the table and render those cells as `-`.
+
 ### Optimize In Batch
 
 ```bash
 uv run triton-agent optimize-batch --input operators_root
+uv run triton-agent optimize-batch --input .
 ```
 
 Common options:
@@ -287,6 +300,12 @@ uv run triton-agent compare-perf \
 
 The baseline file should stay in the standard `latency-<id>: <float>` format. The compare-side file may
 include extra summary fields, which are ignored unless they replace a required latency entry.
+The command prints:
+
+- one comparison line per latency id with baseline, compare, and delta
+- `Avg improvement` for case-equal percentage improvement
+- `Geomean speedup` for benchmark-style speedup aggregation
+- `Total speedup` for whole-workload elapsed-time aggregation
 
 ## Shared Options
 

@@ -74,7 +74,7 @@ def handle_optimize_status(parser: argparse.ArgumentParser, args: argparse.Names
         print(f"No operator workspaces found under {root}", file=sys.stderr)
         return 1
     results = scan_optimize_status_workspaces(root, verbose=bool(getattr(args, "verbose", False)))
-    return render_optimize_status_results(results)
+    return render_optimize_status_results(results, output_format=str(getattr(args, "format", "text")))
 
 
 def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptions:

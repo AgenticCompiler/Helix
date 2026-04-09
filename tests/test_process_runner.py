@@ -34,7 +34,7 @@ class BufferedProcessRunnerTests(unittest.TestCase):
         self.assertEqual(result.session_id, "session-1")
 
     def test_buffered_filter_can_remove_diff_blocks(self) -> None:
-        from triton_agent.codex_runner import _UnifiedDiffFilter
+        from triton_agent.backends.codex import _UnifiedDiffFilter
 
         process = _BufferedFakeProcess(
             stdout_lines=[
@@ -128,7 +128,7 @@ class StreamingProcessRunnerTests(unittest.TestCase):
         self.assertEqual(result.stdout, "line one\nline two\n")
 
     def test_streaming_filter_can_remove_diff_blocks(self) -> None:
-        from triton_agent.codex_runner import _UnifiedDiffFilter
+        from triton_agent.backends.codex import _UnifiedDiffFilter
 
         stdout = StringIO()
         process = _StreamingFakeProcess(wait_code=0)
@@ -152,7 +152,7 @@ class StreamingProcessRunnerTests(unittest.TestCase):
         self.assertEqual(result.stdout, "before\nafter\n")
 
     def test_streaming_filter_preserves_indented_output_after_diff(self) -> None:
-        from triton_agent.codex_runner import _UnifiedDiffFilter
+        from triton_agent.backends.codex import _UnifiedDiffFilter
 
         stdout = StringIO()
         process = _StreamingFakeProcess(wait_code=0, poll_values=[None, 0])
