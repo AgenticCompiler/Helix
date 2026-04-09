@@ -926,6 +926,42 @@ class PathResolutionTests(unittest.TestCase):
                 ],
             )
 
+    def test_main_optimize_batch_accepts_root_as_single_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "operator.py").write_text("print('x')\n", encoding="utf-8")
+
+            seen_inputs: list[Path] = []
+
+            def _fake_run(request):
+                seen_inputs.append(request.input_path)
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
+                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(seen_inputs, [(root / "operator.py").resolve()])
+
+    def test_main_optimize_batch_accepts_root_with_non_workspace_child_dirs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "operator.py").write_text("print('x')\n", encoding="utf-8")
+            (root / "artifacts").mkdir()
+            (root / "logs").mkdir()
+
+            seen_inputs: list[Path] = []
+
+            def _fake_run(request):
+                seen_inputs.append(request.input_path)
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
+                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(seen_inputs, [(root / "operator.py").resolve()])
+
     def test_main_optimize_batch_reports_workspace_selection_failures(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1048,7 +1084,7 @@ class PathResolutionTests(unittest.TestCase):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.generation_batch.run_generation_request", side_effect=_fake_run):
+            with patch("triton_agent.generation.batch.run_generation_request", side_effect=_fake_run):
                 exit_code = main(["gen-eval-batch", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
@@ -1059,6 +1095,42 @@ class PathResolutionTests(unittest.TestCase):
                     (second / "matmul_impl.py").resolve(),
                 ],
             )
+
+    def test_main_gen_eval_batch_accepts_root_as_single_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "operator.py").write_text("print('x')\n", encoding="utf-8")
+
+            seen_inputs: list[Path] = []
+
+            def _fake_run(request, stdout=None, stderr=None):
+                seen_inputs.append(request.input_path)
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.generation.batch.run_generation_request", side_effect=_fake_run):
+                exit_code = main(["gen-eval-batch", "-i", str(root)])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(seen_inputs, [(root / "operator.py").resolve()])
+
+    def test_main_gen_eval_batch_accepts_root_with_non_workspace_child_dirs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "operator.py").write_text("print('x')\n", encoding="utf-8")
+            (root / "artifacts").mkdir()
+            (root / "logs").mkdir()
+
+            seen_inputs: list[Path] = []
+
+            def _fake_run(request, stdout=None, stderr=None):
+                seen_inputs.append(request.input_path)
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.generation.batch.run_generation_request", side_effect=_fake_run):
+                exit_code = main(["gen-eval-batch", "-i", str(root)])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(seen_inputs, [(root / "operator.py").resolve()])
 
     def test_main_gen_eval_batch_reports_workspace_selection_failures(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1078,7 +1150,7 @@ class PathResolutionTests(unittest.TestCase):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.generation_batch.run_generation_request", side_effect=_fake_run):
+            with patch("triton_agent.generation.batch.run_generation_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
                     exit_code = main(["gen-eval-batch", "-i", str(root)])
 
@@ -1117,7 +1189,7 @@ class PathResolutionTests(unittest.TestCase):
                     active -= 1
                 return AgentResult(return_code=0, stdout="", stderr="")
 
-            with patch("triton_agent.generation_batch.run_generation_request", side_effect=_fake_run):
+            with patch("triton_agent.generation.batch.run_generation_request", side_effect=_fake_run):
                 exit_code = main(["gen-eval-batch", "-i", str(root), "--max-concurrency", "2"])
 
             self.assertEqual(exit_code, 0)
@@ -1140,7 +1212,7 @@ class PathResolutionTests(unittest.TestCase):
                     stderr.write("warn line\n")
                 return AgentResult(return_code=0, stdout="repair start\n", stderr="warn line\n")
 
-            with patch("triton_agent.generation_batch.run_generation_request", side_effect=_fake_run):
+            with patch("triton_agent.generation.batch.run_generation_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
                     exit_code = main(["gen-eval-batch", "-i", str(root), "--show-output"])
 
@@ -1324,10 +1396,10 @@ class PathResolutionTests(unittest.TestCase):
 
                 return _Runner()
 
-            with patch("triton_agent.generation.build_prompt", side_effect=_fake_build_prompt):
-                with patch("triton_agent.generation.create_runner", side_effect=_fake_create_runner):
-                    with patch("triton_agent.generation.SkillLinkManager.prepare_skills", return_value=[]):
-                        with patch("triton_agent.generation.SkillLinkManager.cleanup", return_value=[]):
+            with patch("triton_agent.generation.runtime.build_prompt", side_effect=_fake_build_prompt):
+                with patch("triton_agent.generation.runtime.create_runner", side_effect=_fake_create_runner):
+                    with patch("triton_agent.generation.runtime.SkillLinkManager.prepare_skills", return_value=[]):
+                        with patch("triton_agent.generation.runtime.SkillLinkManager.cleanup", return_value=[]):
                             exit_code = main(
                                 [
                                     "gen-test",

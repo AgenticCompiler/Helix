@@ -32,10 +32,11 @@ uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
 uv run triton-agent optimize --input a.py
 ```
 
-For batch workflows, point `--input` at a directory whose immediate child directories are operator workspaces:
+For batch workflows, point `--input` at either a directory whose immediate child directories are operator workspaces, or a single operator workspace directory:
 
 ```bash
 uv run triton-agent gen-eval-batch --input operators_root
+uv run triton-agent gen-eval-batch --input .
 uv run triton-agent optimize-status --input operators_root
 uv run triton-agent optimize-status --input operators_root --format markdown
 uv run triton-agent optimize-batch --input operators_root
@@ -211,7 +212,7 @@ Optimize behavior:
 
 ## Work On Many Operators
 
-Use the batch commands when `--input` points to a directory of operator workspaces.
+Use the batch commands when `--input` points to a directory of operator workspaces. `gen-eval-batch` and `optimize-batch` can also accept one operator workspace directory directly.
 
 ### Generate Evaluation Assets In Batch
 
@@ -253,6 +254,7 @@ comparable speedup data stay in the table and render those cells as `-`.
 
 ```bash
 uv run triton-agent optimize-batch --input operators_root
+uv run triton-agent optimize-batch --input .
 ```
 
 Common options:

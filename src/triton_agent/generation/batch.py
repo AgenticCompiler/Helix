@@ -5,11 +5,18 @@ import threading
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from io import TextIOBase
 from pathlib import Path
 from typing import TextIO, cast
 
-from triton_agent.generation import GenerationOptions, build_generation_request, run_generation_request
+from triton_agent.batch_utils import (
+    NO_CANDIDATE_OPERATOR_FILE,
+    PrefixedTextStream,
+    discover_batch_workspaces,
+    is_batch_operator_candidate,
+    resolve_batch_operator_file,
+)
+from triton_agent.generation.models import GenerationOptions
+from triton_agent.generation.runtime import build_generation_request, run_generation_request
 from triton_agent.models import AgentResult, CommandKind
 
 _BATCH_GEN_EVAL_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")
@@ -29,35 +36,6 @@ class BatchGenEvalResult:
     message: str
 
 
-class PrefixedTextStream(TextIOBase):
-    def __init__(self, stream: TextIO, prefix: str, lock: threading.Lock) -> None:
-        self._stream = stream
-        self._prefix = prefix
-        self._lock = lock
-        self._at_line_start = True
-
-    def write(self, text: str) -> int:
-        if not text:
-            return 0
-        with self._lock:
-            for chunk in text.splitlines(keepends=True):
-                if self._at_line_start:
-                    self._stream.write(self._prefix)
-                self._stream.write(chunk)
-                self._at_line_start = chunk.endswith("\n")
-            if text and not text.endswith(("\n", "\r")):
-                self._at_line_start = False
-            return len(text)
-
-    def flush(self) -> None:
-        with self._lock:
-            self._stream.flush()
-
-    def isatty(self) -> bool:
-        isatty = getattr(self._stream, "isatty", None)
-        return bool(callable(isatty) and isatty())
-
-
 def run_gen_eval_batch(
     root: Path,
     options: GenerationOptions,
@@ -67,20 +45,22 @@ def run_gen_eval_batch(
     run_request: Callable[..., AgentResult] | None = None,
 ) -> int:
     generation_request_runner = run_request or run_generation_request
-    workspace_candidates = sorted(path for path in root.iterdir() if path.is_dir())
-    if not workspace_candidates:
+    discovered, failures = discover_batch_workspaces(
+        root,
+        resolve_operator_file=resolve_batch_gen_eval_operator_file,
+        no_candidate_message=NO_CANDIDATE_OPERATOR_FILE,
+    )
+    runnable = [
+        BatchGenEvalWorkspace(workspace=workspace, operator_file=operator_file)
+        for workspace, operator_file in discovered
+    ]
+    results = [
+        BatchGenEvalResult(workspace=workspace, succeeded=False, message=message)
+        for workspace, message in failures
+    ]
+    if not runnable and not results:
         print(f"No operator workspaces found under {root}", file=sys.stderr)
         return 1
-
-    results: list[BatchGenEvalResult] = []
-    runnable: list[BatchGenEvalWorkspace] = []
-    for workspace in workspace_candidates:
-        try:
-            operator_file = resolve_batch_gen_eval_operator_file(workspace)
-        except ValueError as exc:
-            results.append(BatchGenEvalResult(workspace=workspace, succeeded=False, message=str(exc)))
-            continue
-        runnable.append(BatchGenEvalWorkspace(workspace=workspace, operator_file=operator_file))
 
     output_lock = threading.Lock()
     stream = stdout or sys.stdout
@@ -139,25 +119,19 @@ def run_gen_eval_batch(
 
 
 def resolve_batch_gen_eval_operator_file(workspace: Path) -> Path:
-    candidates = [
-        path
-        for path in sorted(workspace.iterdir())
-        if path.is_file() and is_batch_gen_eval_operator_candidate(path)
-    ]
-    if not candidates:
-        raise ValueError("found no candidate operator file after excluding generated artifacts")
-    if len(candidates) > 1:
-        names = ", ".join(path.name for path in candidates)
-        raise ValueError(f"found multiple candidate operator files: {names}")
-    return candidates[0]
+    return resolve_batch_operator_file(
+        workspace,
+        is_operator_candidate=is_batch_gen_eval_operator_candidate,
+        no_candidate_message=NO_CANDIDATE_OPERATOR_FILE,
+    )
 
 
 def is_batch_gen_eval_operator_candidate(path: Path) -> bool:
-    if path.suffix != ".py":
-        return False
-    if path.name in _BATCH_GEN_EVAL_EXCLUDED_NAMES:
-        return False
-    return not any(path.name.startswith(prefix) for prefix in _BATCH_GEN_EVAL_EXCLUDED_PREFIXES)
+    return is_batch_operator_candidate(
+        path,
+        excluded_names=_BATCH_GEN_EVAL_EXCLUDED_NAMES,
+        excluded_prefixes=_BATCH_GEN_EVAL_EXCLUDED_PREFIXES,
+    )
 
 
 def summarize_batch_gen_eval_failure(result: AgentResult) -> str:
