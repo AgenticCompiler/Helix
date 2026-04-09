@@ -3,15 +3,32 @@ from __future__ import annotations
 from dataclasses import dataclass
 import errno
 import os
-import pty
-import select
-import signal
+import shutil
 import subprocess
 import sys
 import time
+import threading
 from typing import Any, Callable, Optional, Protocol, TextIO
 
 from triton_agent.models import AgentResult
+
+_IS_WINDOWS = sys.platform == "win32"
+
+if not _IS_WINDOWS:
+    import pty
+    import select
+    import signal as _signal
+
+
+def _resolve_command(command: list[str]) -> list[str]:
+    """On Windows, wrap .cmd/.bat executables with 'cmd /c' so they can be launched
+    by subprocess.Popen without shell=True."""
+    if not _IS_WINDOWS or not command:
+        return command
+    resolved = shutil.which(command[0])
+    if resolved and resolved.lower().endswith((".cmd", ".bat")):
+        return ["cmd", "/c", resolved] + command[1:]
+    return command
 
 
 class OutputFilter(Protocol):
@@ -59,7 +76,7 @@ def run_process(
 
 
 def run_interactive_process(command: list[str], workdir: str) -> AgentResult:
-    completed = subprocess.run(command, cwd=workdir)
+    completed = subprocess.run(_resolve_command(command), cwd=workdir)
     return AgentResult(
         return_code=completed.returncode,
         stdout="",
@@ -78,12 +95,12 @@ def run_buffered_process(
     interrupt_policy: Optional[InterruptPolicy] = None,
 ) -> AgentResult:
     process = subprocess.Popen(
-        command,
+        _resolve_command(command),
         cwd=workdir,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        start_new_session=interrupt_policy is not None,
+        start_new_session=interrupt_policy is not None and not _IS_WINDOWS,
     )
     stdout_lines: list[str] = []
     session_id: Optional[str] = None
@@ -149,12 +166,121 @@ def run_streaming_process(
     output_filter: Optional[OutputFilter] = None,
     interrupt_policy: Optional[InterruptPolicy] = None,
 ) -> AgentResult:
-    # Route stdout/stderr through one PTY so the child behaves as if it were
-    # attached to a terminal and flushes output incrementally.
+    if _IS_WINDOWS:
+        return _run_streaming_process_windows(
+            command,
+            workdir,
+            stall_timeout_seconds=stall_timeout_seconds,
+            stdout=stdout,
+            output_filter=output_filter,
+            interrupt_policy=interrupt_policy,
+        )
+    return _run_streaming_process_pty(
+        command,
+        workdir,
+        stall_timeout_seconds=stall_timeout_seconds,
+        stdout=stdout,
+        output_filter=output_filter,
+        interrupt_policy=interrupt_policy,
+    )
+
+
+def _run_streaming_process_windows(
+    command: list[str],
+    workdir: str,
+    stall_timeout_seconds: int,
+    stdout: Optional[TextIO] = None,
+    output_filter: Optional[OutputFilter] = None,
+    interrupt_policy: Optional[InterruptPolicy] = None,
+) -> AgentResult:
+    """Windows-compatible streaming using threads to drain stdout and stderr."""
+    process = subprocess.Popen(
+        _resolve_command(command),
+        cwd=workdir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=False,
+    )
+    output_chunks: list[str] = []
+    start_ref: list[float] = [time.monotonic()]
+    stalled_ref: list[bool] = [False]
+    lock = threading.Lock()
+
+    def reader() -> None:
+        assert process.stdout is not None
+        while True:
+            chunk = process.stdout.read(4096)
+            if not chunk:
+                break
+            text = chunk.decode(errors="replace")
+            filtered = output_filter.feed(text) if output_filter is not None else text
+            with lock:
+                if filtered:
+                    output_chunks.append(filtered)
+                    print(filtered, file=stdout or sys.stdout, end="", flush=True)
+                start_ref[0] = time.monotonic()
+
+    reader_thread = threading.Thread(target=reader, daemon=True)
+    reader_thread.start()
+
+    try:
+        while True:
+            reader_thread.join(timeout=0.1)
+            if not reader_thread.is_alive() and process.poll() is not None:
+                break
+            with lock:
+                elapsed = time.monotonic() - start_ref[0]
+            if stall_timeout_seconds > 0 and elapsed > stall_timeout_seconds:
+                process.terminate()
+                stalled_ref[0] = True
+                break
+    except KeyboardInterrupt:
+        if interrupt_policy is None:
+            raise
+        _interrupt_process(process, interrupt_policy)
+        reader_thread.join(timeout=2.0)
+        if output_filter is not None:
+            trailing = output_filter.feed("", flush=True)
+            if trailing:
+                output_chunks.append(trailing)
+                print(trailing, file=stdout or sys.stdout, end="")
+        return AgentResult(
+            return_code=interrupt_policy.interrupted_return_code,
+            stdout="".join(output_chunks),
+            stderr="",
+            stalled=False,
+            session_id=None,
+        )
+
+    reader_thread.join()
+    if output_filter is not None:
+        trailing = output_filter.feed("", flush=True)
+        if trailing:
+            output_chunks.append(trailing)
+            print(trailing, file=stdout or sys.stdout, end="")
+    rc = process.wait() if not stalled_ref[0] else 1
+    return AgentResult(
+        return_code=rc,
+        stdout="".join(output_chunks),
+        stderr="",
+        stalled=stalled_ref[0],
+        session_id=None,
+    )
+
+
+def _run_streaming_process_pty(
+    command: list[str],
+    workdir: str,
+    stall_timeout_seconds: int,
+    stdout: Optional[TextIO] = None,
+    output_filter: Optional[OutputFilter] = None,
+    interrupt_policy: Optional[InterruptPolicy] = None,
+) -> AgentResult:
+    """Unix PTY-backed streaming so the child sees a terminal and flushes incrementally."""
     master_fd, slave_fd = pty.openpty()
     output_chunks: list[str] = []
     process = subprocess.Popen(
-        command,
+        _resolve_command(command),
         cwd=workdir,
         stdin=subprocess.DEVNULL,
         stdout=slave_fd,
@@ -168,16 +294,11 @@ def run_streaming_process(
 
     try:
         while True:
-            # Poll the PTY frequently so streamed output feels live without
-            # dropping the existing stall timeout behavior.
             ready, _, _ = select.select([master_fd], [], [], 0.1)
             if ready:
                 try:
                     chunk = os.read(master_fd, 4096)
                 except OSError as error:
-                    # Linux PTYs may report EOF as EIO once the child side has
-                    # closed. Treat that as a normal shutdown after the process
-                    # has already exited, but preserve any other read failure.
                     if error.errno == errno.EIO and process.poll() is not None:
                         break
                     raise
@@ -238,16 +359,42 @@ def _resolved_returncode(returncode: int | None) -> int:
 
 
 def _interrupt_process(process: subprocess.Popen[Any], policy: InterruptPolicy) -> None:
-    _signal_process_group(process, signal.SIGINT)
+    if _IS_WINDOWS:
+        _interrupt_process_windows(process, policy)
+    else:
+        _interrupt_process_unix(process, policy)
+
+
+def _interrupt_process_windows(process: subprocess.Popen[Any], policy: InterruptPolicy) -> None:
+    import signal as _signal_mod
+    if process.poll() is not None:
+        return
+    try:
+        process.send_signal(_signal_mod.CTRL_C_EVENT)
+    except (OSError, KeyboardInterrupt):
+        pass
     if _wait_for_process_exit(process, policy.first_sigint_grace_seconds):
         return
-    _signal_process_group(process, signal.SIGINT)
+    try:
+        process.send_signal(_signal_mod.CTRL_C_EVENT)
+    except (OSError, KeyboardInterrupt):
+        pass
     if _wait_for_process_exit(process, policy.second_sigint_grace_seconds):
         return
-    _signal_process_group(process, signal.SIGKILL)
+    process.kill()
 
 
-def _signal_process_group(process: subprocess.Popen[Any], sig: signal.Signals) -> None:
+def _interrupt_process_unix(process: subprocess.Popen[Any], policy: InterruptPolicy) -> None:
+    _signal_process_group(process, _signal.SIGINT)
+    if _wait_for_process_exit(process, policy.first_sigint_grace_seconds):
+        return
+    _signal_process_group(process, _signal.SIGINT)
+    if _wait_for_process_exit(process, policy.second_sigint_grace_seconds):
+        return
+    _signal_process_group(process, _signal.SIGKILL)
+
+
+def _signal_process_group(process: subprocess.Popen[Any], sig: Any) -> None:
     if process.poll() is not None:
         return
     try:
