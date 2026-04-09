@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 from typing import Optional, TextIO
 
-from triton_agent.agent import AgentRunner
+from triton_agent.backends import AgentRunner
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
 from triton_agent.commands.execution import handle_run_bench, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
@@ -27,7 +27,7 @@ from triton_agent.execution import run_remote_test as _run_remote_test
 from triton_agent.generation import prepare_generation_target as _prepare_generation_target
 from triton_agent.models import AgentResult, CommandKind
 from triton_agent.output import render_result as _render_result
-from triton_agent.runner_factory import create_runner as _create_runner
+from triton_agent.backends.factory import create_runner as _create_runner
 
 
 def run_local_test(test_file: Path, operator_file: Path, test_mode: str) -> tuple[AgentResult, Path | None]:

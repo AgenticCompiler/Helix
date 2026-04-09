@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from triton_agent.agent import AgentRunner
-from triton_agent.claude_runner import ClaudeRunner
-from triton_agent.codex_runner import CodexRunner
-from triton_agent.opencode_runner import OpenCodeRunner
-from triton_agent.pi_runner import PiRunner
+from triton_agent.backends.base import AgentRunner
+from triton_agent.backends.claude import ClaudeRunner
+from triton_agent.backends.codex import CodexRunner
+from triton_agent.backends.opencode import OpenCodeRunner
+from triton_agent.backends.pi import PiRunner
 
 
 def create_runner(agent_name: str) -> AgentRunner:

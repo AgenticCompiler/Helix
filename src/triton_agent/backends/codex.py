@@ -6,7 +6,7 @@ import uuid
 from collections.abc import Mapping
 from typing import List, Optional, TextIO, cast
 
-from triton_agent.agent import AgentRunner
+from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult
 from triton_agent.process_runner import run_process
 from triton_agent.prompts import build_optimize_resume_prompt
@@ -192,7 +192,6 @@ class _UnifiedDiffFilter:
         if line.startswith(" "):
             return len(line) == 1 or not line.startswith("  ")
         return False
-
 
 
 def _extract_session_id(line: str) -> Optional[str]:
