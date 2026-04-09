@@ -29,6 +29,7 @@ def build_prompt(
     min_rounds: int | None = None,
     continue_optimize: bool = False,
     resume_existing_session: bool | None = None,
+    require_analysis: bool = False,
 ) -> str:
     should_resume_existing_session = (
         continue_optimize if resume_existing_session is None else resume_existing_session
@@ -96,6 +97,10 @@ def build_prompt(
             [
                 "Treat this as a long-running task.",
                 "Keep making progress until the optimized operator is complete.",
+                "Reuse existing correctness tests and benchmark cases when they already exist; generate them only when required artifacts are missing.",
+                "State the optimization hypothesis and why it may help before editing code for each round.",
+                "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
+                "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
             ]
         )
         if should_resume_existing_session:
@@ -105,10 +110,31 @@ def build_prompt(
                     "Read `opt-note.md`, existing `opt-round-*` directories, and existing round logs before making changes.",
                 ]
             )
+        if require_analysis:
+            lines.extend(
+                [
+                    "Before the first code-changing round, gather profiling or IR-backed evidence, or record a concrete reason why one analysis path is unavailable and the remaining evidence is sufficient.",
+                    "Do not begin with blind tiling or launch-parameter search.",
+                ]
+            )
         if min_rounds is not None:
             lines.append(
                 f"Complete at least {min_rounds} optimization rounds by creating `opt-round-*` directories before finishing."
             )
     else:
         lines.append("Complete the requested task and summarize assumptions briefly.")
+    return "\n".join(lines)
+
+
+def build_optimize_resume_prompt(summary: str, *, require_analysis: bool = False) -> str:
+    lines = [
+        "Continue the existing optimize task instead of restarting from scratch.",
+        "Read `opt-note.md`, existing `opt-round-*` directories, and any round summaries or attempt logs before making the next change.",
+        "Keep the optimize workflow hypothesis-driven: explain why each next change may help and what evidence supports it.",
+    ]
+    if require_analysis:
+        lines.append(
+            "Before the next code-changing round, gather profiling or IR-backed evidence, or record why the existing evidence is already sufficient."
+        )
+    lines.extend(["", f"Progress summary:\n{summary}"])
     return "\n".join(lines)

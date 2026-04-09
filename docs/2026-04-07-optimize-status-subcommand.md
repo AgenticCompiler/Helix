@@ -69,6 +69,7 @@ Summary: 1 ok, 1 warning, 0 no-session
 - Each `opt-round-N/` directory may provide benchmark evidence through:
   - a copied or summarized `perf.txt`
   - or a round-local `<operator-file-stem>_perf.txt`
+- Round-local perf files may contain extra summary fields such as `mean_ms` as long as the baseline-required `latency-*` entries are still present.
 - Prefer round-local normalized perf data over free-form text in `summary.md`.
 - Only use `summary.md` for warnings or provenance, not as the primary numeric source.
 
@@ -97,8 +98,9 @@ mean(improvement(id) for all matched ids)
 - A round is comparable only when:
   - both baseline and round perf files parse successfully
   - both contain at least one latency entry
-  - latency ids match exactly
-- If latency ids differ, do not attempt partial comparison.
+  - the round file contains every latency id required by the baseline
+- Ignore extra round-local fields that are not part of the baseline schema.
+- If a required latency id is missing, do not attempt partial comparison.
 - If any baseline latency value is `<= 0`, skip that id from improvement-rate calculation and emit a warning.
 - If all ids are skipped or no comparable round remains, report the workspace numeric status as `unknown`.
 

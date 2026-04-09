@@ -87,6 +87,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         remote_workdir=getattr(args, "remote_workdir", None),
         min_rounds=getattr(args, "min_rounds", None),
         resume_mode=str(getattr(args, "resume", "auto")),
+        require_analysis=bool(getattr(args, "require_analysis", False)),
         no_agent_session=bool(getattr(args, "no_agent_session", False)),
         output=getattr(args, "output", None),
         test_mode=getattr(args, "test_mode", None),

@@ -153,6 +153,34 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertIsNone(status.best_round)
             self.assertEqual(status.warnings, ())
 
+    def test_inspect_optimize_status_workspace_ignores_extra_round_perf_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_two = workspace / "opt-round-2"
+            round_one.mkdir()
+            round_two.mkdir()
+            (round_one / "perf.txt").write_text(
+                "latency-a: 7\nmean_ms: 11.0\nlatency-b: 15\nnotes: strong round\n",
+                encoding="utf-8",
+            )
+            (round_two / "perf.txt").write_text(
+                "latency-a: 9\nlatency-b: 19\n",
+                encoding="utf-8",
+            )
+
+            status = inspect_optimize_status_workspace(workspace)
+
+            self.assertEqual(status.state, "ok")
+            self.assertEqual(status.best_round, "round-1")
+            self.assertAlmostEqual(status.best_mean or 0.0, 11.0)
+            self.assertAlmostEqual(status.avg_improvement or 0.0, 0.275)
+            self.assertEqual(status.warnings, ())
+
 
 if __name__ == "__main__":
     unittest.main()

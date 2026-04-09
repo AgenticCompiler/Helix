@@ -17,10 +17,12 @@ Turn operator optimization into a repeatable search process over validated candi
 1. Resolve the operator workspace.
 2. Resolve the correctness mode for this optimize run, defaulting to `differential` unless the task explicitly says otherwise.
 3. Resolve the benchmark mode for this optimize run, defaulting to `standalone` unless the task explicitly says otherwise.
-4. Ensure a correctness test exists for the resolved correctness mode.
-5. Ensure a benchmark case exists for the resolved benchmark mode.
+4. Check whether a correctness test for the resolved mode already exists and reuse it when possible.
+5. Check whether a benchmark case for the resolved mode already exists and reuse it when possible.
+6. Generate only the missing validation artifact types.
 6. If the original operator has never been benchmarked in the current workspace, run a baseline benchmark before optimizing so later rounds have a stable comparison point.
 7. Initialize `opt-note.md` if it does not exist.
+8. Write a short diagnosis summary before the first code-changing round so later readers can see the suspected bottleneck and the initial evidence.
 
 ## Candidate Selection
 
@@ -50,24 +52,25 @@ Avoid selecting a parent that:
    - more parallel load order
    - reduced unnecessary masking
    - software pipelining
-6. Record the initial hypothesis in `attempts.md`.
-7. Apply the optimization.
-8. Record the code change in `attempts.md`.
-9. Run correctness validation with the resolved correctness mode.
-10. If correctness fails, record the failure in `attempts.md`, repair the operator in place, and retry.
-11. After correctness passes, run the benchmark with the resolved benchmark mode.
-12. Record the benchmark result in `attempts.md`.
-13. If profiling or IR capture is needed to explain or validate the round, archive that evidence under `opt-round-N/profile/` or `opt-round-N/ir/`.
+6. Record the initial hypothesis in `attempts.md`, including why it may help and what evidence supports it.
+7. If you are not collecting profiling or IR evidence for this round, record why the current code or benchmark evidence is already sufficient.
+8. Apply the optimization.
+9. Record the code change in `attempts.md`.
+10. Run correctness validation with the resolved correctness mode.
+11. If correctness fails, record the failure in `attempts.md`, repair the operator in place, and retry.
+12. After correctness passes, run the benchmark with the resolved benchmark mode.
+13. Record the benchmark result in `attempts.md`.
+14. If profiling or IR capture is needed to explain or validate the round, archive that evidence under `opt-round-N/profile/` or `opt-round-N/ir/`.
     - For IR capture, prefer commands shaped like:
       ```bash
       python3 ../ascend-operator-ir-analyzer/scripts/capture_ir.py --ir-dir opt-round-N/ir --bench-file bench_<operator>.py --operator-file opt-round-N/<optimized-operator>.py
       python3 ../ascend-operator-ir-analyzer/scripts/inspect_ir.py list-stages --ir-dir opt-round-N/ir --sort-by interesting --limit 20
       ```
-14. If the benchmark regresses, either:
+15. If the benchmark regresses, either:
    - revise the round in place if the optimization idea is still promising, or
    - stop advancing that round and return to candidate selection for a new branch
-15. Complete the round only after the optimized candidate shows a measurable win over the chosen comparison target.
-16. When the optimize session is pausing or ending, refresh the final `## Overall Summary` block in `opt-note.md` so the top-level note states the best round, overall outcome, and any useful validated branches.
+16. Complete the round only after the optimized candidate shows a measurable win over the chosen comparison target.
+17. When the optimize session is pausing or ending, refresh the final `## Overall Summary` block in `opt-note.md` so the top-level note states the best round, overall outcome, any useful validated branches, and why that round was pursued.
 
 ## Comparison Target
 

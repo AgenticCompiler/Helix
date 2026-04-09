@@ -176,6 +176,7 @@ class PiRunnerTests(unittest.TestCase):
                 prompt="Original prompt",
                 workdir=workspace,
                 min_rounds=3,
+                require_analysis=True,
             )
             with patch("triton_agent.pi_runner.run_process", return_value=_ok_result()) as mocked:
                 runner.resume(request, "one round done")
@@ -184,6 +185,7 @@ class PiRunnerTests(unittest.TestCase):
             self.assertIn("Continue the existing optimize task", resumed_request)
             self.assertIn("Read `opt-note.md`", resumed_request)
             self.assertIn("existing `opt-round-*` directories", resumed_request)
+            self.assertIn("profiling or IR-backed evidence", resumed_request)
 
 
 def _ok_result() -> AgentResult:

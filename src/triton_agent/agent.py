@@ -36,6 +36,7 @@ class AgentRunner(ABC):
             workdir=request.workdir,
             min_rounds=request.min_rounds,
             continue_optimize=request.continue_optimize,
+            require_analysis=request.require_analysis,
             no_agent_session=request.no_agent_session,
             staged_skill_names=request.staged_skill_names,
         )

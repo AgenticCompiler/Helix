@@ -72,6 +72,7 @@ def build_optimize_request(
         options.remote_workdir,
         options.min_rounds,
         resolution.resume_existing_session,
+        require_analysis=options.require_analysis,
     )
     return AgentRequest(
         command_kind=CommandKind.OPTIMIZE,
@@ -90,6 +91,7 @@ def build_optimize_request(
         workdir=workdir,
         min_rounds=options.min_rounds,
         continue_optimize=resolution.resume_existing_session,
+        require_analysis=options.require_analysis,
         no_agent_session=options.no_agent_session,
     )
 
@@ -109,6 +111,7 @@ def run_optimize_request(
         test_mode=request.test_mode or "differential",
         bench_mode=request.bench_mode or "standalone",
         agent_name=request.agent_name,
+        require_analysis=request.require_analysis,
     )
     verbose_stream = stderr or sys.stderr
     if request.verbose:

@@ -39,7 +39,7 @@ def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
 def compare_perf_files(baseline_perf: Path, compare_perf: Path) -> int:
     try:
         baseline = _parse_perf_file(baseline_perf)
-        compare = _parse_perf_file(compare_perf)
+        compare = _parse_required_perf_file(compare_perf, baseline.keys())
     except ValueError as exc:
         print(f"FAIL: {exc}")
         return 1
@@ -72,6 +72,10 @@ def compare_perf_files(baseline_perf: Path, compare_perf: Path) -> int:
 
 def parse_perf_file(path: Path) -> dict[str, float]:
     return _parse_perf_file(path)
+
+
+def parse_required_perf_file(path: Path, required_latency_ids) -> dict[str, float]:
+    return _parse_required_perf_file(path, required_latency_ids)
 
 
 def run_local_bench(
@@ -351,6 +355,35 @@ def _parse_perf_file(path: Path) -> dict[str, float]:
         values[latency_id] = parsed_value
     if not values:
         raise ValueError(f"{path} did not contain any latency-<id>: <value> entries")
+    return values
+
+
+def _parse_required_perf_file(path: Path, required_latency_ids) -> dict[str, float]:
+    required_ids = set(required_latency_ids)
+    if not required_ids:
+        return {}
+
+    values: dict[str, float] = {}
+    for line_no, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        latency_id = key.strip()
+        if latency_id not in required_ids:
+            continue
+        value_text = value.strip()
+        try:
+            parsed_value = float(value_text)
+        except ValueError as exc:
+            raise ValueError(f"{path}:{line_no} has invalid latency value '{value_text}'") from exc
+        if latency_id in values:
+            raise ValueError(f"{path}:{line_no} duplicates latency id '{latency_id}'")
+        values[latency_id] = parsed_value
+
+    missing_ids = sorted(required_ids - set(values))
+    if missing_ids:
+        raise ValueError(f"{path} is missing required latency ids: {missing_ids}")
     return values
 
 

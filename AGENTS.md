@@ -19,6 +19,9 @@
 - Default to protecting existing generated artifacts and require explicit overwrite behavior to replace them.
 - Keep mode selection scoped to the commands that own it, use explicit defaults for generation and optimize flows, and prefer reusing generated metadata when continuing or executing existing harnesses.
 - For optimize flows, treat resume behavior explicitly: `auto` may continue only from a complete existing optimize session, `continue` must fail fast when required session artifacts are missing, and `fresh` must refuse to run when optimize artifacts already exist.
+- For optimize flows, prefer reusing existing test and benchmark harnesses; generate them only when the workspace is missing required validation artifacts.
+- For optimize flows, require every optimization round to record why the chosen change may help and what evidence supports it.
+- For optimize flows, do not default to blind tiling or launch-parameter search when the available evidence does not justify that direction.
 - Prefer short actionable CLI validation errors over Python tracebacks.
 - Prefer explicit failures over silent fallbacks when expected artifacts or metadata are missing.
 

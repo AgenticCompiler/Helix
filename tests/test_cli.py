@@ -540,6 +540,11 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["optimize", "-i", "kernel.py", "--no-agent-session"])
         self.assertTrue(args.no_agent_session)
 
+    def test_optimize_command_accepts_require_analysis(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--require-analysis"])
+        self.assertTrue(args.require_analysis)
+
     def test_optimize_batch_maps_to_command_kind(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize-batch", "-i", "kernels"])
@@ -580,6 +585,7 @@ class CliParserTests(unittest.TestCase):
                 "4",
                 "--resume",
                 "continue",
+                "--require-analysis",
                 "--no-agent-session",
                 "--max-concurrency",
                 "3",
@@ -593,6 +599,7 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.bench_mode, "msprof")
         self.assertEqual(args.min_rounds, 4)
         self.assertEqual(args.resume, "continue")
+        self.assertTrue(args.require_analysis)
         self.assertTrue(args.no_agent_session)
         self.assertEqual(args.max_concurrency, 3)
         self.assertTrue(args.show_output)
@@ -601,6 +608,11 @@ class CliParserTests(unittest.TestCase):
         parser = build_parser()
         args = parser.parse_args(["optimize-batch", "-i", "kernels"])
         self.assertEqual(args.resume, "auto")
+
+    def test_optimize_batch_accepts_require_analysis(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-batch", "-i", "kernels", "--require-analysis"])
+        self.assertTrue(args.require_analysis)
 
 
 class PathResolutionTests(unittest.TestCase):
@@ -762,7 +774,8 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("[WARN] layernorm", rendered)
             self.assertIn("Best mean: unknown", rendered)
             self.assertIn("Avg improvement: unknown", rendered)
-            self.assertIn("Warning: latency ids do not match for comparable perf data", rendered)
+            self.assertIn("Warning: ", rendered)
+            self.assertIn("missing required latency ids", rendered)
             self.assertIn("Summary: 0 ok, 1 warning, 0 no-session", rendered)
 
     def test_main_optimize_batch_auto_detects_operator_files(self) -> None:
@@ -1175,12 +1188,14 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 continue_optimize,
+                require_analysis=False,
             ):
                 captured["output_path"] = output_path
                 captured["remote"] = remote
                 captured["remote_workdir"] = remote_workdir
                 captured["min_rounds"] = min_rounds
                 captured["continue_optimize"] = continue_optimize
+                captured["require_analysis"] = require_analysis
                 return "Prompt body"
 
             def _fake_create_runner(_agent_name):
@@ -1301,10 +1316,12 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 resume_existing_session,
+                require_analysis=False,
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
                 captured["resume_existing_session"] = resume_existing_session
+                captured["require_analysis"] = require_analysis
                 return "Prompt body"
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
@@ -1340,6 +1357,7 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(captured["test_mode"], "standalone")
             self.assertEqual(captured["bench_mode"], "msprof")
             self.assertFalse(captured["resume_existing_session"])
+            self.assertFalse(captured["require_analysis"])
 
     def test_main_optimize_resume_auto_rejects_partial_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1431,10 +1449,12 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 resume_existing_session,
+                require_analysis=False,
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
                 captured["resume_existing_session"] = resume_existing_session
+                captured["require_analysis"] = require_analysis
                 return "Prompt body"
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
@@ -1460,9 +1480,59 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(captured["test_mode"], "differential")
             self.assertEqual(captured["bench_mode"], "msprof")
             self.assertTrue(captured["resume_existing_session"])
+            self.assertFalse(captured["require_analysis"])
             request = mocked.call_args.args[1]
             self.assertEqual(request.test_mode, "differential")
             self.assertEqual(request.bench_mode, "msprof")
+
+    def test_main_optimize_passes_require_analysis_to_prompt_and_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+
+            captured = {}
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+
+            def _fake_build_prompt(
+                command_kind,
+                input_path,
+                operator_path,
+                output_path,
+                test_mode,
+                bench_mode,
+                force_overwrite,
+                remote,
+                remote_workdir,
+                min_rounds,
+                resume_existing_session,
+                require_analysis=False,
+            ):
+                captured["require_analysis"] = require_analysis
+                return "Prompt body"
+
+            with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
+                with patch(
+                    "triton_agent.optimize.runtime.OptimizeSupervisor.run",
+                    return_value=fake_result,
+                ) as mocked:
+                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                        with patch(
+                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            return_value=[],
+                        ):
+                            with patch(
+                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                return_value=[],
+                            ):
+                                exit_code = main(
+                                    ["optimize", "-i", str(operator), "--require-analysis"]
+                                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(captured["require_analysis"])
+            request = mocked.call_args.args[1]
+            self.assertTrue(request.require_analysis)
 
     def test_main_optimize_passes_no_agent_session_to_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2146,6 +2216,10 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("Requested test mode: differential", prompt)
         self.assertIn("Requested bench mode: standalone", prompt)
+        self.assertIn("Reuse existing correctness tests and benchmark cases when they already exist", prompt)
+        self.assertIn("State the optimization hypothesis and why it may help", prompt)
+        self.assertIn("Explain what evidence supports the change", prompt)
+        self.assertIn("If you skip profiling or IR capture", prompt)
 
     def test_optimize_prompt_mentions_min_rounds(self) -> None:
         prompt = build_prompt(
@@ -2173,6 +2247,21 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("Continue the existing optimization session", prompt)
         self.assertIn("Read `opt-note.md`", prompt)
+
+    def test_optimize_prompt_strict_analysis_mentions_first_round_gate(self) -> None:
+        prompt = build_prompt(
+            CommandKind.OPTIMIZE,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            force_overwrite=False,
+            require_analysis=True,
+        )
+        self.assertIn("Before the first code-changing round", prompt)
+        self.assertIn("profiling or IR-backed evidence", prompt)
+        self.assertIn("Do not begin with blind tiling or launch-parameter search", prompt)
 
 
 class OutputRenderingTests(unittest.TestCase):

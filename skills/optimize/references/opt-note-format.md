@@ -21,6 +21,7 @@ Use it to:
 - Link to the corresponding `opt-round-N/attempts.md`.
 - Mention whether the round is now the current best candidate.
 - Record both the parent and the measured improvement or regression status.
+- Mention the optimization point in a way that reflects why the round was pursued.
 - Keep exactly one `## Overall Summary` section at the end of the file.
 - Refresh the existing overall summary when the optimize session continues instead of appending a second final section.
 
@@ -75,5 +76,6 @@ Next step: profile round-3 if more latency reduction is needed.
 - Prefer user-visible outcomes over implementation trivia.
 - Keep the note readable as a project history log.
 - Put detailed reasoning, code snippets, and deeper analysis in the per-round summary instead of the top-level note.
+- Keep the top-level note concise, but make sure a reader can still tell why the chosen round direction was reasonable.
 - Use `Validated branches` to list non-best rounds that are still worth revisiting later.
 - Keep `Outcome` and `Next step` short enough that a reader can understand the session result in one screen.

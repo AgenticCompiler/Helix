@@ -179,6 +179,7 @@ Common options:
 - `--test-mode standalone|differential`: default is `differential`
 - `--bench-mode standalone|msprof`: default is `standalone`
 - `--resume auto|continue|fresh`: default is `auto`
+- `--require-analysis`: strengthen analysis-first optimize guidance before the first code-changing round.
 - `--min-rounds <N>`: require at least N optimization rounds.
 - `--no-agent-session`: disable persistent agent sessions when supported.
 - `--interact`
@@ -191,6 +192,7 @@ Examples:
 ```bash
 uv run triton-agent optimize --input a.py --min-rounds 3
 uv run triton-agent optimize --input a.py --resume continue
+uv run triton-agent optimize --input a.py --require-analysis
 ```
 
 Resume modes:
@@ -198,6 +200,13 @@ Resume modes:
 - `auto`: continue only when there is a complete existing optimize session; otherwise start fresh or fail if the workspace is incomplete.
 - `continue`: require an existing resumable optimize session.
 - `fresh`: require a clean workspace with no existing optimize artifacts.
+
+Optimize behavior:
+
+- Reuse existing test and benchmark harnesses when they already exist in the workspace.
+- Generate missing harnesses only when the required validation artifact is absent.
+- Treat each round as a hypothesis-driven experiment: explain why the change may help and what evidence supports it.
+- If profiling or IR capture is skipped for a round, explain why the existing evidence is already sufficient.
 
 ## Work On Many Operators
 
@@ -226,6 +235,8 @@ uv run triton-agent optimize-status --input operators_root
 ```
 
 Use this command to get a read-only summary of optimization progress across workspaces.
+It keeps baseline perf files strict, but round `perf.txt` artifacts may include extra metrics such as
+`mean_ms` as long as the required `latency-*` entries are still present.
 
 ### Optimize In Batch
 
@@ -239,6 +250,7 @@ Common options:
 - `--test-mode standalone|differential`
 - `--bench-mode standalone|msprof`
 - `--resume auto|continue|fresh`
+- `--require-analysis`
 - `--min-rounds <N>`
 - `--no-agent-session`
 - `--max-concurrency <N>`
@@ -272,6 +284,9 @@ uv run triton-agent compare-perf \
   --baseline abs_perf.txt \
   --compare opt_abs_perf.txt
 ```
+
+The baseline file should stay in the standard `latency-<id>: <float>` format. The compare-side file may
+include extra summary fields, which are ignored unless they replace a required latency entry.
 
 ## Shared Options
 
