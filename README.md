@@ -36,7 +36,7 @@ uv run triton-agent gen-test --input a.py --remote user@host:2222
 uv run triton-agent gen-bench --input a.py --remote user@host --remote-workdir /tmp/triton-agent
 uv run triton-agent optimize --input a.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
 uv run triton-agent optimize --input a.py --min-rounds 3
-uv run triton-agent optimize --input a.py --continue
+uv run triton-agent optimize --input a.py --resume continue
 uv run triton-agent optimize --input a.py --no-agent-session
 uv run triton-agent optimize-status --input operators_root
 uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
@@ -87,7 +87,10 @@ Generated harnesses record their resolved public entrypoint, entrypoint kind, ta
 - `--bench-mode` defaults to `standalone` for `gen-bench`; `run-bench` infers it from benchmark metadata unless you override it.
 - For `optimize`, `--test-mode` defaults to `differential` and `--bench-mode` defaults to `standalone`.
 - `optimize` accepts `--min-rounds <N>` to require at least `N` `opt-round-*` directories before the run may finish successfully.
-- `optimize` accepts `--continue` to resume an existing optimization session instead of starting a fresh one.
+- `optimize` accepts `--resume {auto,continue,fresh}` to control whether it resumes an existing optimization session or starts a fresh one.
+- `optimize --resume auto` is the default: it resumes a complete existing optimize session, starts fresh when no optimize artifacts exist, and fails explicitly when the workspace contains partial optimize state.
+- `optimize --resume continue` requires an existing optimize session and reuses the modes recorded in existing harness metadata.
+- `optimize --resume fresh` requires a clean optimize workspace and refuses to run when optimize artifacts already exist.
 - `optimize` accepts `--no-agent-session` to request a non-persistent code-agent session when the selected backend supports it.
 - During non-interactive `optimize`, pressing `Ctrl+C` once asks the CLI to stop the running code agent gracefully.
 - That optimize interrupt path sends two `SIGINT` signals to the code agent with short waits, then force-kills it if it still has not exited.
@@ -103,11 +106,12 @@ Generated harnesses record their resolved public entrypoint, entrypoint kind, ta
 - `optimize-batch` does not support `--output` or `--interact`.
 - `optimize-batch --show-output` streams live per-workspace output into the current terminal with `[workspace-name] ` prefixes while still printing the compact batch summary at the end.
 - For `optimize --no-agent-session`, Codex uses `--ephemeral`, Pi uses `--no-session`, and OpenCode ignores the flag.
-- `optimize --continue` requires an existing `opt-note.md`, at least one `opt-round-*` directory, an existing generated test harness with readable `# test-mode: ...`, and an existing generated benchmark harness with readable `# bench-mode: ...`.
-- `optimize --continue` rejects `--test-mode` and `--bench-mode`; it reuses the modes recorded in the existing harness metadata.
-- If continue mode finds both `test_<op>.py` and `differential_test_<op>.py`, the CLI fails explicitly instead of guessing which harness should drive the resumed optimize run.
+- `optimize --resume continue` requires an existing `opt-note.md`, at least one `opt-round-*` directory, an existing generated test harness with readable `# test-mode: ...`, and an existing generated benchmark harness with readable `# bench-mode: ...`.
+- `optimize --resume continue` rejects `--test-mode` and `--bench-mode`; `optimize --resume auto` also rejects those overrides when it resolves to a continuation path.
+- If continuation mode finds both `test_<op>.py` and `differential_test_<op>.py`, the CLI fails explicitly instead of guessing which harness should drive the resumed optimize run.
+- If `optimize --resume auto` finds optimize artifacts but not a complete resumable session, the CLI fails explicitly instead of silently restarting from scratch.
 - If an `optimize` agent exits successfully before the workspace reaches the requested minimum round count, the supervisor automatically restarts the agent in continuation mode.
-- `optimize-batch --continue` applies the same continue-mode validation to each workspace independently and summarizes workspace-level failures at the end.
+- `optimize-batch` applies the same resume-mode validation to each workspace independently and summarizes workspace-level failures at the end.
 - Continuation mode tells the agent to continue the existing optimization session and inspect `opt-note.md` plus existing `opt-round-*` artifacts before starting more work.
 - Skill staging uses copied workspace content rather than symlinks, so code agents read ordinary workspace files without resolving back to the source repository.
 - If a target workspace skill path already exists as a symlink, the CLI fails explicitly instead of reusing it.

@@ -26,7 +26,11 @@ def build_prompt(
     remote_workdir: str | None = None,
     min_rounds: int | None = None,
     continue_optimize: bool = False,
+    resume_existing_session: bool | None = None,
 ) -> str:
+    should_resume_existing_session = (
+        continue_optimize if resume_existing_session is None else resume_existing_session
+    )
     skill_name = COMMAND_TO_SKILL[command_kind]
     lines = [
         PROMPT_INTROS[command_kind],
@@ -69,7 +73,7 @@ def build_prompt(
                 "Keep making progress until the optimized operator is complete.",
             ]
         )
-        if continue_optimize:
+        if should_resume_existing_session:
             lines.extend(
                 [
                     "Continue the existing optimization session instead of restarting from scratch.",

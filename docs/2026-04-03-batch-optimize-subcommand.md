@@ -15,11 +15,13 @@
 ## CLI contract
 
 - `optimize-batch` accepts `--input/-i` as the batch root directory.
-- `optimize-batch` accepts `--agent`, `--remote`, `--remote-workdir`, `--test-mode`, `--bench-mode`, `--min-rounds`, `--continue`, `--no-agent-session`, and `--verbose`.
+- `optimize-batch` accepts `--agent`, `--remote`, `--remote-workdir`, `--test-mode`, `--bench-mode`, `--min-rounds`, `--resume {auto,continue,fresh}`, `--no-agent-session`, and `--verbose`.
 - `optimize-batch` does not support `--output` or `--interact`.
 - `optimize-batch --show-output` may stream concurrent workspace output when the wrapper keeps each line attributable, such as `[workspace-name] ...`.
 - `--max-concurrency` must be at least 1 and defaults to a small explicit value.
-- `--continue` keeps the existing single-workspace validation rules for each workspace independently.
+- `--resume auto` applies single-workspace resume detection independently to each workspace.
+- `--resume continue` keeps the existing single-workspace continuation validation rules for each workspace independently.
+- `--resume fresh` requires each workspace to be free of optimize artifacts before it runs.
 
 ## Implementation notes
 

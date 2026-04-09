@@ -213,7 +213,11 @@ def build_parser() -> argparse.ArgumentParser:
             )
         if command_kind in {CommandKind.OPTIMIZE, CommandKind.OPTIMIZE_BATCH}:
             subparser.add_argument("--min-rounds", type=int)
-            subparser.add_argument("--continue", dest="continue_optimize", action="store_true")
+            subparser.add_argument(
+                "--resume",
+                default="auto",
+                choices=["auto", "continue", "fresh"],
+            )
             subparser.add_argument("--no-agent-session", action="store_true")
         if command_kind == CommandKind.OPTIMIZE_BATCH:
             subparser.add_argument("--max-concurrency", type=int, default=2)

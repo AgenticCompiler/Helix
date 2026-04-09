@@ -405,10 +405,15 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["optimize", "-i", "kernel.py", "--min-rounds", "3"])
         self.assertEqual(args.min_rounds, 3)
 
-    def test_optimize_command_accepts_continue_mode(self) -> None:
+    def test_optimize_command_defaults_resume_to_auto(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize", "-i", "kernel.py", "--continue"])
-        self.assertTrue(args.continue_optimize)
+        args = parser.parse_args(["optimize", "-i", "kernel.py"])
+        self.assertEqual(args.resume, "auto")
+
+    def test_optimize_command_accepts_resume_modes(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--resume", "fresh"])
+        self.assertEqual(args.resume, "fresh")
 
     def test_optimize_command_accepts_no_agent_session(self) -> None:
         parser = build_parser()
@@ -453,7 +458,8 @@ class CliParserTests(unittest.TestCase):
                 "msprof",
                 "--min-rounds",
                 "4",
-                "--continue",
+                "--resume",
+                "continue",
                 "--no-agent-session",
                 "--max-concurrency",
                 "3",
@@ -466,10 +472,15 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.test_mode, "standalone")
         self.assertEqual(args.bench_mode, "msprof")
         self.assertEqual(args.min_rounds, 4)
-        self.assertTrue(args.continue_optimize)
+        self.assertEqual(args.resume, "continue")
         self.assertTrue(args.no_agent_session)
         self.assertEqual(args.max_concurrency, 3)
         self.assertTrue(args.show_output)
+
+    def test_optimize_batch_defaults_resume_to_auto(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-batch", "-i", "kernels"])
+        self.assertEqual(args.resume, "auto")
 
 
 class PathResolutionTests(unittest.TestCase):
@@ -642,9 +653,6 @@ class PathResolutionTests(unittest.TestCase):
             first.mkdir()
             second.mkdir()
             (first / "kernel.py").write_text("print('x')\n", encoding="utf-8")
-            (first / "test_kernel.py").write_text("", encoding="utf-8")
-            (first / "differential_test_kernel.py").write_text("", encoding="utf-8")
-            (first / "bench_kernel.py").write_text("", encoding="utf-8")
             (first / "opt_kernel.py").write_text("", encoding="utf-8")
             (first / "__init__.py").write_text("", encoding="utf-8")
             (second / "matmul_impl.py").write_text("print('y')\n", encoding="utf-8")
@@ -656,7 +664,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
-                exit_code = main(["optimize-batch", "-i", str(root)])
+                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(
@@ -950,7 +958,7 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(captured["output_path"], expected_output)
             self.assertEqual(captured["request_output"], expected_output)
 
-    def test_main_optimize_continue_rejects_explicit_test_mode(self) -> None:
+    def test_main_optimize_resume_continue_rejects_explicit_test_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
@@ -964,16 +972,20 @@ class PathResolutionTests(unittest.TestCase):
                             "optimize",
                             "-i",
                             str(operator),
-                            "--continue",
+                            "--resume",
+                            "continue",
                             "--test-mode",
                             "differential",
                         ]
                     )
 
             self.assertEqual(exc.exception.code, 2)
-            self.assertIn("--continue cannot be combined with --test-mode", stderr.getvalue())
+            self.assertIn(
+                "--resume continue cannot be combined with --test-mode",
+                stderr.getvalue(),
+            )
 
-    def test_main_optimize_continue_rejects_explicit_bench_mode(self) -> None:
+    def test_main_optimize_resume_continue_rejects_explicit_bench_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
@@ -987,16 +999,20 @@ class PathResolutionTests(unittest.TestCase):
                             "optimize",
                             "-i",
                             str(operator),
-                            "--continue",
+                            "--resume",
+                            "continue",
                             "--bench-mode",
                             "standalone",
                         ]
                     )
 
             self.assertEqual(exc.exception.code, 2)
-            self.assertIn("--continue cannot be combined with --bench-mode", stderr.getvalue())
+            self.assertIn(
+                "--resume continue cannot be combined with --bench-mode",
+                stderr.getvalue(),
+            )
 
-    def test_main_optimize_continue_requires_opt_note(self) -> None:
+    def test_main_optimize_resume_continue_requires_opt_note(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
@@ -1005,12 +1021,75 @@ class PathResolutionTests(unittest.TestCase):
             stderr = StringIO()
             with redirect_stderr(stderr):
                 with self.assertRaises(SystemExit) as exc:
-                    main(["optimize", "-i", str(operator), "--continue"])
+                    main(["optimize", "-i", str(operator), "--resume", "continue"])
 
             self.assertEqual(exc.exception.code, 2)
-            self.assertIn("Continue optimize requires existing opt-note.md", stderr.getvalue())
+            self.assertIn(
+                "resume continue requires existing opt-note.md",
+                stderr.getvalue(),
+            )
 
-    def test_main_optimize_continue_requires_round_directories(self) -> None:
+    def test_main_optimize_resume_auto_uses_fresh_for_no_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+
+            captured = {}
+
+            def _fake_build_prompt(
+                command_kind,
+                input_path,
+                operator_path,
+                output_path,
+                test_mode,
+                bench_mode,
+                force_overwrite,
+                remote,
+                remote_workdir,
+                min_rounds,
+                resume_existing_session,
+            ):
+                captured["test_mode"] = test_mode
+                captured["bench_mode"] = bench_mode
+                captured["resume_existing_session"] = resume_existing_session
+                return "Prompt body"
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
+                with patch(
+                    "triton_agent.optimize.runtime.OptimizeSupervisor.run",
+                    return_value=fake_result,
+                ):
+                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                        with patch(
+                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            return_value=[],
+                        ):
+                            with patch(
+                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                return_value=[],
+                            ):
+                                exit_code = main(
+                                    [
+                                        "optimize",
+                                        "-i",
+                                        str(operator),
+                                        "--resume",
+                                        "auto",
+                                        "--test-mode",
+                                        "standalone",
+                                        "--bench-mode",
+                                        "msprof",
+                                    ]
+                                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["test_mode"], "standalone")
+            self.assertEqual(captured["bench_mode"], "msprof")
+            self.assertFalse(captured["resume_existing_session"])
+
+    def test_main_optimize_resume_auto_rejects_partial_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
@@ -1020,15 +1099,15 @@ class PathResolutionTests(unittest.TestCase):
             stderr = StringIO()
             with redirect_stderr(stderr):
                 with self.assertRaises(SystemExit) as exc:
-                    main(["optimize", "-i", str(operator), "--continue"])
+                    main(["optimize", "-i", str(operator), "--resume", "auto"])
 
             self.assertEqual(exc.exception.code, 2)
             self.assertIn(
-                "Continue optimize requires at least one existing opt-round-* directory",
+                "resume auto found partial optimize state",
                 stderr.getvalue(),
             )
 
-    def test_main_optimize_continue_rejects_multiple_test_harnesses(self) -> None:
+    def test_main_optimize_resume_continue_rejects_multiple_test_harnesses(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
@@ -1048,34 +1127,31 @@ class PathResolutionTests(unittest.TestCase):
             stderr = StringIO()
             with redirect_stderr(stderr):
                 with self.assertRaises(SystemExit) as exc:
-                    main(["optimize", "-i", str(operator), "--continue"])
+                    main(["optimize", "-i", str(operator), "--resume", "continue"])
 
             self.assertEqual(exc.exception.code, 2)
-            self.assertIn("Continue optimize found multiple test harnesses", stderr.getvalue())
+            self.assertIn("resume continue found multiple test harnesses", stderr.getvalue())
 
-    def test_main_optimize_continue_requires_existing_bench_harness(self) -> None:
+    def test_main_optimize_resume_fresh_rejects_existing_optimize_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
             (root / "opt-note.md").write_text("history\n", encoding="utf-8")
             (root / "opt-round-1").mkdir()
-            (root / "differential_test_kernel.py").write_text(
-                "# test-mode: differential\nprint('test')\n", encoding="utf-8"
-            )
 
             stderr = StringIO()
             with redirect_stderr(stderr):
                 with self.assertRaises(SystemExit) as exc:
-                    main(["optimize", "-i", str(operator), "--continue"])
+                    main(["optimize", "-i", str(operator), "--resume", "fresh"])
 
             self.assertEqual(exc.exception.code, 2)
             self.assertIn(
-                "Continue optimize requires an existing generated benchmark harness",
+                "resume fresh refused because optimize artifacts already exist",
                 stderr.getvalue(),
             )
 
-    def test_main_optimize_continue_resolves_modes_from_existing_metadata(self) -> None:
+    def test_main_optimize_resume_auto_uses_continue_for_resumable_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
@@ -1102,11 +1178,11 @@ class PathResolutionTests(unittest.TestCase):
                 remote,
                 remote_workdir,
                 min_rounds,
-                continue_optimize,
+                resume_existing_session,
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
-                captured["continue_optimize"] = continue_optimize
+                captured["resume_existing_session"] = resume_existing_session
                 return "Prompt body"
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
@@ -1125,13 +1201,13 @@ class PathResolutionTests(unittest.TestCase):
                                 return_value=[],
                             ):
                                 exit_code = main(
-                                    ["optimize", "-i", str(operator), "--continue"]
+                                    ["optimize", "-i", str(operator), "--resume", "auto"]
                                 )
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(captured["test_mode"], "differential")
             self.assertEqual(captured["bench_mode"], "msprof")
-            self.assertTrue(captured["continue_optimize"])
+            self.assertTrue(captured["resume_existing_session"])
             request = mocked.call_args.args[1]
             self.assertEqual(request.test_mode, "differential")
             self.assertEqual(request.bench_mode, "msprof")
@@ -1786,7 +1862,7 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("Complete at least 4 optimization rounds", prompt)
 
-    def test_optimize_prompt_mentions_continue_mode(self) -> None:
+    def test_optimize_prompt_mentions_continue_mode_for_resolved_resume(self) -> None:
         prompt = build_prompt(
             CommandKind.OPTIMIZE,
             Path("/tmp/op.py"),
@@ -1795,7 +1871,7 @@ class PromptTests(unittest.TestCase):
             test_mode="differential",
             bench_mode="standalone",
             force_overwrite=False,
-            continue_optimize=True,
+            resume_existing_session=True,
         )
         self.assertIn("Continue the existing optimization session", prompt)
         self.assertIn("Read `opt-note.md`", prompt)
