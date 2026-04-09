@@ -1,169 +1,305 @@
 # triton-agent
 
-## Usage
+`triton-agent` is a CLI for generating, running, and optimizing Triton Ascend NPU operator workflows with code agents and local skills.
+
+This README is organized by task so you can quickly find the right command for the job.
+
+## Command Map
+
+- `gen-test`: generate a correctness test for one operator.
+- `run-test`: run an existing generated test.
+- `gen-eval`: generate both test and benchmark assets for one operator.
+- `gen-eval-batch`: generate evaluation assets for many operator workspaces.
+- `gen-bench`: generate a benchmark for one operator.
+- `run-bench`: run an existing generated benchmark.
+- `optimize`: optimize one operator.
+- `optimize-status`: summarize optimization progress across many workspaces.
+- `optimize-batch`: optimize many operator workspaces.
+- `compare-result`: compare two archived correctness result files.
+- `compare-perf`: compare two archived performance files.
+
+## Quick Start
+
+Most workflows start from a single operator file:
 
 ```bash
 uv run triton-agent gen-test --input a.py
-uv run triton-agent gen-eval --input a.py
-uv run triton-agent gen-eval-batch --input operators_root
 uv run triton-agent run-test --test-file test_a.py --operator-file a.py
+
 uv run triton-agent gen-bench --input a.py
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
+
 uv run triton-agent optimize --input a.py
+```
+
+For batch workflows, point `--input` at a directory whose immediate child directories are operator workspaces:
+
+```bash
+uv run triton-agent gen-eval-batch --input operators_root
 uv run triton-agent optimize-status --input operators_root
 uv run triton-agent optimize-batch --input operators_root
 ```
 
+## Generate Tests
+
+Use `gen-test` when you need a correctness harness for one operator.
+
 ```bash
-uv run triton-agent gen-test --input a.py --output test_a.py
-uv run triton-agent gen-eval --input a.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
-uv run triton-agent gen-eval-batch --input operators_root --max-concurrency 4
-uv run triton-agent optimize --input a.py --output opt_a.py --interact
-uv run triton-agent gen-bench --input a.py --agent codex
-uv run triton-agent gen-test --input a.py --agent opencode
-uv run triton-agent gen-test --input a.py --agent pi
-uv run triton-agent gen-test --input a.py --agent claude
-uv run triton-agent gen-test --input a.py --test-mode standalone
-uv run triton-agent run-test --test-file differential_test_a.py --operator-file opt_a.py
-uv run triton-agent gen-bench --input a.py --bench-mode standalone
-uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py
-uv run triton-agent optimize --input a.py --test-mode differential --bench-mode standalone
-uv run triton-agent gen-test --input a.py --verbose
-uv run triton-agent gen-test --input a.py --show-output
-uv run triton-agent gen-test --input a.py --force-overwrite
-uv run triton-agent gen-eval --input a.py --force-overwrite
-uv run triton-agent compare-result --oracle-result abs_result.pt --new-result opt_abs_result.pt
-uv run triton-agent compare-perf --baseline abs_perf.txt --compare opt_abs_perf.txt
-uv run triton-agent run-test --test-file test_a.py --operator-file a.py --remote user@host:2222
-uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py --remote user@host
-uv run triton-agent compare-result --oracle-result abs_result.pt --new-result opt_abs_result.pt --remote user@host --remote-workdir /tmp/triton-agent
-uv run triton-agent gen-test --input a.py --remote user@host:2222
-uv run triton-agent gen-bench --input a.py --remote user@host --remote-workdir /tmp/triton-agent
-uv run triton-agent optimize --input a.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
-uv run triton-agent optimize --input a.py --min-rounds 3
-uv run triton-agent optimize --input a.py --resume continue
-uv run triton-agent optimize --input a.py --no-agent-session
-uv run triton-agent optimize-status --input operators_root
-uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
-uv run triton-agent optimize-batch --input operators_root --agent pi --test-mode differential --bench-mode standalone
+uv run triton-agent gen-test --input a.py
 ```
 
-Generated harnesses record their resolved public entrypoint, entrypoint kind, target kernel, and mode in a small file header such as `# test-mode: ...`, `# bench-mode: ...`, `# api-name: ...`, `# api-kind: ...`, and `# kernel: ...`.
-- Generated tests are expected to run directly as `python3 test_<op>.py --operator-file <path>` or `python3 differential_test_<op>.py --operator-file <path>`.
-- Generated benchmarks are expected to run directly as `python3 bench_<op>.py --operator-file <path>` or, for msprof mode, `python3 bench_<op>.py --num-bench` and `python3 bench_<op>.py --operator-file <path> --bench <N>`.
-- Generated harnesses should not require a runtime `--api-name` flag; the runtime entrypoint comes from the generated file metadata.
-- `# api-kind:` distinguishes `triton-wrapper`, `torch-function`, and `torch-module` entrypoints so the harness can load or instantiate the target correctly.
-- `torch-module` entrypoints currently require no-argument construction; the generators should fail explicitly instead of guessing constructor arguments.
+Common options:
 
-- `--verbose` prints categorized diagnostics for files, skill staging, and agent launch details.
-- `--show-output` streams readable non-interactive agent output to the current terminal.
-- `--show-output` exits cleanly after the agent finishes, including PTY-backed shutdown cases where Linux reports EOF as `EIO`.
-- `--force-overwrite` makes the CLI delete existing generated output files before starting `gen-test`, `gen-bench`, or `gen-eval`.
-- For `gen-eval`, `--force-overwrite` removes the generated correctness-test file, benchmark file, and related archived execution artifacts for the same operator, including `*_result.pt` and `*_perf.txt`.
-- `gen-eval --force-overwrite` still does not delete the original operator file.
-- `gen-eval` launches one agent task that may repair the original operator file directly, generate both a test harness and a benchmark harness, and validate both artifacts before finishing.
-- `gen-eval` defaults to `--test-mode differential` and `--bench-mode standalone`.
-- `gen-eval` accepts the same `--remote user@host[:port]` and optional `--remote-workdir <path>` context as the other agent-backed generation commands and passes that context through to generated validation commands.
-- `gen-eval-batch` scans the immediate child directories under `--input` and treats each child directory as one operator workspace.
-- In each batch workspace, `gen-eval-batch` auto-selects the only remaining `.py` file after excluding generated artifacts such as `test_*.py`, `differential_test_*.py`, `bench_*.py`, `opt_*.py`, and `__init__.py`.
-- If a batch workspace has zero or multiple remaining `.py` candidates, `gen-eval-batch` reports that workspace as a failure and keeps processing the rest of the batch.
-- `gen-eval-batch` accepts the same `gen-eval` orchestration flags except `--output` and `--interact`, plus `--max-concurrency <N>` for bounded parallel execution.
-- `gen-eval-batch --show-output` streams live per-workspace output into the current terminal with `[workspace-name] ` prefixes while still printing the compact batch summary at the end.
-- The parser also accepts snake_case command aliases such as `gen_test` and `run_bench`, while help text keeps the canonical kebab-case names.
-- `run-test` requires `--test-file` and `--operator-file`.
-- `run-test` executes the generated test file through the unified `skills/operator-eval/` execution helpers instead of launching a code agent.
-- `run-test` streams local process output by default and does not support `--interact`.
-- `run-test` no longer accepts `--agent`.
-- `run-test` prints the local process stdout, stderr, and return code.
-- `run-test` reads `# test-mode: ...` from the test file metadata when `--test-mode` is omitted.
-- In `differential` mode, `run-test` archives the generated result payload beside the input operator file as `<operator-filename>_result.pt`.
-- `run-test`, `run-bench`, and `compare-result` accept `--remote user@host[:port]` to execute through SSH on a remote machine.
-- `--remote-workdir <path>` makes each remote run create a subdirectory under the given remote root; otherwise the CLI uses a temporary remote directory.
-- `run-test` and `run-bench` accept `--keep-remote-workdir` to skip remote cleanup and print the retained remote workspace path for debugging.
-- `gen-test`, `gen-bench`, and `optimize` also accept `--remote user@host[:port]` and optional `--remote-workdir <path>`.
-- For `gen-test`, `gen-bench`, and `optimize`, the code agent still runs locally; the remote settings are passed through prompt context so the skills use remote-aware repository commands during validation.
-- Under `--verbose`, remote runs print the concrete `ssh` and `scp` commands they execute.
-- `run-bench` requires `--bench-file` and `--operator-file`.
-- `run-bench` executes the generated benchmark file through the unified `skills/operator-eval/` execution helpers instead of launching a code agent.
-- `run-bench` streams local process output by default and does not support `--interact`.
-- `run-bench` no longer accepts `--agent`.
-- `run-bench` reads `# bench-mode: ...` from the benchmark file metadata when `--bench-mode` is omitted.
-- In `standalone` mode, `run-bench` saves parsed `latency-<id>:` lines beside the input operator file as `<operator-filename>_perf.txt`.
-- In `msprof` mode, `run-bench` first queries `--num-bench`, then executes one `msprof op --kernel-name=...` command per case using the benchmark metadata header.
-- The helper script `python3 skills/operator-eval/scripts/run-command.py profile-bench --bench-file <bench> --operator-file <operator>` profiles benchmark harnesses and prints a local `Profile directory: ...` plus the summarized operator report.
-- `profile-bench` reads `# bench-mode: ...` from benchmark metadata when `--bench-mode` is omitted.
-- In `standalone` mode, `profile-bench` wraps `python3 bench_<op>.py --operator-file <operator-file>` with `msprof` and must not receive `--bench`.
-- In `msprof` mode, `profile-bench` first queries `--num-bench`, then profiles one selected `--bench <N>` case; this flow requires `# kernel: ...` metadata in the benchmark header.
-- `profile-bench` also accepts `--remote user@host[:port]`, optional `--remote-workdir <path>`, and `--keep-remote-workdir`; remote runs copy the resulting `PROF_*` directory back beside the operator file before summarizing it locally.
-- `compare-result` compares two archived differential result payload files through the unified `skills/operator-eval/` helpers.
-- `compare-perf` compares two perf data files by `latency-<id>` and reports per-case deltas without relying on line order.
-- The repository keeps a unified `run` skill for execution and comparison flows; the CLI stays thin and loads those skill-owned helpers dynamically.
-- `--test-mode` defaults to `standalone` for `gen-test`; `run-test` infers it from test metadata unless you override it.
-- `--bench-mode` defaults to `standalone` for `gen-bench`; `run-bench` infers it from benchmark metadata unless you override it.
-- For `optimize`, `--test-mode` defaults to `differential` and `--bench-mode` defaults to `standalone`.
-- `optimize` accepts `--min-rounds <N>` to require at least `N` `opt-round-*` directories before the run may finish successfully.
-- `optimize` accepts `--resume {auto,continue,fresh}` to control whether it resumes an existing optimization session or starts a fresh one.
-- `optimize --resume auto` is the default: it resumes a complete existing optimize session, starts fresh when no optimize artifacts exist, and fails explicitly when the workspace contains partial optimize state.
-- `optimize --resume continue` requires an existing optimize session and reuses the modes recorded in existing harness metadata.
-- `optimize --resume fresh` requires a clean optimize workspace and refuses to run when optimize artifacts already exist.
-- `optimize` accepts `--no-agent-session` to request a non-persistent code-agent session when the selected backend supports it.
-- During non-interactive `optimize`, pressing `Ctrl+C` once asks the CLI to stop the running code agent gracefully.
-- That optimize interrupt path sends two `SIGINT` signals to the code agent with short waits, then force-kills it if it still has not exited.
-- A user-interrupted optimize run exits as an interrupt and does not enter optimize stall recovery.
-- `optimize-status` scans the immediate child directories under `--input` and treats each child directory as one operator workspace candidate.
-- `optimize-status` is a local read-only summary command; it does not launch a code agent, support remote execution, or expose `--output` or `--interact`.
-- `optimize-status` reports per-workspace numeric summaries including baseline mean latency, best mean latency, average improvement across per-case latency improvements, and both numeric-best and logged-best rounds when available.
-- `optimize-status` keeps scanning when a workspace has missing or malformed optimize artifacts and reports those cases as warnings or no-session entries instead of aborting the whole batch.
-- `optimize-batch` scans the immediate child directories under `--input` and treats each child directory as one operator workspace.
-- In each batch workspace, `optimize-batch` auto-selects the only remaining `.py` file after excluding generated artifacts such as `test_*.py`, `differential_test_*.py`, `bench_*.py`, `opt_*.py`, and `__init__.py`.
-- If a batch workspace has zero or multiple remaining `.py` candidates, `optimize-batch` reports that workspace as a failure and keeps processing the rest of the batch.
-- `optimize-batch` accepts the same optimize orchestration flags as `optimize`, plus `--max-concurrency <N>` for bounded parallel execution.
-- `optimize-batch` does not support `--output` or `--interact`.
-- `optimize-batch --show-output` streams live per-workspace output into the current terminal with `[workspace-name] ` prefixes while still printing the compact batch summary at the end.
-- For `optimize --no-agent-session`, Codex uses `--ephemeral`, Pi uses `--no-session`, and OpenCode ignores the flag.
-- `optimize --resume continue` requires an existing `opt-note.md`, at least one `opt-round-*` directory, an existing generated test harness with readable `# test-mode: ...`, and an existing generated benchmark harness with readable `# bench-mode: ...`.
-- `optimize --resume continue` rejects `--test-mode` and `--bench-mode`; `optimize --resume auto` also rejects those overrides when it resolves to a continuation path.
-- If continuation mode finds both `test_<op>.py` and `differential_test_<op>.py`, the CLI fails explicitly instead of guessing which harness should drive the resumed optimize run.
-- If `optimize --resume auto` finds optimize artifacts but not a complete resumable session, the CLI fails explicitly instead of silently restarting from scratch.
-- If an `optimize` agent exits successfully before the workspace reaches the requested minimum round count, the supervisor automatically restarts the agent in continuation mode.
-- `optimize-batch` applies the same resume-mode validation to each workspace independently and summarizes workspace-level failures at the end.
-- Continuation mode tells the agent to continue the existing optimization session and inspect `opt-note.md` plus existing `opt-round-*` artifacts before starting more work.
-- Skill staging uses copied workspace content rather than symlinks, so code agents read ordinary workspace files without resolving back to the source repository.
-- If a target workspace skill path already exists as a symlink, the CLI fails explicitly instead of reusing it.
-- `workspace/` is a placeholder directory for local experimentation only; it is excluded from repository linting, static type checks, and test expectations.
-- `uv run pyright` keeps repository-wide analysis enabled, applies strict checking to `src/`, and leaves `tests/` at the default basic level.
-- Codex non-interactive launches always include `--skip-git-repo-check`.
-- Codex non-interactive generation commands still include `--ephemeral`; `optimize` adds it only when `--no-agent-session` is requested.
-- Codex uses `danger-full-access` for all non-interactive commands.
-- Pi is available as an additional `--agent` backend on the existing agent-backed commands.
-- Pi launches use `--thinking high` and `--no-extensions`.
-- Pi generation commands still use `--no-session`; `optimize` adds it only when `--no-agent-session` is requested.
-- Pi launches receive the staged workspace skill directory through `--skill .pi/skills` with `--no-skills` so repository-local skills stay authoritative.
-- Claude is available as an additional `--agent` backend on the existing agent-backed commands.
-- Claude discovers copied project skills from `.claude/skills`.
-- Claude non-interactive launches use `--print --dangerously-skip-permissions`.
-- For `optimize --no-agent-session`, Claude adds `--no-session-persistence` only in non-interactive mode; interactive Claude runs ignore that flag.
-- The `optimize` workflow is expected to keep per-round artifacts under `opt-round-N/` and a top-level `opt-note.md` in the operator workspace.
-- During `optimize`, the CLI writes a temporary workspace guidance file with optimization guardrails: `AGENTS.md` for the default backends and `CLAUDE.md` for Claude. If the chosen guidance file already exists, it is backed up and restored after the run.
-- The temporary optimize guidance explicitly keeps the task scoped to improving the existing NPU Triton operator implementation and forbids replacing the Triton operator path with direct PyTorch operators or `torch.nn.Module` implementations.
-- The temporary optimize guidance also requires multiple generated correctness-test cases and multiple benchmark cases whenever the agent needs to regenerate those harnesses during optimization.
-- The temporary optimize guidance also points the code agent at the staged `optimize`, `ascend-npu-operator-profiler`, and `ascend-operator-ir-analyzer` skills so it can learn existing optimization rules, gather hotspot evidence, and inspect IR when needed.
-- The `optimize` skill is expected to choose optimization patterns through a compact pattern index before reading detailed pattern references.
-- The `ascend-npu-operator-profiler` skill is expected to run profiling through direct `msprof <command>` invocation and summarize the generated `PROF_*/mindstudio_profiler_output/` CSV files instead of maintaining a separate benchmark-comparison analyzer.
-- The `ascend-npu-operator-profiler` skill should prefer `python3 skills/operator-eval/scripts/run-command.py profile-bench ...` for generated benchmark harnesses, branch behavior by benchmark mode, and keep direct `msprof <command>` only as a manual fallback.
-- The `ascend-operator-ir-analyzer` skill should prefer `python3 skills/ascend-operator-ir-analyzer/scripts/capture_ir.py --ir-dir <dir> --bench-file <bench> --operator-file <operator>` to capture complete Triton and Bisheng IR archives, support the same `--remote`, `--remote-workdir`, and `--keep-remote-workdir` semantics for remote capture, and pair IR inspection with `ascend-npu-operator-profiler` when hotspot timing evidence is needed.
-- The `ascend-operator-ir-analyzer` skill should also prefer `python3 skills/ascend-operator-ir-analyzer/scripts/inspect_ir.py list-stages|stage-summary|diff-stages --ir-dir <dir>` when the task is navigating large archived IR captures, summarizing one stage, or comparing two stages.
-- For large archives, prefer `python3 skills/ascend-operator-ir-analyzer/scripts/inspect_ir.py list-stages --ir-dir <dir> --sort-by interesting` and `python3 skills/ascend-operator-ir-analyzer/scripts/inspect_ir.py find-changes --ir-dir <dir>` before manually drilling into individual stage files.
-- Skills can invoke the current checkout through the bundled helper script at `skills/operator-eval/scripts/run-command.py` without relying on an installed console entrypoint.
-- The scripts under `skills/operator-eval/scripts/` are standalone runtime modules and do not import `triton_agent`; the dependency direction is `triton_agent -> skills/operator-eval/scripts` only.
-- If an output file already exists and overwrite is not allowed, the CLI prints a short error and exits without a Python traceback.
+- `--output test_a.py`: write to a specific path.
+- `--test-mode standalone|differential`: choose the generated test style. Default is `standalone`.
+- `--agent codex|opencode|pi|claude`: choose the backend.
+- `--interact`: open an interactive agent session.
+- `--show-output`: stream non-interactive agent output.
+- `--force-overwrite`: replace an existing generated file.
+- `--remote user@host[:port]`: generate with remote execution context in mind.
+- `--remote-workdir <path>`: set the remote working root.
 
-## Checks
+Example:
+
+```bash
+uv run triton-agent gen-test --input a.py --test-mode differential --agent codex
+```
+
+## Run Tests
+
+Use `run-test` when you already have a generated test file and want to execute it.
+
+```bash
+uv run triton-agent run-test --test-file test_a.py --operator-file a.py
+```
+
+Common options:
+
+- `--test-mode standalone|differential`: override the mode recorded in the test file.
+- `--remote user@host[:port]`: run through SSH on a remote machine.
+- `--remote-workdir <path>`: set the remote working root.
+- `--keep-remote-workdir`: keep the remote workspace for debugging.
+- `--verbose`: print more execution detail.
+
+Example:
+
+```bash
+uv run triton-agent run-test --test-file differential_test_a.py --operator-file opt_a.py
+```
+
+## Generate Evaluation Assets
+
+Use `gen-eval` when you want both correctness and benchmark assets in one step.
+
+```bash
+uv run triton-agent gen-eval --input a.py
+```
+
+What it is for:
+
+- preparing a full evaluation setup for one operator
+- generating both test and benchmark harnesses together
+
+Common options:
+
+- `--agent codex|opencode|pi|claude`
+- `--test-mode standalone|differential`: default is `differential`
+- `--bench-mode standalone|msprof`: default is `standalone`
+- `--interact`
+- `--show-output`
+- `--force-overwrite`
+- `--remote user@host[:port]`
+- `--remote-workdir <path>`
+
+Example:
+
+```bash
+uv run triton-agent gen-eval --input a.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
+```
+
+## Generate Benchmarks
+
+Use `gen-bench` when you only need a benchmark harness.
+
+```bash
+uv run triton-agent gen-bench --input a.py
+```
+
+Common options:
+
+- `--output bench_a.py`
+- `--bench-mode standalone|msprof`: default is `standalone`
+- `--agent codex|opencode|pi|claude`
+- `--interact`
+- `--show-output`
+- `--force-overwrite`
+- `--remote user@host[:port]`
+- `--remote-workdir <path>`
+
+Example:
+
+```bash
+uv run triton-agent gen-bench --input a.py --bench-mode standalone
+```
+
+## Run Benchmarks
+
+Use `run-bench` when you already have a generated benchmark file and want to execute it.
+
+```bash
+uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
+```
+
+Common options:
+
+- `--bench-mode standalone|msprof`: override the mode recorded in the benchmark file.
+- `--remote user@host[:port]`
+- `--remote-workdir <path>`
+- `--keep-remote-workdir`
+- `--verbose`
+
+Example:
+
+```bash
+uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py
+```
+
+## Optimize One Operator
+
+Use `optimize` when you want the agent to iterate on one operator and produce optimization rounds.
+
+```bash
+uv run triton-agent optimize --input a.py
+```
+
+Common options:
+
+- `--output opt_a.py`: write the optimized operator to a specific path.
+- `--agent codex|opencode|pi|claude`
+- `--test-mode standalone|differential`: default is `differential`
+- `--bench-mode standalone|msprof`: default is `standalone`
+- `--resume auto|continue|fresh`: default is `auto`
+- `--min-rounds <N>`: require at least N optimization rounds.
+- `--no-agent-session`: disable persistent agent sessions when supported.
+- `--interact`
+- `--show-output`
+- `--remote user@host[:port]`
+- `--remote-workdir <path>`
+
+Examples:
+
+```bash
+uv run triton-agent optimize --input a.py --min-rounds 3
+uv run triton-agent optimize --input a.py --resume continue
+```
+
+Resume modes:
+
+- `auto`: continue only when there is a complete existing optimize session; otherwise start fresh or fail if the workspace is incomplete.
+- `continue`: require an existing resumable optimize session.
+- `fresh`: require a clean workspace with no existing optimize artifacts.
+
+## Work On Many Operators
+
+Use the batch commands when `--input` points to a directory of operator workspaces.
+
+### Generate Evaluation Assets In Batch
+
+```bash
+uv run triton-agent gen-eval-batch --input operators_root
+```
+
+Common options:
+
+- `--agent codex|opencode|pi|claude`
+- `--test-mode standalone|differential`
+- `--bench-mode standalone|msprof`
+- `--max-concurrency <N>`
+- `--show-output`
+- `--remote user@host[:port]`
+- `--remote-workdir <path>`
+
+### Check Optimization Status
+
+```bash
+uv run triton-agent optimize-status --input operators_root
+```
+
+Use this command to get a read-only summary of optimization progress across workspaces.
+
+### Optimize In Batch
+
+```bash
+uv run triton-agent optimize-batch --input operators_root
+```
+
+Common options:
+
+- `--agent codex|opencode|pi|claude`
+- `--test-mode standalone|differential`
+- `--bench-mode standalone|msprof`
+- `--resume auto|continue|fresh`
+- `--min-rounds <N>`
+- `--no-agent-session`
+- `--max-concurrency <N>`
+- `--show-output`
+- `--remote user@host[:port]`
+- `--remote-workdir <path>`
+
+## Compare Archived Outputs
+
+Use these commands after you already have archived result or performance files.
+
+### Compare Correctness Results
+
+```bash
+uv run triton-agent compare-result \
+  --oracle-result abs_result.pt \
+  --new-result opt_abs_result.pt
+```
+
+Common options:
+
+- `--compare-level strict|balanced|relaxed`
+- `--remote user@host[:port]`
+- `--remote-workdir <path>`
+- `--verbose`
+
+### Compare Performance Results
+
+```bash
+uv run triton-agent compare-perf \
+  --baseline abs_perf.txt \
+  --compare opt_abs_perf.txt
+```
+
+## Shared Options
+
+These options appear on multiple commands:
+
+- `--agent`: choose the agent backend for agent-backed generation and optimization commands.
+- `--interact`: attach to a live agent session instead of a non-interactive run.
+- `--show-output`: stream readable non-interactive agent output in the current terminal.
+- `--verbose`: print additional diagnostics.
+- `--remote`: run execution and comparison commands through SSH, and pass remote context to generation and optimize workflows.
+- `--remote-workdir`: choose the remote working root.
+- `--keep-remote-workdir`: keep the remote workspace after `run-test` or `run-bench`.
+- `--force-overwrite`: allow generation commands to replace existing generated files.
+
+## Output Conventions
+
+Generated files and archived outputs follow predictable naming based on the operator file:
+
+- tests: typically `test_<op>.py` or `differential_test_<op>.py`
+- benchmarks: typically `bench_<op>.py`
+- optimized operators: often `opt_<op>.py`
+- archived correctness results: typically `<operator>_result.pt`
+- archived performance results: typically `<operator>_perf.txt`
+
+## Verification
 
 ```bash
 uv run --group dev ruff check
 uv run pyright
 uv run python -m unittest discover -s tests -v
 ```
-
-`uv run pyright` uses `typeCheckingMode = "basic"` for the repository by default and upgrades `src/` to strict checking through the `strict = ["src"]` path list, so contributor tests can stay less noisy while production code gets tighter enforcement.
