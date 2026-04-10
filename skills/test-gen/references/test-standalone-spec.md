@@ -104,6 +104,7 @@ If a `torch-module` entrypoint requires constructor arguments, fail explicitly w
 
 ### 4. Test case construction
 
+- **Execution device:** The harness **must** exercise the operator on **Ascend NPU only**. Do **not** generate tests intended to run primarily on CUDA, CPU, or other accelerators, or that branch to a non-NPU device for the code under test.
 - Build **multiple deterministic** test cases and call the resolved operator entrypoint with each case.
 - Use **at least 3 cases**.
 - Test cases must cover:

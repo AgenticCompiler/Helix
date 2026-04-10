@@ -74,6 +74,7 @@ If the outer task is marked for remote execution, carry the same remote flags in
 
 ## Quality Rules
 
+- Generated benchmarks **must run on Ascend NPU** (`torch.npu`). Do **not** generate harnesses whose primary path executes the operator on CUDA, CPU, or other devices. See the selected spec for normative device rules.
 - Measure the operator body, not one-time setup.
 - Prefer stable repeated timing over a single run.
 - Keep generated code easy to edit by hand.

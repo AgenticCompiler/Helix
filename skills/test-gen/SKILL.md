@@ -82,6 +82,7 @@ If the outer task is marked for remote execution, carry the same remote flags in
 
 ## Quality Rules
 
+- Generated tests **must run on Ascend NPU** (`torch.npu`). Do **not** generate harnesses whose primary path executes the operator on CUDA, CPU, or other devices. See the selected spec for normative device rules.
 - Keep the test executable as a normal Python script.
 - Use `importlib` dynamic loading only for the operator under test via `--operator-file`. The target callable name and invocation style must come from the generated file's embedded `# api-name:` and `# api-kind:` metadata. All other imports should use standard explicit imports.
 - Include at least one representative happy-path case.

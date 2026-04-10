@@ -101,6 +101,7 @@ If a `torch-module` entrypoint requires constructor arguments, fail explicitly w
 
 ### 4. Core benchmark logic (`run_bench`)
 
+- **Execution device:** The harness **must** exercise the operator on **Ascend NPU only**. Do **not** generate benchmarks intended to run primarily on CUDA, CPU, or other accelerators, or that branch to a non-NPU device for the code under test.
 - Create the required tensor(s) for the operator with the case's dtype and shape(s), and call the resolved public entrypoint loaded via `--operator-file` and the embedded metadata.
 - **All tensors must be created on device `"npu"`** (not `"cuda"`).
 - **Do not** perform any correctness check (no comparison to reference implementation).

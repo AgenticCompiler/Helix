@@ -112,6 +112,7 @@ If a `torch-module` entrypoint requires constructor arguments, fail explicitly w
 
 ### 6. Core benchmark logic (e.g. `run_bench`)
 
+- **Execution device:** The harness **must** exercise the operator on **Ascend NPU only**. Do **not** generate benchmarks intended to run primarily on CUDA, CPU, or other accelerators, or that branch to a non-NPU device for the code under test.
 - Create the required tensor(s) for the kernel with the case’s dtype and shape(s).
 - **All tensors must be created on device `"npu"`** (not `"cuda"`).
 - **Warmup:** run the kernel **5 times** in a row. No need to add extra logic for msprof; the last run can be used for profiling externally.
