@@ -61,8 +61,3 @@ The Ascend Triton compiler may reject certain **zero-dimensional `block_type`** 
 - This is **context-dependent**; if one reshape does not fix it, simplify how scalars enter loads/stores so they always pass through explicit `tl.full` / broadcasts with clear dtypes.
 
 ---
-
-## Relationship between 4 and 5
-
-- **4** is **resource** pressure (overflow, “too much per block”).
-- **5** is **type/shape lowering** (`0d block_type` illegal). Do not conflate them: shrinking the block helps 4, not necessarily 5.
