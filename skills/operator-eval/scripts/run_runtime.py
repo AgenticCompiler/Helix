@@ -171,7 +171,15 @@ def _run_streaming_pty(
                 try:
                     chunk = os.read(master_fd, 4096)
                 except OSError as error:
-                    if error.errno == errno.EIO and process.poll() is not None:
+                    if error.errno == errno.EIO:
+                        # PTY slave closed — normal child exit signal.
+                        # poll() may not reflect termination yet due to a race,
+                        # so wait briefly before treating this as clean shutdown.
+                        if process.poll() is None:
+                            try:
+                                process.wait(timeout=5)
+                            except subprocess.TimeoutExpired:
+                                pass
                         break
                     raise
                 if chunk:
