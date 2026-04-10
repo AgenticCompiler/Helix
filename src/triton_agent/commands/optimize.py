@@ -36,7 +36,13 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
         request = build_optimize_request(input_path, workdir, options)
     except ValueError as exc:
         parser.error(str(exc))
-    result = run_optimize_request(request)
+    try:
+        result = run_optimize_request(request)
+    except FileNotFoundError as exc:
+        parser.error(
+            f"Agent executable not found: {exc}. "
+            f"Make sure the '{options.agent_name}' CLI is installed and available in PATH."
+        )
     render_result(result, show_output=request.show_output)
     return result.return_code
 

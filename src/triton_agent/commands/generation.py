@@ -66,7 +66,13 @@ def _handle_generation_command(
         parser.exit(2, f"{exc}\n")
     if options.verbose:
         emit_verbose_lines(sys.stderr, "files", file_messages)
-    result = run_generation_request(request)
+    try:
+        result = run_generation_request(request)
+    except FileNotFoundError as exc:
+        parser.error(
+            f"Agent executable not found: {exc}. "
+            f"Make sure the '{options.agent_name}' CLI is installed and available in PATH."
+        )
     render_result(result, show_output=request.show_output)
     return result.return_code
 

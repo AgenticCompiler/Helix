@@ -2,15 +2,20 @@ from __future__ import annotations
 
 import errno
 import os
-import pty
-import select
 import shlex
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
 from typing import Optional, TextIO, TypedDict
+
+_IS_WINDOWS = sys.platform == "win32"
+
+if not _IS_WINDOWS:
+    import pty
+    import select
 
 
 class ResultPayload(TypedDict):
@@ -80,6 +85,71 @@ def run_streaming_process(
     stall_timeout_seconds: int,
     stdout: Optional[TextIO] = None,
 ) -> ResultPayload:
+    if _IS_WINDOWS:
+        return _run_streaming_windows(command, workdir, stall_timeout_seconds, stdout)
+    return _run_streaming_pty(command, workdir, stall_timeout_seconds, stdout)
+
+
+def _run_streaming_windows(
+    command: list[str],
+    workdir: str,
+    stall_timeout_seconds: int,
+    stdout: Optional[TextIO] = None,
+) -> ResultPayload:
+    process = subprocess.Popen(
+        command,
+        cwd=workdir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=False,
+    )
+    output_chunks: list[str] = []
+    start_ref: list[float] = [time.monotonic()]
+    stalled_ref: list[bool] = [False]
+    lock = threading.Lock()
+
+    def reader() -> None:
+        assert process.stdout is not None
+        while True:
+            chunk = process.stdout.read(4096)
+            if not chunk:
+                break
+            text = chunk.decode(errors="replace")
+            with lock:
+                output_chunks.append(text)
+                print(text, file=stdout or sys.stdout, end="", flush=True)
+                start_ref[0] = time.monotonic()
+
+    reader_thread = threading.Thread(target=reader, daemon=True)
+    reader_thread.start()
+
+    while True:
+        reader_thread.join(timeout=0.1)
+        if not reader_thread.is_alive() and process.poll() is not None:
+            break
+        with lock:
+            elapsed = time.monotonic() - start_ref[0]
+        if elapsed > stall_timeout_seconds:
+            process.terminate()
+            stalled_ref[0] = True
+            break
+
+    reader_thread.join()
+    rc = process.wait() if not stalled_ref[0] else 1
+    return make_result(
+        return_code=rc,
+        stdout="".join(output_chunks),
+        stderr="",
+        stalled=stalled_ref[0],
+    )
+
+
+def _run_streaming_pty(
+    command: list[str],
+    workdir: str,
+    stall_timeout_seconds: int,
+    stdout: Optional[TextIO] = None,
+) -> ResultPayload:
     master_fd, slave_fd = pty.openpty()
     output_chunks: list[str] = []
     process = subprocess.Popen(
@@ -101,7 +171,15 @@ def run_streaming_process(
                 try:
                     chunk = os.read(master_fd, 4096)
                 except OSError as error:
-                    if error.errno == errno.EIO and process.poll() is not None:
+                    if error.errno == errno.EIO:
+                        # PTY slave closed — normal child exit signal.
+                        # poll() may not reflect termination yet due to a race,
+                        # so wait briefly before treating this as clean shutdown.
+                        if process.poll() is None:
+                            try:
+                                process.wait(timeout=5)
+                            except subprocess.TimeoutExpired:
+                                pass
                         break
                     raise
                 if chunk:
