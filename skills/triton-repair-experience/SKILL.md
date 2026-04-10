@@ -9,7 +9,7 @@ description: >-
 
 Use this skill when **repairing the operator** after Triton/Ascend **compilation**, **JIT**, or **kernel-side** failures—especially during `eval-gen`, `optimize`, or any flow that exercises the real Triton path.
 
-Patterns and code hints live in [references/repair-experience.md](references/repair-experience.md) (sections **1–5**). Match the error or symptom, apply a **minimal** change, then re-run validation.
+Patterns and code hints live in [references/repair-experience.md](references/repair-experience.md). Match the error or symptom, apply a **minimal** change, then re-run validation.
 
 ## Relationship to other skills
 
