@@ -9,11 +9,11 @@ Complete one combined evaluation-generation workflow for a single operator.
 
 Use this skill when the user wants one code-agent task to:
 
-- inspect an operator file
-- repair the original operator file when needed
-- generate a correctness test through `test-gen`
-- generate a benchmark through `bench-gen`
-- validate both artifacts through `operator-eval`
+- Inspect the operator file.
+- Repair the operator file when required.
+- Generate a correctness test via `test-gen`.
+- Generate a benchmark via `bench-gen`.
+- Validate both artifacts via `operator-eval`.
 
 ## Inputs
 
@@ -33,19 +33,24 @@ Use this skill when the user wants one code-agent task to:
 
 1. Read the operator file and identify whether the operator itself already has clear correctness, signature, import, or runtime issues.
 2. If the operator is clearly at fault, repair the original operator file directly before generating harnesses.
-3. Generate the correctness test with the `test-gen` skill.
-4. Validate the generated test with the `operator-eval` workflow, using the generated file against the current operator file.
-5. If test validation fails, decide whether the failure belongs to the generated test or the operator:
+3. Ensure the operator’s Triton path actually runs, and remove any code paths that fall back to PyTorch.
+4. Generate the correctness test with the `test-gen` skill.
+5. Validate the generated test with the `operator-eval` workflow, using the generated file against the current operator file.
+6. If test validation fails, decide whether the failure belongs to the generated test or the operator:
    - repair the generated test when the harness is at fault
    - repair the original operator file when the operator is at fault
-6. Re-run test validation after every relevant repair until the test passes or an environment blocker prevents progress.
-7. Generate the benchmark with the `bench-gen` skill.
-8. Validate the generated benchmark with the `operator-eval` workflow.
-9. If benchmark validation fails, decide whether the failure belongs to the generated benchmark or the operator:
+7. Re-run test validation after every relevant repair until the test passes or an environment blocker prevents progress.
+8. Generate the benchmark with the `bench-gen` skill.
+9. Validate the generated benchmark with the `operator-eval` workflow.
+10. If benchmark validation fails, decide whether the failure belongs to the generated benchmark or the operator:
    - repair the generated benchmark when the harness is at fault
    - repair the original operator file when the operator is at fault
-10. Re-run benchmark validation after every relevant repair until the benchmark passes or an environment blocker prevents progress.
-11. Before finishing, confirm that both generated artifacts pass against the final operator file state.
+11. Re-run benchmark validation after every relevant repair until the benchmark passes or an environment blocker prevents progress.
+12. Before finishing, confirm that both generated artifacts pass against the final operator file state.
+
+## Repair experience (Ascend Triton)
+
+When steps 2, 6, or 10 require **operator-side** fixes for compile / JIT / kernel errors on Ascend, use the `triton-repair-experience` skill and read [../triton-repair-experience/references/repair-experience.md](../triton-repair-experience/references/repair-experience.md) for team-maintained heuristics. These hints do not override `test-gen`, `bench-gen`, or normative specs.
 
 ## Validation Commands
 
@@ -59,9 +64,12 @@ Use this skill when the user wants one code-agent task to:
 - Keep generated test and benchmark files aligned with the final operator API.
 - Prefer targeted repairs over broad rewrites.
 - Stop with a short explicit explanation when the problem is a workspace or environment blocker that cannot be fixed from repository code alone.
+- When editing the operator, **preserve the Triton / NPU kernel path** as the delivered implementation. **Do not** replace it with a **pure PyTorch** reimplementation as a “fix,” and **do not** satisfy validation by weakening what the harness exercises.
 
 ## Do Not
 
+- Do not mask operator failures in harnesses. Never add try/except, alternate paths, shims, or PyTorch-only fallbacks in generated tests/benchmarks to green `run-test` / `run-bench` when the real issue is Triton compile, launch, or operator logic—**forbidden**.
+- Do not patch only the harness for compiler/kernel failures
 - Do not create `opt-round-*` directories.
 - Do not create or update `opt-note.md`.
 - Do not use the `optimize` skill for this workflow.
