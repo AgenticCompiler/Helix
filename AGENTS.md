@@ -22,6 +22,7 @@
 - For optimize flows, prefer reusing existing test and benchmark harnesses; generate them only when the workspace is missing required validation artifacts.
 - For optimize flows, require every optimization round to record why the chosen change may help and what evidence supports it.
 - For optimize flows, do not default to blind tiling or launch-parameter search when the available evidence does not justify that direction.
+- For optimize flows, run worker rounds and supervisor audit passes as separate role-specific agent invocations, keep shared guidance role-neutral, and let role assignment come from the launch prompt plus role brief rather than from the shared guidance file.
 - Prefer short actionable CLI validation errors over Python tracebacks.
 - Prefer explicit failures over silent fallbacks when expected artifacts or metadata are missing.
 

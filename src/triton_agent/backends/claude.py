@@ -54,31 +54,7 @@ class ClaudeRunner(AgentRunner):
             summary,
             require_analysis=request.require_analysis,
         )
-        return self.run(
-            AgentRequest(
-                command_kind=request.command_kind,
-                input_path=request.input_path,
-                operator_path=request.operator_path,
-                output_path=request.output_path,
-                test_mode=request.test_mode,
-                bench_mode=request.bench_mode,
-                interact=request.interact,
-                verbose=request.verbose,
-                show_output=request.show_output,
-                force_overwrite=request.force_overwrite,
-                agent_name=request.agent_name,
-                skill_name=request.skill_name,
-                prompt=resumed_prompt,
-                workdir=request.workdir,
-                min_rounds=request.min_rounds,
-                continue_optimize=request.continue_optimize,
-                require_analysis=request.require_analysis,
-                no_agent_session=request.no_agent_session,
-                staged_skill_names=request.staged_skill_names,
-            ),
-            stdout=stdout,
-            stderr=stderr,
-        )
+        return self.run(request.with_prompt(resumed_prompt), stdout=stdout, stderr=stderr)
 
     def _log_launch_command(self, command: List[str], stream: TextIO) -> None:
         emit_verbose_lines(stream, "agent", format_command_messages(command))

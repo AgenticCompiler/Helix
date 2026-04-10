@@ -6,6 +6,7 @@ import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
+from triton_agent.optimize.models import GateDecision, GateResult
 from triton_agent.supervisor import OptimizeSupervisor
 
 
@@ -37,6 +38,92 @@ class RoundCreatingRunner(FakeRunner):
 
 
 class OptimizeSupervisorTests(unittest.TestCase):
+    def test_round_gate_runner_stops_after_pass_stop(self) -> None:
+        request = AgentRequest(
+            command_kind=CommandKind.OPTIMIZE,
+            input_path=Path("/tmp/op.py"),
+            operator_path=Path("/tmp/op.py"),
+            output_path=Path("/tmp/opt_op.py"),
+            test_mode=None,
+            bench_mode=None,
+            interact=False,
+            verbose=False,
+            show_output=False,
+            force_overwrite=False,
+            agent_name="codex",
+            skill_name="optimize",
+            prompt="Optimize this operator",
+            workdir=Path("/tmp"),
+        )
+
+        class LoopRunner:
+            def __init__(self) -> None:
+                self.events: list[str] = []
+
+            def run_worker(self, request: AgentRequest) -> AgentResult:
+                self.events.append("worker-run")
+                return AgentResult(return_code=0, stdout="round complete", stderr="")
+
+            def run_supervisor(
+                self, request: AgentRequest, result: AgentResult
+            ) -> GateResult:
+                self.events.append("supervisor-run")
+                return GateResult(decision=GateDecision.PASS_STOP, blocking_issues=())
+
+        runner = LoopRunner()
+
+        result = OptimizeSupervisor().run(runner, request)
+
+        self.assertEqual(result.return_code, 0)
+        self.assertEqual(runner.events, ["worker-run", "supervisor-run"])
+
+    def test_round_gate_runner_relaunches_worker_after_revise_required(self) -> None:
+        request = AgentRequest(
+            command_kind=CommandKind.OPTIMIZE,
+            input_path=Path("/tmp/op.py"),
+            operator_path=Path("/tmp/op.py"),
+            output_path=Path("/tmp/opt_op.py"),
+            test_mode=None,
+            bench_mode=None,
+            interact=False,
+            verbose=False,
+            show_output=False,
+            force_overwrite=False,
+            agent_name="codex",
+            skill_name="optimize",
+            prompt="Optimize this operator",
+            workdir=Path("/tmp"),
+        )
+
+        class LoopRunner:
+            def __init__(self) -> None:
+                self.worker_requests: list[AgentRequest] = []
+                self._gate_calls = 0
+
+            def run_worker(self, request: AgentRequest) -> AgentResult:
+                self.worker_requests.append(request)
+                return AgentResult(return_code=0, stdout="round complete", stderr="")
+
+            def run_supervisor(
+                self, request: AgentRequest, result: AgentResult
+            ) -> GateResult:
+                self._gate_calls += 1
+                if self._gate_calls == 1:
+                    return GateResult(
+                        decision=GateDecision.REVISE_REQUIRED,
+                        blocking_issues=("required evidence is missing",),
+                    )
+                return GateResult(decision=GateDecision.PASS_STOP, blocking_issues=())
+
+        runner = LoopRunner()
+
+        result = OptimizeSupervisor().run(runner, request)
+
+        self.assertEqual(result.return_code, 0)
+        self.assertEqual(len(runner.worker_requests), 2)
+        self.assertIn("required evidence is missing", runner.worker_requests[1].prompt)
+        self.assertEqual(runner.worker_requests[1].optimize_role, "worker")
+
     def test_retries_with_progress_summary_after_stall(self) -> None:
         request = AgentRequest(
             command_kind=CommandKind.OPTIMIZE,
@@ -159,6 +246,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
             self.assertEqual(result.return_code, 0)
             self.assertEqual(len(runner.resume_requests), 1)
+            self.assertEqual(runner.resume_requests[0].optimize_role, "worker")
             self.assertIn("Continue the existing optimize task", runner.resume_requests[0].prompt)
             self.assertIn("Read `opt-note.md`", runner.resume_requests[0].prompt)
 

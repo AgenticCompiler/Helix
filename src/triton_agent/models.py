@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -56,6 +56,12 @@ class AgentRequest:
     require_analysis: bool = False
     no_agent_session: bool = False
     staged_skill_names: tuple[str, ...] | None = None
+    optimize_role: str | None = None
+    round_brief_path: Optional[Path] = None
+    supervisor_report_path: Optional[Path] = None
+
+    def with_prompt(self, prompt: str) -> "AgentRequest":
+        return replace(self, prompt=prompt)
 
 
 @dataclass

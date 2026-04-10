@@ -9,6 +9,23 @@ from triton_agent.skills import SkillLinkManager
 
 
 class SkillLinkManagerTests(unittest.TestCase):
+    def test_repo_skills_include_optimize_supervisor_for_codex_staging(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            source = Path(__file__).resolve().parents[1] / "skills"
+
+            manager = SkillLinkManager(source)
+            links = manager.prepare_codex_skills(
+                workspace,
+                skill_names=("optimize", "optimize-supervisor"),
+            )
+
+            target = workspace / ".codex" / "skills"
+            self.assertTrue((target / "optimize" / "SKILL.md").exists())
+            self.assertTrue((target / "optimize-supervisor" / "SKILL.md").exists())
+            manager.cleanup(links)
+
     def test_copy_only_requested_skill_dirs_when_codex_skills_dir_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -72,16 +89,26 @@ class SkillLinkManagerTests(unittest.TestCase):
             workspace.mkdir()
             source.mkdir()
             (source / "test-gen").mkdir()
+            (source / "optimize-supervisor").mkdir()
             (source / "test-gen" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
+            (source / "optimize-supervisor" / "SKILL.md").write_text(
+                "supervisor skill\n",
+                encoding="utf-8",
+            )
 
             manager = SkillLinkManager(source)
             links = manager.prepare_codex_skills(workspace)
 
             target = workspace / ".codex" / "skills"
             copied_skill = target / "test-gen" / "SKILL.md"
+            copied_supervisor_skill = target / "optimize-supervisor" / "SKILL.md"
             self.assertTrue(target.is_dir())
             self.assertFalse(target.is_symlink())
             self.assertEqual(copied_skill.read_text(encoding="utf-8"), "test skill\n")
+            self.assertEqual(
+                copied_supervisor_skill.read_text(encoding="utf-8"),
+                "supervisor skill\n",
+            )
             self.assertEqual(links.created_paths, [target])
             self.assertTrue(
                 any("created skill copy" in message for message in manager.describe_prepare(links))

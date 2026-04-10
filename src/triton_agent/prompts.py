@@ -16,6 +16,80 @@ PROMPT_INTROS = {
 }
 
 
+def build_optimize_worker_prompt(
+    input_path: Path,
+    output_path: Path | None,
+    *,
+    test_mode: str | None,
+    bench_mode: str | None,
+    min_rounds: int | None = None,
+    resume_existing_session: bool = False,
+    require_analysis: bool = False,
+) -> str:
+    del input_path, output_path, test_mode, bench_mode
+    lines = [
+        "This invocation is the optimize worker role.",
+        "This invocation owns exactly one round.",
+        "Read `.triton-agent/roles/optimize-worker.md` before acting.",
+        "Read `.triton-agent/round-brief.md` before acting.",
+        "Treat this as a long-running task.",
+        "Keep making progress until the current round is complete.",
+        "Reuse existing correctness tests and benchmark cases when they already exist; generate them only when required artifacts are missing.",
+        "State the optimization hypothesis and why it may help before editing code for each round.",
+        "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
+        "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
+        "Produce all required round artifacts before stopping.",
+        "Do not self-approve whether the optimize session should continue.",
+    ]
+    if resume_existing_session:
+        lines.extend(
+            [
+                "Continue the existing optimization session instead of restarting from scratch.",
+                "Read `opt-note.md`, existing `opt-round-*` directories, and existing round logs before making changes.",
+            ]
+        )
+    if require_analysis:
+        lines.extend(
+            [
+                "Before the first code-changing round, gather profiling or IR-backed evidence, or record a concrete reason why one analysis path is unavailable and the remaining evidence is sufficient.",
+                "Do not begin with blind tiling or launch-parameter search.",
+            ]
+        )
+    if min_rounds is not None:
+        lines.append(
+            f"Complete at least {min_rounds} optimization rounds by creating `opt-round-*` directories before finishing."
+        )
+    return "\n".join(lines)
+
+
+def build_optimize_supervisor_prompt(
+    workdir: Path,
+    *,
+    latest_round_dir: Path | None = None,
+    require_analysis: bool = False,
+) -> str:
+    lines = [
+        "This invocation is the optimize supervisor role.",
+        "This invocation is an audit and handoff pass, not a new optimization round.",
+        "Read `.triton-agent/roles/optimize-supervisor.md` before acting.",
+        f"Read `{workdir / 'opt-note.md'}` before acting.",
+    ]
+    if latest_round_dir is not None:
+        lines.append(f"Read `{latest_round_dir}` before acting.")
+    lines.extend(
+        [
+            "Apply only metadata repairs derived from existing facts.",
+            "Emit a structured gate result and next-round brief when continuation is allowed.",
+            "Do not perform open-ended optimization work.",
+        ]
+    )
+    if require_analysis:
+        lines.append(
+            "Require existing profiling or IR-backed evidence, or require the next worker round to record why the remaining evidence is sufficient."
+        )
+    return "\n".join(lines)
+
+
 def build_prompt(
     command_kind: CommandKind,
     input_path: Path,
@@ -94,33 +168,16 @@ def build_prompt(
 
     if command_kind == CommandKind.OPTIMIZE:
         lines.extend(
-            [
-                "Treat this as a long-running task.",
-                "Keep making progress until the optimized operator is complete.",
-                "Reuse existing correctness tests and benchmark cases when they already exist; generate them only when required artifacts are missing.",
-                "State the optimization hypothesis and why it may help before editing code for each round.",
-                "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
-                "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
-            ]
+            build_optimize_worker_prompt(
+                input_path,
+                output_path,
+                test_mode=test_mode,
+                bench_mode=bench_mode,
+                min_rounds=min_rounds,
+                resume_existing_session=should_resume_existing_session,
+                require_analysis=require_analysis,
+            ).splitlines()
         )
-        if should_resume_existing_session:
-            lines.extend(
-                [
-                    "Continue the existing optimization session instead of restarting from scratch.",
-                    "Read `opt-note.md`, existing `opt-round-*` directories, and existing round logs before making changes.",
-                ]
-            )
-        if require_analysis:
-            lines.extend(
-                [
-                    "Before the first code-changing round, gather profiling or IR-backed evidence, or record a concrete reason why one analysis path is unavailable and the remaining evidence is sufficient.",
-                    "Do not begin with blind tiling or launch-parameter search.",
-                ]
-            )
-        if min_rounds is not None:
-            lines.append(
-                f"Complete at least {min_rounds} optimization rounds by creating `opt-round-*` directories before finishing."
-            )
     else:
         lines.append("Complete the requested task and summarize assumptions briefly.")
     return "\n".join(lines)
@@ -128,6 +185,7 @@ def build_prompt(
 
 def build_optimize_resume_prompt(summary: str, *, require_analysis: bool = False) -> str:
     lines = [
+        "This invocation is the optimize worker role.",
         "Continue the existing optimize task instead of restarting from scratch.",
         "Read `opt-note.md`, existing `opt-round-*` directories, and any round summaries or attempt logs before making the next change.",
         "Keep the optimize workflow hypothesis-driven: explain why each next change may help and what evidence supports it.",

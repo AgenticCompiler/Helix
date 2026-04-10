@@ -207,7 +207,12 @@ Optimize behavior:
 
 - Reuse existing test and benchmark harnesses when they already exist in the workspace.
 - Generate missing harnesses only when the required validation artifact is absent.
+- Run optimize as explicit worker rounds with a supervisor audit between rounds instead of relying on one unconstrained agent pass.
+- Keep the shared workspace guidance role-neutral; worker versus supervisor role assignment comes from the launch prompt and role brief for that invocation.
+- Use fresh agent invocations for worker and supervisor passes so role-specific optimize context does not leak across the session.
 - Treat each round as a hypothesis-driven experiment: explain why the change may help and what evidence supports it.
+- Require each completed round to leave auditable artifacts such as `attempts.md`, `summary.md`, comparable perf data, and structured round state.
+- Allow the supervisor to repair metadata derived from existing facts, but never to invent missing benchmark, profiler, IR, or correctness evidence.
 - If profiling or IR capture is skipped for a round, explain why the existing evidence is already sufficient.
 
 ## Work On Many Operators

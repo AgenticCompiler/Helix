@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from triton_agent.models import AgentRequest, AgentResult
+from triton_agent.optimize.models import GateDecision, GateResult
 from triton_agent.prompts import build_optimize_resume_prompt
 
 
@@ -16,22 +17,40 @@ class SupportsOptimizeRecovery(Protocol):
         ...
 
 
+class SupportsOptimizeRoundGate(Protocol):
+    def run_worker(self, request: AgentRequest) -> AgentResult:
+        ...
+
+    def run_supervisor(self, request: AgentRequest, result: AgentResult) -> GateResult:
+        ...
+
+
 class OptimizeSupervisor:
     def __init__(self, max_recovery_attempts: int = 2) -> None:
         self.max_recovery_attempts = max_recovery_attempts
 
-    def run(self, runner: SupportsOptimizeRecovery, request: AgentRequest) -> AgentResult:
+    def run(self, runner: object, request: AgentRequest) -> AgentResult:
         attempt = 0
-        current_request = request
+        current_request = self._with_default_optimize_role(request)
         resume_summary: str | None = None
+
+        if _supports_round_gate_runner(runner):
+            return self._run_round_gate_loop(
+                cast(SupportsOptimizeRoundGate, runner),
+                current_request,
+            )
+
+        if not _supports_recovery_runner(runner):
+            raise TypeError("runner does not implement optimize recovery or round gate interfaces")
+        recovery_runner = cast(SupportsOptimizeRecovery, runner)
 
         while True:
             if resume_summary is None:
-                result = runner.run(current_request)
+                result = recovery_runner.run(current_request)
             else:
-                result = runner.resume(current_request, resume_summary)
+                result = recovery_runner.resume(current_request, resume_summary)
             result, current_request = self._resume_until_round_requirement_satisfied(
-                runner,
+                recovery_runner,
                 request,
                 current_request,
                 result,
@@ -74,6 +93,48 @@ class OptimizeSupervisor:
             result = runner.resume(current_request, summary)
         return result, current_request
 
+    def _run_round_gate_loop(
+        self,
+        runner: SupportsOptimizeRoundGate,
+        request: AgentRequest,
+    ) -> AgentResult:
+        current_request = request
+        while True:
+            worker_result = runner.run_worker(current_request)
+            if not worker_result.succeeded:
+                return worker_result
+
+            gate_result = runner.run_supervisor(current_request, worker_result)
+            if gate_result.decision == GateDecision.PASS_STOP:
+                return worker_result
+            if gate_result.decision in {GateDecision.PASS_CONTINUE, GateDecision.REVISE_METADATA}:
+                current_request = replace(
+                    current_request,
+                    prompt=self._build_continue_prompt(
+                        current_request.prompt,
+                        self._build_gate_summary(gate_result),
+                        require_analysis=current_request.require_analysis,
+                    ),
+                    optimize_role="worker",
+                )
+                continue
+            if gate_result.decision == GateDecision.REVISE_REQUIRED:
+                current_request = replace(
+                    current_request,
+                    prompt=self._build_continue_prompt(
+                        current_request.prompt,
+                        self._build_gate_summary(gate_result),
+                        require_analysis=current_request.require_analysis,
+                    ),
+                    optimize_role="worker",
+                )
+                continue
+            return AgentResult(
+                return_code=1,
+                stdout="",
+                stderr=self._build_gate_summary(gate_result),
+            )
+
     def _build_summary(self, result: AgentResult) -> str:
         output = result.stdout.strip() or result.stderr.strip() or "No progress output was captured."
         return output[-2000:]
@@ -94,6 +155,15 @@ class OptimizeSupervisor:
             f"under the workspace and at least {required_rounds} are required."
         )
 
+    def _build_gate_summary(self, gate_result: GateResult) -> str:
+        issues = "; ".join(gate_result.blocking_issues) if gate_result.blocking_issues else "none"
+        return f"Gate decision: {gate_result.decision.value}. Blocking issues: {issues}"
+
+    def _with_default_optimize_role(self, request: AgentRequest) -> AgentRequest:
+        if request.command_kind != request.command_kind.OPTIMIZE or request.optimize_role is not None:
+            return request
+        return replace(request, optimize_role="worker")
+
     def _build_continue_prompt(
         self,
         base_prompt: str,
@@ -103,3 +173,11 @@ class OptimizeSupervisor:
     ) -> str:
         del base_prompt
         return build_optimize_resume_prompt(summary, require_analysis=require_analysis)
+
+
+def _supports_round_gate_runner(runner: object) -> bool:
+    return hasattr(runner, "run_worker") and hasattr(runner, "run_supervisor")
+
+
+def _supports_recovery_runner(runner: object) -> bool:
+    return hasattr(runner, "run") and hasattr(runner, "resume")

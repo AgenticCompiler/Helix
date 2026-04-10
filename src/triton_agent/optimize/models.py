@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 
@@ -55,3 +56,50 @@ class OptimizeStatusWorkspace:
     best_round: str | None
     logged_best: str | None
     warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RoundState:
+    round_name: str
+    parent_round: str
+    hypothesis: str
+    evidence_sources: tuple[str, ...]
+    correctness_status: str
+    benchmark_status: str
+    perf_artifact: str
+    summary_path: str
+    opt_note_updated: bool
+    next_recommendation: str
+    analysis_skipped_reason: str | None = None
+    profile_dir: str | None = None
+    ir_dir: str | None = None
+    validated_candidate: bool | None = None
+
+
+@dataclass(frozen=True)
+class RoundArtifactsInspection:
+    round_dir: Path
+    operator_path: Path | None
+    attempts_path: Path | None
+    summary_path: Path | None
+    perf_path: Path | None
+    round_state_path: Path | None
+    issues: tuple[str, ...]
+
+
+class GateDecision(str, Enum):
+    PASS_CONTINUE = "pass-continue"
+    PASS_STOP = "pass-stop"
+    REVISE_METADATA = "revise-metadata"
+    REVISE_REQUIRED = "revise-required"
+    HARD_FAIL = "hard-fail"
+
+
+@dataclass(frozen=True)
+class GateResult:
+    decision: GateDecision
+    blocking_issues: tuple[str, ...]
+    auto_repairs_applied: tuple[str, ...] = ()
+    next_parent_round: str | None = None
+    next_hypothesis: str | None = None
+    required_evidence_for_next_round: tuple[str, ...] = ()

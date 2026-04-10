@@ -19,25 +19,7 @@ class AgentRunner(ABC):
         return self._OPTIMIZE_INTERRUPT_POLICY
 
     def resume(self, request: AgentRequest, summary: str) -> AgentResult:
-        resumed_request = AgentRequest(
-            command_kind=request.command_kind,
-            input_path=request.input_path,
-            operator_path=request.operator_path,
-            output_path=request.output_path,
-            test_mode=request.test_mode,
-            bench_mode=request.bench_mode,
-            interact=request.interact,
-            verbose=request.verbose,
-            show_output=request.show_output,
-            force_overwrite=request.force_overwrite,
-            agent_name=request.agent_name,
-            skill_name=request.skill_name,
-            prompt=f"{request.prompt}\n\nContinue from this progress summary:\n{summary}",
-            workdir=request.workdir,
-            min_rounds=request.min_rounds,
-            continue_optimize=request.continue_optimize,
-            require_analysis=request.require_analysis,
-            no_agent_session=request.no_agent_session,
-            staged_skill_names=request.staged_skill_names,
+        resumed_request = request.with_prompt(
+            f"{request.prompt}\n\nContinue from this progress summary:\n{summary}"
         )
         return self.run(resumed_request)

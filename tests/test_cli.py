@@ -24,7 +24,11 @@ from triton_agent.paths import (
     default_generated_output_path,
     resolve_execution_target,
 )
-from triton_agent.prompts import build_prompt
+from triton_agent.prompts import (
+    build_optimize_supervisor_prompt,
+    build_optimize_worker_prompt,
+    build_prompt,
+)
 from triton_agent.result_normalization import normalize_agent_result
 
 
@@ -1752,6 +1756,7 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             request = mocked.call_args.args[1]
             self.assertTrue(request.no_agent_session)
+            self.assertEqual(request.optimize_role, "worker")
 
     def test_main_run_bench_reports_missing_bench_file_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2227,6 +2232,28 @@ class PathResolutionTests(unittest.TestCase):
 
 
 class PromptTests(unittest.TestCase):
+    def test_build_optimize_worker_prompt_mentions_single_round_boundary(self) -> None:
+        prompt = build_optimize_worker_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+        )
+        self.assertIn("This invocation is the optimize worker role.", prompt)
+        self.assertIn("This invocation owns exactly one round.", prompt)
+        self.assertIn("Read `.triton-agent/roles/optimize-worker.md`", prompt)
+        self.assertIn("Read `.triton-agent/round-brief.md`", prompt)
+
+    def test_build_optimize_supervisor_prompt_mentions_audit_role(self) -> None:
+        prompt = build_optimize_supervisor_prompt(
+            Path("/tmp"),
+            latest_round_dir=Path("/tmp/opt-round-3"),
+        )
+        self.assertIn("This invocation is the optimize supervisor role.", prompt)
+        self.assertIn("This invocation is an audit and handoff pass", prompt)
+        self.assertIn("Read `.triton-agent/roles/optimize-supervisor.md`", prompt)
+        self.assertIn("Read `/tmp/opt-round-3`", prompt)
+
     def test_gen_eval_prompt_mentions_operator_repair_and_dual_outputs(self) -> None:
         prompt = build_prompt(
             CommandKind.GEN_EVAL,
@@ -2404,6 +2431,8 @@ class PromptTests(unittest.TestCase):
             bench_mode="standalone",
             force_overwrite=False,
         )
+        self.assertIn("This invocation is the optimize worker role.", prompt)
+        self.assertIn("This invocation owns exactly one round.", prompt)
         self.assertIn("Requested test mode: differential", prompt)
         self.assertIn("Requested bench mode: standalone", prompt)
         self.assertIn("Reuse existing correctness tests and benchmark cases when they already exist", prompt)

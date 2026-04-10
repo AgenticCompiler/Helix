@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import errno
 import os
+import signal as _signal
 import shutil
 import subprocess
 import sys
@@ -17,7 +18,9 @@ _IS_WINDOWS = sys.platform == "win32"
 if not _IS_WINDOWS:
     import pty
     import select
-    import signal as _signal
+else:
+    pty = None
+    select = None
 
 
 def _resolve_command(command: list[str]) -> list[str]:
@@ -277,6 +280,8 @@ def _run_streaming_process_pty(
     interrupt_policy: Optional[InterruptPolicy] = None,
 ) -> AgentResult:
     """Unix PTY-backed streaming so the child sees a terminal and flushes incrementally."""
+    if pty is None or select is None:
+        raise RuntimeError("PTY streaming is unavailable on this platform")
     master_fd, slave_fd = pty.openpty()
     output_chunks: list[str] = []
     process = subprocess.Popen(
@@ -366,17 +371,20 @@ def _interrupt_process(process: subprocess.Popen[Any], policy: InterruptPolicy) 
 
 
 def _interrupt_process_windows(process: subprocess.Popen[Any], policy: InterruptPolicy) -> None:
-    import signal as _signal_mod
     if process.poll() is not None:
         return
+    ctrl_c_event = getattr(_signal, "CTRL_C_EVENT", None)
+    if ctrl_c_event is None:
+        process.kill()
+        return
     try:
-        process.send_signal(_signal_mod.CTRL_C_EVENT)
+        process.send_signal(ctrl_c_event)
     except (OSError, KeyboardInterrupt):
         pass
     if _wait_for_process_exit(process, policy.first_sigint_grace_seconds):
         return
     try:
-        process.send_signal(_signal_mod.CTRL_C_EVENT)
+        process.send_signal(ctrl_c_event)
     except (OSError, KeyboardInterrupt):
         pass
     if _wait_for_process_exit(process, policy.second_sigint_grace_seconds):
