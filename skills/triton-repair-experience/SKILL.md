@@ -21,3 +21,5 @@ Patterns and code hints live in [references/repair-experience.md](references/rep
 1. Open [references/repair-experience.md](references/repair-experience.md) and match error text or symptom to a section.
 2. Apply the smallest change; re-run `run-test` / `run-bench` as appropriate.
 3. If nothing fits, do **not** force a heuristic—fall back to logs, IR skills, or deeper debugging.
+
+If you later **fix** the operator successfully with a **new** pattern not covered above, follow the **`self-repair`** skill and append a short entry to [../self-repair/output.md](../self-repair/output.md).

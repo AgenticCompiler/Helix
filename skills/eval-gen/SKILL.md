@@ -52,6 +52,8 @@ Use this skill when the user wants one code-agent task to:
 
 When steps 2, 6, or 10 require **operator-side** fixes for compile / JIT / kernel errors on Ascend, use the `triton-repair-experience` skill and read [../triton-repair-experience/references/repair-experience.md](../triton-repair-experience/references/repair-experience.md) for team-maintained heuristics. These hints do not override `test-gen`, `bench-gen`, or normative specs.
 
+If the successful fix is a new pattern not covered there, use the `self-repair` skill to append a short entry to [../self-repair/output.md](../self-repair/output.md).
+
 ## Validation Commands
 
 - Use `python3 ../operator-eval/scripts/run-command.py run-test ...` for correctness validation.
