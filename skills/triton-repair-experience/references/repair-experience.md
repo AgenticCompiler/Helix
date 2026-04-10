@@ -4,7 +4,7 @@ Heuristic fixes for **Triton Ascend** kernels. These are **not guaranteed optima
 
 ---
 
-## A. Prefer `tl.math.*` over `libdevice.*` for elementwise math
+## 1. Prefer `tl.math.*` over `libdevice.*` for elementwise math
 
 The Ascend toolchain often routes “libdevice-style” math through symbols that are **unsupported or missing** compared to CUDA-oriented references. When the error names `libdevice.<name>`, try the **`tl.math`** equivalent first.
 
@@ -18,7 +18,7 @@ Keep semantics (dtype, masking) identical aside from the call target.
 
 ---
 
-## B. `allow_tf32` deprecated
+## 2. `allow_tf32` deprecated
 
 Older flags such as **`allow_tf32`** may be rejected or deprecated on Ascend Triton.
 
@@ -27,13 +27,13 @@ Older flags such as **`allow_tf32`** may be rejected or deprecated on Ascend Tri
 
 ---
 
-## C. Infinity literals and `float32`
+## 3. Infinity literals and `float32`
 
 If lowering fails with **dtype / inference** issues around special values, ensure **infinity** is visible to the compiler as **float32** (e.g. scalars feeding `tl.full`, masks, or constants). Integer or ambiguous dtypes for `inf` can break inference.
 
 ---
 
-## D. UB overflow → reduce block size
+## 4. UB overflow → reduce block size
 
 Errors indicating **UB (unified buffer) overflow** or on-chip scratch exhaustion:
 
@@ -42,7 +42,7 @@ Errors indicating **UB (unified buffer) overflow** or on-chip scratch exhaustion
 
 ---
 
-## E. `TypeError: 0d block_type is forbidden` (Ascend)
+## 5. `TypeError: 0d block_type is forbidden` (Ascend)
 
 The Ascend Triton compiler may reject certain **zero-dimensional `block_type`** forms.
 
@@ -62,7 +62,7 @@ The Ascend Triton compiler may reject certain **zero-dimensional `block_type`** 
 
 ---
 
-## Relationship between D and E
+## Relationship between 4 and 5
 
-- **D** is **resource** pressure (overflow, “too much per block”).
-- **E** is **type/shape lowering** (`0d block_type` illegal). Do not conflate them: shrinking the block helps D, not necessarily E.
+- **4** is **resource** pressure (overflow, “too much per block”).
+- **5** is **type/shape lowering** (`0d block_type` illegal). Do not conflate them: shrinking the block helps 4, not necessarily 5.
