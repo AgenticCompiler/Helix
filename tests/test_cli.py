@@ -661,6 +661,30 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("[NO-SESSION] fresh", rendered)
             self.assertIn("Summary: 0 ok, 0 warning, 1 no-session", rendered)
 
+    def test_main_optimize_status_accepts_single_workspace_input(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_one.mkdir()
+            (round_one / "perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(["optimize-status", "-i", str(workspace)])
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertIn(f"[OK] {workspace.name}", rendered)
+            self.assertIn("Best round: round-1", rendered)
+            self.assertNotIn("[NO-SESSION] opt-round-1", rendered)
+
     def test_main_optimize_status_groups_no_session_then_warning_then_ok(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

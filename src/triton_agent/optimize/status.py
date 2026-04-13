@@ -15,12 +15,7 @@ def inspect_optimize_status_workspace(
     verbose: bool = False,
 ) -> OptimizeStatusWorkspace:
     del verbose
-    opt_note = workspace / "opt-note.md"
-    round_dirs = sorted(
-        (path for path in workspace.iterdir() if path.is_dir() and round_number(path.name) is not None),
-        key=lambda path: (round_number(path.name) or 0),
-    )
-    top_level_perf_files = sorted(workspace.glob("*_perf.txt"))
+    opt_note, round_dirs, top_level_perf_files = collect_optimize_status_artifacts(workspace)
 
     has_artifacts = bool(opt_note.exists() or round_dirs or top_level_perf_files)
     if not has_artifacts:
@@ -151,6 +146,23 @@ def scan_optimize_status_workspaces(root: Path, *, verbose: bool = False) -> lis
         inspect_optimize_status_workspace(workspace, verbose=verbose)
         for workspace in sorted(path for path in root.iterdir() if path.is_dir())
     ]
+
+
+def workspace_has_optimize_artifacts(workspace: Path) -> bool:
+    opt_note, round_dirs, top_level_perf_files = collect_optimize_status_artifacts(workspace)
+    return bool(opt_note.exists() or round_dirs or top_level_perf_files)
+
+
+def collect_optimize_status_artifacts(
+    workspace: Path,
+) -> tuple[Path, list[Path], list[Path]]:
+    opt_note = workspace / "opt-note.md"
+    round_dirs = sorted(
+        (path for path in workspace.iterdir() if path.is_dir() and round_number(path.name) is not None),
+        key=lambda path: (round_number(path.name) or 0),
+    )
+    top_level_perf_files = sorted(workspace.glob("*_perf.txt"))
+    return opt_note, round_dirs, top_level_perf_files
 
 
 def select_baseline_perf_file(paths: list[Path], warnings: list[str]) -> Path | None:

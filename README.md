@@ -241,10 +241,12 @@ Common options:
 
 ```bash
 uv run triton-agent optimize-status --input operators_root
+uv run triton-agent optimize-status --input .
 uv run triton-agent optimize-status --input operators_root --format markdown
 ```
 
 Use this command to get a read-only summary of optimization progress across workspaces.
+If `--input` already points at one operator workspace, the command summarizes that workspace directly.
 It keeps baseline perf files strict, but round `perf.txt` artifacts may include extra metrics such as
 `mean_ms` as long as the required `latency-*` entries are still present.
 

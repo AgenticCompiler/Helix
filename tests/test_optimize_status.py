@@ -5,7 +5,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.optimize.status import inspect_optimize_status_workspace, parse_logged_best_round
+from triton_agent.optimize.status import (
+    inspect_optimize_status_workspace,
+    parse_logged_best_round,
+    workspace_has_optimize_artifacts,
+)
 
 
 class OptimizeStatusTests(unittest.TestCase):
@@ -236,6 +240,14 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertEqual(status.state, "ok")
             self.assertEqual(status.best_round, "round-1")
             self.assertNotIn("found multiple baseline perf files", status.warnings)
+
+    def test_workspace_has_optimize_artifacts_detects_single_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel_perf.txt").write_text("latency-a: 10\n", encoding="utf-8")
+            (workspace / "opt-round-1").mkdir()
+
+            self.assertTrue(workspace_has_optimize_artifacts(workspace))
 
 
 if __name__ == "__main__":

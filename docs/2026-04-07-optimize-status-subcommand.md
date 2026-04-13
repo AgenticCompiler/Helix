@@ -12,6 +12,7 @@
 - Add:
   - `uv run triton-agent optimize-status --input <root-dir>`
 - The command scans immediate child directories only.
+- If `--input` already points at one optimize workspace, inspect that directory directly instead of treating it as a batch root.
 - The command does not launch a code agent, stage skills, or execute remote commands.
 - The command keeps scanning even when some workspaces have missing or malformed optimize artifacts.
 - The default output is a compact per-workspace numeric summary plus final totals.
@@ -69,7 +70,8 @@ In `markdown` mode:
 - Reuse the batch root shape from `optimize-batch`:
   - resolve `--input`
   - require it to exist and be a directory
-  - scan immediate child directories only
+  - if the input directory itself already contains optimize artifacts, inspect it directly
+  - otherwise scan immediate child directories only
 - Unlike `optimize-batch`, do not require discovery of one unambiguous operator source file.
 - Treat a child directory as an optimization workspace when any optimization artifact exists, such as:
   - `opt-note.md`

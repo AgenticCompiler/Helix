@@ -9,7 +9,7 @@ from triton_agent.optimize.batch import resolve_batch_optimize_operator_file, ru
 from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.render import render_optimize_status_results
 from triton_agent.optimize.runtime import build_optimize_request, run_optimize_request
-from triton_agent.optimize.status import scan_optimize_status_workspaces
+from triton_agent.optimize.status import inspect_optimize_status_workspace, scan_optimize_status_workspaces, workspace_has_optimize_artifacts
 from triton_agent.optimize.validation import validate_optimize_options
 from triton_agent.output import render_result
 
@@ -82,6 +82,12 @@ def handle_optimize_status(parser: argparse.ArgumentParser, args: argparse.Names
         parser.error(f"Input path does not exist: {root}")
     if not root.is_dir():
         parser.error(f"Input path is not a directory: {root}")
+    if workspace_has_optimize_artifacts(root):
+        results = [inspect_optimize_status_workspace(root, verbose=bool(getattr(args, "verbose", False)))]
+        return render_optimize_status_results(
+            results,
+            output_format=str(getattr(args, "format", "text")),
+        )
     workspace_candidates = sorted(path for path in root.iterdir() if path.is_dir())
     if not workspace_candidates:
         print(f"No operator workspaces found under {root}", file=sys.stderr)
