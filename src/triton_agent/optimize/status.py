@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from triton_agent.bench_runner import parse_perf_file, parse_required_perf_file
+from triton_agent.optimize.batch import resolve_batch_optimize_operator_file
 from triton_agent.optimize.models import OptimizeStatusRound, OptimizeStatusWorkspace
 
 
@@ -33,7 +34,7 @@ def inspect_optimize_status_workspace(
         )
 
     warnings: list[str] = []
-    baseline_path = select_baseline_perf_file(top_level_perf_files, warnings)
+    baseline_path, baseline_selection_failed = select_baseline_perf_file(workspace, top_level_perf_files, warnings)
     baseline_values: dict[str, float] | None = None
     baseline_mean: float | None = None
     if baseline_path is not None:
@@ -122,7 +123,7 @@ def inspect_optimize_status_workspace(
             warnings=tuple(dict.fromkeys(warnings)),
         )
 
-    if baseline_path is None:
+    if baseline_path is None and not baseline_selection_failed:
         warnings.append("missing baseline perf data")
     elif baseline_values is not None and round_dirs:
         warnings.append("missing comparable round perf data")
@@ -165,19 +166,41 @@ def collect_optimize_status_artifacts(
     return opt_note, round_dirs, top_level_perf_files
 
 
-def select_baseline_perf_file(paths: list[Path], warnings: list[str]) -> Path | None:
+def select_baseline_perf_file(
+    workspace: Path,
+    paths: list[Path],
+    warnings: list[str],
+) -> tuple[Path | None, bool]:
     if not paths:
-        return None
+        return None, False
+
+    operator_perf = resolve_workspace_operator_perf_file(workspace, paths)
+    if operator_perf is not None:
+        return operator_perf, False
+
+    baseline_named = next((path for path in paths if path.name == "baseline_perf.txt"), None)
+    if baseline_named is not None:
+        return baseline_named, False
+
     if len(paths) == 1:
-        return paths[0]
+        return paths[0], False
     non_opt_paths = [path for path in paths if not path.stem.startswith("opt_")]
     if len(non_opt_paths) == 1:
-        return non_opt_paths[0]
+        return non_opt_paths[0], False
     if len(non_opt_paths) > 1:
         warnings.append("found multiple baseline perf files")
-        return None
+        return None, True
     warnings.append("found multiple baseline perf files")
-    return None
+    return None, True
+
+
+def resolve_workspace_operator_perf_file(workspace: Path, paths: list[Path]) -> Path | None:
+    try:
+        operator_file = resolve_batch_optimize_operator_file(workspace)
+    except ValueError:
+        return None
+    expected_name = f"{operator_file.stem}_perf.txt"
+    return next((path for path in paths if path.name == expected_name), None)
 
 
 def find_round_perf_file(round_dir: Path) -> Path | None:

@@ -241,6 +241,70 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertEqual(status.best_round, "round-1")
             self.assertNotIn("found multiple baseline perf files", status.warnings)
 
+    def test_inspect_optimize_status_workspace_prefers_operator_named_baseline_perf_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "Gemm.py").write_text("print('x')\n", encoding="utf-8")
+            (workspace / "baseline_perf.txt").write_text(
+                "latency-a: 100\nlatency-b: 100\n",
+                encoding="utf-8",
+            )
+            (workspace / "Gemm_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_one.mkdir()
+            (round_one / "perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+
+            status = inspect_optimize_status_workspace(workspace)
+
+            self.assertEqual(status.state, "ok")
+            self.assertAlmostEqual(status.baseline_mean or 0.0, 15.0)
+            self.assertEqual(status.best_round, "round-1")
+            self.assertEqual(status.warnings, ())
+
+    def test_inspect_optimize_status_workspace_falls_back_to_baseline_perf_txt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "Gemm.py").write_text("print('x')\n", encoding="utf-8")
+            (workspace / "baseline_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            (workspace / "candidate_perf.txt").write_text(
+                "latency-a: 100\nlatency-b: 100\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_one.mkdir()
+            (round_one / "perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+
+            status = inspect_optimize_status_workspace(workspace)
+
+            self.assertEqual(status.state, "ok")
+            self.assertAlmostEqual(status.baseline_mean or 0.0, 15.0)
+            self.assertNotIn("found multiple baseline perf files", status.warnings)
+
+    def test_inspect_optimize_status_workspace_ambiguous_baseline_does_not_repeat_missing_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel_a_perf.txt").write_text("latency-a: 10\n", encoding="utf-8")
+            (workspace / "kernel_b_perf.txt").write_text("latency-a: 11\n", encoding="utf-8")
+            (workspace / "opt-round-1").mkdir()
+
+            status = inspect_optimize_status_workspace(workspace)
+
+            self.assertEqual(status.state, "warning")
+            self.assertIn("found multiple baseline perf files", status.warnings)
+            self.assertNotIn("missing baseline perf data", status.warnings)
+
     def test_workspace_has_optimize_artifacts_detects_single_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)

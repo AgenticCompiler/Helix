@@ -249,6 +249,8 @@ Use this command to get a read-only summary of optimization progress across work
 If `--input` already points at one operator workspace, the command summarizes that workspace directly.
 It keeps baseline perf files strict, but round `perf.txt` artifacts may include extra metrics such as
 `mean_ms` as long as the required `latency-*` entries are still present.
+When multiple top-level perf files exist, baseline selection prefers `<original-operator>_perf.txt`,
+then `baseline_perf.txt`, then the existing non-`opt_` fallback rule.
 
 `--format markdown` emits a compact table with:
 

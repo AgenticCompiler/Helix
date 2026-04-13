@@ -84,7 +84,11 @@ In `markdown` mode:
 ### Baseline Perf
 
 - The baseline perf source is the original operator benchmark result saved beside the original operator file using the existing `<operator-file-stem>_perf.txt` format.
-- When multiple top-level `*_perf.txt` files exist, prefer the unique file whose stem does not start with `opt_`; only warn when baseline selection is still ambiguous.
+- When multiple top-level `*_perf.txt` files exist, baseline selection prefers:
+  1. `<original-operator-file-stem>_perf.txt`
+  2. `baseline_perf.txt`
+  3. the unique non-`opt_` perf file, if one exists
+- Only warn when baseline selection is still ambiguous after applying those rules.
 - Parse perf files using the same `latency-<id>: <float>` contract already used by `compare-perf`.
 - The baseline mean shown in output is the arithmetic mean of baseline latency values.
 
