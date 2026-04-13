@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -83,7 +84,7 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, r"\[DEBUG\] cmd_list"):
             module.extract_capture_details("Dumping intermediate results to /tmp/triton-dump")
 
-    def test_rewrite_compile_command_quotes_append_bisheng_options_and_updates_ir_flags(self) -> None:
+    def test_rewrite_compile_command_updates_ir_flags(self) -> None:
         module = _load_capture_ir_module()
 
         command = [
@@ -112,6 +113,29 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
         self.assertNotIn("--bishengir-print-ir-after=hivm-inject-sync", rewritten)
         self.assertIn("--mlir-print-ir-after-all", rewritten)
         self.assertIn("--mlir-print-ir-tree-dir=/archive/bishengir_stages", rewritten)
+
+    def test_build_remote_replay_command_quotes_only_append_bisheng_options_value(self) -> None:
+        module = _load_capture_ir_module()
+
+        command = [
+            "/opt/bin/bishengir-compile",
+            "/archive/triton_dump/kernel.ttadapter.mlir",
+            "--target=Ascend910_9589",
+            "--append-bisheng-options=-cce-link-aicore-ll-module /opt/lib/libdevice.10.bc",
+            "--mlir-print-ir-after-all",
+            "--mlir-print-ir-tree-dir=/archive/bishengir_stages",
+        ]
+
+        remote_command = module._build_remote_replay_command(command, "/archive")
+
+        self.assertIn(
+            "--append-bisheng-options='-cce-link-aicore-ll-module /opt/lib/libdevice.10.bc'",
+            remote_command,
+        )
+        self.assertNotIn(
+            "'--append-bisheng-options=-cce-link-aicore-ll-module /opt/lib/libdevice.10.bc'",
+            remote_command,
+        )
 
     def test_write_manifest_records_commands_and_paths(self) -> None:
         module = _load_capture_ir_module()
@@ -226,6 +250,74 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
             remote_run.call_args_list[1].args[2],
         )
         cleanup.assert_not_called()
+
+    def test_run_local_replay_failure_includes_command_stdout_and_stderr(self) -> None:
+        module = _load_capture_ir_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            stderr_path = Path(tmp) / "all-ir.txt"
+            with patch.object(
+                module.subprocess,
+                "run",
+                return_value=SimpleNamespace(
+                    returncode=1,
+                    stdout="pipeline stdout\n",
+                    stderr="ub overflow\n",
+                ),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "ub overflow"):
+                    module._run_local_replay(["bishengir-compile", "kernel.ttadapter.mlir"], stderr_path)
+
+            self.assertEqual(stderr_path.read_text(encoding="utf-8"), "ub overflow\n")
+
+    def test_capture_remote_archive_replay_failure_includes_remote_stdout_and_stderr(self) -> None:
+        module = _load_capture_ir_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive_dir = root / "archive"
+            bench_file = root / "bench.py"
+            operator_file = root / "kernel.py"
+            bench_file.write_text("print('bench')\n", encoding="utf-8")
+            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
+
+            with patch.object(
+                module,
+                "create_remote_workspace",
+                return_value=("spec", "/tmp/remote-ir"),
+            ), patch.object(module, "copy_file_to_remote"), patch.object(
+                module,
+                "copy_directory_from_remote",
+            ), patch.object(
+                module,
+                "run_remote_command_buffered",
+                side_effect=[
+                    module.make_result(return_code=0, stdout="ok\n", stderr=""),
+                    module.make_result(
+                        return_code=0,
+                        stdout=(
+                            "Dumping intermediate results to /tmp/triton-dump\n"
+                            "[DEBUG] cmd_list: bishengir-compile /tmp/kernel.ttadapter.mlir --target=Ascend910\n"
+                        ),
+                        stderr="",
+                    ),
+                    module.make_result(return_code=0, stdout="ok\n", stderr=""),
+                    module.make_result(
+                        return_code=1,
+                        stdout="Failed to run BiShengIR HIVM pipeline\n",
+                        stderr="ub overflow, requires 3672064 bits\n",
+                    ),
+                ],
+            ), patch.object(module, "cleanup_remote_workspace"):
+                with self.assertRaisesRegex(RuntimeError, "ub overflow, requires 3672064 bits"):
+                    module.capture_remote_archive(
+                        bench_file=bench_file,
+                        operator_file=operator_file,
+                        archive_dir=archive_dir,
+                        remote="alice@example.com",
+                        remote_workdir=None,
+                        keep_remote_workdir=False,
+                    )
 
 
 if __name__ == "__main__":

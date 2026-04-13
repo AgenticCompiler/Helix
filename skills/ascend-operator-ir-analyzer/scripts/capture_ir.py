@@ -244,7 +244,12 @@ def capture_remote_archive(
         )
         if int(replay_result["return_code"]) != 0:
             raise RuntimeError(
-                str(replay_result["stderr"]) or str(replay_result["stdout"]) or "Failed to replay remote compile command."
+                _format_failed_command_message(
+                    "Failed to replay remote compile command",
+                    _build_remote_replay_command(replay_command, remote_archive_dir),
+                    stdout=str(replay_result["stdout"]),
+                    stderr=str(replay_result["stderr"]),
+                )
             )
 
         copy_directory_from_remote(
@@ -360,16 +365,23 @@ def _run_local_command(command: list[str], *, cwd: Path) -> dict[str, object]:
 
 def _run_local_replay(command: list[str], stderr_path: Path) -> None:
     stderr_path.parent.mkdir(parents=True, exist_ok=True)
-    with stderr_path.open("w", encoding="utf-8") as handle:
-        completed = subprocess.run(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=handle,
-            text=True,
-            check=False,
-        )
+    completed = subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    stderr_path.write_text(completed.stderr or "", encoding="utf-8")
     if completed.returncode != 0:
-        raise RuntimeError(f"Replay compile command failed: {shlex.join(command)}")
+        raise RuntimeError(
+            _format_failed_command_message(
+                "Replay compile command failed",
+                _shell_join_command(command),
+                stdout=completed.stdout,
+                stderr=completed.stderr,
+            )
+        )
 
 
 def _normalize_compile_command_tokens(tokens: list[str]) -> list[str]:
@@ -459,9 +471,7 @@ def _run_remote_debug_command(
     verbose: bool = False,
     stderr=None,
 ) -> dict[str, object]:
-    remote_command = (
-        "export TRITON_DEBUG=1 TRITON_ALWAYS_COMPILE=1 && " + shlex.join(command)
-    )
+    remote_command = "export TRITON_DEBUG=1 TRITON_ALWAYS_COMPILE=1 && " + _shell_join_command(command)
     return run_remote_command_buffered(
         spec,
         remote_source_dir,
@@ -475,8 +485,34 @@ def _build_remote_replay_command(command: list[str], remote_archive_dir: str) ->
     stderr_path = f"{remote_archive_dir}/all-ir.txt"
     return (
         f"mkdir -p {shlex.quote(remote_archive_dir)}/bishengir_stages && "
-        f"{shlex.join(command)} 2> {shlex.quote(stderr_path)}"
+        f"{_shell_join_command(command)} 2> {shlex.quote(stderr_path)}"
     )
+
+
+def _shell_join_command(command: list[str]) -> str:
+    rendered: list[str] = []
+    for token in command:
+        if token.startswith("--append-bisheng-options="):
+            value = token.split("=", 1)[1]
+            rendered.append(f"--append-bisheng-options={shlex.quote(value)}")
+            continue
+        rendered.append(shlex.quote(token))
+    return " ".join(rendered)
+
+
+def _format_failed_command_message(
+    title: str,
+    command: str,
+    *,
+    stdout: str,
+    stderr: str,
+) -> str:
+    parts = [f"{title}: {command}"]
+    if stdout.strip():
+        parts.append(f"stdout:\n{stdout.rstrip()}")
+    if stderr.strip():
+        parts.append(f"stderr:\n{stderr.rstrip()}")
+    return "\n".join(parts)
 
 
 def _load_runtime_helpers() -> dict[str, Any]:
