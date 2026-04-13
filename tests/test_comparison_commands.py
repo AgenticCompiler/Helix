@@ -1,16 +1,73 @@
+import io
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.cli import build_parser
+import triton_agent.comparison as comparison_module
+from triton_agent.comparison import compare_perf_files
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
 
 
 class ComparisonCommandHandlerTests(unittest.TestCase):
+    def test_compare_perf_files_runs_via_skill_wrapper(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "candidate_perf.txt"
+            baseline.write_text("latency-a: 10\n", encoding="utf-8")
+            compare.write_text("latency-a: 8\n", encoding="utf-8")
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                exit_code = compare_perf_files(baseline, compare)
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("latency-a", stdout.getvalue())
+
+    def test_compare_result_files_runs_via_skill_wrapper(self) -> None:
+        module = comparison_module._load_compare_result()
+        oracle = Path("/tmp/oracle.pt")
+        new = Path("/tmp/new.pt")
+
+        with patch.object(module, "_compare_result_files", return_value=0, create=True) as mocked:
+            exit_code = comparison_module.compare_result_files(oracle, new, "balanced")
+
+        self.assertEqual(exit_code, 0)
+        mocked.assert_called_once_with(oracle, new, "balanced")
+
+    def test_compare_remote_result_files_runs_via_skill_wrapper(self) -> None:
+        module = comparison_module._load_compare_result()
+        oracle = Path("/tmp/oracle.pt")
+        new = Path("/tmp/new.pt")
+
+        with patch.object(module, "_compare_remote_result_files", return_value=0, create=True) as mocked:
+            exit_code = comparison_module.compare_remote_result_files(
+                oracle,
+                new,
+                "balanced",
+                "alice@example.com",
+                "/tmp/remote-workdir",
+                verbose=True,
+                stderr=sys.stderr,
+            )
+
+        self.assertEqual(exit_code, 0)
+        mocked.assert_called_once_with(
+            oracle,
+            new,
+            "balanced",
+            "alice@example.com",
+            "/tmp/remote-workdir",
+            verbose=True,
+            stderr=sys.stderr,
+        )
+
     def test_handle_compare_result_dispatches_remote_comparison(self) -> None:
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
