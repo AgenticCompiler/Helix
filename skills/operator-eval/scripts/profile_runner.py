@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 from bench_runner import parse_bench_metadata
@@ -108,7 +109,7 @@ def _run_local_profile_standalone(
 ) -> dict[str, object]:
     operator_arg = os.path.relpath(operator_file, bench_file.parent)
     return run_streaming_process(
-        ["msprof", "python3", bench_file.name, "--operator-file", operator_arg],
+        ["msprof", sys.executable, bench_file.name, "--operator-file", operator_arg],
         str(bench_file.parent),
         stall_timeout_seconds=900,
     )
@@ -127,7 +128,7 @@ def _run_local_profile_msprof(
             "msprof",
             "op",
             f"--kernel-name={kernel_name}",
-            "python3",
+            sys.executable,
             bench_file.name,
             "--operator-file",
             operator_arg,
@@ -203,7 +204,7 @@ def _resolve_kernel_name(bench_file: Path) -> str:
 
 def _resolve_bench_case_local(bench_file: Path, bench_case: int | None) -> int:
     count_result = run_buffered_process(
-        ["python3", bench_file.name, "--num-bench"],
+        [sys.executable, bench_file.name, "--num-bench"],
         str(bench_file.parent),
         stall_timeout_seconds=900,
     )

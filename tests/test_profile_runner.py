@@ -1,3 +1,4 @@
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -35,7 +36,7 @@ class ProfileRunnerTests(unittest.TestCase):
         self.assertEqual(resolved_profile_dir, profile_dir)
         self.assertEqual(
             mocked.call_args.args[0],
-            ["msprof", "python3", "bench_kernel.py", "--operator-file", "kernel.py"],
+            ["msprof", sys.executable, "bench_kernel.py", "--operator-file", "kernel.py"],
         )
 
     def test_run_local_profile_bench_msprof_requires_kernel_metadata_and_selected_case(self) -> None:
@@ -53,7 +54,7 @@ class ProfileRunnerTests(unittest.TestCase):
 
             count_result = make_skill_result(0, "3\n", "")
             profile_result = make_skill_result(0, "profile stdout\n", "")
-            with patch.object(module, "run_buffered_process", return_value=count_result), patch.object(
+            with patch.object(module, "run_buffered_process", return_value=count_result) as buffered, patch.object(
                 module,
                 "run_streaming_process",
                 return_value=profile_result,
@@ -68,12 +69,16 @@ class ProfileRunnerTests(unittest.TestCase):
         self.assertEqual(result["return_code"], 0)
         self.assertEqual(resolved_profile_dir, profile_dir)
         self.assertEqual(
+            buffered.call_args.args[0],
+            [sys.executable, "bench_kernel.py", "--num-bench"],
+        )
+        self.assertEqual(
             mocked.call_args.args[0],
             [
                 "msprof",
                 "op",
                 "--kernel-name=kernel_name",
-                "python3",
+                sys.executable,
                 "bench_kernel.py",
                 "--operator-file",
                 "kernel.py",

@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -47,7 +48,7 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
 
         self.assertEqual(
             command,
-            ["python3", "bench_matmul.py", "--operator-file", "matmul.py"],
+            [sys.executable, "bench_matmul.py", "--operator-file", "matmul.py"],
         )
 
     def test_extract_capture_details_reads_dump_path_and_compile_command(self) -> None:

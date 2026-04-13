@@ -182,6 +182,7 @@ def capture_remote_archive(
     command = build_execution_command(
         bench_file=remote_bench_file,
         operator_file=remote_operator_file,
+        python_executable="python3",
     )
     try:
         run_remote_command_buffered(
@@ -398,12 +399,14 @@ def build_execution_command(
     *,
     bench_file: Path,
     operator_file: Path,
+    python_executable: str | None = None,
 ) -> list[str]:
     operator_arg = operator_file.name
     if bench_file.parent != operator_file.parent:
         operator_arg = os.path.relpath(operator_file, bench_file.parent)
+    interpreter = sys.executable if python_executable is None else python_executable
     return [
-        "python3",
+        interpreter,
         bench_file.name,
         "--operator-file",
         operator_arg,
