@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
-from typing import Optional, TextIO
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Optional
 
-from triton_agent.backends import AgentRunner
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
 from triton_agent.commands.execution import handle_run_bench, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
@@ -15,110 +15,138 @@ from triton_agent.commands.optimize import (
     handle_optimize_batch,
     handle_optimize_status,
 )
-from triton_agent.comparison import (
-    compare_perf_files as _compare_perf_files,
-    compare_remote_result_files as _compare_remote_result_files,
-    compare_result_files as _compare_result_files,
-)
-from triton_agent.execution import run_local_bench as _run_local_bench
-from triton_agent.execution import run_local_test as _run_local_test
-from triton_agent.execution import run_remote_bench as _run_remote_bench
-from triton_agent.execution import run_remote_test as _run_remote_test
-from triton_agent.generation import prepare_generation_target as _prepare_generation_target
-from triton_agent.models import AgentResult, CommandKind
-from triton_agent.output import render_result as _render_result
-from triton_agent.backends.factory import create_runner as _create_runner
+from triton_agent.models import CommandKind
 
 
-def run_local_test(test_file: Path, operator_file: Path, test_mode: str) -> tuple[AgentResult, Path | None]:
-    return _run_local_test(test_file, operator_file, test_mode)
+_Handler = Callable[[argparse.ArgumentParser, argparse.Namespace], int]
+_AGENT_CHOICES = ("codex", "opencode", "pi", "claude")
+_COMPARE_LEVEL_CHOICES = ("strict", "balanced", "relaxed")
+_FORMAT_CHOICES = ("text", "markdown")
+_TEST_MODE_CHOICES = ("standalone", "differential")
+_BENCH_MODE_CHOICES = ("standalone", "msprof")
+_RESUME_CHOICES = ("auto", "continue", "fresh")
+_SUPERVISE_CHOICES = ("on", "off")
 
 
-def run_remote_test(
-    test_file: Path,
-    operator_file: Path,
-    test_mode: str,
-    remote: str,
-    remote_workdir: str | None,
-    *,
-    keep_remote_workdir: bool = False,
-    verbose: bool = False,
-    stderr: TextIO | None = None,
-) -> tuple[AgentResult, Path | None, str]:
-    return _run_remote_test(
-        test_file,
-        operator_file,
-        test_mode,
-        remote,
-        remote_workdir,
-        keep_remote_workdir=keep_remote_workdir,
-        verbose=verbose,
-        stderr=stderr,
-    )
+@dataclass(frozen=True)
+class _CommandSpec:
+    handler: _Handler
+    input_mode: str = "input"
+    has_output: bool = True
+    has_verbose: bool = True
+    has_remote: bool = False
+    keep_remote_workdir: bool = False
+    has_agent: bool = False
+    has_interact: bool = False
+    has_show_output: bool = False
+    has_test_mode: bool = False
+    test_mode_default: str | None = None
+    has_bench_mode: bool = False
+    bench_mode_default: str | None = None
+    has_optimize_options: bool = False
+    max_concurrency_default: int | None = None
+    has_force_overwrite: bool = False
+    has_format: bool = False
 
 
-def compare_result_files(oracle_result: Path, new_result: Path, compare_level: str) -> int:
-    return _compare_result_files(oracle_result, new_result, compare_level)
-
-
-def compare_remote_result_files(
-    oracle_result: Path,
-    new_result: Path,
-    compare_level: str,
-    remote: str,
-    remote_workdir: str | None,
-    *,
-    verbose: bool = False,
-    stderr: TextIO | None = None,
-) -> int:
-    return _compare_remote_result_files(
-        oracle_result,
-        new_result,
-        compare_level,
-        remote,
-        remote_workdir,
-        verbose=verbose,
-        stderr=stderr,
-    )
-
-
-def run_local_bench(
-    bench_file: Path, operator_file: Path, bench_mode: str
-) -> tuple[AgentResult, Path | None]:
-    return _run_local_bench(bench_file, operator_file, bench_mode)
-
-
-def run_remote_bench(
-    bench_file: Path,
-    operator_file: Path,
-    bench_mode: str,
-    remote: str,
-    remote_workdir: str | None,
-    *,
-    keep_remote_workdir: bool = False,
-    verbose: bool = False,
-    stderr: TextIO | None = None,
-) -> tuple[AgentResult, Path | None, str]:
-    return _run_remote_bench(
-        bench_file,
-        operator_file,
-        bench_mode,
-        remote,
-        remote_workdir,
-        keep_remote_workdir=keep_remote_workdir,
-        verbose=verbose,
-        stderr=stderr,
-    )
-
-
-def parse_perf_file(path: Path) -> dict[str, float]:
-    from triton_agent.bench_runner import parse_perf_file as _parse_perf_file
-
-    return _parse_perf_file(path)
-
-
-def compare_perf_files(baseline_perf: Path, compare_perf: Path) -> int:
-    return _compare_perf_files(baseline_perf, compare_perf)
+_COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
+    CommandKind.GEN_EVAL: _CommandSpec(
+        handler=handle_gen_eval,
+        has_remote=True,
+        has_agent=True,
+        has_interact=True,
+        has_show_output=True,
+        has_test_mode=True,
+        test_mode_default="differential",
+        has_bench_mode=True,
+        bench_mode_default="standalone",
+        has_force_overwrite=True,
+    ),
+    CommandKind.GEN_EVAL_BATCH: _CommandSpec(
+        handler=handle_gen_eval_batch,
+        has_output=False,
+        has_remote=True,
+        has_agent=True,
+        has_show_output=True,
+        has_test_mode=True,
+        test_mode_default="differential",
+        has_bench_mode=True,
+        bench_mode_default="standalone",
+        max_concurrency_default=2,
+    ),
+    CommandKind.GEN_TEST: _CommandSpec(
+        handler=handle_gen_test,
+        has_remote=True,
+        has_agent=True,
+        has_interact=True,
+        has_show_output=True,
+        has_test_mode=True,
+        test_mode_default="standalone",
+        has_force_overwrite=True,
+    ),
+    CommandKind.RUN_TEST: _CommandSpec(
+        handler=handle_run_test,
+        input_mode="run-test",
+        has_remote=True,
+        keep_remote_workdir=True,
+        has_test_mode=True,
+    ),
+    CommandKind.GEN_BENCH: _CommandSpec(
+        handler=handle_gen_bench,
+        has_remote=True,
+        has_agent=True,
+        has_interact=True,
+        has_show_output=True,
+        has_bench_mode=True,
+        bench_mode_default="standalone",
+        has_force_overwrite=True,
+    ),
+    CommandKind.RUN_BENCH: _CommandSpec(
+        handler=handle_run_bench,
+        input_mode="run-bench",
+        has_remote=True,
+        keep_remote_workdir=True,
+        has_bench_mode=True,
+    ),
+    CommandKind.COMPARE_RESULT: _CommandSpec(
+        handler=handle_compare_result,
+        input_mode="compare-result",
+        has_output=False,
+        has_remote=True,
+    ),
+    CommandKind.COMPARE_PERF: _CommandSpec(
+        handler=handle_compare_perf,
+        input_mode="compare-perf",
+        has_output=False,
+        has_verbose=False,
+    ),
+    CommandKind.OPTIMIZE_STATUS: _CommandSpec(
+        handler=handle_optimize_status,
+        has_output=False,
+        has_format=True,
+    ),
+    CommandKind.OPTIMIZE: _CommandSpec(
+        handler=handle_optimize,
+        has_remote=True,
+        has_agent=True,
+        has_interact=True,
+        has_show_output=True,
+        has_test_mode=True,
+        has_bench_mode=True,
+        has_optimize_options=True,
+    ),
+    CommandKind.OPTIMIZE_BATCH: _CommandSpec(
+        handler=handle_optimize_batch,
+        has_output=False,
+        has_remote=True,
+        has_agent=True,
+        has_show_output=True,
+        has_test_mode=True,
+        has_bench_mode=True,
+        has_optimize_options=True,
+        max_concurrency_default=2,
+    ),
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -126,131 +154,48 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     for command_kind in CommandKind:
+        spec = _COMMAND_SPECS[command_kind]
         subparser = subparsers.add_parser(command_kind.value)
         subparser.set_defaults(command_kind=command_kind)
-        if command_kind == CommandKind.RUN_TEST:
-            subparser.add_argument("--test-file", required=True)
-            subparser.add_argument("--operator-file", required=True)
-        elif command_kind == CommandKind.RUN_BENCH:
-            subparser.add_argument("--bench-file", required=True)
-            subparser.add_argument("--operator-file", required=True)
-        elif command_kind == CommandKind.COMPARE_RESULT:
-            subparser.add_argument("--oracle-result", required=True)
-            subparser.add_argument("--new-result", required=True)
-            subparser.add_argument(
-                "--compare-level",
-                default="balanced",
-                choices=["strict", "balanced", "relaxed"],
-            )
-        elif command_kind == CommandKind.COMPARE_PERF:
-            subparser.add_argument("--baseline", required=True)
-            subparser.add_argument("--compare", required=True)
-        else:
-            subparser.add_argument("-i", "--input", required=True)
-        if command_kind == CommandKind.OPTIMIZE_STATUS:
-            subparser.add_argument(
-                "--format",
-                default="text",
-                choices=["text", "markdown"],
-            )
-        if command_kind in {
-            CommandKind.GEN_EVAL,
-            CommandKind.GEN_EVAL_BATCH,
-            CommandKind.GEN_TEST,
-            CommandKind.GEN_BENCH,
-            CommandKind.OPTIMIZE,
-            CommandKind.OPTIMIZE_BATCH,
-            CommandKind.RUN_TEST,
-            CommandKind.RUN_BENCH,
-            CommandKind.COMPARE_RESULT,
-        }:
+        _add_primary_arguments(subparser, spec)
+        if spec.has_format:
+            subparser.add_argument("--format", default="text", choices=_FORMAT_CHOICES)
+        if spec.has_remote:
             subparser.add_argument("--remote")
             subparser.add_argument("--remote-workdir")
-            if command_kind in {CommandKind.RUN_TEST, CommandKind.RUN_BENCH}:
+            if spec.keep_remote_workdir:
                 subparser.add_argument("--keep-remote-workdir", action="store_true")
-        if command_kind not in {
-            CommandKind.COMPARE_RESULT,
-            CommandKind.COMPARE_PERF,
-            CommandKind.OPTIMIZE_STATUS,
-            CommandKind.OPTIMIZE_BATCH,
-            CommandKind.GEN_EVAL_BATCH,
-        }:
+        if spec.has_output:
             subparser.add_argument("-o", "--output")
-        if command_kind != CommandKind.COMPARE_PERF:
+        if spec.has_verbose:
             subparser.add_argument("--verbose", action="store_true")
-        if command_kind not in {
-            CommandKind.COMPARE_RESULT,
-            CommandKind.COMPARE_PERF,
-            CommandKind.OPTIMIZE_STATUS,
-        }:
-            if command_kind not in {
-                CommandKind.RUN_TEST,
-                CommandKind.RUN_BENCH,
-            }:
-                if command_kind != CommandKind.OPTIMIZE_BATCH:
-                    if command_kind != CommandKind.GEN_EVAL_BATCH:
-                        subparser.add_argument("--interact", action="store_true")
-                subparser.add_argument("--show-output", action="store_true")
-            if command_kind not in {CommandKind.RUN_TEST, CommandKind.RUN_BENCH}:
-                subparser.add_argument(
-                    "--agent", default="codex", choices=["codex", "opencode", "pi", "claude"]
-                )
-        if command_kind in {
-            CommandKind.GEN_EVAL,
-            CommandKind.GEN_EVAL_BATCH,
-            CommandKind.GEN_TEST,
-            CommandKind.RUN_TEST,
-            CommandKind.OPTIMIZE,
-            CommandKind.OPTIMIZE_BATCH,
-        }:
+        if spec.has_interact:
+            subparser.add_argument("--interact", action="store_true")
+        if spec.has_show_output:
+            subparser.add_argument("--show-output", action="store_true")
+        if spec.has_agent:
+            subparser.add_argument("--agent", default="codex", choices=_AGENT_CHOICES)
+        if spec.has_test_mode:
             subparser.add_argument(
                 "--test-mode",
-                default=(
-                    "differential"
-                    if command_kind in {CommandKind.GEN_EVAL, CommandKind.GEN_EVAL_BATCH}
-                    else "standalone"
-                    if command_kind == CommandKind.GEN_TEST
-                    else None
-                ),
-                choices=["standalone", "differential"],
+                default=spec.test_mode_default,
+                choices=_TEST_MODE_CHOICES,
             )
-        if command_kind in {
-            CommandKind.GEN_EVAL,
-            CommandKind.GEN_EVAL_BATCH,
-            CommandKind.GEN_BENCH,
-            CommandKind.RUN_BENCH,
-            CommandKind.OPTIMIZE,
-            CommandKind.OPTIMIZE_BATCH,
-        }:
+        if spec.has_bench_mode:
             subparser.add_argument(
                 "--bench-mode",
-                default=(
-                    "standalone"
-                    if command_kind
-                    in {CommandKind.GEN_EVAL, CommandKind.GEN_EVAL_BATCH, CommandKind.GEN_BENCH}
-                    else None
-                ),
-                choices=["standalone", "msprof"],
+                default=spec.bench_mode_default,
+                choices=_BENCH_MODE_CHOICES,
             )
-        if command_kind in {CommandKind.OPTIMIZE, CommandKind.OPTIMIZE_BATCH}:
+        if spec.has_optimize_options:
             subparser.add_argument("--min-rounds", type=int)
-            subparser.add_argument(
-                "--resume",
-                default="auto",
-                choices=["auto", "continue", "fresh"],
-            )
+            subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES)
             subparser.add_argument("--require-analysis", action="store_true")
             subparser.add_argument("--no-agent-session", action="store_true")
-            subparser.add_argument(
-                "--supervise",
-                default="off",
-                choices=["on", "off"],
-            )
-        if command_kind == CommandKind.GEN_EVAL_BATCH:
-            subparser.add_argument("--max-concurrency", type=int, default=2)
-        if command_kind == CommandKind.OPTIMIZE_BATCH:
-            subparser.add_argument("--max-concurrency", type=int, default=2)
-        if command_kind in {CommandKind.GEN_EVAL, CommandKind.GEN_TEST, CommandKind.GEN_BENCH}:
+            subparser.add_argument("--supervise", default="off", choices=_SUPERVISE_CHOICES)
+        if spec.max_concurrency_default is not None:
+            subparser.add_argument("--max-concurrency", type=int, default=spec.max_concurrency_default)
+        if spec.has_force_overwrite:
             subparser.add_argument("--force-overwrite", action="store_true")
 
     return parser
@@ -259,31 +204,29 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(_normalize_command_aliases(argv))
+    command_kind = args.command_kind
+    return _COMMAND_SPECS[command_kind].handler(parser, args)
 
-    command_kind: CommandKind = args.command_kind
-    if command_kind == CommandKind.GEN_TEST:
-        return handle_gen_test(parser, args)
-    if command_kind == CommandKind.GEN_EVAL:
-        return handle_gen_eval(parser, args)
-    if command_kind == CommandKind.GEN_EVAL_BATCH:
-        return handle_gen_eval_batch(parser, args)
-    if command_kind == CommandKind.GEN_BENCH:
-        return handle_gen_bench(parser, args)
-    if command_kind == CommandKind.RUN_TEST:
-        return handle_run_test(parser, args)
-    if command_kind == CommandKind.RUN_BENCH:
-        return handle_run_bench(parser, args)
-    if command_kind == CommandKind.COMPARE_RESULT:
-        return handle_compare_result(parser, args)
-    if command_kind == CommandKind.COMPARE_PERF:
-        return handle_compare_perf(parser, args)
-    if command_kind == CommandKind.OPTIMIZE:
-        return handle_optimize(parser, args)
-    if command_kind == CommandKind.OPTIMIZE_BATCH:
-        return handle_optimize_batch(parser, args)
-    if command_kind == CommandKind.OPTIMIZE_STATUS:
-        return handle_optimize_status(parser, args)
-    raise AssertionError(f"Unhandled command kind: {command_kind}")
+
+def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpec) -> None:
+    if spec.input_mode == "run-test":
+        subparser.add_argument("--test-file", required=True)
+        subparser.add_argument("--operator-file", required=True)
+        return
+    if spec.input_mode == "run-bench":
+        subparser.add_argument("--bench-file", required=True)
+        subparser.add_argument("--operator-file", required=True)
+        return
+    if spec.input_mode == "compare-result":
+        subparser.add_argument("--oracle-result", required=True)
+        subparser.add_argument("--new-result", required=True)
+        subparser.add_argument("--compare-level", default="balanced", choices=_COMPARE_LEVEL_CHOICES)
+        return
+    if spec.input_mode == "compare-perf":
+        subparser.add_argument("--baseline", required=True)
+        subparser.add_argument("--compare", required=True)
+        return
+    subparser.add_argument("-i", "--input", required=True)
 
 
 def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]:
@@ -304,25 +247,6 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
     normalized = list(argv)
     normalized[0] = aliases.get(normalized[0], normalized[0])
     return normalized
-
-
-def prepare_generation_target(
-    command_kind: CommandKind, output_path: Path | None, force_overwrite: bool
-) -> list[str]:
-    return _prepare_generation_target(command_kind, output_path, force_overwrite)
-
-
-def render_result(
-    result: AgentResult,
-    show_output: bool,
-    stdout: Optional[TextIO] = None,
-    stderr: Optional[TextIO] = None,
-) -> None:
-    _render_result(result, show_output=show_output, stdout=stdout, stderr=stderr)
-
-
-def create_runner(agent_name: str) -> AgentRunner:
-    return _create_runner(agent_name)
 
 
 if __name__ == "__main__":

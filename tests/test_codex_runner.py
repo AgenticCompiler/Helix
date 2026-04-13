@@ -190,7 +190,7 @@ class CodexRunnerTests(unittest.TestCase):
                 prompt="Continue work",
                 workdir=workspace,
             )
-            with patch("triton_agent.backends.codex.run_process", return_value=_ok_result()) as mocked:
+            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.run(request)
 
             self.assertIsNotNone(mocked.call_args.kwargs["interrupt_policy"])
@@ -215,7 +215,7 @@ class CodexRunnerTests(unittest.TestCase):
                 prompt="Continue work",
                 workdir=workspace,
             )
-            with patch("triton_agent.backends.codex.run_process", return_value=_ok_result()) as mocked:
+            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.run(request)
             mocked.assert_called_once()
 
@@ -240,7 +240,7 @@ class CodexRunnerTests(unittest.TestCase):
                 workdir=workspace,
             )
             stderr = StringIO()
-            with patch("triton_agent.backends.codex.run_process", return_value=_ok_result()):
+            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()):
                 result = runner.run(request, stderr=stderr)
             self.assertEqual(result.return_code, 0)
             self.assertIn("[agent]", stderr.getvalue())
@@ -269,7 +269,7 @@ class CodexRunnerTests(unittest.TestCase):
                 prompt="Prompt body",
                 workdir=workspace,
             )
-            with patch("triton_agent.backends.codex.run_process", return_value=_ok_result()) as mocked:
+            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
                 result = runner.run(request)
             self.assertEqual(result.return_code, 0)
             mocked.assert_called_once()
@@ -294,7 +294,7 @@ class CodexRunnerTests(unittest.TestCase):
                 prompt="Prompt body",
                 workdir=workspace,
             )
-            with patch("triton_agent.backends.codex.run_process", return_value=_ok_result()) as mocked:
+            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.run(request)
             mocked.assert_called_once()
 
@@ -318,7 +318,7 @@ class CodexRunnerTests(unittest.TestCase):
                 prompt="Prompt body",
                 workdir=workspace,
             )
-            with patch("triton_agent.backends.codex.run_process", return_value=_ok_result()) as mocked:
+            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.run(request)
             mocked.assert_called_once()
 
@@ -356,7 +356,7 @@ class CodexRunnerTests(unittest.TestCase):
                 require_analysis=True,
                 supervise="on",
             )
-            with patch("triton_agent.backends.codex.run_process", return_value=_ok_result()) as mocked:
+            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.resume(request, "one round done")
 
             resumed_request = mocked.call_args.args[0][-1]

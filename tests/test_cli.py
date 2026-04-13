@@ -13,16 +13,17 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+import triton_agent.cli as cli_module
 from triton_agent.cli import (
     _normalize_command_aliases,
     build_parser,
     main,
-    prepare_generation_target,
-    render_result,
 )
 from triton_agent.commands.optimize import optimize_run_options_from_args
+from triton_agent.generation.outputs import prepare_generation_target
 from triton_agent.models import AgentResult
 from triton_agent.models import CommandKind
+from triton_agent.output import render_result
 from triton_agent.paths import (
     default_generated_output_path,
     resolve_execution_target,
@@ -36,6 +37,22 @@ from triton_agent.result_normalization import normalize_agent_result
 
 
 class CliParserTests(unittest.TestCase):
+    def test_cli_module_keeps_only_entrypoint_helpers(self) -> None:
+        self.assertFalse(hasattr(cli_module, "prepare_generation_target"))
+        self.assertFalse(hasattr(cli_module, "render_result"))
+        self.assertFalse(hasattr(cli_module, "create_runner"))
+        self.assertFalse(hasattr(cli_module, "run_local_test"))
+        self.assertFalse(hasattr(cli_module, "run_remote_test"))
+        self.assertFalse(hasattr(cli_module, "run_local_bench"))
+        self.assertFalse(hasattr(cli_module, "run_remote_bench"))
+        self.assertFalse(hasattr(cli_module, "compare_result_files"))
+        self.assertFalse(hasattr(cli_module, "compare_remote_result_files"))
+        self.assertFalse(hasattr(cli_module, "compare_perf_files"))
+        self.assertFalse(hasattr(cli_module, "parse_perf_file"))
+
+    def test_command_definitions_cover_every_command_kind(self) -> None:
+        self.assertEqual(set(cli_module._COMMAND_SPECS), set(CommandKind))
+
     def test_gen_eval_batch_maps_to_command_kind(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["gen-eval-batch", "-i", "kernels"])
