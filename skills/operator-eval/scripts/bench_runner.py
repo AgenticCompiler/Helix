@@ -39,12 +39,18 @@ def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
 
 def compare_perf_files(baseline_perf: Path, compare_perf: Path) -> int:
     try:
-        baseline = _parse_perf_file(baseline_perf)
-        compare = _parse_required_perf_file(compare_perf, baseline.keys())
+        baseline_entries = _parse_perf_entries(baseline_perf)
+        compare_entries = _parse_required_perf_entries(compare_perf, baseline_entries.keys())
     except ValueError as exc:
         print(f"FAIL: {exc}")
         return 1
 
+    baseline = {
+        latency_id: value for latency_id, (_display_value, value) in baseline_entries.items()
+    }
+    compare = {
+        latency_id: value for latency_id, (_display_value, value) in compare_entries.items()
+    }
     baseline_ids = set(baseline)
     compare_ids = set(compare)
     if baseline_ids != compare_ids:
@@ -62,9 +68,11 @@ def compare_perf_files(baseline_perf: Path, compare_perf: Path) -> int:
     for latency_id in sorted(baseline):
         baseline_value = baseline[latency_id]
         compare_value = compare[latency_id]
+        baseline_display = baseline_entries[latency_id][0]
+        compare_display = compare_entries[latency_id][0]
         print(
-            f"{latency_id}: baseline={baseline_value:.1f}, "
-            f"compare={compare_value:.1f}, "
+            f"{latency_id}: baseline={baseline_display}, "
+            f"compare={compare_display}, "
             f"delta={_format_delta_percent(baseline_value, compare_value)}"
         )
     avg_improvement, geomean_speedup, total_speedup = _summarize_perf_metrics(baseline, compare)
@@ -339,7 +347,12 @@ def _extract_msprof_duration(output: str) -> str:
 
 
 def _parse_perf_file(path: Path) -> dict[str, float]:
+    return {latency_id: value for latency_id, (_display_value, value) in _parse_perf_entries(path).items()}
+
+
+def _parse_perf_entries(path: Path) -> dict[str, tuple[str, float]]:
     values: dict[str, float] = {}
+    display_values: dict[str, str] = {}
     for line_no, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         line = raw_line.strip()
         if not line:
@@ -358,17 +371,32 @@ def _parse_perf_file(path: Path) -> dict[str, float]:
         if latency_id in values:
             raise ValueError(f"{path}:{line_no} duplicates latency id '{latency_id}'")
         values[latency_id] = parsed_value
+        display_values[latency_id] = value_text
     if not values:
         raise ValueError(f"{path} did not contain any latency-<id>: <value> entries")
-    return values
+    return {
+        latency_id: (display_values[latency_id], values[latency_id]) for latency_id in values
+    }
 
 
 def _parse_required_perf_file(path: Path, required_latency_ids) -> dict[str, float]:
+    return {
+        latency_id: value
+        for latency_id, (_display_value, value) in _parse_required_perf_entries(
+            path, required_latency_ids
+        ).items()
+    }
+
+
+def _parse_required_perf_entries(
+    path: Path, required_latency_ids
+) -> dict[str, tuple[str, float]]:
     required_ids = set(required_latency_ids)
     if not required_ids:
         return {}
 
     values: dict[str, float] = {}
+    display_values: dict[str, str] = {}
     for line_no, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         line = raw_line.strip()
         if not line or ":" not in line:
@@ -385,11 +413,14 @@ def _parse_required_perf_file(path: Path, required_latency_ids) -> dict[str, flo
         if latency_id in values:
             raise ValueError(f"{path}:{line_no} duplicates latency id '{latency_id}'")
         values[latency_id] = parsed_value
+        display_values[latency_id] = value_text
 
     missing_ids = sorted(required_ids - set(values))
     if missing_ids:
         raise ValueError(f"{path} is missing required latency ids: {missing_ids}")
-    return values
+    return {
+        latency_id: (display_values[latency_id], values[latency_id]) for latency_id in values
+    }
 
 
 def _format_delta_percent(baseline: float, compare: float) -> str:

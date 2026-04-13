@@ -178,8 +178,8 @@ class LocalBenchRunnerTests(unittest.TestCase):
             output = stdout_path.read_text(encoding="utf-8")
             self.assertEqual(return_code, 0)
             self.assertIn("latency-a", output)
-            self.assertIn("baseline=10.0", output)
-            self.assertIn("compare=8.0", output)
+            self.assertIn("baseline=10", output)
+            self.assertIn("compare=8", output)
             self.assertIn("delta=-20.00%", output)
             self.assertIn("Avg improvement: +35.0%", output)
             self.assertIn("Geomean speedup: 1.58x", output)
@@ -235,6 +235,29 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertIn("PASS: compared 2 latency entries", output)
             self.assertIn("latency-a", output)
             self.assertIn("latency-b", output)
+
+    def test_compare_perf_files_preserves_original_display_precision(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "compare_perf.txt"
+            baseline.write_text("latency-case-1: 0.0038\n", encoding="utf-8")
+            compare.write_text("latency-case-1: 0.0254\n", encoding="utf-8")
+
+            stdout_path = Path(tmp) / "stdout.txt"
+            original_stdout = sys.stdout
+            try:
+                with stdout_path.open("w", encoding="utf-8") as handle:
+                    sys.stdout = handle
+                    return_code = module.compare_perf_files(baseline, compare)
+            finally:
+                sys.stdout = original_stdout
+
+            output = stdout_path.read_text(encoding="utf-8")
+            self.assertEqual(return_code, 0)
+            self.assertIn("baseline=0.0038", output)
+            self.assertIn("compare=0.0254", output)
 
 
 if __name__ == "__main__":
