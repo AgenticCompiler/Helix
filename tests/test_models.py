@@ -8,6 +8,26 @@ from triton_agent.models import AgentRequest, CommandKind
 
 
 class AgentRequestTests(unittest.TestCase):
+    def test_supervise_defaults_to_off(self) -> None:
+        request = AgentRequest(
+            command_kind=CommandKind.OPTIMIZE,
+            input_path=Path("/tmp/op.py"),
+            operator_path=Path("/tmp/op.py"),
+            output_path=Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            interact=False,
+            verbose=False,
+            show_output=False,
+            force_overwrite=False,
+            agent_name="codex",
+            skill_name="optimize",
+            prompt="original",
+            workdir=Path("/tmp"),
+        )
+
+        self.assertEqual(request.supervise, "off")
+
     def test_with_prompt_preserves_all_other_fields(self) -> None:
         request = AgentRequest(
             command_kind=CommandKind.OPTIMIZE,
@@ -28,6 +48,7 @@ class AgentRequestTests(unittest.TestCase):
             continue_optimize=True,
             require_analysis=True,
             no_agent_session=True,
+            supervise="on",
             staged_skill_names=("optimize", "optimize-supervisor"),
             optimize_role="worker",
             round_brief_path=Path("/tmp/.triton-agent/round-brief.md"),
@@ -49,6 +70,7 @@ class AgentRequestTests(unittest.TestCase):
         self.assertEqual(updated.continue_optimize, request.continue_optimize)
         self.assertEqual(updated.require_analysis, request.require_analysis)
         self.assertEqual(updated.no_agent_session, request.no_agent_session)
+        self.assertEqual(updated.supervise, request.supervise)
         self.assertEqual(updated.staged_skill_names, request.staged_skill_names)
         self.assertEqual(updated.optimize_role, request.optimize_role)
         self.assertEqual(updated.round_brief_path, request.round_brief_path)

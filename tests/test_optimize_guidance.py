@@ -52,12 +52,15 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             self.assertIn("Update `attempts.md` throughout each round", worker_content)
             self.assertIn("Write a short diagnosis summary before the first code-changing round.", worker_content)
             self.assertIn("Start by consulting the staged `optimize` skill", worker_content)
+            self.assertIn("Use `compare-perf` output as the only source", worker_content)
+            self.assertIn("Do not hand-calculate speedups or percentage improvements", worker_content)
 
             self.assertIn("## Supervisor Mission", supervisor_content)
             self.assertIn("This invocation is an audit and handoff pass", supervisor_content)
             self.assertIn("Do not perform open-ended optimization work.", supervisor_content)
             self.assertIn("Repair metadata only when the underlying evidence already exists.", supervisor_content)
             self.assertIn("Emit a gate result for the completed round.", supervisor_content)
+            self.assertIn("Use only existing `compare-perf` results", supervisor_content)
 
             warnings = manager.cleanup(state)
             self.assertEqual(warnings, [])
@@ -66,6 +69,122 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             self.assertFalse(state.supervisor_brief_path.exists())
             self.assertFalse(state.round_brief_path.exists())
             self.assertFalse(state.supervisor_report_path.exists())
+
+    def test_prepare_exposes_history_and_archive_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            manager = OptimizeGuidanceManager()
+            state = manager.prepare(
+                workdir,
+                operator,
+                test_mode="differential",
+                bench_mode="standalone",
+                agent_name="codex",
+            )
+
+            history_dir = workdir / ".triton-agent" / "history"
+            archive_root = workdir / "optimize-logs" / "triton-agent"
+
+            self.assertEqual(state.history_dir, history_dir)
+            self.assertTrue(history_dir.exists())
+            self.assertEqual(state.archive_root, archive_root)
+            self.assertEqual(state.run_archive_dir.parent, archive_root)
+            self.assertEqual(
+                state.shared_guidance_snapshot_path,
+                state.run_archive_dir / "shared-guidance.md",
+            )
+            self.assertFalse(archive_root.exists())
+            self.assertTrue(state.created_guidance)
+
+            warnings = manager.cleanup(state)
+            self.assertEqual(warnings, [])
+
+    def test_cleanup_archives_supervised_logs_and_removes_runtime_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            manager = OptimizeGuidanceManager()
+            state = manager.prepare(
+                workdir,
+                operator,
+                test_mode="differential",
+                bench_mode="standalone",
+                agent_name="codex",
+            )
+            state.round_brief_path.write_text("final brief\n", encoding="utf-8")
+            state.supervisor_report_path.write_text("final report\n", encoding="utf-8")
+            (state.history_dir / "round-001-brief.md").write_text("round 1 brief\n", encoding="utf-8")
+            (state.history_dir / "round-001-supervisor-report.md").write_text(
+                "round 1 report\n", encoding="utf-8"
+            )
+
+            warnings = manager.cleanup(state)
+            self.assertEqual(warnings, [])
+
+            self.assertTrue(state.run_archive_dir.exists())
+            self.assertTrue(state.shared_guidance_snapshot_path.exists())
+            self.assertTrue((state.run_archive_dir / "roles" / "optimize-worker.md").exists())
+            self.assertTrue((state.run_archive_dir / "roles" / "optimize-supervisor.md").exists())
+            self.assertEqual(
+                (state.run_archive_dir / "final" / "round-brief.md").read_text(encoding="utf-8"),
+                "final brief\n",
+            )
+            self.assertEqual(
+                (state.run_archive_dir / "final" / "supervisor-report.md").read_text(encoding="utf-8"),
+                "final report\n",
+            )
+            self.assertTrue((state.run_archive_dir / "history" / "round-001-brief.md").exists())
+            self.assertTrue(
+                (state.run_archive_dir / "history" / "round-001-supervisor-report.md").exists()
+            )
+            self.assertFalse((workdir / ".triton-agent").exists())
+
+    def test_cleanup_warns_when_archive_write_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            # Force an archive failure by preventing directory creation.
+            (workdir / "optimize-logs").write_text("not a directory\n", encoding="utf-8")
+
+            manager = OptimizeGuidanceManager()
+            state = manager.prepare(
+                workdir,
+                operator,
+                test_mode="differential",
+                bench_mode="standalone",
+                agent_name="codex",
+            )
+            (state.history_dir / "round-001-brief.md").write_text("round 1 brief\n", encoding="utf-8")
+
+            warnings = manager.cleanup(state)
+
+            self.assertTrue(any("archive" in warning.lower() for warning in warnings))
+            self.assertFalse((workdir / ".triton-agent").exists())
+
+    def test_prepare_requires_cleanup_of_old_triton_agent_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            triton_dir = workdir / ".triton-agent"
+            triton_dir.mkdir(parents=True, exist_ok=True)
+            (triton_dir / "round-brief.md").write_text("leftover\n", encoding="utf-8")
+
+            manager = OptimizeGuidanceManager()
+            with self.assertRaisesRegex(RuntimeError, r"Existing \.triton-agent/ directory contains data"):
+                manager.prepare(
+                    workdir,
+                    operator,
+                    test_mode="differential",
+                    bench_mode="standalone",
+                    agent_name="codex",
+                )
 
     def test_prepare_uses_claude_file_and_restores_existing_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

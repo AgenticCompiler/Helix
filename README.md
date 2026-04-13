@@ -190,6 +190,7 @@ Common options:
 - `--show-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
+- `--supervise on|off`: default `off`. When `on`, every worker round is followed by a supervisor gate that approves metadata and artifacts before the next worker round runs; ordinary optimize is unsupervised unless you pass `--supervise on`.
 
 Examples:
 
@@ -209,13 +210,20 @@ Optimize behavior:
 
 - Reuse existing test and benchmark harnesses when they already exist in the workspace.
 - Generate missing harnesses only when the required validation artifact is absent.
-- Run optimize as explicit worker rounds with a supervisor audit between rounds instead of relying on one unconstrained agent pass.
-- Keep the shared workspace guidance role-neutral; worker versus supervisor role assignment comes from the launch prompt and role brief for that invocation.
-- Use fresh agent invocations for worker and supervisor passes so role-specific optimize context does not leak across the session.
+- By default (`--supervise off`), optimize runs as an unsupervised end-to-end agent pass.
+- With `--supervise on`, optimize runs as explicit worker rounds with a supervisor audit between rounds instead of one unconstrained pass.
 - Treat each round as a hypothesis-driven experiment: explain why the change may help and what evidence supports it.
 - Require each completed round to leave auditable artifacts such as `attempts.md`, `summary.md`, comparable perf data, and structured round state.
 - Allow the supervisor to repair metadata derived from existing facts, but never to invent missing benchmark, profiler, IR, or correctness evidence.
 - If profiling or IR capture is skipped for a round, explain why the existing evidence is already sufficient.
+- Supervised runs keep `.triton-agent/` as a live runtime directory only while optimize is running, then archive the supervisor handoff trail under `optimize-logs/triton-agent/<run-id>/` before cleanup removes the live runtime directory.
+
+### Supervised workflow (when `--supervise on`)
+
+- Worker rounds continue to generate hypotheses and edits as usual, but the session pauses before starting the next round.
+- The supervisor run inspects the latest artifacts, confirms they support the claimed hypothesis, and gates progression (e.g., by repairing metadata) before the next worker round launches.
+- This gate keeps the state auditorship tight while letting worker and supervisor agents focus on their respective evidence-review and exploit tasks.
+- After the supervised run finishes, the final role briefs, final handoff files, and immutable per-round supervisor history are archived under `optimize-logs/triton-agent/<run-id>/` for later review.
 
 ## Work On Many Operators
 
@@ -276,6 +284,7 @@ Common options:
 - `--resume auto|continue|fresh`
 - `--require-analysis`
 - `--min-rounds <N>`
+- `--supervise on|off`: default `off`
 - `--no-agent-session`
 - `--max-concurrency <N>`
 - `--show-output`

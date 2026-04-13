@@ -24,6 +24,10 @@ def evaluate_round_gate(round_dir: Path, *, stop_after_round: bool = False) -> G
         issue = f"benchmark_status={round_state.benchmark_status}"
         return GateResult(decision=GateDecision.REVISE_REQUIRED, blocking_issues=(issue,))
 
+    if round_state.perf_summary_source != "compare-perf":
+        issue = f"perf_summary_source={round_state.perf_summary_source}"
+        return GateResult(decision=GateDecision.REVISE_REQUIRED, blocking_issues=(issue,))
+
     if not round_state.evidence_sources:
         return GateResult(
             decision=GateDecision.REVISE_REQUIRED,

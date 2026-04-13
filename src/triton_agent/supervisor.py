@@ -4,7 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Protocol, cast
 
-from triton_agent.models import AgentRequest, AgentResult
+from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.optimize.models import GateDecision, GateResult
 from triton_agent.prompts import build_optimize_resume_prompt
 
@@ -57,7 +57,6 @@ class OptimizeSupervisor:
                 result = recovery_runner.resume(current_request, resume_summary)
             result, current_request = self._resume_until_round_requirement_satisfied(
                 recovery_runner,
-                request,
                 current_request,
                 result,
             )
@@ -70,33 +69,37 @@ class OptimizeSupervisor:
 
             attempt += 1
             resume_summary = self._build_summary(result)
-            current_request = replace(
-                current_request,
-                prompt=self._build_continue_prompt(
-                    request.prompt,
-                    resume_summary,
-                    require_analysis=request.require_analysis,
-                ),
-            )
 
     def _resume_until_round_requirement_satisfied(
         self,
         runner: SupportsOptimizeRecovery,
-        base_request: AgentRequest,
         current_request: AgentRequest,
         result: AgentResult,
     ) -> tuple[AgentResult, AgentRequest]:
         while result.succeeded and self._needs_more_rounds(current_request):
+            round_count_before_resume = self._count_round_directories(current_request.workdir)
             summary = self._build_rounds_summary(current_request)
-            current_request = replace(
-                current_request,
-                prompt=self._build_continue_prompt(
-                    base_request.prompt,
-                    summary,
-                    require_analysis=base_request.require_analysis,
-                ),
-            )
             result = runner.resume(current_request, summary)
+            round_count_after_resume = self._count_round_directories(current_request.workdir)
+            if (
+                result.succeeded
+                and current_request.min_rounds is not None
+                and round_count_after_resume <= round_count_before_resume
+            ):
+                return (
+                    AgentResult(
+                        return_code=1,
+                        stdout=result.stdout,
+                        stderr=(
+                            "No progress: resume exited successfully but did not create a new "
+                            f"`opt-round-*` directory ({round_count_after_resume}/{current_request.min_rounds}). "
+                            "Ensure each round writes a new `opt-round-*` directory before rerunning."
+                        ),
+                        stalled=False,
+                        session_id=result.session_id,
+                    ),
+                    current_request,
+                )
         return result, current_request
 
     def _run_round_gate_loop(
@@ -111,11 +114,9 @@ class OptimizeSupervisor:
                 worker_result = runner.run_worker(current_request)
                 if worker_result.succeeded:
                     break
-                if (
-                    current_request.interact
-                    or worker_attempt >= self.max_recovery_attempts
-                    or not self._is_transient_agent_failure(worker_result)
-                ):
+                if current_request.interact or worker_attempt >= self.max_recovery_attempts:
+                    return worker_result
+                if not (worker_result.stalled or self._is_transient_agent_failure(worker_result)):
                     return worker_result
                 worker_attempt += 1
 
@@ -136,9 +137,10 @@ class OptimizeSupervisor:
                 current_request = replace(
                     current_request,
                     prompt=self._build_continue_prompt(
-                        current_request.prompt,
+                        request.prompt,
                         self._build_gate_summary(gate_result),
                         require_analysis=current_request.require_analysis,
+                        supervise=current_request.supervise,
                     ),
                     optimize_role="worker",
                 )
@@ -147,9 +149,10 @@ class OptimizeSupervisor:
                 current_request = replace(
                     current_request,
                     prompt=self._build_continue_prompt(
-                        current_request.prompt,
+                        request.prompt,
                         self._build_gate_summary(gate_result),
                         require_analysis=current_request.require_analysis,
+                        supervise=current_request.supervise,
                     ),
                     optimize_role="worker",
                 )
@@ -197,7 +200,11 @@ class OptimizeSupervisor:
         return any(pattern in combined for pattern in _TRANSIENT_AGENT_FAILURE_PATTERNS)
 
     def _with_default_optimize_role(self, request: AgentRequest) -> AgentRequest:
-        if request.command_kind != request.command_kind.OPTIMIZE or request.optimize_role is not None:
+        if (
+            request.command_kind != CommandKind.OPTIMIZE
+            or request.optimize_role is not None
+            or request.supervise != "on"
+        ):
             return request
         return replace(request, optimize_role="worker")
 
@@ -207,9 +214,14 @@ class OptimizeSupervisor:
         summary: str,
         *,
         require_analysis: bool = False,
+        supervise: str = "on",
     ) -> str:
-        del base_prompt
-        return build_optimize_resume_prompt(summary, require_analysis=require_analysis)
+        return build_optimize_resume_prompt(
+            summary,
+            base_prompt=base_prompt,
+            require_analysis=require_analysis,
+            supervise="off" if supervise == "off" else "on",
+        )
 
 
 def _supports_round_gate_runner(runner: object) -> bool:

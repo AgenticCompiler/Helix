@@ -1,3 +1,4 @@
+import argparse
 import os
 import sys
 import tempfile
@@ -19,6 +20,7 @@ from triton_agent.cli import (
     prepare_generation_target,
     render_result,
 )
+from triton_agent.commands.optimize import optimize_run_options_from_args
 from triton_agent.models import AgentResult
 from triton_agent.models import CommandKind
 from triton_agent.paths import (
@@ -550,6 +552,40 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["optimize", "-i", "kernel.py", "--require-analysis"])
         self.assertTrue(args.require_analysis)
 
+    def test_optimize_command_accepts_supervise_modes(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--supervise", "on"])
+        self.assertEqual(args.supervise, "on")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.supervise, "on")
+
+    def test_optimize_command_defaults_supervise_off(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py"])
+        self.assertEqual(args.supervise, "off")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.supervise, "off")
+
+    def test_optimize_run_options_rejects_invalid_supervise(self) -> None:
+        args = argparse.Namespace(
+            agent="codex",
+            interact=False,
+            verbose=False,
+            show_output=False,
+            remote=None,
+            remote_workdir=None,
+            min_rounds=None,
+            resume="auto",
+            require_analysis=False,
+            no_agent_session=False,
+            supervise="maybe",
+            output=None,
+            test_mode=None,
+            bench_mode=None,
+        )
+        with self.assertRaises(ValueError):
+            optimize_run_options_from_args(args)
+
     def test_optimize_batch_maps_to_command_kind(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize-batch", "-i", "kernels"])
@@ -558,6 +594,20 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.agent, "codex")
         self.assertFalse(hasattr(args, "interact"))
         self.assertFalse(args.show_output)
+
+    def test_optimize_batch_accepts_supervise_modes(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-batch", "-i", "kernels", "--supervise", "on"])
+        self.assertEqual(args.supervise, "on")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.supervise, "on")
+
+    def test_optimize_batch_defaults_supervise_off(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-batch", "-i", "kernels"])
+        self.assertEqual(args.supervise, "off")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.supervise, "off")
 
     def test_optimize_status_maps_to_command_kind(self) -> None:
         parser = build_parser()
@@ -574,6 +624,14 @@ class CliParserTests(unittest.TestCase):
         parser = build_parser()
         args = parser.parse_args(["optimize-status", "-i", "kernels", "--format", "markdown"])
         self.assertEqual(args.format, "markdown")
+
+    def test_optimize_status_rejects_supervise_flag(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit) as context:
+            parser.parse_args(
+                ["optimize-status", "-i", "kernels", "--supervise", "on"]
+            )
+        self.assertEqual(context.exception.code, 2)
 
     def test_optimize_batch_accepts_optimize_options(self) -> None:
         parser = build_parser()
@@ -1434,6 +1492,7 @@ class PathResolutionTests(unittest.TestCase):
                 min_rounds,
                 continue_optimize,
                 require_analysis=False,
+                supervise="on",
             ):
                 captured["output_path"] = output_path
                 captured["remote"] = remote
@@ -1562,6 +1621,7 @@ class PathResolutionTests(unittest.TestCase):
                 min_rounds,
                 resume_existing_session,
                 require_analysis=False,
+                supervise="on",
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
@@ -1695,6 +1755,7 @@ class PathResolutionTests(unittest.TestCase):
                 min_rounds,
                 resume_existing_session,
                 require_analysis=False,
+                supervise="on",
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
@@ -1829,6 +1890,7 @@ class PathResolutionTests(unittest.TestCase):
                 min_rounds,
                 resume_existing_session,
                 require_analysis=False,
+                supervise="on",
             ):
                 captured["require_analysis"] = require_analysis
                 return "Prompt body"
@@ -1884,7 +1946,57 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             request = mocked.call_args.args[1]
             self.assertTrue(request.no_agent_session)
-            self.assertEqual(request.optimize_role, "worker")
+
+    def test_main_optimize_passes_supervise_mode_to_prompt_and_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+
+            captured = {}
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+
+            def _fake_build_prompt(
+                command_kind,
+                input_path,
+                operator_path,
+                output_path,
+                test_mode,
+                bench_mode,
+                force_overwrite,
+                remote,
+                remote_workdir,
+                min_rounds,
+                resume_existing_session,
+                require_analysis=False,
+                supervise="on",
+            ):
+                captured["supervise"] = supervise
+                return "Prompt body"
+
+            with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
+                with patch(
+                    "triton_agent.optimize.runtime.OptimizeSupervisor.run",
+                    return_value=fake_result,
+                ) as mocked:
+                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                        with patch(
+                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            return_value=[],
+                        ):
+                            with patch(
+                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                return_value=[],
+                            ):
+                                exit_code = main(
+                                    ["optimize", "-i", str(operator), "--supervise", "off"]
+                                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["supervise"], "off")
+            request = mocked.call_args.args[1]
+            self.assertEqual(request.supervise, "off")
+            self.assertIsNone(request.optimize_role)
 
     def test_main_run_bench_reports_missing_bench_file_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2371,6 +2483,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("This invocation owns exactly one round.", prompt)
         self.assertIn("Read `.triton-agent/roles/optimize-worker.md`", prompt)
         self.assertIn("Read `.triton-agent/round-brief.md`", prompt)
+        self.assertIn("Use `compare-perf` output as the only source", prompt)
 
     def test_build_optimize_supervisor_prompt_mentions_audit_role(self) -> None:
         prompt = build_optimize_supervisor_prompt(
@@ -2381,6 +2494,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("This invocation is an audit and handoff pass", prompt)
         self.assertIn("Read `.triton-agent/roles/optimize-supervisor.md`", prompt)
         self.assertIn("Read `/tmp/opt-round-3`", prompt)
+        self.assertIn("Use only existing `compare-perf` results", prompt)
 
     def test_gen_eval_prompt_mentions_operator_repair_and_dual_outputs(self) -> None:
         prompt = build_prompt(
@@ -2558,6 +2672,7 @@ class PromptTests(unittest.TestCase):
             test_mode="differential",
             bench_mode="standalone",
             force_overwrite=False,
+            supervise="on",
         )
         self.assertIn("This invocation is the optimize worker role.", prompt)
         self.assertIn("This invocation owns exactly one round.", prompt)
@@ -2578,6 +2693,7 @@ class PromptTests(unittest.TestCase):
             bench_mode="standalone",
             force_overwrite=False,
             min_rounds=4,
+            supervise="on",
         )
         self.assertNotIn("Complete at least 4 optimization rounds", prompt)
         self.assertIn("This invocation owns exactly one round.", prompt)
@@ -2592,6 +2708,7 @@ class PromptTests(unittest.TestCase):
             bench_mode="standalone",
             force_overwrite=False,
             resume_existing_session=True,
+            supervise="on",
         )
         self.assertIn("Continue the existing optimization session", prompt)
         self.assertIn("Read `opt-note.md`", prompt)
@@ -2606,10 +2723,42 @@ class PromptTests(unittest.TestCase):
             bench_mode="standalone",
             force_overwrite=False,
             require_analysis=True,
+            supervise="on",
         )
         self.assertIn("Before the first code-changing round", prompt)
         self.assertIn("profiling or IR-backed evidence", prompt)
         self.assertIn("Do not begin with blind tiling or launch-parameter search", prompt)
+
+    def test_optimize_prompt_defaults_to_unsupervised_mode(self) -> None:
+        prompt = build_prompt(
+            CommandKind.OPTIMIZE,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            force_overwrite=False,
+        )
+        self.assertIn("This invocation is an unsupervised optimize run.", prompt)
+        self.assertNotIn("This invocation is the optimize worker role.", prompt)
+
+    def test_optimize_prompt_unsupervised_avoids_role_brief_artifacts(self) -> None:
+        prompt = build_prompt(
+            CommandKind.OPTIMIZE,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            force_overwrite=False,
+            supervise="off",
+        )
+        self.assertIn("This invocation is an unsupervised optimize run.", prompt)
+        self.assertIn("Own the end-to-end optimize session", prompt)
+        self.assertNotIn("optimize worker role", prompt)
+        self.assertNotIn("owns exactly one round", prompt)
+        self.assertNotIn(".triton-agent/roles/optimize-worker.md", prompt)
+        self.assertNotIn(".triton-agent/round-brief.md", prompt)
 
 
 class OutputRenderingTests(unittest.TestCase):

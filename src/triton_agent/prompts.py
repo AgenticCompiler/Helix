@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from triton_agent.models import COMMAND_TO_SKILL, CommandKind
 from triton_agent.paths import default_generated_output_path
@@ -38,8 +39,50 @@ def build_optimize_worker_prompt(
         "State the optimization hypothesis and why it may help before editing code for each round.",
         "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
         "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
+        "Use `compare-perf` output as the only source for performance deltas, `Avg improvement`, `Geomean speedup`, and `Total speedup`.",
+        "Do not hand-calculate speedups or percentage improvements from raw perf files.",
         "Produce all required round artifacts before stopping.",
         "Do not self-approve whether the optimize session should continue.",
+    ]
+    if resume_existing_session:
+        lines.extend(
+            [
+                "Continue the existing optimization session instead of restarting from scratch.",
+                "Read `opt-note.md`, existing `opt-round-*` directories, and existing round logs before making changes.",
+            ]
+        )
+    if require_analysis:
+        lines.extend(
+            [
+                "Before the first code-changing round, gather profiling or IR-backed evidence, or record a concrete reason why one analysis path is unavailable and the remaining evidence is sufficient.",
+                "Do not begin with blind tiling or launch-parameter search.",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def build_optimize_unsupervised_prompt(
+    input_path: Path,
+    output_path: Path | None,
+    *,
+    test_mode: str | None,
+    bench_mode: str | None,
+    min_rounds: int | None = None,
+    resume_existing_session: bool = False,
+    require_analysis: bool = False,
+) -> str:
+    del input_path, output_path, test_mode, bench_mode, min_rounds
+    lines = [
+        "This invocation is an unsupervised optimize run.",
+        "Own the end-to-end optimize session and keep making progress until the run should stop.",
+        "Treat this as a long-running task.",
+        "Reuse existing correctness tests and benchmark cases when they already exist; generate them only when required artifacts are missing.",
+        "State the optimization hypothesis and why it may help before editing code for each round.",
+        "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
+        "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
+        "Use `compare-perf` output as the only source for performance deltas, `Avg improvement`, `Geomean speedup`, and `Total speedup`.",
+        "Do not hand-calculate speedups or percentage improvements from raw perf files.",
+        "Record round outcomes and keep optimize artifacts up to date before stopping.",
     ]
     if resume_existing_session:
         lines.extend(
@@ -75,6 +118,7 @@ def build_optimize_supervisor_prompt(
     lines.extend(
         [
             "Apply only metadata repairs derived from existing facts.",
+            "Use only existing `compare-perf` results when auditing or restating performance conclusions.",
             "Emit a structured gate result and next-round brief when continuation is allowed.",
             "Do not perform open-ended optimization work.",
         ]
@@ -100,6 +144,7 @@ def build_prompt(
     continue_optimize: bool = False,
     resume_existing_session: bool | None = None,
     require_analysis: bool = False,
+    supervise: Literal["on", "off"] = "off",
 ) -> str:
     should_resume_existing_session = (
         continue_optimize if resume_existing_session is None else resume_existing_session
@@ -163,29 +208,74 @@ def build_prompt(
         )
 
     if command_kind == CommandKind.OPTIMIZE:
-        lines.extend(
-            build_optimize_worker_prompt(
-                input_path,
-                output_path,
-                test_mode=test_mode,
-                bench_mode=bench_mode,
-                min_rounds=min_rounds,
-                resume_existing_session=should_resume_existing_session,
-                require_analysis=require_analysis,
-            ).splitlines()
-        )
+        if supervise == "on":
+            lines.extend(
+                build_optimize_worker_prompt(
+                    input_path,
+                    output_path,
+                    test_mode=test_mode,
+                    bench_mode=bench_mode,
+                    min_rounds=min_rounds,
+                    resume_existing_session=should_resume_existing_session,
+                    require_analysis=require_analysis,
+                ).splitlines()
+            )
+        else:
+            lines.extend(
+                build_optimize_unsupervised_prompt(
+                    input_path,
+                    output_path,
+                    test_mode=test_mode,
+                    bench_mode=bench_mode,
+                    min_rounds=min_rounds,
+                    resume_existing_session=should_resume_existing_session,
+                    require_analysis=require_analysis,
+                ).splitlines()
+            )
     else:
         lines.append("Complete the requested task and summarize assumptions briefly.")
     return "\n".join(lines)
 
 
-def build_optimize_resume_prompt(summary: str, *, require_analysis: bool = False) -> str:
-    lines = [
-        "This invocation is the optimize worker role.",
-        "Continue the existing optimize task instead of restarting from scratch.",
-        "Read `opt-note.md`, existing `opt-round-*` directories, and any round summaries or attempt logs before making the next change.",
-        "Keep the optimize workflow hypothesis-driven: explain why each next change may help and what evidence supports it.",
-    ]
+def build_optimize_resume_prompt(
+    summary: str,
+    *,
+    base_prompt: str | None = None,
+    require_analysis: bool = False,
+    supervise: Literal["on", "off"] = "off",
+) -> str:
+    lines: list[str] = []
+    if base_prompt:
+        lines.extend([base_prompt.strip(), ""])
+    if supervise == "on" and not base_prompt:
+        lines.extend(
+            [
+                "This invocation is the optimize worker role.",
+                "This invocation owns exactly one round.",
+                "Read `.triton-agent/roles/optimize-worker.md` before acting.",
+                "Read `.triton-agent/round-brief.md` before acting.",
+                "Treat this as a long-running task.",
+                "Keep making progress until the current round is complete.",
+                "Do not self-approve whether the optimize session should continue.",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "Continue the existing optimize task instead of restarting from scratch.",
+            "Read `opt-note.md`, existing `opt-round-*` directories, and any round summaries or attempt logs before making the next change.",
+            "Keep the optimize workflow hypothesis-driven: explain why each next change may help and what evidence supports it.",
+            "Use `compare-perf` output as the only source for performance deltas and speedup metrics.",
+        ]
+        if supervise == "on"
+        else [
+            "This invocation continues an unsupervised optimize task.",
+            "Continue the existing optimize task instead of restarting from scratch.",
+            "Read `opt-note.md`, existing `opt-round-*` directories, and any round summaries or attempt logs before making the next change.",
+            "Keep the optimize workflow hypothesis-driven: explain why each next change may help and what evidence supports it.",
+            "Use `compare-perf` output as the only source for performance deltas and speedup metrics.",
+        ]
+    )
     if require_analysis:
         lines.append(
             "Before the next code-changing round, gather profiling or IR-backed evidence, or record why the existing evidence is already sufficient."

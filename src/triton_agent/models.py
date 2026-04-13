@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 
 class CommandKind(str, Enum):
@@ -55,6 +55,7 @@ class AgentRequest:
     continue_optimize: bool = False
     require_analysis: bool = False
     no_agent_session: bool = False
+    supervise: Literal["on", "off"] = "off"
     staged_skill_names: tuple[str, ...] | None = None
     optimize_role: str | None = None
     round_brief_path: Optional[Path] = None

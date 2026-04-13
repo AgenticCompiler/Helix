@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import os
 from pathlib import Path
 from typing import List, Optional
 
@@ -15,10 +17,73 @@ class OptimizeGuidanceState:
     supervisor_brief_path: Path
     round_brief_path: Path
     supervisor_report_path: Path
+    history_dir: Path
+    archive_root: Path
+    run_archive_dir: Path
+    shared_guidance_snapshot_path: Path
     created_paths: tuple[Path, ...]
 
 
 class OptimizeGuidanceManager:
+    def archive(self, state: OptimizeGuidanceState) -> list[str]:
+        warnings: list[str] = []
+        archive_dir = state.run_archive_dir
+        if archive_dir.exists() and any(archive_dir.iterdir()):
+            warnings.append(f"Refusing to overwrite existing optimize log archive at {archive_dir}")
+            return warnings
+
+        try:
+            (archive_dir / "roles").mkdir(parents=True, exist_ok=True)
+            (archive_dir / "final").mkdir(parents=True, exist_ok=True)
+            (archive_dir / "history").mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            return [f"Failed to create optimize log archive directories under {archive_dir}: {exc}"]
+
+        try:
+            state.shared_guidance_snapshot_path.write_text(
+                state.guidance_path.read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            warnings.append(f"Failed to write shared guidance archive snapshot: {exc}")
+
+        role_sources = (
+            (state.worker_brief_path, archive_dir / "roles" / "optimize-worker.md"),
+            (state.supervisor_brief_path, archive_dir / "roles" / "optimize-supervisor.md"),
+        )
+        for src, dest in role_sources:
+            if not src.exists():
+                warnings.append(f"Missing expected optimize role brief at {src}")
+                continue
+            try:
+                dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+            except OSError as exc:
+                warnings.append(f"Failed to archive optimize role brief {src}: {exc}")
+
+        final_sources = (
+            (state.round_brief_path, archive_dir / "final" / "round-brief.md"),
+            (state.supervisor_report_path, archive_dir / "final" / "supervisor-report.md"),
+        )
+        for src, dest in final_sources:
+            if not src.exists():
+                warnings.append(f"Missing expected optimize handoff file at {src}")
+                continue
+            try:
+                dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+            except OSError as exc:
+                warnings.append(f"Failed to archive optimize handoff file {src}: {exc}")
+
+        if state.history_dir.exists():
+            for src in sorted(state.history_dir.iterdir()):
+                if not src.is_file():
+                    continue
+                dest = archive_dir / "history" / src.name
+                try:
+                    dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+                except OSError as exc:
+                    warnings.append(f"Failed to archive optimize history file {src}: {exc}")
+        return warnings
+
     def prepare(
         self,
         workdir: Path,
@@ -29,17 +94,30 @@ class OptimizeGuidanceManager:
         require_analysis: bool = False,
     ) -> OptimizeGuidanceState:
         guidance_path = workdir / self._guidance_filename(agent_name)
+        guidance_preexisting = guidance_path.exists()
         backup_path: Optional[Path] = None
 
-        if guidance_path.exists():
+        if guidance_preexisting:
             backup_path = self._next_backup_path(guidance_path)
-            backup_path.write_text(guidance_path.read_text(encoding="utf-8"), encoding="utf-8")
+            backup_path.write_bytes(guidance_path.read_bytes())
 
-        role_dir = workdir / ".triton-agent" / "roles"
+        runtime_root = workdir / ".triton-agent"
+        if runtime_root.exists() and any(runtime_root.iterdir()):
+            raise RuntimeError(
+                "Existing .triton-agent/ directory contains data; remove it before starting optimize."
+            )
+        runtime_root.mkdir(parents=True, exist_ok=True)
+        role_dir = runtime_root / "roles"
         worker_brief_path = role_dir / "optimize-worker.md"
         supervisor_brief_path = role_dir / "optimize-supervisor.md"
-        round_brief_path = workdir / ".triton-agent" / "round-brief.md"
-        supervisor_report_path = workdir / ".triton-agent" / "supervisor-report.md"
+        round_brief_path = runtime_root / "round-brief.md"
+        supervisor_report_path = runtime_root / "supervisor-report.md"
+        history_dir = runtime_root / "history"
+        history_dir.mkdir(parents=True, exist_ok=True)
+        archive_root = workdir / "optimize-logs" / "triton-agent"
+        run_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+        run_archive_dir = archive_root / run_id
+        shared_guidance_snapshot_path = run_archive_dir / "shared-guidance.md"
 
         role_dir.mkdir(parents=True, exist_ok=True)
         guidance_path.write_text(
@@ -70,12 +148,16 @@ class OptimizeGuidanceManager:
         return OptimizeGuidanceState(
             guidance_path=guidance_path,
             backup_path=backup_path,
-            created_guidance=True,
+            created_guidance=not guidance_preexisting,
             role_dir=role_dir,
             worker_brief_path=worker_brief_path,
             supervisor_brief_path=supervisor_brief_path,
             round_brief_path=round_brief_path,
             supervisor_report_path=supervisor_report_path,
+            history_dir=history_dir,
+            archive_root=archive_root,
+            run_archive_dir=run_archive_dir,
+            shared_guidance_snapshot_path=shared_guidance_snapshot_path,
             created_paths=(
                 guidance_path,
                 worker_brief_path,
@@ -87,6 +169,11 @@ class OptimizeGuidanceManager:
 
     def cleanup(self, state: OptimizeGuidanceState) -> list[str]:
         warnings: list[str] = []
+        try:
+            warnings.extend(self.archive(state))
+        except Exception as exc:
+            warnings.append(f"Failed to archive optimize supervised logs: {exc}")
+
         for path in reversed(state.created_paths):
             if path == state.guidance_path and state.backup_path is not None:
                 continue
@@ -96,12 +183,32 @@ class OptimizeGuidanceManager:
             except OSError as exc:
                 warnings.append(f"Failed to remove temporary optimize file {path}: {exc}")
 
-        for directory in (state.role_dir, state.role_dir.parent):
+        runtime_root = state.history_dir.parent
+        if runtime_root.name == ".triton-agent" and runtime_root.parent == state.guidance_path.parent:
             try:
-                if directory.exists() and not any(directory.iterdir()):
-                    directory.rmdir()
+                # Remove the live runtime tree even when history is populated.
+                for root, dirs, files in os.walk(runtime_root, topdown=False, followlinks=False):
+                    root_path = Path(root)
+                    for filename in files:
+                        path = root_path / filename
+                        try:
+                            path.unlink()
+                        except OSError as exc:
+                            warnings.append(f"Failed to remove temporary optimize file {path}: {exc}")
+                    for dirname in dirs:
+                        path = root_path / dirname
+                        try:
+                            path.rmdir()
+                        except OSError as exc:
+                            warnings.append(f"Failed to remove temporary optimize directory {path}: {exc}")
+                try:
+                    runtime_root.rmdir()
+                except OSError as exc:
+                    warnings.append(f"Failed to remove temporary optimize directory {runtime_root}: {exc}")
             except OSError as exc:
-                warnings.append(f"Failed to remove temporary optimize directory {directory}: {exc}")
+                warnings.append(f"Failed to remove temporary optimize directory {runtime_root}: {exc}")
+        else:
+            warnings.append(f"Refusing to remove unexpected optimize runtime directory {runtime_root}")
 
         if state.backup_path is None:
             try:
@@ -113,10 +220,7 @@ class OptimizeGuidanceManager:
                 )
         else:
             try:
-                state.guidance_path.write_text(
-                    state.backup_path.read_text(encoding="utf-8"),
-                    encoding="utf-8",
-                )
+                state.guidance_path.write_bytes(state.backup_path.read_bytes())
                 state.backup_path.unlink()
             except OSError as exc:
                 warnings.append(
@@ -136,12 +240,15 @@ class OptimizeGuidanceManager:
 
     def describe_cleanup(self, state: OptimizeGuidanceState) -> list[str]:
         messages: List[str] = []
+        messages.append(
+            f"archiving supervised optimize logs to {state.run_archive_dir} before runtime cleanup"
+        )
         for path in reversed(state.created_paths):
             if path == state.guidance_path:
                 continue
             messages.append(f"removing temporary optimize file {path}")
-        for directory in (state.role_dir, state.role_dir.parent):
-            messages.append(f"removing temporary optimize directory {directory} when empty")
+        runtime_root = state.history_dir.parent
+        messages.append(f"removing temporary optimize runtime directory tree {runtime_root}")
         if state.backup_path is not None:
             messages.append(f"restoring workspace guidance file from {state.backup_path}")
         else:
@@ -181,6 +288,7 @@ class OptimizeGuidanceManager:
                 "- Do not put worker-only or supervisor-only role assignment in this shared guidance file.",
                 "- Supervisor repair is limited to metadata derived from existing facts.",
                 "- Do not fabricate benchmark, profiler, or IR evidence.",
+                "- Treat `compare-perf` as the authoritative source for optimize performance conclusions.",
                 "",
             ]
         )
@@ -223,6 +331,9 @@ class OptimizeGuidanceManager:
             "- Use the staged `ascend-operator-ir-analyzer` skill when you need to inspect Triton or Bisheng IR, confirm lowering behavior, or understand why an optimization did or did not take effect.",
             "- State the hypothesis, why it may help, and what evidence supports it before editing code.",
             "- If you skip profiling or IR capture for a round, explain why the existing evidence is sufficient.",
+            "- Run `compare-perf` after the baseline and round perf artifacts exist.",
+            "- Use `compare-perf` output as the only source for performance deltas, `Avg improvement`, `Geomean speedup`, and `Total speedup`.",
+            "- Do not hand-calculate speedups or percentage improvements from raw perf files.",
             "",
             "## Gates",
             "- Run correctness validation before every benchmark check.",
@@ -270,6 +381,7 @@ class OptimizeGuidanceManager:
             "- Emit a gate result for the completed round.",
             "- Produce the next-round brief only when continuation is allowed.",
             "- Block the session when required benchmark, profiler, IR, or correctness evidence is missing.",
+            "- Use only existing `compare-perf` results when auditing or restating performance conclusions.",
         ]
         if require_analysis:
             lines.extend(

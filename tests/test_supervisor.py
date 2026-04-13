@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.optimize.models import GateDecision, GateResult
+from triton_agent.prompts import build_optimize_resume_prompt, build_prompt
 from triton_agent.supervisor import OptimizeSupervisor
 
 
@@ -38,6 +39,199 @@ class RoundCreatingRunner(FakeRunner):
 
 
 class OptimizeSupervisorTests(unittest.TestCase):
+    def test_supervised_restart_prompt_preserves_worker_round_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "opt-round-1").mkdir()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode="differential",
+                bench_mode="standalone",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="optimize",
+                prompt=build_prompt(
+                    CommandKind.OPTIMIZE,
+                    workspace / "op.py",
+                    workspace / "op.py",
+                    workspace / "opt_op.py",
+                    "differential",
+                    "standalone",
+                    False,
+                    supervise="on",
+                ),
+                workdir=workspace,
+                min_rounds=2,
+                supervise="on",
+            )
+            runner = RoundCreatingRunner(
+                [
+                    AgentResult(return_code=0, stdout="finished one round", stderr=""),
+                    AgentResult(return_code=0, stdout="finished two rounds", stderr=""),
+                ],
+                workspace,
+            )
+
+            result = OptimizeSupervisor(max_recovery_attempts=1).run(runner, request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertEqual(len(runner.resume_requests), 1)
+            prompt = runner.resume_requests[0].prompt
+            self.assertIn("This invocation owns exactly one round.", prompt)
+            self.assertIn("Read `.triton-agent/roles/optimize-worker.md` before acting.", prompt)
+            self.assertIn("Read `.triton-agent/round-brief.md` before acting.", prompt)
+            self.assertIn("Do not self-approve whether the optimize session should continue.", prompt)
+
+    def test_recovery_resume_prompt_preserves_base_prompt_context(self) -> None:
+        request = AgentRequest(
+            command_kind=CommandKind.OPTIMIZE,
+            input_path=Path("/tmp/op.py"),
+            operator_path=Path("/tmp/op.py"),
+            output_path=Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            interact=False,
+            verbose=False,
+            show_output=False,
+            force_overwrite=False,
+            agent_name="codex",
+            skill_name="optimize",
+            prompt=build_prompt(
+                CommandKind.OPTIMIZE,
+                Path("/tmp/op.py"),
+                Path("/tmp/op.py"),
+                Path("/tmp/opt_op.py"),
+                "differential",
+                "standalone",
+                False,
+                remote="alice@example.com:2200",
+                remote_workdir="/tmp/remote",
+                supervise="on",
+            ),
+            workdir=Path("/tmp"),
+            min_rounds=None,
+            supervise="on",
+        )
+        class BackendLikeRunner:
+            def __init__(self) -> None:
+                self.resume_prompts: list[str] = []
+                self.resume_calls = 0
+
+            def run(self, request: AgentRequest) -> AgentResult:
+                del request
+                return AgentResult(
+                    return_code=1,
+                    stdout="working...\n",
+                    stderr="",
+                    stalled=True,
+                    session_id=None,
+                )
+
+            def resume(self, request: AgentRequest, summary: str) -> AgentResult:
+                self.resume_calls += 1
+                self.resume_prompts.append(
+                    build_optimize_resume_prompt(
+                        summary,
+                        base_prompt=request.prompt,
+                        require_analysis=request.require_analysis,
+                        supervise=request.supervise,
+                    )
+                )
+                return AgentResult(
+                    return_code=0,
+                    stdout="done",
+                    stderr="",
+                    stalled=False,
+                    session_id=None,
+                )
+
+        runner = BackendLikeRunner()
+
+        result = OptimizeSupervisor(max_recovery_attempts=1).run(runner, request)
+
+        self.assertEqual(result.return_code, 0)
+        self.assertEqual(runner.resume_calls, 1)
+        prompt = runner.resume_prompts[0]
+        self.assertIn("Operator input: /tmp/op.py", prompt)
+        self.assertIn("Requested output: /tmp/opt_op.py", prompt)
+        self.assertIn("Requested test mode: differential", prompt)
+        self.assertIn("Requested bench mode: standalone", prompt)
+        self.assertIn("Remote execution target: alice@example.com:2200", prompt)
+        self.assertIn("Remote execution root: /tmp/remote", prompt)
+        self.assertIn("Progress summary:", prompt)
+
+    def test_unsupervised_recovery_resume_prompt_is_not_double_wrapped(self) -> None:
+        request = AgentRequest(
+            command_kind=CommandKind.OPTIMIZE,
+            input_path=Path("/tmp/op.py"),
+            operator_path=Path("/tmp/op.py"),
+            output_path=Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            interact=False,
+            verbose=False,
+            show_output=False,
+            force_overwrite=False,
+            agent_name="codex",
+            skill_name="optimize",
+            prompt=build_prompt(
+                CommandKind.OPTIMIZE,
+                Path("/tmp/op.py"),
+                Path("/tmp/op.py"),
+                Path("/tmp/opt_op.py"),
+                "differential",
+                "standalone",
+                False,
+                supervise="off",
+            ),
+            workdir=Path("/tmp"),
+            supervise="off",
+        )
+
+        class BackendLikeRunner:
+            def __init__(self) -> None:
+                self.resume_prompts: list[str] = []
+                self.calls: list[str] = []
+
+            def run(self, request: AgentRequest) -> AgentResult:
+                del request
+                self.calls.append("run")
+                return AgentResult(return_code=1, stdout="stalled once", stderr="", stalled=True)
+
+            def resume(self, request: AgentRequest, summary: str) -> AgentResult:
+                self.calls.append("resume")
+                self.resume_prompts.append(
+                    build_optimize_resume_prompt(
+                        summary,
+                        base_prompt=request.prompt,
+                        require_analysis=request.require_analysis,
+                        supervise=request.supervise,
+                    )
+                )
+                return AgentResult(return_code=0, stdout="done", stderr="")
+
+        runner = BackendLikeRunner()
+
+        result = OptimizeSupervisor(max_recovery_attempts=1).run(runner, request)
+
+        self.assertEqual(result.return_code, 0)
+        self.assertEqual(runner.calls, ["run", "resume"])
+        self.assertEqual(len(runner.resume_prompts), 1)
+        resume_prompt = runner.resume_prompts[0]
+        self.assertEqual(
+            resume_prompt.count("Continue the existing optimize task instead of restarting from scratch."),
+            1,
+        )
+        self.assertIn("Operator input: /tmp/op.py", resume_prompt)
+        self.assertIn("Requested output: /tmp/opt_op.py", resume_prompt)
+        self.assertIn("Progress summary:\nstalled once", resume_prompt)
+
     def test_round_gate_runner_stops_after_pass_stop(self) -> None:
         request = AgentRequest(
             command_kind=CommandKind.OPTIMIZE,
@@ -156,6 +350,51 @@ class OptimizeSupervisorTests(unittest.TestCase):
                         stdout="",
                         stderr="ERROR: exceeded retry limit, last status: 429 Too Many Requests",
                     )
+                return AgentResult(return_code=0, stdout="round complete", stderr="")
+
+            def run_supervisor(
+                self, request: AgentRequest, result: AgentResult
+            ) -> GateResult:
+                del request, result
+                self.supervisor_calls += 1
+                return GateResult(decision=GateDecision.PASS_STOP, blocking_issues=())
+
+        runner = LoopRunner()
+
+        result = OptimizeSupervisor(max_recovery_attempts=1).run(runner, request)
+
+        self.assertEqual(result.return_code, 0)
+        self.assertEqual(runner.worker_calls, 2)
+        self.assertEqual(runner.supervisor_calls, 1)
+
+    def test_round_gate_runner_retries_stalled_worker_before_failing(self) -> None:
+        request = AgentRequest(
+            command_kind=CommandKind.OPTIMIZE,
+            input_path=Path("/tmp/op.py"),
+            operator_path=Path("/tmp/op.py"),
+            output_path=Path("/tmp/opt_op.py"),
+            test_mode=None,
+            bench_mode=None,
+            interact=False,
+            verbose=False,
+            show_output=False,
+            force_overwrite=False,
+            agent_name="codex",
+            skill_name="optimize",
+            prompt="Optimize this operator",
+            workdir=Path("/tmp"),
+        )
+
+        class LoopRunner:
+            def __init__(self) -> None:
+                self.worker_calls = 0
+                self.supervisor_calls = 0
+
+            def run_worker(self, request: AgentRequest) -> AgentResult:
+                del request
+                self.worker_calls += 1
+                if self.worker_calls == 1:
+                    return AgentResult(return_code=1, stdout="worker stalled", stderr="", stalled=True)
                 return AgentResult(return_code=0, stdout="round complete", stderr="")
 
             def run_supervisor(
@@ -331,14 +570,32 @@ class OptimizeSupervisorTests(unittest.TestCase):
                 prompt="Optimize this operator",
                 workdir=workspace,
                 min_rounds=2,
+                supervise="on",
             )
-            runner = RoundCreatingRunner(
-                [
-                    AgentResult(return_code=0, stdout="finished one round", stderr=""),
-                    AgentResult(return_code=0, stdout="finished two rounds", stderr=""),
-                ],
-                workspace,
-            )
+            class BackendLikeRoundCreatingRunner:
+                def __init__(self) -> None:
+                    self.resume_requests: list[AgentRequest] = []
+                    self.resume_prompts: list[str] = []
+
+                def run(self, request: AgentRequest) -> AgentResult:
+                    del request
+                    return AgentResult(return_code=0, stdout="finished one round", stderr="")
+
+                def resume(self, request: AgentRequest, summary: str) -> AgentResult:
+                    self.resume_requests.append(request)
+                    self.resume_prompts.append(
+                        build_optimize_resume_prompt(
+                            summary,
+                            base_prompt=request.prompt,
+                            require_analysis=request.require_analysis,
+                            supervise=request.supervise,
+                        )
+                    )
+                    next_round = workspace / "opt-round-2"
+                    next_round.mkdir(exist_ok=True)
+                    return AgentResult(return_code=0, stdout="finished two rounds", stderr="")
+
+            runner = BackendLikeRoundCreatingRunner()
 
             supervisor = OptimizeSupervisor(max_recovery_attempts=1)
             result = supervisor.run(runner, request)
@@ -346,8 +603,8 @@ class OptimizeSupervisorTests(unittest.TestCase):
             self.assertEqual(result.return_code, 0)
             self.assertEqual(len(runner.resume_requests), 1)
             self.assertEqual(runner.resume_requests[0].optimize_role, "worker")
-            self.assertIn("Continue the existing optimize task", runner.resume_requests[0].prompt)
-            self.assertIn("Read `opt-note.md`", runner.resume_requests[0].prompt)
+            self.assertIn("Continue the existing optimize task", runner.resume_prompts[0])
+            self.assertIn("Read `opt-note.md`", runner.resume_prompts[0])
 
     def test_restarts_with_strict_analysis_wording_when_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -370,20 +627,141 @@ class OptimizeSupervisorTests(unittest.TestCase):
                 workdir=workspace,
                 min_rounds=2,
                 require_analysis=True,
+                supervise="on",
             )
-            runner = RoundCreatingRunner(
-                [
-                    AgentResult(return_code=0, stdout="finished one round", stderr=""),
-                    AgentResult(return_code=0, stdout="finished two rounds", stderr=""),
-                ],
-                workspace,
-            )
+            class BackendLikeRoundCreatingRunner:
+                def __init__(self) -> None:
+                    self.resume_requests: list[AgentRequest] = []
+                    self.resume_prompts: list[str] = []
+
+                def run(self, request: AgentRequest) -> AgentResult:
+                    del request
+                    return AgentResult(return_code=0, stdout="finished one round", stderr="")
+
+                def resume(self, request: AgentRequest, summary: str) -> AgentResult:
+                    self.resume_requests.append(request)
+                    self.resume_prompts.append(
+                        build_optimize_resume_prompt(
+                            summary,
+                            base_prompt=request.prompt,
+                            require_analysis=request.require_analysis,
+                            supervise=request.supervise,
+                        )
+                    )
+                    next_round = workspace / "opt-round-2"
+                    next_round.mkdir(exist_ok=True)
+                    return AgentResult(return_code=0, stdout="finished two rounds", stderr="")
+
+            runner = BackendLikeRoundCreatingRunner()
 
             result = OptimizeSupervisor(max_recovery_attempts=1).run(runner, request)
 
             self.assertEqual(result.return_code, 0)
             self.assertEqual(len(runner.resume_requests), 1)
-            self.assertIn("profiling or IR-backed evidence", runner.resume_requests[0].prompt)
+            self.assertIn("profiling or IR-backed evidence", runner.resume_prompts[0])
+
+    def test_unsupervised_min_rounds_fails_when_resume_makes_no_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "opt-round-1").mkdir()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="optimize",
+                prompt="Optimize this operator",
+                workdir=workspace,
+                min_rounds=2,
+                supervise="off",
+            )
+
+            class NoProgressRunner:
+                def __init__(self) -> None:
+                    self.resume_calls = 0
+
+                def run(self, request: AgentRequest) -> AgentResult:
+                    del request
+                    return AgentResult(return_code=0, stdout="finished one round", stderr="")
+
+                def resume(self, request: AgentRequest, summary: str) -> AgentResult:
+                    del request, summary
+                    self.resume_calls += 1
+                    if self.resume_calls > 1:
+                        raise AssertionError("unbounded resume loop detected")
+                    return AgentResult(return_code=0, stdout="still finished one round", stderr="")
+
+            runner = NoProgressRunner()
+            result = OptimizeSupervisor(max_recovery_attempts=2).run(runner, request)
+
+            self.assertEqual(result.return_code, 1)
+            self.assertIn("No progress", result.stderr)
+            self.assertIn("opt-round-*", result.stderr)
+            self.assertEqual(runner.resume_calls, 1)
+
+    def test_unsupervised_min_rounds_resume_prompt_is_not_double_wrapped(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "opt-round-1").mkdir()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="optimize",
+                prompt="Optimize this operator",
+                workdir=workspace,
+                min_rounds=2,
+                supervise="off",
+            )
+
+            class BackendLikeNoProgressRunner:
+                def __init__(self) -> None:
+                    self.resume_calls = 0
+                    self.resume_prompts: list[str] = []
+
+                def run(self, request: AgentRequest) -> AgentResult:
+                    del request
+                    return AgentResult(return_code=0, stdout="finished one round", stderr="")
+
+                def resume(self, request: AgentRequest, summary: str) -> AgentResult:
+                    self.resume_calls += 1
+                    self.resume_prompts.append(
+                        build_optimize_resume_prompt(
+                            summary,
+                            base_prompt=request.prompt,
+                            require_analysis=request.require_analysis,
+                            supervise=request.supervise,
+                        )
+                    )
+                    return AgentResult(return_code=0, stdout="still finished one round", stderr="")
+
+            runner = BackendLikeNoProgressRunner()
+            result = OptimizeSupervisor(max_recovery_attempts=2).run(runner, request)
+
+            self.assertEqual(result.return_code, 1)
+            self.assertEqual(runner.resume_calls, 1)
+            self.assertEqual(len(runner.resume_prompts), 1)
+            self.assertEqual(
+                runner.resume_prompts[0].count(
+                    "Continue the existing optimize task instead of restarting from scratch."
+                ),
+                1,
+            )
 
     def test_user_interrupt_does_not_trigger_recovery(self) -> None:
         request = AgentRequest(

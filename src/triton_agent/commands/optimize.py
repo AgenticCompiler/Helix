@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Literal
 
 from triton_agent.models import CommandKind
 from triton_agent.optimize.batch import resolve_batch_optimize_operator_file, run_optimize_batch
@@ -96,6 +97,16 @@ def handle_optimize_status(parser: argparse.ArgumentParser, args: argparse.Names
     return render_optimize_status_results(results, output_format=str(getattr(args, "format", "text")))
 
 
+def _validate_supervise_mode(args: argparse.Namespace) -> Literal["on", "off"]:
+    value = getattr(args, "supervise", "off")
+    supervise = str(value)
+    if supervise == "on":
+        return "on"
+    if supervise == "off":
+        return "off"
+    raise ValueError(f"--supervise must be 'on' or 'off', got {value!r}")
+
+
 def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptions:
     return OptimizeRunOptions(
         agent_name=args.agent,
@@ -108,6 +119,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         resume_mode=str(getattr(args, "resume", "auto")),
         require_analysis=bool(getattr(args, "require_analysis", False)),
         no_agent_session=bool(getattr(args, "no_agent_session", False)),
+        supervise=_validate_supervise_mode(args),
         output=getattr(args, "output", None),
         test_mode=getattr(args, "test_mode", None),
         bench_mode=getattr(args, "bench_mode", None),

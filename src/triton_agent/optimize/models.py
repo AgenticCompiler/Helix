@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Literal
 
 
 @dataclass(frozen=True)
@@ -17,6 +18,7 @@ class OptimizeRunOptions:
     resume_mode: str
     require_analysis: bool
     no_agent_session: bool
+    supervise: Literal["on", "off"]
     output: str | None
     test_mode: str | None
     bench_mode: str | None
@@ -67,6 +69,7 @@ class RoundState:
     correctness_status: str
     benchmark_status: str
     perf_artifact: str
+    perf_summary_source: str
     summary_path: str
     opt_note_updated: bool
     next_recommendation: str

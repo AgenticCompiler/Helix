@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.backends.codex import CodexRunner
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
+from triton_agent.prompts import build_prompt
 
 
 class CodexRunnerTests(unittest.TestCase):
@@ -321,7 +322,7 @@ class CodexRunnerTests(unittest.TestCase):
                 runner.run(request)
             mocked.assert_called_once()
 
-    def test_resume_prompt_references_opt_note_and_round_artifacts(self) -> None:
+    def test_resume_prompt_preserves_base_context_and_supervised_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             runner = CodexRunner()
@@ -338,15 +339,30 @@ class CodexRunnerTests(unittest.TestCase):
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="optimize",
-                prompt="Original prompt",
+                prompt=build_prompt(
+                    CommandKind.OPTIMIZE,
+                    workspace / "op.py",
+                    workspace / "op.py",
+                    workspace / "opt_op.py",
+                    "differential",
+                    "standalone",
+                    False,
+                    remote="alice@example.com:2200",
+                    remote_workdir="/tmp/remote",
+                    supervise="on",
+                ),
                 workdir=workspace,
                 min_rounds=3,
                 require_analysis=True,
+                supervise="on",
             )
             with patch("triton_agent.backends.codex.run_process", return_value=_ok_result()) as mocked:
                 runner.resume(request, "one round done")
 
             resumed_request = mocked.call_args.args[0][-1]
+            self.assertIn("Remote execution target: alice@example.com:2200", resumed_request)
+            self.assertIn("Remote execution root: /tmp/remote", resumed_request)
+            self.assertIn("This invocation is the optimize worker role.", resumed_request)
             self.assertIn("Continue the existing optimize task", resumed_request)
             self.assertIn("Read `opt-note.md`", resumed_request)
             self.assertIn("existing `opt-round-*` directories", resumed_request)

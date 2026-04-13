@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.backends.opencode import OpenCodeRunner
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
+from triton_agent.prompts import build_prompt
 
 
 class OpenCodeRunnerTests(unittest.TestCase):
@@ -142,6 +143,52 @@ class OpenCodeRunnerTests(unittest.TestCase):
             self.assertIn("opencode run", stderr.getvalue())
             self.assertIn("--pure", stderr.getvalue())
             self.assertIn("--thinking", stderr.getvalue())
+
+    def test_resume_prompt_preserves_base_context_and_supervised_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = OpenCodeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="opencode",
+                skill_name="optimize",
+                prompt=build_prompt(
+                    CommandKind.OPTIMIZE,
+                    workspace / "op.py",
+                    workspace / "op.py",
+                    workspace / "opt_op.py",
+                    "differential",
+                    "standalone",
+                    False,
+                    remote="alice@example.com:2200",
+                    remote_workdir="/tmp/remote",
+                    supervise="on",
+                ),
+                workdir=workspace,
+                min_rounds=3,
+                require_analysis=True,
+                supervise="on",
+            )
+            with patch("triton_agent.backends.opencode.run_process", return_value=_ok_result()) as mocked:
+                runner.resume(request, "one round done")
+
+            resumed_request = mocked.call_args.args[0][-1]
+            self.assertIn("Remote execution target: alice@example.com:2200", resumed_request)
+            self.assertIn("Remote execution root: /tmp/remote", resumed_request)
+            self.assertIn("This invocation is the optimize worker role.", resumed_request)
+            self.assertIn("Continue the existing optimize task", resumed_request)
+            self.assertIn("Read `opt-note.md`", resumed_request)
+            self.assertIn("existing `opt-round-*` directories", resumed_request)
+            self.assertIn("profiling or IR-backed evidence", resumed_request)
 
 
 def _ok_result() -> AgentResult:

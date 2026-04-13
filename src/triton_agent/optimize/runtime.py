@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import re
 import sys
 from pathlib import Path
 from typing import Any, TextIO, cast
@@ -32,9 +33,13 @@ class RunnerWithStreams:
         self._stderr = stderr
 
     def run(self, request: AgentRequest) -> AgentResult:
+        if self._stdout is None and self._stderr is None:
+            return cast(Any, self._runner).run(request)
         return cast(Any, self._runner).run(request, stdout=self._stdout, stderr=self._stderr)
 
     def resume(self, request: AgentRequest, summary: str) -> AgentResult:
+        if self._stdout is None and self._stderr is None:
+            return cast(Any, self._runner).resume(request, summary)
         return cast(Any, self._runner).resume(
             request,
             summary,
@@ -101,7 +106,13 @@ class OptimizeLoopRunner:
             self._write_gate_handoff(request, gate_result, latest_round_dir=latest_round_dir)
             return gate_result
 
-        gate_result = evaluate_round_gate(latest_round_dir)
+        try:
+            gate_result = evaluate_round_gate(latest_round_dir)
+        except ValueError as exc:
+            gate_result = GateResult(
+                decision=GateDecision.REVISE_METADATA,
+                blocking_issues=(f"failed to evaluate round gate for {latest_round_dir.name}: {exc}",),
+            )
         if request.min_rounds is not None and _count_round_directories(request.workdir) < request.min_rounds:
             if gate_result.decision == GateDecision.PASS_STOP:
                 gate_result = GateResult(
@@ -121,6 +132,7 @@ class OptimizeLoopRunner:
         *,
         latest_round_dir: Path | None,
     ) -> None:
+        del request
         report_lines = [
             "# Optimize Supervisor Report",
             "",
@@ -129,10 +141,8 @@ class OptimizeLoopRunner:
         ]
         if latest_round_dir is not None:
             report_lines.append(f"Latest round: {latest_round_dir.name}")
-        self._guidance_state.supervisor_report_path.write_text(
-            "\n".join(report_lines) + "\n",
-            encoding="utf-8",
-        )
+        report_content = "\n".join(report_lines) + "\n"
+        self._guidance_state.supervisor_report_path.write_text(report_content, encoding="utf-8")
 
         brief_lines = [
             "# Optimize Round Brief",
@@ -143,10 +153,26 @@ class OptimizeLoopRunner:
             brief_lines.append(f"Required focus: {'; '.join(gate_result.blocking_issues)}")
         elif latest_round_dir is not None:
             brief_lines.append(f"Continue from `{latest_round_dir.name}`.")
-        self._guidance_state.round_brief_path.write_text(
-            "\n".join(brief_lines) + "\n",
-            encoding="utf-8",
-        )
+        brief_content = "\n".join(brief_lines) + "\n"
+        self._guidance_state.round_brief_path.write_text(brief_content, encoding="utf-8")
+
+        history_dir = self._guidance_state.history_dir
+        history_dir.mkdir(parents=True, exist_ok=True)
+        round_label = self._next_history_round_label()
+        (history_dir / f"{round_label}-brief.md").write_text(brief_content, encoding="utf-8")
+        (history_dir / f"{round_label}-supervisor-report.md").write_text(report_content, encoding="utf-8")
+
+    def _next_history_round_label(self) -> str:
+        history_dir = self._guidance_state.history_dir
+        max_index = 0
+        for path in history_dir.glob("round-*.md"):
+            if not path.is_file():
+                continue
+            match = re.match(r"round-(\d+)-", path.name)
+            if match is None:
+                continue
+            max_index = max(max_index, int(match.group(1)))
+        return f"round-{max_index + 1:03d}"
 
     def _run_request(self, request: AgentRequest) -> AgentResult:
         if self._stdout is None and self._stderr is None:
@@ -187,6 +213,7 @@ def build_optimize_request(
         options.min_rounds,
         resolution.resume_existing_session,
         require_analysis=options.require_analysis,
+        supervise=options.supervise,
     )
     return AgentRequest(
         command_kind=CommandKind.OPTIMIZE,
@@ -207,7 +234,8 @@ def build_optimize_request(
         continue_optimize=resolution.resume_existing_session,
         require_analysis=options.require_analysis,
         no_agent_session=options.no_agent_session,
-        optimize_role="worker",
+        supervise=options.supervise,
+        optimize_role="worker" if options.supervise == "on" else None,
     )
 
 
@@ -219,30 +247,37 @@ def run_optimize_request(
     repo_root = Path(__file__).resolve().parents[3]
     manager = SkillLinkManager(repo_root / "skills")
     links = manager.prepare_skills(request.agent_name, request.workdir)
-    guidance_manager = OptimizeGuidanceManager()
-    guidance_state = guidance_manager.prepare(
-        request.workdir,
-        request.input_path,
-        test_mode=request.test_mode or "differential",
-        bench_mode=request.bench_mode or "standalone",
-        agent_name=request.agent_name,
-        require_analysis=request.require_analysis,
-    )
     verbose_stream = stderr or sys.stderr
     if request.verbose:
         emit_verbose_lines(verbose_stream, "skills", manager.describe_prepare(links))
-    if request.verbose:
-        emit_verbose_lines(verbose_stream, "agents", guidance_manager.describe_prepare(guidance_state))
     try:
         runner = create_runner(request.agent_name)
-        loop_runner = OptimizeLoopRunner(runner, guidance_state, stdout=stdout, stderr=stderr)
-        return OptimizeSupervisor().run(loop_runner, request)
+        if request.supervise == "on":
+            guidance_manager = OptimizeGuidanceManager()
+            guidance_state = guidance_manager.prepare(
+                request.workdir,
+                request.input_path,
+                test_mode=request.test_mode or "differential",
+                bench_mode=request.bench_mode or "standalone",
+                agent_name=request.agent_name,
+                require_analysis=request.require_analysis,
+            )
+            if request.verbose:
+                emit_verbose_lines(verbose_stream, "agents", guidance_manager.describe_prepare(guidance_state))
+            try:
+                loop_runner = OptimizeLoopRunner(runner, guidance_state, stdout=stdout, stderr=stderr)
+                return OptimizeSupervisor().run(loop_runner, request)
+            finally:
+                if request.verbose:
+                    emit_verbose_lines(verbose_stream, "agents", guidance_manager.describe_cleanup(guidance_state))
+                warnings = guidance_manager.cleanup(guidance_state)
+                for warning in warnings:
+                    emit_verbose(verbose_stream, "agents", warning)
+        return OptimizeSupervisor().run(
+            RunnerWithStreams(runner, stdout=stdout, stderr=stderr),
+            request,
+        )
     finally:
-        if request.verbose:
-            emit_verbose_lines(verbose_stream, "agents", guidance_manager.describe_cleanup(guidance_state))
-        warnings = guidance_manager.cleanup(guidance_state)
-        for warning in warnings:
-            emit_verbose(verbose_stream, "agents", warning)
         if request.verbose:
             emit_verbose_lines(verbose_stream, "skills", manager.describe_cleanup(links))
         warnings = manager.cleanup(links)
@@ -251,14 +286,26 @@ def run_optimize_request(
 
 
 def _latest_round_dir(workdir: Path) -> Path | None:
-    round_dirs = sorted(
-        (path for path in workdir.glob("opt-round-*") if path.is_dir()),
-        key=lambda path: path.name,
-    )
+    round_dirs = sorted(_iter_numeric_round_dirs(workdir), key=lambda path: _round_sort_key(path.name))
     if not round_dirs:
         return None
     return round_dirs[-1]
 
 
 def _count_round_directories(workdir: Path) -> int:
-    return sum(1 for path in workdir.glob("opt-round-*") if path.is_dir())
+    return sum(1 for _ in _iter_numeric_round_dirs(workdir))
+
+
+def _round_sort_key(name: str) -> tuple[int, str]:
+    match = re.match(r"opt-round-(\d+)$", name)
+    if match is None:
+        return (-1, name)
+    return (int(match.group(1)), name)
+
+
+def _iter_numeric_round_dirs(workdir: Path) -> list[Path]:
+    return [
+        path
+        for path in workdir.glob("opt-round-*")
+        if path.is_dir() and re.match(r"opt-round-\d+$", path.name)
+    ]

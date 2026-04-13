@@ -46,6 +46,15 @@ class OptimizeGateTests(unittest.TestCase):
             self.assertEqual(result.decision, GateDecision.REVISE_REQUIRED)
             self.assertIn("missing supporting evidence sources", result.blocking_issues)
 
+    def test_evaluate_round_gate_requires_compare_perf_as_perf_summary_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            round_dir = self._create_round(Path(tmp), perf_summary_source="manual-calculation")
+
+            result = evaluate_round_gate(round_dir)
+
+            self.assertEqual(result.decision, GateDecision.REVISE_REQUIRED)
+            self.assertIn("perf_summary_source=manual-calculation", result.blocking_issues)
+
     def test_evaluate_round_gate_returns_hard_fail_for_failed_correctness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             round_dir = self._create_round(Path(tmp), correctness_status="failed")
@@ -63,6 +72,7 @@ class OptimizeGateTests(unittest.TestCase):
         evidence_sources: Optional[List[str]] = None,
         correctness_status: str = "passed",
         benchmark_status: str = "passed",
+        perf_summary_source: str = "compare-perf",
     ) -> Path:
         round_dir = root / "opt-round-1"
         round_dir.mkdir()
@@ -81,6 +91,7 @@ class OptimizeGateTests(unittest.TestCase):
                     "correctness_status": correctness_status,
                     "benchmark_status": benchmark_status,
                     "perf_artifact": "perf.txt",
+                    "perf_summary_source": perf_summary_source,
                     "summary_path": "summary.md",
                     "opt_note_updated": True,
                     "next_recommendation": "continue",

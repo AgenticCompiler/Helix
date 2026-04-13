@@ -68,7 +68,9 @@ class CodexRunner(AgentRunner):
     ) -> AgentResult:
         resumed_prompt = build_optimize_resume_prompt(
             summary,
+            base_prompt=request.prompt,
             require_analysis=request.require_analysis,
+            supervise=request.supervise,
         )
         return self.run(request.with_prompt(resumed_prompt), stdout=stdout, stderr=stderr)
 

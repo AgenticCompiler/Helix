@@ -241,6 +241,11 @@ def build_parser() -> argparse.ArgumentParser:
             )
             subparser.add_argument("--require-analysis", action="store_true")
             subparser.add_argument("--no-agent-session", action="store_true")
+            subparser.add_argument(
+                "--supervise",
+                default="off",
+                choices=["on", "off"],
+            )
         if command_kind == CommandKind.GEN_EVAL_BATCH:
             subparser.add_argument("--max-concurrency", type=int, default=2)
         if command_kind == CommandKind.OPTIMIZE_BATCH:
