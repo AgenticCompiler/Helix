@@ -26,7 +26,7 @@ def build_optimize_worker_prompt(
     resume_existing_session: bool = False,
     require_analysis: bool = False,
 ) -> str:
-    del input_path, output_path, test_mode, bench_mode
+    del input_path, output_path, test_mode, bench_mode, min_rounds
     lines = [
         "This invocation is the optimize worker role.",
         "This invocation owns exactly one round.",
@@ -54,10 +54,6 @@ def build_optimize_worker_prompt(
                 "Before the first code-changing round, gather profiling or IR-backed evidence, or record a concrete reason why one analysis path is unavailable and the remaining evidence is sufficient.",
                 "Do not begin with blind tiling or launch-parameter search.",
             ]
-        )
-    if min_rounds is not None:
-        lines.append(
-            f"Complete at least {min_rounds} optimization rounds by creating `opt-round-*` directories before finishing."
         )
     return "\n".join(lines)
 

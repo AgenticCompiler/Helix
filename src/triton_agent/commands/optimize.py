@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from triton_agent.models import CommandKind
-from triton_agent.optimize.batch import run_optimize_batch
+from triton_agent.optimize.batch import resolve_batch_optimize_operator_file, run_optimize_batch
 from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.render import render_optimize_status_results
 from triton_agent.optimize.runtime import build_optimize_request, run_optimize_request
@@ -31,7 +31,14 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
     input_path = Path(args.input).expanduser().resolve()
     if not input_path.exists():
         parser.error(f"Input path does not exist: {input_path}")
-    workdir = input_path.parent
+    if input_path.is_dir():
+        try:
+            input_path = resolve_batch_optimize_operator_file(input_path)
+        except ValueError as exc:
+            parser.error(str(exc))
+        workdir = input_path.parent
+    else:
+        workdir = input_path.parent
     try:
         request = build_optimize_request(input_path, workdir, options)
     except ValueError as exc:

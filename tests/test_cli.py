@@ -1,3 +1,4 @@
+import os
 import sys
 import tempfile
 import threading
@@ -1705,6 +1706,83 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(request.test_mode, "differential")
             self.assertEqual(request.bench_mode, "msprof")
 
+    def test_main_optimize_accepts_workspace_directory_input(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch("triton_agent.optimize.runtime.build_prompt", return_value="Prompt body"):
+                with patch(
+                    "triton_agent.optimize.runtime.OptimizeSupervisor.run",
+                    return_value=fake_result,
+                ) as mocked:
+                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                        with patch(
+                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            return_value=[],
+                        ):
+                            with patch(
+                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                return_value=[],
+                            ):
+                                exit_code = main(["optimize", "-i", str(root)])
+
+            self.assertEqual(exit_code, 0)
+            request = mocked.call_args.args[1]
+            self.assertEqual(request.input_path, operator.resolve())
+            self.assertEqual(request.operator_path, operator.resolve())
+            self.assertEqual(request.workdir, root.resolve())
+
+    def test_main_optimize_accepts_dot_workspace_input(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            original_cwd = Path.cwd()
+            try:
+                os.chdir(root)
+                with patch("triton_agent.optimize.runtime.build_prompt", return_value="Prompt body"):
+                    with patch(
+                        "triton_agent.optimize.runtime.OptimizeSupervisor.run",
+                        return_value=fake_result,
+                    ) as mocked:
+                        with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                            with patch(
+                                "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                                return_value=[],
+                            ):
+                                with patch(
+                                    "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                    return_value=[],
+                                ):
+                                    exit_code = main(["optimize", "-i", "."])
+            finally:
+                os.chdir(original_cwd)
+
+            self.assertEqual(exit_code, 0)
+            request = mocked.call_args.args[1]
+            self.assertEqual(request.input_path, operator.resolve())
+            self.assertEqual(request.operator_path, operator.resolve())
+            self.assertEqual(request.workdir, root.resolve())
+
+    def test_main_optimize_rejects_workspace_directory_with_multiple_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "a.py").write_text("print('a')\n", encoding="utf-8")
+            (root / "b.py").write_text("print('b')\n", encoding="utf-8")
+
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(["optimize", "-i", str(root)])
+
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn("found multiple candidate operator files", stderr.getvalue())
+
     def test_main_optimize_passes_require_analysis_to_prompt_and_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2466,7 +2544,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Explain what evidence supports the change", prompt)
         self.assertIn("If you skip profiling or IR capture", prompt)
 
-    def test_optimize_prompt_mentions_min_rounds(self) -> None:
+    def test_optimize_prompt_keeps_min_rounds_out_of_worker_prompt(self) -> None:
         prompt = build_prompt(
             CommandKind.OPTIMIZE,
             Path("/tmp/op.py"),
@@ -2477,7 +2555,8 @@ class PromptTests(unittest.TestCase):
             force_overwrite=False,
             min_rounds=4,
         )
-        self.assertIn("Complete at least 4 optimization rounds", prompt)
+        self.assertNotIn("Complete at least 4 optimization rounds", prompt)
+        self.assertIn("This invocation owns exactly one round.", prompt)
 
     def test_optimize_prompt_mentions_continue_mode_for_resolved_resume(self) -> None:
         prompt = build_prompt(

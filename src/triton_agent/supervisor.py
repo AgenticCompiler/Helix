@@ -8,6 +8,12 @@ from triton_agent.models import AgentRequest, AgentResult
 from triton_agent.optimize.models import GateDecision, GateResult
 from triton_agent.prompts import build_optimize_resume_prompt
 
+_TRANSIENT_AGENT_FAILURE_PATTERNS = (
+    "429 too many requests",
+    "exceeded retry limit",
+    "rate limit",
+)
+
 
 class SupportsOptimizeRecovery(Protocol):
     def run(self, request: AgentRequest) -> AgentResult:
@@ -100,11 +106,30 @@ class OptimizeSupervisor:
     ) -> AgentResult:
         current_request = request
         while True:
-            worker_result = runner.run_worker(current_request)
-            if not worker_result.succeeded:
-                return worker_result
+            worker_attempt = 0
+            while True:
+                worker_result = runner.run_worker(current_request)
+                if worker_result.succeeded:
+                    break
+                if (
+                    current_request.interact
+                    or worker_attempt >= self.max_recovery_attempts
+                    or not self._is_transient_agent_failure(worker_result)
+                ):
+                    return worker_result
+                worker_attempt += 1
 
-            gate_result = runner.run_supervisor(current_request, worker_result)
+            supervisor_attempt = 0
+            while True:
+                gate_result = runner.run_supervisor(current_request, worker_result)
+                if (
+                    current_request.interact
+                    or supervisor_attempt >= self.max_recovery_attempts
+                    or not self._is_transient_gate_failure(gate_result)
+                ):
+                    break
+                supervisor_attempt += 1
+
             if gate_result.decision == GateDecision.PASS_STOP:
                 return worker_result
             if gate_result.decision in {GateDecision.PASS_CONTINUE, GateDecision.REVISE_METADATA}:
@@ -158,6 +183,18 @@ class OptimizeSupervisor:
     def _build_gate_summary(self, gate_result: GateResult) -> str:
         issues = "; ".join(gate_result.blocking_issues) if gate_result.blocking_issues else "none"
         return f"Gate decision: {gate_result.decision.value}. Blocking issues: {issues}"
+
+    def _is_transient_agent_failure(self, result: AgentResult) -> bool:
+        if result.stalled or result.return_code == 130:
+            return False
+        combined = f"{result.stdout}\n{result.stderr}".lower()
+        return any(pattern in combined for pattern in _TRANSIENT_AGENT_FAILURE_PATTERNS)
+
+    def _is_transient_gate_failure(self, gate_result: GateResult) -> bool:
+        if gate_result.decision != GateDecision.HARD_FAIL:
+            return False
+        combined = "\n".join(gate_result.blocking_issues).lower()
+        return any(pattern in combined for pattern in _TRANSIENT_AGENT_FAILURE_PATTERNS)
 
     def _with_default_optimize_role(self, request: AgentRequest) -> AgentRequest:
         if request.command_kind != request.command_kind.OPTIMIZE or request.optimize_role is not None:

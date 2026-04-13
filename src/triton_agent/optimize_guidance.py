@@ -135,9 +135,17 @@ class OptimizeGuidanceManager:
         return messages
 
     def describe_cleanup(self, state: OptimizeGuidanceState) -> list[str]:
-        messages: List[str] = [f"removed temporary optimize guidance files under {state.role_dir.parent}"]
+        messages: List[str] = []
+        for path in reversed(state.created_paths):
+            if path == state.guidance_path:
+                continue
+            messages.append(f"removing temporary optimize file {path}")
+        for directory in (state.role_dir, state.role_dir.parent):
+            messages.append(f"removing temporary optimize directory {directory} when empty")
         if state.backup_path is not None:
-            messages.append(f"restored workspace guidance file from {state.backup_path}")
+            messages.append(f"restoring workspace guidance file from {state.backup_path}")
+        else:
+            messages.append(f"removing temporary optimize guidance file {state.guidance_path}")
         return messages
 
     def _guidance_filename(self, agent_name: str) -> str:

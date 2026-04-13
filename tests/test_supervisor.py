@@ -124,6 +124,105 @@ class OptimizeSupervisorTests(unittest.TestCase):
         self.assertIn("required evidence is missing", runner.worker_requests[1].prompt)
         self.assertEqual(runner.worker_requests[1].optimize_role, "worker")
 
+    def test_round_gate_runner_retries_transient_worker_failure(self) -> None:
+        request = AgentRequest(
+            command_kind=CommandKind.OPTIMIZE,
+            input_path=Path("/tmp/op.py"),
+            operator_path=Path("/tmp/op.py"),
+            output_path=Path("/tmp/opt_op.py"),
+            test_mode=None,
+            bench_mode=None,
+            interact=False,
+            verbose=False,
+            show_output=False,
+            force_overwrite=False,
+            agent_name="codex",
+            skill_name="optimize",
+            prompt="Optimize this operator",
+            workdir=Path("/tmp"),
+        )
+
+        class LoopRunner:
+            def __init__(self) -> None:
+                self.worker_calls = 0
+                self.supervisor_calls = 0
+
+            def run_worker(self, request: AgentRequest) -> AgentResult:
+                del request
+                self.worker_calls += 1
+                if self.worker_calls == 1:
+                    return AgentResult(
+                        return_code=1,
+                        stdout="",
+                        stderr="ERROR: exceeded retry limit, last status: 429 Too Many Requests",
+                    )
+                return AgentResult(return_code=0, stdout="round complete", stderr="")
+
+            def run_supervisor(
+                self, request: AgentRequest, result: AgentResult
+            ) -> GateResult:
+                del request, result
+                self.supervisor_calls += 1
+                return GateResult(decision=GateDecision.PASS_STOP, blocking_issues=())
+
+        runner = LoopRunner()
+
+        result = OptimizeSupervisor(max_recovery_attempts=1).run(runner, request)
+
+        self.assertEqual(result.return_code, 0)
+        self.assertEqual(runner.worker_calls, 2)
+        self.assertEqual(runner.supervisor_calls, 1)
+
+    def test_round_gate_runner_retries_transient_supervisor_failure(self) -> None:
+        request = AgentRequest(
+            command_kind=CommandKind.OPTIMIZE,
+            input_path=Path("/tmp/op.py"),
+            operator_path=Path("/tmp/op.py"),
+            output_path=Path("/tmp/opt_op.py"),
+            test_mode=None,
+            bench_mode=None,
+            interact=False,
+            verbose=False,
+            show_output=False,
+            force_overwrite=False,
+            agent_name="codex",
+            skill_name="optimize",
+            prompt="Optimize this operator",
+            workdir=Path("/tmp"),
+        )
+
+        class LoopRunner:
+            def __init__(self) -> None:
+                self.worker_calls = 0
+                self.supervisor_calls = 0
+
+            def run_worker(self, request: AgentRequest) -> AgentResult:
+                del request
+                self.worker_calls += 1
+                return AgentResult(return_code=0, stdout="round complete", stderr="")
+
+            def run_supervisor(
+                self, request: AgentRequest, result: AgentResult
+            ) -> GateResult:
+                del request, result
+                self.supervisor_calls += 1
+                if self.supervisor_calls == 1:
+                    return GateResult(
+                        decision=GateDecision.HARD_FAIL,
+                        blocking_issues=(
+                            "ERROR: exceeded retry limit, last status: 429 Too Many Requests",
+                        ),
+                    )
+                return GateResult(decision=GateDecision.PASS_STOP, blocking_issues=())
+
+        runner = LoopRunner()
+
+        result = OptimizeSupervisor(max_recovery_attempts=1).run(runner, request)
+
+        self.assertEqual(result.return_code, 0)
+        self.assertEqual(runner.worker_calls, 1)
+        self.assertEqual(runner.supervisor_calls, 2)
+
     def test_retries_with_progress_summary_after_stall(self) -> None:
         request = AgentRequest(
             command_kind=CommandKind.OPTIMIZE,

@@ -86,6 +86,7 @@ class OptimizeLoopRunner:
             ),
             skill_name="optimize-supervisor",
             optimize_role="supervisor",
+            interact=False,
             no_agent_session=True,
             round_brief_path=self._guidance_state.round_brief_path,
             supervisor_report_path=self._guidance_state.supervisor_report_path,

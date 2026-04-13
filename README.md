@@ -174,6 +174,8 @@ Use `optimize` when you want the agent to iterate on one operator and produce op
 uv run triton-agent optimize --input a.py
 ```
 
+You may also point `--input` at a single operator workspace directory when that directory contains exactly one candidate operator file, for example `uv run triton-agent optimize --input .`.
+
 Common options:
 
 - `--output opt_a.py`: write the optimized operator to a specific path.

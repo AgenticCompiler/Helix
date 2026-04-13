@@ -127,6 +127,32 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             warnings = manager.cleanup(state)
             self.assertEqual(warnings, [])
 
+    def test_describe_cleanup_lists_individual_temporary_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            manager = OptimizeGuidanceManager()
+            state = manager.prepare(
+                workdir,
+                operator,
+                test_mode="differential",
+                bench_mode="standalone",
+                agent_name="codex",
+            )
+
+            messages = manager.describe_cleanup(state)
+
+            self.assertTrue(any("AGENTS.md" in message for message in messages))
+            self.assertTrue(any("optimize-worker.md" in message for message in messages))
+            self.assertTrue(any("optimize-supervisor.md" in message for message in messages))
+            self.assertTrue(any("round-brief.md" in message for message in messages))
+            self.assertTrue(any("supervisor-report.md" in message for message in messages))
+
+            warnings = manager.cleanup(state)
+            self.assertEqual(warnings, [])
+
 
 if __name__ == "__main__":
     unittest.main()
