@@ -23,14 +23,14 @@ from triton_agent.optimize_guidance import OptimizeGuidanceState
 
 class OptimizeRuntimeTests(unittest.TestCase):
     def _build_guidance_state(self, workdir: Path) -> OptimizeGuidanceState:
-        triton_dir = workdir / ".triton-agent"
-        triton_dir.mkdir(parents=True, exist_ok=True)
-        role_dir = triton_dir / "roles"
+        runtime_root = workdir / ".triton-agent"
+        runtime_root.mkdir(parents=True, exist_ok=True)
+        role_dir = runtime_root / "roles"
         role_dir.mkdir(parents=True, exist_ok=True)
-        history_dir = triton_dir / "history"
+        history_dir = runtime_root / "history"
         history_dir.mkdir(parents=True, exist_ok=True)
-        round_brief_path = triton_dir / "round-brief.md"
-        supervisor_report_path = triton_dir / "supervisor-report.md"
+        round_brief_path = runtime_root / "round-brief.md"
+        supervisor_report_path = runtime_root / "supervisor-report.md"
         round_brief_path.write_text("brief\n", encoding="utf-8")
         supervisor_report_path.write_text("report\n", encoding="utf-8")
         archive_root = workdir / "optimize-logs" / "triton-agent"
@@ -51,6 +51,68 @@ class OptimizeRuntimeTests(unittest.TestCase):
             shared_guidance_snapshot_path=shared_guidance_snapshot_path,
             created_paths=(round_brief_path, supervisor_report_path),
         )
+
+    def _write_baseline(self, workdir: Path) -> None:
+        baseline_dir = workdir / "baseline"
+        baseline_dir.mkdir(exist_ok=True)
+        (baseline_dir / "state.json").write_text(
+            json.dumps(
+                {
+                    "baseline_kind": "prepared",
+                    "source_operator": "kernel.py",
+                    "baseline_operator": "baseline/kernel.py",
+                    "test_file": "differential_test_kernel.py",
+                    "test_mode": "differential",
+                    "bench_file": "bench_kernel.py",
+                    "bench_mode": "standalone",
+                    "perf_artifact": "baseline/perf.txt",
+                    "correctness_status": "passed",
+                    "benchmark_status": "passed",
+                    "baseline_established": True,
+                }
+            ),
+            encoding="utf-8",
+        )
+        (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+        (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+
+    def _write_round(
+        self,
+        workdir: Path,
+        round_name: str,
+        *,
+        parent_round: str,
+        next_recommendation: str,
+        perf_text: str = "case0: 1.0\n",
+    ) -> Path:
+        round_dir = workdir / round_name
+        round_dir.mkdir(exist_ok=True)
+        (workdir / "opt-note.md").write_text("## Round\n", encoding="utf-8")
+        (round_dir / "kernel.py").write_text(f"print('{round_name}')\n", encoding="utf-8")
+        (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+        (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
+        (round_dir / "perf.txt").write_text(perf_text, encoding="utf-8")
+        (round_dir / "round-state.json").write_text(
+            json.dumps(
+                {
+                    "round": round_name,
+                    "parent_round": parent_round,
+                    "hypothesis": "vectorize loads",
+                    "evidence_sources": ["benchmark"],
+                    "correctness_status": "passed",
+                    "benchmark_status": "passed",
+                    "perf_artifact": "perf.txt",
+                    "canonical_baseline": "baseline",
+                    "comparison_target": "baseline/perf.txt",
+                    "perf_summary_source": "compare-perf",
+                    "summary_path": "summary.md",
+                    "opt_note_updated": True,
+                    "next_recommendation": next_recommendation,
+                }
+            ),
+            encoding="utf-8",
+        )
+        return round_dir
 
     def test_run_optimize_request_invokes_worker_then_supervisor_roles(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -90,33 +152,16 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     del stdout, stderr
                     self.requests.append(request)
                     if request.optimize_role == "worker":
-                        round_dir = workdir / "opt-round-1"
-                        round_dir.mkdir(exist_ok=True)
-                        (workdir / "opt-note.md").write_text("## Round 1\n", encoding="utf-8")
-                        (round_dir / "kernel.py").write_text("print('optimized')\n", encoding="utf-8")
-                        (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
-                        (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
-                        (round_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
-                        (round_dir / "round-state.json").write_text(
-                            json.dumps(
-                                {
-                                    "round": "opt-round-1",
-                                    "parent_round": "round-0",
-                                    "hypothesis": "vectorize loads",
-                                    "evidence_sources": ["benchmark"],
-                                    "correctness_status": "passed",
-                                    "benchmark_status": "passed",
-                                    "perf_artifact": "perf.txt",
-                                    "perf_summary_source": "compare-perf",
-                                    "summary_path": "summary.md",
-                                    "opt_note_updated": True,
-                                    "next_recommendation": "stop",
-                                }
-                            ),
-                            encoding="utf-8",
+                        self_outer._write_baseline(workdir)
+                        self_outer._write_round(
+                            workdir,
+                            "opt-round-1",
+                            parent_round="round-0",
+                            next_recommendation="stop",
                         )
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
+            self_outer = self
             runner = FakeRunner()
 
             with patch("triton_agent.optimize.runtime.create_runner", return_value=runner):
@@ -134,7 +179,10 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertFalse(supervisor_request.interact)
             self.assertTrue(supervisor_request.no_agent_session)
             self.assertEqual(supervisor_request.round_brief_path, worker_request.round_brief_path)
-            self.assertEqual(supervisor_request.supervisor_report_path, worker_request.supervisor_report_path)
+            self.assertEqual(
+                supervisor_request.supervisor_report_path,
+                worker_request.supervisor_report_path,
+            )
             self.assertFalse((workdir / ".triton-agent").exists())
             archive_root = workdir / "optimize-logs" / "triton-agent"
             self.assertTrue(archive_root.exists())
@@ -153,29 +201,12 @@ class OptimizeRuntimeTests(unittest.TestCase):
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
-            round_one = workdir / "opt-round-1"
-            round_one.mkdir()
-            (round_one / "attempts.md").write_text("attempts\n", encoding="utf-8")
-            (round_one / "summary.md").write_text("summary\n", encoding="utf-8")
-            (round_one / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
-            (round_one / "kernel.py").write_text("print('optimized-1')\n", encoding="utf-8")
-            (round_one / "round-state.json").write_text(
-                json.dumps(
-                    {
-                        "round": "opt-round-1",
-                        "parent_round": "round-0",
-                        "hypothesis": "vectorize loads",
-                        "evidence_sources": ["benchmark"],
-                        "correctness_status": "passed",
-                        "benchmark_status": "passed",
-                        "perf_artifact": "perf.txt",
-                        "perf_summary_source": "compare-perf",
-                        "summary_path": "summary.md",
-                        "opt_note_updated": True,
-                        "next_recommendation": "continue",
-                    }
-                ),
-                encoding="utf-8",
+            self._write_baseline(workdir)
+            self._write_round(
+                workdir,
+                "opt-round-1",
+                parent_round="round-0",
+                next_recommendation="continue",
             )
 
             guidance_state = self._build_guidance_state(workdir)
@@ -220,29 +251,12 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 AgentResult(return_code=0, stdout="worker ok", stderr=""),
             )
 
-            round_two = workdir / "opt-round-2"
-            round_two.mkdir()
-            (round_two / "attempts.md").write_text("attempts\n", encoding="utf-8")
-            (round_two / "summary.md").write_text("summary\n", encoding="utf-8")
-            (round_two / "perf.txt").write_text("case0: 0.8\n", encoding="utf-8")
-            (round_two / "kernel.py").write_text("print('optimized-2')\n", encoding="utf-8")
-            (round_two / "round-state.json").write_text(
-                json.dumps(
-                    {
-                        "round": "opt-round-2",
-                        "parent_round": "opt-round-1",
-                        "hypothesis": "fuse epilogue",
-                        "evidence_sources": ["benchmark"],
-                        "correctness_status": "passed",
-                        "benchmark_status": "passed",
-                        "perf_artifact": "perf.txt",
-                        "perf_summary_source": "compare-perf",
-                        "summary_path": "summary.md",
-                        "opt_note_updated": True,
-                        "next_recommendation": "stop",
-                    }
-                ),
-                encoding="utf-8",
+            self._write_round(
+                workdir,
+                "opt-round-2",
+                parent_round="opt-round-1",
+                next_recommendation="stop",
+                perf_text="case0: 0.8\n",
             )
 
             second_result = loop_runner.run_supervisor(
@@ -362,7 +376,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     stdout: Optional[object] = None,
                     stderr: Optional[object] = None,
                 ) -> AgentResult:
-                    del stdout, stderr
+                    del request, stdout, stderr
                     self.calls.append("run")
                     return AgentResult(
                         return_code=1,
@@ -379,7 +393,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     stdout: Optional[object] = None,
                     stderr: Optional[object] = None,
                 ) -> AgentResult:
-                    del stdout, stderr
+                    del request, stdout, stderr
                     self.calls.append("resume")
                     self.resume_summaries.append(summary)
                     return AgentResult(return_code=0, stdout="done", stderr="", stalled=False)
@@ -431,7 +445,8 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         return AgentResult(return_code=0, stdout="ok", stderr="")
 
                     with patch(
-                        "triton_agent.optimize.batch.render_batch_optimize_results", return_value=0
+                        "triton_agent.optimize.batch.render_batch_optimize_results",
+                        return_value=0,
                     ):
                         exit_code = run_optimize_batch(
                             root,
@@ -486,33 +501,16 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     del stdout, stderr
                     self.requests.append(request)
                     if request.optimize_role == "worker":
-                        round_dir = workdir / "opt-round-1"
-                        round_dir.mkdir(exist_ok=True)
-                        (workdir / "opt-note.md").write_text("## Round 1\n", encoding="utf-8")
-                        (round_dir / "kernel.py").write_text("print('optimized')\n", encoding="utf-8")
-                        (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
-                        (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
-                        (round_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
-                        (round_dir / "round-state.json").write_text(
-                            json.dumps(
-                                {
-                                    "round": "opt-round-1",
-                                    "parent_round": "round-0",
-                                    "hypothesis": "vectorize loads",
-                                    "evidence_sources": ["benchmark"],
-                                    "correctness_status": "passed",
-                                    "benchmark_status": "passed",
-                                    "perf_artifact": "perf.txt",
-                                    "perf_summary_source": "compare-perf",
-                                    "summary_path": "summary.md",
-                                    "opt_note_updated": True,
-                                    "next_recommendation": "stop",
-                                }
-                            ),
-                            encoding="utf-8",
+                        self_outer._write_baseline(workdir)
+                        self_outer._write_round(
+                            workdir,
+                            "opt-round-1",
+                            parent_round="round-0",
+                            next_recommendation="stop",
                         )
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
+            self_outer = self
             runner = FakeRunner()
 
             with patch("triton_agent.optimize.runtime.create_runner", return_value=runner):
@@ -528,7 +526,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertFalse(supervisor_request.interact)
             self.assertTrue(supervisor_request.no_agent_session)
 
-    def test_run_optimize_request_end_to_end_converts_gate_eval_value_error_to_gate_handoff(self) -> None:
+    def test_run_optimize_request_end_to_end_converts_gate_eval_value_error_to_gate_handoff(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
@@ -569,13 +569,14 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     if request.optimize_role == "worker":
                         self.worker_calls += 1
                         if self.worker_calls == 1:
-                            round_dir = workdir / "opt-round-1"
-                            round_dir.mkdir(exist_ok=True)
+                            self_outer._write_baseline(workdir)
+                            (workdir / "opt-round-1").mkdir(exist_ok=True)
                             (workdir / "opt-note.md").write_text("## Round 1\n", encoding="utf-8")
                             return AgentResult(return_code=0, stdout="worker ok", stderr="")
                         return AgentResult(return_code=1, stdout="", stderr="worker stopped for test")
                     return AgentResult(return_code=0, stdout="supervisor ok", stderr="")
 
+            self_outer = self
             runner = FakeRunner()
 
             with patch("triton_agent.optimize.runtime.create_runner", return_value=runner):
@@ -598,8 +599,8 @@ class OptimizeRuntimeTests(unittest.TestCase):
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
-            round_dir = workdir / "opt-round-1"
-            round_dir.mkdir()
+            self._write_baseline(workdir)
+            (workdir / "opt-round-1").mkdir()
 
             guidance_state = self._build_guidance_state(workdir)
 
@@ -655,8 +656,8 @@ class OptimizeRuntimeTests(unittest.TestCase):
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
-            round_dir = workdir / "opt-round-1"
-            round_dir.mkdir()
+            self._write_baseline(workdir)
+            (workdir / "opt-round-1").mkdir()
 
             guidance_state = self._build_guidance_state(workdir)
 
@@ -706,29 +707,12 @@ class OptimizeRuntimeTests(unittest.TestCase):
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
-            round_dir = workdir / "opt-round-1"
-            round_dir.mkdir()
-            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
-            (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
-            (round_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
-            (round_dir / "kernel.py").write_text("print('optimized')\n", encoding="utf-8")
-            (round_dir / "round-state.json").write_text(
-                json.dumps(
-                    {
-                        "round": "opt-round-1",
-                        "parent_round": "round-0",
-                        "hypothesis": "vectorize loads",
-                        "evidence_sources": ["benchmark"],
-                        "correctness_status": "passed",
-                        "benchmark_status": "passed",
-                        "perf_artifact": "perf.txt",
-                        "perf_summary_source": "compare-perf",
-                        "summary_path": "summary.md",
-                        "opt_note_updated": True,
-                        "next_recommendation": "stop",
-                    }
-                ),
-                encoding="utf-8",
+            self._write_baseline(workdir)
+            self._write_round(
+                workdir,
+                "opt-round-1",
+                parent_round="round-0",
+                next_recommendation="stop",
             )
 
             guidance_state = self._build_guidance_state(workdir)
@@ -759,7 +743,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     stdout: Optional[object] = None,
                     stderr: Optional[object] = None,
                 ) -> AgentResult:
-                    del stdout, stderr
+                    del request, stdout, stderr
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
             loop_runner = OptimizeLoopRunner(cast(Any, FakeRunner()), guidance_state)

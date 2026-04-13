@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from triton_agent.bench_runner import parse_bench_metadata
+from triton_agent.optimize.baseline import baseline_dir, inspect_baseline_artifacts, load_baseline_state
 from triton_agent.test_runner import parse_test_metadata
 
 
@@ -30,8 +31,9 @@ def classify_optimize_workspace(input_path: Path, workdir: Path) -> WorkspaceIns
     test_harnesses = _existing_test_harnesses(input_path)
     bench_harness = input_path.with_name(f"bench_{input_path.stem}.py")
     has_bench = bench_harness.exists()
+    has_baseline_dir = baseline_dir(workdir).exists()
 
-    if not (has_opt_note or has_rounds or test_harnesses or has_bench):
+    if not (has_opt_note or has_rounds or test_harnesses or has_bench or has_baseline_dir):
         return WorkspaceInspection(
             state="no-session",
             detail=None,
@@ -39,10 +41,12 @@ def classify_optimize_workspace(input_path: Path, workdir: Path) -> WorkspaceIns
             bench_mode=None,
         )
 
+    baseline_issue = _baseline_issue(workdir)
+    if baseline_issue is not None:
+        return WorkspaceInspection("partial-session", baseline_issue, None, None)
+
     if not has_opt_note:
         return WorkspaceInspection("partial-session", f"missing {opt_note_path.name}", None, None)
-    if not has_rounds:
-        return WorkspaceInspection("partial-session", "missing opt-round-* directory", None, None)
     if not test_harnesses:
         return WorkspaceInspection(
             "partial-session",
@@ -131,9 +135,11 @@ def _require_resumable_session(
     opt_note_path = workdir / "opt-note.md"
     if not opt_note_path.exists():
         raise ValueError(f"resume continue requires existing opt-note.md: {opt_note_path}")
-    if not any(path.is_dir() for path in workdir.glob("opt-round-*")):
+
+    baseline_issue = _baseline_issue(workdir)
+    if baseline_issue is not None:
         raise ValueError(
-            f"resume continue requires at least one existing opt-round-* directory in {workdir}"
+            f"resume continue requires established baseline/: {workdir / 'baseline'}"
         )
 
     test_harnesses = _existing_test_harnesses(input_path)
@@ -191,3 +197,26 @@ def _parse_bench_mode(bench_file: Path) -> str | None:
     if mode not in {"standalone", "msprof"}:
         return None
     return str(mode)
+
+
+def _baseline_issue(workdir: Path) -> str | None:
+    root = baseline_dir(workdir)
+    if not root.exists():
+        return "missing established baseline/"
+
+    inspection = inspect_baseline_artifacts(workdir)
+    if inspection.issues:
+        return inspection.issues[0]
+
+    try:
+        state = load_baseline_state(workdir)
+    except ValueError as exc:
+        return str(exc)
+
+    if not state.baseline_established:
+        return "baseline/state.json marks baseline as not established"
+    if state.correctness_status != "passed":
+        return f"baseline correctness_status={state.correctness_status}"
+    if state.benchmark_status != "passed":
+        return f"baseline benchmark_status={state.benchmark_status}"
+    return None

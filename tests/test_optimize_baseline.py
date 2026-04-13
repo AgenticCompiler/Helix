@@ -1,0 +1,77 @@
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from triton_agent.optimize.baseline import inspect_baseline_artifacts, load_baseline_state
+
+
+class OptimizeBaselineTests(unittest.TestCase):
+    def test_load_baseline_state_requires_core_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps({"baseline_kind": "original"}),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(ValueError) as ctx:
+                load_baseline_state(workspace)
+
+            self.assertIn("missing required baseline-state fields", str(ctx.exception))
+            self.assertIn("baseline_operator", str(ctx.exception))
+
+    def test_inspect_baseline_artifacts_finds_state_perf_and_operator_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "standalone",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-0: 1.0\n", encoding="utf-8")
+            operator_path = baseline_dir / "kernel.py"
+            operator_path.write_text("print('baseline')\n", encoding="utf-8")
+
+            inspection = inspect_baseline_artifacts(workspace)
+
+            self.assertEqual(inspection.state_path, baseline_dir / "state.json")
+            self.assertEqual(inspection.perf_path, baseline_dir / "perf.txt")
+            self.assertEqual(inspection.operator_path, operator_path)
+            self.assertEqual(inspection.issues, ())
+
+    def test_inspect_baseline_artifacts_flags_missing_perf_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text("{}", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+
+            inspection = inspect_baseline_artifacts(workspace)
+
+            self.assertIn("missing baseline/perf.txt", inspection.issues)
+
+
+if __name__ == "__main__":
+    unittest.main()

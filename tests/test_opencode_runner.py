@@ -182,8 +182,6 @@ class OpenCodeRunnerTests(unittest.TestCase):
                 runner.resume(request, "one round done")
 
             resumed_request = mocked.call_args.args[0][-1]
-            self.assertIn("Remote execution target: alice@example.com:2200", resumed_request)
-            self.assertIn("Remote execution root: /tmp/remote", resumed_request)
             self.assertIn("This invocation is the optimize worker role.", resumed_request)
             self.assertIn("Continue the existing optimize task", resumed_request)
             self.assertIn("Read `opt-note.md`", resumed_request)

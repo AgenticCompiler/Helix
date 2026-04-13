@@ -625,14 +625,6 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["optimize-status", "-i", "kernels", "--format", "markdown"])
         self.assertEqual(args.format, "markdown")
 
-    def test_optimize_status_rejects_supervise_flag(self) -> None:
-        parser = build_parser()
-        with self.assertRaises(SystemExit) as context:
-            parser.parse_args(
-                ["optimize-status", "-i", "kernels", "--supervise", "on"]
-            )
-        self.assertEqual(context.exception.code, 2)
-
     def test_optimize_batch_accepts_optimize_options(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
@@ -1492,7 +1484,7 @@ class PathResolutionTests(unittest.TestCase):
                 min_rounds,
                 continue_optimize,
                 require_analysis=False,
-                supervise="on",
+                supervise="off",
             ):
                 captured["output_path"] = output_path
                 captured["remote"] = remote
@@ -1621,7 +1613,7 @@ class PathResolutionTests(unittest.TestCase):
                 min_rounds,
                 resume_existing_session,
                 require_analysis=False,
-                supervise="on",
+                supervise="off",
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
@@ -1689,6 +1681,31 @@ class PathResolutionTests(unittest.TestCase):
             operator.write_text("print('x')", encoding="utf-8")
             (root / "opt-note.md").write_text("history\n", encoding="utf-8")
             (root / "opt-round-1").mkdir()
+            baseline_dir = root / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                "\n".join(
+                    [
+                        "{",
+                        '  "baseline_kind": "original",',
+                        '  "source_operator": "kernel.py",',
+                        '  "baseline_operator": "baseline/kernel.py",',
+                        '  "test_file": "differential_test_kernel.py",',
+                        '  "test_mode": "differential",',
+                        '  "bench_file": "bench_kernel.py",',
+                        '  "bench_mode": "standalone",',
+                        '  "perf_artifact": "baseline/perf.txt",',
+                        '  "correctness_status": "passed",',
+                        '  "benchmark_status": "passed",',
+                        '  "baseline_established": true',
+                        "}",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (root / "test_kernel.py").write_text(
                 "# test-mode: standalone\nprint('test')\n", encoding="utf-8"
             )
@@ -1706,6 +1723,28 @@ class PathResolutionTests(unittest.TestCase):
 
             self.assertEqual(exc.exception.code, 2)
             self.assertIn("resume continue found multiple test harnesses", stderr.getvalue())
+
+    def test_main_optimize_resume_continue_requires_established_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            (root / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (root / "opt-round-1").mkdir()
+            (root / "differential_test_kernel.py").write_text(
+                "# test-mode: differential\nprint('test')\n", encoding="utf-8"
+            )
+            (root / "bench_kernel.py").write_text(
+                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n", encoding="utf-8"
+            )
+
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(["optimize", "-i", str(operator), "--resume", "continue"])
+
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn("resume continue requires established baseline/", stderr.getvalue())
 
     def test_main_optimize_resume_fresh_rejects_existing_optimize_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1733,6 +1772,31 @@ class PathResolutionTests(unittest.TestCase):
             operator.write_text("print('x')", encoding="utf-8")
             (root / "opt-note.md").write_text("history\n", encoding="utf-8")
             (root / "opt-round-1").mkdir()
+            baseline_dir = root / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                "\n".join(
+                    [
+                        "{",
+                        '  "baseline_kind": "original",',
+                        '  "source_operator": "kernel.py",',
+                        '  "baseline_operator": "baseline/kernel.py",',
+                        '  "test_file": "differential_test_kernel.py",',
+                        '  "test_mode": "differential",',
+                        '  "bench_file": "bench_kernel.py",',
+                        '  "bench_mode": "msprof",',
+                        '  "perf_artifact": "baseline/perf.txt",',
+                        '  "correctness_status": "passed",',
+                        '  "benchmark_status": "passed",',
+                        '  "baseline_established": true',
+                        "}",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
             (root / "differential_test_kernel.py").write_text(
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
             )
@@ -1755,7 +1819,7 @@ class PathResolutionTests(unittest.TestCase):
                 min_rounds,
                 resume_existing_session,
                 require_analysis=False,
-                supervise="on",
+                supervise="off",
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
@@ -1790,6 +1854,90 @@ class PathResolutionTests(unittest.TestCase):
             request = mocked.call_args.args[1]
             self.assertEqual(request.test_mode, "differential")
             self.assertEqual(request.bench_mode, "msprof")
+
+    def test_main_optimize_resume_auto_uses_continue_for_baseline_only_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            (root / "opt-note.md").write_text("baseline prepared\n", encoding="utf-8")
+            baseline_dir = root / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                "\n".join(
+                    [
+                        "{",
+                        '  "baseline_kind": "prepared",',
+                        '  "source_operator": "kernel.py",',
+                        '  "baseline_operator": "baseline/kernel.py",',
+                        '  "test_file": "differential_test_kernel.py",',
+                        '  "test_mode": "differential",',
+                        '  "bench_file": "bench_kernel.py",',
+                        '  "bench_mode": "standalone",',
+                        '  "perf_artifact": "baseline/perf.txt",',
+                        '  "correctness_status": "passed",',
+                        '  "benchmark_status": "passed",',
+                        '  "baseline_established": true',
+                        "}",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (root / "differential_test_kernel.py").write_text(
+                "# test-mode: differential\nprint('test')\n", encoding="utf-8"
+            )
+            (root / "bench_kernel.py").write_text(
+                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n", encoding="utf-8"
+            )
+
+            captured = {}
+
+            def _fake_build_prompt(
+                command_kind,
+                input_path,
+                operator_path,
+                output_path,
+                test_mode,
+                bench_mode,
+                force_overwrite,
+                remote,
+                remote_workdir,
+                min_rounds,
+                resume_existing_session,
+                require_analysis=False,
+                supervise="off",
+            ):
+                captured["resume_existing_session"] = resume_existing_session
+                captured["test_mode"] = test_mode
+                captured["bench_mode"] = bench_mode
+                return "Prompt body"
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
+                with patch(
+                    "triton_agent.optimize.runtime.OptimizeSupervisor.run",
+                    return_value=fake_result,
+                ):
+                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                        with patch(
+                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            return_value=[],
+                        ):
+                            with patch(
+                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                return_value=[],
+                            ):
+                                exit_code = main(
+                                    ["optimize", "-i", str(operator), "--resume", "auto"]
+                                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(captured["resume_existing_session"])
+            self.assertEqual(captured["test_mode"], "differential")
+            self.assertEqual(captured["bench_mode"], "standalone")
 
     def test_main_optimize_accepts_workspace_directory_input(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1890,9 +2038,10 @@ class PathResolutionTests(unittest.TestCase):
                 min_rounds,
                 resume_existing_session,
                 require_analysis=False,
-                supervise="on",
+                supervise="off",
             ):
                 captured["require_analysis"] = require_analysis
+                captured["supervise"] = supervise
                 return "Prompt body"
 
             with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
@@ -1915,8 +2064,60 @@ class PathResolutionTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertTrue(captured["require_analysis"])
+            self.assertEqual(captured["supervise"], "off")
             request = mocked.call_args.args[1]
             self.assertTrue(request.require_analysis)
+
+    def test_main_optimize_passes_supervise_mode_to_prompt_and_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+
+            captured = {}
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+
+            def _fake_build_prompt(
+                command_kind,
+                input_path,
+                operator_path,
+                output_path,
+                test_mode,
+                bench_mode,
+                force_overwrite,
+                remote,
+                remote_workdir,
+                min_rounds,
+                resume_existing_session,
+                require_analysis=False,
+                supervise="off",
+            ):
+                captured["supervise"] = supervise
+                return "Prompt body"
+
+            with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
+                with patch(
+                    "triton_agent.optimize.runtime.OptimizeSupervisor.run",
+                    return_value=fake_result,
+                ) as mocked:
+                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                        with patch(
+                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            return_value=[],
+                        ):
+                            with patch(
+                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                return_value=[],
+                            ):
+                                exit_code = main(
+                                    ["optimize", "-i", str(operator), "--supervise", "on"]
+                                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["supervise"], "on")
+            request = mocked.call_args.args[1]
+            self.assertEqual(request.supervise, "on")
+            self.assertEqual(request.optimize_role, "worker")
 
     def test_main_optimize_passes_no_agent_session_to_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1946,56 +2147,6 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             request = mocked.call_args.args[1]
             self.assertTrue(request.no_agent_session)
-
-    def test_main_optimize_passes_supervise_mode_to_prompt_and_request(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            operator = root / "kernel.py"
-            operator.write_text("print('x')", encoding="utf-8")
-
-            captured = {}
-            fake_result = AgentResult(return_code=0, stdout="", stderr="")
-
-            def _fake_build_prompt(
-                command_kind,
-                input_path,
-                operator_path,
-                output_path,
-                test_mode,
-                bench_mode,
-                force_overwrite,
-                remote,
-                remote_workdir,
-                min_rounds,
-                resume_existing_session,
-                require_analysis=False,
-                supervise="on",
-            ):
-                captured["supervise"] = supervise
-                return "Prompt body"
-
-            with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
-                with patch(
-                    "triton_agent.optimize.runtime.OptimizeSupervisor.run",
-                    return_value=fake_result,
-                ) as mocked:
-                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
-                        with patch(
-                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
-                            return_value=[],
-                        ):
-                            with patch(
-                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
-                                return_value=[],
-                            ):
-                                exit_code = main(
-                                    ["optimize", "-i", str(operator), "--supervise", "off"]
-                                )
-
-            self.assertEqual(exit_code, 0)
-            self.assertEqual(captured["supervise"], "off")
-            request = mocked.call_args.args[1]
-            self.assertEqual(request.supervise, "off")
             self.assertIsNone(request.optimize_role)
 
     def test_main_run_bench_reports_missing_bench_file_without_traceback(self) -> None:
@@ -2483,7 +2634,9 @@ class PromptTests(unittest.TestCase):
         self.assertIn("This invocation owns exactly one round.", prompt)
         self.assertIn("Read `.triton-agent/roles/optimize-worker.md`", prompt)
         self.assertIn("Read `.triton-agent/round-brief.md`", prompt)
-        self.assertIn("Use `compare-perf` output as the only source", prompt)
+        self.assertIn("Establish or reuse `baseline/` before creating `opt-round-1`.", prompt)
+        self.assertIn("Use `baseline/perf.txt` for canonical performance comparisons.", prompt)
+        self.assertIn("Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.", prompt)
 
     def test_build_optimize_supervisor_prompt_mentions_audit_role(self) -> None:
         prompt = build_optimize_supervisor_prompt(

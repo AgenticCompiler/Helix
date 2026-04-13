@@ -6,7 +6,8 @@ Turn operator optimization into a repeatable search process over validated candi
 
 ## Core Model
 
-- Treat the original operator as `round 0`.
+- Treat `baseline/` as the canonical session baseline.
+- Do not treat `baseline/` as `opt-round-0`.
 - Maintain a pool of validated candidates.
 - A validated candidate is a version that passes correctness validation.
 - The current best candidate is useful for reporting, but it is not the only legal parent for future rounds.
@@ -20,9 +21,11 @@ Turn operator optimization into a repeatable search process over validated candi
 4. Check whether a correctness test for the resolved mode already exists and reuse it when possible.
 5. Check whether a benchmark case for the resolved mode already exists and reuse it when possible.
 6. Generate only the missing validation artifact types.
-6. If the original operator has never been benchmarked in the current workspace, run a baseline benchmark before optimizing so later rounds have a stable comparison point.
-7. Initialize `opt-note.md` if it does not exist.
-8. Write a short diagnosis summary before the first code-changing round so later readers can see the suspected bottleneck and the initial evidence.
+7. Establish or reuse `baseline/` before creating `opt-round-1`.
+8. If the operator needs minimal repair to become correct and benchmarkable, do that work during baseline preparation.
+9. Save the canonical baseline as `baseline/state.json`, `baseline/perf.txt`, and one baseline operator snapshot under `baseline/`.
+10. Initialize `opt-note.md` if it does not exist.
+11. Write a short diagnosis summary before the first code-changing round so later readers can see the suspected bottleneck and the initial evidence.
 
 ## Candidate Selection
 
@@ -70,13 +73,15 @@ Avoid selecting a parent that:
    - revise the round in place if the optimization idea is still promising, or
    - stop advancing that round and return to candidate selection for a new branch
 16. Complete the round only after the optimized candidate shows a measurable win over the chosen comparison target.
-17. When the optimize session is pausing or ending, refresh the final `## Overall Summary` block in `opt-note.md` so the top-level note states the best round, overall outcome, `Avg improvement`, `Geomean speedup`, `Total speedup`, any useful validated branches, and why that round was pursued.
+17. Use `baseline/perf.txt` for canonical optimize-session metrics even when a round also compares locally against its parent.
+18. When the optimize session is pausing or ending, refresh the final `## Overall Summary` block in `opt-note.md` so the top-level note states the best round, overall outcome, `Avg improvement`, `Geomean speedup`, `Total speedup`, any useful validated branches, and why that round was pursued.
 
 ## Comparison Target
 
 Compare the new round against:
 
 - its direct parent, to prove the local optimization helped
+- `baseline/perf.txt`, to measure canonical session-wide improvement
 - the current best candidate, when the round is meant to compete for best overall status
 
 If the new round beats its parent but not the current best, still keep it when:

@@ -23,6 +23,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                 load_round_state(round_dir)
 
             self.assertIn("missing required round-state fields", str(ctx.exception))
+            self.assertIn("canonical_baseline", str(ctx.exception))
             self.assertIn("perf_summary_source", str(ctx.exception))
 
     def test_inspect_round_artifacts_flags_missing_summary(self) -> None:
@@ -42,6 +43,8 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
                         "perf_artifact": "perf.txt",
+                        "canonical_baseline": "baseline",
+                        "comparison_target": "baseline/perf.txt",
                         "perf_summary_source": "compare-perf",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,

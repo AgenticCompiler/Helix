@@ -35,12 +35,13 @@ def build_optimize_worker_prompt(
         "Read `.triton-agent/round-brief.md` before acting.",
         "Treat this as a long-running task.",
         "Keep making progress until the current round is complete.",
+        "Establish or reuse `baseline/` before creating `opt-round-1`.",
+        "Use `baseline/perf.txt` for canonical performance comparisons.",
+        "Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.",
         "Reuse existing correctness tests and benchmark cases when they already exist; generate them only when required artifacts are missing.",
         "State the optimization hypothesis and why it may help before editing code for each round.",
         "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
         "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
-        "Use `compare-perf` output as the only source for performance deltas, `Avg improvement`, `Geomean speedup`, and `Total speedup`.",
-        "Do not hand-calculate speedups or percentage improvements from raw perf files.",
         "Produce all required round artifacts before stopping.",
         "Do not self-approve whether the optimize session should continue.",
     ]
@@ -76,12 +77,13 @@ def build_optimize_unsupervised_prompt(
         "This invocation is an unsupervised optimize run.",
         "Own the end-to-end optimize session and keep making progress until the run should stop.",
         "Treat this as a long-running task.",
+        "Establish or reuse `baseline/` before creating `opt-round-1`.",
+        "Use `baseline/perf.txt` for canonical performance comparisons.",
+        "Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.",
         "Reuse existing correctness tests and benchmark cases when they already exist; generate them only when required artifacts are missing.",
         "State the optimization hypothesis and why it may help before editing code for each round.",
         "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
         "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
-        "Use `compare-perf` output as the only source for performance deltas, `Avg improvement`, `Geomean speedup`, and `Total speedup`.",
-        "Do not hand-calculate speedups or percentage improvements from raw perf files.",
         "Record round outcomes and keep optimize artifacts up to date before stopping.",
     ]
     if resume_existing_session:
@@ -247,35 +249,37 @@ def build_optimize_resume_prompt(
     lines: list[str] = []
     if base_prompt:
         lines.extend([base_prompt.strip(), ""])
-    if supervise == "on" and not base_prompt:
-        lines.extend(
-            [
-                "This invocation is the optimize worker role.",
-                "This invocation owns exactly one round.",
-                "Read `.triton-agent/roles/optimize-worker.md` before acting.",
-                "Read `.triton-agent/round-brief.md` before acting.",
-                "Treat this as a long-running task.",
-                "Keep making progress until the current round is complete.",
-                "Do not self-approve whether the optimize session should continue.",
-                "",
-            ]
-        )
-    lines.extend(
-        [
-            "Continue the existing optimize task instead of restarting from scratch.",
-            "Read `opt-note.md`, existing `opt-round-*` directories, and any round summaries or attempt logs before making the next change.",
-            "Keep the optimize workflow hypothesis-driven: explain why each next change may help and what evidence supports it.",
-            "Use `compare-perf` output as the only source for performance deltas and speedup metrics.",
-        ]
-        if supervise == "on"
-        else [
-            "This invocation continues an unsupervised optimize task.",
-            "Continue the existing optimize task instead of restarting from scratch.",
-            "Read `opt-note.md`, existing `opt-round-*` directories, and any round summaries or attempt logs before making the next change.",
-            "Keep the optimize workflow hypothesis-driven: explain why each next change may help and what evidence supports it.",
-            "Use `compare-perf` output as the only source for performance deltas and speedup metrics.",
-        ]
-    )
+    if not base_prompt:
+        if supervise == "on":
+            lines.extend(
+                [
+                    "This invocation is the optimize worker role.",
+                    "This invocation owns exactly one round.",
+                    "Read `.triton-agent/roles/optimize-worker.md` before acting.",
+                    "Read `.triton-agent/round-brief.md` before acting.",
+                    "Treat this as a long-running task.",
+                    "Keep making progress until the current round is complete.",
+                    "Do not self-approve whether the optimize session should continue.",
+                    "",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    "This invocation continues an unsupervised optimize task.",
+                    "",
+                ]
+            )
+    continuation_lines = [
+        "Continue the existing optimize task instead of restarting from scratch.",
+        "Read `opt-note.md`, existing `opt-round-*` directories, and any round summaries or attempt logs before making the next change.",
+        "Reuse the established `baseline/` directory instead of redefining the canonical baseline.",
+        "Keep the optimize workflow hypothesis-driven: explain why each next change may help and what evidence supports it.",
+        "Use `compare-perf` output as the only source for performance deltas and speedup metrics.",
+    ]
+    if supervise == "off" and base_prompt:
+        continuation_lines.insert(0, "This invocation continues an unsupervised optimize task.")
+    lines.extend(continuation_lines)
     if require_analysis:
         lines.append(
             "Before the next code-changing round, gather profiling or IR-backed evidence, or record why the existing evidence is already sufficient."

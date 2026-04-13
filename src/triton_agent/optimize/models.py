@@ -61,6 +61,32 @@ class OptimizeStatusWorkspace:
 
 
 @dataclass(frozen=True)
+class BaselineState:
+    baseline_kind: str
+    source_operator: str
+    baseline_operator: str
+    test_file: str
+    test_mode: str
+    bench_file: str
+    bench_mode: str
+    perf_artifact: str
+    correctness_status: str
+    benchmark_status: str
+    baseline_established: bool
+    preparation_notes: str | None = None
+    baseline_repairs_summary: str | None = None
+
+
+@dataclass(frozen=True)
+class BaselineArtifactsInspection:
+    baseline_dir: Path
+    state_path: Path | None
+    perf_path: Path | None
+    operator_path: Path | None
+    issues: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class RoundState:
     round_name: str
     parent_round: str
@@ -69,6 +95,8 @@ class RoundState:
     correctness_status: str
     benchmark_status: str
     perf_artifact: str
+    canonical_baseline: str
+    comparison_target: str
     perf_summary_source: str
     summary_path: str
     opt_note_updated: bool

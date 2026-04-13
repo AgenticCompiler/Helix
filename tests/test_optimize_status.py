@@ -217,6 +217,53 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertAlmostEqual(status.geomean_speedup or 0.0, (1 / 0.5 * 100 / 100) ** 0.5)
             self.assertAlmostEqual(status.total_speedup or 0.0, 101 / 100.5)
 
+    def test_inspect_optimize_status_workspace_prefers_baseline_directory_perf(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "state.json").write_text(
+                "\n".join(
+                    [
+                        "{",
+                        '  "baseline_kind": "prepared",',
+                        '  "source_operator": "kernel.py",',
+                        '  "baseline_operator": "baseline/kernel.py",',
+                        '  "test_file": "differential_test_kernel.py",',
+                        '  "test_mode": "differential",',
+                        '  "bench_file": "bench_kernel.py",',
+                        '  "bench_mode": "standalone",',
+                        '  "perf_artifact": "baseline/perf.txt",',
+                        '  "correctness_status": "passed",',
+                        '  "benchmark_status": "passed",',
+                        '  "baseline_established": true',
+                        "}",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 999\nlatency-b: 999\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_one.mkdir()
+            (round_one / "perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 18\n",
+                encoding="utf-8",
+            )
+
+            status = inspect_optimize_status_workspace(workspace)
+
+            self.assertEqual(status.state, "ok")
+            self.assertAlmostEqual(status.baseline_mean or 0.0, 15.0)
+
     def test_inspect_optimize_status_workspace_prefers_non_opt_baseline_perf_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)

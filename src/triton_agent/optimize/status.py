@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from triton_agent.bench_runner import parse_perf_file, parse_required_perf_file
+from triton_agent.optimize.baseline import baseline_dir
 from triton_agent.optimize.batch import resolve_batch_optimize_operator_file
 from triton_agent.optimize.models import OptimizeStatusRound, OptimizeStatusWorkspace
 
@@ -151,7 +152,8 @@ def scan_optimize_status_workspaces(root: Path, *, verbose: bool = False) -> lis
 
 def workspace_has_optimize_artifacts(workspace: Path) -> bool:
     opt_note, round_dirs, top_level_perf_files = collect_optimize_status_artifacts(workspace)
-    return bool(opt_note.exists() or round_dirs or top_level_perf_files)
+    baseline_perf = baseline_dir(workspace) / "perf.txt"
+    return bool(opt_note.exists() or round_dirs or top_level_perf_files or baseline_perf.exists())
 
 
 def collect_optimize_status_artifacts(
@@ -171,6 +173,10 @@ def select_baseline_perf_file(
     paths: list[Path],
     warnings: list[str],
 ) -> tuple[Path | None, bool]:
+    baseline_perf = baseline_dir(workspace) / "perf.txt"
+    if baseline_perf.is_file():
+        return baseline_perf, False
+
     if not paths:
         return None, False
 

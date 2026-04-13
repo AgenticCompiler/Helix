@@ -186,7 +186,6 @@ class OptimizeGuidanceManager:
         runtime_root = state.history_dir.parent
         if runtime_root.name == ".triton-agent" and runtime_root.parent == state.guidance_path.parent:
             try:
-                # Remove the live runtime tree even when history is populated.
                 for root, dirs, files in os.walk(runtime_root, topdown=False, followlinks=False):
                     root_path = Path(root)
                     for filename in files:
@@ -288,7 +287,8 @@ class OptimizeGuidanceManager:
                 "- Do not put worker-only or supervisor-only role assignment in this shared guidance file.",
                 "- Supervisor repair is limited to metadata derived from existing facts.",
                 "- Do not fabricate benchmark, profiler, or IR evidence.",
-                "- Treat `compare-perf` as the authoritative source for optimize performance conclusions.",
+                "- Treat `baseline/` as the canonical optimize baseline for this workspace.",
+                "- Use `compare-perf` as the authoritative source for claimed speedups and benchmark deltas.",
                 "",
             ]
         )
@@ -314,7 +314,8 @@ class OptimizeGuidanceManager:
             "- Do not replace Triton operator calls with direct PyTorch operator calls or `torch.nn.Module` implementations.",
             "",
             "## Baseline",
-            "- Treat the original operator as round 0.",
+            "- Establish or reuse `baseline/` before creating `opt-round-1`.",
+            "- Do not treat `baseline/` as an optimization round.",
             "- Ensure correctness tests and benchmark cases exist before optimization starts.",
             "- Check whether correctness tests and benchmark cases already exist before generating anything new.",
             "- Do not regenerate them when reusable harnesses are already present.",
@@ -323,6 +324,7 @@ class OptimizeGuidanceManager:
             "- If you need to generate or regenerate correctness tests, include multiple test cases that cover representative shapes, inputs, or edge conditions instead of a single case.",
             "- If you need to generate or regenerate benchmark cases, include multiple benchmark cases instead of a single case.",
             "- Record a baseline correctness and benchmark result before evaluating optimization wins.",
+            "- Record the canonical baseline under `baseline/state.json`, `baseline/perf.txt`, and a baseline operator snapshot before evaluating optimization wins.",
             "- Write a short diagnosis summary before the first code-changing round.",
             "",
             "## Investigation",
@@ -331,9 +333,8 @@ class OptimizeGuidanceManager:
             "- Use the staged `ascend-operator-ir-analyzer` skill when you need to inspect Triton or Bisheng IR, confirm lowering behavior, or understand why an optimization did or did not take effect.",
             "- State the hypothesis, why it may help, and what evidence supports it before editing code.",
             "- If you skip profiling or IR capture for a round, explain why the existing evidence is sufficient.",
-            "- Run `compare-perf` after the baseline and round perf artifacts exist.",
-            "- Use `compare-perf` output as the only source for performance deltas, `Avg improvement`, `Geomean speedup`, and `Total speedup`.",
-            "- Do not hand-calculate speedups or percentage improvements from raw perf files.",
+            "- Use `baseline/perf.txt` for canonical performance comparisons.",
+            "- Use `compare-perf` output instead of hand-calculating speedups or percentage improvements from raw perf files.",
             "",
             "## Gates",
             "- Run correctness validation before every benchmark check.",

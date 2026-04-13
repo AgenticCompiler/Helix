@@ -56,16 +56,16 @@ class OptimizeSupervisorTests(unittest.TestCase):
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="optimize",
-                prompt=build_prompt(
-                    CommandKind.OPTIMIZE,
-                    workspace / "op.py",
-                    workspace / "op.py",
-                    workspace / "opt_op.py",
-                    "differential",
-                    "standalone",
-                    False,
-                    supervise="on",
-                ),
+            prompt=build_prompt(
+                CommandKind.OPTIMIZE,
+                workspace / "op.py",
+                workspace / "op.py",
+                workspace / "opt_op.py",
+                "differential",
+                "standalone",
+                False,
+                supervise="on",
+            ),
                 workdir=workspace,
                 min_rounds=2,
                 supervise="on",
@@ -102,18 +102,18 @@ class OptimizeSupervisorTests(unittest.TestCase):
             force_overwrite=False,
             agent_name="codex",
             skill_name="optimize",
-            prompt=build_prompt(
-                CommandKind.OPTIMIZE,
-                Path("/tmp/op.py"),
-                Path("/tmp/op.py"),
-                Path("/tmp/opt_op.py"),
-                "differential",
-                "standalone",
-                False,
-                remote="alice@example.com:2200",
-                remote_workdir="/tmp/remote",
-                supervise="on",
-            ),
+                prompt=build_prompt(
+                    CommandKind.OPTIMIZE,
+                    Path("/tmp/op.py"),
+                    Path("/tmp/op.py"),
+                    Path("/tmp/opt_op.py"),
+                    "differential",
+                    "standalone",
+                    False,
+                    remote="alice@example.com:2200",
+                    remote_workdir="/tmp/remote",
+                    supervise="on",
+                ),
             workdir=Path("/tmp"),
             min_rounds=None,
             supervise="on",
@@ -158,12 +158,8 @@ class OptimizeSupervisorTests(unittest.TestCase):
         self.assertEqual(result.return_code, 0)
         self.assertEqual(runner.resume_calls, 1)
         prompt = runner.resume_prompts[0]
-        self.assertIn("Operator input: /tmp/op.py", prompt)
-        self.assertIn("Requested output: /tmp/opt_op.py", prompt)
-        self.assertIn("Requested test mode: differential", prompt)
-        self.assertIn("Requested bench mode: standalone", prompt)
+        self.assertIn("This invocation is the optimize worker role.", prompt)
         self.assertIn("Remote execution target: alice@example.com:2200", prompt)
-        self.assertIn("Remote execution root: /tmp/remote", prompt)
         self.assertIn("Progress summary:", prompt)
 
     def test_unsupervised_recovery_resume_prompt_is_not_double_wrapped(self) -> None:
@@ -188,7 +184,6 @@ class OptimizeSupervisorTests(unittest.TestCase):
                 "differential",
                 "standalone",
                 False,
-                supervise="off",
             ),
             workdir=Path("/tmp"),
             supervise="off",
@@ -228,8 +223,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
             resume_prompt.count("Continue the existing optimize task instead of restarting from scratch."),
             1,
         )
-        self.assertIn("Operator input: /tmp/op.py", resume_prompt)
-        self.assertIn("Requested output: /tmp/opt_op.py", resume_prompt)
+        self.assertIn("This invocation continues an unsupervised optimize task.", resume_prompt)
         self.assertIn("Progress summary:\nstalled once", resume_prompt)
 
     def test_round_gate_runner_stops_after_pass_stop(self) -> None:
