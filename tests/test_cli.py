@@ -994,6 +994,32 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("found multiple candidate operator files", stdout.getvalue())
             self.assertIn("Summary: 1 succeeded, 1 failed", stdout.getvalue())
 
+    def test_main_optimize_batch_ignores_triton_agent_tooling_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            good = root / "good"
+            tooling = root / ".triton-agent"
+            good.mkdir()
+            tooling.mkdir()
+            (good / "kernel.py").write_text("print('ok')\n", encoding="utf-8")
+            (tooling / "round-brief.md").write_text("Pending\n", encoding="utf-8")
+
+            stdout = StringIO()
+            seen_inputs: list[Path] = []
+
+            def _fake_run(request):
+                seen_inputs.append(request.input_path)
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
+                with redirect_stdout(stdout):
+                    exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(seen_inputs, [(good / "kernel.py").resolve()])
+            self.assertNotIn(".triton-agent", stdout.getvalue())
+            self.assertIn("Summary: 1 succeeded, 0 failed", stdout.getvalue())
+
     def test_main_optimize_batch_honors_max_concurrency(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

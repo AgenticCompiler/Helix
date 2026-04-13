@@ -44,7 +44,9 @@ def discover_batch_workspaces(
     resolve_operator_file: Callable[[Path], Path],
     no_candidate_message: str = NO_CANDIDATE_OPERATOR_FILE,
 ) -> tuple[list[tuple[Path, Path]], list[tuple[Path, str]]]:
-    workspace_candidates = sorted(path for path in root.iterdir() if path.is_dir())
+    workspace_candidates = sorted(
+        path for path in root.iterdir() if path.is_dir() and not path.name.startswith(".")
+    )
     child_results: list[tuple[Path, str]] = []
     child_runnable: list[tuple[Path, Path]] = []
 
