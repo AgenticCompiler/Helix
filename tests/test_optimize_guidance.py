@@ -59,6 +59,19 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             self.assertIn("Start by consulting the staged `optimize` skill", worker_content)
             self.assertIn("Establish or reuse `baseline/` before creating `opt-round-1`.", worker_content)
             self.assertIn("Use `baseline/perf.txt` for canonical performance comparisons.", worker_content)
+            self.assertIn("Write `baseline/state.json` with these required fields:", worker_content)
+            self.assertIn("`baseline_kind`", worker_content)
+            self.assertIn("`source_operator`", worker_content)
+            self.assertIn("`baseline_operator`", worker_content)
+            self.assertIn("`test_file`", worker_content)
+            self.assertIn("`test_mode`", worker_content)
+            self.assertIn("`bench_file`", worker_content)
+            self.assertIn("`bench_mode`", worker_content)
+            self.assertIn("`perf_artifact`", worker_content)
+            self.assertIn("`correctness_status`", worker_content)
+            self.assertIn("`benchmark_status`", worker_content)
+            self.assertIn("`baseline_established`", worker_content)
+            self.assertIn("Set `baseline_established` to `true` only after", worker_content)
             self.assertIn(
                 "Use `compare-perf` output instead of hand-calculating speedups",
                 worker_content,

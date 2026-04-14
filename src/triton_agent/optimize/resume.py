@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import shutil
 
 from triton_agent.bench_runner import parse_bench_metadata
 from triton_agent.optimize.baseline import baseline_dir, inspect_baseline_artifacts, load_baseline_state
@@ -25,6 +26,36 @@ class WorkspaceInspection:
 
 
 def classify_optimize_workspace(input_path: Path, workdir: Path) -> WorkspaceInspection:
+    return _classify_optimize_workspace(input_path, workdir)
+
+
+def reset_optimize_workspace(input_path: Path, workdir: Path) -> None:
+    artifact_paths = [
+        workdir / "opt-note.md",
+        workdir / "learned_lessons.md",
+        baseline_dir(workdir),
+        workdir / ".triton-agent",
+        workdir / "optimize-logs",
+        input_path.with_name(f"opt_{input_path.stem}.py"),
+    ]
+    round_dirs = [
+        path
+        for path in workdir.glob("opt-round-*")
+        if path.is_dir()
+    ]
+    for path in [*artifact_paths, *round_dirs]:
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif path.exists():
+            path.unlink()
+
+
+def _classify_optimize_workspace(
+    input_path: Path,
+    workdir: Path,
+    *,
+    allow_reusable_harnesses_without_session: bool = False,
+) -> WorkspaceInspection:
     opt_note_path = workdir / "opt-note.md"
     has_opt_note = opt_note_path.exists()
     has_rounds = any(path.is_dir() for path in workdir.glob("opt-round-*"))
@@ -33,7 +64,11 @@ def classify_optimize_workspace(input_path: Path, workdir: Path) -> WorkspaceIns
     has_bench = bench_harness.exists()
     has_baseline_dir = baseline_dir(workdir).exists()
 
-    if not (has_opt_note or has_rounds or test_harnesses or has_bench or has_baseline_dir):
+    has_session_artifacts = has_opt_note or has_rounds or has_baseline_dir
+    has_validation_artifacts = bool(test_harnesses or has_bench)
+    if not has_session_artifacts and (
+        allow_reusable_harnesses_without_session or not has_validation_artifacts
+    ):
         return WorkspaceInspection(
             state="no-session",
             detail=None,
@@ -85,10 +120,15 @@ def resolve_optimize_resume(
     workdir: Path,
     *,
     resume_mode: str,
+    reset_optimize: bool,
     requested_test_mode: str | None,
     requested_bench_mode: str | None,
 ) -> ResumeResolution:
-    inspection = classify_optimize_workspace(input_path, workdir)
+    inspection = _classify_optimize_workspace(
+        input_path,
+        workdir,
+        allow_reusable_harnesses_without_session=reset_optimize and resume_mode == "fresh",
+    )
     if resume_mode == "fresh":
         if inspection.state != "no-session":
             raise ValueError(f"resume fresh refused because optimize artifacts already exist in {workdir}")
@@ -139,7 +179,7 @@ def _require_resumable_session(
     baseline_issue = _baseline_issue(workdir)
     if baseline_issue is not None:
         raise ValueError(
-            f"resume continue requires established baseline/: {workdir / 'baseline'}"
+            f"resume continue requires established baseline/: {workdir / 'baseline'} ({baseline_issue})"
         )
 
     test_harnesses = _existing_test_harnesses(input_path)

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 from triton_agent.models import COMMAND_TO_SKILL, CommandKind
+from triton_agent.optimize_contract import baseline_state_contract_lines
 from triton_agent.paths import default_generated_output_path
 
 
@@ -54,6 +55,7 @@ def build_optimize_worker_prompt(
         "Produce all required round artifacts before stopping.",
         "Do not self-approve whether the optimize session should continue.",
     ]
+    lines.extend(baseline_state_contract_lines())
     if resume_existing_session:
         lines.extend(
             [
@@ -95,6 +97,7 @@ def build_optimize_unsupervised_prompt(
         "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
         "Record round outcomes and keep optimize artifacts up to date before stopping.",
     ]
+    lines.extend(baseline_state_contract_lines())
     if resume_existing_session:
         lines.extend(
             [

@@ -4,21 +4,9 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
+from triton_agent.optimize_contract import BASELINE_STATE_REQUIRED_FIELDS
 from triton_agent.optimize.models import BaselineArtifactsInspection, BaselineState
 
-_BASELINE_STATE_REQUIRED_FIELDS = (
-    "baseline_kind",
-    "source_operator",
-    "baseline_operator",
-    "test_file",
-    "test_mode",
-    "bench_file",
-    "bench_mode",
-    "perf_artifact",
-    "correctness_status",
-    "benchmark_status",
-    "baseline_established",
-)
 _BASELINE_METADATA_FILENAMES = {
     "state.json",
     "perf.txt",
@@ -43,7 +31,7 @@ def load_baseline_state(workspace: Path) -> BaselineState:
     data = cast(dict[str, Any], payload)
 
     missing_fields = [
-        field_name for field_name in _BASELINE_STATE_REQUIRED_FIELDS if field_name not in data
+        field_name for field_name in BASELINE_STATE_REQUIRED_FIELDS if field_name not in data
     ]
     if missing_fields:
         missing_text = ", ".join(missing_fields)

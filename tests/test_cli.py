@@ -31,6 +31,7 @@ from triton_agent.paths import (
 from triton_agent.prompts import (
     append_additional_user_instructions,
     build_optimize_supervisor_prompt,
+    build_optimize_unsupervised_prompt,
     build_optimize_worker_prompt,
     build_prompt,
 )
@@ -560,6 +561,13 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["optimize", "-i", "kernel.py", "--resume", "fresh"])
         self.assertEqual(args.resume, "fresh")
 
+    def test_optimize_command_accepts_reset_optimize(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--reset-optimize"])
+        self.assertTrue(args.reset_optimize)
+        options = optimize_run_options_from_args(args)
+        self.assertTrue(options.reset_optimize)
+
     def test_optimize_command_accepts_no_agent_session(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize", "-i", "kernel.py", "--no-agent-session"])
@@ -601,6 +609,7 @@ class CliParserTests(unittest.TestCase):
             remote_workdir=None,
             min_rounds=None,
             resume="auto",
+            reset_optimize=False,
             require_analysis=False,
             no_agent_session=False,
             supervise="maybe",
@@ -616,7 +625,7 @@ class CliParserTests(unittest.TestCase):
         parser = build_parser()
         args = parser.parse_args(["optimize-batch", "-i", "kernels"])
         self.assertEqual(args.command_kind, CommandKind.OPTIMIZE_BATCH)
-        self.assertEqual(args.max_concurrency, 2)
+        self.assertEqual(args.max_concurrency, 1)
         self.assertEqual(args.agent, "codex")
         self.assertFalse(hasattr(args, "interact"))
         self.assertFalse(args.show_output)
@@ -709,6 +718,13 @@ class CliParserTests(unittest.TestCase):
         parser = build_parser()
         args = parser.parse_args(["optimize-batch", "-i", "kernels", "--require-analysis"])
         self.assertTrue(args.require_analysis)
+
+    def test_optimize_batch_accepts_reset_optimize(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-batch", "-i", "kernels", "--reset-optimize"])
+        self.assertTrue(args.reset_optimize)
+        options = optimize_run_options_from_args(args)
+        self.assertTrue(options.reset_optimize)
 
 
 class PathResolutionTests(unittest.TestCase):
@@ -1627,6 +1643,20 @@ class PathResolutionTests(unittest.TestCase):
                 stderr.getvalue(),
             )
 
+    def test_main_optimize_reset_optimize_requires_fresh_resume(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(["optimize", "-i", str(operator), "--reset-optimize"])
+
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn("--reset-optimize requires --resume fresh", stderr.getvalue())
+
     def test_main_optimize_resume_auto_uses_fresh_for_no_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1780,6 +1810,7 @@ class PathResolutionTests(unittest.TestCase):
 
             self.assertEqual(exc.exception.code, 2)
             self.assertIn("resume continue requires established baseline/", stderr.getvalue())
+            self.assertIn("missing established baseline/", stderr.getvalue())
 
     def test_main_optimize_resume_fresh_rejects_existing_optimize_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1799,6 +1830,65 @@ class PathResolutionTests(unittest.TestCase):
                 "resume fresh refused because optimize artifacts already exist",
                 stderr.getvalue(),
             )
+
+    def test_main_optimize_resume_fresh_with_reset_cleans_session_artifacts_and_keeps_harnesses(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            (root / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (root / "learned_lessons.md").write_text("notes\n", encoding="utf-8")
+            (root / "opt-round-1").mkdir()
+            (root / ".triton-agent").mkdir()
+            (root / "optimize-logs").mkdir()
+            baseline_dir = root / "baseline"
+            baseline_dir.mkdir()
+            (root / "opt_kernel.py").write_text("print('opt')\n", encoding="utf-8")
+            test_harness = root / "differential_test_kernel.py"
+            test_harness.write_text(
+                "# test-mode: differential\nprint('test')\n",
+                encoding="utf-8",
+            )
+            bench_harness = root / "bench_kernel.py"
+            bench_harness.write_text(
+                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n",
+                encoding="utf-8",
+            )
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch("triton_agent.optimize.runtime.OptimizeSupervisor.run", return_value=fake_result):
+                with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                    with patch(
+                        "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                        return_value=[],
+                    ):
+                        with patch(
+                            "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                            return_value=[],
+                        ):
+                            exit_code = main(
+                                [
+                                    "optimize",
+                                    "-i",
+                                    str(operator),
+                                    "--resume",
+                                    "fresh",
+                                    "--reset-optimize",
+                                ]
+                            )
+
+            self.assertEqual(exit_code, 0)
+            self.assertFalse((root / "opt-note.md").exists())
+            self.assertFalse((root / "learned_lessons.md").exists())
+            self.assertFalse((root / "opt-round-1").exists())
+            self.assertFalse((root / ".triton-agent").exists())
+            self.assertFalse((root / "optimize-logs").exists())
+            self.assertFalse((root / "baseline").exists())
+            self.assertFalse((root / "opt_kernel.py").exists())
+            self.assertTrue(test_harness.exists())
+            self.assertTrue(bench_harness.exists())
 
     def test_main_optimize_resume_auto_uses_continue_for_resumable_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2709,6 +2799,31 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Establish or reuse `baseline/` before creating `opt-round-1`.", prompt)
         self.assertIn("Use `baseline/perf.txt` for canonical performance comparisons.", prompt)
         self.assertIn("Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.", prompt)
+        self.assertIn("Write `baseline/state.json` with these required fields:", prompt)
+        self.assertIn("`baseline_kind`", prompt)
+        self.assertIn("`source_operator`", prompt)
+        self.assertIn("`baseline_operator`", prompt)
+        self.assertIn("`test_file`", prompt)
+        self.assertIn("`test_mode`", prompt)
+        self.assertIn("`bench_file`", prompt)
+        self.assertIn("`bench_mode`", prompt)
+        self.assertIn("`perf_artifact`", prompt)
+        self.assertIn("`correctness_status`", prompt)
+        self.assertIn("`benchmark_status`", prompt)
+        self.assertIn("`baseline_established`", prompt)
+        self.assertIn("Set `baseline_established` to `true` only after", prompt)
+
+    def test_build_optimize_unsupervised_prompt_mentions_baseline_state_contract(self) -> None:
+        prompt = build_optimize_unsupervised_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+        )
+        self.assertIn("This invocation is an unsupervised optimize run.", prompt)
+        self.assertIn("Write `baseline/state.json` with these required fields:", prompt)
+        self.assertIn("`baseline_established`", prompt)
+        self.assertIn("Set `baseline_established` to `true` only after", prompt)
 
     def test_build_optimize_supervisor_prompt_mentions_audit_role(self) -> None:
         prompt = build_optimize_supervisor_prompt(

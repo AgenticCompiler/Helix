@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
+from triton_agent.optimize_contract import baseline_state_contract_lines
+
 
 @dataclass
 class OptimizeGuidanceState:
@@ -334,6 +336,7 @@ class OptimizeGuidanceManager:
             "- Record a baseline correctness and benchmark result before evaluating optimization wins.",
             "- Record the canonical baseline under `baseline/state.json`, `baseline/perf.txt`, and a baseline operator snapshot before evaluating optimization wins.",
             "- Write a short diagnosis summary before the first code-changing round.",
+            *(f"- {line}" for line in baseline_state_contract_lines()),
             "",
             "## Investigation",
             "- Start by consulting the staged `optimize` skill to understand the existing Triton NPU optimization rules and search patterns available in this repository.",

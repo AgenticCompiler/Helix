@@ -8,11 +8,40 @@ Expected long-lived artifacts:
 
 - `test_<operator-stem>.py` or the mode-specific generated correctness artifact
 - `bench_<operator-stem>.py` or the mode-specific generated benchmark artifact
+- `baseline/`
+- `baseline/state.json`
+- `baseline/perf.txt`
 - `opt-note.md`
 - `learned_lessons.md`
 - `opt-round-1/`
 - `opt-round-2/`
 - ...
+
+## Baseline Directory
+
+The canonical optimize baseline lives under `baseline/`.
+
+Required baseline artifacts:
+
+- one baseline operator snapshot under `baseline/`
+- `baseline/perf.txt`
+- `baseline/state.json`
+
+`baseline/state.json` must contain these fields:
+
+- `baseline_kind`
+- `source_operator`
+- `baseline_operator`
+- `test_file`
+- `test_mode`
+- `bench_file`
+- `bench_mode`
+- `perf_artifact`
+- `correctness_status`
+- `benchmark_status`
+- `baseline_established`
+
+Set `baseline_established` to `true` only after correctness passed, benchmark passed, and the canonical baseline artifacts are in place.
 
 ## Per-Round Directory
 

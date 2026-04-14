@@ -184,6 +184,7 @@ Common options:
 - `--test-mode standalone|differential`: default is `differential`
 - `--bench-mode standalone|msprof`: default is `standalone`
 - `--resume auto|continue|fresh`: default is `auto`
+- `--reset-optimize`: only valid with `--resume fresh`; remove known optimize-session artifacts before starting a new run while keeping reusable test and benchmark harnesses.
 - `--require-analysis`: strengthen analysis-first optimize guidance before the first code-changing round.
 - `--min-rounds <N>`: require at least N optimization rounds.
 - `--no-agent-session`: disable persistent agent sessions when supported.
@@ -206,6 +207,7 @@ Resume modes:
 - `auto`: continue only when there is a complete existing optimize session; otherwise start fresh or fail if the workspace is incomplete.
 - `continue`: require an existing resumable optimize session.
 - `fresh`: require a clean workspace with no existing optimize artifacts.
+- `fresh` + `--reset-optimize`: delete known optimize-session artifacts first, but keep reusable generated test and benchmark harnesses.
 
 Optimize behavior:
 
@@ -287,7 +289,7 @@ Common options:
 - `--require-analysis`
 - `--min-rounds <N>`
 - `--no-agent-session`
-- `--max-concurrency <N>`
+- `--max-concurrency <N>`: defaults to `1`
 - `--show-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`

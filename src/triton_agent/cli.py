@@ -144,7 +144,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_test_mode=True,
         has_bench_mode=True,
         has_optimize_options=True,
-        max_concurrency_default=2,
+        max_concurrency_default=1,
     ),
 }
 
@@ -190,6 +190,7 @@ def build_parser() -> argparse.ArgumentParser:
         if spec.has_optimize_options:
             subparser.add_argument("--min-rounds", type=int)
             subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES)
+            subparser.add_argument("--reset-optimize", action="store_true")
             subparser.add_argument("--require-analysis", action="store_true")
             subparser.add_argument("--no-agent-session", action="store_true")
             subparser.add_argument("--supervise", default="off", choices=_SUPERVISE_CHOICES)
