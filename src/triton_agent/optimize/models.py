@@ -16,6 +16,7 @@ class OptimizeRunOptions:
     remote_workdir: str | None
     min_rounds: int | None
     resume_mode: str
+    reset_optimize: bool
     require_analysis: bool
     no_agent_session: bool
     supervise: Literal["on", "off"]

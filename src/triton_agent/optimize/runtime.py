@@ -12,7 +12,7 @@ from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, Com
 from triton_agent.optimize.gate import evaluate_round_gate
 from triton_agent.optimize.models import GateDecision, GateResult
 from triton_agent.optimize.models import OptimizeRunOptions
-from triton_agent.optimize.resume import resolve_optimize_resume
+from triton_agent.optimize.resume import resolve_optimize_resume, reset_optimize_workspace
 from triton_agent.optimize_guidance import OptimizeGuidanceManager, OptimizeGuidanceState
 from triton_agent.paths import default_generated_output_path
 from triton_agent.prompts import (
@@ -202,10 +202,13 @@ def build_optimize_request(
     workdir: Path,
     options: OptimizeRunOptions,
 ) -> AgentRequest:
+    if options.reset_optimize:
+        reset_optimize_workspace(input_path, workdir)
     resolution = resolve_optimize_resume(
         input_path,
         workdir,
         resume_mode=options.resume_mode,
+        reset_optimize=options.reset_optimize,
         requested_test_mode=options.test_mode,
         requested_bench_mode=options.bench_mode,
     )
