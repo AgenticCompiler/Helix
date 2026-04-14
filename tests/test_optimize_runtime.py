@@ -25,8 +25,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
     def _build_guidance_state(self, workdir: Path) -> OptimizeGuidanceState:
         runtime_root = workdir / ".triton-agent"
         runtime_root.mkdir(parents=True, exist_ok=True)
-        role_dir = runtime_root / "roles"
-        role_dir.mkdir(parents=True, exist_ok=True)
         history_dir = runtime_root / "history"
         history_dir.mkdir(parents=True, exist_ok=True)
         round_brief_path = runtime_root / "round-brief.md"
@@ -40,9 +38,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
             guidance_path=workdir / "AGENTS.md",
             backup_path=None,
             created_guidance=False,
-            role_dir=role_dir,
-            worker_brief_path=role_dir / "optimize-worker.md",
-            supervisor_brief_path=role_dir / "optimize-supervisor.md",
             round_brief_path=round_brief_path,
             supervisor_report_path=supervisor_report_path,
             history_dir=history_dir,
@@ -190,8 +185,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertEqual(len(run_archives), 1)
             run_archive = run_archives[0]
             self.assertTrue((run_archive / "shared-guidance.md").exists())
-            self.assertTrue((run_archive / "roles" / "optimize-worker.md").exists())
-            self.assertTrue((run_archive / "roles" / "optimize-supervisor.md").exists())
             self.assertTrue((run_archive / "final" / "round-brief.md").exists())
             self.assertTrue((run_archive / "final" / "supervisor-report.md").exists())
             self.assertTrue((run_archive / "history").exists())
@@ -334,7 +327,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
 
             runner = FakeRunner()
             with patch("triton_agent.optimize.runtime.create_runner", return_value=runner):
-                with patch("triton_agent.optimize.runtime.OptimizeGuidanceManager.prepare") as mocked_prepare:
+                with patch(
+                    "triton_agent.optimize.runtime.OptimizeGuidanceManager.prepare_supervised_session"
+                ) as mocked_prepare:
                     result = run_optimize_request(request)
 
             self.assertEqual(result.return_code, 0)
@@ -346,7 +341,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIsNone(runner.calls[0].round_brief_path)
             self.assertIsNone(runner.calls[0].supervisor_report_path)
             self.assertFalse((workdir / "AGENTS.md").exists())
-            self.assertFalse((workdir / ".triton-agent" / "roles").exists())
+            self.assertFalse((workdir / ".triton-agent").exists())
             self.assertFalse((workdir / "optimize-logs").exists())
             mocked_prepare.assert_not_called()
 

@@ -2885,8 +2885,8 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("This invocation is the optimize worker role.", prompt)
         self.assertIn("This invocation owns exactly one round.", prompt)
-        self.assertIn("Read `.triton-agent/roles/optimize-worker.md`", prompt)
         self.assertIn("Read `.triton-agent/round-brief.md`", prompt)
+        self.assertNotIn("optimize-worker.md", prompt)
         self.assertIn("Establish or reuse `baseline/` before creating `opt-round-1`.", prompt)
         self.assertIn("Use `baseline/perf.txt` for canonical performance comparisons.", prompt)
         self.assertIn("Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.", prompt)
@@ -2923,9 +2923,9 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("This invocation is the optimize supervisor role.", prompt)
         self.assertIn("This invocation is an audit and handoff pass", prompt)
-        self.assertIn("Read `.triton-agent/roles/optimize-supervisor.md`", prompt)
         self.assertIn("Read `/tmp/opt-round-3`", prompt)
         self.assertIn("Use only existing `compare-perf` results", prompt)
+        self.assertNotIn("optimize-supervisor.md", prompt)
 
     def test_gen_eval_prompt_mentions_operator_repair_and_dual_outputs(self) -> None:
         prompt = build_prompt(

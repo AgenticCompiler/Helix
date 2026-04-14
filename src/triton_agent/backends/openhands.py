@@ -106,6 +106,11 @@ class OpenHandsRunner(AgentRunner):
         if not skills_dir.exists():
             raise OpenHandsSetupError(f"OpenHands skills path does not exist: {skills_dir}")
 
+        # OpenHands project-skill loading is broader than the staged legacy
+        # `.openhands/skills` directory. It also auto-discovers workspace-owned
+        # top-level guidance files such as `AGENTS.md`/`CLAUDE.md` and merges
+        # them into AgentContext, so this backend intentionally inherits any
+        # always-on repository instructions already present in `request.workdir`.
         project_skills = list(dependencies.load_project_skills(work_dir=str(request.workdir)))
         agent_context = dependencies.AgentContext(skills=project_skills)
 

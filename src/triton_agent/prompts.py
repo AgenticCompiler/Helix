@@ -41,7 +41,6 @@ def build_optimize_worker_prompt(
     lines = [
         "This invocation is the optimize worker role.",
         "This invocation owns exactly one round.",
-        "Read `.triton-agent/roles/optimize-worker.md` before acting.",
         "Read `.triton-agent/round-brief.md` before acting.",
         "Treat this as a long-running task.",
         "Keep making progress until the current round is complete.",
@@ -124,7 +123,6 @@ def build_optimize_supervisor_prompt(
     lines = [
         "This invocation is the optimize supervisor role.",
         "This invocation is an audit and handoff pass, not a new optimization round.",
-        "Read `.triton-agent/roles/optimize-supervisor.md` before acting.",
         f"Read `{workdir / 'opt-note.md'}` before acting.",
     ]
     if latest_round_dir is not None:
@@ -267,7 +265,6 @@ def build_optimize_resume_prompt(
                 [
                     "This invocation is the optimize worker role.",
                     "This invocation owns exactly one round.",
-                    "Read `.triton-agent/roles/optimize-worker.md` before acting.",
                     "Read `.triton-agent/round-brief.md` before acting.",
                     "Treat this as a long-running task.",
                     "Keep making progress until the current round is complete.",

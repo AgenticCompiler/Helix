@@ -281,26 +281,31 @@ def run_optimize_request(
             # the workspace, then alternate worker/supervisor invocations via
             # `OptimizeSupervisor`. Cleanup archives the handoff trail before the
             # temporary runtime files are removed.
-            guidance_state = guidance_manager.prepare(
+            guidance_state = guidance_manager.prepare_supervised_session(
                 request.workdir,
-                request.input_path,
-                test_mode=request.test_mode or "differential",
-                bench_mode=request.bench_mode or "standalone",
                 agent_name=request.agent_name,
                 require_analysis=request.require_analysis,
             )
             if request.verbose:
-                emit_verbose_lines(verbose_stream, "agents", guidance_manager.describe_prepare(guidance_state))
+                emit_verbose_lines(
+                    verbose_stream,
+                    "agents",
+                    guidance_manager.describe_prepare_supervised_session(guidance_state),
+                )
             try:
                 loop_runner = OptimizeLoopRunner(runner, guidance_state, stdout=stdout, stderr=stderr)
                 return OptimizeSupervisor().run(loop_runner, request)
             finally:
                 if request.verbose:
-                    emit_verbose_lines(verbose_stream, "agents", guidance_manager.describe_cleanup(guidance_state))
-                warnings = guidance_manager.cleanup(guidance_state)
+                    emit_verbose_lines(
+                        verbose_stream,
+                        "agents",
+                        guidance_manager.describe_cleanup_supervised_session(guidance_state),
+                    )
+                warnings = guidance_manager.cleanup_supervised_session(guidance_state)
                 for warning in warnings:
                     emit_verbose(verbose_stream, "agents", warning)
-        shared_guidance_state = guidance_manager.prepare_unsupervised_guidance(
+        shared_guidance_state = guidance_manager.prepare_unsupervised_session(
             request.workdir,
             operator_path=request.input_path,
             test_mode=request.test_mode or "differential",
@@ -312,10 +317,7 @@ def run_optimize_request(
             emit_verbose_lines(
                 verbose_stream,
                 "agents",
-                guidance_manager.describe_prepare_workspace_guidance(
-                    shared_guidance_state,
-                    mode_label="unsupervised",
-                ),
+                guidance_manager.describe_prepare_unsupervised_session(shared_guidance_state),
             )
         try:
             return OptimizeSupervisor().run(
@@ -327,9 +329,9 @@ def run_optimize_request(
                 emit_verbose_lines(
                     verbose_stream,
                     "agents",
-                    guidance_manager.describe_cleanup_workspace_guidance(shared_guidance_state),
+                    guidance_manager.describe_cleanup_unsupervised_session(shared_guidance_state),
                 )
-            warnings = guidance_manager.cleanup_workspace_guidance(shared_guidance_state)
+            warnings = guidance_manager.cleanup_unsupervised_session(shared_guidance_state)
             for warning in warnings:
                 emit_verbose(verbose_stream, "agents", warning)
     finally:
