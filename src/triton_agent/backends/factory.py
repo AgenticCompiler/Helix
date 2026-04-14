@@ -3,6 +3,7 @@ from __future__ import annotations
 from triton_agent.backends.base import AgentRunner
 from triton_agent.backends.claude import ClaudeRunner
 from triton_agent.backends.codex import CodexRunner
+from triton_agent.backends.openhands import OpenHandsRunner
 from triton_agent.backends.opencode import OpenCodeRunner
 from triton_agent.backends.pi import PiRunner
 
@@ -16,4 +17,6 @@ def create_runner(agent_name: str) -> AgentRunner:
         return PiRunner()
     if agent_name == "claude":
         return ClaudeRunner()
+    if agent_name == "openhands":
+        return OpenHandsRunner()
     raise ValueError(f"Unsupported agent backend: {agent_name}")

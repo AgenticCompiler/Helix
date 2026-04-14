@@ -45,6 +45,7 @@ def _handle_generation_command(
     input_path = Path(args.input).expanduser().resolve()
     if not input_path.exists():
         parser.error(f"Input path does not exist: {input_path}")
+    _validate_agent_options(parser, args)
     workdir = input_path.parent
     options = generation_options_from_args(args)
     request = build_generation_request(
@@ -75,6 +76,11 @@ def _handle_generation_command(
         )
     render_result(result, show_output=request.show_output)
     return result.return_code
+
+
+def _validate_agent_options(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    if getattr(args, "agent", None) == "openhands" and bool(getattr(args, "interact", False)):
+        parser.error("OpenHands backend does not support --interact yet.")
 
 
 def generation_options_from_args(args: argparse.Namespace) -> GenerationOptions:

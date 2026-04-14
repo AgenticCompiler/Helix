@@ -9,6 +9,43 @@ from triton_agent.optimize_guidance import OptimizeGuidanceManager
 
 
 class OptimizeGuidanceManagerTests(unittest.TestCase):
+    def test_prepare_unsupervised_guidance_creates_self_contained_guidance_file_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            manager = OptimizeGuidanceManager()
+            state = manager.prepare_unsupervised_guidance(
+                workdir,
+                operator_path=operator,
+                agent_name="codex",
+                test_mode="differential",
+                bench_mode="standalone",
+            )
+
+            agents_path = workdir / "AGENTS.md"
+            guidance_content = agents_path.read_text(encoding="utf-8")
+
+            self.assertTrue(agents_path.exists())
+            self.assertEqual(state.guidance_path, agents_path)
+            self.assertIsNone(state.backup_path)
+            self.assertTrue(state.created_guidance)
+            self.assertIn("## Triton Agent Optimize Session", guidance_content)
+            self.assertIn("This workspace is under an unsupervised optimize run.", guidance_content)
+            self.assertIn("Own the end-to-end optimize session.", guidance_content)
+            self.assertIn("Use `differential` correctness validation", guidance_content)
+            self.assertIn("Use `standalone` benchmark validation", guidance_content)
+            self.assertIn("Use the staged `optimize` skill", guidance_content)
+            self.assertNotIn("Read the role brief", guidance_content)
+            self.assertNotIn("Worker and supervisor roles", guidance_content)
+            self.assertNotIn(".triton-agent/roles/", guidance_content)
+
+            warnings = manager.cleanup_workspace_guidance(state)
+            self.assertEqual(warnings, [])
+            self.assertFalse(agents_path.exists())
+            self.assertFalse((workdir / ".triton-agent").exists())
+
     def test_prepare_creates_shared_guidance_and_role_briefs_when_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)

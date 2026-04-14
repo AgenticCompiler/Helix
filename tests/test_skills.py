@@ -266,6 +266,43 @@ class SkillLinkManagerTests(unittest.TestCase):
             manager.cleanup(links)
             self.assertFalse(target.exists())
 
+    def test_reject_existing_openhands_skills_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            source = Path(tmp) / "skills-source"
+            target = workspace / ".openhands" / "skills"
+            workspace.mkdir()
+            source.mkdir()
+            (source / "test-gen").mkdir()
+            target.parent.mkdir(parents=True)
+            target.symlink_to(source, target_is_directory=True)
+
+            manager = SkillLinkManager(source)
+
+            with self.assertRaises(RuntimeError):
+                manager.prepare_openhands_skills(workspace)
+
+    def test_copy_openhands_skills_directory_when_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            source = Path(tmp) / "skills-source"
+            workspace.mkdir()
+            source.mkdir()
+            (source / "test-gen").mkdir()
+            (source / "test-gen" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
+
+            manager = SkillLinkManager(source)
+            links = manager.prepare_openhands_skills(workspace)
+
+            target = workspace / ".openhands" / "skills"
+            copied_skill = target / "test-gen" / "SKILL.md"
+            self.assertTrue(target.is_dir())
+            self.assertFalse(target.is_symlink())
+            self.assertEqual(copied_skill.read_text(encoding="utf-8"), "test skill\n")
+            self.assertEqual(links.created_paths, [target])
+            manager.cleanup(links)
+            self.assertFalse(target.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

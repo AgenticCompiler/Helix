@@ -305,6 +305,8 @@ class OptimizeRuntimeTests(unittest.TestCase):
             class FakeRunner:
                 def __init__(self) -> None:
                     self.calls: List[AgentRequest] = []
+                    self.saw_guidance_file = False
+                    self.guidance_content = ""
 
                 def run(
                     self,
@@ -314,6 +316,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 ) -> AgentResult:
                     del stdout, stderr
                     self.calls.append(request)
+                    self.saw_guidance_file = (workdir / "AGENTS.md").exists()
+                    if self.saw_guidance_file:
+                        self.guidance_content = (workdir / "AGENTS.md").read_text(encoding="utf-8")
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
                 def resume(
@@ -335,8 +340,12 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertEqual(result.return_code, 0)
             self.assertEqual(len(runner.calls), 1)
             self.assertEqual(runner.calls[0].supervise, "off")
+            self.assertTrue(runner.saw_guidance_file)
+            self.assertIn("Own the end-to-end optimize session.", runner.guidance_content)
+            self.assertNotIn("Read the role brief", runner.guidance_content)
             self.assertIsNone(runner.calls[0].round_brief_path)
             self.assertIsNone(runner.calls[0].supervisor_report_path)
+            self.assertFalse((workdir / "AGENTS.md").exists())
             self.assertFalse((workdir / ".triton-agent" / "roles").exists())
             self.assertFalse((workdir / "optimize-logs").exists())
             mocked_prepare.assert_not_called()

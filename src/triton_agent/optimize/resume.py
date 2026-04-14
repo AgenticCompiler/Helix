@@ -65,10 +65,7 @@ def _classify_optimize_workspace(
     has_baseline_dir = baseline_dir(workdir).exists()
 
     has_session_artifacts = has_opt_note or has_rounds or has_baseline_dir
-    has_validation_artifacts = bool(test_harnesses or has_bench)
-    if not has_session_artifacts and (
-        allow_reusable_harnesses_without_session or not has_validation_artifacts
-    ):
+    if not has_session_artifacts:
         return WorkspaceInspection(
             state="no-session",
             detail=None,

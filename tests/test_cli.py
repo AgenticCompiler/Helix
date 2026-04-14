@@ -197,6 +197,21 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(gen_bench_args.agent, "claude")
         self.assertEqual(optimize_args.agent, "claude")
 
+    def test_agent_commands_accept_openhands_backend(self) -> None:
+        parser = build_parser()
+        gen_eval_batch_args = parser.parse_args(
+            ["gen-eval-batch", "-i", "kernels", "--agent", "openhands"]
+        )
+        gen_eval_args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--agent", "openhands"])
+        gen_test_args = parser.parse_args(["gen-test", "-i", "kernel.py", "--agent", "openhands"])
+        gen_bench_args = parser.parse_args(["gen-bench", "-i", "kernel.py", "--agent", "openhands"])
+        optimize_args = parser.parse_args(["optimize", "-i", "kernel.py", "--agent", "openhands"])
+        self.assertEqual(gen_eval_batch_args.agent, "openhands")
+        self.assertEqual(gen_eval_args.agent, "openhands")
+        self.assertEqual(gen_test_args.agent, "openhands")
+        self.assertEqual(gen_bench_args.agent, "openhands")
+        self.assertEqual(optimize_args.agent, "openhands")
+
     def test_run_commands_accept_remote_options(self) -> None:
         parser = build_parser()
         test_args = parser.parse_args(
@@ -1734,6 +1749,68 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(captured["bench_mode"], "msprof")
             self.assertFalse(captured["resume_existing_session"])
             self.assertFalse(captured["require_analysis"])
+
+    def test_main_optimize_resume_auto_treats_prepared_harnesses_as_no_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            (root / "test_kernel.py").write_text(
+                "# test-mode: standalone\nprint('test')\n",
+                encoding="utf-8",
+            )
+            (root / "differential_test_kernel.py").write_text(
+                "# test-mode: differential\nprint('test')\n",
+                encoding="utf-8",
+            )
+            (root / "bench_kernel.py").write_text(
+                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n",
+                encoding="utf-8",
+            )
+
+            captured = {}
+
+            def _fake_build_prompt(
+                command_kind,
+                input_path,
+                operator_path,
+                output_path,
+                test_mode,
+                bench_mode,
+                force_overwrite,
+                remote,
+                remote_workdir,
+                min_rounds,
+                resume_existing_session,
+                require_analysis=False,
+                supervise="off",
+            ):
+                captured["test_mode"] = test_mode
+                captured["bench_mode"] = bench_mode
+                captured["resume_existing_session"] = resume_existing_session
+                return "Prompt body"
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
+                with patch(
+                    "triton_agent.optimize.runtime.OptimizeSupervisor.run",
+                    return_value=fake_result,
+                ):
+                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                        with patch(
+                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            return_value=[],
+                        ):
+                            with patch(
+                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                return_value=[],
+                            ):
+                                exit_code = main(["optimize", "-i", str(operator), "--resume", "auto"])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["test_mode"], "differential")
+            self.assertEqual(captured["bench_mode"], "standalone")
+            self.assertFalse(captured["resume_existing_session"])
 
     def test_main_optimize_resume_auto_rejects_partial_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

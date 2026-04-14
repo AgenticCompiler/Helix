@@ -173,6 +173,45 @@ class SkillLinkManager:
 
         return SkillLinkSet(created)
 
+    def prepare_openhands_skills(
+        self,
+        workdir: Path,
+        skill_names: tuple[str, ...] | None = None,
+    ) -> SkillLinkSet:
+        openhands_dir = workdir / ".openhands"
+        target = openhands_dir / "skills"
+        created: List[Path] = []
+        openhands_dir.mkdir(parents=True, exist_ok=True)
+
+        if not target.exists() and skill_names is None:
+            shutil.copytree(self.skills_root, target, symlinks=False)
+            created.append(target)
+            return SkillLinkSet(created)
+
+        if not target.exists():
+            target.mkdir(parents=True, exist_ok=True)
+            for skill_dir in self._iter_selected_skill_dirs(skill_names):
+                shutil.copytree(skill_dir, target / skill_dir.name, symlinks=False)
+            created.append(target)
+            return SkillLinkSet(created)
+
+        if target.is_symlink():
+            raise RuntimeError(f"Existing OpenHands skills path must not be a symlink: {target}")
+
+        if not target.is_dir():
+            raise RuntimeError(f"Existing OpenHands skills path is not a directory: {target}")
+
+        for skill_dir in self._iter_selected_skill_dirs(skill_names):
+            staged_path = target / skill_dir.name
+            if staged_path.exists():
+                if staged_path.is_symlink():
+                    raise RuntimeError(f"Skill path already exists as a symlink: {staged_path}")
+                continue
+            shutil.copytree(skill_dir, staged_path, symlinks=False)
+            created.append(staged_path)
+
+        return SkillLinkSet(created)
+
     def prepare_skills(
         self,
         backend: str,
@@ -187,6 +226,8 @@ class SkillLinkManager:
             return self.prepare_pi_skills(workdir, skill_names=skill_names)
         if backend == "claude":
             return self.prepare_claude_skills(workdir, skill_names=skill_names)
+        if backend == "openhands":
+            return self.prepare_openhands_skills(workdir, skill_names=skill_names)
         raise RuntimeError(f"Unsupported skill backend: {backend}")
 
     def cleanup(self, link_set: SkillLinkSet) -> list[str]:

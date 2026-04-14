@@ -275,12 +275,12 @@ def run_optimize_request(
         emit_verbose_lines(verbose_stream, "skills", manager.describe_prepare(links))
     try:
         runner = create_runner(request.agent_name)
+        guidance_manager = OptimizeGuidanceManager()
         if request.supervise == "on":
             # Supervised optimize runs stage shared guidance plus role briefs in
             # the workspace, then alternate worker/supervisor invocations via
             # `OptimizeSupervisor`. Cleanup archives the handoff trail before the
             # temporary runtime files are removed.
-            guidance_manager = OptimizeGuidanceManager()
             guidance_state = guidance_manager.prepare(
                 request.workdir,
                 request.input_path,
@@ -300,10 +300,38 @@ def run_optimize_request(
                 warnings = guidance_manager.cleanup(guidance_state)
                 for warning in warnings:
                     emit_verbose(verbose_stream, "agents", warning)
-        return OptimizeSupervisor().run(
-            RunnerWithStreams(runner, stdout=stdout, stderr=stderr),
-            request,
+        shared_guidance_state = guidance_manager.prepare_unsupervised_guidance(
+            request.workdir,
+            operator_path=request.input_path,
+            test_mode=request.test_mode or "differential",
+            bench_mode=request.bench_mode or "standalone",
+            agent_name=request.agent_name,
+            require_analysis=request.require_analysis,
         )
+        if request.verbose:
+            emit_verbose_lines(
+                verbose_stream,
+                "agents",
+                guidance_manager.describe_prepare_workspace_guidance(
+                    shared_guidance_state,
+                    mode_label="unsupervised",
+                ),
+            )
+        try:
+            return OptimizeSupervisor().run(
+                RunnerWithStreams(runner, stdout=stdout, stderr=stderr),
+                request,
+            )
+        finally:
+            if request.verbose:
+                emit_verbose_lines(
+                    verbose_stream,
+                    "agents",
+                    guidance_manager.describe_cleanup_workspace_guidance(shared_guidance_state),
+                )
+            warnings = guidance_manager.cleanup_workspace_guidance(shared_guidance_state)
+            for warning in warnings:
+                emit_verbose(verbose_stream, "agents", warning)
     finally:
         if request.verbose:
             emit_verbose_lines(verbose_stream, "skills", manager.describe_cleanup(links))

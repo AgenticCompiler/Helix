@@ -10,10 +10,14 @@ from triton_agent.optimize_contract import baseline_state_contract_lines
 
 
 @dataclass
-class OptimizeGuidanceState:
+class SharedOptimizeGuidanceState:
     guidance_path: Path
     backup_path: Optional[Path]
     created_guidance: bool
+
+
+@dataclass
+class OptimizeGuidanceState(SharedOptimizeGuidanceState):
     role_dir: Path
     worker_brief_path: Path
     supervisor_brief_path: Path
@@ -27,6 +31,40 @@ class OptimizeGuidanceState:
 
 
 class OptimizeGuidanceManager:
+    def prepare_unsupervised_guidance(
+        self,
+        workdir: Path,
+        *,
+        operator_path: Path,
+        test_mode: str,
+        bench_mode: str,
+        agent_name: str,
+        require_analysis: bool = False,
+    ) -> SharedOptimizeGuidanceState:
+        guidance_path = workdir / self._guidance_filename(agent_name)
+        guidance_preexisting = guidance_path.exists()
+        backup_path: Optional[Path] = None
+
+        if guidance_preexisting:
+            backup_path = self._next_backup_path(guidance_path)
+            backup_path.write_bytes(guidance_path.read_bytes())
+
+        guidance_path.write_text(
+            self._render_unsupervised_guidance(
+                guidance_filename=guidance_path.name,
+                operator_path=operator_path,
+                test_mode=test_mode,
+                bench_mode=bench_mode,
+                require_analysis=require_analysis,
+            ),
+            encoding="utf-8",
+        )
+        return SharedOptimizeGuidanceState(
+            guidance_path=guidance_path,
+            backup_path=backup_path,
+            created_guidance=not guidance_preexisting,
+        )
+
     def archive(self, state: OptimizeGuidanceState) -> list[str]:
         warnings: list[str] = []
         archive_dir = state.run_archive_dir
@@ -174,6 +212,27 @@ class OptimizeGuidanceManager:
             ),
         )
 
+    def cleanup_workspace_guidance(self, state: SharedOptimizeGuidanceState) -> list[str]:
+        warnings: list[str] = []
+        if state.backup_path is None:
+            try:
+                if state.created_guidance and state.guidance_path.exists():
+                    state.guidance_path.unlink()
+            except OSError as exc:
+                warnings.append(
+                    f"Failed to remove temporary guidance file {state.guidance_path}: {exc}"
+                )
+        else:
+            try:
+                state.guidance_path.write_bytes(state.backup_path.read_bytes())
+                state.backup_path.unlink()
+            except OSError as exc:
+                warnings.append(
+                    "Failed to restore original guidance file "
+                    f"from {state.backup_path}: {exc}"
+                )
+        return warnings
+
     def cleanup(self, state: OptimizeGuidanceState) -> list[str]:
         warnings: list[str] = []
         # Cleanup is intentionally two-phase: archive first so the final worker /
@@ -219,32 +278,33 @@ class OptimizeGuidanceManager:
         else:
             warnings.append(f"Refusing to remove unexpected optimize runtime directory {runtime_root}")
 
-        if state.backup_path is None:
-            try:
-                if state.created_guidance and state.guidance_path.exists():
-                    state.guidance_path.unlink()
-            except OSError as exc:
-                warnings.append(
-                    f"Failed to remove temporary guidance file {state.guidance_path}: {exc}"
-                )
-        else:
-            try:
-                state.guidance_path.write_bytes(state.backup_path.read_bytes())
-                state.backup_path.unlink()
-            except OSError as exc:
-                warnings.append(
-                    "Failed to restore original guidance file "
-                    f"from {state.backup_path}: {exc}"
-                )
+        warnings.extend(self.cleanup_workspace_guidance(state))
         return warnings
 
-    def describe_prepare(self, state: OptimizeGuidanceState) -> list[str]:
+    def describe_prepare_workspace_guidance(
+        self,
+        state: SharedOptimizeGuidanceState,
+        *,
+        mode_label: str,
+    ) -> list[str]:
         messages: List[str] = []
         if state.backup_path is not None:
             messages.append(f"backed up workspace guidance file to {state.backup_path}")
-        messages.append(f"wrote shared optimize guidance file {state.guidance_path}")
+        messages.append(f"wrote {mode_label} optimize guidance file {state.guidance_path}")
+        return messages
+
+    def describe_prepare(self, state: OptimizeGuidanceState) -> list[str]:
+        messages = self.describe_prepare_workspace_guidance(state, mode_label="shared supervised")
         messages.append(f"wrote optimize worker brief {state.worker_brief_path}")
         messages.append(f"wrote optimize supervisor brief {state.supervisor_brief_path}")
+        return messages
+
+    def describe_cleanup_workspace_guidance(self, state: SharedOptimizeGuidanceState) -> list[str]:
+        messages: List[str] = []
+        if state.backup_path is not None:
+            messages.append(f"restoring workspace guidance file from {state.backup_path}")
+        else:
+            messages.append(f"removing temporary optimize guidance file {state.guidance_path}")
         return messages
 
     def describe_cleanup(self, state: OptimizeGuidanceState) -> list[str]:
@@ -258,10 +318,7 @@ class OptimizeGuidanceManager:
             messages.append(f"removing temporary optimize file {path}")
         runtime_root = state.history_dir.parent
         messages.append(f"removing temporary optimize runtime directory tree {runtime_root}")
-        if state.backup_path is not None:
-            messages.append(f"restoring workspace guidance file from {state.backup_path}")
-        else:
-            messages.append(f"removing temporary optimize guidance file {state.guidance_path}")
+        messages.extend(self.describe_cleanup_workspace_guidance(state))
         return messages
 
     def _guidance_filename(self, agent_name: str) -> str:
@@ -302,6 +359,53 @@ class OptimizeGuidanceManager:
                 "",
             ]
         )
+
+    def _render_unsupervised_guidance(
+        self,
+        *,
+        guidance_filename: str,
+        operator_path: Path,
+        test_mode: str,
+        bench_mode: str,
+        require_analysis: bool = False,
+    ) -> str:
+        lines = [
+            f"# {guidance_filename}",
+            "",
+            "## Triton Agent Optimize Session",
+            "",
+            "- This workspace is under an unsupervised optimize run.",
+            "- Own the end-to-end optimize session.",
+            "- Use the staged workspace skills as the workflow source of truth.",
+            f"- Optimize the existing Triton Ascend NPU operator at `{operator_path}`.",
+            "- Do not edit the original operator in place; work through `baseline/` and `opt-round-*` artifacts.",
+            "- Preserve the Triton operator call path as the thing being optimized.",
+            "- Do not delete or bypass the Triton operator call path.",
+            "- Do not replace Triton operator calls with direct PyTorch operators or `torch.nn.Module` implementations.",
+            "- Establish or reuse `baseline/` before creating `opt-round-1`.",
+            "- Use `baseline/perf.txt` for canonical performance comparisons.",
+            "- Use `compare-perf` as the authoritative source for claimed speedups and benchmark deltas.",
+            "- Check whether correctness tests and benchmark cases already exist before generating anything new.",
+            f"- Use `{test_mode}` correctness validation for this optimize run.",
+            f"- Use `{bench_mode}` benchmark validation for this optimize run.",
+            "- If you need to generate or regenerate correctness tests, include multiple representative test cases instead of a single case.",
+            "- If you need to generate or regenerate benchmark cases, include multiple benchmark cases instead of a single case.",
+            "- Write a short diagnosis summary before the first code-changing round.",
+            "- Record each round's hypothesis and rationale in `attempts.md` before editing code.",
+            "- Keep `summary.md` and `opt-note.md` up to date before stopping.",
+            "- Use the staged `optimize` skill first, then use the staged profiler and IR-analysis skills when benchmark numbers alone are not enough.",
+            "- If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
+        ]
+        if require_analysis:
+            lines.extend(
+                [
+                    "- Before the first code-changing round, gather profiling or IR-backed evidence.",
+                    "- If one analysis path is unavailable, record why and what evidence replaced it.",
+                    "- Do not begin with blind tiling or launch-parameter search.",
+                ]
+            )
+        lines.extend(["", ""])
+        return "\n".join(lines)
 
     def _render_worker_brief(
         self,

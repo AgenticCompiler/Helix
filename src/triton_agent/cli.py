@@ -19,7 +19,7 @@ from triton_agent.models import CommandKind
 
 
 _Handler = Callable[[argparse.ArgumentParser, argparse.Namespace], int]
-_AGENT_CHOICES = ("codex", "opencode", "pi", "claude")
+_AGENT_CHOICES = ("codex", "opencode", "pi", "claude", "openhands")
 _COMPARE_LEVEL_CHOICES = ("strict", "balanced", "relaxed")
 _FORMAT_CHOICES = ("text", "markdown")
 _TEST_MODE_CHOICES = ("standalone", "differential")

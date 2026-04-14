@@ -150,6 +150,27 @@ class GenerationHelpersTests(unittest.TestCase):
 
 
 class GenerationCommandHandlerTests(unittest.TestCase):
+    def test_handle_gen_test_rejects_openhands_interactive_mode(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            operator = Path(tmp) / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            args = parser.parse_args(
+                [
+                    "gen-test",
+                    "-i",
+                    str(operator),
+                    "--agent",
+                    "openhands",
+                    "--interact",
+                ]
+            )
+
+            with self.assertRaises(SystemExit) as exc:
+                handle_gen_test(parser, args)
+
+            self.assertEqual(exc.exception.code, 2)
+
     def test_handle_gen_test_builds_request_with_default_output(self) -> None:
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:

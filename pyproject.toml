@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "CLI wrapper for Triton Ascend NPU operator agent workflows"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+    "openhands-sdk; python_version >= '3.12'",
+    "openhands-tools; python_version >= '3.12'",
+]
 
 [dependency-groups]
 dev = [
