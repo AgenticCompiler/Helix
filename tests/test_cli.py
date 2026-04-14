@@ -585,6 +585,13 @@ class CliParserTests(unittest.TestCase):
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.supervise, "on")
 
+    def test_optimize_command_accepts_supervisor_alias(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--supervisor", "on"])
+        self.assertEqual(args.supervise, "on")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.supervise, "on")
+
     def test_optimize_command_accepts_user_prompt(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize", "-i", "kernel.py", "--prompt", "Focus on memory access."])
@@ -633,6 +640,13 @@ class CliParserTests(unittest.TestCase):
     def test_optimize_batch_accepts_supervise_modes(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize-batch", "-i", "kernels", "--supervise", "on"])
+        self.assertEqual(args.supervise, "on")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.supervise, "on")
+
+    def test_optimize_batch_accepts_supervisor_alias(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-batch", "-i", "kernels", "--supervisor", "on"])
         self.assertEqual(args.supervise, "on")
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.supervise, "on")

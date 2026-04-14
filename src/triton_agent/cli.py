@@ -193,7 +193,13 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--reset-optimize", action="store_true")
             subparser.add_argument("--require-analysis", action="store_true")
             subparser.add_argument("--no-agent-session", action="store_true")
-            subparser.add_argument("--supervise", default="off", choices=_SUPERVISE_CHOICES)
+            subparser.add_argument(
+                "--supervise",
+                "--supervisor",
+                dest="supervise",
+                default="off",
+                choices=_SUPERVISE_CHOICES,
+            )
             subparser.add_argument("--prompt")
         if spec.max_concurrency_default is not None:
             subparser.add_argument("--max-concurrency", type=int, default=spec.max_concurrency_default)
