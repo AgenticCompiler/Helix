@@ -180,6 +180,7 @@ Common options:
 
 - `--output opt_a.py`: write the optimized operator to a specific path.
 - `--agent codex|opencode|pi|claude`
+- `--prompt "..."`: append extra worker instructions without replacing the built-in optimize contract.
 - `--test-mode standalone|differential`: default is `differential`
 - `--bench-mode standalone|msprof`: default is `standalone`
 - `--resume auto|continue|fresh`: default is `auto`
@@ -197,6 +198,7 @@ Examples:
 uv run triton-agent optimize --input a.py --min-rounds 3
 uv run triton-agent optimize --input a.py --resume continue
 uv run triton-agent optimize --input a.py --require-analysis
+uv run triton-agent optimize --input a.py --prompt "Prioritize memory-coalescing improvements."
 ```
 
 Resume modes:
@@ -278,6 +280,7 @@ uv run triton-agent optimize-batch --input .
 Common options:
 
 - `--agent codex|opencode|pi|claude`
+- `--prompt "..."`: append the same extra worker instructions to every workspace optimize run.
 - `--test-mode standalone|differential`
 - `--bench-mode standalone|msprof`
 - `--resume auto|continue|fresh`
@@ -288,6 +291,12 @@ Common options:
 - `--show-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
+
+Example:
+
+```bash
+uv run triton-agent optimize-batch --input operators_root --prompt "Avoid changing numerics unless correctness requires it."
+```
 
 ## Compare Archived Outputs
 

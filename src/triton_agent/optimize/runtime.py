@@ -15,7 +15,11 @@ from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.resume import resolve_optimize_resume
 from triton_agent.optimize_guidance import OptimizeGuidanceManager, OptimizeGuidanceState
 from triton_agent.paths import default_generated_output_path
-from triton_agent.prompts import build_optimize_supervisor_prompt, build_prompt
+from triton_agent.prompts import (
+    append_additional_user_instructions,
+    build_optimize_supervisor_prompt,
+    build_prompt,
+)
 from triton_agent.skills import SkillLinkManager
 from triton_agent.supervisor import OptimizeSupervisor
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
@@ -33,6 +37,9 @@ class RunnerWithStreams:
         self._stderr = stderr
 
     def run(self, request: AgentRequest) -> AgentResult:
+        # The backend interface accepts optional stdout/stderr streams, while the
+        # optimize supervisor expects a simple run/resume object. This adapter
+        # keeps the supervisor agnostic to stream plumbing.
         if self._stdout is None and self._stderr is None:
             return cast(Any, self._runner).run(request)
         return cast(Any, self._runner).run(request, stdout=self._stdout, stderr=self._stderr)
@@ -62,6 +69,9 @@ class OptimizeLoopRunner:
         self._stderr = stderr
 
     def run_worker(self, request: AgentRequest) -> AgentResult:
+        # The worker always runs in an ephemeral per-round context. The live
+        # handoff files under `.triton-agent/` tell it what the previous
+        # supervisor decided and where to write the next round's artifacts.
         worker_request = replace(
             request,
             optimize_role="worker",
@@ -82,6 +92,9 @@ class OptimizeLoopRunner:
             self._write_gate_handoff(request, gate_result, latest_round_dir=None)
             return gate_result
 
+        # The supervisor gets a dedicated prompt and role so it can audit the
+        # latest completed round without inheriting worker-specific instructions
+        # such as "make one more code change".
         supervisor_request = replace(
             request,
             prompt=build_optimize_supervisor_prompt(
@@ -133,6 +146,10 @@ class OptimizeLoopRunner:
         latest_round_dir: Path | None,
     ) -> None:
         del request
+        # The worker and supervisor communicate through two live markdown files:
+        # a supervisor report with the current audit decision, and a round brief
+        # that seeds the next worker round. We also snapshot both into history so
+        # the run can be archived after cleanup.
         report_lines = [
             "# Optimize Supervisor Report",
             "",
@@ -200,20 +217,23 @@ def build_optimize_request(
         if options.output
         else default_generated_output_path(CommandKind.OPTIMIZE, input_path, test_mode=test_mode)
     )
-    prompt = build_prompt(
-        CommandKind.OPTIMIZE,
-        input_path,
-        input_path,
-        output_path,
-        test_mode,
-        bench_mode,
-        False,
-        options.remote,
-        options.remote_workdir,
-        options.min_rounds,
-        resolution.resume_existing_session,
-        require_analysis=options.require_analysis,
-        supervise=options.supervise,
+    prompt = append_additional_user_instructions(
+        build_prompt(
+            CommandKind.OPTIMIZE,
+            input_path,
+            input_path,
+            output_path,
+            test_mode,
+            bench_mode,
+            False,
+            options.remote,
+            options.remote_workdir,
+            options.min_rounds,
+            resolution.resume_existing_session,
+            require_analysis=options.require_analysis,
+            supervise=options.supervise,
+        ),
+        options.prompt,
     )
     return AgentRequest(
         command_kind=CommandKind.OPTIMIZE,
@@ -253,6 +273,10 @@ def run_optimize_request(
     try:
         runner = create_runner(request.agent_name)
         if request.supervise == "on":
+            # Supervised optimize runs stage shared guidance plus role briefs in
+            # the workspace, then alternate worker/supervisor invocations via
+            # `OptimizeSupervisor`. Cleanup archives the handoff trail before the
+            # temporary runtime files are removed.
             guidance_manager = OptimizeGuidanceManager()
             guidance_state = guidance_manager.prepare(
                 request.workdir,

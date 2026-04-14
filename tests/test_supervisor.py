@@ -7,7 +7,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.optimize.models import GateDecision, GateResult
-from triton_agent.prompts import build_optimize_resume_prompt, build_prompt
+from triton_agent.prompts import (
+    append_additional_user_instructions,
+    build_optimize_resume_prompt,
+    build_prompt,
+)
 from triton_agent.supervisor import OptimizeSupervisor
 
 
@@ -161,6 +165,66 @@ class OptimizeSupervisorTests(unittest.TestCase):
         self.assertIn("This invocation is the optimize worker role.", prompt)
         self.assertIn("Remote execution target: alice@example.com:2200", prompt)
         self.assertIn("Progress summary:", prompt)
+
+    def test_recovery_resume_prompt_preserves_user_instructions(self) -> None:
+        request = AgentRequest(
+            command_kind=CommandKind.OPTIMIZE,
+            input_path=Path("/tmp/op.py"),
+            operator_path=Path("/tmp/op.py"),
+            output_path=Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            interact=False,
+            verbose=False,
+            show_output=False,
+            force_overwrite=False,
+            agent_name="codex",
+            skill_name="optimize",
+            prompt=append_additional_user_instructions(
+                build_prompt(
+                    CommandKind.OPTIMIZE,
+                    Path("/tmp/op.py"),
+                    Path("/tmp/op.py"),
+                    Path("/tmp/opt_op.py"),
+                    "differential",
+                    "standalone",
+                    False,
+                    supervise="on",
+                ),
+                "Keep launch geometry unchanged unless evidence says otherwise.",
+            ),
+            workdir=Path("/tmp"),
+            supervise="on",
+        )
+
+        class BackendLikeRunner:
+            def __init__(self) -> None:
+                self.resume_prompts: list[str] = []
+
+            def run(self, request: AgentRequest) -> AgentResult:
+                del request
+                return AgentResult(return_code=1, stdout="stalled once", stderr="", stalled=True)
+
+            def resume(self, request: AgentRequest, summary: str) -> AgentResult:
+                self.resume_prompts.append(
+                    build_optimize_resume_prompt(
+                        summary,
+                        base_prompt=request.prompt,
+                        require_analysis=request.require_analysis,
+                        supervise=request.supervise,
+                    )
+                )
+                return AgentResult(return_code=0, stdout="done", stderr="")
+
+        runner = BackendLikeRunner()
+
+        result = OptimizeSupervisor(max_recovery_attempts=1).run(runner, request)
+
+        self.assertEqual(result.return_code, 0)
+        self.assertEqual(len(runner.resume_prompts), 1)
+        prompt = runner.resume_prompts[0]
+        self.assertIn("Additional user instructions:", prompt)
+        self.assertIn("Keep launch geometry unchanged unless evidence says otherwise.", prompt)
 
     def test_unsupervised_recovery_resume_prompt_is_not_double_wrapped(self) -> None:
         request = AgentRequest(

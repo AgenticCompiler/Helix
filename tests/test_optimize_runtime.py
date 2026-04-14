@@ -431,6 +431,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         output=None,
                         test_mode=None,
                         bench_mode=None,
+                        prompt=None,
                     )
 
                     captured_requests: List[AgentRequest] = []
@@ -462,6 +463,62 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     self.assertEqual(batch_request.supervise, supervise_mode)
                     expected_role = "worker" if supervise_mode == "on" else None
                     self.assertEqual(batch_request.optimize_role, expected_role)
+
+    def test_run_optimize_batch_applies_user_prompt_to_each_workspace_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("kernel_a", "kernel_b"):
+                workspace = root / name
+                workspace.mkdir()
+                operator = workspace / "kernel.py"
+                operator.write_text("print('x')\n", encoding="utf-8")
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                require_analysis=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt="Avoid changing numerics.",
+            )
+
+            captured_prompts: List[str] = []
+
+            def fake_run_request(
+                request: AgentRequest,
+                stdout: Optional[object] = None,
+                stderr: Optional[object] = None,
+            ) -> AgentResult:
+                del stdout, stderr
+                captured_prompts.append(request.prompt)
+                return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            with patch(
+                "triton_agent.optimize.batch.render_batch_optimize_results",
+                return_value=0,
+            ):
+                exit_code = run_optimize_batch(
+                    root,
+                    options,
+                    max_concurrency=1,
+                    stdout=StringIO(),
+                    run_request=fake_run_request,
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(len(captured_prompts), 2)
+            for prompt in captured_prompts:
+                self.assertIn("Additional user instructions:", prompt)
+                self.assertIn("Avoid changing numerics.", prompt)
 
     def test_run_optimize_request_keeps_interactive_only_for_worker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -525,6 +582,70 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertEqual(supervisor_request.optimize_role, "supervisor")
             self.assertFalse(supervisor_request.interact)
             self.assertTrue(supervisor_request.no_agent_session)
+
+    def test_run_optimize_request_supervisor_prompt_excludes_user_instructions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=operator,
+                operator_path=operator,
+                output_path=workdir / "opt_kernel.py",
+                test_mode="differential",
+                bench_mode="standalone",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="optimize",
+                prompt=(
+                    "Optimize this operator\n\n"
+                    "Additional user instructions:\n"
+                    "Focus on occupancy."
+                ),
+                workdir=workdir,
+                supervise="on",
+                optimize_role="worker",
+            )
+
+            class FakeRunner:
+                def __init__(self) -> None:
+                    self.requests: List[AgentRequest] = []
+
+                def run(
+                    self,
+                    request: AgentRequest,
+                    stdout: Optional[object] = None,
+                    stderr: Optional[object] = None,
+                ) -> AgentResult:
+                    del stdout, stderr
+                    self.requests.append(request)
+                    if request.optimize_role == "worker":
+                        self_outer._write_baseline(workdir)
+                        self_outer._write_round(
+                            workdir,
+                            "opt-round-1",
+                            parent_round="round-0",
+                            next_recommendation="stop",
+                        )
+                    return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            self_outer = self
+            runner = FakeRunner()
+
+            with patch("triton_agent.optimize.runtime.create_runner", return_value=runner):
+                result = run_optimize_request(request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertEqual(len(runner.requests), 2)
+            supervisor_request = runner.requests[1]
+            self.assertEqual(supervisor_request.optimize_role, "supervisor")
+            self.assertNotIn("Additional user instructions:", supervisor_request.prompt)
+            self.assertNotIn("Focus on occupancy.", supervisor_request.prompt)
 
     def test_run_optimize_request_end_to_end_converts_gate_eval_value_error_to_gate_handoff(
         self,

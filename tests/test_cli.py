@@ -29,6 +29,7 @@ from triton_agent.paths import (
     resolve_execution_target,
 )
 from triton_agent.prompts import (
+    append_additional_user_instructions,
     build_optimize_supervisor_prompt,
     build_optimize_worker_prompt,
     build_prompt,
@@ -576,6 +577,13 @@ class CliParserTests(unittest.TestCase):
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.supervise, "on")
 
+    def test_optimize_command_accepts_user_prompt(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--prompt", "Focus on memory access."])
+        self.assertEqual(args.prompt, "Focus on memory access.")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.prompt, "Focus on memory access.")
+
     def test_optimize_command_defaults_supervise_off(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize", "-i", "kernel.py"])
@@ -599,6 +607,7 @@ class CliParserTests(unittest.TestCase):
             output=None,
             test_mode=None,
             bench_mode=None,
+            prompt=None,
         )
         with self.assertRaises(ValueError):
             optimize_run_options_from_args(args)
@@ -618,6 +627,15 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.supervise, "on")
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.supervise, "on")
+
+    def test_optimize_batch_accepts_user_prompt(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["optimize-batch", "-i", "kernels", "--prompt", "Avoid numerics changes."]
+        )
+        self.assertEqual(args.prompt, "Avoid numerics changes.")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.prompt, "Avoid numerics changes.")
 
     def test_optimize_batch_defaults_supervise_off(self) -> None:
         parser = build_parser()
@@ -2166,6 +2184,43 @@ class PathResolutionTests(unittest.TestCase):
             self.assertTrue(request.no_agent_session)
             self.assertIsNone(request.optimize_role)
 
+    def test_main_optimize_appends_user_prompt_to_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch("triton_agent.optimize.runtime.build_prompt", return_value="Prompt body"):
+                with patch(
+                    "triton_agent.optimize.runtime.OptimizeSupervisor.run",
+                    return_value=fake_result,
+                ) as mocked:
+                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                        with patch(
+                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            return_value=[],
+                        ):
+                            with patch(
+                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                return_value=[],
+                            ):
+                                exit_code = main(
+                                    [
+                                        "optimize",
+                                        "-i",
+                                        str(operator),
+                                        "--prompt",
+                                        "Focus on memory coalescing.",
+                                    ]
+                                )
+
+            self.assertEqual(exit_code, 0)
+            request = mocked.call_args.args[1]
+            self.assertIn("Prompt body", request.prompt)
+            self.assertIn("Additional user instructions:", request.prompt)
+            self.assertIn("Focus on memory coalescing.", request.prompt)
+
     def test_main_run_bench_reports_missing_bench_file_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2929,6 +2984,22 @@ class PromptTests(unittest.TestCase):
         self.assertNotIn("owns exactly one round", prompt)
         self.assertNotIn(".triton-agent/roles/optimize-worker.md", prompt)
         self.assertNotIn(".triton-agent/round-brief.md", prompt)
+
+    def test_append_additional_user_instructions_adds_section(self) -> None:
+        prompt = append_additional_user_instructions(
+            "Optimize the operator implementation.",
+            "Prefer shared-memory reductions.",
+        )
+        self.assertIn("Optimize the operator implementation.", prompt)
+        self.assertIn("Additional user instructions:", prompt)
+        self.assertIn("Prefer shared-memory reductions.", prompt)
+
+    def test_append_additional_user_instructions_skips_blank_values(self) -> None:
+        prompt = append_additional_user_instructions(
+            "Optimize the operator implementation.",
+            "   ",
+        )
+        self.assertEqual(prompt, "Optimize the operator implementation.")
 
 
 class OutputRenderingTests(unittest.TestCase):

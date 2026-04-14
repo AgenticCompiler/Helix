@@ -123,4 +123,5 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         output=getattr(args, "output", None),
         test_mode=getattr(args, "test_mode", None),
         bench_mode=getattr(args, "bench_mode", None),
+        prompt=getattr(args, "prompt", None),
     )

@@ -17,6 +17,15 @@ PROMPT_INTROS = {
 }
 
 
+def append_additional_user_instructions(prompt: str, user_prompt: str | None) -> str:
+    if user_prompt is None:
+        return prompt
+    stripped_prompt = user_prompt.strip()
+    if not stripped_prompt:
+        return prompt
+    return f"{prompt}\n\nAdditional user instructions:\n{stripped_prompt}"
+
+
 def build_optimize_worker_prompt(
     input_path: Path,
     output_path: Path | None,

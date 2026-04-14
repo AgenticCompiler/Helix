@@ -22,6 +22,7 @@ class OptimizeRunOptions:
     output: str | None
     test_mode: str | None
     bench_mode: str | None
+    prompt: str | None
 
 
 @dataclass(frozen=True)

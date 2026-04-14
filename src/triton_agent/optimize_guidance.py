@@ -93,6 +93,11 @@ class OptimizeGuidanceManager:
         agent_name: str,
         require_analysis: bool = False,
     ) -> OptimizeGuidanceState:
+        # A supervised optimize run temporarily stages two kinds of files in the
+        # workspace:
+        # 1. shared guidance (`AGENTS.md`/`CLAUDE.md`) that is role-neutral
+        # 2. runtime handoff files under `.triton-agent/` that let worker and
+        #    supervisor coordinate across round boundaries
         guidance_path = workdir / self._guidance_filename(agent_name)
         guidance_preexisting = guidance_path.exists()
         backup_path: Optional[Path] = None
@@ -169,6 +174,9 @@ class OptimizeGuidanceManager:
 
     def cleanup(self, state: OptimizeGuidanceState) -> list[str]:
         warnings: list[str] = []
+        # Cleanup is intentionally two-phase: archive first so the final worker /
+        # supervisor conversation survives, then remove temporary runtime files
+        # and restore the original workspace guidance file.
         try:
             warnings.extend(self.archive(state))
         except Exception as exc:
