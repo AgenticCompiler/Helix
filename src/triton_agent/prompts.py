@@ -44,9 +44,7 @@ def build_optimize_worker_prompt(
         "Read `.triton-agent/round-brief.md` before acting.",
         "Treat this as a long-running task.",
         "Keep making progress until the current round is complete.",
-        "Use the staged `optimize-check` skill to validate the baseline and the completed round.",
         "Establish or reuse `baseline/` before creating `opt-round-1`.",
-        "If baseline work is needed, run `check-baseline` and keep repairing the baseline until it passes.",
         "Use `baseline/perf.txt` for canonical performance comparisons.",
         "Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.",
         "Reuse existing correctness tests and benchmark cases when they already exist; generate them only when required artifacts are missing.",
@@ -54,8 +52,6 @@ def build_optimize_worker_prompt(
         "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
         "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
         "Produce all required round artifacts before stopping.",
-        "After finishing the round, run `check-round` and repair the round until it passes.",
-        "The current round must pass `check-round` before the invocation ends.",
         "Do not self-approve whether the optimize session should continue.",
     ]
     lines.extend(baseline_state_contract_lines())
@@ -89,19 +85,15 @@ def build_optimize_unsupervised_prompt(
     del input_path, output_path, test_mode, bench_mode, min_rounds
     lines = [
         "This invocation is an unsupervised optimize run.",
-        "Own the end-to-end optimize session and continue optimizing until the session should stop.",
+        "Own the end-to-end optimize session and keep making progress until the run should stop.",
         "Treat this as a long-running task.",
-        "Use the staged `optimize-check` skill to validate the baseline and every completed round.",
         "Establish or reuse `baseline/` before creating `opt-round-1`.",
-        "If baseline work is needed, run `check-baseline` and keep repairing the baseline until it passes.",
         "Use `baseline/perf.txt` for canonical performance comparisons.",
         "Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.",
         "Reuse existing correctness tests and benchmark cases when they already exist; generate them only when required artifacts are missing.",
         "State the optimization hypothesis and why it may help before editing code for each round.",
         "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
         "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
-        "After finishing each round, run `check-round` and repair the round until it passes.",
-        "Do not begin the next round until the current round passes `check-round`.",
         "Record round outcomes and keep optimize artifacts up to date before stopping.",
     ]
     lines.extend(baseline_state_contract_lines())
@@ -139,9 +131,7 @@ def build_optimize_supervisor_prompt(
         [
             "Apply only metadata repairs derived from existing facts.",
             "Use only existing `compare-perf` results when auditing or restating performance conclusions.",
-            "Write `.triton-agent/supervisor-report.md` with a `Decision:` line and a `Blocking issues:` line.",
-            "Write `.triton-agent/round-brief.md` with the next-worker handoff; when continuation is not allowed, record the stop or repair reason there.",
-            "Do not edit the operator implementation.",
+            "Emit a structured gate result and next-round brief when continuation is allowed.",
             "Do not perform open-ended optimization work.",
         ]
     )

@@ -23,7 +23,7 @@ class SupportsOptimizeRecovery(Protocol):
         ...
 
 
-class SupportsSupervisedRoundRunner(Protocol):
+class SupportsOptimizeRoundGate(Protocol):
     def run_worker(self, request: AgentRequest) -> AgentResult:
         ...
 
@@ -31,23 +31,22 @@ class SupportsSupervisedRoundRunner(Protocol):
         ...
 
 
-class OptimizeController:
+class OptimizeSupervisor:
     def __init__(self, max_recovery_attempts: int = 2) -> None:
         self.max_recovery_attempts = max_recovery_attempts
 
     def run(self, runner: object, request: AgentRequest) -> AgentResult:
-        # `OptimizeController` is the top-level control loop for optimize runs.
+        # `OptimizeSupervisor` is the top-level control loop for optimize runs.
         # In unsupervised mode it repeatedly drives a single backend runner via
-        # run/resume. In supervised mode it drives a worker/supervisor loop where
-        # each worker invocation owns one round and each supervisor invocation
-        # audits that round before the next iteration.
+        # run/resume. In supervised mode it instead delegates to a round-gated
+        # loop where a worker round and a supervisor audit pass alternate.
         attempt = 0
         current_request = self._with_default_optimize_role(request)
         resume_summary: str | None = None
 
-        if _supports_supervised_round_runner(runner):
-            return self._run_supervised_loop(
-                cast(SupportsSupervisedRoundRunner, runner),
+        if _supports_round_gate_runner(runner):
+            return self._run_round_gate_loop(
+                cast(SupportsOptimizeRoundGate, runner),
                 current_request,
             )
 
@@ -55,28 +54,13 @@ class OptimizeController:
             raise TypeError("runner does not implement optimize recovery or round gate interfaces")
         recovery_runner = cast(SupportsOptimizeRecovery, runner)
 
-        return self._run_unsupervised_loop(
-            recovery_runner,
-            current_request,
-            attempt=attempt,
-            resume_summary=resume_summary,
-        )
-
-    def _run_unsupervised_loop(
-        self,
-        runner: SupportsOptimizeRecovery,
-        current_request: AgentRequest,
-        *,
-        attempt: int,
-        resume_summary: str | None,
-    ) -> AgentResult:
         while True:
             if resume_summary is None:
-                result = runner.run(current_request)
+                result = recovery_runner.run(current_request)
             else:
-                result = runner.resume(current_request, resume_summary)
+                result = recovery_runner.resume(current_request, resume_summary)
             result, current_request = self._resume_until_round_requirement_satisfied(
-                runner,
+                recovery_runner,
                 current_request,
                 result,
             )
@@ -125,9 +109,9 @@ class OptimizeController:
                 )
         return result, current_request
 
-    def _run_supervised_loop(
+    def _run_round_gate_loop(
         self,
-        runner: SupportsSupervisedRoundRunner,
+        runner: SupportsOptimizeRoundGate,
         request: AgentRequest,
     ) -> AgentResult:
         current_request = request
@@ -256,7 +240,7 @@ class OptimizeController:
         )
 
 
-def _supports_supervised_round_runner(runner: object) -> bool:
+def _supports_round_gate_runner(runner: object) -> bool:
     return hasattr(runner, "run_worker") and hasattr(runner, "run_supervisor")
 
 

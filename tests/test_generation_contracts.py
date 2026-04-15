@@ -86,16 +86,6 @@ class GenerationContractTests(unittest.TestCase):
         )
         self.assertIn("ascend-npu-operator-profiler", optimize)
 
-    def test_optimize_artifacts_reference_documents_state_declared_paths(self) -> None:
-        artifacts = _read("skills/optimize/references/artifacts.md")
-        self.assertIn("Treat these state fields as the authoritative artifact references for baseline validation:", artifacts)
-        self.assertIn("`baseline_operator`", artifacts)
-        self.assertIn("`perf_artifact`", artifacts)
-        self.assertIn("Treat these round-state fields as the authoritative artifact references for round validation:", artifacts)
-        self.assertIn("`summary_path`", artifacts)
-        self.assertIn("`profile_dir` when present", artifacts)
-        self.assertIn("`ir_dir` when present", artifacts)
-
     def test_optimize_skill_documents_round_local_ir_commands(self) -> None:
         optimize = _read("skills/optimize/SKILL.md")
         self.assertIn("python3 ../ascend-operator-ir-analyzer/scripts/capture_ir.py", optimize)

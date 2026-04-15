@@ -9,6 +9,7 @@ from typing import Any, TextIO, cast
 from triton_agent.backends.base import AgentRunner
 from triton_agent.backends.factory import create_runner
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
+from triton_agent.optimize.gate import evaluate_round_gate
 from triton_agent.optimize.models import GateDecision, GateResult
 from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.resume import resolve_optimize_resume, reset_optimize_workspace
@@ -20,7 +21,7 @@ from triton_agent.prompts import (
     build_prompt,
 )
 from triton_agent.skills import SkillLinkManager
-from triton_agent.supervisor import OptimizeController
+from triton_agent.supervisor import OptimizeSupervisor
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
@@ -54,7 +55,7 @@ class RunnerWithStreams:
         )
 
 
-class SupervisedRoundRunner:
+class OptimizeLoopRunner:
     def __init__(
         self,
         runner: AgentRunner,
@@ -118,7 +119,13 @@ class SupervisedRoundRunner:
             self._write_gate_handoff(request, gate_result, latest_round_dir=latest_round_dir)
             return gate_result
 
-        gate_result = self._read_supervisor_gate_result(latest_round_dir)
+        try:
+            gate_result = evaluate_round_gate(latest_round_dir)
+        except ValueError as exc:
+            gate_result = GateResult(
+                decision=GateDecision.REVISE_METADATA,
+                blocking_issues=(f"failed to evaluate round gate for {latest_round_dir.name}: {exc}",),
+            )
         if request.min_rounds is not None and _count_round_directories(request.workdir) < request.min_rounds:
             if gate_result.decision == GateDecision.PASS_STOP:
                 gate_result = GateResult(
@@ -128,54 +135,12 @@ class SupervisedRoundRunner:
                         f"{_count_round_directories(request.workdir)}/{request.min_rounds}",
                     ),
                 )
-                self._write_gate_handoff(request, gate_result, latest_round_dir=latest_round_dir)
-                return gate_result
-        self._snapshot_live_handoff_files()
+        self._write_gate_handoff(request, gate_result, latest_round_dir=latest_round_dir)
         return gate_result
-
-    def _read_supervisor_gate_result(self, latest_round_dir: Path) -> GateResult:
-        report_path = self._guidance_state.supervisor_report_path
-        try:
-            report_content = report_path.read_text(encoding="utf-8")
-        except OSError as exc:
-            gate_result = GateResult(
-                decision=GateDecision.REVISE_METADATA,
-                blocking_issues=(f"failed to read supervisor report {report_path}: {exc}",),
-            )
-            self._write_gate_handoff(None, gate_result, latest_round_dir=latest_round_dir)
-            return gate_result
-
-        parsed_decision = self._parse_supervisor_decision(report_content)
-        if parsed_decision is None:
-            gate_result = GateResult(
-                decision=GateDecision.REVISE_METADATA,
-                blocking_issues=(
-                    f"missing supervisor decision line in {report_path.name}",
-                ),
-            )
-            self._write_gate_handoff(None, gate_result, latest_round_dir=latest_round_dir)
-            return gate_result
-
-        try:
-            decision = GateDecision(parsed_decision)
-        except ValueError:
-            gate_result = GateResult(
-                decision=GateDecision.REVISE_METADATA,
-                blocking_issues=(
-                    f"invalid supervisor decision `{parsed_decision}` in {report_path.name}",
-                ),
-            )
-            self._write_gate_handoff(None, gate_result, latest_round_dir=latest_round_dir)
-            return gate_result
-
-        return GateResult(
-            decision=decision,
-            blocking_issues=self._parse_supervisor_blocking_issues(report_content),
-        )
 
     def _write_gate_handoff(
         self,
-        request: AgentRequest | None,
+        request: AgentRequest,
         gate_result: GateResult,
         *,
         latest_round_dir: Path | None,
@@ -208,14 +173,9 @@ class SupervisedRoundRunner:
         brief_content = "\n".join(brief_lines) + "\n"
         self._guidance_state.round_brief_path.write_text(brief_content, encoding="utf-8")
 
-        self._snapshot_live_handoff_files()
-
-    def _snapshot_live_handoff_files(self) -> None:
         history_dir = self._guidance_state.history_dir
         history_dir.mkdir(parents=True, exist_ok=True)
         round_label = self._next_history_round_label()
-        brief_content = self._guidance_state.round_brief_path.read_text(encoding="utf-8")
-        report_content = self._guidance_state.supervisor_report_path.read_text(encoding="utf-8")
         (history_dir / f"{round_label}-brief.md").write_text(brief_content, encoding="utf-8")
         (history_dir / f"{round_label}-supervisor-report.md").write_text(report_content, encoding="utf-8")
 
@@ -235,21 +195,6 @@ class SupervisedRoundRunner:
         if self._stdout is None and self._stderr is None:
             return cast(Any, self._runner).run(request)
         return cast(Any, self._runner).run(request, stdout=self._stdout, stderr=self._stderr)
-
-    def _parse_supervisor_decision(self, report_content: str) -> str | None:
-        match = re.search(r"^Decision:\s*(.+?)\s*$", report_content, re.MULTILINE)
-        if match is None:
-            return None
-        return match.group(1).strip()
-
-    def _parse_supervisor_blocking_issues(self, report_content: str) -> tuple[str, ...]:
-        match = re.search(r"^Blocking issues:\s*(.+?)\s*$", report_content, re.MULTILINE)
-        if match is None:
-            return ()
-        raw_value = match.group(1).strip()
-        if not raw_value or raw_value.lower() == "none":
-            return ()
-        return tuple(issue.strip() for issue in raw_value.split(",") if issue.strip())
 
 
 def build_optimize_request(
@@ -334,7 +279,7 @@ def run_optimize_request(
         if request.supervise == "on":
             # Supervised optimize runs stage shared guidance plus role briefs in
             # the workspace, then alternate worker/supervisor invocations via
-            # `OptimizeController`. Cleanup archives the handoff trail before the
+            # `OptimizeSupervisor`. Cleanup archives the handoff trail before the
             # temporary runtime files are removed.
             guidance_state = guidance_manager.prepare_supervised_session(
                 request.workdir,
@@ -348,8 +293,8 @@ def run_optimize_request(
                     guidance_manager.describe_prepare_supervised_session(guidance_state),
                 )
             try:
-                round_runner = SupervisedRoundRunner(runner, guidance_state, stdout=stdout, stderr=stderr)
-                return OptimizeController().run(round_runner, request)
+                loop_runner = OptimizeLoopRunner(runner, guidance_state, stdout=stdout, stderr=stderr)
+                return OptimizeSupervisor().run(loop_runner, request)
             finally:
                 if request.verbose:
                     emit_verbose_lines(
@@ -375,7 +320,7 @@ def run_optimize_request(
                 guidance_manager.describe_prepare_unsupervised_session(shared_guidance_state),
             )
         try:
-            return OptimizeController().run(
+            return OptimizeSupervisor().run(
                 RunnerWithStreams(runner, stdout=stdout, stderr=stderr),
                 request,
             )

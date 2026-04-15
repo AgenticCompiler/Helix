@@ -28,15 +28,35 @@ Use this skill when the user wants the operator itself improved rather than only
 - Updated `learned_lessons.md` in the operator workspace whenever the run discovers reusable optimization knowledge
 - Correctness, benchmark, and profiling evidence produced through the `operator-eval` skill
 
-## Artifact Contract
+## Baseline State Contract
 
-Use [artifacts.md](references/artifacts.md) as the artifact contract for:
+When baseline preparation completes, write `baseline/state.json` with all of these fields:
 
-- required baseline artifacts
-- required `baseline/state.json` fields
-- required round artifacts
-- required `round-state.json` fields
-- which state-declared artifact paths are authoritative during validation
+- `baseline_kind`
+- `source_operator`
+- `baseline_operator`
+- `test_file`
+- `test_mode`
+- `bench_file`
+- `bench_mode`
+- `perf_artifact`
+- `correctness_status`
+- `benchmark_status`
+- `baseline_established`
+
+Field intent:
+
+- `baseline_kind`: whether the canonical baseline is the original operator or a minimally repaired prepared baseline
+- `source_operator`: workspace-relative source operator path used to start baseline preparation
+- `baseline_operator`: workspace-relative path to the operator snapshot saved under `baseline/`
+- `test_file`: workspace-relative correctness harness path used for the baseline
+- `test_mode`: resolved correctness mode used for the baseline
+- `bench_file`: workspace-relative benchmark harness path used for the baseline
+- `bench_mode`: resolved benchmark mode used for the baseline
+- `perf_artifact`: canonical baseline perf artifact path, normally `baseline/perf.txt`
+- `correctness_status`: final baseline correctness result
+- `benchmark_status`: final baseline benchmark result
+- `baseline_established`: `true` only after correctness passed, benchmark passed, and the canonical baseline artifacts are written
 
 ## Required Preconditions
 
@@ -62,7 +82,6 @@ Use [artifacts.md](references/artifacts.md) as the artifact contract for:
   ```
 - Use the bundled helper script at [`../operator-eval/scripts/run-command.py`](../operator-eval/scripts/run-command.py) for generation, validation, profiling, and comparison commands; if the outer optimize task is remote-aware, carry the same remote flags through those commands.
 - When profiling benchmark harnesses, prefer `../operator-eval/scripts/run-command.py profile-bench ...`; carry the same `--remote` and `--remote-workdir` settings through profiler runs as well.
-- Use the sibling `optimize-check` skill to validate baseline state and completed rounds before continuing.
 - Treat `references/knowledge/` as optional background material for future expansion, not part of the minimum optimize workflow.
 
 ## Pattern References
@@ -99,23 +118,21 @@ Use it for concise notes such as:
 4. Establish or reuse `baseline/` before creating `opt-round-1`.
 5. If the operator or harnesses need minimal repair to produce a correct, benchmarkable starting point, do that work during baseline preparation rather than inside `opt-round-1`.
 6. Save the canonical baseline as `baseline/state.json`, `baseline/perf.txt`, and one baseline operator snapshot under `baseline/`.
-7. Populate every required `baseline/state.json` field exactly as described in [artifacts.md](references/artifacts.md), and set `baseline_established` to `true` only after `correctness_status` and `benchmark_status` are both `passed`.
+7. Populate every required `baseline/state.json` field and set `baseline_established` to `true` only after `correctness_status` and `benchmark_status` are both `passed`.
 8. Treat the canonical baseline as the session-level comparison target, not as an optimization round.
-9. Run the sibling `optimize-check` skill with `check-baseline` and keep repairing baseline state until it passes.
-10. Record a short diagnosis before the first code-changing round. The diagnosis should name the suspected bottleneck, the current evidence, and what kind of optimization direction looks justified.
-11. Create `opt-round-N/`, copy the chosen parent operator into it, and start `attempts.md` immediately so every meaningful attempt and measurement is recorded.
-12. Before editing code, state the optimization hypothesis for the round, explain why it may help, and cite the supporting evidence. Evidence may come from code inspection, benchmark behavior, profiling, IR inspection, or a combination of them.
-13. If you skip profiling or IR capture for a round, explain in `attempts.md` why the existing evidence is already sufficient.
-14. Read `references/patterns/index.md`, pick one optimization hypothesis, and read only the one or two detailed pattern references that match that hypothesis when they are relevant; if a better hypothesis comes from your own Triton or NPU optimization knowledge, use that hypothesis directly and document it clearly.
-15. Apply one coherent optimization theme for the round, then run correctness validation before trusting any performance result.
-16. Whenever you discover reusable debugging or optimization knowledge, append a short note to `learned_lessons.md` immediately instead of waiting for the round summary.
-17. After correctness passes, run benchmark validation; when benchmark timing alone does not explain the result well enough, use `ascend-npu-operator-profiler` to gather operator-level evidence and keep the resulting profiler artifacts under the current round directory.
-18. After both baseline and round benchmark perf artifacts exist, run `compare-perf` through `../operator-eval/scripts/run-command.py` and use that output as the only source for `Avg improvement`, `Geomean speedup`, `Total speedup`, and any claimed benchmark delta.
-19. Do not hand-calculate speedups or percentage improvements from raw perf files.
-20. Compare round benchmark results against `baseline/perf.txt` for canonical optimize-session metrics, even when the current round also compares locally against its chosen parent.
-21. When IR inspection is needed to understand compiler lowering or confirm an optimization effect, use `ascend-operator-ir-analyzer`, capture into `opt-round-N/ir/`, and inspect that same directory directly.
-22. Run the sibling `optimize-check` skill with `check-round` and repair the current round until it passes before starting another round or stopping.
-23. Use the benchmark, profiler, IR evidence, and `compare-perf` output to decide whether to keep iterating, abandon the direction, or finalize the round `summary.md`, update `opt-note.md`, and preserve any reusable insight in `learned_lessons.md`.
+9. Record a short diagnosis before the first code-changing round. The diagnosis should name the suspected bottleneck, the current evidence, and what kind of optimization direction looks justified.
+10. Create `opt-round-N/`, copy the chosen parent operator into it, and start `attempts.md` immediately so every meaningful attempt and measurement is recorded.
+11. Before editing code, state the optimization hypothesis for the round, explain why it may help, and cite the supporting evidence. Evidence may come from code inspection, benchmark behavior, profiling, IR inspection, or a combination of them.
+12. If you skip profiling or IR capture for a round, explain in `attempts.md` why the existing evidence is already sufficient.
+13. Read `references/patterns/index.md`, pick one optimization hypothesis, and read only the one or two detailed pattern references that match that hypothesis when they are relevant; if a better hypothesis comes from your own Triton or NPU optimization knowledge, use that hypothesis directly and document it clearly.
+14. Apply one coherent optimization theme for the round, then run correctness validation before trusting any performance result.
+15. Whenever you discover reusable debugging or optimization knowledge, append a short note to `learned_lessons.md` immediately instead of waiting for the round summary.
+16. After correctness passes, run benchmark validation; when benchmark timing alone does not explain the result well enough, use `ascend-npu-operator-profiler` to gather operator-level evidence and keep the resulting profiler artifacts under the current round directory.
+17. After both baseline and round benchmark perf artifacts exist, run `compare-perf` through `../operator-eval/scripts/run-command.py` and use that output as the only source for `Avg improvement`, `Geomean speedup`, `Total speedup`, and any claimed benchmark delta.
+18. Do not hand-calculate speedups or percentage improvements from raw perf files.
+19. Compare round benchmark results against `baseline/perf.txt` for canonical optimize-session metrics, even when the current round also compares locally against its chosen parent.
+20. When IR inspection is needed to understand compiler lowering or confirm an optimization effect, use `ascend-operator-ir-analyzer`, capture into `opt-round-N/ir/`, and inspect that same directory directly.
+21. Use the benchmark, profiler, IR evidence, and `compare-perf` output to decide whether to keep iterating, abandon the direction, or finalize the round `summary.md`, update `opt-note.md`, and preserve any reusable insight in `learned_lessons.md`.
 
 ## Quality Rules
 
@@ -123,14 +140,12 @@ Use it for concise notes such as:
 - Treat `baseline/` as the canonical optimize baseline for the session.
 - Reuse existing tests and benchmark harnesses when they are already available for the workspace; generate new ones only when required artifacts are missing.
 - Always run correctness before trusting performance results.
-- Always run `optimize-check check-baseline` before treating baseline preparation as complete.
 - Always explain why a proposed optimization may help before editing code for that round.
 - Always record what evidence supports the chosen optimization direction.
 - Use `baseline/perf.txt` for canonical optimize-session performance comparisons.
 - Use profiler evidence when benchmark timing alone does not explain the result well enough.
 - Always use `compare-perf` as the authoritative source for performance deltas and speedup metrics once comparable perf artifacts exist.
 - Do not hand-calculate speedups or percentage improvements from raw perf files.
-- Always run `optimize-check check-round` before beginning the next round or declaring the session complete.
 - Keep round-specific profiler evidence under `opt-round-N/profile/` and IR evidence under `opt-round-N/ir/` when they are collected.
 - Keep parent-child traceability explicit so later engineers can understand which idea produced each round.
 - Prefer multiple diverse optimization directions over a single greedy chain from the current best version.

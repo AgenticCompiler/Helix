@@ -136,12 +136,3 @@ class GateResult:
     next_parent_round: str | None = None
     next_hypothesis: str | None = None
     required_evidence_for_next_round: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class OptimizeCheckResult:
-    ok: bool
-    kind: Literal["baseline", "round"]
-    decision: Literal["pass", "revise-required", "hard-fail"]
-    issues: tuple[str, ...]
-    summary: str

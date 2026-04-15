@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from triton_agent.optimize.baseline import baseline_gate_issues
+from triton_agent.optimize.baseline import inspect_baseline_artifacts, load_baseline_state
 from triton_agent.optimize.models import GateDecision, GateResult
 from triton_agent.optimize.round_contract import inspect_round_artifacts, load_round_state
 
@@ -25,12 +25,32 @@ def evaluate_round_gate(round_dir: Path, *, stop_after_round: bool = False) -> G
         issue = f"benchmark_status={round_state.benchmark_status}"
         return GateResult(decision=GateDecision.REVISE_REQUIRED, blocking_issues=(issue,))
 
-    baseline_issues = baseline_gate_issues(round_dir.parent)
-    if baseline_issues:
+    baseline_inspection = inspect_baseline_artifacts(round_dir.parent)
+    if baseline_inspection.issues:
         return GateResult(
             decision=GateDecision.REVISE_REQUIRED,
-            blocking_issues=baseline_issues,
+            blocking_issues=baseline_inspection.issues,
         )
+
+    try:
+        baseline_state = load_baseline_state(round_dir.parent)
+    except ValueError as exc:
+        return GateResult(
+            decision=GateDecision.REVISE_REQUIRED,
+            blocking_issues=(str(exc),),
+        )
+
+    if not baseline_state.baseline_established:
+        return GateResult(
+            decision=GateDecision.REVISE_REQUIRED,
+            blocking_issues=("baseline/state.json marks baseline as not established",),
+        )
+    if baseline_state.correctness_status != "passed":
+        issue = f"baseline correctness_status={baseline_state.correctness_status}"
+        return GateResult(decision=GateDecision.REVISE_REQUIRED, blocking_issues=(issue,))
+    if baseline_state.benchmark_status != "passed":
+        issue = f"baseline benchmark_status={baseline_state.benchmark_status}"
+        return GateResult(decision=GateDecision.REVISE_REQUIRED, blocking_issues=(issue,))
 
     if round_state.canonical_baseline != "baseline":
         issue = f"canonical_baseline={round_state.canonical_baseline}"
