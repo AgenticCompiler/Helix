@@ -14,6 +14,22 @@ BASELINE_STATE_REQUIRED_FIELDS = (
     "baseline_established",
 )
 
+ROUND_STATE_REQUIRED_FIELDS = (
+    "round",
+    "parent_round",
+    "hypothesis",
+    "evidence_sources",
+    "correctness_status",
+    "benchmark_status",
+    "perf_artifact",
+    "canonical_baseline",
+    "comparison_target",
+    "perf_summary_source",
+    "summary_path",
+    "opt_note_updated",
+    "next_recommendation",
+)
+
 _BASELINE_STATE_FIELD_DESCRIPTIONS = (
     (
         "baseline_kind",
