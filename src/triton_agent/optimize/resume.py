@@ -5,7 +5,7 @@ from pathlib import Path
 import shutil
 
 from triton_agent.bench_runner import parse_bench_metadata
-from triton_agent.optimize.baseline import baseline_dir, inspect_baseline_artifacts, load_baseline_state
+from triton_agent.optimize.baseline import baseline_dir, baseline_gate_issues
 from triton_agent.test_runner import parse_test_metadata
 
 
@@ -241,19 +241,7 @@ def _baseline_issue(workdir: Path) -> str | None:
     if not root.exists():
         return "missing established baseline/"
 
-    inspection = inspect_baseline_artifacts(workdir)
-    if inspection.issues:
-        return inspection.issues[0]
-
-    try:
-        state = load_baseline_state(workdir)
-    except ValueError as exc:
-        return str(exc)
-
-    if not state.baseline_established:
-        return "baseline/state.json marks baseline as not established"
-    if state.correctness_status != "passed":
-        return f"baseline correctness_status={state.correctness_status}"
-    if state.benchmark_status != "passed":
-        return f"baseline benchmark_status={state.benchmark_status}"
-    return None
+    issues = baseline_gate_issues(workdir)
+    if not issues:
+        return None
+    return issues[0]

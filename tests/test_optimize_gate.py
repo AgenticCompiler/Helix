@@ -96,6 +96,25 @@ class OptimizeGateTests(unittest.TestCase):
             self.assertEqual(result.decision, GateDecision.REVISE_REQUIRED)
             self.assertIn("perf_summary_source=hand-calculated", result.blocking_issues)
 
+    def test_evaluate_round_gate_accepts_state_declared_round_artifact_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._create_baseline(
+                root,
+                baseline_operator="baseline/snapshots/chosen.py",
+                perf_artifact="baseline/metrics/perf.txt",
+            )
+            round_dir = self._create_round(
+                root,
+                summary_path="reports/final.md",
+                perf_artifact="bench/candidate_perf.txt",
+            )
+
+            result = evaluate_round_gate(round_dir)
+
+            self.assertEqual(result.decision, GateDecision.PASS_CONTINUE)
+            self.assertEqual(result.blocking_issues, ())
+
     def _create_round(
         self,
         root: Path,
@@ -106,13 +125,19 @@ class OptimizeGateTests(unittest.TestCase):
         benchmark_status: str = "passed",
         comparison_target: str = "baseline/perf.txt",
         perf_summary_source: str = "compare-perf",
+        summary_path: str = "summary.md",
+        perf_artifact: str = "perf.txt",
     ) -> Path:
         round_dir = root / "opt-round-1"
         round_dir.mkdir()
         (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
         if include_summary:
-            (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
-        (round_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+            summary_file = round_dir / summary_path
+            summary_file.parent.mkdir(parents=True, exist_ok=True)
+            summary_file.write_text("summary\n", encoding="utf-8")
+        perf_file = round_dir / perf_artifact
+        perf_file.parent.mkdir(parents=True, exist_ok=True)
+        perf_file.write_text("case0: 1.0\n", encoding="utf-8")
         (round_dir / "kernel.py").write_text("print('x')\n", encoding="utf-8")
         (round_dir / "round-state.json").write_text(
             json.dumps(
@@ -123,11 +148,11 @@ class OptimizeGateTests(unittest.TestCase):
                     "evidence_sources": ["benchmark"] if evidence_sources is None else evidence_sources,
                     "correctness_status": correctness_status,
                     "benchmark_status": benchmark_status,
-                    "perf_artifact": "perf.txt",
+                    "perf_artifact": perf_artifact,
                     "canonical_baseline": "baseline",
                     "comparison_target": comparison_target,
                     "perf_summary_source": perf_summary_source,
-                    "summary_path": "summary.md",
+                    "summary_path": summary_path,
                     "opt_note_updated": True,
                     "next_recommendation": "continue",
                 }
@@ -136,7 +161,13 @@ class OptimizeGateTests(unittest.TestCase):
         )
         return round_dir
 
-    def _create_baseline(self, root: Path) -> None:
+    def _create_baseline(
+        self,
+        root: Path,
+        *,
+        baseline_operator: str = "baseline/kernel.py",
+        perf_artifact: str = "baseline/perf.txt",
+    ) -> None:
         baseline_dir = root / "baseline"
         baseline_dir.mkdir()
         (baseline_dir / "state.json").write_text(
@@ -144,12 +175,12 @@ class OptimizeGateTests(unittest.TestCase):
                 {
                     "baseline_kind": "prepared",
                     "source_operator": "kernel.py",
-                    "baseline_operator": "baseline/kernel.py",
+                    "baseline_operator": baseline_operator,
                     "test_file": "differential_test_kernel.py",
                     "test_mode": "differential",
                     "bench_file": "bench_kernel.py",
                     "bench_mode": "standalone",
-                    "perf_artifact": "baseline/perf.txt",
+                    "perf_artifact": perf_artifact,
                     "correctness_status": "passed",
                     "benchmark_status": "passed",
                     "baseline_established": True,
@@ -157,8 +188,12 @@ class OptimizeGateTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
-        (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+        perf_file = root / perf_artifact
+        perf_file.parent.mkdir(parents=True, exist_ok=True)
+        perf_file.write_text("latency-a: 1.0\n", encoding="utf-8")
+        operator_file = root / baseline_operator
+        operator_file.parent.mkdir(parents=True, exist_ok=True)
+        operator_file.write_text("print('baseline')\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

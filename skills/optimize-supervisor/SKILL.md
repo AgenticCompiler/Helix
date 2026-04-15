@@ -19,13 +19,14 @@ Use this skill when the CLI launches a supervisor pass after a worker round has 
 ## Outputs
 
 - A gate decision for the completed round
-- A short supervisor report
-- A next-round brief when continuation is allowed
+- An updated `.triton-agent/supervisor-report.md`
+- An updated `.triton-agent/round-brief.md`
 - Metadata repairs only when those repairs are derived from existing facts
 
 ## Required References
 
 - Read the sibling `optimize` skill first for the workflow contract that the worker was supposed to follow.
+- Read the sibling `optimize-check` skill so you use the same baseline and round validation vocabulary as the worker.
 - Read the latest `opt-round-N/attempts.md`, `opt-round-N/summary.md`, and `opt-round-N/round-state.json` before deciding anything.
 - Read `opt-note.md` before changing session-level metadata.
 - Read existing round-local benchmark, profiler, and IR artifacts only when they already exist and are needed to verify the worker's recorded claims.
@@ -42,12 +43,16 @@ Use this skill when the CLI launches a supervisor pass after a worker round has 
    - `revise-metadata`
    - `revise-required`
    - `hard-fail`
-5. If continuation is allowed, write a short next-round brief that names the parent round, the suggested next hypothesis, and any evidence that must be collected before more code changes.
+5. Write `.triton-agent/supervisor-report.md` with at least:
+   - one `Decision:` line using the gate decision value
+   - one `Blocking issues:` line using `none` when there are no blocking issues
+   - the latest audited round name when that fact is available
+6. Write `.triton-agent/round-brief.md` for the next worker invocation. When continuation is allowed, name the parent round, the suggested next hypothesis, and any evidence that must be collected before more code changes. When continuation is not allowed, record the stop or repair reason there so the next worker pass sees the same handoff context.
 
 ## Quality Rules
 
 - Do not perform open-ended optimization work.
-- Do not edit the round-local operator implementation unless the calling prompt explicitly asks for a narrow metadata-only repair in the same file and that repair is safe.
+- Do not edit the operator or round-local implementation.
 - Do not fabricate missing benchmark, profiler, IR, or correctness evidence.
 - Do not launch new profiler or IR collection from the supervisor pass.
 - Do not mark a round as passing when correctness or benchmark evidence is missing.

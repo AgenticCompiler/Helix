@@ -134,6 +134,25 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertIn("--target-op", completed.stdout)
         self.assertIn("--keep-remote-workdir", completed.stdout)
 
+    def test_optimize_check_script_help_runs_without_installed_entrypoint(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "optimize-check"
+            / "scripts"
+            / "optimize_check.py"
+        )
+        completed = subprocess.run(
+            [sys.executable, str(script), "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0)
+        self.assertIn("optimize_check.py", completed.stdout)
+        self.assertIn("check-baseline", completed.stdout)
+        self.assertIn("check-round", completed.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
