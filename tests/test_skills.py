@@ -303,6 +303,23 @@ class SkillLinkManagerTests(unittest.TestCase):
             manager.cleanup(links)
             self.assertFalse(target.exists())
 
+    def test_repo_skills_include_optimize_check_for_codex_staging(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            source = Path(__file__).resolve().parents[1] / "skills"
+
+            manager = SkillLinkManager(source)
+            links = manager.prepare_codex_skills(
+                workspace,
+                skill_names=("optimize", "optimize-check"),
+            )
+
+            target = workspace / ".codex" / "skills"
+            self.assertTrue((target / "optimize" / "SKILL.md").exists())
+            self.assertTrue((target / "optimize-check" / "SKILL.md").exists())
+            manager.cleanup(links)
+
 
 if __name__ == "__main__":
     unittest.main()

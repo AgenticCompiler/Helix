@@ -61,8 +61,8 @@ Expected: PASS
 
 **Files:**
 - Modify: `tests/test_cli.py`
-- Modify: `src/triton_agent/optimize_guidance.py`
-- Modify: `src/triton_agent/supervisor.py`
+- Modify: `src/triton_agent/optimize/guidance.py`
+- Modify: `src/triton_agent/optimize/supervisor.py`
 - Modify: `src/triton_agent/codex_runner.py`
 - Modify: `src/triton_agent/opencode_runner.py`
 - Modify: `src/triton_agent/claude_runner.py`

@@ -7,7 +7,7 @@ from pathlib import Path
 from triton_agent.generation.batch import run_gen_eval_batch
 from triton_agent.generation.models import GenerationOptions
 from triton_agent.generation.outputs import prepare_generation_targets
-from triton_agent.generation.runtime import build_generation_request, run_generation_request
+from triton_agent.generation.orchestration import build_generation_request, run_generation_request
 from triton_agent.models import CommandKind
 from triton_agent.output import render_result
 from triton_agent.verbose import emit_verbose_lines

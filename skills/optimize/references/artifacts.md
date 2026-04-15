@@ -43,6 +43,13 @@ Required baseline artifacts:
 
 Set `baseline_established` to `true` only after correctness passed, benchmark passed, and the canonical baseline artifacts are in place.
 
+Treat these state fields as the authoritative artifact references for baseline validation:
+
+- `baseline_operator`
+- `perf_artifact`
+
+That means the checker should first verify the paths declared in `baseline/state.json` instead of guessing from default filenames. Legacy directory scanning is only a fallback when `baseline/state.json` is missing or invalid.
+
 ## Per-Round Directory
 
 Each completed round directory must contain:
@@ -68,6 +75,33 @@ opt-round-N/
 ```
 
 Keep the layout simple. Do not create unnecessary nested documentation.
+
+Each completed round must also include `round-state.json`.
+
+`round-state.json` must contain these fields:
+
+- `round`
+- `parent_round`
+- `hypothesis`
+- `evidence_sources`
+- `correctness_status`
+- `benchmark_status`
+- `perf_artifact`
+- `canonical_baseline`
+- `comparison_target`
+- `perf_summary_source`
+- `summary_path`
+- `opt_note_updated`
+- `next_recommendation`
+
+Treat these round-state fields as the authoritative artifact references for round validation:
+
+- `summary_path`
+- `perf_artifact`
+- `profile_dir` when present
+- `ir_dir` when present
+
+That means the checker should first verify the paths declared in `round-state.json` instead of guessing from default filenames. Legacy directory scanning is only a fallback when `round-state.json` is missing or invalid.
 
 Use these subdirectories consistently:
 

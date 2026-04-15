@@ -17,5 +17,5 @@
 - `src/triton_agent/cli.py` owns argparse, path validation, prompt construction, and result printing.
 - `skills/run-validation/scripts/*.py` own local execution, remote execution, metadata parsing, result archiving, and comparison behavior.
 - `skills/run-validation/scripts/run-command.py` is a standalone helper CLI, not a wrapper that imports `triton_agent.cli`.
-- `src/triton_agent/run_skill.py` is the only bridge layer. It resolves script paths under `skills/run-validation/scripts/` and dynamically loads them by file path.
+- `src/triton_agent/skill_loader.py` is the only bridge layer. It resolves skill script paths and dynamically loads them by file path.
 - The dependency direction is one-way only: `triton_agent` may import `skills/run-validation/scripts`, but the skill scripts must not import `triton_agent`.

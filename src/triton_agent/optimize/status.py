@@ -4,11 +4,26 @@ import math
 import re
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Protocol, cast
 
-from triton_agent.bench_runner import parse_perf_file, parse_required_perf_file
 from triton_agent.optimize.baseline import baseline_dir
 from triton_agent.optimize.batch import resolve_batch_optimize_operator_file
 from triton_agent.optimize.models import OptimizeStatusRound, OptimizeStatusWorkspace
+from triton_agent.skill_loader import load_operator_eval_script_module
+
+
+class BenchPerfParserModule(Protocol):
+    def parse_perf_file(self, path: Path) -> dict[str, float]: ...
+
+    def parse_required_perf_file(
+        self,
+        path: Path,
+        required_latency_ids: Iterable[str],
+    ) -> dict[str, float]: ...
+
+
+def _load_bench_perf_parser() -> BenchPerfParserModule:
+    return cast(BenchPerfParserModule, load_operator_eval_script_module("bench_runner"))
 
 
 def inspect_optimize_status_workspace(
@@ -40,7 +55,7 @@ def inspect_optimize_status_workspace(
     baseline_mean: float | None = None
     if baseline_path is not None:
         try:
-            parsed_baseline_values = parse_perf_file(baseline_path)
+            parsed_baseline_values = _load_bench_perf_parser().parse_perf_file(baseline_path)
             baseline_values = parsed_baseline_values
             baseline_mean = mean_value(parsed_baseline_values.values())
         except ValueError as exc:
@@ -67,7 +82,10 @@ def inspect_optimize_status_workspace(
             warnings.append(f"missing perf artifact for {round_dir.name}")
             continue
         try:
-            round_values = parse_required_perf_file(perf_path, baseline_values.keys())
+            round_values = _load_bench_perf_parser().parse_required_perf_file(
+                perf_path,
+                baseline_values.keys(),
+            )
         except ValueError as exc:
             warnings.append(str(exc))
             continue
