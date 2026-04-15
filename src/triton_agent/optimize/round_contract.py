@@ -4,23 +4,8 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
+from triton_agent.optimize.contract import ROUND_STATE_REQUIRED_FIELDS
 from triton_agent.optimize.models import RoundArtifactsInspection, RoundState
-
-_ROUND_STATE_REQUIRED_FIELDS = (
-    "round",
-    "parent_round",
-    "hypothesis",
-    "evidence_sources",
-    "correctness_status",
-    "benchmark_status",
-    "perf_artifact",
-    "canonical_baseline",
-    "comparison_target",
-    "perf_summary_source",
-    "summary_path",
-    "opt_note_updated",
-    "next_recommendation",
-)
 _ROUND_METADATA_FILENAMES = {
     "attempts.md",
     "summary.md",
@@ -43,7 +28,7 @@ def load_round_state(round_dir: Path) -> RoundState:
     data = cast(dict[str, Any], payload)
 
     missing_fields = [
-        field_name for field_name in _ROUND_STATE_REQUIRED_FIELDS if field_name not in data
+        field_name for field_name in ROUND_STATE_REQUIRED_FIELDS if field_name not in data
     ]
     if missing_fields:
         missing_text = ", ".join(missing_fields)
@@ -82,20 +67,39 @@ def load_round_state(round_dir: Path) -> RoundState:
 
 def inspect_round_artifacts(round_dir: Path) -> RoundArtifactsInspection:
     attempts_path = _existing_file(round_dir / "attempts.md")
-    summary_path = _existing_file(round_dir / "summary.md")
     round_state_path = _existing_file(round_dir / "round-state.json")
-    perf_path = _find_perf_artifact(round_dir)
+    state: RoundState | None = None
+    if round_state_path is not None:
+        try:
+            state = load_round_state(round_dir)
+        except ValueError:
+            state = None
+
+    declared_summary = state.summary_path if state is not None else None
+    declared_perf = state.perf_artifact if state is not None else None
+
+    if state is None:
+        summary_path = None
+        perf_path = None
+    else:
+        summary_path = _declared_round_file(round_dir, declared_summary)
+        perf_path = _declared_round_file(round_dir, declared_perf)
+
+    if state is None and summary_path is None:
+        summary_path = _existing_file(round_dir / "summary.md")
+    if state is None and perf_path is None:
+        perf_path = _find_perf_artifact(round_dir)
     operator_path = _find_round_operator(round_dir)
 
     issues: list[str] = []
     if attempts_path is None:
         issues.append("missing attempts.md")
     if summary_path is None:
-        issues.append("missing summary.md")
+        issues.append(_missing_issue(declared_summary, default_path="summary.md"))
     if round_state_path is None:
         issues.append("missing round-state.json")
     if perf_path is None:
-        issues.append("missing perf artifact")
+        issues.append(_missing_issue(declared_perf, default_path="perf artifact"))
     if operator_path is None:
         issues.append("missing round-local operator output")
 
@@ -112,6 +116,12 @@ def inspect_round_artifacts(round_dir: Path) -> RoundArtifactsInspection:
 
 def _existing_file(path: Path) -> Path | None:
     return path if path.is_file() else None
+
+
+def _declared_round_file(round_dir: Path, relative_path: str | None) -> Path | None:
+    if relative_path is None:
+        return None
+    return _existing_file(round_dir / Path(relative_path))
 
 
 def _find_perf_artifact(round_dir: Path) -> Path | None:
@@ -150,3 +160,9 @@ def _optional_bool(value: object) -> bool | None:
     if value is None:
         return None
     return bool(value)
+
+
+def _missing_issue(relative_path: str | None, *, default_path: str) -> str:
+    if relative_path is None:
+        return f"missing {default_path}"
+    return f"missing {relative_path}"

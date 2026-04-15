@@ -12,7 +12,7 @@ from triton_agent.prompts import (
     build_optimize_resume_prompt,
     build_prompt,
 )
-from triton_agent.supervisor import OptimizeSupervisor
+from triton_agent.optimize.supervisor import OptimizeController
 
 
 class FakeRunner:
@@ -82,7 +82,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
                 workspace,
             )
 
-            result = OptimizeSupervisor(max_recovery_attempts=1).run(runner, request)
+            result = OptimizeController(max_recovery_attempts=1).run(runner, request)
 
             self.assertEqual(result.return_code, 0)
             self.assertEqual(len(runner.resume_requests), 1)
@@ -157,7 +157,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
         runner = BackendLikeRunner()
 
-        result = OptimizeSupervisor(max_recovery_attempts=1).run(runner, request)
+        result = OptimizeController(max_recovery_attempts=1).run(runner, request)
 
         self.assertEqual(result.return_code, 0)
         self.assertEqual(runner.resume_calls, 1)
@@ -218,7 +218,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
         runner = BackendLikeRunner()
 
-        result = OptimizeSupervisor(max_recovery_attempts=1).run(runner, request)
+        result = OptimizeController(max_recovery_attempts=1).run(runner, request)
 
         self.assertEqual(result.return_code, 0)
         self.assertEqual(len(runner.resume_prompts), 1)
@@ -277,7 +277,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
         runner = BackendLikeRunner()
 
-        result = OptimizeSupervisor(max_recovery_attempts=1).run(runner, request)
+        result = OptimizeController(max_recovery_attempts=1).run(runner, request)
 
         self.assertEqual(result.return_code, 0)
         self.assertEqual(runner.calls, ["run", "resume"])
@@ -324,7 +324,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
         runner = LoopRunner()
 
-        result = OptimizeSupervisor().run(runner, request)
+        result = OptimizeController().run(runner, request)
 
         self.assertEqual(result.return_code, 0)
         self.assertEqual(runner.events, ["worker-run", "supervisor-run"])
@@ -369,7 +369,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
         runner = LoopRunner()
 
-        result = OptimizeSupervisor().run(runner, request)
+        result = OptimizeController().run(runner, request)
 
         self.assertEqual(result.return_code, 0)
         self.assertEqual(len(runner.worker_requests), 2)
@@ -419,7 +419,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
         runner = LoopRunner()
 
-        result = OptimizeSupervisor(max_recovery_attempts=1).run(runner, request)
+        result = OptimizeController(max_recovery_attempts=1).run(runner, request)
 
         self.assertEqual(result.return_code, 0)
         self.assertEqual(runner.worker_calls, 2)
@@ -464,7 +464,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
         runner = LoopRunner()
 
-        result = OptimizeSupervisor(max_recovery_attempts=1).run(runner, request)
+        result = OptimizeController(max_recovery_attempts=1).run(runner, request)
 
         self.assertEqual(result.return_code, 0)
         self.assertEqual(runner.worker_calls, 2)
@@ -514,7 +514,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
         runner = LoopRunner()
 
-        result = OptimizeSupervisor(max_recovery_attempts=1).run(runner, request)
+        result = OptimizeController(max_recovery_attempts=1).run(runner, request)
 
         self.assertEqual(result.return_code, 0)
         self.assertEqual(runner.worker_calls, 1)
@@ -556,7 +556,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
                 ),
             ]
         )
-        supervisor = OptimizeSupervisor(max_recovery_attempts=1)
+        supervisor = OptimizeController(max_recovery_attempts=1)
         result = supervisor.run(runner, request)
         self.assertEqual(result.return_code, 0)
         self.assertEqual(len(runner.prompts), 2)
@@ -600,7 +600,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="done", stderr="", stalled=False)
 
         runner = RepeatedStallRunner()
-        supervisor = OptimizeSupervisor(max_recovery_attempts=2)
+        supervisor = OptimizeController(max_recovery_attempts=2)
 
         result = supervisor.run(runner, request)
 
@@ -655,7 +655,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
             runner = BackendLikeRoundCreatingRunner()
 
-            supervisor = OptimizeSupervisor(max_recovery_attempts=1)
+            supervisor = OptimizeController(max_recovery_attempts=1)
             result = supervisor.run(runner, request)
 
             self.assertEqual(result.return_code, 0)
@@ -712,7 +712,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
             runner = BackendLikeRoundCreatingRunner()
 
-            result = OptimizeSupervisor(max_recovery_attempts=1).run(runner, request)
+            result = OptimizeController(max_recovery_attempts=1).run(runner, request)
 
             self.assertEqual(result.return_code, 0)
             self.assertEqual(len(runner.resume_requests), 1)
@@ -757,7 +757,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
                     return AgentResult(return_code=0, stdout="still finished one round", stderr="")
 
             runner = NoProgressRunner()
-            result = OptimizeSupervisor(max_recovery_attempts=2).run(runner, request)
+            result = OptimizeController(max_recovery_attempts=2).run(runner, request)
 
             self.assertEqual(result.return_code, 1)
             self.assertIn("No progress", result.stderr)
@@ -809,7 +809,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
                     return AgentResult(return_code=0, stdout="still finished one round", stderr="")
 
             runner = BackendLikeNoProgressRunner()
-            result = OptimizeSupervisor(max_recovery_attempts=2).run(runner, request)
+            result = OptimizeController(max_recovery_attempts=2).run(runner, request)
 
             self.assertEqual(result.return_code, 1)
             self.assertEqual(runner.resume_calls, 1)
@@ -851,7 +851,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
             ]
         )
 
-        result = OptimizeSupervisor(max_recovery_attempts=2).run(runner, request)
+        result = OptimizeController(max_recovery_attempts=2).run(runner, request)
 
         self.assertEqual(result.return_code, 130)
         self.assertEqual(runner.prompts, ["Optimize this operator"])

@@ -69,7 +69,7 @@ Expected: PASS
 **Files:**
 - Modify: `skills/optimize/references/opt-note-format.md`
 - Modify: `skills/optimize/references/workflow.md`
-- Modify: `src/triton_agent/optimize_guidance.py`
+- Modify: `src/triton_agent/optimize/guidance.py`
 - Modify: `docs/2026-04-07-optimize-status-subcommand.md`
 
 - [ ] **Step 1: Update `opt-note.md` format guidance**

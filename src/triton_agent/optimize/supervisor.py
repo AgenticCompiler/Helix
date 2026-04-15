@@ -23,7 +23,7 @@ class SupportsOptimizeRecovery(Protocol):
         ...
 
 
-class SupportsOptimizeRoundGate(Protocol):
+class SupportsSupervisedRoundRunner(Protocol):
     def run_worker(self, request: AgentRequest) -> AgentResult:
         ...
 
@@ -31,22 +31,18 @@ class SupportsOptimizeRoundGate(Protocol):
         ...
 
 
-class OptimizeSupervisor:
+class OptimizeController:
     def __init__(self, max_recovery_attempts: int = 2) -> None:
         self.max_recovery_attempts = max_recovery_attempts
 
     def run(self, runner: object, request: AgentRequest) -> AgentResult:
-        # `OptimizeSupervisor` is the top-level control loop for optimize runs.
-        # In unsupervised mode it repeatedly drives a single backend runner via
-        # run/resume. In supervised mode it instead delegates to a round-gated
-        # loop where a worker round and a supervisor audit pass alternate.
         attempt = 0
         current_request = self._with_default_optimize_role(request)
         resume_summary: str | None = None
 
-        if _supports_round_gate_runner(runner):
-            return self._run_round_gate_loop(
-                cast(SupportsOptimizeRoundGate, runner),
+        if _supports_supervised_round_runner(runner):
+            return self._run_supervised_loop(
+                cast(SupportsSupervisedRoundRunner, runner),
                 current_request,
             )
 
@@ -54,13 +50,28 @@ class OptimizeSupervisor:
             raise TypeError("runner does not implement optimize recovery or round gate interfaces")
         recovery_runner = cast(SupportsOptimizeRecovery, runner)
 
+        return self._run_unsupervised_loop(
+            recovery_runner,
+            current_request,
+            attempt=attempt,
+            resume_summary=resume_summary,
+        )
+
+    def _run_unsupervised_loop(
+        self,
+        runner: SupportsOptimizeRecovery,
+        current_request: AgentRequest,
+        *,
+        attempt: int,
+        resume_summary: str | None,
+    ) -> AgentResult:
         while True:
             if resume_summary is None:
-                result = recovery_runner.run(current_request)
+                result = runner.run(current_request)
             else:
-                result = recovery_runner.resume(current_request, resume_summary)
+                result = runner.resume(current_request, resume_summary)
             result, current_request = self._resume_until_round_requirement_satisfied(
-                recovery_runner,
+                runner,
                 current_request,
                 result,
             )
@@ -80,9 +91,6 @@ class OptimizeSupervisor:
         current_request: AgentRequest,
         result: AgentResult,
     ) -> tuple[AgentResult, AgentRequest]:
-        # `min_rounds` is enforced outside the agent itself. If the agent exits
-        # successfully too early, we resume from the existing session instead of
-        # pretending the optimize run is complete.
         while result.succeeded and self._needs_more_rounds(current_request):
             round_count_before_resume = self._count_round_directories(current_request.workdir)
             summary = self._build_rounds_summary(current_request)
@@ -109,16 +117,13 @@ class OptimizeSupervisor:
                 )
         return result, current_request
 
-    def _run_round_gate_loop(
+    def _run_supervised_loop(
         self,
-        runner: SupportsOptimizeRoundGate,
+        runner: SupportsSupervisedRoundRunner,
         request: AgentRequest,
     ) -> AgentResult:
         current_request = request
         while True:
-            # The worker owns exactly one optimization round. Transient failures
-            # retry the same round; successful completion hands off to the
-            # supervisor for a fact-based audit.
             worker_attempt = 0
             while True:
                 worker_result = runner.run_worker(current_request)
@@ -132,9 +137,6 @@ class OptimizeSupervisor:
 
             supervisor_attempt = 0
             while True:
-                # The supervisor never edits kernels directly here; it inspects
-                # the latest round artifacts and returns a gate decision that
-                # decides whether the next loop iteration should continue.
                 gate_result = runner.run_supervisor(current_request, worker_result)
                 if (
                     current_request.interact
@@ -147,9 +149,6 @@ class OptimizeSupervisor:
             if gate_result.decision == GateDecision.PASS_STOP:
                 return worker_result
             if gate_result.decision in {GateDecision.PASS_CONTINUE, GateDecision.REVISE_METADATA}:
-                # For the next worker round we rebuild the prompt from the
-                # original optimize prompt plus a compact gate summary, so each
-                # round starts from the same base contract with fresh feedback.
                 current_request = replace(
                     current_request,
                     prompt=self._build_continue_prompt(
@@ -240,7 +239,7 @@ class OptimizeSupervisor:
         )
 
 
-def _supports_round_gate_runner(runner: object) -> bool:
+def _supports_supervised_round_runner(runner: object) -> bool:
     return hasattr(runner, "run_worker") and hasattr(runner, "run_supervisor")
 
 

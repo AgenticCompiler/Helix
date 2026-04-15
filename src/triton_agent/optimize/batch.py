@@ -17,7 +17,7 @@ from triton_agent.batch_utils import (
 from triton_agent.models import AgentResult
 from triton_agent.optimize.models import BatchOptimizeResult, BatchOptimizeWorkspace, OptimizeRunOptions
 from triton_agent.optimize.render import render_batch_optimize_results
-from triton_agent.optimize.runtime import build_optimize_request, run_optimize_request
+from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
 
 _BATCH_OPTIMIZE_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")
 _BATCH_OPTIMIZE_EXCLUDED_NAMES = {"__init__.py"}

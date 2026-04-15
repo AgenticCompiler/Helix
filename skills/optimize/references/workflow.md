@@ -24,7 +24,7 @@ Turn operator optimization into a repeatable search process over validated candi
 7. Establish or reuse `baseline/` before creating `opt-round-1`.
 8. If the operator needs minimal repair to become correct and benchmarkable, do that work during baseline preparation.
 9. Save the canonical baseline as `baseline/state.json`, `baseline/perf.txt`, and one baseline operator snapshot under `baseline/`.
-10. Populate `baseline/state.json` with `baseline_kind`, `source_operator`, `baseline_operator`, `test_file`, `test_mode`, `bench_file`, `bench_mode`, `perf_artifact`, `correctness_status`, `benchmark_status`, and `baseline_established`.
+10. Populate `baseline/state.json` using the exact baseline artifact contract in [artifacts.md](artifacts.md).
 11. Set `baseline_established` to `true` only after `correctness_status` and `benchmark_status` are both `passed`.
 12. Initialize `opt-note.md` if it does not exist.
 13. Write a short diagnosis summary before the first code-changing round so later readers can see the suspected bottleneck and the initial evidence.

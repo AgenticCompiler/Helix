@@ -71,7 +71,7 @@ Expected: PASS
 ### Task 3: Update Guidance And Reference Docs
 
 **Files:**
-- Modify: `src/triton_agent/optimize_guidance.py`
+- Modify: `src/triton_agent/optimize/guidance.py`
 - Modify: `skills/optimize/references/opt-note-format.md`
 - Modify: `skills/optimize/references/workflow.md`
 

@@ -16,7 +16,7 @@ from triton_agent.batch_utils import (
     resolve_batch_operator_file,
 )
 from triton_agent.generation.models import GenerationOptions
-from triton_agent.generation.runtime import build_generation_request, run_generation_request
+from triton_agent.generation.orchestration import build_generation_request, run_generation_request
 from triton_agent.models import AgentResult, CommandKind
 
 _BATCH_GEN_EVAL_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")

@@ -1,4 +1,5 @@
 import os
+import io
 import sys
 import tempfile
 import types
@@ -222,12 +223,86 @@ class OpenHandsRunnerTests(unittest.TestCase):
             self.assertFalse(observed["agents_exists_during_run"])
             self.assertFalse((workspace / "AGENTS.md").exists())
 
+    def test_run_requires_project_skills_loader_to_include_staged_openhands_skills(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = OpenHandsRunner()
+            skill_file = workspace / ".openhands" / "skills" / "demo" / "SKILL.md"
+            skill_file.parent.mkdir(parents=True)
+            skill_file.write_text("# demo\n", encoding="utf-8")
+            fake_dependencies = _fake_dependencies()
+            fake_dependencies.load_project_skills = lambda work_dir: [
+                types.SimpleNamespace(name="agents", source=str(Path(work_dir) / "AGENTS.md"))
+            ]
+
+            with patch(
+                "triton_agent.backends.openhands._supports_openhands_runtime",
+                return_value=True,
+            ):
+                with patch.dict(
+                    os.environ,
+                    {
+                        "LLM_API_KEY": "secret",
+                        "LLM_MODEL": "gpt-5.4-mini",
+                    },
+                    clear=True,
+                ):
+                    with patch(
+                        "triton_agent.backends.openhands._load_openhands_dependencies",
+                        return_value=fake_dependencies,
+                    ):
+                        result = runner.run(self._request(workspace))
+
+            self.assertEqual(result.return_code, 1)
+            self.assertIn("did not include staged skills", result.stderr)
+            self.assertIn(str(skill_file), result.stderr)
+
+    def test_run_logs_actual_sdk_command_and_prompt_in_verbose_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = OpenHandsRunner()
+            (workspace / ".openhands" / "skills").mkdir(parents=True)
+            stderr = io.StringIO()
+
+            with patch(
+                "triton_agent.backends.openhands._supports_openhands_runtime",
+                return_value=True,
+            ):
+                with patch.dict(
+                    os.environ,
+                    {
+                        "LLM_API_KEY": "secret",
+                        "LLM_MODEL": "gpt-5.4-mini",
+                    },
+                    clear=True,
+                ):
+                    with patch(
+                        "triton_agent.backends.openhands._load_openhands_dependencies",
+                        return_value=_fake_dependencies(),
+                    ):
+                        result = runner.run(
+                            self._request(
+                                workspace,
+                                prompt="first line\nsecond line",
+                                verbose=True,
+                            ),
+                            stderr=stderr,
+                        )
+
+            self.assertEqual(result.return_code, 0)
+            self.assertIn("command: openhands sdk", stderr.getvalue())
+            self.assertIn("prompt:", stderr.getvalue())
+            self.assertIn("  first line", stderr.getvalue())
+            self.assertIn("  second line", stderr.getvalue())
+            self.assertNotIn("  sdk", stderr.getvalue())
+
     def _request(
         self,
         workspace: Path,
         *,
         command_kind: CommandKind = CommandKind.GEN_TEST,
         interact: bool = False,
+        verbose: bool = False,
         prompt: str = "Prompt body",
     ) -> AgentRequest:
         return AgentRequest(
@@ -238,7 +313,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
             test_mode=None,
             bench_mode=None,
             interact=interact,
-            verbose=False,
+            verbose=verbose,
             show_output=False,
             force_overwrite=False,
             agent_name="openhands",

@@ -33,7 +33,7 @@
 
 **Files:**
 - Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/optimize_guidance.py`
+- Modify: `src/triton_agent/optimize/guidance.py`
 - Modify: `skills/optimize/SKILL.md`
 - Modify: `skills/optimize/references/workflow.md`
 

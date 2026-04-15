@@ -33,11 +33,11 @@
   Add round/gate/guidance-related dataclasses.
 - `src/triton_agent/prompts.py`
   Split optimize worker and supervisor prompt builders.
-- `src/triton_agent/optimize_guidance.py`
+- `src/triton_agent/optimize/guidance.py`
   Render role-neutral shared guidance plus role briefs instead of one worker-only guidance file.
 - `src/triton_agent/optimize/runtime.py`
   Prepare shared skills/guidance and run the worker-supervisor loop.
-- `src/triton_agent/supervisor.py`
+- `src/triton_agent/optimize/supervisor.py`
   Replace the current stall/min-round-only logic with round gate orchestration.
 - `src/triton_agent/backends/codex.py`
   Preserve fresh invocation behavior and explicit prompt routing for worker versus supervisor runs.
@@ -47,7 +47,7 @@
   Mirror any `AgentRequest` field additions that affect optimize launch behavior.
 - `tests/test_supervisor.py`
   Update supervisor tests to the new loop behavior.
-- `tests/test_optimize_guidance.py`
+- `tests/test_optimize/guidance.py`
   Cover shared guidance and role-brief rendering.
 - `tests/test_skills.py`
   Cover staging of the new supervisor skill.
@@ -198,9 +198,9 @@ git commit -m "feat: add optimize worker and supervisor prompts"
 ### Task 3: Render Shared Guidance And Role Briefs
 
 **Files:**
-- Modify: `src/triton_agent/optimize_guidance.py`
+- Modify: `src/triton_agent/optimize/guidance.py`
 - Modify: `src/triton_agent/optimize/runtime.py`
-- Modify: `tests/test_optimize_guidance.py`
+- Modify: `tests/test_optimize/guidance.py`
 
 - [ ] **Step 1: Write the failing guidance tests**
 
@@ -244,14 +244,14 @@ Expected: PASS
 - [ ] **Step 5: Commit the guidance layer**
 
 ```bash
-git add src/triton_agent/optimize_guidance.py src/triton_agent/optimize/runtime.py tests/test_optimize_guidance.py
+git add src/triton_agent/optimize/guidance.py src/triton_agent/optimize/runtime.py tests/test_optimize/guidance.py
 git commit -m "feat: add optimize role guidance briefs"
 ```
 
 ### Task 4: Upgrade The Supervisor Into A Round Gate Controller
 
 **Files:**
-- Modify: `src/triton_agent/supervisor.py`
+- Modify: `src/triton_agent/optimize/supervisor.py`
 - Modify: `src/triton_agent/optimize/runtime.py`
 - Modify: `tests/test_supervisor.py`
 - Modify: `tests/test_optimize_gate.py`
@@ -308,7 +308,7 @@ Expected: PASS
 - [ ] **Step 5: Commit the orchestration layer**
 
 ```bash
-git add src/triton_agent/supervisor.py src/triton_agent/optimize/runtime.py tests/test_supervisor.py tests/test_optimize_gate.py
+git add src/triton_agent/optimize/supervisor.py src/triton_agent/optimize/runtime.py tests/test_supervisor.py tests/test_optimize_gate.py
 git commit -m "feat: add optimize supervisor round gate loop"
 ```
 

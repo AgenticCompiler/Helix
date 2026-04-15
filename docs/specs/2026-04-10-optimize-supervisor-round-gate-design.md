@@ -27,7 +27,7 @@
 ## Problem
 
 - The current optimize flow launches one code agent with staged skills plus a temporary optimize guidance file and expects the agent to follow the workflow on its own.
-- Existing orchestration only supervises liveness concerns such as stalled runs and minimum round count, as implemented in [supervisor.py](/Users/cdj/Projects/triton-agent/src/triton_agent/supervisor.py).
+- Existing orchestration only supervises liveness concerns such as stalled runs and minimum round count, as implemented in [supervisor.py](/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/supervisor.py).
 - The optimize skill and guidance already require concrete artifacts and workflow steps, but the CLI does not currently gate on those requirements.
 - As a result, agents may:
   - skip or under-specify round hypotheses and supporting evidence
@@ -295,11 +295,11 @@ The CLI should use this structured output as the source of truth and treat accom
 
 Likely implementation areas:
 
-- [src/triton_agent/supervisor.py](/Users/cdj/Projects/triton-agent/src/triton_agent/supervisor.py)
+- [src/triton_agent/optimize/supervisor.py](/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/supervisor.py)
   - expand from stall/min-round recovery into round gate orchestration
 - [src/triton_agent/prompts.py](/Users/cdj/Projects/triton-agent/src/triton_agent/prompts.py)
   - split worker and supervisor prompt builders
-- [src/triton_agent/optimize_guidance.py](/Users/cdj/Projects/triton-agent/src/triton_agent/optimize_guidance.py)
+- [src/triton_agent/optimize/guidance.py](/Users/cdj/Projects/triton-agent/src/triton_agent/optimize/guidance.py)
   - render shared guidance plus role briefs instead of one worker-only guidance file
 - `src/triton_agent/optimize/`
   - add round contract parsing, gate result models, and artifact inspection helpers

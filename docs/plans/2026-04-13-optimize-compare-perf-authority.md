@@ -16,7 +16,7 @@
 
 - `src/triton_agent/prompts.py`
   Add explicit `compare-perf` authority wording to optimize worker, unsupervised, and resume prompts.
-- `src/triton_agent/optimize_guidance.py`
+- `src/triton_agent/optimize/guidance.py`
   Add the same authority wording to worker and supervisor role briefs.
 - `src/triton_agent/optimize/models.py`
   Extend `RoundState` with `perf_summary_source`.
@@ -24,7 +24,7 @@
   Require the new round-state field.
 - `src/triton_agent/optimize/gate.py`
   Reject benchmark-passing rounds whose performance summary source is not `compare-perf`.
-- `tests/test_optimize_guidance.py`
+- `tests/test_optimize/guidance.py`
   Pin the new guidance wording.
 - `tests/test_optimize_gate.py`
   Add failing and passing gate cases for `perf_summary_source`.
@@ -34,7 +34,7 @@
 ### Task 1: Lock The New Contract In Tests
 
 **Files:**
-- Modify: `tests/test_optimize_guidance.py`
+- Modify: `tests/test_optimize/guidance.py`
 - Modify: `tests/test_optimize_gate.py`
 - Modify: `tests/test_optimize_runtime.py`
 
@@ -58,7 +58,7 @@ Expected: FAIL because current prompts and round-state parsing do not require th
 
 **Files:**
 - Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/optimize_guidance.py`
+- Modify: `src/triton_agent/optimize/guidance.py`
 - Modify: `src/triton_agent/optimize/models.py`
 - Modify: `src/triton_agent/optimize/round_contract.py`
 - Modify: `src/triton_agent/optimize/gate.py`
@@ -78,7 +78,7 @@ Tell workers and supervisors to use `compare-perf` as the only source for perfor
 ### Task 3: Verify The Focused Surface
 
 **Files:**
-- Modify: `tests/test_optimize_guidance.py`
+- Modify: `tests/test_optimize/guidance.py`
 - Modify: `tests/test_optimize_gate.py`
 - Modify: `tests/test_optimize_runtime.py`
 
