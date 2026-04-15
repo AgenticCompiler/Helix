@@ -4,7 +4,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.run_skill import load_run_skill_module, run_skill_script_path
+from triton_agent.run_skill import (
+    load_run_skill_module,
+    load_skill_script_module,
+    run_skill_script_path,
+    skill_script_path,
+)
 
 
 class RunSkillLoaderTests(unittest.TestCase):
@@ -19,6 +24,19 @@ class RunSkillLoaderTests(unittest.TestCase):
         second = load_run_skill_module("test_runner")
         self.assertIs(first, second)
         self.assertTrue(hasattr(first, "run_local_test"))
+
+    def test_skill_script_path_points_to_optimize_check_script(self) -> None:
+        path = skill_script_path("optimize-check", "optimize_check")
+        self.assertEqual(path.name, "optimize_check.py")
+        self.assertEqual(path.parent.name, "scripts")
+        self.assertEqual(path.parent.parent.name, "optimize-check")
+
+    def test_load_skill_script_module_returns_cached_module(self) -> None:
+        first = load_skill_script_module("optimize-check", "optimize_check")
+        second = load_skill_script_module("optimize-check", "optimize_check")
+        self.assertIs(first, second)
+        self.assertTrue(hasattr(first, "check_baseline"))
+        self.assertTrue(hasattr(first, "check_round"))
 
     def test_run_skill_scripts_do_not_import_triton_agent(self) -> None:
         scripts_dir = Path(__file__).resolve().parents[1] / "skills" / "operator-eval" / "scripts"

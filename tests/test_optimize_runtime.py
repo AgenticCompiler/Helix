@@ -13,7 +13,7 @@ from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.optimize.batch import run_optimize_batch
 from triton_agent.optimize.models import GateDecision, OptimizeRunOptions
 from triton_agent.optimize.runtime import (
-    OptimizeLoopRunner,
+    SupervisedRoundRunner,
     _count_round_directories,
     _latest_round_dir,
     run_optimize_request,
@@ -25,6 +25,8 @@ class OptimizeRuntimeTests(unittest.TestCase):
     def _build_guidance_state(self, workdir: Path) -> OptimizeGuidanceState:
         runtime_root = workdir / ".triton-agent"
         runtime_root.mkdir(parents=True, exist_ok=True)
+        guidance_path = workdir / "AGENTS.md"
+        guidance_path.write_text("shared guidance\n", encoding="utf-8")
         history_dir = runtime_root / "history"
         history_dir.mkdir(parents=True, exist_ok=True)
         round_brief_path = runtime_root / "round-brief.md"
@@ -35,7 +37,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
         run_archive_dir = archive_root / "run-001"
         shared_guidance_snapshot_path = run_archive_dir / "shared-guidance.md"
         return OptimizeGuidanceState(
-            guidance_path=workdir / "AGENTS.md",
+            guidance_path=guidance_path,
             backup_path=None,
             created_guidance=False,
             round_brief_path=round_brief_path,
@@ -109,6 +111,34 @@ class OptimizeRuntimeTests(unittest.TestCase):
         )
         return round_dir
 
+    def _write_supervisor_handoff(
+        self,
+        guidance_state: OptimizeGuidanceState,
+        *,
+        decision: str,
+        issues: tuple[str, ...] = (),
+        brief_lines: tuple[str, ...] = (),
+        latest_round: str | None = None,
+    ) -> None:
+        report_lines = [
+            "# Optimize Supervisor Report",
+            "",
+            f"Decision: {decision}",
+            f"Blocking issues: {', '.join(issues) if issues else 'none'}",
+        ]
+        if latest_round is not None:
+            report_lines.append(f"Latest round: {latest_round}")
+        guidance_state.supervisor_report_path.write_text(
+            "\n".join(report_lines) + "\n",
+            encoding="utf-8",
+        )
+        brief_content = "# Optimize Round Brief\n\n"
+        if brief_lines:
+            brief_content += "\n".join(brief_lines) + "\n"
+        else:
+            brief_content += "No additional guidance.\n"
+        guidance_state.round_brief_path.write_text(brief_content, encoding="utf-8")
+
     def test_run_optimize_request_invokes_worker_then_supervisor_roles(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
@@ -137,6 +167,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             class FakeRunner:
                 def __init__(self) -> None:
                     self.requests: List[AgentRequest] = []
+                    self.supervisor_calls = 0
 
                 def run(
                     self,
@@ -154,13 +185,26 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             parent_round="round-0",
                             next_recommendation="stop",
                         )
+                    else:
+                        self.supervisor_calls += 1
+                        self_outer._write_supervisor_handoff(
+                            guidance_state,
+                            decision="pass-stop",
+                            latest_round="opt-round-1",
+                            brief_lines=("Stop after auditing opt-round-1.",),
+                        )
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
             self_outer = self
             runner = FakeRunner()
+            guidance_state = self._build_guidance_state(workdir)
 
             with patch("triton_agent.optimize.runtime.create_runner", return_value=runner):
-                result = run_optimize_request(request)
+                with patch(
+                    "triton_agent.optimize.runtime.OptimizeGuidanceManager.prepare_supervised_session",
+                    return_value=guidance_state,
+                ):
+                    result = run_optimize_request(request)
 
             self.assertEqual(result.return_code, 0)
             self.assertEqual(len(runner.requests), 2)
@@ -228,16 +272,35 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             class FakeRunner:
+                def __init__(self) -> None:
+                    self.supervisor_calls = 0
+
                 def run(
                     self,
                     request: AgentRequest,
                     stdout: Optional[object] = None,
                     stderr: Optional[object] = None,
                 ) -> AgentResult:
-                    del request, stdout, stderr
+                    del stdout, stderr
+                    self.supervisor_calls += 1
+                    if self.supervisor_calls == 1:
+                        self_outer._write_supervisor_handoff(
+                            guidance_state,
+                            decision="pass-continue",
+                            latest_round="opt-round-1",
+                            brief_lines=("Continue from opt-round-1 with narrower changes.",),
+                        )
+                    else:
+                        self_outer._write_supervisor_handoff(
+                            guidance_state,
+                            decision="pass-stop",
+                            latest_round="opt-round-2",
+                            brief_lines=("Stop after verifying opt-round-2.",),
+                        )
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            loop_runner = OptimizeLoopRunner(cast(Any, FakeRunner()), guidance_state)
+            loop_runner = SupervisedRoundRunner(cast(Any, FakeRunner()), guidance_state)
+            self_outer = self
 
             first_result = loop_runner.run_supervisor(
                 request,
@@ -266,8 +329,12 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertTrue((history_dir / "round-006-brief.md").exists())
             self.assertTrue((history_dir / "round-005-supervisor-report.md").exists())
             self.assertTrue((history_dir / "round-006-supervisor-report.md").exists())
-            self.assertNotEqual(
+            self.assertIn(
+                "Continue from opt-round-1 with narrower changes.",
                 (history_dir / "round-005-brief.md").read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                "Stop after verifying opt-round-2.",
                 (history_dir / "round-006-brief.md").read_text(encoding="utf-8"),
             )
 
@@ -571,6 +638,20 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             parent_round="round-0",
                             next_recommendation="stop",
                         )
+                    else:
+                        assert request.round_brief_path is not None
+                        assert request.supervisor_report_path is not None
+                        request.round_brief_path.write_text(
+                            "# Optimize Round Brief\n\nStop after verifying opt-round-1.\n",
+                            encoding="utf-8",
+                        )
+                        request.supervisor_report_path.write_text(
+                            "# Optimize Supervisor Report\n\n"
+                            "Decision: pass-stop\n"
+                            "Blocking issues: none\n"
+                            "Latest round: opt-round-1\n",
+                            encoding="utf-8",
+                        )
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
             self_outer = self
@@ -638,6 +719,20 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             parent_round="round-0",
                             next_recommendation="stop",
                         )
+                    else:
+                        assert request.round_brief_path is not None
+                        assert request.supervisor_report_path is not None
+                        request.round_brief_path.write_text(
+                            "# Optimize Round Brief\n\nStop after verifying opt-round-1.\n",
+                            encoding="utf-8",
+                        )
+                        request.supervisor_report_path.write_text(
+                            "# Optimize Supervisor Report\n\n"
+                            "Decision: pass-stop\n"
+                            "Blocking issues: none\n"
+                            "Latest round: opt-round-1\n",
+                            encoding="utf-8",
+                        )
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
             self_outer = self
@@ -653,7 +748,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertNotIn("Additional user instructions:", supervisor_request.prompt)
             self.assertNotIn("Focus on occupancy.", supervisor_request.prompt)
 
-    def test_run_optimize_request_end_to_end_converts_gate_eval_value_error_to_gate_handoff(
+    def test_run_optimize_request_end_to_end_uses_supervisor_report_for_continue_prompt(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -684,6 +779,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 def __init__(self) -> None:
                     self.requests: List[AgentRequest] = []
                     self.worker_calls = 0
+                    self.supervisor_calls = 0
 
                 def run(
                     self,
@@ -697,19 +793,32 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         self.worker_calls += 1
                         if self.worker_calls == 1:
                             self_outer._write_baseline(workdir)
-                            (workdir / "opt-round-1").mkdir(exist_ok=True)
-                            (workdir / "opt-note.md").write_text("## Round 1\n", encoding="utf-8")
+                            self_outer._write_round(
+                                workdir,
+                                "opt-round-1",
+                                parent_round="round-0",
+                                next_recommendation="continue",
+                            )
                             return AgentResult(return_code=0, stdout="worker ok", stderr="")
                         return AgentResult(return_code=1, stdout="", stderr="worker stopped for test")
+                    self.supervisor_calls += 1
+                    self_outer._write_supervisor_handoff(
+                        guidance_state,
+                        decision="revise-metadata",
+                        latest_round="opt-round-1",
+                        issues=("round summary is missing the compare-perf conclusion",),
+                        brief_lines=("Repair opt-round-1 metadata before starting a new round.",),
+                    )
                     return AgentResult(return_code=0, stdout="supervisor ok", stderr="")
 
             self_outer = self
             runner = FakeRunner()
+            guidance_state = self._build_guidance_state(workdir)
 
             with patch("triton_agent.optimize.runtime.create_runner", return_value=runner):
                 with patch(
-                    "triton_agent.optimize.runtime.evaluate_round_gate",
-                    side_effect=ValueError("invalid round-state.json in opt-round-1: missing fields"),
+                    "triton_agent.optimize.runtime.OptimizeGuidanceManager.prepare_supervised_session",
+                    return_value=guidance_state,
                 ):
                     result = run_optimize_request(request)
 
@@ -719,15 +828,20 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertEqual(runner.requests[1].optimize_role, "supervisor")
             self.assertEqual(runner.requests[2].optimize_role, "worker")
             self.assertIn("Gate decision: revise-metadata", runner.requests[2].prompt)
-            self.assertIn("invalid round-state.json in opt-round-1", runner.requests[2].prompt)
+            self.assertIn("round summary is missing the compare-perf conclusion", runner.requests[2].prompt)
 
-    def test_run_supervisor_converts_gate_eval_failures_to_gate_result(self) -> None:
+    def test_run_supervisor_converts_invalid_supervisor_report_to_gate_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
             self._write_baseline(workdir)
-            (workdir / "opt-round-1").mkdir()
+            self._write_round(
+                workdir,
+                "opt-round-1",
+                parent_round="round-0",
+                next_recommendation="continue",
+            )
 
             guidance_state = self._build_guidance_state(workdir)
 
@@ -758,33 +872,40 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     stderr: Optional[object] = None,
                 ) -> AgentResult:
                     del request, stdout, stderr
+                    self_outer._write_supervisor_handoff(
+                        guidance_state,
+                        decision="invalid-decision",
+                        latest_round="opt-round-1",
+                    )
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            loop_runner = OptimizeLoopRunner(cast(Any, FakeRunner()), guidance_state)
+            loop_runner = SupervisedRoundRunner(cast(Any, FakeRunner()), guidance_state)
+            self_outer = self
 
-            with patch(
-                "triton_agent.optimize.runtime.evaluate_round_gate",
-                side_effect=ValueError("invalid round-state.json in opt-round-1: missing fields"),
-            ):
-                gate_result = loop_runner.run_supervisor(
-                    request,
-                    AgentResult(return_code=0, stdout="worker ok", stderr=""),
-                )
+            gate_result = loop_runner.run_supervisor(
+                request,
+                AgentResult(return_code=0, stdout="worker ok", stderr=""),
+            )
 
             self.assertEqual(gate_result.decision, GateDecision.REVISE_METADATA)
-            self.assertIn("invalid round-state.json", gate_result.blocking_issues[0])
+            self.assertIn("invalid supervisor decision", gate_result.blocking_issues[0])
             self.assertIn(
                 "Decision: revise-metadata",
                 guidance_state.supervisor_report_path.read_text(encoding="utf-8"),
             )
 
-    def test_run_supervisor_does_not_swallow_unexpected_gate_eval_errors(self) -> None:
+    def test_run_supervisor_converts_missing_decision_line_to_gate_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
             self._write_baseline(workdir)
-            (workdir / "opt-round-1").mkdir()
+            self._write_round(
+                workdir,
+                "opt-round-1",
+                parent_round="round-0",
+                next_recommendation="continue",
+            )
 
             guidance_state = self._build_guidance_state(workdir)
 
@@ -815,19 +936,25 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     stderr: Optional[object] = None,
                 ) -> AgentResult:
                     del request, stdout, stderr
+                    guidance_state.supervisor_report_path.write_text(
+                        "# Optimize Supervisor Report\n\nBlocking issues: missing decision line\n",
+                        encoding="utf-8",
+                    )
+                    guidance_state.round_brief_path.write_text(
+                        "# Optimize Round Brief\n\nRepair metadata before the next round.\n",
+                        encoding="utf-8",
+                    )
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            loop_runner = OptimizeLoopRunner(cast(Any, FakeRunner()), guidance_state)
+            loop_runner = SupervisedRoundRunner(cast(Any, FakeRunner()), guidance_state)
 
-            with patch(
-                "triton_agent.optimize.runtime.evaluate_round_gate",
-                side_effect=RuntimeError("unexpected failure"),
-            ):
-                with self.assertRaises(RuntimeError):
-                    loop_runner.run_supervisor(
-                        request,
-                        AgentResult(return_code=0, stdout="worker ok", stderr=""),
-                    )
+            gate_result = loop_runner.run_supervisor(
+                request,
+                AgentResult(return_code=0, stdout="worker ok", stderr=""),
+            )
+
+            self.assertEqual(gate_result.decision, GateDecision.REVISE_METADATA)
+            self.assertIn("missing supervisor decision line", gate_result.blocking_issues[0])
 
     def test_run_supervisor_updates_live_and_history_snapshots(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -871,9 +998,16 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     stderr: Optional[object] = None,
                 ) -> AgentResult:
                     del request, stdout, stderr
+                    self_outer._write_supervisor_handoff(
+                        guidance_state,
+                        decision="pass-stop",
+                        latest_round="opt-round-1",
+                        brief_lines=("Stop after verifying opt-round-1.",),
+                    )
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            loop_runner = OptimizeLoopRunner(cast(Any, FakeRunner()), guidance_state)
+            loop_runner = SupervisedRoundRunner(cast(Any, FakeRunner()), guidance_state)
+            self_outer = self
 
             gate_result = loop_runner.run_supervisor(
                 request,
@@ -893,6 +1027,10 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertEqual(
                 guidance_state.supervisor_report_path.read_text(encoding="utf-8"),
                 report_path.read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                "Stop after verifying opt-round-1.",
+                guidance_state.round_brief_path.read_text(encoding="utf-8"),
             )
 
     def test_latest_round_dir_prefers_highest_numeric_suffix(self) -> None:
