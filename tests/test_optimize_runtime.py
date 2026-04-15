@@ -12,14 +12,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.optimize.batch import run_optimize_batch
+import triton_agent.optimize.execution as execution_module
 from triton_agent.optimize.models import GateDecision, OptimizeRunOptions
-import triton_agent.optimize.orchestration as runtime_module
-from triton_agent.optimize.orchestration import (
-    SupervisedRoundRunner,
+from triton_agent.optimize.execution import (
+    SupervisedOptimizeAdapter,
     _count_round_directories,
     _latest_round_dir,
-    run_optimize_request,
 )
+from triton_agent.optimize.orchestration import run_optimize_request
 from triton_agent.optimize.guidance import OptimizeGuidanceState
 
 
@@ -27,6 +27,13 @@ class OptimizeRuntimeTests(unittest.TestCase):
     def test_optimize_orchestration_module_replaces_runtime_module(self) -> None:
         self.assertIsNotNone(importlib.util.find_spec("triton_agent.optimize.orchestration"))
         self.assertIsNone(importlib.util.find_spec("triton_agent.optimize.runtime"))
+
+    def test_optimize_run_loop_module_replaces_supervisor_module(self) -> None:
+        self.assertIsNotNone(importlib.util.find_spec("triton_agent.optimize.run_loop"))
+        self.assertIsNone(importlib.util.find_spec("triton_agent.optimize.supervisor"))
+
+    def test_optimize_gate_module_has_been_removed(self) -> None:
+        self.assertIsNone(importlib.util.find_spec("triton_agent.optimize.gate"))
 
     def _build_guidance_state(self, workdir: Path) -> OptimizeGuidanceState:
         runtime_root = workdir / ".triton-agent"
@@ -124,7 +131,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
         decision: str,
         issues: tuple[str, ...] = (),
         brief_lines: tuple[str, ...] = (),
-        latest_round: str | None = None,
+        latest_round: Optional[str] = None,
     ) -> None:
         report_lines = [
             "# Optimize Supervisor Report",
@@ -177,8 +184,8 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 with patch("triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills", return_value=()):
                     with patch("triton_agent.optimize.orchestration.SkillLinkManager.cleanup", return_value=[]):
                         with patch.object(
-                            runtime_module,
-                            "_run_supervised_optimize_request",
+                            execution_module,
+                            "execute_supervised_optimize",
                             return_value=expected,
                         ) as mocked:
                             result = run_optimize_request(request)
@@ -217,8 +224,8 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 with patch("triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills", return_value=()):
                     with patch("triton_agent.optimize.orchestration.SkillLinkManager.cleanup", return_value=[]):
                         with patch.object(
-                            runtime_module,
-                            "_run_unsupervised_optimize_request",
+                            execution_module,
+                            "execute_unsupervised_optimize",
                             return_value=expected,
                         ) as mocked:
                             result = run_optimize_request(request)
@@ -386,7 +393,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         )
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            loop_runner = SupervisedRoundRunner(cast(Any, FakeRunner()), guidance_state)
+            loop_runner = SupervisedOptimizeAdapter(cast(Any, FakeRunner()), guidance_state)
             self_outer = self
 
             first_result = loop_runner.run_supervisor(
@@ -966,7 +973,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     )
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            loop_runner = SupervisedRoundRunner(cast(Any, FakeRunner()), guidance_state)
+            loop_runner = SupervisedOptimizeAdapter(cast(Any, FakeRunner()), guidance_state)
             self_outer = self
 
             gate_result = loop_runner.run_supervisor(
@@ -1033,7 +1040,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     )
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            loop_runner = SupervisedRoundRunner(cast(Any, FakeRunner()), guidance_state)
+            loop_runner = SupervisedOptimizeAdapter(cast(Any, FakeRunner()), guidance_state)
 
             gate_result = loop_runner.run_supervisor(
                 request,
@@ -1093,7 +1100,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     )
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
-            loop_runner = SupervisedRoundRunner(cast(Any, FakeRunner()), guidance_state)
+            loop_runner = SupervisedOptimizeAdapter(cast(Any, FakeRunner()), guidance_state)
             self_outer = self
 
             gate_result = loop_runner.run_supervisor(

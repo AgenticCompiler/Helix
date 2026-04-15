@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Protocol, cast
@@ -23,7 +24,7 @@ class SupportsOptimizeRecovery(Protocol):
         ...
 
 
-class SupportsSupervisedRoundRunner(Protocol):
+class SupportsSupervisedOptimizeAdapter(Protocol):
     def run_worker(self, request: AgentRequest) -> AgentResult:
         ...
 
@@ -31,7 +32,7 @@ class SupportsSupervisedRoundRunner(Protocol):
         ...
 
 
-class OptimizeController:
+class OptimizeRunLoop:
     def __init__(self, max_recovery_attempts: int = 2) -> None:
         self.max_recovery_attempts = max_recovery_attempts
 
@@ -40,9 +41,9 @@ class OptimizeController:
         current_request = self._with_default_optimize_role(request)
         resume_summary: str | None = None
 
-        if _supports_supervised_round_runner(runner):
+        if _supports_supervised_optimize_adapter(runner):
             return self._run_supervised_loop(
-                cast(SupportsSupervisedRoundRunner, runner),
+                cast(SupportsSupervisedOptimizeAdapter, runner),
                 current_request,
             )
 
@@ -79,10 +80,13 @@ class OptimizeController:
                 return result
             if current_request.interact:
                 return result
-            if not result.stalled or attempt >= self.max_recovery_attempts:
+            is_transient_failure = self._is_transient_agent_failure(result)
+            if not (result.stalled or is_transient_failure) or attempt >= self.max_recovery_attempts:
                 return result
 
             attempt += 1
+            if is_transient_failure:
+                self._sleep_before_retry(attempt)
             resume_summary = self._build_summary(result)
 
     def _resume_until_round_requirement_satisfied(
@@ -119,7 +123,7 @@ class OptimizeController:
 
     def _run_supervised_loop(
         self,
-        runner: SupportsSupervisedRoundRunner,
+        runner: SupportsSupervisedOptimizeAdapter,
         request: AgentRequest,
     ) -> AgentResult:
         current_request = request
@@ -131,20 +135,25 @@ class OptimizeController:
                     break
                 if current_request.interact or worker_attempt >= self.max_recovery_attempts:
                     return worker_result
-                if not (worker_result.stalled or self._is_transient_agent_failure(worker_result)):
+                is_transient_worker_failure = self._is_transient_agent_failure(worker_result)
+                if not (worker_result.stalled or is_transient_worker_failure):
                     return worker_result
                 worker_attempt += 1
+                if is_transient_worker_failure:
+                    self._sleep_before_retry(worker_attempt)
 
             supervisor_attempt = 0
             while True:
                 gate_result = runner.run_supervisor(current_request, worker_result)
+                is_transient_gate_failure = self._is_transient_gate_failure(gate_result)
                 if (
                     current_request.interact
                     or supervisor_attempt >= self.max_recovery_attempts
-                    or not self._is_transient_gate_failure(gate_result)
+                    or not is_transient_gate_failure
                 ):
                     break
                 supervisor_attempt += 1
+                self._sleep_before_retry(supervisor_attempt)
 
             if gate_result.decision == GateDecision.PASS_STOP:
                 return worker_result
@@ -202,6 +211,12 @@ class OptimizeController:
         issues = "; ".join(gate_result.blocking_issues) if gate_result.blocking_issues else "none"
         return f"Gate decision: {gate_result.decision.value}. Blocking issues: {issues}"
 
+    def _sleep_before_retry(self, retry_number: int) -> None:
+        time.sleep(self._retry_delay_seconds(retry_number))
+
+    def _retry_delay_seconds(self, retry_number: int) -> float:
+        return float(2 ** (retry_number - 1))
+
     def _is_transient_agent_failure(self, result: AgentResult) -> bool:
         if result.stalled or result.return_code == 130:
             return False
@@ -239,7 +254,7 @@ class OptimizeController:
         )
 
 
-def _supports_supervised_round_runner(runner: object) -> bool:
+def _supports_supervised_optimize_adapter(runner: object) -> bool:
     return hasattr(runner, "run_worker") and hasattr(runner, "run_supervisor")
 
 

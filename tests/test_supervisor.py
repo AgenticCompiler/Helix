@@ -2,6 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 import tempfile
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -12,7 +13,7 @@ from triton_agent.prompts import (
     build_optimize_resume_prompt,
     build_prompt,
 )
-from triton_agent.optimize.supervisor import OptimizeController
+from triton_agent.optimize.run_loop import OptimizeRunLoop
 
 
 class FakeRunner:
@@ -82,7 +83,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
                 workspace,
             )
 
-            result = OptimizeController(max_recovery_attempts=1).run(runner, request)
+            result = OptimizeRunLoop(max_recovery_attempts=1).run(runner, request)
 
             self.assertEqual(result.return_code, 0)
             self.assertEqual(len(runner.resume_requests), 1)
@@ -157,7 +158,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
         runner = BackendLikeRunner()
 
-        result = OptimizeController(max_recovery_attempts=1).run(runner, request)
+        result = OptimizeRunLoop(max_recovery_attempts=1).run(runner, request)
 
         self.assertEqual(result.return_code, 0)
         self.assertEqual(runner.resume_calls, 1)
@@ -218,7 +219,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
         runner = BackendLikeRunner()
 
-        result = OptimizeController(max_recovery_attempts=1).run(runner, request)
+        result = OptimizeRunLoop(max_recovery_attempts=1).run(runner, request)
 
         self.assertEqual(result.return_code, 0)
         self.assertEqual(len(runner.resume_prompts), 1)
@@ -277,7 +278,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
         runner = BackendLikeRunner()
 
-        result = OptimizeController(max_recovery_attempts=1).run(runner, request)
+        result = OptimizeRunLoop(max_recovery_attempts=1).run(runner, request)
 
         self.assertEqual(result.return_code, 0)
         self.assertEqual(runner.calls, ["run", "resume"])
@@ -324,7 +325,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
         runner = LoopRunner()
 
-        result = OptimizeController().run(runner, request)
+        result = OptimizeRunLoop().run(runner, request)
 
         self.assertEqual(result.return_code, 0)
         self.assertEqual(runner.events, ["worker-run", "supervisor-run"])
@@ -369,7 +370,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
         runner = LoopRunner()
 
-        result = OptimizeController().run(runner, request)
+        result = OptimizeRunLoop().run(runner, request)
 
         self.assertEqual(result.return_code, 0)
         self.assertEqual(len(runner.worker_requests), 2)
@@ -419,11 +420,65 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
         runner = LoopRunner()
 
-        result = OptimizeController(max_recovery_attempts=1).run(runner, request)
+        result = OptimizeRunLoop(max_recovery_attempts=1).run(runner, request)
 
         self.assertEqual(result.return_code, 0)
         self.assertEqual(runner.worker_calls, 2)
         self.assertEqual(runner.supervisor_calls, 1)
+
+    def test_round_gate_runner_uses_exponential_backoff_for_transient_worker_failures(self) -> None:
+        request = AgentRequest(
+            command_kind=CommandKind.OPTIMIZE,
+            input_path=Path("/tmp/op.py"),
+            operator_path=Path("/tmp/op.py"),
+            output_path=Path("/tmp/opt_op.py"),
+            test_mode=None,
+            bench_mode=None,
+            interact=False,
+            verbose=False,
+            show_output=False,
+            force_overwrite=False,
+            agent_name="codex",
+            skill_name="optimize",
+            prompt="Optimize this operator",
+            workdir=Path("/tmp"),
+        )
+
+        class LoopRunner:
+            def __init__(self) -> None:
+                self.worker_calls = 0
+                self.supervisor_calls = 0
+
+            def run_worker(self, request: AgentRequest) -> AgentResult:
+                del request
+                self.worker_calls += 1
+                if self.worker_calls <= 3:
+                    return AgentResult(
+                        return_code=1,
+                        stdout="",
+                        stderr="ERROR: exceeded retry limit, last status: 429 Too Many Requests",
+                    )
+                return AgentResult(return_code=0, stdout="round complete", stderr="")
+
+            def run_supervisor(
+                self, request: AgentRequest, result: AgentResult
+            ) -> GateResult:
+                del request, result
+                self.supervisor_calls += 1
+                return GateResult(decision=GateDecision.PASS_STOP, blocking_issues=())
+
+        runner = LoopRunner()
+
+        with patch("time.sleep") as mocked_sleep:
+            result = OptimizeRunLoop(max_recovery_attempts=5).run(runner, request)
+
+        self.assertEqual(result.return_code, 0)
+        self.assertEqual(runner.worker_calls, 4)
+        self.assertEqual(runner.supervisor_calls, 1)
+        self.assertEqual(
+            [call.args[0] for call in mocked_sleep.call_args_list],
+            [1.0, 2.0, 4.0],
+        )
 
     def test_round_gate_runner_retries_stalled_worker_before_failing(self) -> None:
         request = AgentRequest(
@@ -464,7 +519,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
         runner = LoopRunner()
 
-        result = OptimizeController(max_recovery_attempts=1).run(runner, request)
+        result = OptimizeRunLoop(max_recovery_attempts=1).run(runner, request)
 
         self.assertEqual(result.return_code, 0)
         self.assertEqual(runner.worker_calls, 2)
@@ -514,11 +569,66 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
         runner = LoopRunner()
 
-        result = OptimizeController(max_recovery_attempts=1).run(runner, request)
+        result = OptimizeRunLoop(max_recovery_attempts=1).run(runner, request)
 
         self.assertEqual(result.return_code, 0)
         self.assertEqual(runner.worker_calls, 1)
         self.assertEqual(runner.supervisor_calls, 2)
+
+    def test_round_gate_runner_uses_exponential_backoff_for_transient_supervisor_failures(self) -> None:
+        request = AgentRequest(
+            command_kind=CommandKind.OPTIMIZE,
+            input_path=Path("/tmp/op.py"),
+            operator_path=Path("/tmp/op.py"),
+            output_path=Path("/tmp/opt_op.py"),
+            test_mode=None,
+            bench_mode=None,
+            interact=False,
+            verbose=False,
+            show_output=False,
+            force_overwrite=False,
+            agent_name="codex",
+            skill_name="optimize",
+            prompt="Optimize this operator",
+            workdir=Path("/tmp"),
+        )
+
+        class LoopRunner:
+            def __init__(self) -> None:
+                self.worker_calls = 0
+                self.supervisor_calls = 0
+
+            def run_worker(self, request: AgentRequest) -> AgentResult:
+                del request
+                self.worker_calls += 1
+                return AgentResult(return_code=0, stdout="round complete", stderr="")
+
+            def run_supervisor(
+                self, request: AgentRequest, result: AgentResult
+            ) -> GateResult:
+                del request, result
+                self.supervisor_calls += 1
+                if self.supervisor_calls <= 3:
+                    return GateResult(
+                        decision=GateDecision.HARD_FAIL,
+                        blocking_issues=(
+                            "ERROR: exceeded retry limit, last status: 429 Too Many Requests",
+                        ),
+                    )
+                return GateResult(decision=GateDecision.PASS_STOP, blocking_issues=())
+
+        runner = LoopRunner()
+
+        with patch("time.sleep") as mocked_sleep:
+            result = OptimizeRunLoop(max_recovery_attempts=5).run(runner, request)
+
+        self.assertEqual(result.return_code, 0)
+        self.assertEqual(runner.worker_calls, 1)
+        self.assertEqual(runner.supervisor_calls, 4)
+        self.assertEqual(
+            [call.args[0] for call in mocked_sleep.call_args_list],
+            [1.0, 2.0, 4.0],
+        )
 
     def test_retries_with_progress_summary_after_stall(self) -> None:
         request = AgentRequest(
@@ -556,11 +666,75 @@ class OptimizeSupervisorTests(unittest.TestCase):
                 ),
             ]
         )
-        supervisor = OptimizeController(max_recovery_attempts=1)
+        supervisor = OptimizeRunLoop(max_recovery_attempts=1)
         result = supervisor.run(runner, request)
         self.assertEqual(result.return_code, 0)
         self.assertEqual(len(runner.prompts), 2)
         self.assertIn("working...", runner.prompts[1])
+
+    def test_unsupervised_retries_transient_rate_limit_with_exponential_backoff(self) -> None:
+        request = AgentRequest(
+            command_kind=CommandKind.OPTIMIZE,
+            input_path=Path("/tmp/op.py"),
+            operator_path=Path("/tmp/op.py"),
+            output_path=Path("/tmp/opt_op.py"),
+            test_mode=None,
+            bench_mode=None,
+            interact=False,
+            verbose=False,
+            show_output=False,
+            force_overwrite=False,
+            agent_name="codex",
+            skill_name="optimize",
+            prompt="Optimize this operator",
+            workdir=Path("/tmp"),
+            min_rounds=None,
+            supervise="off",
+        )
+
+        class RateLimitRunner:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+                self.resume_summaries: list[str] = []
+                self._resume_count = 0
+
+            def run(self, request: AgentRequest) -> AgentResult:
+                del request
+                self.calls.append("run")
+                return AgentResult(
+                    return_code=1,
+                    stdout="",
+                    stderr="ERROR: exceeded retry limit, last status: 429 Too Many Requests",
+                    stalled=False,
+                )
+
+            def resume(self, request: AgentRequest, summary: str) -> AgentResult:
+                del request
+                self.calls.append("resume")
+                self.resume_summaries.append(summary)
+                self._resume_count += 1
+                if self._resume_count <= 2:
+                    return AgentResult(
+                        return_code=1,
+                        stdout="",
+                        stderr="ERROR: exceeded retry limit, last status: 429 Too Many Requests",
+                        stalled=False,
+                    )
+                return AgentResult(return_code=0, stdout="done", stderr="", stalled=False)
+
+        runner = RateLimitRunner()
+        supervisor = OptimizeRunLoop(max_recovery_attempts=5)
+
+        with patch("time.sleep") as mocked_sleep:
+            result = supervisor.run(runner, request)
+
+        self.assertEqual(result.return_code, 0)
+        self.assertEqual(runner.calls, ["run", "resume", "resume", "resume"])
+        self.assertEqual(len(runner.resume_summaries), 3)
+        self.assertEqual(
+            [call.args[0] for call in mocked_sleep.call_args_list],
+            [1.0, 2.0, 4.0],
+        )
 
     def test_repeated_stalls_keep_using_resume_path(self) -> None:
         request = AgentRequest(
@@ -600,7 +774,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="done", stderr="", stalled=False)
 
         runner = RepeatedStallRunner()
-        supervisor = OptimizeController(max_recovery_attempts=2)
+        supervisor = OptimizeRunLoop(max_recovery_attempts=2)
 
         result = supervisor.run(runner, request)
 
@@ -655,7 +829,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
             runner = BackendLikeRoundCreatingRunner()
 
-            supervisor = OptimizeController(max_recovery_attempts=1)
+            supervisor = OptimizeRunLoop(max_recovery_attempts=1)
             result = supervisor.run(runner, request)
 
             self.assertEqual(result.return_code, 0)
@@ -712,7 +886,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
             runner = BackendLikeRoundCreatingRunner()
 
-            result = OptimizeController(max_recovery_attempts=1).run(runner, request)
+            result = OptimizeRunLoop(max_recovery_attempts=1).run(runner, request)
 
             self.assertEqual(result.return_code, 0)
             self.assertEqual(len(runner.resume_requests), 1)
@@ -757,7 +931,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
                     return AgentResult(return_code=0, stdout="still finished one round", stderr="")
 
             runner = NoProgressRunner()
-            result = OptimizeController(max_recovery_attempts=2).run(runner, request)
+            result = OptimizeRunLoop(max_recovery_attempts=2).run(runner, request)
 
             self.assertEqual(result.return_code, 1)
             self.assertIn("No progress", result.stderr)
@@ -809,7 +983,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
                     return AgentResult(return_code=0, stdout="still finished one round", stderr="")
 
             runner = BackendLikeNoProgressRunner()
-            result = OptimizeController(max_recovery_attempts=2).run(runner, request)
+            result = OptimizeRunLoop(max_recovery_attempts=2).run(runner, request)
 
             self.assertEqual(result.return_code, 1)
             self.assertEqual(runner.resume_calls, 1)
@@ -851,7 +1025,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
             ]
         )
 
-        result = OptimizeController(max_recovery_attempts=2).run(runner, request)
+        result = OptimizeRunLoop(max_recovery_attempts=2).run(runner, request)
 
         self.assertEqual(result.return_code, 130)
         self.assertEqual(runner.prompts, ["Optimize this operator"])

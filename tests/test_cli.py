@@ -1718,7 +1718,7 @@ class PathResolutionTests(unittest.TestCase):
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
                 with patch(
-                    "triton_agent.optimize.orchestration.OptimizeController.run",
+                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
                     return_value=fake_result,
                 ):
                     with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
@@ -1793,7 +1793,7 @@ class PathResolutionTests(unittest.TestCase):
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
                 with patch(
-                    "triton_agent.optimize.orchestration.OptimizeController.run",
+                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
                     return_value=fake_result,
                 ):
                     with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
@@ -1949,7 +1949,7 @@ class PathResolutionTests(unittest.TestCase):
             )
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.orchestration.OptimizeController.run", return_value=fake_result):
+            with patch("triton_agent.optimize.execution.OptimizeRunLoop.run", return_value=fake_result):
                 with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
                     with patch(
                         "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
@@ -2046,7 +2046,7 @@ class PathResolutionTests(unittest.TestCase):
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
                 with patch(
-                    "triton_agent.optimize.orchestration.OptimizeController.run",
+                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
                     return_value=fake_result,
                 ) as mocked:
                     with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
@@ -2134,7 +2134,7 @@ class PathResolutionTests(unittest.TestCase):
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
                 with patch(
-                    "triton_agent.optimize.orchestration.OptimizeController.run",
+                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
                     return_value=fake_result,
                 ):
                     with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
@@ -2164,7 +2164,7 @@ class PathResolutionTests(unittest.TestCase):
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch("triton_agent.optimize.orchestration.build_prompt", return_value="Prompt body"):
                 with patch(
-                    "triton_agent.optimize.orchestration.OptimizeController.run",
+                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
                     return_value=fake_result,
                 ) as mocked:
                     with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
@@ -2196,7 +2196,7 @@ class PathResolutionTests(unittest.TestCase):
                 os.chdir(root)
                 with patch("triton_agent.optimize.orchestration.build_prompt", return_value="Prompt body"):
                     with patch(
-                        "triton_agent.optimize.orchestration.OptimizeController.run",
+                        "triton_agent.optimize.execution.OptimizeRunLoop.run",
                         return_value=fake_result,
                     ) as mocked:
                         with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
@@ -2262,7 +2262,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
                 with patch(
-                    "triton_agent.optimize.orchestration.OptimizeController.run",
+                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
                     return_value=fake_result,
                 ) as mocked:
                     with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
@@ -2313,7 +2313,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
                 with patch(
-                    "triton_agent.optimize.orchestration.OptimizeController.run",
+                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
                     return_value=fake_result,
                 ) as mocked:
                     with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
@@ -2344,7 +2344,7 @@ class PathResolutionTests(unittest.TestCase):
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch("triton_agent.optimize.orchestration.build_prompt", return_value="Prompt body"):
                 with patch(
-                    "triton_agent.optimize.orchestration.OptimizeController.run",
+                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
                     return_value=fake_result,
                 ) as mocked:
                     with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
@@ -2374,7 +2374,7 @@ class PathResolutionTests(unittest.TestCase):
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch("triton_agent.optimize.orchestration.build_prompt", return_value="Prompt body"):
                 with patch(
-                    "triton_agent.optimize.orchestration.OptimizeController.run",
+                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
                     return_value=fake_result,
                 ) as mocked:
                     with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
@@ -2907,6 +2907,10 @@ class PromptTests(unittest.TestCase):
         self.assertIn("`benchmark_status`", prompt)
         self.assertIn("`baseline_established`", prompt)
         self.assertIn("Set `baseline_established` to `true` only after", prompt)
+        self.assertIn("PyTorch-facing public API may remain as a wrapper", prompt)
+        self.assertIn("must continue optimizing the Triton Ascend NPU kernel path itself", prompt)
+        self.assertIn("Do not replace the core computation with a pure PyTorch implementation", prompt)
+        self.assertIn("does not count as a successful optimize round", prompt)
 
     def test_build_optimize_unsupervised_prompt_mentions_baseline_state_contract(self) -> None:
         prompt = build_optimize_unsupervised_prompt(
@@ -2924,6 +2928,10 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Write `baseline/state.json` with these required fields:", prompt)
         self.assertIn("`baseline_established`", prompt)
         self.assertIn("Set `baseline_established` to `true` only after", prompt)
+        self.assertIn("PyTorch-facing public API may remain as a wrapper", prompt)
+        self.assertIn("must continue optimizing the Triton Ascend NPU kernel path itself", prompt)
+        self.assertIn("Do not replace the core computation with a pure PyTorch implementation", prompt)
+        self.assertIn("does not count as a successful optimize round", prompt)
 
     def test_build_optimize_supervisor_prompt_mentions_audit_role(self) -> None:
         prompt = build_optimize_supervisor_prompt(
@@ -2937,6 +2945,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Write `.triton-agent/supervisor-report.md`", prompt)
         self.assertIn("Write `.triton-agent/round-brief.md`", prompt)
         self.assertIn("Do not edit the operator implementation", prompt)
+        self.assertIn("replace the Triton kernel path with pure PyTorch computation", prompt)
         self.assertNotIn("optimize-supervisor.md", prompt)
 
     def test_gen_eval_prompt_mentions_operator_repair_and_dual_outputs(self) -> None:
