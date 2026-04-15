@@ -7,7 +7,7 @@ import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.run_skill import load_run_skill_module
+from triton_agent.skill_loader import load_operator_eval_script_module
 from tests.run_skill_test_utils import (
     load_bench_runner_module,
     load_test_runner_module,
@@ -22,7 +22,7 @@ class RemoteExecutionTests(unittest.TestCase):
         self.assertFalse(remote_execution.exists())
 
     def test_parse_remote_spec_supports_optional_port(self) -> None:
-        module = load_run_skill_module("run_runtime")
+        module = load_operator_eval_script_module("run_runtime")
 
         spec = module.parse_remote_spec("alice@example.com:2200")
 
@@ -30,7 +30,7 @@ class RemoteExecutionTests(unittest.TestCase):
         self.assertEqual(spec["port"], 2200)
 
     def test_parse_remote_spec_without_port(self) -> None:
-        module = load_run_skill_module("run_runtime")
+        module = load_operator_eval_script_module("run_runtime")
 
         spec = module.parse_remote_spec("alice@example.com")
 
@@ -38,13 +38,13 @@ class RemoteExecutionTests(unittest.TestCase):
         self.assertIsNone(spec["port"])
 
     def test_parse_remote_spec_rejects_invalid_port(self) -> None:
-        module = load_run_skill_module("run_runtime")
+        module = load_operator_eval_script_module("run_runtime")
 
         with self.assertRaises(ValueError):
             module.parse_remote_spec("alice@example.com:notaport")
 
     def test_verbose_remote_copy_logs_scp_command(self) -> None:
-        module = load_run_skill_module("run_runtime")
+        module = load_operator_eval_script_module("run_runtime")
 
         stderr = StringIO()
         with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "", "")):
@@ -60,7 +60,7 @@ class RemoteExecutionTests(unittest.TestCase):
         self.assertIn("scp -P 2200 /tmp/local.txt alice@example.com:/tmp/remote.txt", stderr.getvalue())
 
     def test_run_runtime_buffered_none_returncode_defaults_to_failure(self) -> None:
-        module = load_run_skill_module("run_runtime")
+        module = load_operator_eval_script_module("run_runtime")
 
         class _FakeStdout:
             def readline(self) -> str:
@@ -85,7 +85,7 @@ class RemoteExecutionTests(unittest.TestCase):
         self.assertEqual(result["return_code"], 1)
 
     def test_run_remote_command_streaming_shell_joins_sequence_args(self) -> None:
-        module = load_run_skill_module("run_runtime")
+        module = load_operator_eval_script_module("run_runtime")
 
         with patch.object(module, "run_streaming_process", return_value=make_skill_result(0, "", "")) as mocked:
             module.run_remote_command_streaming(

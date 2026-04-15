@@ -12,7 +12,7 @@ from triton_agent.prompts import (
     build_optimize_resume_prompt,
     build_prompt,
 )
-from triton_agent.supervisor import OptimizeController
+from triton_agent.optimize.supervisor import OptimizeController
 
 
 class FakeRunner:

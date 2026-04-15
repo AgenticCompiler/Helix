@@ -1529,7 +1529,7 @@ class PathResolutionTests(unittest.TestCase):
                 run_local_test=lambda *_args, **_kwargs: (fake_result, None),
             )
 
-            with patch("triton_agent.execution.load_run_skill_module", return_value=runtime) as mocked_loader:
+            with patch("triton_agent.execution.load_operator_eval_script_module", return_value=runtime) as mocked_loader:
                 exit_code = main(
                     [
                         "run-test",
@@ -1582,10 +1582,10 @@ class PathResolutionTests(unittest.TestCase):
 
                 return _Runner()
 
-            with patch("triton_agent.generation.runtime.build_prompt", side_effect=_fake_build_prompt):
-                with patch("triton_agent.generation.runtime.create_runner", side_effect=_fake_create_runner):
-                    with patch("triton_agent.generation.runtime.SkillLinkManager.prepare_skills", return_value=[]):
-                        with patch("triton_agent.generation.runtime.SkillLinkManager.cleanup", return_value=[]):
+            with patch("triton_agent.generation.orchestration.build_prompt", side_effect=_fake_build_prompt):
+                with patch("triton_agent.generation.orchestration.create_runner", side_effect=_fake_create_runner):
+                    with patch("triton_agent.generation.orchestration.SkillLinkManager.prepare_skills", return_value=[]):
+                        with patch("triton_agent.generation.orchestration.SkillLinkManager.cleanup", return_value=[]):
                             exit_code = main(
                                 [
                                     "gen-test",
@@ -1716,18 +1716,18 @@ class PathResolutionTests(unittest.TestCase):
                 return "Prompt body"
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
+            with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
                 with patch(
-                    "triton_agent.optimize.runtime.OptimizeController.run",
+                    "triton_agent.optimize.orchestration.OptimizeController.run",
                     return_value=fake_result,
                 ):
-                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
                         with patch(
-                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
                             return_value=[],
                         ):
                             with patch(
-                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                                 return_value=[],
                             ):
                                 exit_code = main(
@@ -1791,18 +1791,18 @@ class PathResolutionTests(unittest.TestCase):
                 return "Prompt body"
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
+            with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
                 with patch(
-                    "triton_agent.optimize.runtime.OptimizeController.run",
+                    "triton_agent.optimize.orchestration.OptimizeController.run",
                     return_value=fake_result,
                 ):
-                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
                         with patch(
-                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
                             return_value=[],
                         ):
                             with patch(
-                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                                 return_value=[],
                             ):
                                 exit_code = main(["optimize", "-i", str(operator), "--resume", "auto"])
@@ -1949,14 +1949,14 @@ class PathResolutionTests(unittest.TestCase):
             )
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.runtime.OptimizeController.run", return_value=fake_result):
-                with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+            with patch("triton_agent.optimize.orchestration.OptimizeController.run", return_value=fake_result):
+                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
                     with patch(
-                        "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
                         return_value=[],
                     ):
                         with patch(
-                            "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
                             exit_code = main(
@@ -2044,18 +2044,18 @@ class PathResolutionTests(unittest.TestCase):
                 return "Prompt body"
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
+            with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
                 with patch(
-                    "triton_agent.optimize.runtime.OptimizeController.run",
+                    "triton_agent.optimize.orchestration.OptimizeController.run",
                     return_value=fake_result,
                 ) as mocked:
-                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
                         with patch(
-                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
                             return_value=[],
                         ):
                             with patch(
-                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                                 return_value=[],
                             ):
                                 exit_code = main(
@@ -2132,18 +2132,18 @@ class PathResolutionTests(unittest.TestCase):
                 return "Prompt body"
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
+            with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
                 with patch(
-                    "triton_agent.optimize.runtime.OptimizeController.run",
+                    "triton_agent.optimize.orchestration.OptimizeController.run",
                     return_value=fake_result,
                 ):
-                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
                         with patch(
-                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
                             return_value=[],
                         ):
                             with patch(
-                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                                 return_value=[],
                             ):
                                 exit_code = main(
@@ -2162,18 +2162,18 @@ class PathResolutionTests(unittest.TestCase):
             operator.write_text("print('x')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.runtime.build_prompt", return_value="Prompt body"):
+            with patch("triton_agent.optimize.orchestration.build_prompt", return_value="Prompt body"):
                 with patch(
-                    "triton_agent.optimize.runtime.OptimizeController.run",
+                    "triton_agent.optimize.orchestration.OptimizeController.run",
                     return_value=fake_result,
                 ) as mocked:
-                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
                         with patch(
-                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
                             return_value=[],
                         ):
                             with patch(
-                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                                 return_value=[],
                             ):
                                 exit_code = main(["optimize", "-i", str(root)])
@@ -2194,18 +2194,18 @@ class PathResolutionTests(unittest.TestCase):
             original_cwd = Path.cwd()
             try:
                 os.chdir(root)
-                with patch("triton_agent.optimize.runtime.build_prompt", return_value="Prompt body"):
+                with patch("triton_agent.optimize.orchestration.build_prompt", return_value="Prompt body"):
                     with patch(
-                        "triton_agent.optimize.runtime.OptimizeController.run",
+                        "triton_agent.optimize.orchestration.OptimizeController.run",
                         return_value=fake_result,
                     ) as mocked:
-                        with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                        with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
                             with patch(
-                                "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                                "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
                                 return_value=[],
                             ):
                                 with patch(
-                                    "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                    "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                                     return_value=[],
                                 ):
                                     exit_code = main(["optimize", "-i", "."])
@@ -2260,18 +2260,18 @@ class PathResolutionTests(unittest.TestCase):
                 captured["supervise"] = supervise
                 return "Prompt body"
 
-            with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
+            with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
                 with patch(
-                    "triton_agent.optimize.runtime.OptimizeController.run",
+                    "triton_agent.optimize.orchestration.OptimizeController.run",
                     return_value=fake_result,
                 ) as mocked:
-                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
                         with patch(
-                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
                             return_value=[],
                         ):
                             with patch(
-                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                                 return_value=[],
                             ):
                                 exit_code = main(
@@ -2311,18 +2311,18 @@ class PathResolutionTests(unittest.TestCase):
                 captured["supervise"] = supervise
                 return "Prompt body"
 
-            with patch("triton_agent.optimize.runtime.build_prompt", side_effect=_fake_build_prompt):
+            with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
                 with patch(
-                    "triton_agent.optimize.runtime.OptimizeController.run",
+                    "triton_agent.optimize.orchestration.OptimizeController.run",
                     return_value=fake_result,
                 ) as mocked:
-                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
                         with patch(
-                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
                             return_value=[],
                         ):
                             with patch(
-                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                                 return_value=[],
                             ):
                                 exit_code = main(
@@ -2342,18 +2342,18 @@ class PathResolutionTests(unittest.TestCase):
             operator.write_text("print('x')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.runtime.build_prompt", return_value="Prompt body"):
+            with patch("triton_agent.optimize.orchestration.build_prompt", return_value="Prompt body"):
                 with patch(
-                    "triton_agent.optimize.runtime.OptimizeController.run",
+                    "triton_agent.optimize.orchestration.OptimizeController.run",
                     return_value=fake_result,
                 ) as mocked:
-                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
                         with patch(
-                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
                             return_value=[],
                         ):
                             with patch(
-                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                                 return_value=[],
                             ):
                                 exit_code = main(
@@ -2372,18 +2372,18 @@ class PathResolutionTests(unittest.TestCase):
             operator.write_text("print('x')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.runtime.build_prompt", return_value="Prompt body"):
+            with patch("triton_agent.optimize.orchestration.build_prompt", return_value="Prompt body"):
                 with patch(
-                    "triton_agent.optimize.runtime.OptimizeController.run",
+                    "triton_agent.optimize.orchestration.OptimizeController.run",
                     return_value=fake_result,
                 ) as mocked:
-                    with patch("triton_agent.optimize.runtime.create_runner", return_value=object()):
+                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
                         with patch(
-                            "triton_agent.optimize.runtime.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
                             return_value=[],
                         ):
                             with patch(
-                                "triton_agent.optimize.runtime.SkillLinkManager.cleanup",
+                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                                 return_value=[],
                             ):
                                 exit_code = main(
@@ -2632,7 +2632,7 @@ class PathResolutionTests(unittest.TestCase):
                 run_local_bench=lambda *_args, **_kwargs: (fake_result, None),
             )
 
-            with patch("triton_agent.execution.load_run_skill_module", return_value=runtime) as mocked_loader:
+            with patch("triton_agent.execution.load_operator_eval_script_module", return_value=runtime) as mocked_loader:
                 exit_code = main(
                     [
                         "run-bench",

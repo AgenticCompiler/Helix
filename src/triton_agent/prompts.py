@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 from triton_agent.models import COMMAND_TO_SKILL, CommandKind
-from triton_agent.optimize_contract import baseline_state_contract_lines
+from triton_agent.optimize.contract import baseline_state_contract_lines
 from triton_agent.paths import default_generated_output_path
 
 

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import os
+import shlex
 import sys
 from dataclasses import dataclass
 from importlib import import_module
+from pathlib import Path
 from typing import Any, TextIO
 
 from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult
+from triton_agent.verbose import emit_verbose_lines
 
 
 class OpenHandsSetupError(RuntimeError):
@@ -59,7 +62,7 @@ class OpenHandsRunner(AgentRunner):
             return _error_result("OpenHands backend requires LLM_MODEL to be set.")
 
         if request.verbose:
-            self._log_launch_command(self.build_command(request), stderr or sys.stderr)
+            self._log_sdk_launch(request, stderr or sys.stderr)
 
         try:
             dependencies = _load_openhands_dependencies()
@@ -106,12 +109,11 @@ class OpenHandsRunner(AgentRunner):
         if not skills_dir.exists():
             raise OpenHandsSetupError(f"OpenHands skills path does not exist: {skills_dir}")
 
-        # OpenHands project-skill loading is broader than the staged legacy
-        # `.openhands/skills` directory. It also auto-discovers workspace-owned
-        # top-level guidance files such as `AGENTS.md`/`CLAUDE.md` and merges
-        # them into AgentContext, so this backend intentionally inherits any
-        # always-on repository instructions already present in `request.workdir`.
-        project_skills = list(dependencies.load_project_skills(work_dir=str(request.workdir)))
+        project_skills = _load_workspace_context_skills(
+            dependencies,
+            workdir=request.workdir,
+            skills_dir=skills_dir,
+        )
         agent_context = dependencies.AgentContext(skills=project_skills)
 
         tools = [
@@ -145,6 +147,11 @@ class OpenHandsRunner(AgentRunner):
         conversation.set_confirmation_policy(dependencies.NeverConfirm())
         return conversation, emitted_lines
 
+    def _log_sdk_launch(self, request: AgentRequest, stream: TextIO) -> None:
+        messages = [f"command: {shlex.join(self.build_command(request))}", "prompt:"]
+        messages.extend(f"  {line}" for line in request.prompt.splitlines())
+        emit_verbose_lines(stream, "agent", messages)
+
 
 def _load_openhands_dependencies() -> _OpenHandsDependencies:
     try:
@@ -175,6 +182,40 @@ def _load_openhands_dependencies() -> _OpenHandsDependencies:
         FileEditorTool=file_editor_module.FileEditorTool,
         TaskTrackerTool=task_tracker_module.TaskTrackerTool,
     )
+
+
+def _load_workspace_context_skills(
+    dependencies: _OpenHandsDependencies,
+    *,
+    workdir: Path,
+    skills_dir: Path,
+) -> list[object]:
+    # OpenHands project-skill loading is broader than the staged legacy
+    # `.openhands/skills` directory. It also auto-discovers workspace-owned
+    # top-level guidance files such as `AGENTS.md`/`CLAUDE.md`. We still verify
+    # that the staged skill tree actually made it into the returned skill set so
+    # the backend does not silently proceed with an incomplete AgentContext.
+    project_skills = list(dependencies.load_project_skills(work_dir=str(workdir)))
+    staged_skill_sources = {
+        str((skill_dir / "SKILL.md").resolve())
+        for skill_dir in skills_dir.iterdir()
+        if skill_dir.is_dir() and (skill_dir / "SKILL.md").is_file()
+    }
+    if not staged_skill_sources:
+        return project_skills
+
+    loaded_sources = {
+        str(Path(source).resolve())
+        for skill in project_skills
+        if isinstance(source := getattr(skill, "source", None), str) and source.strip()
+    }
+    missing_sources = sorted(staged_skill_sources - loaded_sources)
+    if missing_sources:
+        raise OpenHandsSetupError(
+            "OpenHands project skill loading did not include staged skills: "
+            + ", ".join(missing_sources)
+        )
+    return project_skills
 
 
 def _event_to_text(event: object) -> str:

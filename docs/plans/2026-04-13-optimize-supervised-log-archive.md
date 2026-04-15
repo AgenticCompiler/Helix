@@ -19,11 +19,11 @@
 
 **Existing files to modify**
 
-- `src/triton_agent/optimize_guidance.py`
+- `src/triton_agent/optimize/guidance.py`
   Extend optimize guidance state with runtime history and archive paths, and add archive-before-cleanup behavior.
 - `src/triton_agent/optimize/runtime.py`
   Write immutable per-round history snapshots whenever live handoff files are updated.
-- `tests/test_optimize_guidance.py`
+- `tests/test_optimize/guidance.py`
   Cover archive layout, cleanup ordering, and failure-safe behavior.
 - `tests/test_optimize_runtime.py`
   Cover per-round history snapshots and supervised-only archive behavior.
@@ -33,8 +33,8 @@
 ## Task 1: Extend Guidance State With History And Archive Paths
 
 **Files:**
-- Modify: `src/triton_agent/optimize_guidance.py`
-- Test: `tests/test_optimize_guidance.py`
+- Modify: `src/triton_agent/optimize/guidance.py`
+- Test: `tests/test_optimize/guidance.py`
 
 - [ ] **Step 1: Write the failing guidance-state tests**
 
@@ -74,7 +74,7 @@ Expected: PASS
 - [ ] **Step 5: Commit the state-path groundwork**
 
 ```bash
-git add src/triton_agent/optimize_guidance.py tests/test_optimize_guidance.py
+git add src/triton_agent/optimize/guidance.py tests/test_optimize/guidance.py
 git commit -m "feat: add optimize supervised log archive paths"
 ```
 
@@ -133,9 +133,9 @@ git commit -m "feat: snapshot optimize supervisor handoff history"
 ## Task 3: Archive Supervised Logs Before Cleanup
 
 **Files:**
-- Modify: `src/triton_agent/optimize_guidance.py`
+- Modify: `src/triton_agent/optimize/guidance.py`
 - Modify: `src/triton_agent/optimize/runtime.py`
-- Test: `tests/test_optimize_guidance.py`
+- Test: `tests/test_optimize/guidance.py`
 - Test: `tests/test_optimize_runtime.py`
 
 - [ ] **Step 1: Write the failing archive tests**
@@ -181,15 +181,15 @@ Expected: PASS
 - [ ] **Step 5: Commit the archive flow**
 
 ```bash
-git add src/triton_agent/optimize_guidance.py src/triton_agent/optimize/runtime.py tests/test_optimize_guidance.py tests/test_optimize_runtime.py
+git add src/triton_agent/optimize/guidance.py src/triton_agent/optimize/runtime.py tests/test_optimize/guidance.py tests/test_optimize_runtime.py
 git commit -m "feat: archive optimize supervised logs"
 ```
 
 ## Task 4: Keep Cleanup Safe And Supervised-Only
 
 **Files:**
-- Modify: `src/triton_agent/optimize_guidance.py`
-- Test: `tests/test_optimize_guidance.py`
+- Modify: `src/triton_agent/optimize/guidance.py`
+- Test: `tests/test_optimize/guidance.py`
 
 - [ ] **Step 1: Write the failing cleanup-safety tests**
 
@@ -231,7 +231,7 @@ Expected: PASS
 - [ ] **Step 5: Commit the cleanup safeguards**
 
 ```bash
-git add src/triton_agent/optimize_guidance.py tests/test_optimize_guidance.py
+git add src/triton_agent/optimize/guidance.py tests/test_optimize/guidance.py
 git commit -m "fix: preserve optimize supervised log archives during cleanup"
 ```
 
@@ -239,7 +239,7 @@ git commit -m "fix: preserve optimize supervised log archives during cleanup"
 
 **Files:**
 - Modify: `README.md`
-- Test: `tests/test_optimize_guidance.py`
+- Test: `tests/test_optimize/guidance.py`
 - Test: `tests/test_optimize_runtime.py`
 
 - [ ] **Step 1: Update workflow documentation**
@@ -265,6 +265,6 @@ Expected: PASS
 - [ ] **Step 4: Commit the documentation and verification pass**
 
 ```bash
-git add README.md src/triton_agent/optimize_guidance.py src/triton_agent/optimize/runtime.py tests/test_optimize_guidance.py tests/test_optimize_runtime.py docs/plans/2026-04-13-optimize-supervised-log-archive.md
+git add README.md src/triton_agent/optimize/guidance.py src/triton_agent/optimize/runtime.py tests/test_optimize/guidance.py tests/test_optimize_runtime.py docs/plans/2026-04-13-optimize-supervised-log-archive.md
 git commit -m "docs: describe optimize supervised log archives"
 ```

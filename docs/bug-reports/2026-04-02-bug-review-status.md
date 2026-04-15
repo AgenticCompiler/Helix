@@ -17,7 +17,7 @@ Both `src/triton_agent/process_runner.py` and `skills/run-validation/scripts/run
 ### 3. Supervisor re-ran after repeated stalls
 **Status:** Fixed
 
-`src/triton_agent/supervisor.py` now stays on the resume path after repeated stalls instead of falling back to a fresh `run()` call.
+`src/triton_agent/optimize/supervisor.py` now stays on the resume path after repeated stalls instead of falling back to a fresh `run()` call.
 
 ### 4. Diff filter swallowed normal indented output
 **Status:** Fixed
@@ -44,7 +44,7 @@ Both `src/triton_agent/process_runner.py` and `skills/run-validation/scripts/run
 ### 8. Unbounded `lru_cache` on run-skill loading
 **Status:** Still a design tradeoff
 
-`src/triton_agent/run_skill.py` intentionally caches dynamically loaded run-skill modules for the lifetime of the current CLI process. That behavior may be worth documenting more explicitly, but it is not a newly confirmed functional regression.
+`src/triton_agent/skill_loader.py` intentionally caches dynamically loaded skill-script modules for the lifetime of the current CLI process. That behavior may be worth documenting more explicitly, but it is not a newly confirmed functional regression.
 
 ### 9. `remote_workspace` local variable scoping
 **Status:** Low-risk code smell only

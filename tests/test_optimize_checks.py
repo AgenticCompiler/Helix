@@ -13,18 +13,35 @@ from triton_agent.optimize import checks as optimize_checks
 
 class OptimizeCheckTests(unittest.TestCase):
     def test_optimize_checks_delegate_to_optimize_check_script_module(self) -> None:
-        sentinel_baseline = object()
-        sentinel_round = object()
         module = SimpleNamespace(
-            check_baseline=lambda path: sentinel_baseline,
-            check_round=lambda path: sentinel_round,
+            check_baseline=lambda path: {
+                "ok": False,
+                "kind": "baseline",
+                "decision": "revise-required",
+                "issues": ("baseline issue",),
+                "summary": f"checked {path.name}",
+            },
+            check_round=lambda path: SimpleNamespace(
+                ok=True,
+                kind="round",
+                decision="pass",
+                issues=(),
+                summary=f"checked {path.name}",
+            ),
         )
         with patch("triton_agent.optimize.checks.load_skill_script_module", return_value=module) as mocked:
             baseline_result = optimize_checks.check_baseline(Path("/tmp/baseline"))
             round_result = optimize_checks.check_round(Path("/tmp/opt-round-1"))
 
-        self.assertIs(baseline_result, sentinel_baseline)
-        self.assertIs(round_result, sentinel_round)
+        self.assertFalse(baseline_result.ok)
+        self.assertEqual(baseline_result.kind, "baseline")
+        self.assertEqual(baseline_result.decision, "revise-required")
+        self.assertEqual(baseline_result.issues, ("baseline issue",))
+        self.assertEqual(baseline_result.summary, "checked baseline")
+        self.assertTrue(round_result.ok)
+        self.assertEqual(round_result.kind, "round")
+        self.assertEqual(round_result.decision, "pass")
+        self.assertEqual(round_result.summary, "checked opt-round-1")
         mocked.assert_any_call("optimize-check", "optimize_check")
 
     def test_check_baseline_reports_missing_perf_artifact(self) -> None:

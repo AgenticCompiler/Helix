@@ -4,9 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import shutil
 
-from triton_agent.bench_runner import parse_bench_metadata
+from triton_agent.execution import parse_bench_metadata, parse_test_metadata
 from triton_agent.optimize.baseline import baseline_dir, baseline_gate_issues
-from triton_agent.test_runner import parse_test_metadata
 
 
 @dataclass(frozen=True)

@@ -27,7 +27,7 @@
   Extend `OptimizeRunOptions` with the supervise setting.
 - `src/triton_agent/optimize/runtime.py`
   Split optimize execution into unsupervised versus supervised paths while sharing setup and cleanup.
-- `src/triton_agent/supervisor.py`
+- `src/triton_agent/optimize/supervisor.py`
   Reuse the existing recovery loop for the unsupervised path without changing supervised semantics.
 - `src/triton_agent/optimize/batch.py`
   Keep batch routing unchanged except for passing the selected supervise mode through request construction.
@@ -166,9 +166,9 @@ git commit -m "feat: split optimize supervised and unsupervised runtime paths"
 
 **Files:**
 - Modify: `src/triton_agent/optimize/runtime.py`
-- Modify: `src/triton_agent/optimize_guidance.py`
+- Modify: `src/triton_agent/optimize/guidance.py`
 - Test: `tests/test_optimize_runtime.py`
-- Test: `tests/test_optimize_guidance.py`
+- Test: `tests/test_optimize/guidance.py`
 
 - [ ] **Step 1: Write the failing guidance-scope tests**
 
@@ -215,14 +215,14 @@ Expected: PASS
 - [ ] **Step 5: Commit the guidance split**
 
 ```bash
-git add src/triton_agent/optimize/runtime.py src/triton_agent/optimize_guidance.py tests/test_optimize_runtime.py tests/test_optimize_guidance.py
+git add src/triton_agent/optimize/runtime.py src/triton_agent/optimize/guidance.py tests/test_optimize_runtime.py tests/test_optimize/guidance.py
 git commit -m "feat: scope optimize guidance to supervised mode"
 ```
 
 ## Task 4: Preserve Legacy Recovery Semantics For Unsupervised Optimize
 
 **Files:**
-- Modify: `src/triton_agent/supervisor.py`
+- Modify: `src/triton_agent/optimize/supervisor.py`
 - Modify: `src/triton_agent/optimize/runtime.py`
 - Test: `tests/test_supervisor.py`
 - Test: `tests/test_optimize_runtime.py`
@@ -272,7 +272,7 @@ Expected: PASS
 - [ ] **Step 5: Commit the compatibility restoration**
 
 ```bash
-git add src/triton_agent/supervisor.py src/triton_agent/optimize/runtime.py tests/test_supervisor.py tests/test_optimize_runtime.py
+git add src/triton_agent/optimize/supervisor.py src/triton_agent/optimize/runtime.py tests/test_supervisor.py tests/test_optimize_runtime.py
 git commit -m "feat: restore legacy optimize flow when supervision is off"
 ```
 

@@ -22,11 +22,11 @@ def skill_script_path(skill_name: str, script_name: str) -> Path:
     return path
 
 
-def run_skill_root() -> Path:
+def operator_eval_skill_root() -> Path:
     return skill_script_root("operator-eval")
 
 
-def run_skill_script_path(script_name: str) -> Path:
+def operator_eval_script_path(script_name: str) -> Path:
     return skill_script_path("operator-eval", script_name)
 
 
@@ -43,13 +43,19 @@ def load_skill_script_module(skill_name: str, script_name: str) -> ModuleType:
     if script_dir not in sys.path:
         sys.path.insert(0, script_dir)
         added = True
+    previous_module = sys.modules.get(module_name)
+    sys.modules[module_name] = module
     try:
         spec.loader.exec_module(module)
     finally:
+        if previous_module is None:
+            sys.modules.pop(module_name, None)
+        else:
+            sys.modules[module_name] = previous_module
         if added:
             sys.path.remove(script_dir)
     return module
 
 
-def load_run_skill_module(script_name: str) -> ModuleType:
+def load_operator_eval_script_module(script_name: str) -> ModuleType:
     return load_skill_script_module("operator-eval", script_name)

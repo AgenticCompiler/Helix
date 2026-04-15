@@ -5,7 +5,7 @@ from typing import Protocol, TextIO, cast
 
 from triton_agent.models import AgentResult
 from triton_agent.result_normalization import RunSkillPayload, normalize_agent_result
-from triton_agent.run_skill import load_run_skill_module
+from triton_agent.skill_loader import load_operator_eval_script_module
 
 
 class TestRunnerModule(Protocol):
@@ -55,11 +55,11 @@ class BenchRunnerModule(Protocol):
 
 
 def _load_test_runner() -> TestRunnerModule:
-    return cast(TestRunnerModule, load_run_skill_module("test_runner"))
+    return cast(TestRunnerModule, load_operator_eval_script_module("test_runner"))
 
 
 def _load_bench_runner() -> BenchRunnerModule:
-    return cast(BenchRunnerModule, load_run_skill_module("bench_runner"))
+    return cast(BenchRunnerModule, load_operator_eval_script_module("bench_runner"))
 
 
 def run_local_test(test_file: Path, operator_file: Path, test_mode: str) -> tuple[AgentResult, Path | None]:

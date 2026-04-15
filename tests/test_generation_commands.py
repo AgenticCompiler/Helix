@@ -1,3 +1,4 @@
+import importlib.util
 import sys
 import tempfile
 import unittest
@@ -14,11 +15,15 @@ from triton_agent.generation.outputs import (
     prepare_generation_targets,
     resolve_generation_output_path,
 )
-from triton_agent.generation.runtime import build_generation_request
+from triton_agent.generation.orchestration import build_generation_request
 from triton_agent.models import AgentResult, CommandKind
 
 
 class GenerationHelpersTests(unittest.TestCase):
+    def test_generation_orchestration_module_replaces_runtime_module(self) -> None:
+        self.assertIsNotNone(importlib.util.find_spec("triton_agent.generation.orchestration"))
+        self.assertIsNone(importlib.util.find_spec("triton_agent.generation.runtime"))
+
     def test_resolve_generation_output_path_uses_differential_name_for_gen_test(self) -> None:
         operator = Path("/tmp/kernel.py")
 

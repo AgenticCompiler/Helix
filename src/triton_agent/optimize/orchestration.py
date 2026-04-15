@@ -12,7 +12,7 @@ from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, Com
 from triton_agent.optimize.models import GateDecision, GateResult
 from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.resume import resolve_optimize_resume, reset_optimize_workspace
-from triton_agent.optimize_guidance import OptimizeGuidanceManager, OptimizeGuidanceState
+from triton_agent.optimize.guidance import OptimizeGuidanceManager, OptimizeGuidanceState
 from triton_agent.paths import default_generated_output_path
 from triton_agent.prompts import (
     append_additional_user_instructions,
@@ -20,7 +20,7 @@ from triton_agent.prompts import (
     build_prompt,
 )
 from triton_agent.skills import SkillLinkManager
-from triton_agent.supervisor import OptimizeController
+from triton_agent.optimize.supervisor import OptimizeController
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
@@ -332,69 +332,107 @@ def run_optimize_request(
         runner = create_runner(request.agent_name)
         guidance_manager = OptimizeGuidanceManager()
         if request.supervise == "on":
-            # Supervised optimize runs stage shared guidance plus role briefs in
-            # the workspace, then alternate worker/supervisor invocations via
-            # `OptimizeController`. Cleanup archives the handoff trail before the
-            # temporary runtime files are removed.
-            guidance_state = guidance_manager.prepare_supervised_session(
-                request.workdir,
-                agent_name=request.agent_name,
-                require_analysis=request.require_analysis,
-            )
-            if request.verbose:
-                emit_verbose_lines(
-                    verbose_stream,
-                    "agents",
-                    guidance_manager.describe_prepare_supervised_session(guidance_state),
-                )
-            try:
-                round_runner = SupervisedRoundRunner(runner, guidance_state, stdout=stdout, stderr=stderr)
-                return OptimizeController().run(round_runner, request)
-            finally:
-                if request.verbose:
-                    emit_verbose_lines(
-                        verbose_stream,
-                        "agents",
-                        guidance_manager.describe_cleanup_supervised_session(guidance_state),
-                    )
-                warnings = guidance_manager.cleanup_supervised_session(guidance_state)
-                for warning in warnings:
-                    emit_verbose(verbose_stream, "agents", warning)
-        shared_guidance_state = guidance_manager.prepare_unsupervised_session(
-            request.workdir,
-            operator_path=request.input_path,
-            test_mode=request.test_mode or "differential",
-            bench_mode=request.bench_mode or "standalone",
-            agent_name=request.agent_name,
-            require_analysis=request.require_analysis,
-        )
-        if request.verbose:
-            emit_verbose_lines(
-                verbose_stream,
-                "agents",
-                guidance_manager.describe_prepare_unsupervised_session(shared_guidance_state),
-            )
-        try:
-            return OptimizeController().run(
-                RunnerWithStreams(runner, stdout=stdout, stderr=stderr),
+            return _run_supervised_optimize_request(
+                runner,
+                guidance_manager,
                 request,
+                stdout=stdout,
+                stderr=stderr,
+                verbose_stream=verbose_stream,
             )
-        finally:
-            if request.verbose:
-                emit_verbose_lines(
-                    verbose_stream,
-                    "agents",
-                    guidance_manager.describe_cleanup_unsupervised_session(shared_guidance_state),
-                )
-            warnings = guidance_manager.cleanup_unsupervised_session(shared_guidance_state)
-            for warning in warnings:
-                emit_verbose(verbose_stream, "agents", warning)
+        return _run_unsupervised_optimize_request(
+            runner,
+            guidance_manager,
+            request,
+            stdout=stdout,
+            stderr=stderr,
+            verbose_stream=verbose_stream,
+        )
     finally:
         if request.verbose:
             emit_verbose_lines(verbose_stream, "skills", manager.describe_cleanup(links))
         warnings = manager.cleanup(links)
         for warning in warnings:
             emit_verbose(verbose_stream, "skills", warning)
+
+
+def _run_supervised_optimize_request(
+    runner: AgentRunner,
+    guidance_manager: OptimizeGuidanceManager,
+    request: AgentRequest,
+    *,
+    stdout: TextIO | None = None,
+    stderr: TextIO | None = None,
+    verbose_stream: TextIO,
+) -> AgentResult:
+    # Supervised optimize runs stage shared guidance plus role briefs in the
+    # workspace, then alternate worker/supervisor invocations via
+    # `OptimizeController`. Cleanup archives the handoff trail before the
+    # temporary runtime files are removed.
+    guidance_state = guidance_manager.prepare_supervised_session(
+        request.workdir,
+        agent_name=request.agent_name,
+        require_analysis=request.require_analysis,
+    )
+    if request.verbose:
+        emit_verbose_lines(
+            verbose_stream,
+            "agents",
+            guidance_manager.describe_prepare_supervised_session(guidance_state),
+        )
+    try:
+        round_runner = SupervisedRoundRunner(runner, guidance_state, stdout=stdout, stderr=stderr)
+        return OptimizeController().run(round_runner, request)
+    finally:
+        if request.verbose:
+            emit_verbose_lines(
+                verbose_stream,
+                "agents",
+                guidance_manager.describe_cleanup_supervised_session(guidance_state),
+            )
+        warnings = guidance_manager.cleanup_supervised_session(guidance_state)
+        for warning in warnings:
+            emit_verbose(verbose_stream, "agents", warning)
+
+
+def _run_unsupervised_optimize_request(
+    runner: AgentRunner,
+    guidance_manager: OptimizeGuidanceManager,
+    request: AgentRequest,
+    *,
+    stdout: TextIO | None = None,
+    stderr: TextIO | None = None,
+    verbose_stream: TextIO,
+) -> AgentResult:
+    shared_guidance_state = guidance_manager.prepare_unsupervised_session(
+        request.workdir,
+        operator_path=request.input_path,
+        test_mode=request.test_mode or "differential",
+        bench_mode=request.bench_mode or "standalone",
+        agent_name=request.agent_name,
+        require_analysis=request.require_analysis,
+    )
+    if request.verbose:
+        emit_verbose_lines(
+            verbose_stream,
+            "agents",
+            guidance_manager.describe_prepare_unsupervised_session(shared_guidance_state),
+        )
+    try:
+        return OptimizeController().run(
+            RunnerWithStreams(runner, stdout=stdout, stderr=stderr),
+            request,
+        )
+    finally:
+        if request.verbose:
+            emit_verbose_lines(
+                verbose_stream,
+                "agents",
+                guidance_manager.describe_cleanup_unsupervised_session(shared_guidance_state),
+            )
+        warnings = guidance_manager.cleanup_unsupervised_session(shared_guidance_state)
+        for warning in warnings:
+            emit_verbose(verbose_stream, "agents", warning)
 
 
 def _latest_round_dir(workdir: Path) -> Path | None:

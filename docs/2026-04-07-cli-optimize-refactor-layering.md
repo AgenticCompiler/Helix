@@ -244,7 +244,7 @@ Desired dependency direction:
 - `optimize/batch.py` -> `optimize/runtime.py`, `optimize/models.py`, `optimize/render.py`
 - `optimize/status.py` -> `optimize/models.py`
 - `optimize/render.py` -> `optimize/models.py`
-- `optimize/runtime.py` -> existing shared modules such as `models.py`, `prompts.py`, `supervisor.py`, `skills.py`, `optimize_guidance.py`
+- `optimize/runtime.py` -> existing shared modules such as `models.py`, `prompts.py`, `supervisor.py`, `skills.py`, `optimize/guidance.py`
 
 Avoid:
 

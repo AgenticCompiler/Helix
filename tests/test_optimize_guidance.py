@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.optimize_guidance import OptimizeGuidanceManager
+from triton_agent.optimize.guidance import OptimizeGuidanceManager
 
 
 class OptimizeGuidanceManagerTests(unittest.TestCase):

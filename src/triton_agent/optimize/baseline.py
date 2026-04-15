@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
-from triton_agent.optimize_contract import BASELINE_STATE_REQUIRED_FIELDS
+from triton_agent.optimize.contract import BASELINE_STATE_REQUIRED_FIELDS
 from triton_agent.optimize.models import BaselineArtifactsInspection, BaselineState
 
 _BASELINE_METADATA_FILENAMES = {

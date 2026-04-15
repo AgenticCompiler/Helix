@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import sys
 import tempfile
@@ -12,16 +13,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.optimize.batch import run_optimize_batch
 from triton_agent.optimize.models import GateDecision, OptimizeRunOptions
-from triton_agent.optimize.runtime import (
+import triton_agent.optimize.orchestration as runtime_module
+from triton_agent.optimize.orchestration import (
     SupervisedRoundRunner,
     _count_round_directories,
     _latest_round_dir,
     run_optimize_request,
 )
-from triton_agent.optimize_guidance import OptimizeGuidanceState
+from triton_agent.optimize.guidance import OptimizeGuidanceState
 
 
 class OptimizeRuntimeTests(unittest.TestCase):
+    def test_optimize_orchestration_module_replaces_runtime_module(self) -> None:
+        self.assertIsNotNone(importlib.util.find_spec("triton_agent.optimize.orchestration"))
+        self.assertIsNone(importlib.util.find_spec("triton_agent.optimize.runtime"))
+
     def _build_guidance_state(self, workdir: Path) -> OptimizeGuidanceState:
         runtime_root = workdir / ".triton-agent"
         runtime_root.mkdir(parents=True, exist_ok=True)
@@ -139,6 +145,87 @@ class OptimizeRuntimeTests(unittest.TestCase):
             brief_content += "No additional guidance.\n"
         guidance_state.round_brief_path.write_text(brief_content, encoding="utf-8")
 
+    def test_run_optimize_request_delegates_supervised_flow_to_helper(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=operator,
+                operator_path=operator,
+                output_path=workdir / "opt_kernel.py",
+                test_mode="differential",
+                bench_mode="standalone",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="optimize",
+                prompt="Optimize this operator",
+                workdir=workdir,
+                supervise="on",
+                optimize_role="worker",
+            )
+
+            expected = AgentResult(return_code=0, stdout="ok", stderr="")
+            fake_runner = object()
+
+            with patch("triton_agent.optimize.orchestration.create_runner", return_value=fake_runner):
+                with patch("triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills", return_value=()):
+                    with patch("triton_agent.optimize.orchestration.SkillLinkManager.cleanup", return_value=[]):
+                        with patch.object(
+                            runtime_module,
+                            "_run_supervised_optimize_request",
+                            return_value=expected,
+                        ) as mocked:
+                            result = run_optimize_request(request)
+
+            self.assertIs(result, expected)
+            mocked.assert_called_once()
+
+    def test_run_optimize_request_delegates_unsupervised_flow_to_helper(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=operator,
+                operator_path=operator,
+                output_path=workdir / "opt_kernel.py",
+                test_mode="differential",
+                bench_mode="standalone",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="optimize",
+                prompt="Optimize this operator",
+                workdir=workdir,
+                supervise="off",
+            )
+
+            expected = AgentResult(return_code=0, stdout="ok", stderr="")
+            fake_runner = object()
+
+            with patch("triton_agent.optimize.orchestration.create_runner", return_value=fake_runner):
+                with patch("triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills", return_value=()):
+                    with patch("triton_agent.optimize.orchestration.SkillLinkManager.cleanup", return_value=[]):
+                        with patch.object(
+                            runtime_module,
+                            "_run_unsupervised_optimize_request",
+                            return_value=expected,
+                        ) as mocked:
+                            result = run_optimize_request(request)
+
+            self.assertIs(result, expected)
+            mocked.assert_called_once()
+
     def test_run_optimize_request_invokes_worker_then_supervisor_roles(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
@@ -199,9 +286,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
             runner = FakeRunner()
             guidance_state = self._build_guidance_state(workdir)
 
-            with patch("triton_agent.optimize.runtime.create_runner", return_value=runner):
+            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
                 with patch(
-                    "triton_agent.optimize.runtime.OptimizeGuidanceManager.prepare_supervised_session",
+                    "triton_agent.optimize.orchestration.OptimizeGuidanceManager.prepare_supervised_session",
                     return_value=guidance_state,
                 ):
                     result = run_optimize_request(request)
@@ -393,9 +480,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
             runner = FakeRunner()
-            with patch("triton_agent.optimize.runtime.create_runner", return_value=runner):
+            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
                 with patch(
-                    "triton_agent.optimize.runtime.OptimizeGuidanceManager.prepare_supervised_session"
+                    "triton_agent.optimize.orchestration.OptimizeGuidanceManager.prepare_supervised_session"
                 ) as mocked_prepare:
                     result = run_optimize_request(request)
 
@@ -470,7 +557,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     return AgentResult(return_code=0, stdout="done", stderr="", stalled=False)
 
             runner = RecordingRecoveryRunner()
-            with patch("triton_agent.optimize.runtime.create_runner", return_value=runner):
+            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
                 result = run_optimize_request(request)
 
             self.assertEqual(result.return_code, 0)
@@ -657,7 +744,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self_outer = self
             runner = FakeRunner()
 
-            with patch("triton_agent.optimize.runtime.create_runner", return_value=runner):
+            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
                 result = run_optimize_request(request)
 
             self.assertEqual(result.return_code, 0)
@@ -738,7 +825,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self_outer = self
             runner = FakeRunner()
 
-            with patch("triton_agent.optimize.runtime.create_runner", return_value=runner):
+            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
                 result = run_optimize_request(request)
 
             self.assertEqual(result.return_code, 0)
@@ -815,9 +902,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
             runner = FakeRunner()
             guidance_state = self._build_guidance_state(workdir)
 
-            with patch("triton_agent.optimize.runtime.create_runner", return_value=runner):
+            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
                 with patch(
-                    "triton_agent.optimize.runtime.OptimizeGuidanceManager.prepare_supervised_session",
+                    "triton_agent.optimize.orchestration.OptimizeGuidanceManager.prepare_supervised_session",
                     return_value=guidance_state,
                 ):
                     result = run_optimize_request(request)

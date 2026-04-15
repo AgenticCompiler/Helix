@@ -33,9 +33,9 @@
   Update worker and supervisor prompts to require optimize-check usage and clarify per-mode ownership.
 - `src/triton_agent/optimize/runtime.py`
   Simplify orchestration around worker-owned checks and optional supervisor passes.
-- `src/triton_agent/supervisor.py`
+- `src/triton_agent/optimize/supervisor.py`
   Narrow supervised loop behavior to worker launch, supervisor audit, and continue-or-stop handling.
-- `src/triton_agent/optimize_guidance.py`
+- `src/triton_agent/optimize/guidance.py`
   Keep only the guidance files needed for the simplified supervised handoff model.
 - `skills/optimize/SKILL.md`
   Require baseline and round checks in both optimize modes.
@@ -201,8 +201,8 @@ git commit -m "feat: require optimize self-checks in worker prompts"
 
 **Files:**
 - Modify: `src/triton_agent/optimize/runtime.py`
-- Modify: `src/triton_agent/supervisor.py`
-- Modify: `src/triton_agent/optimize_guidance.py`
+- Modify: `src/triton_agent/optimize/supervisor.py`
+- Modify: `src/triton_agent/optimize/guidance.py`
 - Modify: `tests/test_optimize_runtime.py`
 - Modify: `tests/test_supervisor.py`
 
@@ -248,7 +248,7 @@ Implementation guidelines:
 - Keep `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md` only for supervised handoff.
 - Let supervisor parse and emit a small decision artifact instead of requiring runtime to infer the decision from workspace state.
 
-When adjusting `src/triton_agent/supervisor.py`, preserve useful retry and stall-recovery behavior, but scope it to orchestration concerns rather than round artifact policy.
+When adjusting `src/triton_agent/optimize/supervisor.py`, preserve useful retry and stall-recovery behavior, but scope it to orchestration concerns rather than round artifact policy.
 
 - [ ] **Step 4: Run the focused orchestration tests to verify they pass**
 
@@ -258,7 +258,7 @@ Expected: PASS
 - [ ] **Step 5: Commit the loop simplification**
 
 ```bash
-git add src/triton_agent/optimize/runtime.py src/triton_agent/supervisor.py src/triton_agent/optimize_guidance.py tests/test_optimize_runtime.py tests/test_supervisor.py
+git add src/triton_agent/optimize/runtime.py src/triton_agent/optimize/supervisor.py src/triton_agent/optimize/guidance.py tests/test_optimize_runtime.py tests/test_supervisor.py
 git commit -m "refactor: simplify optimize supervisor loop"
 ```
 

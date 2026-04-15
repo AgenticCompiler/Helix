@@ -1,3 +1,4 @@
+import importlib.util
 import io
 import sys
 import tempfile
@@ -9,12 +10,21 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.cli import build_parser
-import triton_agent.comparison as comparison_module
-from triton_agent.comparison import compare_perf_files
-from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
+import triton_agent.commands.comparison as comparison_module
+from triton_agent.commands.comparison import compare_perf_files, handle_compare_perf, handle_compare_result
+from tests.run_skill_test_utils import load_bench_runner_module, load_test_runner_module
 
 
 class ComparisonCommandHandlerTests(unittest.TestCase):
+    def test_package_bridge_module_is_removed(self) -> None:
+        self.assertIsNone(importlib.util.find_spec("triton_agent.comparison"))
+
+    def test_load_compare_result_reuses_test_runner_module(self) -> None:
+        self.assertIs(comparison_module._load_compare_result(), load_test_runner_module())
+
+    def test_load_compare_perf_reuses_bench_runner_module(self) -> None:
+        self.assertIs(comparison_module._load_compare_perf(), load_bench_runner_module())
+
     def test_compare_perf_files_runs_via_skill_wrapper(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -35,7 +45,7 @@ class ComparisonCommandHandlerTests(unittest.TestCase):
         oracle = Path("/tmp/oracle.pt")
         new = Path("/tmp/new.pt")
 
-        with patch.object(module, "_compare_result_files", return_value=0, create=True) as mocked:
+        with patch.object(module, "compare_result_files", return_value=0) as mocked:
             exit_code = comparison_module.compare_result_files(oracle, new, "balanced")
 
         self.assertEqual(exit_code, 0)
@@ -46,7 +56,7 @@ class ComparisonCommandHandlerTests(unittest.TestCase):
         oracle = Path("/tmp/oracle.pt")
         new = Path("/tmp/new.pt")
 
-        with patch.object(module, "_compare_remote_result_files", return_value=0, create=True) as mocked:
+        with patch.object(module, "compare_remote_result_files", return_value=0) as mocked:
             exit_code = comparison_module.compare_remote_result_files(
                 oracle,
                 new,
