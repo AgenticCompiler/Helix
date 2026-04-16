@@ -90,7 +90,7 @@ def build_optimize_unsupervised_prompt(
     resume_existing_session: bool = False,
     require_analysis: bool = False,
 ) -> str:
-    del input_path, output_path, test_mode, bench_mode, min_rounds
+    del input_path, output_path, test_mode, bench_mode
     lines = [
         "This invocation is an unsupervised optimize run.",
         "Own the end-to-end optimize session and continue optimizing until the session should stop.",
@@ -112,6 +112,15 @@ def build_optimize_unsupervised_prompt(
         "Do not begin the next round until the current round passes `check-round`.",
         "Record round outcomes and keep optimize artifacts up to date before stopping.",
     ]
+    if min_rounds is not None:
+        lines.insert(
+            2,
+            f"Complete at least {min_rounds} optimization rounds before deciding the session should stop.",
+        )
+        lines.insert(
+            3,
+            f"Once {min_rounds} optimization rounds are complete, stop the session after the current round passes `check-round` unless there is a concrete reason to continue.",
+        )
     lines.extend(baseline_state_contract_lines())
     if resume_existing_session:
         lines.extend(

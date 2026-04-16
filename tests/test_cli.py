@@ -2933,6 +2933,18 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Do not replace the core computation with a pure PyTorch implementation", prompt)
         self.assertIn("does not count as a successful optimize round", prompt)
 
+    def test_build_optimize_unsupervised_prompt_mentions_min_rounds_when_requested(self) -> None:
+        prompt = build_optimize_unsupervised_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            min_rounds=4,
+        )
+        self.assertIn("Complete at least 4 optimization rounds", prompt)
+        self.assertIn("Once 4 optimization rounds are complete", prompt)
+        self.assertIn("stop the session after the current round passes `check-round`", prompt)
+
     def test_build_optimize_supervisor_prompt_mentions_audit_role(self) -> None:
         prompt = build_optimize_supervisor_prompt(
             Path("/tmp"),

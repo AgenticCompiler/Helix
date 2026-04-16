@@ -76,7 +76,7 @@ Avoid selecting a parent that:
    - stop advancing that round and return to candidate selection for a new branch
 16. Complete the round only after the optimized candidate shows a measurable win over the chosen comparison target.
 17. Use `baseline/perf.txt` for canonical optimize-session metrics even when a round also compares locally against its parent.
-18. When the optimize session is pausing or ending, refresh the final `## Overall Summary` block in `opt-note.md` so the top-level note states the best round, overall outcome, `Avg improvement`, `Geomean speedup`, `Total speedup`, any useful validated branches, and why that round was pursued.
+18. When the optimize session is pausing or ending, refresh the final `## Overall Summary` block in `opt-note.md` so the top-level note states the best round, overall outcome, `Avg improvement`, `Geomean speedup`, `Total speedup` (use `operator-eval` compare-perf to calculate), any useful validated branches, and why that round was pursued.
 
 ## Comparison Target
 
