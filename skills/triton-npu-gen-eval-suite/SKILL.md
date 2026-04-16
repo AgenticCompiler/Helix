@@ -56,8 +56,8 @@ If the successful fix is a new pattern not covered there, append a short entry t
 
 ## Validation Commands
 
-- Use `python3 ../triton-npu-run-eval/scripts/run-command.py run-test ...` for correctness validation.
-- Use `python3 ../triton-npu-run-eval/scripts/run-command.py run-bench ...` for benchmark validation.
+- Use the `triton-npu-run-eval` skill for correctness validation, with `python3 ../triton-npu-run-eval/scripts/run-command.py run-test ...` as the standard helper command.
+- Use the `triton-npu-run-eval` skill for benchmark validation, with `python3 ../triton-npu-run-eval/scripts/run-command.py run-bench ...` as the standard helper command.
 - If the outer task is remote-aware, carry the same remote flags into every validation command and reuse `--remote-workdir` when provided.
 
 ## Quality Rules
@@ -70,7 +70,7 @@ If the successful fix is a new pattern not covered there, append a short entry t
 
 ## Do Not
 
-- Do not mask operator failures in harnesses. Never add try/except, alternate paths, shims, or PyTorch-only fallbacks in generated tests/benchmarks to green `run-test` / `run-bench` when the real issue is Triton compile, launch, or operator logic—**forbidden**.
+- Do not mask operator failures in harnesses. Never add try/except, alternate paths, shims, or PyTorch-only fallbacks in generated tests/benchmarks to green `triton-npu-run-eval` `run-test` / `run-bench` validations when the real issue is Triton compile, launch, or operator logic—**forbidden**.
 - Do not patch only the harness for compiler/kernel failures
 - Do not create `opt-round-*` directories.
 - Do not create or update `opt-note.md`.

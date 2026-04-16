@@ -70,6 +70,8 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("triton-npu-gen-test", eval_gen)
         self.assertIn("triton-npu-gen-bench", eval_gen)
         self.assertIn("triton-npu-run-eval", eval_gen)
+        self.assertIn("Use the `triton-npu-run-eval` skill for correctness validation", eval_gen)
+        self.assertIn("Use the `triton-npu-run-eval` skill for benchmark validation", eval_gen)
         self.assertIn("carry the same remote flags", eval_gen)
         self.assertIn("Do not", eval_gen)
         self.assertIn("opt-round", eval_gen)
@@ -119,7 +121,13 @@ class GenerationContractTests(unittest.TestCase):
         repair_guide = _read("skills/triton-npu-repair-guide/SKILL.md")
         self.assertIn("append a short entry to [output.md](output.md)", repair_guide)
         self.assertIn("Append-Only Repair Log", repair_guide)
+        self.assertIn("through the `triton-npu-run-eval` skill", repair_guide)
         self.assertFalse((REPO_ROOT / "skills" / "triton-npu-log-repair").exists())
+
+    def test_cross_skill_subcommands_name_owning_skills(self) -> None:
+        optimize = _read("skills/triton-npu-optimize/SKILL.md")
+        self.assertIn("use the `triton-npu-run-eval` skill to run `compare-perf`", optimize)
+        self.assertIn("the `triton-npu-run-eval` skill's `compare-perf` flow", optimize)
 
     def test_profiler_skill_documents_profile_bench_mode_contracts(self) -> None:
         profiler = _read("skills/triton-npu-profile-operator/SKILL.md")

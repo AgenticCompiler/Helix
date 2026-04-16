@@ -50,7 +50,7 @@ def build_optimize_worker_prompt(
         "A round that bypasses the Triton kernel path with pure PyTorch code does not count as a successful optimize round.",
         "Use the staged `triton-npu-optimize-check` skill to validate the baseline and the completed round.",
         "Establish or reuse `baseline/` before creating `opt-round-1`.",
-        "If baseline work is needed, run `check-baseline` and keep repairing the baseline until it passes.",
+        "If baseline work is needed, use the staged `triton-npu-optimize-check` skill to run `check-baseline` and keep repairing the baseline until it passes.",
         "Use `baseline/perf.txt` for canonical performance comparisons.",
         "Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.",
         "Reuse existing correctness tests and benchmark cases when they already exist; generate them only when required artifacts are missing.",
@@ -58,8 +58,8 @@ def build_optimize_worker_prompt(
         "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
         "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
         "Produce all required round artifacts before stopping.",
-        "After finishing the round, run `check-round` and repair the round until it passes.",
-        "The current round must pass `check-round` before the invocation ends.",
+        "After finishing the round, use the staged `triton-npu-optimize-check` skill to run `check-round` and repair the round until it passes.",
+        "The current round must pass `check-round` through `triton-npu-optimize-check` before the invocation ends.",
         "Do not self-approve whether the optimize session should continue.",
     ]
     lines.extend(baseline_state_contract_lines())
@@ -101,15 +101,15 @@ def build_optimize_unsupervised_prompt(
         "A round that bypasses the Triton kernel path with pure PyTorch code does not count as a successful optimize round.",
         "Use the staged `triton-npu-optimize-check` skill to validate the baseline and every completed round.",
         "Establish or reuse `baseline/` before creating `opt-round-1`.",
-        "If baseline work is needed, run `check-baseline` and keep repairing the baseline until it passes.",
+        "If baseline work is needed, use the staged `triton-npu-optimize-check` skill to run `check-baseline` and keep repairing the baseline until it passes.",
         "Use `baseline/perf.txt` for canonical performance comparisons.",
         "Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.",
         "Reuse existing correctness tests and benchmark cases when they already exist; generate them only when required artifacts are missing.",
         "State the optimization hypothesis and why it may help before editing code for each round.",
         "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
         "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
-        "After finishing each round, run `check-round` and repair the round until it passes.",
-        "Do not begin the next round until the current round passes `check-round`.",
+        "After finishing each round, use the staged `triton-npu-optimize-check` skill to run `check-round` and repair the round until it passes.",
+        "Do not begin the next round until the current round passes `check-round` through `triton-npu-optimize-check`.",
         "Record round outcomes and keep optimize artifacts up to date before stopping.",
     ]
     if min_rounds is not None:
@@ -119,7 +119,7 @@ def build_optimize_unsupervised_prompt(
         )
         lines.insert(
             3,
-            f"Once {min_rounds} optimization rounds are complete, stop the session after the current round passes `check-round` unless there is a concrete reason to continue.",
+            f"Once {min_rounds} optimization rounds are complete, stop the session after the current round passes `check-round` through `triton-npu-optimize-check` unless there is a concrete reason to continue.",
         )
     lines.extend(baseline_state_contract_lines())
     if resume_existing_session:
@@ -196,10 +196,14 @@ def build_prompt(
         continue_optimize if resume_existing_session is None else resume_existing_session
     )
     skill_name = COMMAND_TO_SKILL[command_kind]
-    lines = [
-        PROMPT_INTROS[command_kind],
-        f"Use the local skill `{skill_name}` from the workspace skills directory.",
-    ]
+    lines = [PROMPT_INTROS[command_kind]]
+    if skill_name:
+        lines.extend(
+            [
+                f"Use the local skill `{skill_name}` from the workspace skills directory as the primary workflow contract.",
+                "Treat any helper scripts or subcommands mentioned later as implementation details inside that skill, not as a replacement for reading the skill.",
+            ]
+        )
     if command_kind == CommandKind.RUN_TEST:
         lines.append(f"Operator file: {operator_path}")
         lines.append(f"Test file: {input_path}")

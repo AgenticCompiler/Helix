@@ -110,7 +110,7 @@ Use it for concise notes such as:
 15. Apply one coherent optimization theme for the round, then run correctness validation before trusting any performance result.
 16. Whenever you discover reusable debugging or optimization knowledge, append a short note to `learned_lessons.md` immediately instead of waiting for the round summary.
 17. After correctness passes, run benchmark validation; when benchmark timing alone does not explain the result well enough, use `triton-npu-profile-operator` to gather operator-level evidence and keep the resulting profiler artifacts under the current round directory.
-18. After both baseline and round benchmark perf artifacts exist, run `compare-perf` through `../triton-npu-run-eval/scripts/run-command.py` and use that output as the only source for `Avg improvement`, `Geomean speedup`, `Total speedup`, and any claimed benchmark delta.
+18. After both baseline and round benchmark perf artifacts exist, use the `triton-npu-run-eval` skill to run `compare-perf` through `../triton-npu-run-eval/scripts/run-command.py`, and use that output as the only source for `Avg improvement`, `Geomean speedup`, `Total speedup`, and any claimed benchmark delta.
 19. Do not hand-calculate speedups or percentage improvements from raw perf files.
 20. Compare round benchmark results against `baseline/perf.txt` for canonical optimize-session metrics, even when the current round also compares locally against its chosen parent.
 21. When IR inspection is needed to understand compiler lowering or confirm an optimization effect, use `triton-npu-analyze-ir`, capture into `opt-round-N/ir/`, and inspect that same directory directly.
@@ -128,7 +128,7 @@ Use it for concise notes such as:
 - Always record what evidence supports the chosen optimization direction.
 - Use `baseline/perf.txt` for canonical optimize-session performance comparisons.
 - Use profiler evidence when benchmark timing alone does not explain the result well enough.
-- Always use `compare-perf` as the authoritative source for performance deltas and speedup metrics once comparable perf artifacts exist.
+- Always use the `triton-npu-run-eval` skill's `compare-perf` flow as the authoritative source for performance deltas and speedup metrics once comparable perf artifacts exist.
 - Do not hand-calculate speedups or percentage improvements from raw perf files.
 - Always run `triton-npu-optimize-check check-round` before beginning the next round or declaring the session complete.
 - Keep round-specific profiler evidence under `opt-round-N/profile/` and IR evidence under `opt-round-N/ir/` when they are collected.
