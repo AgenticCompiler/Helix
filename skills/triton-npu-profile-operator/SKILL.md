@@ -1,5 +1,5 @@
 ---
-name: ascend-npu-operator-profiler
+name: triton-npu-profile-operator
 description: Get and analyze Ascend NPU operator performance data. Use for profiling Ascend operators, identifying hot operators and timing bottlenecks, summarizing performance evidence, comparing profiling results across runs, or inspecting profiler artifacts such as msprof outputs, op_statistic/op_summary CSV files, and Ascend profiler .bin data.
 ---
 
@@ -9,10 +9,10 @@ Profile Ascend NPU operators with `msprof` and summarize the resulting timing da
 
 ## Default workflow
 
-1. Profile benchmark harnesses through the unified operator-eval helper.
+1. Profile benchmark harnesses through the unified triton-npu-run-eval helper.
 
    ```bash
-   python3 ../operator-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file matmul.py
+   python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file matmul.py
    ```
 
 2. Let the helper print or copy back the generated local `PROF_*` directory.
@@ -31,7 +31,7 @@ Profile Ascend NPU operators with `msprof` and summarize the resulting timing da
 
 ## Working rules
 
-- Prefer `python3 ../operator-eval/scripts/run-command.py profile-bench ...` for benchmark profiling, especially when the workflow is remote-aware.
+- Prefer `python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench ...` for benchmark profiling, especially when the workflow is remote-aware.
 - If the benchmark metadata says `# bench-mode: standalone`, profile `python3 bench_<op>.py --operator-file <operator-file>` and do not pass `--bench`; standalone mode must not receive `--bench` or `--num-bench`.
 - If the benchmark metadata says `# bench-mode: msprof`, first query `--num-bench`, then profile one selected `--bench <N>` case; this mode requires resolvable `# kernel:` metadata in the benchmark header.
 - When the outer task is remote-aware, pass the same `--remote` and `--remote-workdir` settings through `profile-bench` so profiling runs on the remote machine while the resulting `PROF_*` directory is copied back locally.
@@ -47,7 +47,7 @@ Profile Ascend NPU operators with `msprof` and summarize the resulting timing da
 - `standalone`
   - Use:
     ```bash
-    python3 ../operator-eval/scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py
+    python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py
     ```
   - Runtime command shape inside the helper:
     ```bash
@@ -58,7 +58,7 @@ Profile Ascend NPU operators with `msprof` and summarize the resulting timing da
 - `msprof`
   - Use:
     ```bash
-    python3 ../operator-eval/scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench 1
+    python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench 1
     ```
   - The helper will first query `python3 bench_<operator>.py --num-bench`.
   - The helper then profiles one selected `--bench <N>` case and defaults to case `1` when `--bench` is omitted.
@@ -98,19 +98,19 @@ Profile Ascend NPU operators with `msprof` and summarize the resulting timing da
 Profile a benchmark and summarize the hottest operator:
 
 ```bash
-python3 ../operator-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file matmul.py
+python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file matmul.py
 ```
 
 Profile a benchmark and summarize a known operator:
 
 ```bash
-python3 ../operator-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file matmul.py --target-op MatMul
+python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file matmul.py --target-op MatMul
 ```
 
 Profile one `msprof` benchmark case on a remote machine and keep the remote workspace:
 
 ```bash
-python3 ../operator-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file opt_matmul.py --bench 2 --remote user@host:2222 --remote-workdir /tmp/triton-agent --keep-remote-workdir
+python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file opt_matmul.py --bench 2 --remote user@host:2222 --remote-workdir /tmp/triton-agent --keep-remote-workdir
 ```
 
 Fallback manual profiling when no benchmark harness exists:

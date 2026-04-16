@@ -125,9 +125,14 @@ class GenerationHelpersTests(unittest.TestCase):
 
         self.assertEqual(
             request.staged_skill_names,
-            ("eval-gen", "test-gen", "bench-gen", "operator-eval"),
+            (
+                "triton-npu-gen-eval-suite",
+                "triton-npu-gen-test",
+                "triton-npu-gen-bench",
+                "triton-npu-run-eval",
+            ),
         )
-        self.assertEqual(request.skill_name, "eval-gen")
+        self.assertEqual(request.skill_name, "triton-npu-gen-eval-suite")
 
     def test_build_generation_request_for_gen_eval_omits_single_output_path(self) -> None:
         request = build_generation_request(
@@ -239,7 +244,12 @@ class GenerationCommandHandlerTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertEqual(
                 captured["staged_skill_names"],
-                ("eval-gen", "test-gen", "bench-gen", "operator-eval"),
+                (
+                    "triton-npu-gen-eval-suite",
+                    "triton-npu-gen-test",
+                    "triton-npu-gen-bench",
+                    "triton-npu-run-eval",
+                ),
             )
             self.assertEqual(captured["test_mode"], "differential")
             self.assertEqual(captured["bench_mode"], "standalone")

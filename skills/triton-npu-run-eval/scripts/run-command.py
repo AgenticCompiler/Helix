@@ -263,7 +263,7 @@ def _load_profile_functions():
 
 
 def _build_profile_report(profile_dir: Path, target_op: str | None) -> str:
-    script = SCRIPT_DIR.parents[1] / "ascend-npu-operator-profiler" / "scripts" / "profile_summary.py"
+    script = SCRIPT_DIR.parents[1] / "triton-npu-profile-operator" / "scripts" / "profile_summary.py"
     spec = importlib.util.spec_from_file_location("profile_summary_runtime", script)
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load profiler summary script: {script}")

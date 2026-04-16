@@ -1,5 +1,5 @@
 ---
-name: ascend-operator-ir-analyzer
+name: triton-npu-analyze-ir
 description: Use when an agent needs to capture, archive, or inspect Triton Ascend compiler IR for an operator workflow, especially to analyze dumped Triton or Bisheng IR stages, reason about likely performance issues from generated IR artifacts, or collect complete IR from a local or remote execution.
 ---
 
@@ -69,7 +69,7 @@ Capture complete Triton Ascend compiler IR into a stable archive directory, then
    - Use `diff-stages` to identify which pass introduced a suspicious structural change.
    - Once the search space is small enough, inspect the raw `.mlir` files directly with terminal tools such as `rg`, `sed`, or `diff` to trace specific ops, symbols, attributes, or layout details.
 
-5. If the user also needs hotspot evidence or operator timing attribution, use [`../ascend-npu-operator-profiler/SKILL.md`](../ascend-npu-operator-profiler/SKILL.md) as a companion skill.
+5. If the user also needs hotspot evidence or operator timing attribution, use [`../triton-npu-profile-operator/SKILL.md`](../triton-npu-profile-operator/SKILL.md) as a companion skill.
    - Use this pairing when IR suggests a likely bottleneck but you still need runtime evidence to confirm where time is spent.
    - Use this pairing when profiling already identified a hot operator and you want the IR archive to explain why that hotspot exists.
 

@@ -170,7 +170,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="optimize",
+                skill_name="triton-npu-optimize",
                 prompt="Optimize this operator",
                 workdir=workdir,
                 supervise="on",
@@ -211,7 +211,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="optimize",
+                skill_name="triton-npu-optimize",
                 prompt="Optimize this operator",
                 workdir=workdir,
                 supervise="off",
@@ -251,7 +251,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="optimize",
+                skill_name="triton-npu-optimize",
                 prompt="Optimize this operator",
                 workdir=workdir,
                 supervise="on",
@@ -308,7 +308,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIsNotNone(worker_request.round_brief_path)
             self.assertIsNotNone(worker_request.supervisor_report_path)
             self.assertEqual(supervisor_request.optimize_role, "supervisor")
-            self.assertEqual(supervisor_request.skill_name, "optimize-supervisor")
+            self.assertEqual(supervisor_request.skill_name, "triton-npu-optimize")
             self.assertFalse(supervisor_request.interact)
             self.assertTrue(supervisor_request.no_agent_session)
             self.assertEqual(supervisor_request.round_brief_path, worker_request.round_brief_path)
@@ -358,7 +358,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="optimize",
+                skill_name="triton-npu-optimize",
                 prompt="Optimize this operator",
                 workdir=workdir,
                 supervise="on",
@@ -450,7 +450,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="optimize",
+                skill_name="triton-npu-optimize",
                 prompt="Optimize this operator",
                 workdir=workdir,
                 supervise="off",
@@ -524,7 +524,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="optimize",
+                skill_name="triton-npu-optimize",
                 prompt="Optimize this operator",
                 workdir=workdir,
                 supervise="off",
@@ -705,7 +705,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="optimize",
+                skill_name="triton-npu-optimize",
                 prompt="Optimize this operator",
                 workdir=workdir,
                 supervise="on",
@@ -782,7 +782,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="optimize",
+                skill_name="triton-npu-optimize",
                 prompt=(
                     "Optimize this operator\n\n"
                     "Additional user instructions:\n"
@@ -862,7 +862,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="optimize",
+                skill_name="triton-npu-optimize",
                 prompt="Optimize this operator",
                 workdir=workdir,
                 supervise="on",
@@ -951,7 +951,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="optimize",
+                skill_name="triton-npu-optimize",
                 prompt="Optimize this operator",
                 workdir=workdir,
                 supervise="on",
@@ -1015,7 +1015,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="optimize",
+                skill_name="triton-npu-optimize",
                 prompt="Optimize this operator",
                 workdir=workdir,
                 supervise="on",
@@ -1077,7 +1077,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="optimize",
+                skill_name="triton-npu-optimize",
                 prompt="Optimize this operator",
                 workdir=workdir,
                 supervise="on",

@@ -12,7 +12,7 @@ def _load_profile_summary_module():
     script = (
         REPO_ROOT
         / "skills"
-        / "ascend-npu-operator-profiler"
+        / "triton-npu-profile-operator"
         / "scripts"
         / "profile_summary.py"
     )

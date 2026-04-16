@@ -21,16 +21,16 @@ class CommandKind(str, Enum):
 
 
 COMMAND_TO_SKILL = {
-    CommandKind.GEN_EVAL: "eval-gen",
+    CommandKind.GEN_EVAL: "triton-npu-gen-eval-suite",
     CommandKind.GEN_EVAL_BATCH: "",
-    CommandKind.GEN_TEST: "test-gen",
+    CommandKind.GEN_TEST: "triton-npu-gen-test",
     CommandKind.RUN_TEST: "",
-    CommandKind.GEN_BENCH: "bench-gen",
+    CommandKind.GEN_BENCH: "triton-npu-gen-bench",
     CommandKind.RUN_BENCH: "",
     CommandKind.COMPARE_RESULT: "",
     CommandKind.COMPARE_PERF: "",
     CommandKind.OPTIMIZE_STATUS: "",
-    CommandKind.OPTIMIZE: "optimize",
+    CommandKind.OPTIMIZE: "triton-npu-optimize",
     CommandKind.OPTIMIZE_BATCH: "",
 }
 

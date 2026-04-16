@@ -82,7 +82,7 @@ class SupervisedOptimizeAdapter:
                 latest_round_dir=latest_round_dir,
                 require_analysis=request.require_analysis,
             ),
-            skill_name="optimize-supervisor",
+            skill_name="triton-npu-optimize",
             optimize_role="supervisor",
             interact=False,
             no_agent_session=True,

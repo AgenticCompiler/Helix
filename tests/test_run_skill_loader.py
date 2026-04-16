@@ -24,7 +24,7 @@ class RunSkillLoaderTests(unittest.TestCase):
         path = operator_eval_script_path("run-command")
         self.assertEqual(path.name, "run-command.py")
         self.assertEqual(path.parent.name, "scripts")
-        self.assertEqual(path.parent.parent.name, "operator-eval")
+        self.assertEqual(path.parent.parent.name, "triton-npu-run-eval")
 
     def test_load_operator_eval_script_module_returns_cached_module(self) -> None:
         first = load_operator_eval_script_module("test_runner")
@@ -33,20 +33,20 @@ class RunSkillLoaderTests(unittest.TestCase):
         self.assertTrue(hasattr(first, "run_local_test"))
 
     def test_skill_script_path_points_to_optimize_check_script(self) -> None:
-        path = skill_script_path("optimize-check", "optimize_check")
+        path = skill_script_path("triton-npu-optimize-check", "optimize_check")
         self.assertEqual(path.name, "optimize_check.py")
         self.assertEqual(path.parent.name, "scripts")
-        self.assertEqual(path.parent.parent.name, "optimize-check")
+        self.assertEqual(path.parent.parent.name, "triton-npu-optimize-check")
 
     def test_load_skill_script_module_returns_cached_module(self) -> None:
-        first = load_skill_script_module("optimize-check", "optimize_check")
-        second = load_skill_script_module("optimize-check", "optimize_check")
+        first = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
+        second = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
         self.assertIs(first, second)
         self.assertTrue(hasattr(first, "check_baseline"))
         self.assertTrue(hasattr(first, "check_round"))
 
     def test_run_skill_scripts_do_not_import_triton_agent(self) -> None:
-        scripts_dir = Path(__file__).resolve().parents[1] / "skills" / "operator-eval" / "scripts"
+        scripts_dir = Path(__file__).resolve().parents[1] / "skills" / "triton-npu-run-eval" / "scripts"
         for path in sorted(scripts_dir.glob("*.py")):
             with self.subTest(path=path.name):
                 content = path.read_text(encoding="utf-8")
@@ -54,7 +54,7 @@ class RunSkillLoaderTests(unittest.TestCase):
                 self.assertNotIn("from triton_agent", content)
 
     def test_optimize_check_script_does_not_import_triton_agent(self) -> None:
-        path = skill_script_path("optimize-check", "optimize_check")
+        path = skill_script_path("triton-npu-optimize-check", "optimize_check")
         content = path.read_text(encoding="utf-8")
         self.assertNotIn("import triton_agent", content)
         self.assertNotIn("from triton_agent", content)

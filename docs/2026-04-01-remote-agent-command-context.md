@@ -17,9 +17,9 @@
 
 ## Skill Contract Updates
 
-- `skills/test-gen/SKILL.md` should show both local and remote `run-test` validation examples.
-- `skills/bench-gen/SKILL.md` should show both local and remote `run-bench` validation examples.
-- `skills/optimize/SKILL.md` should state that every generated and validation command must carry the same remote flags when the outer request is remote.
+- `skills/triton-npu-gen-test/SKILL.md` should show both local and remote `run-test` validation examples.
+- `skills/triton-npu-gen-bench/SKILL.md` should show both local and remote `run-bench` validation examples.
+- `skills/triton-npu-optimize/SKILL.md` should state that every generated and validation command must carry the same remote flags when the outer request is remote.
 
 ## Scope
 

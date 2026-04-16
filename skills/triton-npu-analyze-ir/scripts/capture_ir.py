@@ -518,7 +518,7 @@ def _format_failed_command_message(
 def _load_runtime_helpers() -> dict[str, Any]:
     script = (
         Path(__file__).resolve().parents[2]
-        / "operator-eval"
+        / "triton-npu-run-eval"
         / "scripts"
         / "run_runtime.py"
     )

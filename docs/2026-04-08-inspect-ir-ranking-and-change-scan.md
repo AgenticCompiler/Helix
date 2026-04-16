@@ -78,7 +78,7 @@ The first version should compare only adjacent stages in archive order. It does 
 
 ## Documentation updates
 
-- Update `skills/ascend-operator-ir-analyzer/SKILL.md` to mention stage ranking and adjacent change scanning as the preferred first pass over large archives.
+- Update `skills/triton-npu-analyze-ir/SKILL.md` to mention stage ranking and adjacent change scanning as the preferred first pass over large archives.
 - Update `README.md` with one short example for `find-changes`.
 
 ## Verification

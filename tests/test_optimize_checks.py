@@ -42,7 +42,7 @@ class OptimizeCheckTests(unittest.TestCase):
         self.assertEqual(round_result.kind, "round")
         self.assertEqual(round_result.decision, "pass")
         self.assertEqual(round_result.summary, "checked opt-round-1")
-        mocked.assert_any_call("optimize-check", "optimize_check")
+        mocked.assert_any_call("triton-npu-optimize-check", "optimize_check")
 
     def test_check_baseline_reports_missing_perf_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

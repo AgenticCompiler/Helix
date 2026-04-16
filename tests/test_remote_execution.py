@@ -198,7 +198,7 @@ class RemoteExecutionTests(unittest.TestCase):
             compare_script,
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "operator-eval"
+            / "triton-npu-run-eval"
             / "scripts"
             / "compare_result_payloads.py",
         )

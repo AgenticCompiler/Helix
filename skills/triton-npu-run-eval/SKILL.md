@@ -1,5 +1,5 @@
 ---
-name: operator-eval
+name: triton-npu-run-eval
 description: Execute and evaluate generated operator artifacts. Use when you need to run generated test cases, run generated benchmark cases, profile benchmark harnesses, or compare result and performance artifacts, including during optimization workflows.
 ---
 
@@ -11,7 +11,7 @@ Use the bundled helper script in this skill:
 python3 ./scripts/run-command.py <subcommand> ...
 ```
 
-Use the operator-eval skill to execute generated test files, benchmark files, profiling runs, and comparison flows.
+Use the triton-npu-run-eval skill to execute generated test files, benchmark files, profiling runs, and comparison flows.
 Do not reread the Python files under `./scripts/` unless you need to debug, patch, or verify command behavior. In normal use, call the helper script directly and avoid spending context on code that is not needed for the current run.
 
 ## Run Test

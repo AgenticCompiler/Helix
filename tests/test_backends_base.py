@@ -28,7 +28,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 show_output=True,
                 force_overwrite=False,
                 agent_name="dummy",
-                skill_name="test-gen",
+                skill_name="triton-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )
@@ -58,7 +58,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="dummy",
-                skill_name="optimize",
+                skill_name="triton-npu-optimize",
                 prompt=build_prompt(
                     CommandKind.OPTIMIZE,
                     workspace / "op.py",

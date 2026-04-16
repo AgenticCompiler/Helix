@@ -8,12 +8,12 @@ from triton_agent.skill_loader import load_skill_script_module
 
 
 def check_baseline(baseline_dir: Path) -> OptimizeCheckResult:
-    module = load_skill_script_module("optimize-check", "optimize_check")
+    module = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
     return _normalize_result(module.check_baseline(baseline_dir))
 
 
 def check_round(round_dir: Path) -> OptimizeCheckResult:
-    module = load_skill_script_module("optimize-check", "optimize_check")
+    module = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
     return _normalize_result(module.check_round(round_dir))
 
 

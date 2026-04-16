@@ -15,7 +15,7 @@ def _load_capture_ir_module():
     script = (
         REPO_ROOT
         / "skills"
-        / "ascend-operator-ir-analyzer"
+        / "triton-npu-analyze-ir"
         / "scripts"
         / "capture_ir.py"
     )

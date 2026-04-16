@@ -1,5 +1,5 @@
 ---
-name: eval-gen
+name: triton-npu-gen-eval-suite
 description: Use when one code agent task should repair a Triton Ascend operator when needed, then generate and validate both correctness-test and benchmark harnesses.
 ---
 
@@ -11,9 +11,9 @@ Use this skill when the user wants one code-agent task to:
 
 - Inspect the operator file.
 - Repair the operator file when required.
-- Generate a correctness test via `test-gen`.
-- Generate a benchmark via `bench-gen`.
-- Validate both artifacts via `operator-eval`.
+- Generate a correctness test via `triton-npu-gen-test`.
+- Generate a benchmark via `triton-npu-gen-bench`.
+- Validate both artifacts via `triton-npu-run-eval`.
 
 ## Inputs
 
@@ -34,14 +34,14 @@ Use this skill when the user wants one code-agent task to:
 1. Read the operator file and identify whether the operator itself already has clear correctness, signature, import, or runtime issues.
 2. If the operator is clearly at fault, repair the original operator file directly before generating harnesses.
 3. Ensure the operator’s Triton path actually runs, and remove any code paths that fall back to PyTorch.
-4. Generate the correctness test with the `test-gen` skill.
-5. Validate the generated test with the `operator-eval` workflow, using the generated file against the current operator file.
+4. Generate the correctness test with the `triton-npu-gen-test` skill.
+5. Validate the generated test with the `triton-npu-run-eval` workflow, using the generated file against the current operator file.
 6. If test validation fails, decide whether the failure belongs to the generated test or the operator:
    - repair the generated test when the harness is at fault
    - repair the original operator file when the operator is at fault
 7. Re-run test validation after every relevant repair until the test passes or an environment blocker prevents progress.
-8. Generate the benchmark with the `bench-gen` skill.
-9. Validate the generated benchmark with the `operator-eval` workflow.
+8. Generate the benchmark with the `triton-npu-gen-bench` skill.
+9. Validate the generated benchmark with the `triton-npu-run-eval` workflow.
 10. If benchmark validation fails, decide whether the failure belongs to the generated benchmark or the operator:
    - repair the generated benchmark when the harness is at fault
    - repair the original operator file when the operator is at fault
@@ -50,20 +50,20 @@ Use this skill when the user wants one code-agent task to:
 
 ## Repair experience (Ascend Triton)
 
-When steps 2, 6, or 10 require **operator-side** fixes for compile / JIT / kernel errors on Ascend, use the `triton-repair-experience` skill and read [../triton-repair-experience/references/repair-experience.md](../triton-repair-experience/references/repair-experience.md) for team-maintained heuristics. These hints do not override `test-gen`, `bench-gen`, or normative specs.
+When steps 2, 6, or 10 require **operator-side** fixes for compile / JIT / kernel errors on Ascend, use the `triton-npu-repair-guide` skill and read [../triton-npu-repair-guide/references/repair-experience.md](../triton-npu-repair-guide/references/repair-experience.md) for team-maintained heuristics. These hints do not override `triton-npu-gen-test`, `triton-npu-gen-bench`, or normative specs.
 
-If the successful fix is a new pattern not covered there, use the `self-repair` skill to append a short entry to [../self-repair/output.md](../self-repair/output.md).
+If the successful fix is a new pattern not covered there, append a short entry to [../triton-npu-repair-guide/output.md](../triton-npu-repair-guide/output.md).
 
 ## Validation Commands
 
-- Use `python3 ../operator-eval/scripts/run-command.py run-test ...` for correctness validation.
-- Use `python3 ../operator-eval/scripts/run-command.py run-bench ...` for benchmark validation.
+- Use `python3 ../triton-npu-run-eval/scripts/run-command.py run-test ...` for correctness validation.
+- Use `python3 ../triton-npu-run-eval/scripts/run-command.py run-bench ...` for benchmark validation.
 - If the outer task is remote-aware, carry the same remote flags into every validation command and reuse `--remote-workdir` when provided.
 
 ## Quality Rules
 
 - Repair the original operator file when the operator is the source of failure.
-- Keep generated test and benchmark files aligned with the final operator API. They must follow **`test-gen` / `bench-gen`** norms: harnesses **run on Ascend NPU only**—no CUDA/CPU/other-device primary paths (see those skills’ specs).
+- Keep generated test and benchmark files aligned with the final operator API. They must follow **`triton-npu-gen-test` / `triton-npu-gen-bench`** norms: harnesses **run on Ascend NPU only**—no CUDA/CPU/other-device primary paths (see those skills’ specs).
 - Prefer targeted repairs over broad rewrites.
 - Stop with a short explicit explanation when the problem is a workspace or environment blocker that cannot be fixed from repository code alone.
 - When editing the operator, **preserve the Triton / NPU kernel path** as the delivered implementation. **Do not** replace it with a **pure PyTorch** reimplementation as a “fix,” and **do not** satisfy validation by weakening what the harness exercises.
@@ -74,6 +74,6 @@ If the successful fix is a new pattern not covered there, use the `self-repair` 
 - Do not patch only the harness for compiler/kernel failures
 - Do not create `opt-round-*` directories.
 - Do not create or update `opt-note.md`.
-- Do not use the `optimize` skill for this workflow.
+- Do not use the `triton-npu-optimize` skill for this workflow.
 - Do not use profiler or IR-analysis flows for this workflow.
 - Do not leave either generated artifact unvalidated.

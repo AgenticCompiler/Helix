@@ -1,5 +1,5 @@
 ---
-name: test-gen
+name: triton-npu-gen-test
 description: Generate correctness test code for a Triton or Triton Ascend operator from source code and task context. Use when Codex needs to author a new operator test file, choose between standalone and differential test styles, infer the callable under test, or honor a requested output location.
 ---
 
@@ -55,15 +55,15 @@ The generated test file must accept only `--operator-file` at runtime, use `impo
 
 ## Validation Commands
 
-Use the operator-eval skill to execute generated test cases.
+Use the triton-npu-run-eval skill to execute generated test cases.
 Use `run-test` as the standard execution command for generated tests.
 
 - Standalone example:
-  - `python3 ../operator-eval/scripts/run-command.py run-test --test-file test_<operator>.py --operator-file <operator>.py --test-mode standalone`
+  - `python3 ../triton-npu-run-eval/scripts/run-command.py run-test --test-file test_<operator>.py --operator-file <operator>.py --test-mode standalone`
 - Differential example against the original operator:
-  - `python3 ../operator-eval/scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file <operator>.py --test-mode differential`
+  - `python3 ../triton-npu-run-eval/scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file <operator>.py --test-mode differential`
 - Differential example against an optimized operator:
-  - `python3 ../operator-eval/scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode differential`
+  - `python3 ../triton-npu-run-eval/scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode differential`
 Do not run `compare-result` during test generation. The generation task only needs to produce a runnable test harness and validate it with `run-test`; cross-version result comparison belongs to optimize or explicit comparison workflows.
 
 If the outer task is marked for remote execution, carry the same remote flags into these commands.
@@ -89,7 +89,7 @@ If the outer task is marked for remote execution, carry the same remote flags in
 - Add edge cases only when they are justified by the operator contract.
 - Do not invent unavailable dependencies without saying so.
 - Do not violate naming, entrypoint, artifact, or output rules from the selected spec.
-- Do not spend a separate step on syntax-only checking; rely on `operator-eval` skill as the validation path.
+- Do not spend a separate step on syntax-only checking; rely on `triton-npu-run-eval` skill as the validation path.
 - When auto-fix mode is active, only repair the generated test file; do not modify the operator file.
 - Do not treat raw `@triton.jit` kernel functions as direct harness APIs.
 - Do not guess constructor arguments for `torch-module`; if no-argument construction is not safe, stop with an explicit explanation.

@@ -36,7 +36,7 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             self.assertIn("Own the end-to-end optimize session.", guidance_content)
             self.assertIn("Use `differential` correctness validation", guidance_content)
             self.assertIn("Use `standalone` benchmark validation", guidance_content)
-            self.assertIn("Use the staged `optimize` skill", guidance_content)
+            self.assertIn("Use the staged `triton-npu-optimize` skill", guidance_content)
             self.assertNotIn("Read the role brief", guidance_content)
             self.assertNotIn("Worker and supervisor roles", guidance_content)
             self.assertNotIn(".triton-agent/roles/", guidance_content)

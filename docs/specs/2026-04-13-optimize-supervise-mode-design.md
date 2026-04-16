@@ -2,6 +2,8 @@
 
 ## Summary
 
+> **Superseded note:** The current supervised optimize flow still uses worker and supervisor roles, but it no longer stages `.triton-agent/roles/*` files and it no longer launches a dedicated `optimize-supervisor` skill. Supervisor behavior is prompt-driven.
+
 - Add an explicit `--supervise {on,off}` option to `optimize` and `optimize-batch`.
 - Default `--supervise` to `off` so ordinary optimize runs continue using the existing single-agent flow.
 - Run the worker-plus-supervisor round gate only when `--supervise on` is selected.

@@ -6,7 +6,7 @@ Add a new repository-owned skill that helps a code agent capture complete Triton
 
 ## User-visible behavior
 
-- Add a new skill named `ascend-operator-ir-analyzer` under `skills/`.
+- Add a new skill named `triton-npu-analyze-ir` under `skills/`.
 - The skill should trigger when the user wants to inspect Triton Ascend operator IR, archive compiler stages, or analyze potential performance issues from generated IR artifacts.
 - The default workflow should start by running a bundled script that executes an operator-related command with:
   - `TRITON_DEBUG=1`
@@ -26,7 +26,7 @@ Add a new repository-owned skill that helps a code agent capture complete Triton
 - The script should replay the Bisheng compile command against the archived `kernel.ttadapter.mlir`, remove one-shot print filters such as `--bishengir-print-ir-after=...`, add `--mlir-print-ir-after-all`, add `--mlir-print-ir-tree-dir=<ir-dir>/bishengir_stages`, and redirect stderr to `<ir-dir>/all-ir.txt`.
 - After capture completes, the IR directory should contain enough metadata for later analysis without re-running the benchmark command.
 - The skill should instruct the code agent to inspect the archived IR and analyze likely performance issues directly from the artifacts.
-- If the user already has profiler output or needs timing evidence for hotspot attribution, the skill should tell the agent to also use `skills/ascend-npu-operator-profiler/`.
+- If the user already has profiler output or needs timing evidence for hotspot attribution, the skill should tell the agent to also use `skills/triton-npu-profile-operator/`.
 
 ## Archive layout
 
@@ -54,7 +54,7 @@ If useful during implementation, the script may also persist the raw stdout or a
 ## Local and remote execution
 
 - Local mode should execute the rendered benchmark command in the benchmark file's workspace and archive artifacts locally.
-- Remote mode should follow the same high-level semantics already used by the repository's remote operator-eval helpers:
+- Remote mode should follow the same high-level semantics already used by the repository's remote triton-npu-run-eval helpers:
   - accept `--remote user@host[:port]`
   - accept optional `--remote-workdir`
   - optionally keep the remote workspace through a dedicated keep flag
@@ -69,7 +69,7 @@ If useful during implementation, the script may also persist the raw stdout or a
 - Keep the skill thin and procedural. The bundled script is the deterministic core for IR capture; the skill text should focus on when to use it, how to invoke it, and when to combine it with profiler evidence.
 - Do not hard-code an IR performance methodology yet. The agent should perform free-form analysis from the archived IR because there is not yet a validated pattern library for Ascend-specific IR diagnosis.
 - Reuse repository conventions where possible instead of inventing a new remote protocol:
-  - shared SSH and copy behavior should stay aligned with the operator-eval runtime
+  - shared SSH and copy behavior should stay aligned with the triton-npu-run-eval runtime
   - command-line options should mirror existing remote flags when practical
 - Keep the script resilient to shell quoting issues by parsing the extracted `cmd_list` into structured arguments before rewriting it.
 - Treat missing `Dumping intermediate results to ...` or `[DEBUG] cmd_list: ...` lines as explicit failures with short actionable errors.

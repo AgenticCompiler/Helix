@@ -307,7 +307,7 @@ class OptimizeGuidanceManager:
             "## Triton Agent Optimize Session\n\n"
             "This workspace is under an unsupervised optimize run.\n\n"
             "Own the end-to-end optimize session.\n"
-            "Use the staged `optimize` skill as the workflow source of truth.\n"
+            "Use the staged `triton-npu-optimize` skill as the workflow source of truth.\n"
             f"Use `{test_mode}` correctness validation for this optimize session.\n"
             f"Use `{bench_mode}` benchmark validation for this optimize session.\n"
             f"Optimize the operator at `{operator_path.name}`.\n"

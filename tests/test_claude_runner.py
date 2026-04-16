@@ -29,7 +29,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="claude",
-                skill_name="test-gen",
+                skill_name="triton-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )
@@ -54,7 +54,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="claude",
-                skill_name="optimize",
+                skill_name="triton-npu-optimize",
                 prompt="Continue work",
                 workdir=workspace,
             )
@@ -80,7 +80,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="claude",
-                skill_name="optimize",
+                skill_name="triton-npu-optimize",
                 prompt="Continue work",
                 workdir=workspace,
                 no_agent_session=True,
@@ -104,7 +104,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="claude",
-                skill_name="optimize",
+                skill_name="triton-npu-optimize",
                 prompt="Continue work",
                 workdir=workspace,
                 no_agent_session=True,
@@ -128,7 +128,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="claude",
-                skill_name="test-gen",
+                skill_name="triton-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )
@@ -152,7 +152,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="claude",
-                skill_name="test-gen",
+                skill_name="triton-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )
@@ -180,7 +180,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 show_output=False,
                 force_overwrite=False,
                 agent_name="claude",
-                skill_name="optimize",
+                skill_name="triton-npu-optimize",
                 prompt=build_prompt(
                     CommandKind.OPTIMIZE,
                     workspace / "op.py",

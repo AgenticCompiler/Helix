@@ -11,7 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_compare_result_payloads_module():
-    script = REPO_ROOT / "skills" / "operator-eval" / "scripts" / "compare_result_payloads.py"
+    script = REPO_ROOT / "skills" / "triton-npu-run-eval" / "scripts" / "compare_result_payloads.py"
     spec = importlib.util.spec_from_file_location("compare_result_payloads_test_module", script)
     if spec is None or spec.loader is None:
         raise AssertionError(f"Unable to load module spec for {script}")

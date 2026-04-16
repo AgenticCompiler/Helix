@@ -12,7 +12,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "operator-eval"
+            / "triton-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -50,7 +50,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "operator-eval"
+            / "triton-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -72,14 +72,14 @@ class SkillCommandScriptTests(unittest.TestCase):
     def test_script_resolves_real_repo_root_when_called_through_symlink(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         source_skills = repo_root / "skills"
-        source_script = source_skills / "operator-eval" / "scripts" / "run-command.py"
+        source_script = source_skills / "triton-npu-run-eval" / "scripts" / "run-command.py"
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
             symlinked_skills = workspace / "skills"
             symlinked_skills.symlink_to(source_skills, target_is_directory=True)
-            symlinked_script = symlinked_skills / "operator-eval" / "scripts" / "run-command.py"
+            symlinked_script = symlinked_skills / "triton-npu-run-eval" / "scripts" / "run-command.py"
 
             completed = subprocess.run(
                 [sys.executable, str(symlinked_script), "--help"],
@@ -97,7 +97,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "operator-eval"
+            / "triton-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -117,7 +117,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "operator-eval"
+            / "triton-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -138,7 +138,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "optimize-check"
+            / "triton-npu-optimize-check"
             / "scripts"
             / "optimize_check.py"
         )

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add a bundled inspection script for `skills/ascend-operator-ir-analyzer/` so agents can navigate and compare large archived IR captures without manually opening dozens of `.mlir` files. The script should help an agent answer three early performance-debugging questions:
+Add a bundled inspection script for `skills/triton-npu-analyze-ir/` so agents can navigate and compare large archived IR captures without manually opening dozens of `.mlir` files. The script should help an agent answer three early performance-debugging questions:
 
 - which stages are worth inspecting
 - what a given stage roughly contains
@@ -10,7 +10,7 @@ Add a bundled inspection script for `skills/ascend-operator-ir-analyzer/` so age
 
 ## User-visible behavior
 
-- Add a new script at `skills/ascend-operator-ir-analyzer/scripts/inspect_ir.py`.
+- Add a new script at `skills/triton-npu-analyze-ir/scripts/inspect_ir.py`.
 - The script should expose one entrypoint with subcommands instead of multiple independent scripts.
 - All subcommands should accept `--ir-dir <path>` and resolve `bishengir_stages/` internally.
 - The script should not expose `bishengir_stages/` as a user-facing argument because that is an archive implementation detail.
@@ -104,7 +104,7 @@ Output:
 
 ## Documentation updates
 
-- Update `skills/ascend-operator-ir-analyzer/SKILL.md` so the skill tells agents to use `inspect_ir.py` for navigation, summary, and diff once IR capture is complete.
+- Update `skills/triton-npu-analyze-ir/SKILL.md` so the skill tells agents to use `inspect_ir.py` for navigation, summary, and diff once IR capture is complete.
 - Update `README.md` and `AGENTS.md` so repository-level expectations mention the new inspection helper as part of the IR-analysis workflow.
 
 ## Verification

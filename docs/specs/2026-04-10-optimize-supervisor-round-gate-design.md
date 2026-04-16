@@ -1,5 +1,7 @@
 # Optimize Supervisor Round Gate Design
 
+> **Superseded note:** The current implementation no longer creates `.triton-agent/roles/*` files and no longer uses a dedicated `optimize-supervisor` skill. Supervisor behavior now comes from the launch prompt plus `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md`.
+
 ## Summary
 
 - Split `optimize` into explicit worker rounds instead of one unconstrained long-running agent session.

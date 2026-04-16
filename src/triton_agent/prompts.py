@@ -48,7 +48,7 @@ def build_optimize_worker_prompt(
         "You must continue optimizing the Triton Ascend NPU kernel path itself.",
         "Do not replace the core computation with a pure PyTorch implementation just to improve final outputs or benchmark numbers.",
         "A round that bypasses the Triton kernel path with pure PyTorch code does not count as a successful optimize round.",
-        "Use the staged `optimize-check` skill to validate the baseline and the completed round.",
+        "Use the staged `triton-npu-optimize-check` skill to validate the baseline and the completed round.",
         "Establish or reuse `baseline/` before creating `opt-round-1`.",
         "If baseline work is needed, run `check-baseline` and keep repairing the baseline until it passes.",
         "Use `baseline/perf.txt` for canonical performance comparisons.",
@@ -99,7 +99,7 @@ def build_optimize_unsupervised_prompt(
         "You must continue optimizing the Triton Ascend NPU kernel path itself.",
         "Do not replace the core computation with a pure PyTorch implementation just to improve final outputs or benchmark numbers.",
         "A round that bypasses the Triton kernel path with pure PyTorch code does not count as a successful optimize round.",
-        "Use the staged `optimize-check` skill to validate the baseline and every completed round.",
+        "Use the staged `triton-npu-optimize-check` skill to validate the baseline and every completed round.",
         "Establish or reuse `baseline/` before creating `opt-round-1`.",
         "If baseline work is needed, run `check-baseline` and keep repairing the baseline until it passes.",
         "Use `baseline/perf.txt` for canonical performance comparisons.",
@@ -152,15 +152,21 @@ def build_optimize_supervisor_prompt(
     ]
     if latest_round_dir is not None:
         lines.append(f"Read `{latest_round_dir}` before acting.")
-    lines.extend(
+        lines.extend(
         [
             "Apply only metadata repairs derived from existing facts.",
             "Use only existing `compare-perf` results when auditing or restating performance conclusions.",
+            "Read the staged `triton-npu-optimize` skill and `triton-npu-optimize-check` skill as the workflow contract that the worker round was supposed to follow.",
+            "Read the latest `opt-round-N/attempts.md`, `summary.md`, and `round-state.json` before deciding anything.",
+            "Read existing benchmark, profiler, and IR artifacts only when they already exist and are needed to verify the worker's recorded claims.",
             "Reject rounds that preserve only the public API shape but replace the Triton kernel path with pure PyTorch computation.",
             "Write `.triton-agent/supervisor-report.md` with a `Decision:` line and a `Blocking issues:` line.",
             "Write `.triton-agent/round-brief.md` with the next-worker handoff; when continuation is not allowed, record the stop or repair reason there.",
             "Do not edit the operator implementation.",
             "Do not perform open-ended optimization work.",
+            "Do not fabricate missing correctness, benchmark, profiler, or IR evidence.",
+            "Do not launch new profiler or IR collection from the supervisor pass.",
+            "Do not silently promote an invalid round to current best.",
         ]
     )
     if require_analysis:

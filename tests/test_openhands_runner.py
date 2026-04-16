@@ -317,7 +317,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
             show_output=False,
             force_overwrite=False,
             agent_name="openhands",
-            skill_name="test-gen",
+            skill_name="triton-npu-gen-test",
             prompt=prompt,
             workdir=workspace,
         )

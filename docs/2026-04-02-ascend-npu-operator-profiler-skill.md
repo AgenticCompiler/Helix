@@ -16,11 +16,11 @@ Keep `parse_bin.py` as an optional helper for future binary analysis work, but r
 - The skill should trigger for Ascend NPU operator profiling and performance-analysis requests, especially when the user wants operator-level timing data, hotspot identification, bottleneck diagnosis, or profiler-backed comparison.
 - The default workflow should prefer running generated benchmark harnesses through the run-validation helper, for example:
   ```bash
-  python3 ../operator-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file matmul.py
+  python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file matmul.py
   ```
 - `standalone` benchmark mode should profile the plain `--operator-file` benchmark invocation and should not use `--bench`.
 - `msprof` benchmark mode should first query `--num-bench`, then profile one selected `--bench <N>` case, and should require benchmark `# kernel:` metadata.
-- Remote-aware profiling should reuse the same `--remote` and `--remote-workdir` semantics as the existing operator-eval helpers.
+- Remote-aware profiling should reuse the same `--remote` and `--remote-workdir` semantics as the existing triton-npu-run-eval helpers.
 - After profiling, the skill should inspect the generated `PROF_*/mindstudio_profiler_output/` directory and summarize operator timing data from:
   - `op_statistic_<timestamp>.csv`
   - `op_summary_<timestamp>.csv`
@@ -31,9 +31,9 @@ Keep `parse_bin.py` as an optional helper for future binary analysis work, but r
 
 ## Design
 
-- Rename the skill directory and frontmatter name to `ascend-npu-operator-profiler` so the skill's identity matches its broader scope.
+- Rename the skill directory and frontmatter name to `triton-npu-profile-operator` so the skill's identity matches its broader scope.
 - Rewrite `SKILL.md` around one primary flow:
-  1. run `python3 ../operator-eval/scripts/run-command.py profile-bench ...`
+  1. run `python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench ...`
   2. find the relevant `PROF_*` directory
   3. summarize the operator timing data
   4. present the result in the conversation

@@ -1,14 +1,16 @@
 # Triton Agent CLI for Test, Benchmark, and Optimization
 
+> **Superseded note:** This early design predates the current repository skill naming. The active skill mapping now uses `triton-npu-gen-test`, `triton-npu-gen-bench`, `triton-npu-gen-eval-suite`, `triton-npu-run-eval`, `triton-npu-optimize`, and `triton-npu-optimize-check`.
+
 ## Summary
 
-Build a `uv`-managed Python CLI project that wraps code agents behind a small abstraction layer and maps five kebab-case subcommands to the existing local skills:
+Build a `uv`-managed Python CLI project that wraps code agents behind a small abstraction layer and maps its kebab-case subcommands to the existing local skills:
 
-- `gen-test` -> `test-gen`
-- `run-test` -> `test-run`
-- `gen-bench` -> `bench-gen`
-- `run-bench` -> `bench-run`
-- `optimize` -> `optimize`
+- `gen-test` -> `triton-npu-gen-test`
+- `gen-eval` -> `triton-npu-gen-eval-suite`
+- `gen-bench` -> `triton-npu-gen-bench`
+- `run-test` / `run-bench` / `compare-*` -> `triton-npu-run-eval`
+- `optimize` -> `triton-npu-optimize`
 
 The implementation should use `argparse`, support `--input/-i`, `--output/-o`, `--interact`, `--verbose`, `--show-output`, and `--agent` on all subcommands, plus `--force-overwrite` on generation commands, and start with `codex` as the only concrete agent backend. The design should keep agent-specific preparation and cleanup isolated so other backends can be added later.
 

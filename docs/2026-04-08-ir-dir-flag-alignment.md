@@ -7,8 +7,8 @@ Align the IR analyzer scripts with the optimize workflow's round artifact layout
 ## User-visible behavior
 
 - Replace the public `--archive-dir` flag with `--ir-dir` in:
-  - `skills/ascend-operator-ir-analyzer/scripts/capture_ir.py`
-  - `skills/ascend-operator-ir-analyzer/scripts/inspect_ir.py`
+  - `skills/triton-npu-analyze-ir/scripts/capture_ir.py`
+  - `skills/triton-npu-analyze-ir/scripts/inspect_ir.py`
 - Update skill guidance and repository docs to show `--ir-dir` in examples and command references.
 - Keep the underlying IR directory layout unchanged:
   - `triton_dump/`

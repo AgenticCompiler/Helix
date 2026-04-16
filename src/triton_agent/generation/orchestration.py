@@ -13,7 +13,12 @@ from triton_agent.skills import SkillLinkManager
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
-GEN_EVAL_STAGED_SKILLS = ("eval-gen", "test-gen", "bench-gen", "operator-eval")
+GEN_EVAL_STAGED_SKILLS = (
+    "triton-npu-gen-eval-suite",
+    "triton-npu-gen-test",
+    "triton-npu-gen-bench",
+    "triton-npu-run-eval",
+)
 
 
 def build_generation_request(

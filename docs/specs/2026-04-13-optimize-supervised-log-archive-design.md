@@ -1,5 +1,7 @@
 # Optimize Supervised Log Archive Design
 
+> **Superseded note:** This design assumed live `.triton-agent/roles/*` files. The current implementation archives shared guidance, round briefs, and supervisor reports only; role-specific behavior comes from prompts rather than persisted role brief files.
+
 ## Summary
 
 When `optimize` runs with `--supervise on`, the runtime currently creates a live `.triton-agent/` directory for shared guidance, role briefs, the current round brief, and the current supervisor report. Those files are deleted during cleanup. This keeps later runs clean, but it also discards the supervisor handoff trail that would be useful when reviewing how an optimize session progressed.

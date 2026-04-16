@@ -1,5 +1,5 @@
 ---
-name: optimize-check
+name: triton-npu-optimize-check
 description: Validate optimize baseline and round artifacts with a shared script-backed contract before a worker may continue.
 ---
 

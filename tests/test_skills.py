@@ -9,7 +9,7 @@ from triton_agent.skills import SkillLinkManager
 
 
 class SkillLinkManagerTests(unittest.TestCase):
-    def test_repo_skills_include_optimize_supervisor_for_codex_staging(self) -> None:
+    def test_repo_skills_stage_optimize_and_optimize_check_for_codex(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
@@ -18,12 +18,12 @@ class SkillLinkManagerTests(unittest.TestCase):
             manager = SkillLinkManager(source)
             links = manager.prepare_codex_skills(
                 workspace,
-                skill_names=("optimize", "optimize-supervisor"),
+                skill_names=("triton-npu-optimize", "triton-npu-optimize-check"),
             )
 
             target = workspace / ".codex" / "skills"
-            self.assertTrue((target / "optimize" / "SKILL.md").exists())
-            self.assertTrue((target / "optimize-supervisor" / "SKILL.md").exists())
+            self.assertTrue((target / "triton-npu-optimize" / "SKILL.md").exists())
+            self.assertTrue((target / "triton-npu-optimize-check" / "SKILL.md").exists())
             manager.cleanup(links)
 
     def test_copy_only_requested_skill_dirs_when_codex_skills_dir_missing(self) -> None:
@@ -32,22 +32,33 @@ class SkillLinkManagerTests(unittest.TestCase):
             source = Path(tmp) / "skills-source"
             workspace.mkdir()
             source.mkdir()
-            for name in ("eval-gen", "test-gen", "bench-gen", "operator-eval", "optimize"):
+            for name in (
+                "triton-npu-gen-eval-suite",
+                "triton-npu-gen-test",
+                "triton-npu-gen-bench",
+                "triton-npu-run-eval",
+                "triton-npu-optimize",
+            ):
                 (source / name).mkdir()
                 (source / name / "SKILL.md").write_text(f"{name}\n", encoding="utf-8")
 
             manager = SkillLinkManager(source)
             links = manager.prepare_codex_skills(
                 workspace,
-                skill_names=("eval-gen", "test-gen", "bench-gen", "operator-eval"),
+                skill_names=(
+                    "triton-npu-gen-eval-suite",
+                    "triton-npu-gen-test",
+                    "triton-npu-gen-bench",
+                    "triton-npu-run-eval",
+                ),
             )
 
             target = workspace / ".codex" / "skills"
-            self.assertTrue((target / "eval-gen").exists())
-            self.assertTrue((target / "test-gen").exists())
-            self.assertTrue((target / "bench-gen").exists())
-            self.assertTrue((target / "operator-eval").exists())
-            self.assertFalse((target / "optimize").exists())
+            self.assertTrue((target / "triton-npu-gen-eval-suite").exists())
+            self.assertTrue((target / "triton-npu-gen-test").exists())
+            self.assertTrue((target / "triton-npu-gen-bench").exists())
+            self.assertTrue((target / "triton-npu-run-eval").exists())
+            self.assertFalse((target / "triton-npu-optimize").exists())
             self.assertEqual(links.created_paths, [target])
             manager.cleanup(links)
             self.assertFalse(target.exists())
@@ -58,8 +69,8 @@ class SkillLinkManagerTests(unittest.TestCase):
             source = Path(tmp) / "skills-source"
             workspace.mkdir()
             source.mkdir()
-            (source / "test-gen").mkdir()
-            (source / "test-gen" / "SKILL.md").write_text("test\n", encoding="utf-8")
+            (source / "triton-npu-gen-test").mkdir()
+            (source / "triton-npu-gen-test" / "SKILL.md").write_text("test\n", encoding="utf-8")
 
             manager = SkillLinkManager(source)
 
@@ -73,7 +84,7 @@ class SkillLinkManagerTests(unittest.TestCase):
             target = workspace / ".codex" / "skills"
             workspace.mkdir()
             source.mkdir()
-            (source / "test-gen").mkdir()
+            (source / "triton-npu-gen-test").mkdir()
             target.parent.mkdir(parents=True)
             target.symlink_to(source, target_is_directory=True)
 
@@ -88,11 +99,11 @@ class SkillLinkManagerTests(unittest.TestCase):
             source = Path(tmp) / "skills-source"
             workspace.mkdir()
             source.mkdir()
-            (source / "test-gen").mkdir()
-            (source / "optimize-supervisor").mkdir()
-            (source / "test-gen" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
-            (source / "optimize-supervisor" / "SKILL.md").write_text(
-                "supervisor skill\n",
+            (source / "triton-npu-gen-test").mkdir()
+            (source / "triton-npu-optimize-check").mkdir()
+            (source / "triton-npu-gen-test" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
+            (source / "triton-npu-optimize-check" / "SKILL.md").write_text(
+                "optimize-check skill\n",
                 encoding="utf-8",
             )
 
@@ -100,14 +111,14 @@ class SkillLinkManagerTests(unittest.TestCase):
             links = manager.prepare_codex_skills(workspace)
 
             target = workspace / ".codex" / "skills"
-            copied_skill = target / "test-gen" / "SKILL.md"
-            copied_supervisor_skill = target / "optimize-supervisor" / "SKILL.md"
+            copied_skill = target / "triton-npu-gen-test" / "SKILL.md"
+            copied_optimize_check_skill = target / "triton-npu-optimize-check" / "SKILL.md"
             self.assertTrue(target.is_dir())
             self.assertFalse(target.is_symlink())
             self.assertEqual(copied_skill.read_text(encoding="utf-8"), "test skill\n")
             self.assertEqual(
-                copied_supervisor_skill.read_text(encoding="utf-8"),
-                "supervisor skill\n",
+                copied_optimize_check_skill.read_text(encoding="utf-8"),
+                "optimize-check skill\n",
             )
             self.assertEqual(links.created_paths, [target])
             self.assertTrue(
@@ -127,23 +138,23 @@ class SkillLinkManagerTests(unittest.TestCase):
             workspace.mkdir()
             existing_skills.mkdir(parents=True)
             source.mkdir()
-            (source / "test-gen").mkdir()
-            (source / "bench-gen").mkdir()
-            (source / "test-gen" / "SKILL.md").write_text("test\n", encoding="utf-8")
-            (source / "bench-gen" / "SKILL.md").write_text("bench\n", encoding="utf-8")
+            (source / "triton-npu-gen-test").mkdir()
+            (source / "triton-npu-gen-bench").mkdir()
+            (source / "triton-npu-gen-test" / "SKILL.md").write_text("test\n", encoding="utf-8")
+            (source / "triton-npu-gen-bench" / "SKILL.md").write_text("bench\n", encoding="utf-8")
             (existing_skills / "user-skill").mkdir()
 
             manager = SkillLinkManager(source)
             links = manager.prepare_codex_skills(workspace)
 
-            test_gen_dir = existing_skills / "test-gen"
-            bench_gen_dir = existing_skills / "bench-gen"
+            test_gen_dir = existing_skills / "triton-npu-gen-test"
+            bench_gen_dir = existing_skills / "triton-npu-gen-bench"
             self.assertTrue(test_gen_dir.is_dir())
             self.assertTrue(bench_gen_dir.is_dir())
             self.assertFalse(test_gen_dir.is_symlink())
             self.assertFalse(bench_gen_dir.is_symlink())
             self.assertTrue((existing_skills / "user-skill").exists())
-            self.assertEqual({path.name for path in links.created_paths}, {"test-gen", "bench-gen"})
+            self.assertEqual({path.name for path in links.created_paths}, {"triton-npu-gen-test", "triton-npu-gen-bench"})
             manager.cleanup(links)
             self.assertFalse(test_gen_dir.exists())
             self.assertFalse(bench_gen_dir.exists())
@@ -153,10 +164,10 @@ class SkillLinkManagerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             source = Path(tmp) / "skills-source"
-            link_path = workspace / ".opencode" / "skills" / "test-gen"
+            link_path = workspace / ".opencode" / "skills" / "triton-npu-gen-test"
             workspace.mkdir()
             source.mkdir()
-            skill_dir = source / "test-gen"
+            skill_dir = source / "triton-npu-gen-test"
             skill_dir.mkdir()
             link_path.parent.mkdir(parents=True)
             link_path.symlink_to(skill_dir, target_is_directory=True)
@@ -172,16 +183,16 @@ class SkillLinkManagerTests(unittest.TestCase):
             source = Path(tmp) / "skills-source"
             workspace.mkdir()
             source.mkdir()
-            (source / "test-gen").mkdir()
-            (source / "bench-gen").mkdir()
-            (source / "test-gen" / "SKILL.md").write_text("test\n", encoding="utf-8")
-            (source / "bench-gen" / "SKILL.md").write_text("bench\n", encoding="utf-8")
+            (source / "triton-npu-gen-test").mkdir()
+            (source / "triton-npu-gen-bench").mkdir()
+            (source / "triton-npu-gen-test" / "SKILL.md").write_text("test\n", encoding="utf-8")
+            (source / "triton-npu-gen-bench" / "SKILL.md").write_text("bench\n", encoding="utf-8")
 
             manager = SkillLinkManager(source)
             links = manager.prepare_opencode_skills(workspace)
 
-            test_gen_dir = workspace / ".opencode" / "skills" / "test-gen"
-            bench_gen_dir = workspace / ".opencode" / "skills" / "bench-gen"
+            test_gen_dir = workspace / ".opencode" / "skills" / "triton-npu-gen-test"
+            bench_gen_dir = workspace / ".opencode" / "skills" / "triton-npu-gen-bench"
             self.assertTrue(test_gen_dir.is_dir())
             self.assertTrue(bench_gen_dir.is_dir())
             self.assertFalse(test_gen_dir.is_symlink())
@@ -199,7 +210,7 @@ class SkillLinkManagerTests(unittest.TestCase):
             target = workspace / ".pi" / "skills"
             workspace.mkdir()
             source.mkdir()
-            (source / "test-gen").mkdir()
+            (source / "triton-npu-gen-test").mkdir()
             target.parent.mkdir(parents=True)
             target.symlink_to(source, target_is_directory=True)
 
@@ -214,14 +225,14 @@ class SkillLinkManagerTests(unittest.TestCase):
             source = Path(tmp) / "skills-source"
             workspace.mkdir()
             source.mkdir()
-            (source / "test-gen").mkdir()
-            (source / "test-gen" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
+            (source / "triton-npu-gen-test").mkdir()
+            (source / "triton-npu-gen-test" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
 
             manager = SkillLinkManager(source)
             links = manager.prepare_pi_skills(workspace)
 
             target = workspace / ".pi" / "skills"
-            copied_skill = target / "test-gen" / "SKILL.md"
+            copied_skill = target / "triton-npu-gen-test" / "SKILL.md"
             self.assertTrue(target.is_dir())
             self.assertFalse(target.is_symlink())
             self.assertEqual(copied_skill.read_text(encoding="utf-8"), "test skill\n")
@@ -236,7 +247,7 @@ class SkillLinkManagerTests(unittest.TestCase):
             target = workspace / ".claude" / "skills"
             workspace.mkdir()
             source.mkdir()
-            (source / "test-gen").mkdir()
+            (source / "triton-npu-gen-test").mkdir()
             target.parent.mkdir(parents=True)
             target.symlink_to(source, target_is_directory=True)
 
@@ -251,14 +262,14 @@ class SkillLinkManagerTests(unittest.TestCase):
             source = Path(tmp) / "skills-source"
             workspace.mkdir()
             source.mkdir()
-            (source / "test-gen").mkdir()
-            (source / "test-gen" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
+            (source / "triton-npu-gen-test").mkdir()
+            (source / "triton-npu-gen-test" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
 
             manager = SkillLinkManager(source)
             links = manager.prepare_claude_skills(workspace)
 
             target = workspace / ".claude" / "skills"
-            copied_skill = target / "test-gen" / "SKILL.md"
+            copied_skill = target / "triton-npu-gen-test" / "SKILL.md"
             self.assertTrue(target.is_dir())
             self.assertFalse(target.is_symlink())
             self.assertEqual(copied_skill.read_text(encoding="utf-8"), "test skill\n")
@@ -273,7 +284,7 @@ class SkillLinkManagerTests(unittest.TestCase):
             target = workspace / ".openhands" / "skills"
             workspace.mkdir()
             source.mkdir()
-            (source / "test-gen").mkdir()
+            (source / "triton-npu-gen-test").mkdir()
             target.parent.mkdir(parents=True)
             target.symlink_to(source, target_is_directory=True)
 
@@ -288,14 +299,14 @@ class SkillLinkManagerTests(unittest.TestCase):
             source = Path(tmp) / "skills-source"
             workspace.mkdir()
             source.mkdir()
-            (source / "test-gen").mkdir()
-            (source / "test-gen" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
+            (source / "triton-npu-gen-test").mkdir()
+            (source / "triton-npu-gen-test" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
 
             manager = SkillLinkManager(source)
             links = manager.prepare_openhands_skills(workspace)
 
             target = workspace / ".openhands" / "skills"
-            copied_skill = target / "test-gen" / "SKILL.md"
+            copied_skill = target / "triton-npu-gen-test" / "SKILL.md"
             self.assertTrue(target.is_dir())
             self.assertFalse(target.is_symlink())
             self.assertEqual(copied_skill.read_text(encoding="utf-8"), "test skill\n")
@@ -312,12 +323,12 @@ class SkillLinkManagerTests(unittest.TestCase):
             manager = SkillLinkManager(source)
             links = manager.prepare_codex_skills(
                 workspace,
-                skill_names=("optimize", "optimize-check"),
+                skill_names=("triton-npu-optimize", "triton-npu-optimize-check"),
             )
 
             target = workspace / ".codex" / "skills"
-            self.assertTrue((target / "optimize" / "SKILL.md").exists())
-            self.assertTrue((target / "optimize-check" / "SKILL.md").exists())
+            self.assertTrue((target / "triton-npu-optimize" / "SKILL.md").exists())
+            self.assertTrue((target / "triton-npu-optimize-check" / "SKILL.md").exists())
             manager.cleanup(links)
 
 

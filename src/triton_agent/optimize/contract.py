@@ -7,7 +7,7 @@ from pathlib import Path
 _CONTRACT_PATH = (
     Path(__file__).resolve().parents[3]
     / "skills"
-    / "optimize-check"
+    / "triton-npu-optimize-check"
     / "references"
     / "contract.json"
 )

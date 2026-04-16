@@ -2887,7 +2887,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("This invocation owns exactly one round.", prompt)
         self.assertIn("Read `.triton-agent/round-brief.md`", prompt)
         self.assertNotIn("optimize-worker.md", prompt)
-        self.assertIn("Use the staged `optimize-check` skill", prompt)
+        self.assertIn("Use the staged `triton-npu-optimize-check` skill", prompt)
         self.assertIn("run `check-baseline`", prompt)
         self.assertIn("run `check-round`", prompt)
         self.assertIn("must pass `check-round` before the invocation ends", prompt)
@@ -2920,7 +2920,7 @@ class PromptTests(unittest.TestCase):
             bench_mode="standalone",
         )
         self.assertIn("This invocation is an unsupervised optimize run.", prompt)
-        self.assertIn("Use the staged `optimize-check` skill", prompt)
+        self.assertIn("Use the staged `triton-npu-optimize-check` skill", prompt)
         self.assertIn("run `check-baseline`", prompt)
         self.assertIn("run `check-round`", prompt)
         self.assertIn("continue optimizing until the session should stop", prompt)
@@ -2970,7 +2970,7 @@ class PromptTests(unittest.TestCase):
             bench_mode="standalone",
             force_overwrite=False,
         )
-        self.assertIn("eval-gen", prompt)
+        self.assertIn("triton-npu-gen-eval-suite", prompt)
         self.assertIn("Requested test output: /tmp/differential_test_op.py", prompt)
         self.assertIn("Requested benchmark output: /tmp/bench_op.py", prompt)
         self.assertIn("may edit the original operator file directly", prompt)
@@ -2987,7 +2987,7 @@ class PromptTests(unittest.TestCase):
             bench_mode=None,
             force_overwrite=False,
         )
-        self.assertIn("test-gen", prompt)
+        self.assertIn("triton-npu-gen-test", prompt)
         self.assertIn("/tmp/op.py", prompt)
         self.assertIn("/tmp/test_op.py", prompt)
 

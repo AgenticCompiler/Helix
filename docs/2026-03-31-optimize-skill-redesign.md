@@ -7,8 +7,8 @@
 ## User-Visible Behavior
 
 - Given an operator file, the skill must first ensure the operator directory has correctness tests and benchmark cases.
-- If correctness tests are missing, generate them with `test-gen` in `differential` mode.
-- If benchmark cases are missing, generate them with `bench-gen` in `standalone` mode.
+- If correctness tests are missing, generate them with `triton-npu-gen-test` in `differential` mode.
+- If benchmark cases are missing, generate them with `triton-npu-gen-bench` in `standalone` mode.
 - Treat the original operator as validated candidate `round 0`.
 - For each optimization round, create a new `opt-round-N/` directory and derive a new candidate from a previously validated parent, not necessarily the current best performer.
 - After every code change, run correctness validation with `run-test` before trusting the candidate.
@@ -27,11 +27,11 @@
 
 ## Planned Skill Structure
 
-- `skills/optimize/SKILL.md`: trigger guidance, inputs, outputs, primary workflow, and required references
-- `skills/optimize/references/workflow.md`: round lifecycle, candidate selection, and recovery rules
-- `skills/optimize/references/artifacts.md`: required directory layout and per-round artifacts
-- `skills/optimize/references/opt-note-format.md`: expected `opt-note.md` structure and entry content
-- `skills/optimize/references/round-failure-handling.md`: round failure handling guidance for correctness failures, benchmark failures, and regressions
+- `skills/triton-npu-optimize/SKILL.md`: trigger guidance, inputs, outputs, primary workflow, and required references
+- `skills/triton-npu-optimize/references/workflow.md`: round lifecycle, candidate selection, and recovery rules
+- `skills/triton-npu-optimize/references/artifacts.md`: required directory layout and per-round artifacts
+- `skills/triton-npu-optimize/references/opt-note-format.md`: expected `opt-note.md` structure and entry content
+- `skills/triton-npu-optimize/references/round-failure-handling.md`: round failure handling guidance for correctness failures, benchmark failures, and regressions
 
 ## Validation
 

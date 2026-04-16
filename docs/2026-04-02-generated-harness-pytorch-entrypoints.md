@@ -47,7 +47,7 @@ Generated test and benchmark harnesses should include:
 
 ## Skill Contract Updates
 
-### `skills/test-gen/SKILL.md`
+### `skills/triton-npu-gen-test/SKILL.md`
 
 - Replace the wrapper-only assumption with an entrypoint-resolution contract.
 - Require the skill to resolve both:
@@ -56,9 +56,9 @@ Generated test and benchmark harnesses should include:
 - Update workflow and failure handling to allow PyTorch functions and module classes as valid targets.
 - Keep raw Triton kernel functions disallowed as direct test targets.
 
-### `skills/bench-gen/SKILL.md`
+### `skills/triton-npu-gen-bench/SKILL.md`
 
-- Mirror the same entrypoint-resolution contract as `test-gen`.
+- Mirror the same entrypoint-resolution contract as `triton-npu-gen-test`.
 - Allow benchmark targets to be wrapper functions, PyTorch functions, or no-argument `torch.nn.Module` classes.
 - Keep benchmark generation focused on the public operator entrypoint, not raw kernels.
 
@@ -66,10 +66,10 @@ Generated test and benchmark harnesses should include:
 
 Update these normative spec files so they no longer describe only wrapper APIs:
 
-- `skills/test-gen/references/test-standalone-spec.md`
-- `skills/test-gen/references/test-differential-spec.md`
-- `skills/bench-gen/references/bench-standalone-spec.md`
-- `skills/bench-gen/references/bench-msprof-spec.md`
+- `skills/triton-npu-gen-test/references/test-standalone-spec.md`
+- `skills/triton-npu-gen-test/references/test-differential-spec.md`
+- `skills/triton-npu-gen-bench/references/bench-standalone-spec.md`
+- `skills/triton-npu-gen-bench/references/bench-msprof-spec.md`
 
 Required changes:
 

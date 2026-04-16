@@ -68,15 +68,15 @@ Avoid selecting a parent that:
 14. If profiling or IR capture is needed to explain or validate the round, archive that evidence under `opt-round-N/profile/` or `opt-round-N/ir/`.
     - For IR capture, prefer commands shaped like:
       ```bash
-      python3 ../ascend-operator-ir-analyzer/scripts/capture_ir.py --ir-dir opt-round-N/ir --bench-file bench_<operator>.py --operator-file opt-round-N/<optimized-operator>.py
-      python3 ../ascend-operator-ir-analyzer/scripts/inspect_ir.py list-stages --ir-dir opt-round-N/ir --sort-by interesting --limit 20
+      python3 ../triton-npu-analyze-ir/scripts/capture_ir.py --ir-dir opt-round-N/ir --bench-file bench_<operator>.py --operator-file opt-round-N/<optimized-operator>.py
+      python3 ../triton-npu-analyze-ir/scripts/inspect_ir.py list-stages --ir-dir opt-round-N/ir --sort-by interesting --limit 20
       ```
 15. If the benchmark regresses, either:
    - revise the round in place if the optimization idea is still promising, or
    - stop advancing that round and return to candidate selection for a new branch
 16. Complete the round only after the optimized candidate shows a measurable win over the chosen comparison target.
 17. Use `baseline/perf.txt` for canonical optimize-session metrics even when a round also compares locally against its parent.
-18. When the optimize session is pausing or ending, refresh the final `## Overall Summary` block in `opt-note.md` so the top-level note states the best round, overall outcome, `Avg improvement`, `Geomean speedup`, `Total speedup` (use `operator-eval` compare-perf to calculate), any useful validated branches, and why that round was pursued.
+18. When the optimize session is pausing or ending, refresh the final `## Overall Summary` block in `opt-note.md` so the top-level note states the best round, overall outcome, `Avg improvement`, `Geomean speedup`, `Total speedup` (use `triton-npu-run-eval` compare-perf to calculate), any useful validated branches, and why that round was pursued.
 
 ## Comparison Target
 

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make `skills/ascend-npu-operator-profiler/scripts/parse_bin.py` run without the third-party `tabulate` package while preserving the current Markdown-oriented report output.
+Make `skills/triton-npu-profile-operator/scripts/parse_bin.py` run without the third-party `tabulate` package while preserving the current Markdown-oriented report output.
 
 ## User-Visible Semantics
 

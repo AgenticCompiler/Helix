@@ -1,5 +1,5 @@
 ---
-name: bench-gen
+name: triton-npu-gen-bench
 description: Generate benchmark code for a Triton or Triton Ascend operator. Use when Codex needs to author a new benchmark file, choose between standalone and msprof styles, infer the callable under benchmark, or honor a requested output location.
 ---
 
@@ -52,15 +52,15 @@ The generated benchmark file must accept only `--operator-file` at runtime for s
 
 ## Validation Commands
 
-Use the operator-eval skill to execute generated benchmark cases.
+Use the triton-npu-run-eval skill to execute generated benchmark cases.
 Use `run-bench` as the standard execution command for generated benchmarks.
 
 - Standalone example on the original operator:
-  - `python3 ../operator-eval/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench-mode standalone`
+  - `python3 ../triton-npu-run-eval/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench-mode standalone`
 - Standalone example on an optimized operator:
-  - `python3 ../operator-eval/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode standalone`
+  - `python3 ../triton-npu-run-eval/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode standalone`
 - Msprof example:
-  - `python3 ../operator-eval/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof`
+  - `python3 ../triton-npu-run-eval/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof`
 If the outer task is marked for remote execution, carry the same remote flags into these commands.
 
 ## Workflow

@@ -221,7 +221,7 @@ Optimize behavior:
 - Allow the agent to do minimal repair work during baseline preparation when that is required to reach a correct, benchmarkable starting point.
 - Keep canonical optimize-session performance comparisons anchored to `baseline/perf.txt`, even when a round also compares locally against its chosen parent.
 - Run optimize as explicit worker rounds with a supervisor audit between rounds instead of relying on one unconstrained agent pass.
-- Keep the shared workspace guidance role-neutral; worker versus supervisor role assignment comes from the launch prompt and role brief for that invocation.
+- Keep the shared workspace guidance role-neutral; worker versus supervisor role assignment comes from the launch prompt plus the live `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md` handoff files.
 - Use fresh agent invocations for worker and supervisor passes so role-specific optimize context does not leak across the session.
 - Treat each round as a hypothesis-driven experiment: explain why the change may help and what evidence supports it.
 - Require each completed round to leave auditable artifacts such as `attempts.md`, `summary.md`, comparable perf data, and structured round state.
