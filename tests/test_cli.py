@@ -212,6 +212,21 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(gen_bench_args.agent, "openhands")
         self.assertEqual(optimize_args.agent, "openhands")
 
+    def test_agent_commands_accept_traecli_backend(self) -> None:
+        parser = build_parser()
+        gen_eval_batch_args = parser.parse_args(
+            ["gen-eval-batch", "-i", "kernels", "--agent", "traecli"]
+        )
+        gen_eval_args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--agent", "traecli"])
+        gen_test_args = parser.parse_args(["gen-test", "-i", "kernel.py", "--agent", "traecli"])
+        gen_bench_args = parser.parse_args(["gen-bench", "-i", "kernel.py", "--agent", "traecli"])
+        optimize_args = parser.parse_args(["optimize", "-i", "kernel.py", "--agent", "traecli"])
+        self.assertEqual(gen_eval_batch_args.agent, "traecli")
+        self.assertEqual(gen_eval_args.agent, "traecli")
+        self.assertEqual(gen_test_args.agent, "traecli")
+        self.assertEqual(gen_bench_args.agent, "traecli")
+        self.assertEqual(optimize_args.agent, "traecli")
+
     def test_run_commands_accept_remote_options(self) -> None:
         parser = build_parser()
         test_args = parser.parse_args(

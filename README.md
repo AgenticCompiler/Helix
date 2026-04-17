@@ -54,7 +54,7 @@ Common options:
 
 - `--output test_a.py`: write to a specific path.
 - `--test-mode standalone|differential`: choose the generated test style. Default is `standalone`.
-- `--agent codex|opencode|pi|claude`: choose the backend.
+- `--agent codex|opencode|pi|claude|openhands|traecli`: choose the backend.
 - `--interact`: open an interactive agent session.
 - `--show-output`: stream non-interactive agent output.
 - `--force-overwrite`: replace an existing generated file.
@@ -104,7 +104,7 @@ What it is for:
 
 Common options:
 
-- `--agent codex|opencode|pi|claude`
+- `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--test-mode standalone|differential`: default is `differential`
 - `--bench-mode standalone|msprof`: default is `standalone`
 - `--interact`
@@ -131,7 +131,7 @@ Common options:
 
 - `--output bench_a.py`
 - `--bench-mode standalone|msprof`: default is `standalone`
-- `--agent codex|opencode|pi|claude`
+- `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--interact`
 - `--show-output`
 - `--force-overwrite`
@@ -179,7 +179,7 @@ You may also point `--input` at a single operator workspace directory when that 
 Common options:
 
 - `--output opt_a.py`: write the optimized operator to a specific path.
-- `--agent codex|opencode|pi|claude`
+- `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--prompt "..."`: append extra worker instructions without replacing the built-in optimize contract.
 - `--test-mode standalone|differential`: default is `differential`
 - `--bench-mode standalone|msprof`: default is `standalone`
@@ -240,7 +240,7 @@ uv run triton-agent gen-eval-batch --input operators_root
 
 Common options:
 
-- `--agent codex|opencode|pi|claude`
+- `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--test-mode standalone|differential`
 - `--bench-mode standalone|msprof`
 - `--max-concurrency <N>`
@@ -281,7 +281,7 @@ uv run triton-agent optimize-batch --input .
 
 Common options:
 
-- `--agent codex|opencode|pi|claude`
+- `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--prompt "..."`: append the same extra worker instructions to every workspace optimize run.
 - `--test-mode standalone|differential`
 - `--bench-mode standalone|msprof`

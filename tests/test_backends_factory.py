@@ -10,6 +10,7 @@ from triton_agent.backends.factory import create_runner
 from triton_agent.backends.openhands import OpenHandsRunner
 from triton_agent.backends.opencode import OpenCodeRunner
 from triton_agent.backends.pi import PiRunner
+from triton_agent.backends.traecli import TraeCLIRunner
 
 
 class BackendFactoryTests(unittest.TestCase):
@@ -19,6 +20,7 @@ class BackendFactoryTests(unittest.TestCase):
         self.assertIsInstance(create_runner("pi"), PiRunner)
         self.assertIsInstance(create_runner("claude"), ClaudeRunner)
         self.assertIsInstance(create_runner("openhands"), OpenHandsRunner)
+        self.assertIsInstance(create_runner("traecli"), TraeCLIRunner)
 
     def test_create_runner_rejects_unknown_backend(self) -> None:
         with self.assertRaisesRegex(ValueError, "Unsupported agent backend"):

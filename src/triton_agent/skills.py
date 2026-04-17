@@ -6,6 +6,31 @@ from pathlib import Path
 from typing import Iterable, List
 
 
+@dataclass(frozen=True)
+class _SkillBackendConfig:
+    target_parts: tuple[str, ...]
+    copy_root_when_missing: bool
+
+
+_SKILL_BACKEND_CONFIGS: dict[str, _SkillBackendConfig] = {
+    "codex": _SkillBackendConfig(target_parts=(".codex", "skills"), copy_root_when_missing=True),
+    "opencode": _SkillBackendConfig(
+        target_parts=(".opencode", "skills"),
+        copy_root_when_missing=False,
+    ),
+    "pi": _SkillBackendConfig(target_parts=(".pi", "skills"), copy_root_when_missing=True),
+    "claude": _SkillBackendConfig(target_parts=(".claude", "skills"), copy_root_when_missing=True),
+    "openhands": _SkillBackendConfig(
+        target_parts=(".openhands", "skills"),
+        copy_root_when_missing=True,
+    ),
+    "traecli": _SkillBackendConfig(
+        target_parts=(".traecli", "skills"),
+        copy_root_when_missing=True,
+    ),
+}
+
+
 @dataclass
 class SkillLinkSet:
     created_paths: List[Path]
@@ -35,34 +60,27 @@ class SkillLinkManager:
                 raise RuntimeError(f"Requested skill does not exist: {skill_dir}")
             yield skill_dir
 
-    def prepare_codex_skills(
+    def _target_path(self, workdir: Path, backend: str) -> Path:
+        config = _SKILL_BACKEND_CONFIGS.get(backend)
+        if config is None:
+            raise RuntimeError(f"Unsupported skill backend: {backend}")
+        return workdir.joinpath(*config.target_parts)
+
+    def _prepare_target_dir(self, target: Path) -> None:
+        if target.exists():
+            if target.is_symlink():
+                raise RuntimeError(f"Existing skills path must not be a symlink: {target}")
+            if not target.is_dir():
+                raise RuntimeError(f"Existing skills path is not a directory: {target}")
+            return
+        target.mkdir(parents=True, exist_ok=True)
+
+    def _copy_selected_skill_dirs(
         self,
-        workdir: Path,
-        skill_names: tuple[str, ...] | None = None,
-    ) -> SkillLinkSet:
-        codex_dir = workdir / ".codex"
-        target = codex_dir / "skills"
-        created: List[Path] = []
-        codex_dir.mkdir(parents=True, exist_ok=True)
-
-        if not target.exists() and skill_names is None:
-            shutil.copytree(self.skills_root, target, symlinks=False)
-            created.append(target)
-            return SkillLinkSet(created)
-
-        if not target.exists():
-            target.mkdir(parents=True, exist_ok=True)
-            for skill_dir in self._iter_selected_skill_dirs(skill_names):
-                shutil.copytree(skill_dir, target / skill_dir.name, symlinks=False)
-            created.append(target)
-            return SkillLinkSet(created)
-
-        if target.is_symlink():
-            raise RuntimeError(f"Existing Codex skills path must not be a symlink: {target}")
-
-        if not target.is_dir():
-            raise RuntimeError(f"Existing Codex skills path is not a directory: {target}")
-
+        target: Path,
+        skill_names: tuple[str, ...] | None,
+    ) -> list[Path]:
+        created: list[Path] = []
         for skill_dir in self._iter_selected_skill_dirs(skill_names):
             staged_path = target / skill_dir.name
             if staged_path.exists():
@@ -71,146 +89,7 @@ class SkillLinkManager:
                 continue
             shutil.copytree(skill_dir, staged_path, symlinks=False)
             created.append(staged_path)
-
-        return SkillLinkSet(created)
-
-    def prepare_opencode_skills(
-        self,
-        workdir: Path,
-        skill_names: tuple[str, ...] | None = None,
-    ) -> SkillLinkSet:
-        opencode_dir = workdir / ".opencode" / "skills"
-        created: List[Path] = []
-        opencode_dir.mkdir(parents=True, exist_ok=True)
-
-        # OpenCode expects one skill directory per entry under `.opencode/skills`.
-        for skill_dir in self._iter_selected_skill_dirs(skill_names):
-            staged_path = opencode_dir / skill_dir.name
-            if staged_path.exists():
-                if staged_path.is_symlink():
-                    raise RuntimeError(f"Skill path already exists as a symlink: {staged_path}")
-                continue
-            shutil.copytree(skill_dir, staged_path, symlinks=False)
-            created.append(staged_path)
-
-        return SkillLinkSet(created)
-
-    def prepare_pi_skills(
-        self,
-        workdir: Path,
-        skill_names: tuple[str, ...] | None = None,
-    ) -> SkillLinkSet:
-        pi_dir = workdir / ".pi"
-        target = pi_dir / "skills"
-        created: List[Path] = []
-        pi_dir.mkdir(parents=True, exist_ok=True)
-
-        if not target.exists() and skill_names is None:
-            shutil.copytree(self.skills_root, target, symlinks=False)
-            created.append(target)
-            return SkillLinkSet(created)
-
-        if not target.exists():
-            target.mkdir(parents=True, exist_ok=True)
-            for skill_dir in self._iter_selected_skill_dirs(skill_names):
-                shutil.copytree(skill_dir, target / skill_dir.name, symlinks=False)
-            created.append(target)
-            return SkillLinkSet(created)
-
-        if target.is_symlink():
-            raise RuntimeError(f"Existing Pi skills path must not be a symlink: {target}")
-
-        if not target.is_dir():
-            raise RuntimeError(f"Existing Pi skills path is not a directory: {target}")
-
-        for skill_dir in self._iter_selected_skill_dirs(skill_names):
-            staged_path = target / skill_dir.name
-            if staged_path.exists():
-                if staged_path.is_symlink():
-                    raise RuntimeError(f"Skill path already exists as a symlink: {staged_path}")
-                continue
-            shutil.copytree(skill_dir, staged_path, symlinks=False)
-            created.append(staged_path)
-
-        return SkillLinkSet(created)
-
-    def prepare_claude_skills(
-        self,
-        workdir: Path,
-        skill_names: tuple[str, ...] | None = None,
-    ) -> SkillLinkSet:
-        claude_dir = workdir / ".claude"
-        target = claude_dir / "skills"
-        created: List[Path] = []
-        claude_dir.mkdir(parents=True, exist_ok=True)
-
-        if not target.exists() and skill_names is None:
-            shutil.copytree(self.skills_root, target, symlinks=False)
-            created.append(target)
-            return SkillLinkSet(created)
-
-        if not target.exists():
-            target.mkdir(parents=True, exist_ok=True)
-            for skill_dir in self._iter_selected_skill_dirs(skill_names):
-                shutil.copytree(skill_dir, target / skill_dir.name, symlinks=False)
-            created.append(target)
-            return SkillLinkSet(created)
-
-        if target.is_symlink():
-            raise RuntimeError(f"Existing Claude skills path must not be a symlink: {target}")
-
-        if not target.is_dir():
-            raise RuntimeError(f"Existing Claude skills path is not a directory: {target}")
-
-        for skill_dir in self._iter_selected_skill_dirs(skill_names):
-            staged_path = target / skill_dir.name
-            if staged_path.exists():
-                if staged_path.is_symlink():
-                    raise RuntimeError(f"Skill path already exists as a symlink: {staged_path}")
-                continue
-            shutil.copytree(skill_dir, staged_path, symlinks=False)
-            created.append(staged_path)
-
-        return SkillLinkSet(created)
-
-    def prepare_openhands_skills(
-        self,
-        workdir: Path,
-        skill_names: tuple[str, ...] | None = None,
-    ) -> SkillLinkSet:
-        openhands_dir = workdir / ".openhands"
-        target = openhands_dir / "skills"
-        created: List[Path] = []
-        openhands_dir.mkdir(parents=True, exist_ok=True)
-
-        if not target.exists() and skill_names is None:
-            shutil.copytree(self.skills_root, target, symlinks=False)
-            created.append(target)
-            return SkillLinkSet(created)
-
-        if not target.exists():
-            target.mkdir(parents=True, exist_ok=True)
-            for skill_dir in self._iter_selected_skill_dirs(skill_names):
-                shutil.copytree(skill_dir, target / skill_dir.name, symlinks=False)
-            created.append(target)
-            return SkillLinkSet(created)
-
-        if target.is_symlink():
-            raise RuntimeError(f"Existing OpenHands skills path must not be a symlink: {target}")
-
-        if not target.is_dir():
-            raise RuntimeError(f"Existing OpenHands skills path is not a directory: {target}")
-
-        for skill_dir in self._iter_selected_skill_dirs(skill_names):
-            staged_path = target / skill_dir.name
-            if staged_path.exists():
-                if staged_path.is_symlink():
-                    raise RuntimeError(f"Skill path already exists as a symlink: {staged_path}")
-                continue
-            shutil.copytree(skill_dir, staged_path, symlinks=False)
-            created.append(staged_path)
-
-        return SkillLinkSet(created)
+        return created
 
     def prepare_skills(
         self,
@@ -218,17 +97,29 @@ class SkillLinkManager:
         workdir: Path,
         skill_names: tuple[str, ...] | None = None,
     ) -> SkillLinkSet:
-        if backend == "codex":
-            return self.prepare_codex_skills(workdir, skill_names=skill_names)
-        if backend == "opencode":
-            return self.prepare_opencode_skills(workdir, skill_names=skill_names)
-        if backend == "pi":
-            return self.prepare_pi_skills(workdir, skill_names=skill_names)
-        if backend == "claude":
-            return self.prepare_claude_skills(workdir, skill_names=skill_names)
-        if backend == "openhands":
-            return self.prepare_openhands_skills(workdir, skill_names=skill_names)
-        raise RuntimeError(f"Unsupported skill backend: {backend}")
+        config = _SKILL_BACKEND_CONFIGS.get(backend)
+        if config is None:
+            raise RuntimeError(f"Unsupported skill backend: {backend}")
+
+        target = workdir.joinpath(*config.target_parts)
+        created: list[Path] = []
+
+        if config.copy_root_when_missing and not target.exists() and skill_names is None:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(self.skills_root, target, symlinks=False)
+            created.append(target)
+            return SkillLinkSet(created)
+
+        self._prepare_target_dir(target)
+
+        if config.copy_root_when_missing and not any(target.iterdir()) and skill_names is not None:
+            created.extend(self._copy_selected_skill_dirs(target, skill_names))
+            if created:
+                return SkillLinkSet([target])
+            return SkillLinkSet([])
+
+        created.extend(self._copy_selected_skill_dirs(target, skill_names))
+        return SkillLinkSet(created)
 
     def cleanup(self, link_set: SkillLinkSet) -> list[str]:
         warnings: list[str] = []

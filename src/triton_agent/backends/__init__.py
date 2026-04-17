@@ -5,6 +5,7 @@ from .factory import create_runner
 from .openhands import OpenHandsRunner
 from .opencode import OpenCodeRunner
 from .pi import PiRunner
+from .traecli import TraeCLIRunner
 
 __all__ = [
     "AgentRunner",
@@ -13,5 +14,6 @@ __all__ = [
     "OpenHandsRunner",
     "OpenCodeRunner",
     "PiRunner",
+    "TraeCLIRunner",
     "create_runner",
 ]
