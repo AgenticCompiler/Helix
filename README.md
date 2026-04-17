@@ -286,6 +286,7 @@ Common options:
 - `--test-mode standalone|differential`
 - `--bench-mode standalone|msprof`
 - `--resume auto|continue|fresh`
+- `--reset-optimize`: when used with `--resume fresh`, clear known optimize artifacts for each workspace and reset the batch status file before rerunning
 - `--require-analysis`
 - `--min-rounds <N>`
 - `--no-agent-session`
@@ -299,6 +300,14 @@ Example:
 ```bash
 uv run triton-agent optimize-batch --input operators_root --prompt "Avoid changing numerics unless correctness requires it."
 ```
+
+Batch rerun behavior:
+
+- `optimize-batch` records explicit completion state in `optimize-batch-status.json` at the batch root.
+- A workspace is skipped on rerun only when that file marks it as `completed` and the recorded operator filename still matches.
+- Failed workspaces are recorded as `incomplete`, so they remain runnable on the next batch run.
+- If the status file is missing or malformed, `optimize-batch` falls back to running all discovered workspaces.
+- `--reset-optimize` in batch mode also clears `optimize-batch-status.json` before scheduling workspaces.
 
 ## Compare Archived Outputs
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import threading
 from collections.abc import Callable
@@ -21,6 +22,8 @@ from triton_agent.optimize.orchestration import build_optimize_request, run_opti
 
 _BATCH_OPTIMIZE_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")
 _BATCH_OPTIMIZE_EXCLUDED_NAMES = {"__init__.py"}
+_BATCH_STATUS_FILENAME = "optimize-batch-status.json"
+_BATCH_STATUS_VERSION = 1
 
 
 def run_optimize_batch(
@@ -32,6 +35,9 @@ def run_optimize_batch(
     run_request: Callable[..., AgentResult] | None = None,
 ) -> int:
     optimize_request_runner = run_request or run_optimize_request
+    if options.reset_optimize:
+        clear_optimize_batch_status_file(root)
+    batch_status = load_optimize_batch_status(root)
     discovered, failures = discover_batch_workspaces(
         root,
         resolve_operator_file=resolve_batch_optimize_operator_file,
@@ -42,7 +48,7 @@ def run_optimize_batch(
         for workspace, operator_file in discovered
     ]
     results = [
-        BatchOptimizeResult(workspace=workspace, succeeded=False, message=message)
+        BatchOptimizeResult(workspace=workspace, status="failed", message=message)
         for workspace, message in failures
     ]
     if not runnable and not results:
@@ -55,15 +61,30 @@ def run_optimize_batch(
     with ThreadPoolExecutor(max_workers=max_concurrency) as executor:
         futures: dict[Future[AgentResult], BatchOptimizeWorkspace] = {}
         for item in runnable:
+            if should_skip_optimize_batch_workspace(root, item.workspace, item.operator_file, batch_status):
+                results.append(
+                    BatchOptimizeResult(
+                        workspace=item.workspace,
+                        status="skipped",
+                        message="already completed",
+                    )
+                )
+                continue
             try:
                 request = build_optimize_request(item.operator_file, item.workspace, options)
             except ValueError as exc:
                 results.append(
                     BatchOptimizeResult(
                         workspace=item.workspace,
-                        succeeded=False,
+                        status="failed",
                         message=str(exc),
                     )
+                )
+                update_optimize_batch_workspace_status(
+                    root,
+                    item.workspace,
+                    item.operator_file,
+                    status="incomplete",
                 )
                 continue
             if options.show_output:
@@ -84,26 +105,44 @@ def run_optimize_batch(
                 results.append(
                     BatchOptimizeResult(
                         workspace=item.workspace,
-                        succeeded=False,
+                        status="failed",
                         message=f"unexpected optimize failure: {exc}",
                     )
+                )
+                update_optimize_batch_workspace_status(
+                    root,
+                    item.workspace,
+                    item.operator_file,
+                    status="incomplete",
                 )
                 continue
             if result.succeeded:
                 results.append(
                     BatchOptimizeResult(
                         workspace=item.workspace,
-                        succeeded=True,
+                        status="ok",
                         message=f"optimized {item.operator_file.name}",
                     )
+                )
+                update_optimize_batch_workspace_status(
+                    root,
+                    item.workspace,
+                    item.operator_file,
+                    status="completed",
                 )
             else:
                 results.append(
                     BatchOptimizeResult(
                         workspace=item.workspace,
-                        succeeded=False,
+                        status="failed",
                         message=summarize_batch_optimize_failure(result),
                     )
+                )
+                update_optimize_batch_workspace_status(
+                    root,
+                    item.workspace,
+                    item.operator_file,
+                    status="incomplete",
                 )
 
     return render_batch_optimize_results(results, stdout=stream)
@@ -131,3 +170,90 @@ def summarize_batch_optimize_failure(result: AgentResult) -> str:
         if lines:
             return lines[-1]
     return f"optimize exited with return code {result.return_code}"
+
+
+def optimize_batch_status_file(root: Path) -> Path:
+    return root / _BATCH_STATUS_FILENAME
+
+
+def clear_optimize_batch_status_file(root: Path) -> None:
+    path = optimize_batch_status_file(root)
+    if path.exists():
+        path.unlink()
+
+
+def load_optimize_batch_status(root: Path) -> dict[str, dict[str, str]]:
+    path = optimize_batch_status_file(root)
+    if not path.is_file():
+        return {}
+    try:
+        payload_obj: object = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    if not isinstance(payload_obj, dict):
+        return {}
+    payload = cast(dict[object, object], payload_obj)
+    if payload.get("version") != _BATCH_STATUS_VERSION:
+        return {}
+    workspaces_obj = payload.get("workspaces")
+    if not isinstance(workspaces_obj, dict):
+        return {}
+    workspaces = cast(dict[object, object], workspaces_obj)
+
+    normalized: dict[str, dict[str, str]] = {}
+    for key, value in workspaces.items():
+        if not isinstance(key, str) or not isinstance(value, dict):
+            continue
+        value_dict = cast(dict[object, object], value)
+        status = value_dict.get("status")
+        operator_file = value_dict.get("operator_file")
+        if not isinstance(status, str) or not isinstance(operator_file, str):
+            continue
+        normalized[key] = {
+            "status": status,
+            "operator_file": operator_file,
+        }
+    return normalized
+
+
+def should_skip_optimize_batch_workspace(
+    root: Path,
+    workspace: Path,
+    operator_file: Path,
+    status_entries: dict[str, dict[str, str]],
+) -> bool:
+    record = status_entries.get(optimize_batch_workspace_key(root, workspace))
+    if record is None:
+        return False
+    if record.get("status") != "completed":
+        return False
+    return record.get("operator_file") == operator_file.name
+
+
+def update_optimize_batch_workspace_status(
+    root: Path,
+    workspace: Path,
+    operator_file: Path,
+    *,
+    status: str,
+) -> None:
+    entries = load_optimize_batch_status(root)
+    entries[optimize_batch_workspace_key(root, workspace)] = {
+        "status": status,
+        "operator_file": operator_file.name,
+    }
+    payload = {
+        "version": _BATCH_STATUS_VERSION,
+        "workspaces": dict(sorted(entries.items())),
+    }
+    optimize_batch_status_file(root).write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def optimize_batch_workspace_key(root: Path, workspace: Path) -> str:
+    relative = workspace.relative_to(root)
+    if relative == Path("."):
+        return "."
+    return relative.as_posix()

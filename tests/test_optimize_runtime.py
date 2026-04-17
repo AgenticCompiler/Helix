@@ -687,6 +687,289 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 self.assertIn("Additional user instructions:", prompt)
                 self.assertIn("Avoid changing numerics.", prompt)
 
+    def test_run_optimize_batch_skips_completed_workspace_from_root_status_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            alpha = root / "alpha"
+            beta = root / "beta"
+            alpha.mkdir()
+            beta.mkdir()
+            (alpha / "kernel.py").write_text("print('alpha')\n", encoding="utf-8")
+            (beta / "kernel.py").write_text("print('beta')\n", encoding="utf-8")
+            (root / "optimize-batch-status.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "workspaces": {
+                            "alpha": {
+                                "status": "completed",
+                                "operator_file": "kernel.py",
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                require_analysis=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+            )
+
+            seen_inputs: list[Path] = []
+            captured_results = []
+
+            def fake_run_request(
+                request: AgentRequest,
+                stdout: Optional[object] = None,
+                stderr: Optional[object] = None,
+            ) -> AgentResult:
+                del stdout, stderr
+                seen_inputs.append(request.input_path)
+                return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            def fake_render(results, stdout=None):
+                del stdout
+                captured_results.extend(results)
+                return 0
+
+            with patch("triton_agent.optimize.batch.render_batch_optimize_results", side_effect=fake_render):
+                exit_code = run_optimize_batch(
+                    root,
+                    options,
+                    max_concurrency=1,
+                    stdout=StringIO(),
+                    run_request=fake_run_request,
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual([path.parent.name for path in seen_inputs], ["beta"])
+            self.assertEqual([item.workspace.name for item in captured_results], ["alpha", "beta"])
+            self.assertEqual(captured_results[0].message, "already completed")
+
+    def test_run_optimize_batch_writes_completed_status_after_success(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "alpha"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('alpha')\n", encoding="utf-8")
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                require_analysis=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+            )
+
+            with patch(
+                "triton_agent.optimize.batch.render_batch_optimize_results",
+                return_value=0,
+            ):
+                exit_code = run_optimize_batch(
+                    root,
+                    options,
+                    max_concurrency=1,
+                    stdout=StringIO(),
+                    run_request=lambda request, stdout=None, stderr=None: AgentResult(
+                        return_code=0,
+                        stdout="ok",
+                        stderr="",
+                    ),
+                )
+
+            self.assertEqual(exit_code, 0)
+            status = json.loads((root / "optimize-batch-status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status["version"], 1)
+            self.assertEqual(status["workspaces"]["alpha"]["status"], "completed")
+            self.assertEqual(status["workspaces"]["alpha"]["operator_file"], "kernel.py")
+
+    def test_run_optimize_batch_writes_incomplete_status_after_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "alpha"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('alpha')\n", encoding="utf-8")
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                require_analysis=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+            )
+
+            with patch(
+                "triton_agent.optimize.batch.render_batch_optimize_results",
+                return_value=1,
+            ):
+                exit_code = run_optimize_batch(
+                    root,
+                    options,
+                    max_concurrency=1,
+                    stdout=StringIO(),
+                    run_request=lambda request, stdout=None, stderr=None: AgentResult(
+                        return_code=7,
+                        stdout="",
+                        stderr="failed optimize",
+                    ),
+                )
+
+            self.assertEqual(exit_code, 1)
+            status = json.loads((root / "optimize-batch-status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status["workspaces"]["alpha"]["status"], "incomplete")
+            self.assertEqual(status["workspaces"]["alpha"]["operator_file"], "kernel.py")
+
+    def test_run_optimize_batch_ignores_malformed_status_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "alpha"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('alpha')\n", encoding="utf-8")
+            (root / "optimize-batch-status.json").write_text("{not json\n", encoding="utf-8")
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                require_analysis=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+            )
+
+            seen_inputs: list[Path] = []
+
+            def fake_run_request(
+                request: AgentRequest,
+                stdout: Optional[object] = None,
+                stderr: Optional[object] = None,
+            ) -> AgentResult:
+                del stdout, stderr
+                seen_inputs.append(request.input_path)
+                return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            with patch(
+                "triton_agent.optimize.batch.render_batch_optimize_results",
+                return_value=0,
+            ):
+                exit_code = run_optimize_batch(
+                    root,
+                    options,
+                    max_concurrency=1,
+                    stdout=StringIO(),
+                    run_request=fake_run_request,
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual([path.parent.name for path in seen_inputs], ["alpha"])
+
+    def test_run_optimize_batch_reset_optimize_clears_root_status_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "alpha"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('alpha')\n", encoding="utf-8")
+            (root / "optimize-batch-status.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "workspaces": {
+                            "alpha": {
+                                "status": "completed",
+                                "operator_file": "kernel.py",
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="fresh",
+                reset_optimize=True,
+                require_analysis=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+            )
+
+            with patch(
+                "triton_agent.optimize.batch.render_batch_optimize_results",
+                return_value=0,
+            ):
+                exit_code = run_optimize_batch(
+                    root,
+                    options,
+                    max_concurrency=1,
+                    stdout=StringIO(),
+                    run_request=lambda request, stdout=None, stderr=None: AgentResult(
+                        return_code=0,
+                        stdout="ok",
+                        stderr="",
+                    ),
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue((root / "optimize-batch-status.json").exists())
+            status = json.loads((root / "optimize-batch-status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status["workspaces"]["alpha"]["status"], "completed")
+
     def test_run_optimize_request_keeps_interactive_only_for_worker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)

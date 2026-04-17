@@ -41,12 +41,17 @@ def render_batch_optimize_results(
 ) -> int:
     stream = stdout or sys.stdout
     ordered_results = sorted(results, key=lambda item: item.workspace.name)
-    succeeded = sum(1 for item in ordered_results if item.succeeded)
-    failed = len(ordered_results) - succeeded
+    succeeded = sum(1 for item in ordered_results if item.status == "ok")
+    failed = sum(1 for item in ordered_results if item.status == "failed")
+    skipped = sum(1 for item in ordered_results if item.status == "skipped")
     for item in ordered_results:
-        status = "OK" if item.succeeded else "FAIL"
+        status = {
+            "ok": "OK",
+            "failed": "FAIL",
+            "skipped": "SKIP",
+        }[item.status]
         print(f"[{status}] {item.workspace.name}: {item.message}", file=stream)
-    print(f"Summary: {succeeded} succeeded, {failed} failed", file=stream)
+    print(f"Summary: {succeeded} succeeded, {failed} failed, {skipped} skipped", file=stream)
     return 0 if failed == 0 and ordered_results else 1
 
 

@@ -1175,6 +1175,36 @@ class PathResolutionTests(unittest.TestCase):
             self.assertNotIn(".triton-agent", stdout.getvalue())
             self.assertIn("Summary: 1 succeeded, 0 failed", stdout.getvalue())
 
+    def test_main_optimize_batch_reports_skipped_workspaces_from_status_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            alpha = root / "alpha"
+            beta = root / "beta"
+            alpha.mkdir()
+            beta.mkdir()
+            (alpha / "kernel.py").write_text("print('a')\n", encoding="utf-8")
+            (beta / "kernel.py").write_text("print('b')\n", encoding="utf-8")
+            (root / "optimize-batch-status.json").write_text(
+                '{"version": 1, "workspaces": {"alpha": {"status": "completed", "operator_file": "kernel.py"}}}\n',
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            seen_inputs: list[Path] = []
+
+            def _fake_run(request):
+                seen_inputs.append(request.input_path)
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
+                with redirect_stdout(stdout):
+                    exit_code = main(["optimize-batch", "-i", str(root)])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual([path.parent.name for path in seen_inputs], ["beta"])
+            self.assertIn("[SKIP] alpha: already completed", stdout.getvalue())
+            self.assertIn("Summary: 1 succeeded, 0 failed, 1 skipped", stdout.getvalue())
+
     def test_main_optimize_batch_honors_max_concurrency(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -35,8 +35,12 @@ class BatchOptimizeWorkspace:
 @dataclass(frozen=True)
 class BatchOptimizeResult:
     workspace: Path
-    succeeded: bool
+    status: Literal["ok", "failed", "skipped"]
     message: str
+
+    @property
+    def succeeded(self) -> bool:
+        return self.status == "ok"
 
 
 @dataclass(frozen=True)
