@@ -78,8 +78,8 @@ Expected: PASS
 
 **Files:**
 - Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/codex_runner.py`
-- Modify: `src/triton_agent/opencode_runner.py`
+- Modify: `src/triton_agent/backends/codex.py`
+- Modify: `src/triton_agent/backends/opencode.py`
 - Modify: `tests/test_cli.py`
 - Modify: `tests/test_codex_runner.py`
 - Modify: `tests/test_opencode_runner.py`

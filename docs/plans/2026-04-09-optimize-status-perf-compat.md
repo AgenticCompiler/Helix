@@ -14,7 +14,7 @@
 
 **Files:**
 - Modify: `tests/test_bench_runner.py`
-- Modify: `skills/operator-eval/scripts/bench_runner.py`
+- Modify: `skills/triton-npu-run-eval/scripts/bench_runner.py`
 
 - [ ] **Step 1: Write the failing test**
 

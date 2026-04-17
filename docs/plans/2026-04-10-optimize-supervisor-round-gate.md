@@ -1,5 +1,7 @@
 # Optimize Supervisor Round Gate Implementation Plan
 
+> **Historical note:** This plan predates the removal of `skills/optimize-supervisor/` and `.triton-agent/roles/*`. Keep it as an implementation record rather than a source of current runtime contracts.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Turn `optimize` into an explicit worker-round plus supervisor-gate loop that enforces the optimize workflow, blocks missing evidence, and produces deterministic next-round handoff artifacts.
@@ -35,9 +37,9 @@
   Split optimize worker and supervisor prompt builders.
 - `src/triton_agent/optimize/guidance.py`
   Render role-neutral shared guidance plus role briefs instead of one worker-only guidance file.
-- `src/triton_agent/optimize/runtime.py`
+- `src/triton_agent/optimize/orchestration.py`
   Prepare shared skills/guidance and run the worker-supervisor loop.
-- `src/triton_agent/optimize/supervisor.py`
+- `src/triton_agent/optimize/run_loop.py`
   Replace the current stall/min-round-only logic with round gate orchestration.
 - `src/triton_agent/backends/codex.py`
   Preserve fresh invocation behavior and explicit prompt routing for worker versus supervisor runs.
@@ -199,7 +201,7 @@ git commit -m "feat: add optimize worker and supervisor prompts"
 
 **Files:**
 - Modify: `src/triton_agent/optimize/guidance.py`
-- Modify: `src/triton_agent/optimize/runtime.py`
+- Modify: `src/triton_agent/optimize/orchestration.py`
 - Modify: `tests/test_optimize/guidance.py`
 
 - [ ] **Step 1: Write the failing guidance tests**
@@ -244,15 +246,15 @@ Expected: PASS
 - [ ] **Step 5: Commit the guidance layer**
 
 ```bash
-git add src/triton_agent/optimize/guidance.py src/triton_agent/optimize/runtime.py tests/test_optimize/guidance.py
+git add src/triton_agent/optimize/guidance.py src/triton_agent/optimize/orchestration.py tests/test_optimize/guidance.py
 git commit -m "feat: add optimize role guidance briefs"
 ```
 
 ### Task 4: Upgrade The Supervisor Into A Round Gate Controller
 
 **Files:**
-- Modify: `src/triton_agent/optimize/supervisor.py`
-- Modify: `src/triton_agent/optimize/runtime.py`
+- Modify: `src/triton_agent/optimize/run_loop.py`
+- Modify: `src/triton_agent/optimize/orchestration.py`
 - Modify: `tests/test_supervisor.py`
 - Modify: `tests/test_optimize_gate.py`
 
@@ -275,14 +277,14 @@ Also keep a focused regression test for existing stall recovery only if that beh
 - [ ] **Step 2: Run the focused tests to verify they fail**
 
 Run: `uv run python -m unittest tests.test_supervisor tests.test_optimize_gate -v`
-Expected: FAIL because `OptimizeSupervisor` still only handles stalled runs and `min_rounds`
+Expected: FAIL because `OptimizeRunLoop` still only handles stalled runs and `min_rounds`
 
 - [ ] **Step 3: Implement the minimal worker-supervisor loop**
 
-Refactor `OptimizeSupervisor` around explicit rounds:
+Refactor `OptimizeRunLoop` around explicit rounds:
 
 ```python
-class OptimizeSupervisor:
+class OptimizeRunLoop:
     def run(self, runner: SupportsOptimizeLoop, request: AgentRequest) -> AgentResult:
         round_index = 1
         while True:
@@ -308,7 +310,7 @@ Expected: PASS
 - [ ] **Step 5: Commit the orchestration layer**
 
 ```bash
-git add src/triton_agent/optimize/supervisor.py src/triton_agent/optimize/runtime.py tests/test_supervisor.py tests/test_optimize_gate.py
+git add src/triton_agent/optimize/run_loop.py src/triton_agent/optimize/orchestration.py tests/test_supervisor.py tests/test_optimize_gate.py
 git commit -m "feat: add optimize supervisor round gate loop"
 ```
 
@@ -317,7 +319,7 @@ git commit -m "feat: add optimize supervisor round gate loop"
 **Files:**
 - Create: `skills/optimize-supervisor/SKILL.md`
 - Modify: `src/triton_agent/models.py`
-- Modify: `src/triton_agent/optimize/runtime.py`
+- Modify: `src/triton_agent/optimize/orchestration.py`
 - Modify: `tests/test_skills.py`
 
 - [ ] **Step 1: Write the failing skill-staging tests**
@@ -337,7 +339,7 @@ Expected: FAIL because the new skill does not exist and optimize staging does no
 
 - [ ] **Step 3: Implement the minimal skill wiring**
 
-Write `skills/optimize-supervisor/SKILL.md` as an audit-first companion to `skills/optimize/SKILL.md`:
+Write `skills/optimize-supervisor/SKILL.md` as an audit-first companion to `skills/triton-npu-optimize/SKILL.md`:
 
 - read the optimize workflow and current round artifacts first
 - decide against the five gate states
@@ -354,7 +356,7 @@ Expected: PASS
 - [ ] **Step 5: Commit the skill layer**
 
 ```bash
-git add skills/optimize-supervisor/SKILL.md src/triton_agent/models.py src/triton_agent/optimize/runtime.py tests/test_skills.py
+git add skills/optimize-supervisor/SKILL.md src/triton_agent/models.py src/triton_agent/optimize/orchestration.py tests/test_skills.py
 git commit -m "feat: add optimize supervisor skill"
 ```
 
@@ -396,5 +398,5 @@ git commit -m "docs: describe optimize supervisor round gate workflow"
 
 - Prefer implementing Tasks 1 through 4 in order; later tasks depend on those interfaces staying stable.
 - Keep the MVP narrow: metadata repair only, no supervisor-driven experiment reruns.
-- If implementation reveals that existing stall recovery no longer belongs in `OptimizeSupervisor`, remove it cleanly instead of mixing two supervision models into one class.
+- If implementation reveals that existing stall recovery no longer belongs in `OptimizeRunLoop`, remove it cleanly instead of mixing two supervision models into one class.
 - If `AGENTS.md` does not need a durable rule change, leave it untouched and keep the new role behavior in runtime-generated guidance plus skills.

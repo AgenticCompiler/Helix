@@ -188,7 +188,7 @@ Run: `uv run python -m unittest tests.test_models tests.test_generation_contract
 
 Expected: PASS for the touched assertions
 
-### Task 6: Add optional round-state and optimize-check support for `perf-analysis.md`
+### Task 6: Add optional round-state and triton-npu-optimize-check support for `perf-analysis.md`
 
 **Files:**
 - Modify: `src/triton_agent/optimize/models.py`
@@ -206,7 +206,7 @@ Add tests that confirm `RoundState` can parse optional fields:
 
 and that artifact inspection can resolve a declared analysis file when present.
 
-- [ ] **Step 2: Add failing optimize-check tests for declared analysis paths**
+- [ ] **Step 2: Add failing triton-npu-optimize-check tests for declared analysis paths**
 
 Assert that:
 
@@ -217,7 +217,7 @@ Assert that:
 
 Add optional fields only. Do not add them to the required round contract.
 
-- [ ] **Step 4: Extend round artifact inspection and optimize-check validation**
+- [ ] **Step 4: Extend round artifact inspection and triton-npu-optimize-check validation**
 
 Check the declared analysis file only when `round-state.json` includes `perf_analysis_path`.
 
@@ -322,7 +322,7 @@ Expected: PASS
 
 - [ ] **Step 5: Run skill validation for the new skill**
 
-Run: `uv run --with pyyaml python /Users/cdj/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/triton-npu-analyze-round-performance`
+Run: the skill validation workflow available in your environment against `skills/triton-npu-analyze-round-performance`
 
 Expected: PASS
 

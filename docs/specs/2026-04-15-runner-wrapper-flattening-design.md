@@ -8,7 +8,7 @@
 
 ## Goals
 
-- Delete internal wrapper modules that only forward to operator-eval skill scripts.
+- Delete internal wrapper modules that only forward to triton-npu-run-eval skill scripts.
 - Keep metadata parsing routed through the executable app layer instead of preserving fake package APIs.
 - Keep optimize-only helper logic inside `src/triton_agent/optimize/`.
 
@@ -16,14 +16,14 @@
 
 - Do not merge `execution.py` into `commands/execution.py`.
 - Do not change local or remote run semantics.
-- Do not rewrite skill scripts or move execution logic out of `skills/operator-eval/scripts/`.
+- Do not rewrite skill scripts or move execution logic out of `skills/triton-npu-run-eval/scripts/`.
 
 ## Design
 
 - Delete `src/triton_agent/test_runner.py`.
 - Delete `src/triton_agent/bench_runner.py`.
 - Update optimize resume logic to import metadata parsers from `src/triton_agent/execution.py`.
-- Update optimize status logic to load perf parsing directly from the operator-eval bench skill within optimize-local code.
+- Update optimize status logic to load perf parsing directly from the triton-npu-run-eval bench skill within optimize-local code.
 
 ## Verification
 

@@ -1,6 +1,6 @@
 ## Summary
 
-- Add a bundled helper script under `skills/run-validation/scripts/` so skills can invoke the current project CLI without requiring the `triton-agent` console script to be installed.
+- Add a bundled helper script under `skills/triton-npu-run-eval/scripts/` so skills can invoke the current project CLI without requiring the `triton-agent` console script to be installed.
 
 ## User-Visible Behavior
 
@@ -11,6 +11,6 @@
 
 ## Implementation Notes
 
-- Place the script at `skills/run-validation/scripts/run-command.py`.
+- Place the script at `skills/triton-npu-run-eval/scripts/run-command.py`.
 - Resolve the real script path with `Path(__file__).resolve()` before deriving the repository root.
 - Import the CLI module from `src/` directly rather than relying on an installed `project.scripts` entrypoint.

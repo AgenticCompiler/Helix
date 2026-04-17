@@ -2,7 +2,7 @@
 
 ## Summary
 
-- Remove the redundant `compare_result.py` and `compare_perf.py` skill wrappers under `skills/operator-eval/scripts/`.
+- Remove the redundant `compare_result.py` and `compare_perf.py` skill wrappers under `skills/triton-npu-run-eval/scripts/`.
 - Remove the redundant `src/triton_agent/comparison.py` package bridge and let the comparison command module load skill implementations directly.
 - Preserve the current CLI surface, exit codes, and `triton_agent -> skills` dependency direction.
 
@@ -23,8 +23,8 @@
   - loads the `test_runner` skill module for result comparisons
   - loads the `bench_runner` skill module for perf comparisons
   - keeps argument validation and error presentation in the same file
-- Delete `skills/operator-eval/scripts/compare_result.py`.
-- Delete `skills/operator-eval/scripts/compare_perf.py`.
+- Delete `skills/triton-npu-run-eval/scripts/compare_result.py`.
+- Delete `skills/triton-npu-run-eval/scripts/compare_perf.py`.
 - Delete `src/triton_agent/comparison.py`.
 - Adjust focused tests to target `triton_agent.commands.comparison` directly instead of a package bridge.
 

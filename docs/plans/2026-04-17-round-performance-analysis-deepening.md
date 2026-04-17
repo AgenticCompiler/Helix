@@ -292,7 +292,7 @@ Expected: PASS
 
 - [ ] **Step 5: Run skill validation**
 
-Run: `uv run --with pyyaml python /Users/cdj/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/triton-npu-analyze-round-performance`
+Run: the skill validation workflow available in your environment against `skills/triton-npu-analyze-round-performance`
 
 Expected: PASS
 

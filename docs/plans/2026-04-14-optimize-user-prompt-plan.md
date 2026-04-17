@@ -92,7 +92,7 @@ git commit -m "feat: add optimize prompt option plumbing"
 
 **Files:**
 - Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/optimize/runtime.py`
+- Modify: `src/triton_agent/optimize/orchestration.py`
 - Test: `tests/test_cli.py`
 - Test: `tests/test_supervisor.py`
 
@@ -138,7 +138,7 @@ def append_additional_user_instructions(prompt: str, user_prompt: str | None) ->
     return f"{prompt}\n\nAdditional user instructions:\n{user_prompt.strip()}"
 
 
-# src/triton_agent/optimize/runtime.py
+# src/triton_agent/optimize/orchestration.py
 prompt = append_additional_user_instructions(
     build_prompt(...),
     options.prompt,
@@ -153,7 +153,7 @@ Expected: PASS with the new additive prompt block preserved in resume prompts.
 - [ ] **Step 5: Commit the prompt-building change**
 
 ```bash
-git add src/triton_agent/prompts.py src/triton_agent/optimize/runtime.py tests/test_cli.py tests/test_supervisor.py
+git add src/triton_agent/prompts.py src/triton_agent/optimize/orchestration.py tests/test_cli.py tests/test_supervisor.py
 git commit -m "feat: append optimize user instructions to worker prompts"
 ```
 
@@ -247,6 +247,6 @@ Expected: PASS
 - [ ] **Step 5: Commit the docs and verified change set**
 
 ```bash
-git add README.md tests/test_cli.py tests/test_supervisor.py tests/test_optimize_runtime.py src/triton_agent/cli.py src/triton_agent/commands/optimize.py src/triton_agent/optimize/models.py src/triton_agent/prompts.py src/triton_agent/optimize/runtime.py
+git add README.md tests/test_cli.py tests/test_supervisor.py tests/test_optimize_runtime.py src/triton_agent/cli.py src/triton_agent/commands/optimize.py src/triton_agent/optimize/models.py src/triton_agent/prompts.py src/triton_agent/optimize/orchestration.py
 git commit -m "feat: support additive optimize user prompts"
 ```

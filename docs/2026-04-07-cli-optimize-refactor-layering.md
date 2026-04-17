@@ -1,5 +1,7 @@
 # CLI Optimize Refactor Layering
 
+> **Superseded note:** This refactor proposal predates the later `commands/` split and the `orchestration`/`run_loop` naming cleanup. Read it as implementation history, not as the current module map.
+
 ## Summary
 
 - Refactor the CLI toward a thin entrypoint architecture instead of continuing to grow `src/triton_agent/cli.py`.
@@ -119,7 +121,7 @@ Rules:
 
 Files:
 
-- `src/triton_agent/optimize/runtime.py`
+- `src/triton_agent/optimize/orchestration.py`
 - `src/triton_agent/optimize/batch.py`
 - `src/triton_agent/optimize/status.py`
 - `src/triton_agent/optimize/render.py`
@@ -140,7 +142,7 @@ Rules:
 
 ## Optimize Module Boundaries
 
-### `src/triton_agent/optimize/runtime.py`
+### `src/triton_agent/optimize/orchestration.py`
 
 Owns single-workspace optimize execution:
 
@@ -149,7 +151,7 @@ Owns single-workspace optimize execution:
 - resolve continue-mode metadata reuse
 - prepare staged skills
 - prepare temporary optimize `AGENTS.md`
-- launch the runner through `OptimizeSupervisor`
+- launch the runner through `OptimizeRunLoop`
 - clean up guidance and copied skills
 
 This module is the home for logic currently represented by:
@@ -241,10 +243,10 @@ Desired dependency direction:
 
 - `cli.py` -> `cli_dispatch.py` or command handlers
 - `commands/optimize.py` -> `optimize/*`
-- `optimize/batch.py` -> `optimize/runtime.py`, `optimize/models.py`, `optimize/render.py`
+- `optimize/batch.py` -> `optimize/orchestration.py`, `optimize/models.py`, `optimize/render.py`
 - `optimize/status.py` -> `optimize/models.py`
 - `optimize/render.py` -> `optimize/models.py`
-- `optimize/runtime.py` -> existing shared modules such as `models.py`, `prompts.py`, `supervisor.py`, `skills.py`, `optimize/guidance.py`
+- `optimize/orchestration.py` -> existing shared modules such as `models.py`, `prompts.py`, `supervisor.py`, `skills.py`, `optimize/guidance.py`
 
 Avoid:
 
@@ -263,7 +265,7 @@ Avoid:
 
 ### Phase 2: Extract runtime, batch, and status behavior
 
-- Move single optimize execution lifecycle into `src/triton_agent/optimize/runtime.py`.
+- Move single optimize execution lifecycle into `src/triton_agent/optimize/orchestration.py`.
 - Move batch orchestration into `src/triton_agent/optimize/batch.py`.
 - Move optimize status inspection into `src/triton_agent/optimize/status.py`.
 

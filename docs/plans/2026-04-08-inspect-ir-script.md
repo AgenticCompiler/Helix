@@ -4,7 +4,7 @@
 
 **Goal:** Add a unified `inspect_ir.py` helper that lets agents list archived Bisheng stages, summarize one stage, and diff two stages through a stable `--ir-dir` interface.
 
-**Architecture:** Keep IR inspection in a single bundled script under `skills/ascend-operator-ir-analyzer/scripts/`. Implement shared archive and stage-resolution helpers, then expose three text-oriented subcommands on top: `list-stages`, `stage-summary`, and `diff-stages`. Update the IR analyzer skill and repository docs so captured IR workflows naturally continue into the new inspection helper rather than direct ad hoc file browsing.
+**Architecture:** Keep IR inspection in a single bundled script under `skills/triton-npu-analyze-ir/scripts/`. Implement shared archive and stage-resolution helpers, then expose three text-oriented subcommands on top: `list-stages`, `stage-summary`, and `diff-stages`. Update the IR analyzer skill and repository docs so captured IR workflows naturally continue into the new inspection helper rather than direct ad hoc file browsing.
 
 **Tech Stack:** Python 3.11, `argparse`, `difflib`, `pathlib`, `re`, `unittest`, Markdown docs
 
@@ -25,7 +25,7 @@
 ### Task 2: Implement the unified inspection script
 
 **Files:**
-- Create: `skills/ascend-operator-ir-analyzer/scripts/inspect_ir.py`
+- Create: `skills/triton-npu-analyze-ir/scripts/inspect_ir.py`
 
 - [ ] **Step 1: Add parser wiring for `list-stages`, `stage-summary`, and `diff-stages`, all sharing `--ir-dir`**
 - [ ] **Step 2: Implement archive validation and internal `bishengir_stages/` resolution**
@@ -39,7 +39,7 @@
 ### Task 3: Update the skill and repository docs
 
 **Files:**
-- Modify: `skills/ascend-operator-ir-analyzer/SKILL.md`
+- Modify: `skills/triton-npu-analyze-ir/SKILL.md`
 - Modify: `README.md`
 - Modify: `AGENTS.md`
 - Modify: `docs/2026-04-08-inspect-ir-script.md`
@@ -52,12 +52,12 @@
 ### Task 4: Verify the full change
 
 **Files:**
-- Modify: `skills/ascend-operator-ir-analyzer/scripts/inspect_ir.py`
+- Modify: `skills/triton-npu-analyze-ir/scripts/inspect_ir.py`
 - Modify: `tests/test_inspect_ir.py`
 
 - [ ] **Step 1: Run `uv run python -m unittest tests.test_inspect_ir -v`**
 - [ ] **Step 2: Run `uv run python -m unittest discover -s tests -v`**
 - [ ] **Step 3: Run `uv run pyright`**
-- [ ] **Step 4: Run `uv run --group dev ruff check skills/ascend-operator-ir-analyzer/scripts/inspect_ir.py tests/test_inspect_ir.py`**
-- [ ] **Step 5: Run `uv run --with pyyaml python /Users/cdj/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/ascend-operator-ir-analyzer`**
+- [ ] **Step 4: Run `uv run --group dev ruff check skills/triton-npu-analyze-ir/scripts/inspect_ir.py tests/test_inspect_ir.py`**
+- [ ] **Step 5: Run the skill validation workflow available in your environment against `skills/triton-npu-analyze-ir`**
 - [ ] **Step 6: Fix regressions and re-run verification until clean**

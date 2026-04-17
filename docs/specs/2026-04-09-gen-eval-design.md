@@ -55,16 +55,16 @@
 
 ## Skill Contract
 
-- Add a new skill named `eval-gen`.
-- `eval-gen` is the workflow entrypoint for `gen-eval`.
+- Add a new skill named `triton-npu-gen-eval-suite`.
+- `triton-npu-gen-eval-suite` is the workflow entrypoint for `gen-eval`.
 - The skill should explicitly require this order:
   1. Inspect the operator file and identify likely operator defects.
   2. Repair the original operator file if there is a clear operator-level problem.
-  3. Generate the correctness test through `test-gen`.
-  4. Validate the test through `operator-eval`.
+  3. Generate the correctness test through `triton-npu-gen-test`.
+  4. Validate the test through `triton-npu-run-eval`.
   5. Repair the generated test or the original operator depending on the failure source.
-  6. Generate the benchmark through `bench-gen`.
-  7. Validate the benchmark through `operator-eval`.
+  6. Generate the benchmark through `triton-npu-gen-bench`.
+  7. Validate the benchmark through `triton-npu-run-eval`.
   8. Repair the generated benchmark or the original operator depending on the failure source.
   9. Re-run validation after any relevant repair until both artifacts pass or the environment blocks progress.
 - The skill should explicitly forbid optimize-only behavior:
@@ -76,14 +76,14 @@
 ## Skill Staging
 
 - `gen-eval` should stage only the minimum skills required for the workflow:
-  - `eval-gen`
-  - `test-gen`
-  - `bench-gen`
-  - `operator-eval`
+  - `triton-npu-gen-eval-suite`
+  - `triton-npu-gen-test`
+  - `triton-npu-gen-bench`
+  - `triton-npu-run-eval`
 - `gen-eval` should not stage:
   - `optimize`
-  - `ascend-npu-operator-profiler`
-  - `ascend-operator-ir-analyzer`
+  - `triton-npu-profile-operator`
+  - `triton-npu-analyze-ir`
 - Existing commands keep the current staging behavior unless they explicitly request a restricted staged-skill set.
 
 ## Prompt Contract
@@ -98,11 +98,11 @@
   - an explicit statement that the workflow may edit the original operator file directly when the operator is at fault
   - an explicit statement that both generated artifacts must be executed before the task finishes
   - an explicit statement that remote-aware validation commands must carry through `--remote` and `--remote-workdir`
-- The prompt should explicitly direct the agent to use the staged `eval-gen` skill as the entry workflow.
+- The prompt should explicitly direct the agent to use the staged `triton-npu-gen-eval-suite` skill as the entry workflow.
 
 ## Implementation Shape
 
-- Add `CommandKind.GEN_EVAL` and map it to the new `eval-gen` skill.
+- Add `CommandKind.GEN_EVAL` and map it to the new `triton-npu-gen-eval-suite` skill.
 - Add a dedicated generation-eval handler alongside the existing generation handlers.
 - Extend `AgentRequest` with optional staged-skill filtering data so the runtime can request a subset of skills.
 - Extend `SkillLinkManager` with a way to copy only named skills while preserving current symlink-safety checks and cleanup behavior.
@@ -126,5 +126,5 @@
   - dual output-path wording
 - Handler and runtime coverage for correct `AgentRequest` construction.
 - Skill staging coverage proving `gen-eval` stages only the requested subset and leaves excluded skills unstaged.
-- Contract coverage proving the new `eval-gen` skill documents direct operator repair and remote-aware validation behavior.
+- Contract coverage proving the new `triton-npu-gen-eval-suite` skill documents direct operator repair and remote-aware validation behavior.
 - Full verification with `ruff`, `pyright`, and `unittest`.

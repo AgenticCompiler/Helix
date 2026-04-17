@@ -1,6 +1,6 @@
 # Triton Agent CLI for Test, Benchmark, and Optimization
 
-> **Superseded note:** This early design predates the current repository skill naming. The active skill mapping now uses `triton-npu-gen-test`, `triton-npu-gen-bench`, `triton-npu-gen-eval-suite`, `triton-npu-run-eval`, `triton-npu-optimize`, and `triton-npu-optimize-check`.
+> **Superseded note:** This early design predates the current repository skill naming and backend expansion. Treat it as historical context only; the current skill mapping uses `triton-npu-gen-test`, `triton-npu-gen-bench`, `triton-npu-gen-eval-suite`, `triton-npu-run-eval`, `triton-npu-optimize`, and `triton-npu-optimize-check`.
 
 ## Summary
 
@@ -86,7 +86,7 @@ The implementation should use `argparse`, support `--input/-i`, `--output/-o`, `
 
 ### Optimize supervision
 
-- Implement a dedicated `OptimizeSupervisor` around the agent runner for long-running `optimize`.
+- Implement a dedicated `OptimizeRunLoop` around the agent runner for long-running `optimize`.
 - Default recovery strategy: auto-resume.
   - Detect stalls using inactivity timeout plus optional repeated-output/no-progress heuristics
   - first try to continue the current session by injecting a short continuation prompt
@@ -130,7 +130,7 @@ The implementation should use `argparse`, support `--input/-i`, `--output/-o`, `
   - cleanup of only owned copied paths
 - Unit tests for prompt generation to ensure the correct skill and file arguments are included.
 - Unit tests for `CodexRunner` command construction in interactive and non-interactive modes.
-- Unit tests for `OptimizeSupervisor` stall detection and recovery policy.
+- Unit tests for `OptimizeRunLoop` stall detection and recovery policy.
 - Integration-style tests with a fake/mock agent runner to verify end-to-end dispatch without requiring real Codex execution.
 - Optional smoke test gated by environment if `codex` is installed, validating basic launch command assembly without asserting real model output.
 

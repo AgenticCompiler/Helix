@@ -25,7 +25,7 @@
 - Extend the optimize parser with `--min-rounds`.
 - Thread `min_rounds` through `AgentRequest`.
 - Extend optimize prompt generation so the initial prompt states the minimum round requirement when present.
-- Move successful-but-incomplete continuation handling into `OptimizeSupervisor`, because it already owns optimize lifecycle recovery.
+- Move successful-but-incomplete continuation handling into `OptimizeRunLoop`, because it already owns optimize lifecycle recovery.
 - Add a dedicated continuation prompt builder so both restart-after-stall and restart-after-insufficient-rounds share the same “continue from prior progress” language.
 - Update both backend resume prompts so they explicitly mention `opt-note.md` and prior round artifacts.
 

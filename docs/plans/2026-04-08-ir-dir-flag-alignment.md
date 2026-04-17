@@ -22,8 +22,8 @@
 ### Task 2: Rename the public flags in both scripts
 
 **Files:**
-- Modify: `skills/ascend-operator-ir-analyzer/scripts/capture_ir.py`
-- Modify: `skills/ascend-operator-ir-analyzer/scripts/inspect_ir.py`
+- Modify: `skills/triton-npu-analyze-ir/scripts/capture_ir.py`
+- Modify: `skills/triton-npu-analyze-ir/scripts/inspect_ir.py`
 
 - [ ] **Step 1: Replace `--archive-dir` with `--ir-dir` in argument parsing**
 - [ ] **Step 2: Update user-facing help text and error wording from "archive directory" to "IR directory" where appropriate**
@@ -32,10 +32,10 @@
 ### Task 3: Align docs and skill guidance
 
 **Files:**
-- Modify: `skills/ascend-operator-ir-analyzer/SKILL.md`
+- Modify: `skills/triton-npu-analyze-ir/SKILL.md`
 - Modify: `README.md`
 - Modify: `AGENTS.md`
-- Modify: `docs/2026-04-07-ascend-operator-ir-analyzer-skill.md`
+- Modify: `docs/2026-04-07-triton-npu-analyze-ir-skill.md`
 - Modify: `docs/2026-04-08-inspect-ir-script.md`
 - Modify: `docs/2026-04-08-inspect-ir-ranking-and-change-scan.md`
 
@@ -45,8 +45,8 @@
 ### Task 4: Verify the rename
 
 **Files:**
-- Modify: `skills/ascend-operator-ir-analyzer/scripts/capture_ir.py`
-- Modify: `skills/ascend-operator-ir-analyzer/scripts/inspect_ir.py`
+- Modify: `skills/triton-npu-analyze-ir/scripts/capture_ir.py`
+- Modify: `skills/triton-npu-analyze-ir/scripts/inspect_ir.py`
 - Modify: `tests/test_ascend_operator_ir_analyzer.py`
 - Modify: `tests/test_inspect_ir.py`
 
@@ -54,5 +54,5 @@
 - [ ] **Step 2: Run `uv run python -m unittest tests.test_inspect_ir -v`**
 - [ ] **Step 3: Run `uv run python -m unittest discover -s tests -v`**
 - [ ] **Step 4: Run `uv run pyright`**
-- [ ] **Step 5: Run `uv run --group dev ruff check skills/ascend-operator-ir-analyzer/scripts/capture_ir.py skills/ascend-operator-ir-analyzer/scripts/inspect_ir.py tests/test_ascend_operator_ir_analyzer.py tests/test_inspect_ir.py`**
-- [ ] **Step 6: Run `uv run --with pyyaml python /Users/cdj/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/ascend-operator-ir-analyzer`**
+- [ ] **Step 5: Run `uv run --group dev ruff check skills/triton-npu-analyze-ir/scripts/capture_ir.py skills/triton-npu-analyze-ir/scripts/inspect_ir.py tests/test_ascend_operator_ir_analyzer.py tests/test_inspect_ir.py`**
+- [ ] **Step 6: Run the skill validation workflow available in your environment against `skills/triton-npu-analyze-ir`**

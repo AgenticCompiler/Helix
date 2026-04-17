@@ -72,8 +72,8 @@ Expected: PASS
 
 **Files:**
 - Modify: `src/triton_agent/optimize/guidance.py`
-- Modify: `skills/optimize/references/opt-note-format.md`
-- Modify: `skills/optimize/references/workflow.md`
+- Modify: `skills/triton-npu-optimize/references/opt-note-format.md`
+- Modify: `skills/triton-npu-optimize/references/workflow.md`
 
 - [ ] **Step 1: Update `opt-note.md` format guidance**
 

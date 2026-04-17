@@ -4,7 +4,7 @@
 
 **Goal:** Extend `inspect_ir.py` so agents can rank stages by usefulness and scan adjacent stage transitions for the most significant changes.
 
-**Architecture:** Keep the enhancement inside `skills/ascend-operator-ir-analyzer/scripts/inspect_ir.py`. Reuse the existing stage discovery and keyword-counting helpers to compute a lightweight per-stage interestingness score and a lightweight adjacent-stage change score. Surface both through terminal-friendly commands: `list-stages --sort-by ...` and a new `find-changes` subcommand. Update the IR analyzer skill docs so these commands become the default navigation path for large archives.
+**Architecture:** Keep the enhancement inside `skills/triton-npu-analyze-ir/scripts/inspect_ir.py`. Reuse the existing stage discovery and keyword-counting helpers to compute a lightweight per-stage interestingness score and a lightweight adjacent-stage change score. Surface both through terminal-friendly commands: `list-stages --sort-by ...` and a new `find-changes` subcommand. Update the IR analyzer skill docs so these commands become the default navigation path for large archives.
 
 **Tech Stack:** Python 3.11, `argparse`, `difflib`, `pathlib`, `unittest`, Markdown docs
 
@@ -23,7 +23,7 @@
 ### Task 2: Implement scoring and `find-changes`
 
 **Files:**
-- Modify: `skills/ascend-operator-ir-analyzer/scripts/inspect_ir.py`
+- Modify: `skills/triton-npu-analyze-ir/scripts/inspect_ir.py`
 
 - [ ] **Step 1: Add per-stage keyword-count and interestingness helpers**
 - [ ] **Step 2: Extend `list-stages` sorting and rendering to show scores when useful**
@@ -34,7 +34,7 @@
 ### Task 3: Update skill and docs
 
 **Files:**
-- Modify: `skills/ascend-operator-ir-analyzer/SKILL.md`
+- Modify: `skills/triton-npu-analyze-ir/SKILL.md`
 - Modify: `README.md`
 - Modify: `docs/2026-04-08-inspect-ir-ranking-and-change-scan.md`
 
@@ -45,11 +45,11 @@
 ### Task 4: Verify the change
 
 **Files:**
-- Modify: `skills/ascend-operator-ir-analyzer/scripts/inspect_ir.py`
+- Modify: `skills/triton-npu-analyze-ir/scripts/inspect_ir.py`
 - Modify: `tests/test_inspect_ir.py`
 
 - [ ] **Step 1: Run `uv run python -m unittest tests.test_inspect_ir -v`**
 - [ ] **Step 2: Run `uv run python -m unittest discover -s tests -v`**
 - [ ] **Step 3: Run `uv run pyright`**
-- [ ] **Step 4: Run `uv run --group dev ruff check skills/ascend-operator-ir-analyzer/scripts/inspect_ir.py tests/test_inspect_ir.py`**
+- [ ] **Step 4: Run `uv run --group dev ruff check skills/triton-npu-analyze-ir/scripts/inspect_ir.py tests/test_inspect_ir.py`**
 - [ ] **Step 5: Fix regressions and re-run verification until clean**

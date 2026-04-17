@@ -86,7 +86,7 @@ Expected: PASS
 
 **Files:**
 - Create: `src/triton_agent/optimize/resume.py`
-- Modify: `src/triton_agent/optimize/runtime.py`
+- Modify: `src/triton_agent/optimize/orchestration.py`
 - Modify: `src/triton_agent/optimize/validation.py`
 - Modify: `tests/test_cli.py`
 
@@ -156,7 +156,7 @@ Expected: PASS
 
 **Files:**
 - Modify: `src/triton_agent/prompts.py`
-- Modify: `src/triton_agent/optimize/runtime.py`
+- Modify: `src/triton_agent/optimize/orchestration.py`
 - Modify: `src/triton_agent/agent.py`
 - Modify: `src/triton_agent/models.py`
 - Modify: `tests/test_cli.py`

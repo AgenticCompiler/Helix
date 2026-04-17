@@ -14,7 +14,7 @@ Keep `parse_bin.py` as an optional helper for future binary analysis work, but r
 ## User-Visible Semantics
 
 - The skill should trigger for Ascend NPU operator profiling and performance-analysis requests, especially when the user wants operator-level timing data, hotspot identification, bottleneck diagnosis, or profiler-backed comparison.
-- The default workflow should prefer running generated benchmark harnesses through the run-validation helper, for example:
+- The default workflow should prefer running generated benchmark harnesses through the triton-npu-run-eval helper, for example:
   ```bash
   python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file matmul.py
   ```

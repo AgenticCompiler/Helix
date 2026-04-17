@@ -4,11 +4,11 @@
 
 - Make local IR capture reuse the interpreter that launched the helper script.
 - Keep remote IR capture unchanged and continue invoking `python3` on the remote host.
-- Align the IR capture helper with the local interpreter behavior already used by the operator-eval test, benchmark, and profile helpers.
+- Align the IR capture helper with the local interpreter behavior already used by the triton-npu-run-eval test, benchmark, and profile helpers.
 
 ## Problem
 
-- `skills/ascend-operator-ir-analyzer/scripts/capture_ir.py` currently renders the benchmark command with a hard-coded `python3`.
+- `skills/triton-npu-analyze-ir/scripts/capture_ir.py` currently renders the benchmark command with a hard-coded `python3`.
 - The same command builder is reused for both local and remote capture flows.
 - This means local capture can unexpectedly escape an activated virtual environment or the code agent's current interpreter.
 

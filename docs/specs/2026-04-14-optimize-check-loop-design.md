@@ -8,7 +8,7 @@ summary: Simplify optimize orchestration by moving baseline and round validation
 
 ## Summary
 
-- Add one dedicated `optimize-check` skill for baseline and round validation.
+- Add one dedicated `triton-npu-optimize-check` skill for baseline and round validation.
 - Require optimize workers to call that skill themselves after baseline preparation and after each completed round.
 - Keep `--supervisor off` as a long-running worker-owned optimize session.
 - Keep `--supervisor on` as a worker-per-round loop where supervisor decides whether another worker round should run.
@@ -45,7 +45,7 @@ summary: Simplify optimize orchestration by moving baseline and round validation
 ## Design Principles
 
 - Treat the optimize skill as the source of truth for how workers progress through baseline preparation and optimization rounds.
-- Treat `optimize-check` as the source of truth for whether a baseline or round is technically acceptable.
+- Treat `triton-npu-optimize-check` as the source of truth for whether a baseline or round is technically acceptable.
 - Treat the supervisor as an audit layer, not as the primary technical validator.
 - Treat runtime as an orchestration layer that launches the right role at the right time, but does not own optimize-specific technical policy.
 
@@ -60,12 +60,12 @@ The optimize flow has three logical phases:
 Each phase has one primary owner:
 
 - `worker` owns baseline preparation and round execution
-- `optimize-check` owns baseline and round validation
+- `triton-npu-optimize-check` owns baseline and round validation
 - `supervisor` owns optional audit, metadata-only repair, and continue-or-stop decisions in supervised mode
 
-## `optimize-check` Skill
+## `triton-npu-optimize-check` Skill
 
-Add one dedicated skill, `optimize-check`, with one bundled helper script.
+Add one dedicated skill, `triton-npu-optimize-check`, with one bundled helper script.
 
 That script exposes two subcommands:
 
@@ -106,7 +106,7 @@ The worker is responsible for deciding whether baseline preparation is needed.
 If baseline artifacts are missing or incomplete, the worker must:
 
 1. prepare or repair the baseline
-2. run `optimize-check check-baseline`
+2. run `triton-npu-optimize-check check-baseline`
 3. keep repairing the baseline until the check passes
 
 The worker must not begin the first optimization round until baseline validation passes.
@@ -115,7 +115,7 @@ The worker must not begin the first optimization round until baseline validation
 
 After finishing an optimization round, the worker must:
 
-1. run `optimize-check check-round` against the current round directory
+1. run `triton-npu-optimize-check check-round` against the current round directory
 2. inspect the returned issues
 3. repair the current round if the check fails
 4. repeat until the round passes
@@ -215,7 +215,7 @@ Runtime should not become the primary owner of baseline or round validation rule
 
 Runtime launches one optimize worker and lets that worker run the session.
 
-The worker itself owns baseline and round checking through `optimize-check`.
+The worker itself owns baseline and round checking through `triton-npu-optimize-check`.
 
 ### In `--supervisor on`
 
@@ -226,7 +226,7 @@ Runtime becomes a simple outer loop:
 3. read the supervisor decision
 4. either stop or launch the next worker invocation
 
-Runtime should not independently replicate the detailed baseline or round gate logic when the same rules already live in `optimize-check`.
+Runtime should not independently replicate the detailed baseline or round gate logic when the same rules already live in `triton-npu-optimize-check`.
 
 ## Prompt And Guidance Changes
 
@@ -261,7 +261,7 @@ The supervisor prompt should emphasize:
 
 ## Reuse Of Checks
 
-The same `optimize-check` script should be reusable from multiple places:
+The same `triton-npu-optimize-check` script should be reusable from multiple places:
 
 - the optimize worker skill
 - the optimize supervisor skill
@@ -286,7 +286,7 @@ In normal cases, failed checks should produce actionable issues that are fed bac
 Update:
 
 - `README.md`
-  - explain `optimize-check` as part of optimize workflow expectations
+  - explain `triton-npu-optimize-check` as part of optimize workflow expectations
   - document the behavioral difference between supervised and unsupervised optimize
 - optimize skill docs
   - require baseline and round checks
@@ -299,8 +299,8 @@ Update `AGENTS.md` only if the project wants these semantics called out as durab
 
 Add coverage for:
 
-- `optimize-check check-baseline` pass and failure cases
-- `optimize-check check-round` pass and failure cases
+- `triton-npu-optimize-check check-baseline` pass and failure cases
+- `triton-npu-optimize-check check-round` pass and failure cases
 - unsupervised worker prompts requiring baseline and round checks
 - supervised worker prompts requiring one-round ownership plus mandatory checks
 - supervisor prompts enforcing metadata-only repair boundaries
@@ -308,6 +308,6 @@ Add coverage for:
 
 ## Recommendation
 
-Adopt `optimize-check` as the shared baseline and round validation layer, require workers to use it directly, and keep supervisor as an optional metadata-only audit layer.
+Adopt `triton-npu-optimize-check` as the shared baseline and round validation layer, require workers to use it directly, and keep supervisor as an optional metadata-only audit layer.
 
 This design simplifies orchestration, keeps workflow behavior centered in skills, and makes the two optimize modes easier to understand and maintain.

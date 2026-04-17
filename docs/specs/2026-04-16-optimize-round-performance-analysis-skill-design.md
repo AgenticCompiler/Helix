@@ -219,7 +219,7 @@ If `round-state.json` declares `perf_analysis_path`, the checker may verify that
 - add or update tests for the new IR performance-signal entrypoint
 - add prompt tests that pin the new optimize guidance
 - add round-contract tests for optional `perf_analysis_path` parsing
-- add optimize-check tests that validate the declared analysis path only when present
+- add triton-npu-optimize-check tests that validate the declared analysis path only when present
 - run skill validation for the new skill
 - run the standard repository verification commands after implementation
 

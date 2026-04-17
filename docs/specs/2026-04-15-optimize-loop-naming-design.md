@@ -19,10 +19,10 @@ This change improves readability in the optimize orchestration path without chan
 
 ## Naming Changes
 
-- Rename `OptimizeController` to `OptimizeRunLoop`.
+- Rename `OptimizeRunLoop` to `OptimizeRunLoop`.
 - Rename `SupportsSupervisedRoundRunner` to `SupportsSupervisedOptimizeAdapter`.
-- Rename `SupervisedRoundRunner` to `SupervisedOptimizeAdapter`.
-- Rename `RunnerWithStreams` to `RecoveryRunnerAdapter`.
+- Rename `SupervisedOptimizeAdapter` to `SupervisedOptimizeAdapter`.
+- Rename `RecoveryRunnerAdapter` to `RecoveryRunnerAdapter`.
 - Rename orchestration helpers so their names describe entrypoint handling rather than generic "run supervised/unsupervised optimize request".
 - Rename `supervisor.py` to `run_loop.py` so the file matches its loop-coordination responsibility.
 

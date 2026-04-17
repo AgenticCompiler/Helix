@@ -1,6 +1,6 @@
 # `compare-perf` Aggregate Metrics Implementation Plan
 
-**Goal:** Add aggregate speedup metrics to `compare-perf` and document when the operator-eval skill should use the command.
+**Goal:** Add aggregate speedup metrics to `compare-perf` and document when the triton-npu-run-eval skill should use the command.
 
 **Architecture:** Keep parsing and per-case comparison in `bench_runner.py`, then add a small aggregate summary step that reuses the same formulas already used by `optimize-status`. Update the skill and command docs to explain the new summary output without changing command shape.
 
@@ -8,9 +8,9 @@
 
 ## Files
 
-- Modify: `skills/operator-eval/scripts/bench_runner.py`
+- Modify: `skills/triton-npu-run-eval/scripts/bench_runner.py`
 - Modify: `tests/test_bench_runner.py`
-- Modify: `skills/operator-eval/SKILL.md`
+- Modify: `skills/triton-npu-run-eval/SKILL.md`
 - Modify: `README.md`
 - Modify: `docs/2026-04-01-compare-perf-subcommand.md`
 

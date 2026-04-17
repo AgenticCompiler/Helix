@@ -12,22 +12,22 @@ This document reflects the current status after fixing the confirmed regressions
 ### 2. `returncode or 0` fallback
 **Status:** Fixed defensively
 
-Both `src/triton_agent/process_runner.py` and `skills/run-validation/scripts/run_runtime.py` now turn a missing `returncode` into `1` instead of silently reporting success.
+Both `src/triton_agent/process_runner.py` and `skills/triton-npu-run-eval/scripts/run_runtime.py` now turn a missing `returncode` into `1` instead of silently reporting success.
 
 ### 3. Supervisor re-ran after repeated stalls
 **Status:** Fixed
 
-`src/triton_agent/optimize/supervisor.py` now stays on the resume path after repeated stalls instead of falling back to a fresh `run()` call.
+`src/triton_agent/optimize/run_loop.py` now stays on the resume path after repeated stalls instead of falling back to a fresh `run()` call.
 
 ### 4. Diff filter swallowed normal indented output
 **Status:** Fixed
 
-`src/triton_agent/codex_runner.py` now keeps normal indented output that appears after a diff block instead of treating every space-prefixed line as diff content forever.
+`src/triton_agent/backends/codex.py` now keeps normal indented output that appears after a diff block instead of treating every space-prefixed line as diff content forever.
 
 ### 5. Remote command quoting
 **Status:** Fixed
 
-`skills/run-validation/scripts/run_runtime.py`, `skills/run-validation/scripts/test_runner.py`, and `skills/run-validation/scripts/bench_runner.py` now shell-join remote command arguments so filenames with spaces and shell metacharacters are quoted correctly.
+`skills/triton-npu-run-eval/scripts/run_runtime.py`, `skills/triton-npu-run-eval/scripts/test_runner.py`, and `skills/triton-npu-run-eval/scripts/bench_runner.py` now shell-join remote command arguments so filenames with spaces and shell metacharacters are quoted correctly.
 
 ### 6. `_normalize_agent_result` raw `KeyError`
 **Status:** Fixed

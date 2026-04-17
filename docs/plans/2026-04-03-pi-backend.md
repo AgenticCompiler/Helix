@@ -37,7 +37,7 @@ Expected: PASS
 ### Task 2: Add Pi runner and Pi skill staging
 
 **Files:**
-- Create: `src/triton_agent/pi_runner.py`
+- Create: `src/triton_agent/backends/pi.py`
 - Modify: `src/triton_agent/skills.py`
 - Test: `tests/test_pi_runner.py`
 - Test: `tests/test_skills.py`

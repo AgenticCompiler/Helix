@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the feature in the CLI orchestration layer. Extend the command enum and parser with one local-only subcommand, add small helpers to discover optimization artifacts and parse comparable perf files, and render a compact batch summary without invoking any agent backend or skill workflow.
 
-**Tech Stack:** Python 3.11, `argparse`, `pathlib`, existing perf parsing helpers from the operator-eval bench runner, Python `unittest`
+**Tech Stack:** Python 3.11, `argparse`, `pathlib`, existing perf parsing helpers from the triton-npu-run-eval bench runner, Python `unittest`
 
 ---
 

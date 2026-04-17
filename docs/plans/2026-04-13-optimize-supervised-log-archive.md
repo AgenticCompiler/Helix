@@ -21,7 +21,7 @@
 
 - `src/triton_agent/optimize/guidance.py`
   Extend optimize guidance state with runtime history and archive paths, and add archive-before-cleanup behavior.
-- `src/triton_agent/optimize/runtime.py`
+- `src/triton_agent/optimize/orchestration.py`
   Write immutable per-round history snapshots whenever live handoff files are updated.
 - `tests/test_optimize/guidance.py`
   Cover archive layout, cleanup ordering, and failure-safe behavior.
@@ -81,7 +81,7 @@ git commit -m "feat: add optimize supervised log archive paths"
 ## Task 2: Snapshot Per-Round Handoff History During Supervised Runs
 
 **Files:**
-- Modify: `src/triton_agent/optimize/runtime.py`
+- Modify: `src/triton_agent/optimize/orchestration.py`
 - Test: `tests/test_optimize_runtime.py`
 
 - [ ] **Step 1: Write the failing runtime snapshot tests**
@@ -126,7 +126,7 @@ Expected: PASS
 - [ ] **Step 5: Commit the history snapshot behavior**
 
 ```bash
-git add src/triton_agent/optimize/runtime.py tests/test_optimize_runtime.py
+git add src/triton_agent/optimize/orchestration.py tests/test_optimize_runtime.py
 git commit -m "feat: snapshot optimize supervisor handoff history"
 ```
 
@@ -134,7 +134,7 @@ git commit -m "feat: snapshot optimize supervisor handoff history"
 
 **Files:**
 - Modify: `src/triton_agent/optimize/guidance.py`
-- Modify: `src/triton_agent/optimize/runtime.py`
+- Modify: `src/triton_agent/optimize/orchestration.py`
 - Test: `tests/test_optimize/guidance.py`
 - Test: `tests/test_optimize_runtime.py`
 
@@ -181,7 +181,7 @@ Expected: PASS
 - [ ] **Step 5: Commit the archive flow**
 
 ```bash
-git add src/triton_agent/optimize/guidance.py src/triton_agent/optimize/runtime.py tests/test_optimize/guidance.py tests/test_optimize_runtime.py
+git add src/triton_agent/optimize/guidance.py src/triton_agent/optimize/orchestration.py tests/test_optimize/guidance.py tests/test_optimize_runtime.py
 git commit -m "feat: archive optimize supervised logs"
 ```
 
@@ -265,6 +265,6 @@ Expected: PASS
 - [ ] **Step 4: Commit the documentation and verification pass**
 
 ```bash
-git add README.md src/triton_agent/optimize/guidance.py src/triton_agent/optimize/runtime.py tests/test_optimize/guidance.py tests/test_optimize_runtime.py docs/plans/2026-04-13-optimize-supervised-log-archive.md
+git add README.md src/triton_agent/optimize/guidance.py src/triton_agent/optimize/orchestration.py tests/test_optimize/guidance.py tests/test_optimize_runtime.py docs/plans/2026-04-13-optimize-supervised-log-archive.md
 git commit -m "docs: describe optimize supervised log archives"
 ```

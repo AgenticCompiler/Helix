@@ -4,7 +4,7 @@
 
 - Extend `compare-perf` so it reports the same aggregate performance metrics as `optimize-status`.
 - Keep the existing per-latency comparison lines and compatibility rules unchanged.
-- Clarify in the `operator-eval` skill when `compare-perf` should be used and how to read its output.
+- Clarify in the `triton-npu-run-eval` skill when `compare-perf` should be used and how to read its output.
 
 ## Behavior
 
@@ -26,7 +26,7 @@ These definitions intentionally match the metrics used by `optimize-status` so C
 
 ## Documentation
 
-- Update the `operator-eval` skill with a dedicated `compare-perf` section that explains when to use it:
+- Update the `triton-npu-run-eval` skill with a dedicated `compare-perf` section that explains when to use it:
   - comparing baseline vs candidate perf artifacts after a benchmark run
   - checking whether an optimization changed individual cases or overall speed
 - Update the public compare-perf docs so the aggregate metrics are documented alongside the per-case delta output.

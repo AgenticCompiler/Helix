@@ -25,7 +25,7 @@
 **Files:**
 - Create: `src/triton_agent/optimize/run_loop.py`
 - Create: `src/triton_agent/optimize/execution.py`
-- Delete: `src/triton_agent/optimize/supervisor.py`
+- Delete: `src/triton_agent/optimize/run_loop.py`
 - Modify: `src/triton_agent/optimize/orchestration.py`
 
 - [ ] Move `OptimizeRunLoop` into `run_loop.py` and remove `supervisor.py`.

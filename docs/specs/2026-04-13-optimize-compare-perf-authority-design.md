@@ -22,7 +22,7 @@
 ## Non-Goals
 
 - Do not redesign the `compare-perf` output format.
-- Do not move benchmark execution or comparison logic out of the existing operator-eval helper scripts.
+- Do not move benchmark execution or comparison logic out of the existing triton-npu-run-eval helper scripts.
 - Do not require the CLI to parse free-form `summary.md` prose for every claimed number.
 
 ## Design

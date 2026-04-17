@@ -9,7 +9,7 @@ This change bundle fixes confirmed regressions and robustness gaps reported in `
 - Streaming process runners treat `stall_timeout_seconds <= 0` as "no stall timeout" instead of an immediate stall condition.
 - Optimize supervision keeps using recovery resumes after repeated stalls instead of falling back to a fresh run path.
 - Codex diff filtering stops dropping normal indented output that appears after a diff block.
-- Remote run-validation commands quote generated shell arguments for filenames and metadata that may contain spaces or shell metacharacters.
+- Remote triton-npu-run-eval commands quote generated shell arguments for filenames and metadata that may contain spaces or shell metacharacters.
 - Invalid run-skill result payloads fail with a short actionable error instead of a raw `KeyError`.
 
 ## Implementation approach

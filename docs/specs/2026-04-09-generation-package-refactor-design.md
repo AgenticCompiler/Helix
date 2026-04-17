@@ -29,7 +29,7 @@
   - output path resolution
   - overwrite protection
   - target preparation helpers
-- `src/triton_agent/generation/runtime.py`
+- `src/triton_agent/generation/orchestration.py`
   - request construction
   - staged skill selection
   - runner invocation

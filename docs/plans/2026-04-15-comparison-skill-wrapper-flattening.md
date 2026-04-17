@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Remove redundant comparison forwarding layers while keeping comparison behavior owned by the operator-eval skill modules.
+**Goal:** Remove redundant comparison forwarding layers while keeping comparison behavior owned by the triton-npu-run-eval skill modules.
 
 **Architecture:** Keep comparison behavior in `src/triton_agent/commands/comparison.py`, where the CLI already validates arguments and reports errors, and load the direct skill implementation modules `test_runner` and `bench_runner` from there. Do not preserve a separate package bridge for comparison-only helpers in this executable app.
 
@@ -27,8 +27,8 @@
 **Files:**
 - Modify: `src/triton_agent/commands/comparison.py`
 - Delete: `src/triton_agent/comparison.py`
-- Delete: `skills/operator-eval/scripts/compare_result.py`
-- Delete: `skills/operator-eval/scripts/compare_perf.py`
+- Delete: `skills/triton-npu-run-eval/scripts/compare_result.py`
+- Delete: `skills/triton-npu-run-eval/scripts/compare_perf.py`
 
 - [ ] **Step 1: Move comparison helper loading into `commands/comparison.py`**
 - [ ] **Step 2: Delete the redundant package bridge and compare wrapper skill scripts**

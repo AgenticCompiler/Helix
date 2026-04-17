@@ -41,7 +41,7 @@ Expected: FAIL with import errors for the new `triton_agent.generation.*` module
 - Create: `src/triton_agent/generation/__init__.py`
 - Create: `src/triton_agent/generation/models.py`
 - Create: `src/triton_agent/generation/outputs.py`
-- Create: `src/triton_agent/generation/runtime.py`
+- Create: `src/triton_agent/generation/orchestration.py`
 - Modify: `tests/test_generation_commands.py`
 
 - [ ] **Step 1: Add `GenerationOptions` to `src/triton_agent/generation/models.py`**
@@ -53,7 +53,7 @@ Move:
 - `prepare_generation_target`
 - `prepare_generation_targets`
 
-- [ ] **Step 3: Move request-building and runner invocation into `src/triton_agent/generation/runtime.py`**
+- [ ] **Step 3: Move request-building and runner invocation into `src/triton_agent/generation/orchestration.py`**
 
 Move:
 - `GEN_EVAL_STAGED_SKILLS`

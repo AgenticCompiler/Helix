@@ -4,9 +4,9 @@
 
 **Goal:** Add a new repository-owned skill that captures complete Triton Ascend compiler IR into a stable IR-directory layout, supports both local and remote execution, and guides the agent to analyze archived IR directly or pair it with profiler evidence when needed.
 
-**Architecture:** Keep IR capture deterministic in a bundled skill script rather than in the CLI. Add a new `skills/ascend-operator-ir-analyzer/` skill with a Python capture helper that accepts a benchmark harness plus operator file, renders the benchmark command under Triton debug env vars, parses stdout for the dump path and Bisheng compile command, rewrites and replays that compile command against an archived `kernel.ttadapter.mlir`, and stores the resulting artifacts plus a manifest in one IR directory. Reuse the shared `skills/operator-eval/scripts/run_runtime.py` SSH and copy helpers for remote execution so remote behavior matches existing repository semantics. Keep the skill text thin and procedural, and point the agent to the existing profiler skill when timing evidence is needed.
+**Architecture:** Keep IR capture deterministic in a bundled skill script rather than in the CLI. Add a new `skills/triton-npu-analyze-ir/` skill with a Python capture helper that accepts a benchmark harness plus operator file, renders the benchmark command under Triton debug env vars, parses stdout for the dump path and Bisheng compile command, rewrites and replays that compile command against an archived `kernel.ttadapter.mlir`, and stores the resulting artifacts plus a manifest in one IR directory. Reuse the shared `skills/triton-npu-run-eval/scripts/run_runtime.py` SSH and copy helpers for remote execution so remote behavior matches existing repository semantics. Keep the skill text thin and procedural, and point the agent to the existing profiler skill when timing evidence is needed.
 
-**Tech Stack:** Python 3.11, `argparse`, `subprocess`, `shlex`, `json`, existing operator-eval runtime helpers, `unittest`, Markdown skill docs
+**Tech Stack:** Python 3.11, `argparse`, `subprocess`, `shlex`, `json`, existing triton-npu-run-eval runtime helpers, `unittest`, Markdown skill docs
 
 ---
 
@@ -25,9 +25,9 @@
 ### Task 2: Create the skill skeleton and implement the capture script
 
 **Files:**
-- Create: `skills/ascend-operator-ir-analyzer/SKILL.md`
-- Create: `skills/ascend-operator-ir-analyzer/agents/openai.yaml`
-- Create: `skills/ascend-operator-ir-analyzer/scripts/capture_ir.py`
+- Create: `skills/triton-npu-analyze-ir/SKILL.md`
+- Create: `skills/triton-npu-analyze-ir/agents/openai.yaml`
+- Create: `skills/triton-npu-analyze-ir/scripts/capture_ir.py`
 
 - [ ] **Step 1: Initialize the new skill under `skills/` with a `scripts/` resource folder and generated agent metadata**
 - [ ] **Step 2: Implement local command execution with `TRITON_DEBUG=1` and `TRITON_ALWAYS_COMPILE=1`**
@@ -40,10 +40,10 @@
 ### Task 3: Add remote capture support through shared runtime helpers
 
 **Files:**
-- Modify: `skills/ascend-operator-ir-analyzer/scripts/capture_ir.py`
-- Reuse: `skills/operator-eval/scripts/run_runtime.py`
+- Modify: `skills/triton-npu-analyze-ir/scripts/capture_ir.py`
+- Reuse: `skills/triton-npu-run-eval/scripts/run_runtime.py`
 
-- [ ] **Step 1: Load the shared remote runtime helpers from `skills/operator-eval/scripts/run_runtime.py` without coupling the new skill to `triton_agent` package imports**
+- [ ] **Step 1: Load the shared remote runtime helpers from `skills/triton-npu-run-eval/scripts/run_runtime.py` without coupling the new skill to `triton_agent` package imports**
 - [ ] **Step 2: Implement remote workspace creation, file staging, remote command execution, and archive copy-back using the same `--remote`, `--remote-workdir`, and `--keep-remote-workdir` semantics used elsewhere in the repository**
 - [ ] **Step 3: Ensure remote mode replays the compiler on the remote machine and copies the completed archive directory back to the requested local archive path**
 - [ ] **Step 4: Make remote failures short and actionable for missing artifacts, failed remote commands, or local archive collisions**
@@ -52,10 +52,10 @@
 ### Task 4: Write the skill contract and update repository docs
 
 **Files:**
-- Modify: `skills/ascend-operator-ir-analyzer/SKILL.md`
+- Modify: `skills/triton-npu-analyze-ir/SKILL.md`
 - Modify: `README.md`
 - Modify: `AGENTS.md`
-- Modify: `docs/2026-04-07-ascend-operator-ir-analyzer-skill.md`
+- Modify: `docs/2026-04-07-triton-npu-analyze-ir-skill.md`
 
 - [ ] **Step 1: Write concise trigger-focused skill metadata that makes the new skill discoverable for Triton Ascend IR capture and analysis requests**
 - [ ] **Step 2: Document the default workflow around `capture_ir.py`, archive inspection, and optional profiler pairing**
@@ -67,9 +67,9 @@
 
 **Files:**
 - Modify: `tests/test_ascend_operator_ir_analyzer.py`
-- Modify: `skills/ascend-operator-ir-analyzer/scripts/capture_ir.py`
+- Modify: `skills/triton-npu-analyze-ir/scripts/capture_ir.py`
 
-- [ ] **Step 1: Run `python3 /Users/cdj/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/ascend-operator-ir-analyzer`**
+- [ ] **Step 1: Run the skill validation workflow available in your environment against `skills/triton-npu-analyze-ir`**
 - [ ] **Step 2: Run the targeted IR-analyzer unittest module**
 - [ ] **Step 3: Run `uv run python -m unittest discover -s tests -v`**
 - [ ] **Step 4: Run `uv run --group dev ruff check`**

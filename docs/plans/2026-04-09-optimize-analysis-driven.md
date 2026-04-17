@@ -62,11 +62,11 @@ Expected: PASS
 **Files:**
 - Modify: `tests/test_cli.py`
 - Modify: `src/triton_agent/optimize/guidance.py`
-- Modify: `src/triton_agent/optimize/supervisor.py`
-- Modify: `src/triton_agent/codex_runner.py`
-- Modify: `src/triton_agent/opencode_runner.py`
-- Modify: `src/triton_agent/claude_runner.py`
-- Modify: `src/triton_agent/pi_runner.py`
+- Modify: `src/triton_agent/optimize/run_loop.py`
+- Modify: `src/triton_agent/backends/codex.py`
+- Modify: `src/triton_agent/backends/opencode.py`
+- Modify: `src/triton_agent/backends/claude.py`
+- Modify: `src/triton_agent/backends/pi.py`
 
 - [ ] **Step 1: Write failing guidance tests**
 
@@ -98,11 +98,11 @@ Expected: PASS
 ### Task 3: Update Optimize Skill And Reference Docs
 
 **Files:**
-- Modify: `skills/optimize/SKILL.md`
-- Modify: `skills/optimize/references/workflow.md`
-- Modify: `skills/optimize/references/patterns/index.md`
-- Modify: `skills/optimize/references/artifacts.md`
-- Modify: `skills/optimize/references/opt-note-format.md`
+- Modify: `skills/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton-npu-optimize/references/workflow.md`
+- Modify: `skills/triton-npu-optimize/references/patterns/index.md`
+- Modify: `skills/triton-npu-optimize/references/artifacts.md`
+- Modify: `skills/triton-npu-optimize/references/opt-note-format.md`
 
 - [ ] **Step 1: Update the optimize skill workflow**
 

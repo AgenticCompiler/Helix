@@ -81,7 +81,7 @@ Expected: PASS
 ### Task 3: Extract optimize runtime and batch orchestration
 
 **Files:**
-- Create: `src/triton_agent/optimize/runtime.py`
+- Create: `src/triton_agent/optimize/orchestration.py`
 - Create: `src/triton_agent/optimize/batch.py`
 - Modify: `src/triton_agent/cli.py`
 - Test: `tests/test_optimize_batch.py`
@@ -92,7 +92,7 @@ Move the single-workspace optimize lifecycle:
 - optimize request building
 - skill staging
 - temporary optimize `AGENTS.md` lifecycle
-- `OptimizeSupervisor` invocation
+- `OptimizeRunLoop` invocation
 
 - [ ] **Step 2: Write the batch orchestration module**
 

@@ -9,7 +9,7 @@
 ## Problem
 
 - Local `profile-bench` currently hard-codes `python3` in its benchmark and case-count commands.
-- This breaks consistency with the rest of the local operator-eval helpers, which already reuse the current interpreter via `sys.executable`.
+- This breaks consistency with the rest of the local triton-npu-run-eval helpers, which already reuse the current interpreter via `sys.executable`.
 - When a user or code agent launches the helper from an activated virtual environment, local profiling may escape that environment unexpectedly.
 
 ## Goals
@@ -22,11 +22,11 @@
 
 - Do not change remote profiling behavior.
 - Do not introduce a new CLI flag for selecting Python.
-- Do not refactor unrelated operator-eval helpers.
+- Do not refactor unrelated triton-npu-run-eval helpers.
 
 ## Design
 
-- Import `sys` in `skills/operator-eval/scripts/profile_runner.py`.
+- Import `sys` in `skills/triton-npu-run-eval/scripts/profile_runner.py`.
 - Replace local hard-coded `python3` command entries with `sys.executable` in:
   - standalone local profile execution
   - msprof local profile execution

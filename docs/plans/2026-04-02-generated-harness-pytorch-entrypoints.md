@@ -41,8 +41,8 @@ Expected: PASS
 ### Task 2: Update Generation Skill Contracts
 
 **Files:**
-- Modify: `skills/test-gen/SKILL.md`
-- Modify: `skills/bench-gen/SKILL.md`
+- Modify: `skills/triton-npu-gen-test/SKILL.md`
+- Modify: `skills/triton-npu-gen-bench/SKILL.md`
 - Test: `tests/test_generation_contracts.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -73,10 +73,10 @@ Expected: PASS
 ### Task 3: Update Normative Test And Benchmark Specs
 
 **Files:**
-- Modify: `skills/test-gen/references/test-standalone-spec.md`
-- Modify: `skills/test-gen/references/test-differential-spec.md`
-- Modify: `skills/bench-gen/references/bench-standalone-spec.md`
-- Modify: `skills/bench-gen/references/bench-msprof-spec.md`
+- Modify: `skills/triton-npu-gen-test/references/test-standalone-spec.md`
+- Modify: `skills/triton-npu-gen-test/references/test-differential-spec.md`
+- Modify: `skills/triton-npu-gen-bench/references/bench-standalone-spec.md`
+- Modify: `skills/triton-npu-gen-bench/references/bench-msprof-spec.md`
 - Test: `tests/test_generation_contracts.py`
 
 - [ ] **Step 1: Write the failing test**

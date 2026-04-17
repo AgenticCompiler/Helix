@@ -1,6 +1,6 @@
 ## Summary
 
-- Redesign the `skills/optimize` skill from a placeholder into a complete iterative optimization workflow for Triton Ascend NPU operators.
+- Redesign the `skills/triton-npu-optimize` skill from a placeholder into a complete iterative optimization workflow for Triton Ascend NPU operators.
 - Treat optimization as search over validated candidates instead of a single linear chain from the current best version.
 - Require persistent round artifacts and optimization notes so later engineers can reuse successful ideas.
 
@@ -35,5 +35,5 @@
 
 ## Validation
 
-- Run `quick_validate.py` against `skills/optimize`
+- Run the skill validation workflow available in your environment against `skills/triton-npu-optimize`
 - Manually review the resulting `SKILL.md` for concise triggers and clear reference navigation

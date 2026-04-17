@@ -4,7 +4,7 @@
 
 **Goal:** Add optimize-specific graceful `Ctrl+C` handling that sends two `SIGINT` signals to the running code agent before force-killing it.
 
-**Architecture:** Keep interrupt ownership in `process_runner.py` so the subprocess layer can translate one user `Ctrl+C` into a predictable shutdown sequence. Thread an optimize-only interrupt policy from the runner entrypoint so `OptimizeSupervisor` receives a normal interrupted result and does not attempt stall recovery.
+**Architecture:** Keep interrupt ownership in `process_runner.py` so the subprocess layer can translate one user `Ctrl+C` into a predictable shutdown sequence. Thread an optimize-only interrupt policy from the runner entrypoint so `OptimizeRunLoop` receives a normal interrupted result and does not attempt stall recovery.
 
 **Tech Stack:** Python, `subprocess`, POSIX signals, `unittest`
 
@@ -30,10 +30,10 @@ Expected: FAIL because the process runner does not yet support optimize interrup
 
 **Files:**
 - Modify: `src/triton_agent/process_runner.py`
-- Modify: `src/triton_agent/codex_runner.py`
-- Modify: `src/triton_agent/opencode_runner.py`
-- Modify: `src/triton_agent/pi_runner.py`
-- Modify: `src/triton_agent/claude_runner.py`
+- Modify: `src/triton_agent/backends/codex.py`
+- Modify: `src/triton_agent/backends/opencode.py`
+- Modify: `src/triton_agent/backends/pi.py`
+- Modify: `src/triton_agent/backends/claude.py`
 
 - [ ] **Step 1: Add an opt-in interrupt policy to the shared process runner**
 

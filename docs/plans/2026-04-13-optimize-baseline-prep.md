@@ -34,8 +34,8 @@
 **Files:**
 - Modify: `src/triton_agent/prompts.py`
 - Modify: `src/triton_agent/optimize/guidance.py`
-- Modify: `skills/optimize/SKILL.md`
-- Modify: `skills/optimize/references/workflow.md`
+- Modify: `skills/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton-npu-optimize/references/workflow.md`
 
 - [ ] Tell workers to establish or reuse `baseline/` before creating `opt-round-1`.
 - [ ] Tell workers to use `baseline/perf.txt` for canonical optimize-session comparisons.

@@ -35,11 +35,11 @@
 - Create: `src/triton_agent/backends/pi.py`
 - Create: `src/triton_agent/backends/claude.py`
 - Delete: `src/triton_agent/agent.py`
-- Delete: `src/triton_agent/runner_factory.py`
-- Delete: `src/triton_agent/codex_runner.py`
-- Delete: `src/triton_agent/opencode_runner.py`
-- Delete: `src/triton_agent/pi_runner.py`
-- Delete: `src/triton_agent/claude_runner.py`
+- Delete: `src/triton_agent/backends/factory.py`
+- Delete: `src/triton_agent/backends/codex.py`
+- Delete: `src/triton_agent/backends/opencode.py`
+- Delete: `src/triton_agent/backends/pi.py`
+- Delete: `src/triton_agent/backends/claude.py`
 
 - [ ] **Step 1: Create the new package modules with the current backend implementation, keeping behavior unchanged**
 - [ ] **Step 2: Preserve the stable helpers that other modules need, including `_UnifiedDiffFilter` in the Codex module**
@@ -49,8 +49,8 @@
 
 **Files:**
 - Modify: `src/triton_agent/cli.py`
-- Modify: `src/triton_agent/generation/runtime.py`
-- Modify: `src/triton_agent/optimize/runtime.py`
+- Modify: `src/triton_agent/generation/orchestration.py`
+- Modify: `src/triton_agent/optimize/orchestration.py`
 
 - [ ] **Step 1: Point backend imports at `triton_agent.backends` or the focused package modules**
 - [ ] **Step 2: Keep the current CLI wrapper surface stable while switching the implementation imports underneath**

@@ -25,9 +25,9 @@
   Parse supervise mode into `OptimizeRunOptions`.
 - `src/triton_agent/optimize/models.py`
   Extend `OptimizeRunOptions` with the supervise setting.
-- `src/triton_agent/optimize/runtime.py`
+- `src/triton_agent/optimize/orchestration.py`
   Split optimize execution into unsupervised versus supervised paths while sharing setup and cleanup.
-- `src/triton_agent/optimize/supervisor.py`
+- `src/triton_agent/optimize/run_loop.py`
   Reuse the existing recovery loop for the unsupervised path without changing supervised semantics.
 - `src/triton_agent/optimize/batch.py`
   Keep batch routing unchanged except for passing the selected supervise mode through request construction.
@@ -104,7 +104,7 @@ git commit -m "feat: add optimize supervise mode option"
 ## Task 2: Split Optimize Runtime Into Unsupervised And Supervised Paths
 
 **Files:**
-- Modify: `src/triton_agent/optimize/runtime.py`
+- Modify: `src/triton_agent/optimize/orchestration.py`
 - Modify: `tests/test_optimize_runtime.py`
 
 - [ ] **Step 1: Write the failing runtime-path tests**
@@ -158,14 +158,14 @@ Expected: PASS
 - [ ] **Step 5: Commit the runtime split**
 
 ```bash
-git add src/triton_agent/optimize/runtime.py tests/test_optimize_runtime.py
+git add src/triton_agent/optimize/orchestration.py tests/test_optimize_runtime.py
 git commit -m "feat: split optimize supervised and unsupervised runtime paths"
 ```
 
 ## Task 3: Keep Guidance Rendering Scoped To Supervised Mode
 
 **Files:**
-- Modify: `src/triton_agent/optimize/runtime.py`
+- Modify: `src/triton_agent/optimize/orchestration.py`
 - Modify: `src/triton_agent/optimize/guidance.py`
 - Test: `tests/test_optimize_runtime.py`
 - Test: `tests/test_optimize/guidance.py`
@@ -215,15 +215,15 @@ Expected: PASS
 - [ ] **Step 5: Commit the guidance split**
 
 ```bash
-git add src/triton_agent/optimize/runtime.py src/triton_agent/optimize/guidance.py tests/test_optimize_runtime.py tests/test_optimize/guidance.py
+git add src/triton_agent/optimize/orchestration.py src/triton_agent/optimize/guidance.py tests/test_optimize_runtime.py tests/test_optimize/guidance.py
 git commit -m "feat: scope optimize guidance to supervised mode"
 ```
 
 ## Task 4: Preserve Legacy Recovery Semantics For Unsupervised Optimize
 
 **Files:**
-- Modify: `src/triton_agent/optimize/supervisor.py`
-- Modify: `src/triton_agent/optimize/runtime.py`
+- Modify: `src/triton_agent/optimize/run_loop.py`
+- Modify: `src/triton_agent/optimize/orchestration.py`
 - Test: `tests/test_supervisor.py`
 - Test: `tests/test_optimize_runtime.py`
 
@@ -234,12 +234,12 @@ Add tests that pin expected unsupervised behavior:
 ```python
 def test_unsupervised_optimize_uses_recovery_runner_interfaces(self) -> None:
     request = make_request(supervise="off")
-    OptimizeSupervisor().run(runner, request)
+    OptimizeRunLoop().run(runner, request)
     self.assertEqual(runner.calls, ["run"])
 
 def test_unsupervised_interact_returns_failed_result_without_resume(self) -> None:
     request = make_request(supervise="off", interact=True)
-    result = OptimizeSupervisor().run(runner, request)
+    result = OptimizeRunLoop().run(runner, request)
     self.assertFalse(result.succeeded)
     self.assertEqual(runner.resume_calls, 0)
 ```
@@ -251,7 +251,7 @@ Expected: FAIL because runtime still always wraps optimize in the round-gate run
 
 - [ ] **Step 3: Reconnect the unsupervised path to the recovery loop**
 
-Use the existing `RunnerWithStreams` plus `OptimizeSupervisor.run()` recovery path for `supervise="off"`:
+Use the existing `RecoveryRunnerAdapter` plus `OptimizeRunLoop.run()` recovery path for `supervise="off"`:
 
 - non-interactive runs may still use `resume()` when stalled
 - `min_rounds` remains handled only by the legacy recovery path
@@ -272,7 +272,7 @@ Expected: PASS
 - [ ] **Step 5: Commit the compatibility restoration**
 
 ```bash
-git add src/triton_agent/optimize/supervisor.py src/triton_agent/optimize/runtime.py tests/test_supervisor.py tests/test_optimize_runtime.py
+git add src/triton_agent/optimize/run_loop.py src/triton_agent/optimize/orchestration.py tests/test_supervisor.py tests/test_optimize_runtime.py
 git commit -m "feat: restore legacy optimize flow when supervision is off"
 ```
 

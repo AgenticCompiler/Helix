@@ -94,7 +94,7 @@ If useful during implementation, the script may also persist the raw stdout or a
 ## Verification
 
 - Run the new script-focused unit tests.
-- Run `python3 /Users/cdj/.codex/skills/.system/skill-creator/scripts/quick_validate.py <skill-path>`.
+- Run the skill validation workflow available in your environment against `<skill-path>`.
 - Run `uv run --group dev ruff check`.
 - Run `uv run pyright`.
 - Run `uv run python -m unittest discover -s tests -v`.

@@ -14,7 +14,7 @@
 ## Non-Goals
 
 - Do not change optimize prompt construction, resume behavior, or supervision semantics.
-- Do not change `OptimizeController`, `SupervisedRoundRunner`, or `RunnerWithStreams` behavior.
+- Do not change `OptimizeRunLoop`, `SupervisedOptimizeAdapter`, or `RecoveryRunnerAdapter` behavior.
 - Do not refactor unrelated optimize helpers in this change.
 
 ## Design
