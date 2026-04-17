@@ -60,6 +60,7 @@ class AgentRequest:
     optimize_role: str | None = None
     round_brief_path: Optional[Path] = None
     supervisor_report_path: Optional[Path] = None
+    target_chip: Literal["A3", "A5"] = "A5"
 
     def with_prompt(self, prompt: str) -> "AgentRequest":
         return replace(self, prompt=prompt)

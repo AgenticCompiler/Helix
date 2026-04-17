@@ -608,6 +608,20 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["optimize", "-i", "kernel.py", "--require-analysis"])
         self.assertTrue(args.require_analysis)
 
+    def test_optimize_command_defaults_target_chip_to_a5(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py"])
+        self.assertEqual(args.target_chip, "A5")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.target_chip, "A5")
+
+    def test_optimize_command_accepts_target_chip(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--target-chip", "A3"])
+        self.assertEqual(args.target_chip, "A3")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.target_chip, "A3")
+
     def test_optimize_command_accepts_supervise_modes(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize", "-i", "kernel.py", "--supervise", "on"])
@@ -696,6 +710,8 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.supervise, "off")
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.supervise, "off")
+        self.assertEqual(args.target_chip, "A5")
+        self.assertEqual(options.target_chip, "A5")
 
     def test_optimize_status_maps_to_command_kind(self) -> None:
         parser = build_parser()
@@ -735,6 +751,8 @@ class CliParserTests(unittest.TestCase):
                 "--resume",
                 "continue",
                 "--require-analysis",
+                "--target-chip",
+                "A3",
                 "--no-agent-session",
                 "--max-concurrency",
                 "3",
@@ -749,6 +767,7 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.min_rounds, 4)
         self.assertEqual(args.resume, "continue")
         self.assertTrue(args.require_analysis)
+        self.assertEqual(args.target_chip, "A3")
         self.assertTrue(args.no_agent_session)
         self.assertEqual(args.max_concurrency, 3)
         self.assertTrue(args.show_output)
@@ -1610,6 +1629,7 @@ class PathResolutionTests(unittest.TestCase):
                 continue_optimize,
                 require_analysis=False,
                 supervise="off",
+                target_chip=None,
             ):
                 captured["output_path"] = output_path
                 captured["remote"] = remote
@@ -1753,6 +1773,7 @@ class PathResolutionTests(unittest.TestCase):
                 resume_existing_session,
                 require_analysis=False,
                 supervise="off",
+                target_chip=None,
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
@@ -1829,6 +1850,7 @@ class PathResolutionTests(unittest.TestCase):
                 resume_existing_session,
                 require_analysis=False,
                 supervise="off",
+                target_chip=None,
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
@@ -2081,6 +2103,7 @@ class PathResolutionTests(unittest.TestCase):
                 resume_existing_session,
                 require_analysis=False,
                 supervise="off",
+                target_chip=None,
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
@@ -2170,6 +2193,7 @@ class PathResolutionTests(unittest.TestCase):
                 resume_existing_session,
                 require_analysis=False,
                 supervise="off",
+                target_chip=None,
             ):
                 captured["resume_existing_session"] = resume_existing_session
                 captured["test_mode"] = test_mode
@@ -2300,9 +2324,11 @@ class PathResolutionTests(unittest.TestCase):
                 resume_existing_session,
                 require_analysis=False,
                 supervise="off",
+                target_chip=None,
             ):
                 captured["require_analysis"] = require_analysis
                 captured["supervise"] = supervise
+                captured["target_chip"] = target_chip
                 return "Prompt body"
 
             with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
@@ -2326,8 +2352,10 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertTrue(captured["require_analysis"])
             self.assertEqual(captured["supervise"], "off")
+            self.assertEqual(captured["target_chip"], "A5")
             request = mocked.call_args.args[1]
             self.assertTrue(request.require_analysis)
+            self.assertEqual(request.target_chip, "A5")
             self.assertEqual(
                 request.staged_skill_names,
                 (
@@ -2360,8 +2388,10 @@ class PathResolutionTests(unittest.TestCase):
                 resume_existing_session,
                 require_analysis=False,
                 supervise="off",
+                target_chip=None,
             ):
                 captured["supervise"] = supervise
+                captured["target_chip"] = target_chip
                 return "Prompt body"
 
             with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
@@ -2384,9 +2414,62 @@ class PathResolutionTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(captured["supervise"], "on")
+            self.assertEqual(captured["target_chip"], "A5")
             request = mocked.call_args.args[1]
             self.assertEqual(request.supervise, "on")
             self.assertEqual(request.optimize_role, "worker")
+            self.assertEqual(request.target_chip, "A5")
+
+    def test_main_optimize_passes_target_chip_to_prompt_and_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+
+            captured = {}
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+
+            def _fake_build_prompt(
+                command_kind,
+                input_path,
+                operator_path,
+                output_path,
+                test_mode,
+                bench_mode,
+                force_overwrite,
+                remote,
+                remote_workdir,
+                min_rounds,
+                resume_existing_session,
+                require_analysis=False,
+                supervise="off",
+                target_chip=None,
+            ):
+                captured["target_chip"] = target_chip
+                return "Prompt body"
+
+            with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
+                with patch(
+                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
+                    return_value=fake_result,
+                ) as mocked:
+                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                        with patch(
+                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                            return_value=[],
+                        ):
+                            with patch(
+                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
+                                return_value=[],
+                            ):
+                                exit_code = main(
+                                    ["optimize", "-i", str(operator), "--target-chip", "A3"]
+                                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["target_chip"], "A3")
+            request = mocked.call_args.args[1]
+            self.assertEqual(request.target_chip, "A3")
 
     def test_main_optimize_passes_no_agent_session_to_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2975,6 +3058,8 @@ class PromptTests(unittest.TestCase):
         self.assertIn("must continue optimizing the Triton Ascend NPU kernel path itself", prompt)
         self.assertIn("Do not replace the core computation with a pure PyTorch implementation", prompt)
         self.assertIn("does not count as a successful optimize round", prompt)
+        self.assertIn("Target chip for this optimize session: A5.", prompt)
+        self.assertIn("prefer changes that fit A5", prompt)
 
     def test_build_optimize_unsupervised_prompt_mentions_baseline_state_contract(self) -> None:
         prompt = build_optimize_unsupervised_prompt(
@@ -3007,6 +3092,8 @@ class PromptTests(unittest.TestCase):
         self.assertIn("must continue optimizing the Triton Ascend NPU kernel path itself", prompt)
         self.assertIn("Do not replace the core computation with a pure PyTorch implementation", prompt)
         self.assertIn("does not count as a successful optimize round", prompt)
+        self.assertIn("Target chip for this optimize session: A5.", prompt)
+        self.assertIn("prefer changes that fit A5", prompt)
 
     def test_build_optimize_unsupervised_prompt_mentions_min_rounds_when_requested(self) -> None:
         prompt = build_optimize_unsupervised_prompt(

@@ -24,6 +24,7 @@ class OptimizeRunOptions:
     test_mode: str | None
     bench_mode: str | None
     prompt: str | None
+    target_chip: Literal["A3", "A5"] = "A5"
 
 
 @dataclass(frozen=True)

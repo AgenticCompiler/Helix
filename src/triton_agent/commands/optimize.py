@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from triton_agent.models import CommandKind
 from triton_agent.optimize.batch import resolve_batch_optimize_operator_file, run_optimize_batch
@@ -111,6 +111,7 @@ def _validate_supervise_mode(args: argparse.Namespace) -> Literal["on", "off"]:
 
 
 def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptions:
+    target_chip = cast(Literal["A3", "A5"], getattr(args, "target_chip", "A5"))
     return OptimizeRunOptions(
         agent_name=args.agent,
         interact=bool(getattr(args, "interact", False)),
@@ -128,6 +129,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         test_mode=getattr(args, "test_mode", None),
         bench_mode=getattr(args, "bench_mode", None),
         prompt=getattr(args, "prompt", None),
+        target_chip=target_chip,
     )
 
 

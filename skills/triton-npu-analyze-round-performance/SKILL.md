@@ -17,7 +17,14 @@ Use two complementary analysis paths to find performance problems:
 Use profiler-first layered analysis. Start from profiler evidence, deepen into `.bin` when the CSV-level view is not enough, and use IR as explanation and attribution rather than as the default entrypoint.
 
 Read [references/ascend-npu-profiling-analysis.md](references/ascend-npu-profiling-analysis.md) when the round needs deeper interpretation of `op_summary`, `task_time`, `api_statistic`, `msprof` JSON, or `.bin` signals.
-Read [references/ascend-npu-optimization-lessons.md](references/ascend-npu-optimization-lessons.md) when you need higher-level heuristics that connect profiling symptoms, IR findings, chip constraints, and likely optimization directions.
+Read [references/ascend-npu-optimization-guidance.md](references/ascend-npu-optimization-guidance.md) when you need help turning profiling symptoms and IR findings into concrete potential optimization points.
+Read [references/ascend-npu-architecture-notes.md](references/ascend-npu-architecture-notes.md) when the likely optimization point depends on chip differences such as A3 versus A5 buffer sizes, layout behavior, or cube/vector data handoff.
+
+Read the references in this order:
+
+1. profiling analysis, to understand the dominant profiler signals
+2. optimization guidance, to turn those signals plus IR findings into potential optimization points
+3. architecture notes, to adjust those optimization points for chip-specific constraints when needed
 
 ## Default workflow
 
@@ -33,12 +40,10 @@ Read [references/ascend-npu-optimization-lessons.md](references/ascend-npu-optim
      ```bash
      python3 ../triton-npu-profile-operator/scripts/profile_summary.py <profile-dir> --format json
      ```
-   - Use this as the default structured extractor for `op_statistic`, `op_summary`, `task_time`, `api_statistic`, `msprof` JSON, and optional `.bin` evidence.
-5. Analyze the profiler in layers instead of flattening all artifacts together.
-   - Layer 1: `op_statistic` for hotspots and scalar/vector/cube-oriented time distribution.
-   - Layer 2: `op_summary` for `aic_*`, `aiv_*`, `cube_utilization(%)`, `Task Wait Time(us)`, and `Block Dim`.
-   - Layer 3: `task_time`, `api_statistic`, and `msprof` JSON for task gaps, host overhead, and weak overlap.
-   - Layer 4: `.bin` for deeper pipeline, wait, bandwidth, L2, and memory-path signals.
+   - Use this as the default structured entrypoint for profiling evidence.
+5. Interpret profiling evidence through the profiling reference instead of ad hoc guesses.
+   - Follow [references/ascend-npu-profiling-analysis.md](references/ascend-npu-profiling-analysis.md) for layered signal interpretation.
+   - Escalate into `.bin` when CSV-level evidence is still not explanatory enough.
 6. Decide whether profiler evidence is already sufficient on its own.
    - If the layered profiler signals already explain the likely operator problem well enough, continue to diagnosis.
    - If the profiler signals are suspicious but still not explanatory enough, capture or reuse IR under `opt-round-N/ir/`.
@@ -95,28 +100,4 @@ Inside `## Diagnosis`, prefer these subsections:
 - Keep optimization suggestions tied to those diagnosed implementation problems.
 - Do not automatically write the analysis back into `attempts.md` or `summary.md`. `perf-analysis.md` is the formal output of this skill.
 
-## Signals to look for
-
-- Scalar-heavy time in a round that should mainly benefit from vector or cube execution
-- Transfer-heavy hotspots such as copy, DMA, or repeated load/store behavior
-- High `Task Wait Time(us)` or weak utilization in `op_summary`
-- Suspicious `aic_*`, `aiv_*`, or `cube_utilization(%)` ratios that do not fit the expected operator type
-- Task gaps, serial regions, or weak overlap in `task_time` and `msprof` JSON
-- Host launch, tiling, workspace, or synchronization overhead in `api_statistic`
-- Memory-path, bandwidth, L2, vector wait, or memory-load anomalies in `.bin`
-- Vector-related IR patterns disappearing or staying unexpectedly weak
-- Extra synchronization, waiting, or barrier-heavy stages
-- Weak overlap between transfer-heavy and compute-heavy stages
-- Suspicious parent-vs-round differences when comparison evidence is available
-
-## Typical conclusions
-
-Useful conclusions usually land on implementation problems such as:
-
-- vectorization-friendly structure was degraded by the current indexing or masking pattern
-- data movement is too frequent because the access pattern or tile layout is poor
-- scalar fix-up work is dominating because boundary handling is too conservative
-- the current load/store organization is breaking coalescing or reuse
-- the pipeline is too shallow or insufficiently overlapped for the current operator structure
-
-Be explicit when a conclusion is still heuristic and what extra evidence would strengthen it.
+Use the profiling and optimization references for detailed signal interpretation and for mapping those signals to likely optimization points. Keep `SKILL.md` focused on workflow, evidence order, and output quality.

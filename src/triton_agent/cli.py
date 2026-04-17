@@ -26,6 +26,7 @@ _TEST_MODE_CHOICES = ("standalone", "differential")
 _BENCH_MODE_CHOICES = ("standalone", "msprof")
 _RESUME_CHOICES = ("auto", "continue", "fresh")
 _SUPERVISE_CHOICES = ("on", "off")
+_TARGET_CHIP_CHOICES = ("A3", "A5")
 
 
 @dataclass(frozen=True)
@@ -192,6 +193,7 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES)
             subparser.add_argument("--reset-optimize", action="store_true")
             subparser.add_argument("--require-analysis", action="store_true")
+            subparser.add_argument("--target-chip", default="A5", choices=_TARGET_CHIP_CHOICES)
             subparser.add_argument("--no-agent-session", action="store_true")
             subparser.add_argument(
                 "--supervise",

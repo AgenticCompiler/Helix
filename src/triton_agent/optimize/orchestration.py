@@ -60,6 +60,7 @@ def build_optimize_request(
             resolution.resume_existing_session,
             require_analysis=options.require_analysis,
             supervise=options.supervise,
+            target_chip=options.target_chip,
         ),
         options.prompt,
     )
@@ -85,6 +86,7 @@ def build_optimize_request(
         supervise=options.supervise,
         staged_skill_names=OPTIMIZE_STAGED_SKILLS,
         optimize_role="worker" if options.supervise == "on" else None,
+        target_chip=options.target_chip,
     )
 
 
