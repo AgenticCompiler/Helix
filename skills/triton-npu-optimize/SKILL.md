@@ -141,6 +141,7 @@ Use it for concise notes such as:
 - Do not begin with blind tiling, autotune, or launch-parameter search when the available evidence does not justify that direction.
 - Prefer the strongest validated optimization idea, whether it comes from the pattern library or your own Triton and Ascend NPU knowledge.
 - Do not silently discard optimization intent; preserve important comments that explain why a change helps.
+- When optimizing kernel code, you may treat missing `propagate_nan` on kernel compare helpers such as `tl.maximum()` and `tl.minimum()` as a consistency repair opportunity: inspect those call sites and add `propagate_nan=tl.PropagateNan.ALL` where it is missing when you want NaN propagation to be explicit and consistent, but note that this can change NaN-input behavior and should be treated as a semantic choice rather than a no-op cleanup.
 - Record within-round attempts continuously so long-running rounds do not lose intermediate learning.
 - Record reusable compiler fixes, profile interpretations, and newly discovered optimization heuristics in `learned_lessons.md` while they are still fresh.
 - Record optimization points in enough detail that another engineer could reuse them on a related operator.
