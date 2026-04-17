@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import json
 import re
 from pathlib import Path
 from typing import NamedTuple
@@ -216,6 +217,98 @@ def find_changes_text(
     return "\n".join(lines) + "\n"
 
 
+def performance_signals_text(
+    ir_dir: str | Path,
+    *,
+    limit: int | None = None,
+    output_format: str = "text",
+) -> str:
+    payload = build_performance_signals_payload(ir_dir, limit=limit)
+    if output_format == "json":
+        return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    if output_format != "text":
+        raise ValueError(f"Unsupported output format: {output_format}")
+
+    lines = [
+        "Performance signals:",
+        "",
+        "Vector-heavy stages:",
+    ]
+    lines.extend(_render_signal_stage_lines(payload["vector_heavy_stages"]))
+    lines.extend(
+        [
+            "",
+            "Transfer-heavy stages:",
+        ]
+    )
+    lines.extend(_render_signal_stage_lines(payload["transfer_heavy_stages"]))
+    lines.extend(
+        [
+            "",
+            "Sync-heavy stages:",
+        ]
+    )
+    lines.extend(_render_signal_stage_lines(payload["sync_heavy_stages"]))
+    lines.extend(
+        [
+            "",
+            "Suspicious transitions:",
+        ]
+    )
+    transitions = payload["suspicious_transitions"]
+    assert isinstance(transitions, list)
+    if transitions:
+        for change in transitions:
+            assert isinstance(change, dict)
+            lines.append(
+                f"- {change['from_stage']} -> {change['to_stage']} "
+                f"(score={change['signal_score']}, vector_delta={change['vector_delta']:+d}, "
+                f"transfer_delta={change['transfer_delta']:+d}, sync_delta={change['sync_delta']:+d})"
+            )
+    else:
+        lines.append("- No suspicious transitions matched the default heuristics.")
+    return "\n".join(lines) + "\n"
+
+
+def build_performance_signals_payload(
+    ir_dir: str | Path,
+    *,
+    limit: int | None = None,
+) -> dict[str, object]:
+    stage_infos = discover_stages(resolve_stages_dir(ir_dir))
+    stage_summaries = [_stage_signal_summary(info) for info in stage_infos]
+    suspicious_transitions = _suspicious_transitions(stage_infos)
+    if limit is not None:
+        suspicious_transitions = suspicious_transitions[:limit]
+
+    sorted_vector = sorted(
+        [summary for summary in stage_summaries if summary["vector_ops"] > 0],
+        key=lambda item: (-int(item["vector_ops"]), str(item["stage"])),
+    )
+    sorted_transfer = sorted(
+        [summary for summary in stage_summaries if summary["transfer_ops"] > 0],
+        key=lambda item: (-int(item["transfer_ops"]), str(item["stage"])),
+    )
+    sorted_sync = sorted(
+        [summary for summary in stage_summaries if summary["sync_ops"] > 0],
+        key=lambda item: (-int(item["sync_ops"]), str(item["stage"])),
+    )
+
+    if limit is not None:
+        stage_summaries = stage_summaries[:]
+        sorted_vector = sorted_vector[:limit]
+        sorted_transfer = sorted_transfer[:limit]
+        sorted_sync = sorted_sync[:limit]
+
+    return {
+        "stage_summaries": stage_summaries,
+        "vector_heavy_stages": sorted_vector,
+        "transfer_heavy_stages": sorted_transfer,
+        "sync_heavy_stages": sorted_sync,
+        "suspicious_transitions": suspicious_transitions,
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Inspect archived Triton Ascend IR stages.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -249,6 +342,16 @@ def build_parser() -> argparse.ArgumentParser:
         default="score",
     )
 
+    signals_parser = subparsers.add_parser("performance-signals")
+    signals_parser.add_argument("--ir-dir", required=True)
+    signals_parser.add_argument("--limit", type=int)
+    signals_parser.add_argument(
+        "--format",
+        dest="output_format",
+        choices=("text", "json"),
+        default="text",
+    )
+
     return parser
 
 
@@ -275,6 +378,16 @@ def main(argv: list[str] | None = None) -> int:
                     args.ir_dir,
                     limit=args.limit,
                     sort_by=args.sort_by,
+                ),
+                end="",
+            )
+            return 0
+        if args.command == "performance-signals":
+            print(
+                performance_signals_text(
+                    args.ir_dir,
+                    limit=args.limit,
+                    output_format=args.output_format,
                 ),
                 end="",
             )
@@ -418,6 +531,76 @@ def _stage_highlights(text: str, limit: int = 8) -> list[str]:
         if len(highlights) >= limit:
             break
     return highlights
+
+
+def _stage_signal_summary(info: StageInfo) -> dict[str, object]:
+    counts = _keyword_counts(info.path.read_text(encoding="utf-8"))
+    transfer_ops = counts["copy"] + counts["dma"] + counts["load"] + counts["store"]
+    sync_ops = counts["wait"] + counts["set_flag"] + counts["barrier"]
+    return {
+        "stage": info.stem,
+        "path": info.relative_path,
+        "line_count": info.line_count,
+        "size_bytes": info.size_bytes,
+        "vector_ops": counts["vector"],
+        "transfer_ops": transfer_ops,
+        "sync_ops": sync_ops,
+        "alloc_ops": counts["alloc"],
+        "interesting_score": _interesting_score(counts),
+    }
+
+
+def _suspicious_transitions(stage_infos: list[StageInfo]) -> list[dict[str, object]]:
+    suspicious: list[dict[str, object]] = []
+    for change in _adjacent_stage_changes(stage_infos):
+        keyword_deltas = change["keyword_deltas"]
+        assert isinstance(keyword_deltas, dict)
+        vector_delta = int(keyword_deltas["vector"])
+        transfer_delta = (
+            int(keyword_deltas["copy"])
+            + int(keyword_deltas["dma"])
+            + int(keyword_deltas["load"])
+            + int(keyword_deltas["store"])
+        )
+        sync_delta = (
+            int(keyword_deltas["wait"])
+            + int(keyword_deltas["set_flag"])
+            + int(keyword_deltas["barrier"])
+        )
+        signal_score = abs(vector_delta) + abs(transfer_delta) + abs(sync_delta)
+        if signal_score == 0:
+            continue
+        previous = change["from"]
+        current = change["to"]
+        assert isinstance(previous, StageInfo)
+        assert isinstance(current, StageInfo)
+        suspicious.append(
+            {
+                "from_stage": previous.stem,
+                "to_stage": current.stem,
+                "signal_score": signal_score,
+                "vector_delta": vector_delta,
+                "transfer_delta": transfer_delta,
+                "sync_delta": sync_delta,
+                "line_delta": int(change["line_delta"]),
+                "size_delta": int(change["size_delta"]),
+            }
+        )
+    return sorted(suspicious, key=lambda item: (-int(item["signal_score"]), str(item["to_stage"])))
+
+
+def _render_signal_stage_lines(entries: object) -> list[str]:
+    if not isinstance(entries, list) or not entries:
+        return ["- No stages matched the default heuristics."]
+    lines: list[str] = []
+    for entry in entries:
+        assert isinstance(entry, dict)
+        lines.append(
+            f"- {entry['stage']} "
+            f"(vector={entry['vector_ops']}, transfer={entry['transfer_ops']}, "
+            f"sync={entry['sync_ops']}, lines={entry['line_count']})"
+        )
+    return lines
 
 
 if __name__ == "__main__":

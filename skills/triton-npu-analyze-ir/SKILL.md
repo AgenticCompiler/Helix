@@ -60,6 +60,14 @@ Capture complete Triton Ascend compiler IR into a stable archive directory, then
      ```bash
      python3 ./scripts/inspect_ir.py find-changes --ir-dir ir --limit 20
      ```
+   - `performance-signals`
+     ```bash
+     python3 ./scripts/inspect_ir.py performance-signals --ir-dir <ir-dir> [--limit <N>] [--format text|json]
+     ```
+     Use this when the first question is performance-oriented rather than purely navigational. It summarizes vector-heavy, transfer-heavy, and sync-heavy stages, plus suspicious stage transitions. For downstream round-analysis workflows, prefer:
+     ```bash
+     python3 ./scripts/inspect_ir.py performance-signals --ir-dir ir --format json
+     ```
    - `stage-selector` may be a numeric-prefix stage id, a full stage name, or a unique substring. If the selector is ambiguous, the script fails explicitly instead of guessing.
 
 4. Analyze likely performance issues directly from the archived IR.
@@ -77,6 +85,7 @@ Capture complete Triton Ascend compiler IR into a stable archive directory, then
 
 - Prefer `python3 ./scripts/capture_ir.py --ir-dir ... --bench-file ... --operator-file ...` over ad hoc shell sequences so IR layout and replay flags stay consistent.
 - Prefer `python3 ./scripts/inspect_ir.py ...` over manually opening large numbers of `.mlir` files when the first task is navigation, summary, or comparison.
+- Prefer `performance-signals` before manual stage browsing when the immediate question is whether IR hints at vectorization loss, transfer-heavy lowering, or weak overlap.
 - Treat `inspect_ir.py` as the first-pass navigator, not a replacement for direct text inspection. After it identifies the relevant stages, feel free to use `rg`, `sed`, `diff`, or similar terminal tools on the archived `.mlir` files.
 - For remote capture, the helper stages the benchmark harness and operator file into the remote workspace before running the benchmark command there.
 - Keep the IR directory immutable once captured unless the user explicitly asks to replace it.

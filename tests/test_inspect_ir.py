@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -94,11 +95,13 @@ class InspectIrTests(unittest.TestCase):
             ]
         )
         change_args = module.build_parser().parse_args(["find-changes", "--ir-dir", "ir"])
+        signal_args = module.build_parser().parse_args(["performance-signals", "--ir-dir", "ir"])
 
         self.assertEqual(list_args.ir_dir, "ir")
         self.assertEqual(summary_args.ir_dir, "ir")
         self.assertEqual(diff_args.ir_dir, "ir")
         self.assertEqual(change_args.ir_dir, "ir")
+        self.assertEqual(signal_args.ir_dir, "ir")
 
     def test_list_stages_renders_sorted_stages_and_supports_grep_and_limit(self) -> None:
         module = _load_inspect_ir_module()
@@ -197,6 +200,40 @@ class InspectIrTests(unittest.TestCase):
         self.assertIn("10_hivm-plan-memory -> 20_hfusion-auto-vectorize-v2", rendered)
         self.assertIn("score=", rendered)
         self.assertIn("keyword deltas:", rendered)
+
+    def test_performance_signals_renders_stage_and_transition_summaries(self) -> None:
+        module = _load_inspect_ir_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_dir = _make_archive(Path(tmp))
+            rendered = module.performance_signals_text(archive_dir, limit=2)
+
+        self.assertIn("Performance signals:", rendered)
+        self.assertIn("Vector-heavy stages:", rendered)
+        self.assertIn("Transfer-heavy stages:", rendered)
+        self.assertIn("Sync-heavy stages:", rendered)
+        self.assertIn("Suspicious transitions:", rendered)
+        self.assertIn("20_hfusion-auto-vectorize-v2", rendered)
+        self.assertIn("30_hivm-inject-sync", rendered)
+
+    def test_performance_signals_supports_json_output(self) -> None:
+        module = _load_inspect_ir_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_dir = _make_archive(Path(tmp))
+            rendered = module.performance_signals_text(
+                archive_dir,
+                limit=2,
+                output_format="json",
+            )
+
+        payload = json.loads(rendered)
+        self.assertIn("stage_summaries", payload)
+        self.assertIn("vector_heavy_stages", payload)
+        self.assertIn("transfer_heavy_stages", payload)
+        self.assertIn("sync_heavy_stages", payload)
+        self.assertIn("suspicious_transitions", payload)
+        self.assertEqual(payload["vector_heavy_stages"][0]["stage"], "20_hfusion-auto-vectorize-v2")
 
 
 if __name__ == "__main__":

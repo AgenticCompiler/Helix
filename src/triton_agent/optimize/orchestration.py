@@ -15,6 +15,12 @@ from triton_agent.prompts import append_additional_user_instructions, build_prom
 from triton_agent.skills import SkillLinkManager
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
+OPTIMIZE_STAGED_SKILLS = (
+    "triton-npu-optimize",
+    "triton-npu-optimize-check",
+    "triton-npu-analyze-round-performance",
+)
+
 
 def build_optimize_request(
     input_path: Path,
@@ -77,6 +83,7 @@ def build_optimize_request(
         require_analysis=options.require_analysis,
         no_agent_session=options.no_agent_session,
         supervise=options.supervise,
+        staged_skill_names=OPTIMIZE_STAGED_SKILLS,
         optimize_role="worker" if options.supervise == "on" else None,
     )
 
@@ -88,7 +95,11 @@ def run_optimize_request(
 ) -> AgentResult:
     repo_root = Path(__file__).resolve().parents[3]
     manager = SkillLinkManager(repo_root / "skills")
-    links = manager.prepare_skills(request.agent_name, request.workdir)
+    links = manager.prepare_skills(
+        request.agent_name,
+        request.workdir,
+        skill_names=request.staged_skill_names,
+    )
     verbose_stream = stderr or sys.stderr
     if request.verbose:
         emit_verbose_lines(verbose_stream, "skills", manager.describe_prepare(links))

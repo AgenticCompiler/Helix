@@ -55,6 +55,7 @@ Use [artifacts.md](references/artifacts.md) as the artifact contract for:
 - Read [round-failure-handling.md](references/round-failure-handling.md) when correctness or benchmark validation fails.
 - Read [patterns/index.md](references/patterns/index.md) before choosing any optimization pattern reference.
 - Use the sibling `triton-npu-profile-operator` skill when benchmark numbers need operator-level performance evidence, hotspot diagnosis, bottleneck analysis, or profiler-backed comparison across runs.
+- Use the sibling `triton-npu-analyze-round-performance` skill when one round needs a deeper diagnosis that should end in `opt-round-N/perf-analysis.md`, especially for scalar/vector/cube imbalance, transfer-heavy behavior, or suspected pipeline overlap issues.
 - Use the sibling `triton-npu-analyze-ir` skill when compiler lowering details, stage-to-stage IR changes, or round-local IR evidence are needed to explain benchmark behavior. In optimize rounds, keep that evidence under `opt-round-N/ir/`, for example:
   ```bash
   python3 ../triton-npu-analyze-ir/scripts/capture_ir.py --ir-dir opt-round-N/ir --bench-file bench_<operator>.py --operator-file opt-round-N/<optimized-operator>.py
@@ -110,12 +111,13 @@ Use it for concise notes such as:
 15. Apply one coherent optimization theme for the round, then run correctness validation before trusting any performance result.
 16. Whenever you discover reusable debugging or optimization knowledge, append a short note to `learned_lessons.md` immediately instead of waiting for the round summary.
 17. After correctness passes, run benchmark validation; when benchmark timing alone does not explain the result well enough, use `triton-npu-profile-operator` to gather operator-level evidence and keep the resulting profiler artifacts under the current round directory.
-18. After both baseline and round benchmark perf artifacts exist, use the `triton-npu-run-eval` skill to run `compare-perf` through `../triton-npu-run-eval/scripts/run-command.py`, and use that output as the only source for `Avg improvement`, `Geomean speedup`, `Total speedup`, and any claimed benchmark delta.
-19. Do not hand-calculate speedups or percentage improvements from raw perf files.
-20. Compare round benchmark results against `baseline/perf.txt` for canonical optimize-session metrics, even when the current round also compares locally against its chosen parent.
-21. When IR inspection is needed to understand compiler lowering or confirm an optimization effect, use `triton-npu-analyze-ir`, capture into `opt-round-N/ir/`, and inspect that same directory directly.
-22. Run the sibling `triton-npu-optimize-check` skill with `check-round` and repair the current round until it passes before starting another round or stopping.
-23. Use the benchmark, profiler, IR evidence, and `compare-perf` output to decide whether to keep iterating, abandon the direction, or finalize the round `summary.md`, update `opt-note.md`, and preserve any reusable insight in `learned_lessons.md`.
+18. When a round needs deeper diagnosis, use `triton-npu-analyze-round-performance` and write `opt-round-N/perf-analysis.md`.
+19. After both baseline and round benchmark perf artifacts exist, use the `triton-npu-run-eval` skill to run `compare-perf` through `../triton-npu-run-eval/scripts/run-command.py`, and use that output as the only source for `Avg improvement`, `Geomean speedup`, `Total speedup`, and any claimed benchmark delta.
+20. Do not hand-calculate speedups or percentage improvements from raw perf files.
+21. Compare round benchmark results against `baseline/perf.txt` for canonical optimize-session metrics, even when the current round also compares locally against its chosen parent.
+22. When IR inspection is needed to understand compiler lowering or confirm an optimization effect, use `triton-npu-analyze-ir`, capture into `opt-round-N/ir/`, and inspect that same directory directly.
+23. Run the sibling `triton-npu-optimize-check` skill with `check-round` and repair the current round until it passes before starting another round or stopping.
+24. Use the benchmark, profiler, IR evidence, `perf-analysis.md` when present, and `compare-perf` output to decide whether to keep iterating, abandon the direction, or finalize the round `summary.md`, update `opt-note.md`, and preserve any reusable insight in `learned_lessons.md`.
 
 ## Quality Rules
 
@@ -128,6 +130,7 @@ Use it for concise notes such as:
 - Always record what evidence supports the chosen optimization direction.
 - Use `baseline/perf.txt` for canonical optimize-session performance comparisons.
 - Use profiler evidence when benchmark timing alone does not explain the result well enough.
+- Use `triton-npu-analyze-round-performance` when one round needs a standalone deep-dive analysis artifact.
 - Always use the `triton-npu-run-eval` skill's `compare-perf` flow as the authoritative source for performance deltas and speedup metrics once comparable perf artifacts exist.
 - Do not hand-calculate speedups or percentage improvements from raw perf files.
 - Always run `triton-npu-optimize-check check-round` before beginning the next round or declaring the session complete.

@@ -23,6 +23,21 @@ Profile Ascend NPU operators with `msprof` and summarize the resulting timing da
    python3 ./scripts/profile_summary.py <path-to-PROF-dir-or-parent> [--target-op <op-name>]
    ```
 
+   For round-analysis workflows that need structured signals such as core-type totals or transfer-heavy hotspots, prefer JSON mode:
+
+   ```bash
+   python3 ./scripts/profile_summary.py <path-to-PROF-dir-or-parent> [--target-op <op-name>] --format json
+   ```
+
+   The JSON payload is the preferred machine-readable entrypoint for round-level deep analysis. It can include structured signals from:
+
+   - `op_statistic`
+   - `op_summary`
+   - `task_time`
+   - `api_statistic`
+   - `msprof` JSON
+   - optional `.bin` data when present
+
 4. Present the summary in the conversation. Call out:
    - which operator was analyzed
    - whether that operator was explicit or inferred
@@ -38,6 +53,7 @@ Profile Ascend NPU operators with `msprof` and summarize the resulting timing da
 - Keep direct `msprof <command>` only as a local fallback when there is no generated benchmark harness or when the user explicitly wants a manual invocation.
 - Treat `op_summary_*.csv` as potentially large. Do not dump it into the conversation or read it naively line-by-line into memory if a streaming pass is enough.
 - Prefer the bundled summary script over ad hoc shell parsing so the report stays consistent.
+- Prefer the bundled summary script in JSON mode when the downstream task is `triton-npu-analyze-round-performance` or any profiler-first layered analysis workflow.
 - If the user names the operator, pass it through `--target-op`.
 - If the user does not name the operator, let the script infer the hottest operator from `op_statistic` and state that this is an inference.
 - Always show the final Markdown summary in the conversation instead of only mentioning generated files.
@@ -82,10 +98,12 @@ Profile Ascend NPU operators with `msprof` and summarize the resulting timing da
 ## Bundled resources
 
 - `scripts/profile_summary.py`
-  Use this to locate the relevant `PROF_*` directory, read `op_statistic` and `op_summary`, and render a concise Markdown report.
+  Use this to locate the relevant `PROF_*` directory, read profiler CSV/JSON artifacts, optionally integrate `.bin` signals, and render a concise Markdown report.
+  It can also emit structured JSON for downstream round-analysis workflows.
 
 - `scripts/parse_bin.py`
   Keep this for raw profiler binary inspection when the user provides files such as `visualize_data.bin`.
+  It also owns the structured deep-signal parsing that the summary script can reuse.
 
 - `references/profiler-csv-spec.md`
   Read this when you need the expected CSV layout or column names for `op_statistic` and `op_summary`.

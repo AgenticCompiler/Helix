@@ -21,6 +21,7 @@ _ROUND_METADATA_FILENAMES = {
     "attempts.md",
     "summary.md",
     "perf.txt",
+    "perf-analysis.md",
     "round-state.json",
 }
 
@@ -64,6 +65,8 @@ class RoundState:
     summary_path: str
     opt_note_updated: bool
     next_recommendation: str
+    perf_analysis_path: str | None = None
+    analysis_comparison_sources: tuple[str, ...] = ()
 
 
 def check_baseline(baseline_dir: Path) -> OptimizeCheckResult:
@@ -228,9 +231,11 @@ def _inspect_round_artifacts(round_dir: Path) -> tuple[str, ...]:
 
     declared_summary = state.summary_path if state is not None else None
     declared_perf = state.perf_artifact if state is not None else None
+    declared_analysis = state.perf_analysis_path if state is not None else None
 
     summary_path = _declared_round_file(round_dir, declared_summary) if state is not None else None
     perf_path = _declared_round_file(round_dir, declared_perf) if state is not None else None
+    perf_analysis_path = _declared_round_file(round_dir, declared_analysis) if state is not None else None
 
     if state is None and summary_path is None:
         summary_path = _existing_file(round_dir / "summary.md")
@@ -247,6 +252,8 @@ def _inspect_round_artifacts(round_dir: Path) -> tuple[str, ...]:
         issues.append("missing round-state.json")
     if perf_path is None:
         issues.append(_missing_issue(declared_perf, default_path="perf artifact"))
+    if declared_analysis is not None and perf_analysis_path is None:
+        issues.append(_missing_issue(declared_analysis, default_path="perf-analysis.md"))
     if operator_path is None:
         issues.append("missing round-local operator output")
     return tuple(issues)
@@ -267,6 +274,7 @@ def _load_round_state(round_dir: Path) -> RoundState:
         if not isinstance(item, str):
             raise ValueError("round-state evidence_sources must be a list of strings")
         evidence_sources.append(item)
+    comparison_sources = _optional_str_tuple(data.get("analysis_comparison_sources"))
 
     return RoundState(
         round_name=str(data["round"]),
@@ -282,6 +290,8 @@ def _load_round_state(round_dir: Path) -> RoundState:
         summary_path=str(data["summary_path"]),
         opt_note_updated=bool(data["opt_note_updated"]),
         next_recommendation=str(data["next_recommendation"]),
+        perf_analysis_path=_optional_str(data.get("perf_analysis_path")),
+        analysis_comparison_sources=comparison_sources,
     )
 
 
@@ -300,6 +310,25 @@ def _load_json_object(path: Path, *, display_name: str) -> dict[str, Any]:
 
 def _existing_file(path: Path) -> Path | None:
     return path if path.is_file() else None
+
+
+def _optional_str(value: object) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
+def _optional_str_tuple(value: object) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError("round-state analysis_comparison_sources must be a list of strings")
+    items: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise ValueError("round-state analysis_comparison_sources must be a list of strings")
+        items.append(item)
+    return tuple(items)
 
 
 def _declared_workspace_file(workspace: Path, relative_path: str | None) -> Path | None:

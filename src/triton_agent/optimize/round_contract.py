@@ -6,10 +6,12 @@ from typing import Any, cast
 
 from triton_agent.optimize.contract import ROUND_STATE_REQUIRED_FIELDS
 from triton_agent.optimize.models import RoundArtifactsInspection, RoundState
+
 _ROUND_METADATA_FILENAMES = {
     "attempts.md",
     "summary.md",
     "perf.txt",
+    "perf-analysis.md",
     "round-state.json",
 }
 
@@ -43,6 +45,7 @@ def load_round_state(round_dir: Path) -> RoundState:
         if not isinstance(item, str):
             raise ValueError("round-state evidence_sources must be a list of strings")
         evidence_sources.append(item)
+    comparison_sources = _optional_str_tuple(data.get("analysis_comparison_sources"))
 
     return RoundState(
         round_name=str(data["round"]),
@@ -61,6 +64,8 @@ def load_round_state(round_dir: Path) -> RoundState:
         analysis_skipped_reason=_optional_str(data.get("analysis_skipped_reason")),
         profile_dir=_optional_str(data.get("profile_dir")),
         ir_dir=_optional_str(data.get("ir_dir")),
+        perf_analysis_path=_optional_str(data.get("perf_analysis_path")),
+        analysis_comparison_sources=comparison_sources,
         validated_candidate=_optional_bool(data.get("validated_candidate")),
     )
 
@@ -77,13 +82,16 @@ def inspect_round_artifacts(round_dir: Path) -> RoundArtifactsInspection:
 
     declared_summary = state.summary_path if state is not None else None
     declared_perf = state.perf_artifact if state is not None else None
+    declared_analysis = state.perf_analysis_path if state is not None else None
 
     if state is None:
         summary_path = None
         perf_path = None
+        perf_analysis_path = None
     else:
         summary_path = _declared_round_file(round_dir, declared_summary)
         perf_path = _declared_round_file(round_dir, declared_perf)
+        perf_analysis_path = _declared_round_file(round_dir, declared_analysis)
 
     if state is None and summary_path is None:
         summary_path = _existing_file(round_dir / "summary.md")
@@ -100,6 +108,8 @@ def inspect_round_artifacts(round_dir: Path) -> RoundArtifactsInspection:
         issues.append("missing round-state.json")
     if perf_path is None:
         issues.append(_missing_issue(declared_perf, default_path="perf artifact"))
+    if declared_analysis is not None and perf_analysis_path is None:
+        issues.append(_missing_issue(declared_analysis, default_path="perf-analysis.md"))
     if operator_path is None:
         issues.append("missing round-local operator output")
 
@@ -109,6 +119,7 @@ def inspect_round_artifacts(round_dir: Path) -> RoundArtifactsInspection:
         attempts_path=attempts_path,
         summary_path=summary_path,
         perf_path=perf_path,
+        perf_analysis_path=perf_analysis_path,
         round_state_path=round_state_path,
         issues=tuple(issues),
     )
@@ -160,6 +171,20 @@ def _optional_bool(value: object) -> bool | None:
     if value is None:
         return None
     return bool(value)
+
+
+def _optional_str_tuple(value: object) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError("round-state analysis_comparison_sources must be a list of strings")
+    raw_items = cast(list[Any], value)
+    items: list[str] = []
+    for item in raw_items:
+        if not isinstance(item, str):
+            raise ValueError("round-state analysis_comparison_sources must be a list of strings")
+        items.append(item)
+    return tuple(items)
 
 
 def _missing_issue(relative_path: str | None, *, default_path: str) -> str:

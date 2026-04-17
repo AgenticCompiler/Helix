@@ -18,12 +18,17 @@ class SkillLinkManagerTests(unittest.TestCase):
             manager = SkillLinkManager(source)
             links = manager.prepare_codex_skills(
                 workspace,
-                skill_names=("triton-npu-optimize", "triton-npu-optimize-check"),
+                skill_names=(
+                    "triton-npu-optimize",
+                    "triton-npu-optimize-check",
+                    "triton-npu-analyze-round-performance",
+                ),
             )
 
             target = workspace / ".codex" / "skills"
             self.assertTrue((target / "triton-npu-optimize" / "SKILL.md").exists())
             self.assertTrue((target / "triton-npu-optimize-check" / "SKILL.md").exists())
+            self.assertTrue((target / "triton-npu-analyze-round-performance" / "SKILL.md").exists())
             manager.cleanup(links)
 
     def test_copy_only_requested_skill_dirs_when_codex_skills_dir_missing(self) -> None:
@@ -38,6 +43,7 @@ class SkillLinkManagerTests(unittest.TestCase):
                 "triton-npu-gen-bench",
                 "triton-npu-run-eval",
                 "triton-npu-optimize",
+                "triton-npu-analyze-round-performance",
             ):
                 (source / name).mkdir()
                 (source / name / "SKILL.md").write_text(f"{name}\n", encoding="utf-8")
@@ -59,6 +65,7 @@ class SkillLinkManagerTests(unittest.TestCase):
             self.assertTrue((target / "triton-npu-gen-bench").exists())
             self.assertTrue((target / "triton-npu-run-eval").exists())
             self.assertFalse((target / "triton-npu-optimize").exists())
+            self.assertFalse((target / "triton-npu-analyze-round-performance").exists())
             self.assertEqual(links.created_paths, [target])
             manager.cleanup(links)
             self.assertFalse(target.exists())

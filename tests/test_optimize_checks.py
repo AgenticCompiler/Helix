@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Optional
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -89,6 +90,33 @@ class OptimizeCheckTests(unittest.TestCase):
             self.assertEqual(result.decision, "pass")
             self.assertEqual(result.issues, ())
 
+    def test_check_round_allows_missing_perf_analysis_when_not_declared(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            round_dir = self._write_round(workdir, "opt-round-1", next_recommendation="continue")
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertTrue(result.ok)
+
+    def test_check_round_flags_missing_declared_perf_analysis(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            round_dir = self._write_round(
+                workdir,
+                "opt-round-1",
+                next_recommendation="continue",
+                perf_analysis_path="perf-analysis.md",
+            )
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertFalse(result.ok)
+            self.assertEqual(result.decision, "revise-required")
+            self.assertIn("missing perf-analysis.md", result.issues)
+
     def _write_baseline(self, workdir: Path) -> None:
         baseline_dir = workdir / "baseline"
         baseline_dir.mkdir(exist_ok=True)
@@ -113,7 +141,14 @@ class OptimizeCheckTests(unittest.TestCase):
         (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
         (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
 
-    def _write_round(self, workdir: Path, round_name: str, *, next_recommendation: str) -> Path:
+    def _write_round(
+        self,
+        workdir: Path,
+        round_name: str,
+        *,
+        next_recommendation: str,
+        perf_analysis_path: Optional[str] = None,
+    ) -> Path:
         round_dir = workdir / round_name
         round_dir.mkdir(exist_ok=True)
         (workdir / "opt-note.md").write_text("## Round\n", encoding="utf-8")
@@ -121,24 +156,25 @@ class OptimizeCheckTests(unittest.TestCase):
         (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
         (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
         (round_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+        payload = {
+            "round": round_name,
+            "parent_round": "round-0",
+            "hypothesis": "vectorize loads",
+            "evidence_sources": ["benchmark"],
+            "correctness_status": "passed",
+            "benchmark_status": "passed",
+            "perf_artifact": "perf.txt",
+            "canonical_baseline": "baseline",
+            "comparison_target": "baseline/perf.txt",
+            "perf_summary_source": "compare-perf",
+            "summary_path": "summary.md",
+            "opt_note_updated": True,
+            "next_recommendation": next_recommendation,
+        }
+        if perf_analysis_path is not None:
+            payload["perf_analysis_path"] = perf_analysis_path
         (round_dir / "round-state.json").write_text(
-            json.dumps(
-                {
-                    "round": round_name,
-                    "parent_round": "round-0",
-                    "hypothesis": "vectorize loads",
-                    "evidence_sources": ["benchmark"],
-                    "correctness_status": "passed",
-                    "benchmark_status": "passed",
-                    "perf_artifact": "perf.txt",
-                    "canonical_baseline": "baseline",
-                    "comparison_target": "baseline/perf.txt",
-                    "perf_summary_source": "compare-perf",
-                    "summary_path": "summary.md",
-                    "opt_note_updated": True,
-                    "next_recommendation": next_recommendation,
-                }
-            ),
+            json.dumps(payload),
             encoding="utf-8",
         )
         return round_dir

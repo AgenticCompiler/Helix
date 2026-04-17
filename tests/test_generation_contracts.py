@@ -87,6 +87,8 @@ class GenerationContractTests(unittest.TestCase):
             optimize,
         )
         self.assertIn("triton-npu-profile-operator", optimize)
+        self.assertIn("triton-npu-analyze-round-performance", optimize)
+        self.assertIn("`opt-round-N/perf-analysis.md`", optimize)
 
     def test_optimize_artifacts_reference_documents_state_declared_paths(self) -> None:
         artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
@@ -95,6 +97,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("`perf_artifact`", artifacts)
         self.assertIn("Treat these round-state fields as the authoritative artifact references for round validation:", artifacts)
         self.assertIn("`summary_path`", artifacts)
+        self.assertIn("`perf_analysis_path` when present", artifacts)
         self.assertIn("`profile_dir` when present", artifacts)
         self.assertIn("`ir_dir` when present", artifacts)
 
@@ -103,6 +106,24 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("python3 ../triton-npu-analyze-ir/scripts/capture_ir.py", optimize)
         self.assertIn("--ir-dir opt-round-N/ir", optimize)
         self.assertIn("python3 ../triton-npu-analyze-ir/scripts/inspect_ir.py", optimize)
+
+    def test_round_performance_skill_describes_layered_profiler_and_binary_analysis(self) -> None:
+        content = _read("skills/triton-npu-analyze-round-performance/SKILL.md")
+        self.assertIn("ascend-npu-optimization-lessons.md", content)
+        self.assertIn("profiler-first layered analysis", content)
+        self.assertIn("`op_statistic`", content)
+        self.assertIn("`op_summary`", content)
+        self.assertIn("`task_time`", content)
+        self.assertIn("`api_statistic`", content)
+        self.assertIn("`msprof` JSON", content)
+        self.assertIn("`.bin`", content)
+        self.assertIn("IR as explanation and attribution", content)
+        self.assertIn("two complementary analysis paths", content)
+        self.assertIn("## Binary Signals", content)
+        self.assertIn("## Diagnosis", content)
+        self.assertIn("Operator Type Fit", content)
+        self.assertIn("Compute vs Memory Bound", content)
+        self.assertIn("Concurrency And Scheduling Bottlenecks", content)
 
     def test_optimize_skill_allows_non_pattern_optimization_knowledge(self) -> None:
         optimize = _read("skills/triton-npu-optimize/SKILL.md")

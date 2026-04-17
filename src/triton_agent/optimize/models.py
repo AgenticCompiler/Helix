@@ -106,6 +106,8 @@ class RoundState:
     analysis_skipped_reason: str | None = None
     profile_dir: str | None = None
     ir_dir: str | None = None
+    perf_analysis_path: str | None = None
+    analysis_comparison_sources: tuple[str, ...] = ()
     validated_candidate: bool | None = None
 
 
@@ -116,6 +118,7 @@ class RoundArtifactsInspection:
     attempts_path: Path | None
     summary_path: Path | None
     perf_path: Path | None
+    perf_analysis_path: Path | None
     round_state_path: Path | None
     issues: tuple[str, ...]
 

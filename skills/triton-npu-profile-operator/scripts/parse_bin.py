@@ -355,6 +355,238 @@ class AllInfo:
         return res
 
 
+def _safe_float(value: Any) -> Optional[float]:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _block_key(value: Any) -> str:
+    return str(value)
+
+
+def summarize_results(results: list[dict[str, Any]]) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "base_info": {},
+        "pipe_utilization": {
+            "entries": [],
+            "top_pipe": None,
+        },
+        "instruction_wait_signals": {
+            "entries": [],
+            "vector_wait_by_block": {},
+            "data_size_by_block": {},
+            "instruction_counts_by_block": {},
+        },
+        "memory_path_signals": {
+            "advice_by_core": {},
+            "l2_hit_ratio_by_core": {},
+            "vector_ratio_by_core": {},
+            "vector1_ratio_by_core": {},
+            "cube_ratio_by_core": {},
+            "top_bandwidth_paths": [],
+            "paths_by_core": {},
+        },
+        "memory_load_signals": {
+            "advice_by_block": {},
+            "tables_by_block": {},
+        },
+    }
+
+    if results:
+        block0 = results[0].get("json", {})
+        if isinstance(block0, dict):
+            head_name: list[str] = []
+            block_detail_preview: list[list[str]] = []
+            detail = block0.get("block_detail")
+            mix_detail = block0.get("mix_block_detail")
+            detail_source = mix_detail if isinstance(mix_detail, dict) and block0.get("op_type") == "mix" else detail
+            if isinstance(detail_source, dict):
+                head_name = [str(item) for item in detail_source.get("head_name", [])]
+                for row in detail_source.get("row", [])[:20]:
+                    if isinstance(row, dict):
+                        values = row.get("value", [])
+                        if isinstance(values, list):
+                            block_detail_preview.append([str(item) for item in values])
+            summary["base_info"] = {
+                "name": block0.get("name"),
+                "duration": _safe_float(block0.get("duration")),
+                "op_type": block0.get("op_type"),
+                "block_dim": int(block0.get("block_dim") or 0),
+                "head_name": head_name,
+                "block_detail_preview": block_detail_preview,
+            }
+
+    if len(results) > 1:
+        block1 = results[1].get("json", {})
+        if isinstance(block1, dict):
+            entries = []
+            for item in block1.get("subblock_detail", []):
+                if not isinstance(item, dict):
+                    continue
+                utilization = _safe_float(item.get("value"))
+                entry = {
+                    "block_id": _block_key(item.get("block_id", "")),
+                    "name": str(item.get("name", "")),
+                    "utilization_percent": utilization,
+                }
+                entries.append(entry)
+            summary["pipe_utilization"]["entries"] = entries
+            if entries:
+                top_pipe = max(
+                    entries,
+                    key=lambda item: item["utilization_percent"] if item["utilization_percent"] is not None else float("-inf"),
+                )
+                summary["pipe_utilization"]["top_pipe"] = top_pipe
+
+    if len(results) > 2:
+        block2 = results[2].get("json", {})
+        if isinstance(block2, dict):
+            entries = []
+            vector_wait_by_block: dict[str, float] = {}
+            data_size_by_block: dict[str, dict[str, float]] = {}
+            instruction_counts_by_block: dict[str, dict[str, float]] = {}
+            for item in block2.get("subblock_detail", []):
+                if not isinstance(item, dict):
+                    continue
+                block_id = _block_key(item.get("block_id", ""))
+                name = str(item.get("name", ""))
+                value = _safe_float(item.get("value"))
+                entries.append(
+                    {
+                        "block_id": block_id,
+                        "name": name,
+                        "value": value,
+                    }
+                )
+                if name == "Vector Wait" and value is not None:
+                    vector_wait_by_block[block_id] = value
+                elif name in ("Vector Compute Data Size", "Cube Compute Data Size") and value is not None:
+                    bucket = data_size_by_block.setdefault(block_id, {})
+                    bucket[name] = value
+                elif value is not None:
+                    bucket = instruction_counts_by_block.setdefault(block_id, {})
+                    bucket[name] = value
+            summary["instruction_wait_signals"] = {
+                "entries": entries,
+                "vector_wait_by_block": vector_wait_by_block,
+                "data_size_by_block": data_size_by_block,
+                "instruction_counts_by_block": instruction_counts_by_block,
+            }
+
+    if len(results) > 3:
+        block3 = results[3].get("json", {})
+        if isinstance(block3, dict):
+            core_memory_map = block3.get("core_memory_map", [])
+            advice_by_core: dict[str, list[str]] = {}
+            l2_hit_ratio_by_core: dict[str, float] = {}
+            vector_ratio_by_core: dict[str, float] = {}
+            vector1_ratio_by_core: dict[str, float] = {}
+            cube_ratio_by_core: dict[str, float] = {}
+            paths_by_core: dict[str, list[dict[str, Any]]] = {}
+            all_paths: list[dict[str, Any]] = []
+            for item in core_memory_map:
+                if not isinstance(item, dict):
+                    continue
+                core_key = _block_key(item.get("core_no", ""))
+                advice = [str(entry) for entry in item.get("advice", [])]
+                advice_by_core[core_key] = advice
+                l2_cache = item.get("L2cache")
+                if isinstance(l2_cache, dict):
+                    hit_ratio = _safe_float(l2_cache.get("hit_ratio"))
+                    if hit_ratio is not None:
+                        l2_hit_ratio_by_core[core_key] = hit_ratio
+                for key, target in (
+                    ("Vector", vector_ratio_by_core),
+                    ("Vector1", vector1_ratio_by_core),
+                    ("Cube", cube_ratio_by_core),
+                ):
+                    value = item.get(key)
+                    if isinstance(value, dict):
+                        ratio = _safe_float(value.get("ratio"))
+                        if ratio is not None:
+                            target[core_key] = ratio
+                core_paths: list[dict[str, Any]] = []
+                for unit_item in item.get("memory_unit", []):
+                    if not isinstance(unit_item, dict):
+                        continue
+                    memory_path = unit_item.get("memory_path")
+                    bandwidth = _safe_float(unit_item.get("bandwidth"))
+                    request = _safe_float(unit_item.get("request"))
+                    path_entry = {
+                        "core_no": core_key,
+                        "memory_path": memory_path,
+                        "path_name": data_path_description.get(memory_path, str(memory_path)),
+                        "bandwidth_gb_s": bandwidth,
+                        "request": request,
+                    }
+                    core_paths.append(path_entry)
+                    all_paths.append(path_entry)
+                paths_by_core[core_key] = core_paths
+            top_bandwidth_paths = sorted(
+                all_paths,
+                key=lambda item: item["bandwidth_gb_s"] if item["bandwidth_gb_s"] is not None else float("-inf"),
+                reverse=True,
+            )[:5]
+            summary["memory_path_signals"] = {
+                "advice_by_core": advice_by_core,
+                "l2_hit_ratio_by_core": l2_hit_ratio_by_core,
+                "vector_ratio_by_core": vector_ratio_by_core,
+                "vector1_ratio_by_core": vector1_ratio_by_core,
+                "cube_ratio_by_core": cube_ratio_by_core,
+                "top_bandwidth_paths": top_bandwidth_paths,
+                "paths_by_core": paths_by_core,
+            }
+
+    if len(results) > 4:
+        block4 = results[4].get("json", {})
+        if isinstance(block4, dict):
+            advice_by_block: dict[str, list[str]] = {}
+            tables_by_block: dict[str, list[dict[str, Any]]] = {}
+            for item in block4.get("table_per_block", []):
+                if not isinstance(item, dict):
+                    continue
+                block_id = _block_key(item.get("block_id", ""))
+                advice_by_block[block_id] = [str(entry) for entry in item.get("advice", [])]
+                normalized_tables = []
+                for table in item.get("table_detail", []):
+                    if not isinstance(table, dict):
+                        continue
+                    normalized_rows = []
+                    for row in table.get("row", []):
+                        if not isinstance(row, dict):
+                            continue
+                        normalized_rows.append(
+                            {
+                                "name": str(row.get("name", "")),
+                                "value": [str(entry) for entry in row.get("value", [])],
+                            }
+                        )
+                    normalized_tables.append(
+                        {
+                            "table_name": str(table.get("table_name", "")),
+                            "header_name": [str(entry) for entry in table.get("header_name", [])],
+                            "row": normalized_rows,
+                        }
+                    )
+                tables_by_block[block_id] = normalized_tables
+            summary["memory_load_signals"] = {
+                "advice_by_block": advice_by_block,
+                "tables_by_block": tables_by_block,
+            }
+
+    return summary
+
+
+def summarize_file(filename: str) -> dict[str, Any]:
+    extractor = BinaryJsonExtractor()
+    results = extractor.extract_with_positions(filename)
+    return summarize_results(results)
+
+
 def get_info(results: dict) -> AllInfo:
     # Get base info
     result = results[0]['json']

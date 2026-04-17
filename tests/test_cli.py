@@ -2283,6 +2283,14 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(captured["supervise"], "off")
             request = mocked.call_args.args[1]
             self.assertTrue(request.require_analysis)
+            self.assertEqual(
+                request.staged_skill_names,
+                (
+                    "triton-npu-optimize",
+                    "triton-npu-optimize-check",
+                    "triton-npu-analyze-round-performance",
+                ),
+            )
 
     def test_main_optimize_passes_supervise_mode_to_prompt_and_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2903,6 +2911,8 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Establish or reuse `baseline/` before creating `opt-round-1`.", prompt)
         self.assertIn("Use `baseline/perf.txt` for canonical performance comparisons.", prompt)
         self.assertIn("Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.", prompt)
+        self.assertIn("Use the staged `triton-npu-analyze-round-performance` skill", prompt)
+        self.assertIn("write `opt-round-n/perf-analysis.md`", prompt.lower())
         self.assertIn("Write `baseline/state.json` with these required fields:", prompt)
         self.assertIn("`baseline_kind`", prompt)
         self.assertIn("`source_operator`", prompt)
@@ -2943,6 +2953,8 @@ class PromptTests(unittest.TestCase):
             "Do not begin the next round until the current round passes `check-round` through `triton-npu-optimize-check`.",
             prompt,
         )
+        self.assertIn("Use the staged `triton-npu-analyze-round-performance` skill", prompt)
+        self.assertIn("write `opt-round-n/perf-analysis.md`", prompt.lower())
         self.assertIn("Write `baseline/state.json` with these required fields:", prompt)
         self.assertIn("`baseline_established`", prompt)
         self.assertIn("Set `baseline_established` to `true` only after", prompt)

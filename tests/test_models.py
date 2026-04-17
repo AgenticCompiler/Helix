@@ -49,7 +49,11 @@ class AgentRequestTests(unittest.TestCase):
             require_analysis=True,
             no_agent_session=True,
             supervise="on",
-            staged_skill_names=("triton-npu-optimize", "triton-npu-optimize-check"),
+            staged_skill_names=(
+                "triton-npu-optimize",
+                "triton-npu-optimize-check",
+                "triton-npu-analyze-round-performance",
+            ),
             optimize_role="worker",
             round_brief_path=Path("/tmp/.triton-agent/round-brief.md"),
             supervisor_report_path=Path("/tmp/.triton-agent/supervisor-report.md"),

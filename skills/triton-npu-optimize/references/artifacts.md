@@ -69,6 +69,7 @@ opt-round-N/
   attempts.md
   summary.md
   perf.txt
+  perf-analysis.md
   profile/
   ir/
   logs/
@@ -98,6 +99,7 @@ Treat these round-state fields as the authoritative artifact references for roun
 
 - `summary_path`
 - `perf_artifact`
+- `perf_analysis_path` when present
 - `profile_dir` when present
 - `ir_dir` when present
 
@@ -151,6 +153,13 @@ Keep entries chronological so another engineer can reconstruct how the round evo
 - If `run-bench` already writes a perf file under `bench_results/`, either copy the relevant result into the round directory or summarize it in `perf.txt` with a clear reference back to the source file.
 - Keep enough evidence to reconstruct the performance claim without rerunning the entire round immediately.
 - Keep `perf.txt` even when profiler or IR evidence also exists; richer evidence does not replace the round's basic benchmark summary.
+
+## Deep Analysis Evidence
+
+- When a round needs deeper diagnosis, prefer writing a standalone `perf-analysis.md` in the round directory.
+- Treat `perf-analysis.md` as optional in the first iteration of this workflow, not a required artifact for every round.
+- When `round-state.json` declares `perf_analysis_path`, that path becomes the authoritative location for the analysis file.
+- Treat the content and structure of `perf-analysis.md` as owned by the deep-analysis skill, not by the optimize workflow contract.
 
 ## Profile And IR Evidence
 
