@@ -181,13 +181,16 @@ Keep entries chronological so another engineer can reconstruct how the round evo
 
 ## Learned Lessons Log
 
-`learned_lessons.md` is a top-level reusable knowledge log for the whole optimization session.
+`learned_lessons.md` is a top-level strict reusable optimization-knowledge log for the whole optimization session.
+
+Only add an entry when it is evidence-backed, portable to related Triton Ascend NPU operators, and written as a reusable rule, diagnostic mapping, or optimization heuristic. Each entry should state where the lesson applies or what limits it.
 
 Use it for durable notes that should survive beyond one round, such as:
 
-- compiler error repairs that are likely to recur
 - profile-to-optimization mappings
+- IR-to-code-change mappings
+- compiler error repairs that reveal recurring Triton or Ascend NPU constraints
 - new Triton code patterns that suggest an optimization opportunity
 - validated heuristics that are not yet documented in the pattern library
 
-Keep entries short and reusable. Prefer durable lessons over round-specific narrative.
+Round-local command failures, failed guesses, file names, shape-specific details, temporary troubleshooting notes, and narrative summaries of what happened in one round belong in `attempts.md`, `summary.md`, or `opt-note.md`, not in `learned_lessons.md`.

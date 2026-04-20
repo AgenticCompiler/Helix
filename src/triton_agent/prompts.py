@@ -18,6 +18,13 @@ PROMPT_INTROS = {
 }
 
 
+def strict_learned_lessons_lines() -> list[str]:
+    return [
+        "`learned_lessons.md` is only for reusable, evidence-backed optimization or profiling rules that can transfer to related Triton Ascend NPU operators.",
+        "Do not put round narrative, command failures, or operator-specific details in `learned_lessons.md`; keep those in `attempts.md`, `summary.md`, or `opt-note.md`.",
+    ]
+
+
 def append_additional_user_instructions(prompt: str, user_prompt: str | None) -> str:
     if user_prompt is None:
         return prompt
@@ -60,6 +67,7 @@ def build_optimize_worker_prompt(
         "State the optimization hypothesis and why it may help before editing code for each round.",
         "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
         "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
+        *strict_learned_lessons_lines(),
         f"Target chip for this optimize session: {target_chip}.",
         f"When ranking optimization points, prefer changes that fit {target_chip} unless the round artifacts prove a different chip target.",
         "Produce all required round artifacts before stopping.",
@@ -116,6 +124,7 @@ def build_optimize_unsupervised_prompt(
         "State the optimization hypothesis and why it may help before editing code for each round.",
         "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
         "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
+        *strict_learned_lessons_lines(),
         f"Target chip for this optimize session: {target_chip}.",
         f"When ranking optimization points, prefer changes that fit {target_chip} unless the round artifacts prove a different chip target.",
         "After finishing each round, use the staged `triton-npu-optimize-check` skill to run `check-round` and repair the round until it passes.",
@@ -336,6 +345,7 @@ def build_optimize_resume_prompt(
         "Reuse the established `baseline/` directory instead of redefining the canonical baseline.",
         "Keep the optimize workflow hypothesis-driven: explain why each next change may help and what evidence supports it.",
         "Use `compare-perf` output as the only source for performance deltas and speedup metrics.",
+        *strict_learned_lessons_lines(),
     ]
     if supervise == "off" and base_prompt:
         continuation_lines.insert(0, "This invocation continues an unsupervised optimize task.")

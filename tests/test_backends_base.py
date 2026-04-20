@@ -81,6 +81,11 @@ class SharedRunnerBaseTests(unittest.TestCase):
             self.assertIn("Continue the existing optimize task", resumed_prompt)
             self.assertIn("This invocation is the optimize worker role.", resumed_prompt)
             self.assertIn("profiling or IR-backed evidence", resumed_prompt)
+            self.assertIn(
+                "`learned_lessons.md` is only for reusable, evidence-backed optimization or profiling rules",
+                resumed_prompt,
+            )
+            self.assertIn("Do not put round narrative, command failures, or operator-specific details", resumed_prompt)
 
 
 class _DummyRunner(AgentRunner):

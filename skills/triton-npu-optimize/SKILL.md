@@ -25,7 +25,7 @@ Use this skill when the user wants the operator itself improved rather than only
 - One `summary.md` inside each completed round directory
 - Round-local benchmark evidence, with optional `profile/` and `ir/` evidence directories when deeper investigation is needed
 - Updated `opt-note.md` in the operator workspace
-- Updated `learned_lessons.md` in the operator workspace whenever the run discovers reusable optimization knowledge
+- Updated `learned_lessons.md` in the operator workspace only when the run discovers reusable optimization knowledge that passes the strict admission criteria
 - Correctness, benchmark, and profiling evidence produced through the `triton-npu-run-eval` skill
 
 ## Artifact Contract
@@ -80,17 +80,25 @@ You do not need an existing pattern file to justify every optimization round.
 
 ## Learned Lessons
 
-Maintain `learned_lessons.md` in the operator workspace as a running notebook of reusable optimization knowledge.
+Maintain `learned_lessons.md` in the operator workspace as a strict reusable optimization-knowledge distillation log.
 
-record learned lessons whenever you discover reusable knowledge, not only at the end of a round.
+Append a lesson only when it passes all admission criteria:
 
-Use it for concise notes such as:
+- The lesson generalizes to a family of Triton Ascend NPU operators, not only the current operator.
+- The lesson is supported by correctness, benchmark, profiler, IR, or compiler-error evidence.
+- The lesson is written as a reusable rule, diagnostic mapping, or optimization heuristic.
+- The lesson states where it applies or what limits it.
+- The lesson could plausibly be promoted into an optimize skill, profiling analysis reference, IR analysis reference, or pattern reference.
 
-- compiler error repairs for Triton or Ascend NPU compilation failures
-- profile-guided optimization lessons, including how profiling symptoms mapped to concrete code changes
+Use it for concise distilled rules such as:
+
+- profile-to-optimization mappings, including how profiling symptoms mapped to concrete code changes
+- IR-to-code-change mappings that explain a compiler lowering or scheduling effect
+- compiler error repairs that reveal a recurring Triton or Ascend NPU constraint
 - new optimization points inferred from recurring Triton code patterns
-- validated ideas that are not yet covered by the existing pattern library
-- benchmark interpretation rules that would help future rounds start faster
+- validated benchmark interpretation rules that would help future rounds start faster
+
+Do not use `learned_lessons.md` for round narrative, local command failures, failed guesses, temporary troubleshooting notes, file names, shape-specific details, or summaries of what happened in one round. Put that material in `opt-round-N/attempts.md`, `opt-round-N/summary.md`, or `opt-note.md` instead.
 
 ## Workflow
 
@@ -109,7 +117,7 @@ Use it for concise notes such as:
 13. If you skip profiling or IR capture for a round, explain in `attempts.md` why the existing evidence is already sufficient.
 14. Read `references/patterns/index.md`, pick one optimization hypothesis, and read only the one or two detailed pattern references that match that hypothesis when they are relevant; if a better hypothesis comes from your own Triton or NPU optimization knowledge, use that hypothesis directly and document it clearly.
 15. Apply one coherent optimization theme for the round, then run correctness validation before trusting any performance result.
-16. Whenever you discover reusable debugging or optimization knowledge, append a short note to `learned_lessons.md` immediately instead of waiting for the round summary.
+16. When a reusable optimization or analysis lesson passes the strict learned-lessons admission criteria, append a short distilled note to `learned_lessons.md` immediately instead of waiting for the round summary.
 17. After correctness passes, run benchmark validation; when benchmark timing alone does not explain the result well enough, use `triton-npu-profile-operator` to gather operator-level evidence and keep the resulting profiler artifacts under the current round directory.
 18. When a round needs deeper diagnosis, use `triton-npu-analyze-round-performance` and write `opt-round-N/perf-analysis.md`.
 19. After both baseline and round benchmark perf artifacts exist, use the `triton-npu-run-eval` skill to run `compare-perf` through `../triton-npu-run-eval/scripts/run-command.py`, and use that output as the only source for `Avg improvement`, `Geomean speedup`, `Total speedup`, and any claimed benchmark delta.
@@ -117,7 +125,7 @@ Use it for concise notes such as:
 21. Compare round benchmark results against `baseline/perf.txt` for canonical optimize-session metrics, even when the current round also compares locally against its chosen parent.
 22. When IR inspection is needed to understand compiler lowering or confirm an optimization effect, use `triton-npu-analyze-ir`, capture into `opt-round-N/ir/`, and inspect that same directory directly.
 23. Run the sibling `triton-npu-optimize-check` skill with `check-round` and repair the current round until it passes before starting another round or stopping.
-24. Use the benchmark, profiler, IR evidence, `perf-analysis.md` when present, and `compare-perf` output to decide whether to keep iterating, abandon the direction, or finalize the round `summary.md`, update `opt-note.md`, and preserve any reusable insight in `learned_lessons.md`.
+24. Use the benchmark, profiler, IR evidence, `perf-analysis.md` when present, and `compare-perf` output to decide whether to keep iterating, abandon the direction, or finalize the round `summary.md`, update `opt-note.md`, and preserve only strict, reusable, evidence-backed optimization insight in `learned_lessons.md`.
 
 ## Quality Rules
 
@@ -143,6 +151,6 @@ Use it for concise notes such as:
 - Do not silently discard optimization intent; preserve important comments that explain why a change helps.
 - When optimizing kernel code, you may treat missing `propagate_nan` on kernel compare helpers such as `tl.maximum()` and `tl.minimum()` as a consistency repair opportunity: inspect those call sites and add `propagate_nan=tl.PropagateNan.ALL` where it is missing when you want NaN propagation to be explicit and consistent, but note that this can change NaN-input behavior and should be treated as a semantic choice rather than a no-op cleanup.
 - Record within-round attempts continuously so long-running rounds do not lose intermediate learning.
-- Record reusable compiler fixes, profile interpretations, and newly discovered optimization heuristics in `learned_lessons.md` while they are still fresh.
+- Record reusable compiler fixes, profile interpretations, and newly discovered optimization heuristics in `learned_lessons.md` while they are still fresh, but only when they pass the strict admission criteria.
 - Record optimization points in enough detail that another engineer could reuse them on a related operator.
 - Do not claim success for a round without both correctness evidence and benchmark evidence.

@@ -3116,6 +3116,11 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.", prompt)
         self.assertIn("Use the staged `triton-npu-analyze-round-performance` skill", prompt)
         self.assertIn("write `opt-round-n/perf-analysis.md`", prompt.lower())
+        self.assertIn(
+            "`learned_lessons.md` is only for reusable, evidence-backed optimization or profiling rules",
+            prompt,
+        )
+        self.assertIn("Do not put round narrative, command failures, or operator-specific details", prompt)
         self.assertIn("Write `baseline/state.json` with these required fields:", prompt)
         self.assertIn("`baseline_kind`", prompt)
         self.assertIn("`source_operator`", prompt)
@@ -3160,6 +3165,11 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("Use the staged `triton-npu-analyze-round-performance` skill", prompt)
         self.assertIn("write `opt-round-n/perf-analysis.md`", prompt.lower())
+        self.assertIn(
+            "`learned_lessons.md` is only for reusable, evidence-backed optimization or profiling rules",
+            prompt,
+        )
+        self.assertIn("Do not put round narrative, command failures, or operator-specific details", prompt)
         self.assertIn("Write `baseline/state.json` with these required fields:", prompt)
         self.assertIn("`baseline_established`", prompt)
         self.assertIn("Set `baseline_established` to `true` only after", prompt)
