@@ -902,9 +902,14 @@ class PathResolutionTests(unittest.TestCase):
                 "\n".join(
                     [
                         "## Round 1",
-                        "Best status: current best",
+                        "Best status: validated branch",
                         "## Round 2",
                         "Best status: validated branch",
+                        "## Round 3",
+                        "Best status: current best",
+                        "",
+                        "## Overall Summary",
+                        "Final best round: round-1",
                     ]
                 )
                 + "\n",
@@ -937,7 +942,13 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("Total speedup: 1.58x", rendered)
             self.assertIn("Best round: round-2", rendered)
             self.assertIn("Logged best: round-1", rendered)
-            self.assertIn("Warning: numeric best round differs from logged best round", rendered)
+            self.assertIn(
+                "Warning: numeric best round differs from logged best round "
+                "(computed from perf artifacts by geomean speedup: round-2; "
+                "opt-note overall summary: round-1; "
+                "opt-note current-best marker: round-3)",
+                rendered,
+            )
 
     def test_main_optimize_status_prefers_overall_summary_logged_best(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1070,10 +1081,28 @@ class PathResolutionTests(unittest.TestCase):
                 "latency-a: 10\nlatency-b: 20\n",
                 encoding="utf-8",
             )
+            (ok_workspace / "opt-note.md").write_text(
+                "\n".join(
+                    [
+                        "## Round 1",
+                        "Best status: current best",
+                        "## Round 2",
+                        "Best status: validated branch",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             ok_round = ok_workspace / "opt-round-1"
+            best_round = ok_workspace / "opt-round-2"
             ok_round.mkdir()
+            best_round.mkdir()
             (ok_round / "perf.txt").write_text(
-                "latency-a: 8\nlatency-b: 16\n",
+                "latency-a: 8\nlatency-b: 18\n",
+                encoding="utf-8",
+            )
+            (best_round / "perf.txt").write_text(
+                "latency-a: 9\nlatency-b: 10\n",
                 encoding="utf-8",
             )
 
@@ -1083,9 +1112,9 @@ class PathResolutionTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()
-            self.assertIn("| 名称 | Geomean speedup | Total speedup |", rendered)
-            self.assertIn("| alpha | - | - |", rendered)
-            self.assertIn("| beta | 1.25x | 1.25x |", rendered)
+            self.assertIn("| 名称 | Geomean speedup | Total speedup | Notes |", rendered)
+            self.assertIn("| alpha | - | - | warn |", rendered)
+            self.assertIn("| beta | 1.49x | 1.58x | best≠log |", rendered)
             self.assertNotIn("fresh", rendered)
             self.assertNotIn("Summary:", rendered)
 

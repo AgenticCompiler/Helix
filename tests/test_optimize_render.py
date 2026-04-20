@@ -156,14 +156,31 @@ class OptimizeRenderTests(unittest.TestCase):
                 logged_best="round-2",
                 warnings=(),
             ),
+            OptimizeStatusWorkspace(
+                workspace=Path("/tmp/gamma"),
+                state="ok",
+                baseline_mean=15.0,
+                best_mean=9.5,
+                avg_improvement=0.3,
+                geomean_speedup=1.49,
+                total_speedup=1.58,
+                best_round="round-2",
+                logged_best="round-1",
+                warnings=(
+                    "numeric best round differs from logged best round "
+                    "(computed from perf artifacts by geomean speedup: round-2; "
+                    "logged from opt-note.md: round-1)",
+                ),
+            ),
         ]
 
         render_optimize_status_results(results, stdout=stream, output_format="markdown")
 
         rendered = stream.getvalue()
-        self.assertIn("| 名称 | Geomean speedup | Total speedup |", rendered)
-        self.assertIn("| alpha | - | - |", rendered)
-        self.assertIn("| beta | 1.25x | 1.30x |", rendered)
+        self.assertIn("| 名称 | Geomean speedup | Total speedup | Notes |", rendered)
+        self.assertIn("| alpha | - | - | warn |", rendered)
+        self.assertIn("| beta | 1.25x | 1.30x | - |", rendered)
+        self.assertIn("| gamma | 1.49x | 1.58x | best≠log |", rendered)
         self.assertNotIn("zeta", rendered)
         self.assertNotIn("Summary:", rendered)
 

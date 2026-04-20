@@ -137,14 +137,15 @@ def render_optimize_status_markdown_table(
         for item in sorted(results, key=_optimize_status_sort_key)
         if item.state != "no-session"
     ]
-    print("| 名称 | Geomean speedup | Total speedup |", file=stream)
-    print("| --- | --- | --- |", file=stream)
+    print("| 名称 | Geomean speedup | Total speedup | Notes |", file=stream)
+    print("| --- | --- | --- | --- |", file=stream)
     for item in rows:
         print(
             "| "
             f"{item.workspace.name} | "
             f"{format_optimize_status_speedup_cell(item.geomean_speedup)} | "
-            f"{format_optimize_status_speedup_cell(item.total_speedup)} |",
+            f"{format_optimize_status_speedup_cell(item.total_speedup)} | "
+            f"{format_optimize_status_notes_cell(item)} |",
             file=stream,
         )
     return 0 if results else 1
@@ -158,6 +159,21 @@ def format_optimize_status_speedup_cell(value: float | None) -> str:
     if value is None:
         return "-"
     return format_optimize_status_speedup(value)
+
+
+def format_optimize_status_notes_cell(item: OptimizeStatusWorkspace) -> str:
+    notes: list[str] = []
+    if item.best_round is not None and item.logged_best is not None and item.best_round != item.logged_best:
+        notes.append("best≠log")
+    if any(not _is_best_round_mismatch_warning(warning) for warning in item.warnings):
+        notes.append("warn")
+    if not notes:
+        return "-"
+    return ",".join(notes)
+
+
+def _is_best_round_mismatch_warning(warning: str) -> bool:
+    return warning.startswith("numeric best round differs from logged best round")
 
 
 def _style(stream: TextIO, text: str, color: str) -> str:

@@ -69,9 +69,14 @@ class OptimizeStatusTests(unittest.TestCase):
                 "\n".join(
                     [
                         "## Round 1",
-                        "Best status: current best",
+                        "Best status: validated branch",
                         "## Round 2",
                         "Best status: validated branch",
+                        "## Round 3",
+                        "Best status: current best",
+                        "",
+                        "## Overall Summary",
+                        "Final best round: round-1",
                     ]
                 )
                 + "\n",
@@ -100,7 +105,13 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertAlmostEqual(status.avg_improvement or 0.0, 0.3)
             self.assertAlmostEqual(status.geomean_speedup or 0.0, (10 / 9 * 20 / 10) ** 0.5)
             self.assertAlmostEqual(status.total_speedup or 0.0, 30 / 19)
-            self.assertIn("numeric best round differs from logged best round", status.warnings)
+            self.assertIn(
+                "numeric best round differs from logged best round "
+                "(computed from perf artifacts by geomean speedup: round-2; "
+                "opt-note overall summary: round-1; "
+                "opt-note current-best marker: round-3)",
+                status.warnings,
+            )
 
     def test_inspect_optimize_status_workspace_prefers_overall_summary_and_warns_on_legacy_mismatch(
         self,

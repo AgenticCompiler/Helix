@@ -62,6 +62,7 @@ def inspect_optimize_status_workspace(
             warnings.append(str(exc))
 
     logged_best: str | None = None
+    summary_logged_best: str | None = None
     legacy_logged_best: str | None = None
     if opt_note.exists():
         summary_logged_best, legacy_logged_best = parse_logged_best_rounds(opt_note)
@@ -128,7 +129,12 @@ def inspect_optimize_status_workspace(
             key=lambda item: (item.geomean_speedup, item.total_speedup, -item.mean_latency),
         )
         if logged_best is not None and logged_best != best_round.round_name:
-            warnings.append("numeric best round differs from logged best round")
+            warnings.append(
+                "numeric best round differs from logged best round "
+                f"(computed from perf artifacts by geomean speedup: {best_round.round_name}; "
+                f"opt-note overall summary: {format_round_source(summary_logged_best)}; "
+                f"opt-note current-best marker: {format_round_source(legacy_logged_best)})"
+            )
         return OptimizeStatusWorkspace(
             workspace=workspace,
             state="ok",
@@ -305,3 +311,9 @@ def mean_value(values: Iterable[float]) -> float:
 def geomean_value(values: Iterable[float]) -> float:
     items = list(values)
     return math.exp(sum(math.log(item) for item in items) / len(items))
+
+
+def format_round_source(value: str | None) -> str:
+    if value is None:
+        return "missing"
+    return value
