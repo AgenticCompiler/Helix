@@ -910,6 +910,8 @@ class PathResolutionTests(unittest.TestCase):
                         "",
                         "## Overall Summary",
                         "Final best round: round-1",
+                        "Geomean speedup: 1.16x",
+                        "Total speedup: 1.18x",
                     ]
                 )
                 + "\n",
@@ -943,10 +945,9 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("Best round: round-2", rendered)
             self.assertIn("Logged best: round-1", rendered)
             self.assertIn(
-                "Warning: numeric best round differs from logged best round "
-                "(computed from perf artifacts by geomean speedup: round-2; "
-                "opt-note overall summary: round-1; "
-                "opt-note current-best marker: round-3)",
+                "Warning: numeric best round != logged best. "
+                "computed speedup: 1.49x, 1.58x; "
+                "logged speedup: 1.16x, 1.18x",
                 rendered,
             )
 

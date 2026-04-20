@@ -64,8 +64,15 @@ def inspect_optimize_status_workspace(
     logged_best: str | None = None
     summary_logged_best: str | None = None
     legacy_logged_best: str | None = None
+    logged_geomean_speedup: str | None = None
+    logged_total_speedup: str | None = None
     if opt_note.exists():
-        summary_logged_best, legacy_logged_best = parse_logged_best_rounds(opt_note)
+        (
+            summary_logged_best,
+            legacy_logged_best,
+            logged_geomean_speedup,
+            logged_total_speedup,
+        ) = parse_logged_best_round_details(opt_note)
         logged_best = summary_logged_best or legacy_logged_best
         if (
             summary_logged_best is not None
@@ -130,10 +137,11 @@ def inspect_optimize_status_workspace(
         )
         if logged_best is not None and logged_best != best_round.round_name:
             warnings.append(
-                "numeric best round differs from logged best round "
-                f"(computed from perf artifacts by geomean speedup: {best_round.round_name}; "
-                f"opt-note overall summary: {format_round_source(summary_logged_best)}; "
-                f"opt-note current-best marker: {format_round_source(legacy_logged_best)})"
+                "numeric best round != logged best. "
+                "computed speedup: "
+                f"{format_speedup_value(best_round.geomean_speedup)}, {format_speedup_value(best_round.total_speedup)}; "
+                "logged speedup: "
+                f"{format_speedup_source(logged_geomean_speedup)}, {format_speedup_source(logged_total_speedup)}"
             )
         return OptimizeStatusWorkspace(
             workspace=workspace,
@@ -249,9 +257,16 @@ def parse_logged_best_round(path: Path) -> str | None:
 
 
 def parse_logged_best_rounds(path: Path) -> tuple[str | None, str | None]:
+    summary_best, legacy_best, _, _ = parse_logged_best_round_details(path)
+    return summary_best, legacy_best
+
+
+def parse_logged_best_round_details(path: Path) -> tuple[str | None, str | None, str | None, str | None]:
     current_round: str | None = None
     legacy_best: str | None = None
     summary_best: str | None = None
+    summary_geomean_speedup: str | None = None
+    summary_total_speedup: str | None = None
     in_overall_summary = False
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
@@ -274,10 +289,16 @@ def parse_logged_best_rounds(path: Path) -> tuple[str | None, str | None]:
                 normalized = normalize_round_name(summary_match.group(1))
                 if normalized is not None:
                     summary_best = normalized
+            geomean_match = re.match(r"Geomean\s+speedup:\s*(.+)", line, flags=re.IGNORECASE)
+            if geomean_match:
+                summary_geomean_speedup = normalize_summary_value(geomean_match.group(1))
+            total_match = re.match(r"Total\s+speedup:\s*(.+)", line, flags=re.IGNORECASE)
+            if total_match:
+                summary_total_speedup = normalize_summary_value(total_match.group(1))
             continue
         if line.lower().startswith("best status:") and "current best" in line.lower():
             legacy_best = current_round
-    return summary_best, legacy_best
+    return summary_best, legacy_best, summary_geomean_speedup, summary_total_speedup
 
 
 def normalize_round_name(value: str) -> str | None:
@@ -313,7 +334,18 @@ def geomean_value(values: Iterable[float]) -> float:
     return math.exp(sum(math.log(item) for item in items) / len(items))
 
 
-def format_round_source(value: str | None) -> str:
+def format_speedup_value(value: float) -> str:
+    return f"{value:.2f}x"
+
+
+def format_speedup_source(value: str | None) -> str:
     if value is None:
         return "missing"
     return value
+
+
+def normalize_summary_value(value: str) -> str | None:
+    text = value.strip()
+    if not text:
+        return None
+    return text

@@ -2,14 +2,15 @@
 
 ## Summary
 
-- Make the `numeric best round differs from logged best round` warning self-contained.
-- Include the computed numeric best round and both logged best-round sources directly in the warning text.
-- Label the computed value as coming from perf artifacts, and label the logged values as `opt-note.md` overall summary and current-best marker values.
+- Make the numeric/logged best-round mismatch warning concise.
+- Include computed and logged speedup values directly in the warning text.
+- Keep best-round source details out of the warning because the text output already prints `Best round` and `Logged best`.
 
 ## Goals
 
-- Remove ambiguity when a user sees the warning without comparing nearby `Best round` and `Logged best` lines.
-- Preserve the existing warning prefix so existing text searches remain useful.
+- Make the warning short enough to scan in status output.
+- Show the current computed speedup and the `opt-note.md` logged speedup without a long explanatory sentence.
+- Use a stable short prefix, `numeric best round != logged best`, for future text searches.
 - Keep the change limited to optimize-status diagnostics.
 
 ## Non-Goals
@@ -23,10 +24,17 @@
 When numeric perf analysis disagrees with the best round recorded in `opt-note.md`, the warning should read like:
 
 ```text
-Warning: numeric best round differs from logged best round (computed from perf artifacts by geomean speedup: round-2; opt-note overall summary: round-1; opt-note current-best marker: round-3)
+Warning: numeric best round != logged best. computed speedup: 1.49x, 1.58x; logged speedup: 1.16x, 1.18x
 ```
 
-If one logged source is absent, print `missing` for that source.
+The two speedup values are ordered as:
+
+1. `Geomean speedup`
+2. `Total speedup`
+
+`computed speedup` comes from perf artifacts for the numeric best round.
+`logged speedup` comes from the `## Overall Summary` block in `opt-note.md`.
+If one logged speedup value is absent, print `missing` for that value.
 
 ## Implementation Shape
 

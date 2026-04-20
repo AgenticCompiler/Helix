@@ -173,7 +173,7 @@ def format_optimize_status_notes_cell(item: OptimizeStatusWorkspace) -> str:
 
 
 def _is_best_round_mismatch_warning(warning: str) -> bool:
-    return warning.startswith("numeric best round differs from logged best round")
+    return warning.startswith("numeric best round != logged best")
 
 
 def _style(stream: TextIO, text: str, color: str) -> str:

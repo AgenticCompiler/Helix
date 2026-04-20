@@ -77,6 +77,8 @@ class OptimizeStatusTests(unittest.TestCase):
                         "",
                         "## Overall Summary",
                         "Final best round: round-1",
+                        "Geomean speedup: 1.16x",
+                        "Total speedup: 1.18x",
                     ]
                 )
                 + "\n",
@@ -106,10 +108,9 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertAlmostEqual(status.geomean_speedup or 0.0, (10 / 9 * 20 / 10) ** 0.5)
             self.assertAlmostEqual(status.total_speedup or 0.0, 30 / 19)
             self.assertIn(
-                "numeric best round differs from logged best round "
-                "(computed from perf artifacts by geomean speedup: round-2; "
-                "opt-note overall summary: round-1; "
-                "opt-note current-best marker: round-3)",
+                "numeric best round != logged best. "
+                "computed speedup: 1.49x, 1.58x; "
+                "logged speedup: 1.16x, 1.18x",
                 status.warnings,
             )
 

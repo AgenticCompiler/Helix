@@ -167,9 +167,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 best_round="round-2",
                 logged_best="round-1",
                 warnings=(
-                    "numeric best round differs from logged best round "
-                    "(computed from perf artifacts by geomean speedup: round-2; "
-                    "logged from opt-note.md: round-1)",
+                    "numeric best round != logged best. "
+                    "computed speedup: 1.49x, 1.58x; logged speedup: 1.16x, 1.18x",
                 ),
             ),
         ]
