@@ -849,12 +849,12 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("Best round: round-1", rendered)
             self.assertNotIn("[NO-SESSION] opt-round-1", rendered)
 
-    def test_main_optimize_status_groups_no_session_then_warning_then_ok(self) -> None:
+    def test_main_optimize_status_sorts_no_session_first_then_remaining_by_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "zeta").mkdir()
+            (root / "gamma").mkdir()
 
-            warning_workspace = root / "alpha"
+            warning_workspace = root / "zeta"
             warning_workspace.mkdir()
             (warning_workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
@@ -867,7 +867,7 @@ class PathResolutionTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            ok_workspace = root / "beta"
+            ok_workspace = root / "alpha"
             ok_workspace.mkdir()
             (ok_workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
@@ -886,8 +886,8 @@ class PathResolutionTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()
-            self.assertLess(rendered.index("[NO-SESSION] zeta"), rendered.index("[WARN] alpha"))
-            self.assertLess(rendered.index("[WARN] alpha"), rendered.index("[OK] beta"))
+            self.assertLess(rendered.index("[NO-SESSION] gamma"), rendered.index("[OK] alpha"))
+            self.assertLess(rendered.index("[OK] alpha"), rendered.index("[WARN] zeta"))
 
     def test_main_optimize_status_reports_numeric_best_and_logged_best(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1068,7 +1068,7 @@ class PathResolutionTests(unittest.TestCase):
             root = Path(tmp)
             (root / "fresh").mkdir()
 
-            warning_workspace = root / "alpha"
+            warning_workspace = root / "zeta"
             warning_workspace.mkdir()
             (warning_workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
@@ -1114,8 +1114,9 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()
             self.assertIn("| 名称 | Geomean speedup | Total speedup | Notes |", rendered)
-            self.assertIn("| alpha | - | - | warn |", rendered)
             self.assertIn("| beta | 1.49x | 1.58x | best≠log |", rendered)
+            self.assertIn("| zeta | - | - | warn |", rendered)
+            self.assertLess(rendered.index("| beta |"), rendered.index("| zeta |"))
             self.assertNotIn("fresh", rendered)
             self.assertNotIn("Summary:", rendered)
 

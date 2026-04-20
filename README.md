@@ -270,8 +270,8 @@ then `baseline_perf.txt`, then the existing non-`opt_` fallback rule.
 - `Total speedup`
 - `Notes`
 
-The Markdown table excludes `NO-SESSION` workspaces. Workspaces with optimize artifacts but missing
-comparable speedup data stay in the table and render those cells as `-`.
+The Markdown table excludes `NO-SESSION` workspaces and sorts rows by name.
+Workspaces with optimize artifacts but missing comparable speedup data stay in the table and render those cells as `-`.
 The `Notes` column uses compact labels such as `best≠log` for computed/logged best-round mismatch
 and `warn` for other warnings.
 

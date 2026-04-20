@@ -10,12 +10,6 @@ _TITLE_COLOR = "\033[36m"
 _BODY_COLOR = "\033[37m"
 _WARNING_COLOR = "\033[90m"
 _SUMMARY_COLOR = "\033[37m"
-_STATE_PRIORITY = {
-    "no-session": 0,
-    "warning": 1,
-    "ok": 2,
-}
-
 
 def format_optimize_status_float(value: float | None) -> str:
     if value is None:
@@ -63,7 +57,7 @@ def render_optimize_status_results(
     if output_format == "markdown":
         return render_optimize_status_markdown_table(results, stdout=stdout)
     stream = stdout or sys.stdout
-    ordered_results = sorted(results, key=_optimize_status_sort_key)
+    ordered_results = sorted(results, key=_optimize_status_text_sort_key)
     ok_count = sum(1 for item in ordered_results if item.state == "ok")
     warning_count = sum(1 for item in ordered_results if item.state == "warning")
     no_session_count = sum(1 for item in ordered_results if item.state == "no-session")
@@ -134,7 +128,7 @@ def render_optimize_status_markdown_table(
     stream = stdout or sys.stdout
     rows = [
         item
-        for item in sorted(results, key=_optimize_status_sort_key)
+        for item in sorted(results, key=_optimize_status_markdown_sort_key)
         if item.state != "no-session"
     ]
     print("| 名称 | Geomean speedup | Total speedup | Notes |", file=stream)
@@ -151,8 +145,12 @@ def render_optimize_status_markdown_table(
     return 0 if results else 1
 
 
-def _optimize_status_sort_key(item: OptimizeStatusWorkspace) -> tuple[int, str]:
-    return (_STATE_PRIORITY.get(item.state, len(_STATE_PRIORITY)), item.workspace.name)
+def _optimize_status_text_sort_key(item: OptimizeStatusWorkspace) -> tuple[int, str]:
+    return (0 if item.state == "no-session" else 1, item.workspace.name)
+
+
+def _optimize_status_markdown_sort_key(item: OptimizeStatusWorkspace) -> str:
+    return item.workspace.name
 
 
 def format_optimize_status_speedup_cell(value: float | None) -> str:

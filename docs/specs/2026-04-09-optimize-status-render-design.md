@@ -2,7 +2,7 @@
 
 ## Summary
 
-- Reorder `optimize-status` output so `NO-SESSION` workspaces print first, followed by `WARN`, then `OK`.
+- Reorder `optimize-status` output so `NO-SESSION` workspaces print first, followed by all remaining workspaces sorted by name.
 - Add lightweight ANSI styling in the render layer so titles and content are easier to scan in a terminal.
 - Keep warning detail visually de-emphasized instead of making warning lines the loudest part of the report.
 
@@ -23,10 +23,8 @@
 ### Ordering
 
 - Results print in this order:
-  1. `NO-SESSION`
-  2. `WARN`
-  3. `OK`
-- Within each state bucket, workspaces stay alphabetically ordered by directory name.
+  1. `NO-SESSION` workspaces sorted alphabetically
+  2. all remaining workspaces sorted alphabetically, regardless of `WARN` or `OK` state
 
 ### Styling
 
@@ -43,12 +41,12 @@
 ## Implementation Shape
 
 - Keep sorting and color decisions inside `src/triton_agent/optimize/render.py`.
-- Add a small helper for state-priority ordering.
+- Add a small helper for text ordering that prioritizes `NO-SESSION` only.
 - Add a small helper for TTY-aware styling instead of embedding escape codes directly in each `print`.
 - Leave `src/triton_agent/optimize/status.py` untouched unless tests reveal a coupling issue.
 
 ## Testing
 
-- Add render-layer tests for grouped ordering.
+- Add render-layer tests for `NO-SESSION`-first ordering followed by name sorting.
 - Add render-layer tests proving non-TTY output stays plain text.
 - Add render-layer tests proving TTY output applies accent styling to titles and faint styling to warnings.

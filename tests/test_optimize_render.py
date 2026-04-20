@@ -15,11 +15,11 @@ class _TTYStringIO(StringIO):
 
 
 class OptimizeRenderTests(unittest.TestCase):
-    def test_render_optimize_status_groups_no_session_then_warning_then_ok(self) -> None:
+    def test_render_optimize_status_sorts_no_session_first_then_remaining_by_name(self) -> None:
         stream = StringIO()
         results = [
             OptimizeStatusWorkspace(
-                workspace=Path("/tmp/beta"),
+                workspace=Path("/tmp/alpha"),
                 state="ok",
                 baseline_mean=10.0,
                 best_mean=8.0,
@@ -31,7 +31,7 @@ class OptimizeRenderTests(unittest.TestCase):
                 warnings=(),
             ),
             OptimizeStatusWorkspace(
-                workspace=Path("/tmp/zeta"),
+                workspace=Path("/tmp/gamma"),
                 state="no-session",
                 baseline_mean=None,
                 best_mean=None,
@@ -43,7 +43,7 @@ class OptimizeRenderTests(unittest.TestCase):
                 warnings=(),
             ),
             OptimizeStatusWorkspace(
-                workspace=Path("/tmp/alpha"),
+                workspace=Path("/tmp/zeta"),
                 state="warning",
                 baseline_mean=12.0,
                 best_mean=None,
@@ -59,8 +59,8 @@ class OptimizeRenderTests(unittest.TestCase):
         render_optimize_status_results(results, stdout=stream)
 
         rendered = stream.getvalue()
-        self.assertLess(rendered.index("[NO-SESSION] zeta"), rendered.index("[WARN] alpha"))
-        self.assertLess(rendered.index("[WARN] alpha"), rendered.index("[OK] beta"))
+        self.assertLess(rendered.index("[NO-SESSION] gamma"), rendered.index("[OK] alpha"))
+        self.assertLess(rendered.index("[OK] alpha"), rendered.index("[WARN] zeta"))
 
     def test_render_optimize_status_uses_plain_text_when_not_tty(self) -> None:
         stream = StringIO()
@@ -121,7 +121,7 @@ class OptimizeRenderTests(unittest.TestCase):
         stream = StringIO()
         results = [
             OptimizeStatusWorkspace(
-                workspace=Path("/tmp/zeta"),
+                workspace=Path("/tmp/omega"),
                 state="no-session",
                 baseline_mean=None,
                 best_mean=None,
@@ -133,7 +133,7 @@ class OptimizeRenderTests(unittest.TestCase):
                 warnings=(),
             ),
             OptimizeStatusWorkspace(
-                workspace=Path("/tmp/alpha"),
+                workspace=Path("/tmp/zeta"),
                 state="warning",
                 baseline_mean=12.0,
                 best_mean=None,
@@ -177,10 +177,12 @@ class OptimizeRenderTests(unittest.TestCase):
 
         rendered = stream.getvalue()
         self.assertIn("| 名称 | Geomean speedup | Total speedup | Notes |", rendered)
-        self.assertIn("| alpha | - | - | warn |", rendered)
         self.assertIn("| beta | 1.25x | 1.30x | - |", rendered)
         self.assertIn("| gamma | 1.49x | 1.58x | best≠log |", rendered)
-        self.assertNotIn("zeta", rendered)
+        self.assertIn("| zeta | - | - | warn |", rendered)
+        self.assertLess(rendered.index("| beta |"), rendered.index("| gamma |"))
+        self.assertLess(rendered.index("| gamma |"), rendered.index("| zeta |"))
+        self.assertNotIn("omega", rendered)
         self.assertNotIn("Summary:", rendered)
 
 
