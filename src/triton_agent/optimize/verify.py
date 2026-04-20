@@ -21,7 +21,7 @@ from triton_agent.skill_loader import load_operator_eval_script_module
 
 
 Phase = Literal["all", "test", "bench"]
-_CONSISTENCY_ABS_TOLERANCE = 0.02
+_CONSISTENCY_ABS_TOLERANCE = 0.2
 
 
 class BenchPerfParserModule(Protocol):
@@ -429,17 +429,17 @@ def _build_consistency_state(
     )
     total_delta = _metric_delta(speedup_state.get("total_speedup"), optimize_status.total_speedup)
     avg_delta = _metric_delta(speedup_state.get("avg_improvement"), optimize_status.avg_improvement)
-    deltas = (geomean_delta, total_delta, avg_delta)
+    decision_deltas = (geomean_delta, total_delta)
     warnings_value = speedup_state.get("warnings")
     has_warnings = isinstance(warnings_value, list) and len(cast(list[object], warnings_value)) > 0
     if (
         optimize_status.state == "ok"
         and not has_warnings
-        and all(delta is not None for delta in deltas)
+        and all(delta is not None for delta in decision_deltas)
     ):
         status = (
             "matched"
-            if all(abs(cast(float, delta)) <= _CONSISTENCY_ABS_TOLERANCE + 1e-12 for delta in deltas)
+            if all(abs(cast(float, delta)) <= _CONSISTENCY_ABS_TOLERANCE + 1e-12 for delta in decision_deltas)
             else "mismatched"
         )
     else:

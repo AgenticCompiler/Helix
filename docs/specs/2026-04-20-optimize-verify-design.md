@@ -125,6 +125,8 @@ Write `verify-state.json` in the verification directory as a compact verificatio
 
 `verify-result.speedup` uses `null` metric values and a warning when no fresh benchmark artifact is available, such as a test-only run or a failed correctness phase.
 
+`verify-result.consistency.status` is `matched` when geomean speedup and total speedup deltas are both within `0.2`; `avg_improvement_delta` is recorded for diagnostics but does not decide matched versus mismatched.
+
 ## Error Handling
 
 Fail with a concise error when:

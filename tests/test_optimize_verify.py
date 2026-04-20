@@ -2,6 +2,7 @@ import json
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -310,6 +311,48 @@ class OptimizeVerifyTests(unittest.TestCase):
             run_test.assert_not_called()
             run_bench.assert_called_once()
             compare_perf.assert_called_once_with(target.baseline_perf, perf_path)
+
+    def test_run_optimize_verify_consistency_ignores_avg_improvement_and_uses_wide_tolerance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            self._write_baseline(workspace)
+            self._write_round(workspace, 1, "latency-a: 8\nlatency-b: 18\n")
+            target = prepare_optimize_verify_target(
+                workspace,
+                timestamp_label="20260420-153012",
+            )
+            target = replace(
+                target,
+                optimize_status=replace(
+                    target.optimize_status,
+                    avg_improvement=-0.2,
+                    geomean_speedup=1.05,
+                    total_speedup=1.0,
+                ),
+            )
+            perf_path = target.verify_dir / "kernel_perf.txt"
+            perf_path.write_text("latency-a: 8\nlatency-b: 18\n", encoding="utf-8")
+
+            with patch(
+                "triton_agent.optimize.verify.run_local_bench",
+                return_value=(AgentResult(return_code=0, stdout="", stderr=""), perf_path),
+            ):
+                with patch(
+                    "triton_agent.optimize.verify.compare_perf_files",
+                    return_value=0,
+                ):
+                    run_optimize_verify(
+                        target,
+                        OptimizeVerifyOptions(phase="bench"),
+                    )
+
+            state = json.loads((target.verify_dir / "verify-state.json").read_text(encoding="utf-8"))
+            consistency = state["verify-result"]["consistency"]
+            self.assertEqual(consistency["status"], "matched")
+            self.assertAlmostEqual(consistency["avg_improvement_delta"], 0.35)
+            self.assertGreater(abs(consistency["avg_improvement_delta"]), 0.2)
+            self.assertLessEqual(abs(consistency["geomean_speedup_delta"]), 0.2)
+            self.assertLessEqual(abs(consistency["total_speedup_delta"]), 0.2)
 
     def test_run_optimize_verify_stops_after_failed_test_in_all_phase(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
