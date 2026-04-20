@@ -14,6 +14,7 @@ from triton_agent.commands.optimize import (
     handle_optimize,
     handle_optimize_batch,
     handle_optimize_status,
+    handle_optimize_verify,
 )
 from triton_agent.models import CommandKind
 
@@ -27,6 +28,7 @@ _BENCH_MODE_CHOICES = ("standalone", "msprof")
 _RESUME_CHOICES = ("auto", "continue", "fresh")
 _SUPERVISE_CHOICES = ("on", "off")
 _TARGET_CHIP_CHOICES = ("A3", "A5")
+_VERIFY_PHASE_CHOICES = ("all", "test", "bench")
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,7 @@ class _CommandSpec:
     max_concurrency_default: int | None = None
     has_force_overwrite: bool = False
     has_format: bool = False
+    has_verify_phase: bool = False
 
 
 _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
@@ -126,6 +129,15 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_output=False,
         has_format=True,
     ),
+    CommandKind.OPTIMIZE_VERIFY: _CommandSpec(
+        handler=handle_optimize_verify,
+        has_output=False,
+        has_remote=True,
+        keep_remote_workdir=True,
+        has_test_mode=True,
+        has_bench_mode=True,
+        has_verify_phase=True,
+    ),
     CommandKind.OPTIMIZE: _CommandSpec(
         handler=handle_optimize,
         has_remote=True,
@@ -161,6 +173,8 @@ def build_parser() -> argparse.ArgumentParser:
         _add_primary_arguments(subparser, spec)
         if spec.has_format:
             subparser.add_argument("--format", default="text", choices=_FORMAT_CHOICES)
+        if spec.has_verify_phase:
+            subparser.add_argument("--phase", default="all", choices=_VERIFY_PHASE_CHOICES)
         if spec.has_remote:
             subparser.add_argument("--remote")
             subparser.add_argument("--remote-workdir")
@@ -252,6 +266,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "compare_result": "compare-result",
         "compare_perf": "compare-perf",
         "optimize_status": "optimize-status",
+        "optimize_verify": "optimize-verify",
         "optimize_batch": "optimize-batch",
     }
     normalized = list(argv)

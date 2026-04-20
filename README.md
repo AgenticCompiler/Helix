@@ -14,6 +14,7 @@ This README is organized by task so you can quickly find the right command for t
 - `run-bench`: run an existing generated benchmark.
 - `optimize`: optimize one operator.
 - `optimize-status`: summarize optimization progress across many workspaces.
+- `optimize-verify`: rerun tests and benchmarks for the current best optimize round.
 - `optimize-batch`: optimize many operator workspaces.
 - `compare-result`: compare two archived correctness result files.
 - `compare-perf`: compare two archived performance files.
@@ -39,6 +40,7 @@ uv run triton-agent gen-eval-batch --input operators_root
 uv run triton-agent gen-eval-batch --input .
 uv run triton-agent optimize-status --input operators_root
 uv run triton-agent optimize-status --input operators_root --format markdown
+uv run triton-agent optimize-verify --input .
 uv run triton-agent optimize-batch --input operators_root
 ```
 
@@ -274,6 +276,38 @@ The Markdown table excludes `NO-SESSION` workspaces and sorts rows by name.
 Workspaces with optimize artifacts but missing comparable speedup data stay in the table and render those cells as `-`.
 The `Notes` column uses compact labels such as `best≠log` for computed/logged best-round mismatch
 and `warn` for other warnings.
+
+### Verify The Best Optimize Round
+
+```bash
+uv run triton-agent optimize-verify --input .
+uv run triton-agent optimize-verify --input . --phase test
+uv run triton-agent optimize-verify --input . --phase bench
+```
+
+Use this command after an optimize session when you want to rerun validation for the numeric best round.
+The command copies the selected round's operator plus the baseline correctness and benchmark harnesses into
+a fresh verification directory, then runs validation there. Existing `baseline/`, `opt-round-*`, top-level
+data files, and earlier verification artifacts are not overwritten.
+
+Common options:
+
+- `--phase all|test|bench`: default is `all`.
+- `--test-mode standalone|differential`: override the mode recorded in `baseline/state.json`.
+- `--bench-mode standalone|msprof`: override the mode recorded in `baseline/state.json`.
+- `--remote user@host[:port]`
+- `--remote-workdir <path>`
+- `--keep-remote-workdir`
+- `--verbose`
+
+Each run writes a new directory:
+
+```text
+opt-verify/verify-YYYYMMDD-HHMMSS/
+```
+
+The directory contains the copied operator, copied harnesses, `test.log`, `bench.log`, generated result or
+perf files, `compare-perf.txt` when a benchmark comparison runs, and `verify-state.json`.
 
 ### Optimize In Batch
 

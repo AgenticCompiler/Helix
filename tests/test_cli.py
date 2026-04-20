@@ -95,6 +95,7 @@ class CliParserTests(unittest.TestCase):
             ("gen_bench", CommandKind.GEN_BENCH),
             ("run_bench", CommandKind.RUN_BENCH),
             ("optimize_status", CommandKind.OPTIMIZE_STATUS),
+            ("optimize_verify", CommandKind.OPTIMIZE_VERIFY),
             ("optimize_batch", CommandKind.OPTIMIZE_BATCH),
         ]
 
@@ -105,6 +106,8 @@ class CliParserTests(unittest.TestCase):
                     argv = [alias, "--test-file", "test_kernel.py", "--operator-file", "kernel.py"]
                 elif expected_kind == CommandKind.RUN_BENCH:
                     argv = [alias, "--bench-file", "bench_kernel.py", "--operator-file", "kernel.py"]
+                elif expected_kind == CommandKind.OPTIMIZE_VERIFY:
+                    argv = [alias, "-i", "workspace"]
                 args = parser.parse_args(_normalize_command_aliases(argv))
                 self.assertEqual(args.command_kind, expected_kind)
 
@@ -120,6 +123,7 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("compare-result", help_text)
         self.assertIn("compare-perf", help_text)
         self.assertIn("optimize-status", help_text)
+        self.assertIn("optimize-verify", help_text)
         self.assertIn("optimize-batch", help_text)
         self.assertNotIn("gen_eval_batch", help_text)
         self.assertNotIn("gen_eval", help_text)
@@ -130,7 +134,47 @@ class CliParserTests(unittest.TestCase):
         self.assertNotIn("compare_result", help_text)
         self.assertNotIn("compare_perf", help_text)
         self.assertNotIn("optimize_status", help_text)
+        self.assertNotIn("optimize_verify", help_text)
         self.assertNotIn("optimize_batch", help_text)
+
+    def test_optimize_verify_maps_to_command_kind(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-verify", "-i", "workspace"])
+        self.assertEqual(args.command, "optimize-verify")
+        self.assertEqual(args.command_kind, CommandKind.OPTIMIZE_VERIFY)
+        self.assertEqual(args.input, "workspace")
+        self.assertEqual(args.phase, "all")
+        self.assertIsNone(args.test_mode)
+        self.assertIsNone(args.bench_mode)
+        self.assertIsNone(args.remote)
+        self.assertIsNone(args.remote_workdir)
+        self.assertFalse(args.keep_remote_workdir)
+        self.assertFalse(args.verbose)
+        self.assertFalse(hasattr(args, "agent"))
+        self.assertFalse(hasattr(args, "interact"))
+        self.assertFalse(hasattr(args, "output"))
+        self.assertFalse(hasattr(args, "show_output"))
+
+    def test_optimize_verify_accepts_phase_and_remote_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "optimize-verify",
+                "-i",
+                "workspace",
+                "--phase",
+                "bench",
+                "--remote",
+                "alice@example.com",
+                "--remote-workdir",
+                "/tmp/triton-agent",
+                "--keep-remote-workdir",
+            ]
+        )
+        self.assertEqual(args.phase, "bench")
+        self.assertEqual(args.remote, "alice@example.com")
+        self.assertEqual(args.remote_workdir, "/tmp/triton-agent")
+        self.assertTrue(args.keep_remote_workdir)
 
     def test_run_bench_has_common_options(self) -> None:
         parser = build_parser()
