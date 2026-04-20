@@ -3,20 +3,35 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import math
 import shutil
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Protocol, cast
 
 from triton_agent.execution import run_local_bench, run_local_test, run_remote_bench, run_remote_test
 from triton_agent.models import AgentResult
+from triton_agent.optimize.models import OptimizeStatusWorkspace
 from triton_agent.optimize.baseline import load_baseline_state
 from triton_agent.optimize.round_contract import inspect_round_artifacts
 from triton_agent.optimize.status import inspect_optimize_status_workspace
+from triton_agent.skill_loader import load_operator_eval_script_module
 
 
 Phase = Literal["all", "test", "bench"]
+_CONSISTENCY_ABS_TOLERANCE = 0.02
+
+
+class BenchPerfParserModule(Protocol):
+    def parse_perf_file(self, path: Path) -> dict[str, float]: ...
+
+    def parse_required_perf_file(
+        self,
+        path: Path,
+        required_latency_ids: Iterable[str],
+    ) -> dict[str, float]: ...
 
 
 @dataclass(frozen=True)
@@ -45,6 +60,7 @@ class OptimizeVerifyTarget:
     bench_file: Path
     bench_mode: str
     baseline_perf: Path
+    optimize_status: OptimizeStatusWorkspace
 
 
 @dataclass(frozen=True)
@@ -101,6 +117,7 @@ def prepare_optimize_verify_target(
         bench_file=bench_file,
         bench_mode=baseline_state.bench_mode,
         baseline_perf=baseline_perf,
+        optimize_status=status,
     )
 
 
@@ -108,6 +125,8 @@ def run_optimize_verify(
     target: OptimizeVerifyTarget,
     options: OptimizeVerifyOptions,
 ) -> OptimizeVerifyResult:
+    test_mode = options.test_mode or target.test_mode
+    bench_mode = options.bench_mode or target.bench_mode
     test_entry: dict[str, object] | None = None
     bench_entry: dict[str, object] | None = None
     compare_entry: dict[str, object] | None = None
@@ -116,22 +135,24 @@ def run_optimize_verify(
     return_code = 0
 
     if options.phase in {"all", "test"}:
-        test_mode = options.test_mode or target.test_mode
         test_result, archived_result = _run_test(target, options, test_mode)
         _write_result_log(target.verify_dir / "test.log", test_result)
         test_entry = {
-            "mode": test_mode,
+            "status": _execution_status(test_result.return_code),
             "return_code": test_result.return_code,
-            "archived_result": _relative_or_none(target.workspace, archived_result),
             "log": _relative_path(target.workspace, target.verify_dir / "test.log"),
+            "result_artifact": _relative_or_none(target.workspace, archived_result),
         }
         return_code = test_result.return_code
         if return_code != 0:
             state_path = _write_verify_state(
                 target,
+                test_mode=test_mode,
+                bench_mode=bench_mode,
                 test_entry=test_entry,
                 bench_entry=bench_entry,
                 compare_entry=compare_entry,
+                verify_perf_path=perf_path,
             )
             return OptimizeVerifyResult(
                 return_code=return_code,
@@ -140,14 +161,13 @@ def run_optimize_verify(
             )
 
     if options.phase in {"all", "bench"}:
-        bench_mode = options.bench_mode or target.bench_mode
         bench_result, perf_path = _run_bench(target, options, bench_mode)
         _write_result_log(target.verify_dir / "bench.log", bench_result)
         bench_entry = {
-            "mode": bench_mode,
+            "status": _execution_status(bench_result.return_code),
             "return_code": bench_result.return_code,
-            "perf_path": _relative_or_none(target.workspace, perf_path),
             "log": _relative_path(target.workspace, target.verify_dir / "bench.log"),
+            "perf_artifact": _relative_or_none(target.workspace, perf_path),
         }
         return_code = bench_result.return_code
         if return_code == 0 and perf_path is not None:
@@ -157,16 +177,20 @@ def run_optimize_verify(
             compare_log = target.verify_dir / "compare-perf.txt"
             compare_log.write_text(compare_output.getvalue(), encoding="utf-8")
             compare_entry = {
+                "status": _execution_status(compare_code),
                 "return_code": compare_code,
-                "output": _relative_path(target.workspace, compare_log),
+                "log": _relative_path(target.workspace, compare_log),
             }
             return_code = compare_code
 
     state_path = _write_verify_state(
         target,
+        test_mode=test_mode,
+        bench_mode=bench_mode,
         test_entry=test_entry,
         bench_entry=bench_entry,
         compare_entry=compare_entry,
+        verify_perf_path=perf_path,
     )
     return OptimizeVerifyResult(
         return_code=return_code,
@@ -242,32 +266,219 @@ def _write_result_log(path: Path, result: AgentResult) -> None:
     path.write_text(f"{result.stdout}{result.stderr}", encoding="utf-8")
 
 
+def _execution_status(return_code: int) -> str:
+    return "passed" if return_code == 0 else "failed"
+
+
 def _write_verify_state(
     target: OptimizeVerifyTarget,
     *,
+    test_mode: str,
+    bench_mode: str,
     test_entry: dict[str, object] | None,
     bench_entry: dict[str, object] | None,
     compare_entry: dict[str, object] | None,
+    verify_perf_path: Path | None,
 ) -> Path:
+    speedup_state, latency_ids = _build_speedup_state(target, verify_perf_path)
     state = {
-        "selected_round": target.selected_round,
-        "round_dir": _relative_path(target.workspace, target.round_dir),
-        "source_operator": _relative_path(target.workspace, target.source_operator),
-        "copied_operator": _relative_path(target.workspace, target.copied_operator),
-        "source_test_file": _relative_path(target.workspace, target.source_test_file),
-        "test_file": _relative_path(target.workspace, target.test_file),
-        "test_mode": target.test_mode,
-        "source_bench_file": _relative_path(target.workspace, target.source_bench_file),
-        "bench_file": _relative_path(target.workspace, target.bench_file),
-        "bench_mode": target.bench_mode,
-        "baseline_perf": _relative_path(target.workspace, target.baseline_perf),
-        "test": test_entry,
-        "bench": bench_entry,
-        "compare_perf": compare_entry,
+        "selection": _build_selection_state(target),
+        "workspace": _build_workspace_state(target),
+        "inputs": _build_inputs_state(target, test_mode=test_mode, bench_mode=bench_mode),
+        "verify-result": {
+            "test": test_entry,
+            "bench": _with_latency_ids(bench_entry, latency_ids),
+            "compare_perf": compare_entry,
+            "speedup": speedup_state,
+            "consistency": _build_consistency_state(target.optimize_status, speedup_state),
+        },
     }
     state_path = target.verify_dir / "verify-state.json"
     state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return state_path
+
+
+def _build_selection_state(target: OptimizeVerifyTarget) -> dict[str, object]:
+    return {
+        "round_dir": _relative_path(target.workspace, target.round_dir),
+        "source_operator": _relative_path(target.workspace, target.source_operator),
+        "numeric_best_source": "optimize-status",
+        "optimize_status": _build_optimize_status_state(target.optimize_status),
+    }
+
+
+def _build_workspace_state(target: OptimizeVerifyTarget) -> dict[str, object]:
+    return {
+        "verify_dir": _relative_path(target.workspace, target.verify_dir),
+        "operator": _relative_path(target.workspace, target.copied_operator),
+    }
+
+
+def _build_inputs_state(
+    target: OptimizeVerifyTarget,
+    *,
+    test_mode: str,
+    bench_mode: str,
+) -> dict[str, object]:
+    return {
+        "test_harness": {
+            "source": _relative_path(target.workspace, target.source_test_file),
+            "copied": _relative_path(target.workspace, target.test_file),
+            "mode": test_mode,
+        },
+        "bench_harness": {
+            "source": _relative_path(target.workspace, target.source_bench_file),
+            "copied": _relative_path(target.workspace, target.bench_file),
+            "mode": bench_mode,
+        },
+        "baseline_perf": _relative_path(target.workspace, target.baseline_perf),
+    }
+
+
+def _build_optimize_status_state(status: OptimizeStatusWorkspace) -> dict[str, object]:
+    return {
+        "state": status.state,
+        "baseline_mean": status.baseline_mean,
+        "best_mean": status.best_mean,
+        "avg_improvement": status.avg_improvement,
+        "geomean_speedup": status.geomean_speedup,
+        "total_speedup": status.total_speedup,
+        "warnings": list(status.warnings),
+    }
+
+
+def _build_speedup_state(
+    target: OptimizeVerifyTarget,
+    verify_perf_path: Path | None,
+) -> tuple[dict[str, object], list[str]]:
+    if verify_perf_path is None:
+        return (
+            {
+                "avg_improvement": None,
+                "geomean_speedup": None,
+                "total_speedup": None,
+                "warnings": ["missing verify perf data"],
+            },
+            [],
+        )
+
+    warnings: list[str] = []
+    try:
+        parser = _load_bench_perf_parser()
+        baseline_values = parser.parse_perf_file(target.baseline_perf)
+        verify_values = parser.parse_required_perf_file(verify_perf_path, baseline_values.keys())
+    except (OSError, ValueError) as exc:
+        return (
+            {
+                "avg_improvement": None,
+                "geomean_speedup": None,
+                "total_speedup": None,
+                "warnings": [str(exc)],
+            },
+            [],
+        )
+
+    latency_ids = sorted(baseline_values)
+    improvement_values: list[float] = []
+    speedup_values: list[float] = []
+    valid_baseline_values: list[float] = []
+    valid_verify_values: list[float] = []
+    for latency_id in latency_ids:
+        baseline_value = baseline_values[latency_id]
+        verify_value = verify_values[latency_id]
+        if baseline_value <= 0:
+            warnings.append(f"baseline latency must be > 0 for {latency_id}")
+            continue
+        if verify_value <= 0:
+            warnings.append(f"verify latency must be > 0 for {latency_id}")
+            continue
+        improvement_values.append((baseline_value - verify_value) / baseline_value)
+        speedup_values.append(baseline_value / verify_value)
+        valid_baseline_values.append(baseline_value)
+        valid_verify_values.append(verify_value)
+
+    if not improvement_values:
+        return (
+            {
+                "avg_improvement": None,
+                "geomean_speedup": None,
+                "total_speedup": None,
+                "warnings": warnings or ["missing comparable verify perf data"],
+            },
+            latency_ids,
+        )
+
+    return (
+        {
+            "avg_improvement": _mean_value(improvement_values),
+            "geomean_speedup": _geomean_value(speedup_values),
+            "total_speedup": sum(valid_baseline_values) / sum(valid_verify_values),
+            "warnings": warnings,
+        },
+        latency_ids,
+    )
+
+
+def _build_consistency_state(
+    optimize_status: OptimizeStatusWorkspace,
+    speedup_state: dict[str, object],
+) -> dict[str, object]:
+    geomean_delta = _metric_delta(
+        speedup_state.get("geomean_speedup"),
+        optimize_status.geomean_speedup,
+    )
+    total_delta = _metric_delta(speedup_state.get("total_speedup"), optimize_status.total_speedup)
+    avg_delta = _metric_delta(speedup_state.get("avg_improvement"), optimize_status.avg_improvement)
+    deltas = (geomean_delta, total_delta, avg_delta)
+    warnings_value = speedup_state.get("warnings")
+    has_warnings = isinstance(warnings_value, list) and len(cast(list[object], warnings_value)) > 0
+    if (
+        optimize_status.state == "ok"
+        and not has_warnings
+        and all(delta is not None for delta in deltas)
+    ):
+        status = (
+            "matched"
+            if all(abs(cast(float, delta)) <= _CONSISTENCY_ABS_TOLERANCE + 1e-12 for delta in deltas)
+            else "mismatched"
+        )
+    else:
+        status = "incomplete"
+    return {
+        "status": status,
+        "geomean_speedup_delta": geomean_delta,
+        "total_speedup_delta": total_delta,
+        "avg_improvement_delta": avg_delta,
+    }
+
+
+def _with_latency_ids(
+    bench_entry: dict[str, object] | None,
+    latency_ids: list[str],
+) -> dict[str, object] | None:
+    if bench_entry is None:
+        return None
+    return {**bench_entry, "latency_ids": latency_ids}
+
+
+def _metric_delta(actual: object, expected: float | None) -> float | None:
+    if actual is None or expected is None:
+        return None
+    return cast(float, actual) - expected
+
+
+def _load_bench_perf_parser() -> BenchPerfParserModule:
+    return cast(BenchPerfParserModule, load_operator_eval_script_module("bench_runner"))
+
+
+def _mean_value(values: Iterable[float]) -> float:
+    items = list(values)
+    return sum(items) / len(items)
+
+
+def _geomean_value(values: Iterable[float]) -> float:
+    items = list(values)
+    return math.exp(sum(math.log(item) for item in items) / len(items))
 
 
 def _relative_path(root: Path, path: Path) -> str:

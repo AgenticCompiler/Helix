@@ -136,6 +136,7 @@ class OptimizeVerifyTests(unittest.TestCase):
             )
             perf_path = target.verify_dir / "kernel_perf.txt"
             result_path = target.verify_dir / "kernel_result.pt"
+            perf_path.write_text("latency-a: 8\nlatency-b: 18\n", encoding="utf-8")
 
             with patch(
                 "triton_agent.optimize.verify.run_local_test",
@@ -170,11 +171,89 @@ class OptimizeVerifyTests(unittest.TestCase):
             self.assertEqual((target.verify_dir / "bench.log").read_text(encoding="utf-8"), "bench ok\n")
 
             state = json.loads((target.verify_dir / "verify-state.json").read_text(encoding="utf-8"))
-            self.assertEqual(state["selected_round"], "round-1")
-            self.assertEqual(state["copied_operator"], "opt-verify/verify-20260420-153012/kernel.py")
-            self.assertEqual(state["test"]["return_code"], 0)
-            self.assertEqual(state["bench"]["return_code"], 0)
-            self.assertEqual(state["compare_perf"]["return_code"], 0)
+            self.assertEqual(
+                sorted(state),
+                ["inputs", "selection", "verify-result", "workspace"],
+            )
+            self.assertEqual(state["selection"]["round_dir"], "opt-round-1")
+            self.assertEqual(state["selection"]["source_operator"], "opt-round-1/kernel.py")
+            self.assertEqual(state["selection"]["numeric_best_source"], "optimize-status")
+            optimize_status = state["selection"]["optimize_status"]
+            self.assertEqual(
+                sorted(optimize_status),
+                [
+                    "avg_improvement",
+                    "baseline_mean",
+                    "best_mean",
+                    "geomean_speedup",
+                    "state",
+                    "total_speedup",
+                    "warnings",
+                ],
+            )
+            self.assertEqual(optimize_status["state"], "ok")
+            self.assertEqual(optimize_status["baseline_mean"], 15.0)
+            self.assertEqual(optimize_status["best_mean"], 13.0)
+            self.assertAlmostEqual(optimize_status["avg_improvement"], 0.15)
+            self.assertAlmostEqual(optimize_status["geomean_speedup"], (10 / 8 * 20 / 18) ** 0.5)
+            self.assertAlmostEqual(optimize_status["total_speedup"], 30 / 26)
+            self.assertEqual(optimize_status["warnings"], [])
+            self.assertEqual(
+                state["workspace"],
+                {
+                    "verify_dir": "opt-verify/verify-20260420-153012",
+                    "operator": "opt-verify/verify-20260420-153012/kernel.py",
+                },
+            )
+            self.assertEqual(
+                state["inputs"],
+                {
+                    "test_harness": {
+                        "source": "differential_test_kernel.py",
+                        "copied": "opt-verify/verify-20260420-153012/differential_test_kernel.py",
+                        "mode": "differential",
+                    },
+                    "bench_harness": {
+                        "source": "bench_kernel.py",
+                        "copied": "opt-verify/verify-20260420-153012/bench_kernel.py",
+                        "mode": "standalone",
+                    },
+                    "baseline_perf": "baseline/perf.txt",
+                },
+            )
+            verify_result = state["verify-result"]
+            self.assertEqual(verify_result["test"]["status"], "passed")
+            self.assertEqual(verify_result["test"]["return_code"], 0)
+            self.assertEqual(
+                verify_result["test"]["result_artifact"],
+                "opt-verify/verify-20260420-153012/kernel_result.pt",
+            )
+            self.assertEqual(verify_result["bench"]["status"], "passed")
+            self.assertEqual(verify_result["bench"]["return_code"], 0)
+            self.assertEqual(
+                verify_result["bench"]["perf_artifact"],
+                "opt-verify/verify-20260420-153012/kernel_perf.txt",
+            )
+            self.assertEqual(verify_result["bench"]["latency_ids"], ["latency-a", "latency-b"])
+            self.assertEqual(verify_result["compare_perf"]["status"], "passed")
+            self.assertEqual(verify_result["compare_perf"]["return_code"], 0)
+            self.assertEqual(
+                sorted(verify_result["speedup"]),
+                ["avg_improvement", "geomean_speedup", "total_speedup", "warnings"],
+            )
+            self.assertAlmostEqual(verify_result["speedup"]["avg_improvement"], 0.15)
+            self.assertAlmostEqual(verify_result["speedup"]["geomean_speedup"], (10 / 8 * 20 / 18) ** 0.5)
+            self.assertAlmostEqual(verify_result["speedup"]["total_speedup"], 30 / 26)
+            self.assertEqual(verify_result["speedup"]["warnings"], [])
+            self.assertEqual(
+                verify_result["consistency"],
+                {
+                    "status": "matched",
+                    "geomean_speedup_delta": 0.0,
+                    "total_speedup_delta": 0.0,
+                    "avg_improvement_delta": 0.0,
+                },
+            )
 
     def test_run_optimize_verify_test_phase_skips_benchmark(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -255,8 +334,13 @@ class OptimizeVerifyTests(unittest.TestCase):
             self.assertEqual(result.return_code, 1)
             run_bench.assert_not_called()
             state = json.loads((target.verify_dir / "verify-state.json").read_text(encoding="utf-8"))
-            self.assertEqual(state["test"]["return_code"], 1)
-            self.assertIsNone(state["bench"])
+            verify_result = state["verify-result"]
+            self.assertEqual(verify_result["test"]["return_code"], 1)
+            self.assertEqual(verify_result["test"]["status"], "failed")
+            self.assertIsNone(verify_result["bench"])
+            self.assertIsNone(verify_result["speedup"]["avg_improvement"])
+            self.assertEqual(verify_result["speedup"]["warnings"], ["missing verify perf data"])
+            self.assertEqual(verify_result["consistency"]["status"], "incomplete")
 
 
 if __name__ == "__main__":

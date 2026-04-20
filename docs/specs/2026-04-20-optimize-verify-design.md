@@ -98,20 +98,32 @@ Save the comparison output to `compare-perf.txt`.
 
 ## State File
 
-Write `verify-state.json` in the verification directory with:
+Write `verify-state.json` in the verification directory as a compact verification record:
 
-- selected round
-- source operator path
-- copied operator path
-- source and copied test harness paths
-- source and copied benchmark harness paths
-- test file and test mode
-- benchmark file and benchmark mode
-- baseline perf path
-- archived result path when present
-- benchmark perf path when present
-- compare-perf output path when present
-- return codes for each executed phase
+- `selection`: selected numeric best round, selected round directory, source operator path, and `numeric_best_source`.
+- `workspace`: verification run directory and copied operator path.
+- `inputs`: source and copied harness paths, effective test and benchmark modes, and baseline perf path.
+- `verify-result`: execution records, fresh speedup metrics, and consistency deltas for this verification run.
+
+`selection.optimize_status` records the speedup metrics that `optimize-status` computed when selecting the best round:
+
+- `state`
+- `baseline_mean`
+- `best_mean`
+- `avg_improvement`
+- `geomean_speedup`
+- `total_speedup`
+- `warnings`
+
+`verify-result` records:
+
+- `test`: status, return code, log path, and result artifact path.
+- `bench`: status, return code, log path, perf artifact path, and latency ids.
+- `compare_perf`: status, return code, and comparison log path.
+- `speedup`: fresh `avg_improvement`, `geomean_speedup`, `total_speedup`, and warnings computed from the verification benchmark artifact.
+- `consistency`: status plus deltas between `verify-result.speedup` and `selection.optimize_status` for average improvement, geomean speedup, and total speedup.
+
+`verify-result.speedup` uses `null` metric values and a warning when no fresh benchmark artifact is available, such as a test-only run or a failed correctness phase.
 
 ## Error Handling
 
