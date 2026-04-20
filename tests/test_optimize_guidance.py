@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -68,6 +69,7 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             self.assertTrue(state.history_dir.exists())
             self.assertEqual(state.archive_root, workdir / "optimize-logs" / "triton-agent")
             self.assertTrue(state.run_archive_dir.parent == state.archive_root)
+            self.assertEqual(state.agent_sessions_path, state.run_archive_dir / "agent-sessions.jsonl")
 
             self.assertIn("## Triton Agent Optimize Orchestration", shared_content)
             self.assertIn("This workspace is under optimize orchestration.", shared_content)
@@ -91,6 +93,59 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             self.assertTrue((state.run_archive_dir / "final" / "round-brief.md").exists())
             self.assertTrue((state.run_archive_dir / "final" / "supervisor-report.md").exists())
             self.assertTrue((state.run_archive_dir / "history").exists())
+
+    def test_record_agent_session_appends_compact_jsonl(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            manager = OptimizeGuidanceManager()
+            state = manager.prepare_unsupervised_session(
+                workdir,
+                operator_path=workdir / "kernel.py",
+                agent_name="codex",
+                test_mode="differential",
+                bench_mode="standalone",
+            )
+
+            manager.record_agent_session(
+                state,
+                role="worker",
+                session_id="019da9c2-dfcb-7c71-a2f9-7a90bab2e0f5",
+                agent="codex",
+            )
+
+            lines = state.agent_sessions_path.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(lines), 1)
+            payload = json.loads(lines[0])
+            self.assertEqual(set(payload), {"timestamp", "role", "session_id", "agent"})
+            self.assertEqual(payload["role"], "worker")
+            self.assertEqual(payload["session_id"], "019da9c2-dfcb-7c71-a2f9-7a90bab2e0f5")
+            self.assertEqual(payload["agent"], "codex")
+
+            warnings = manager.cleanup_unsupervised_session(state)
+            self.assertEqual(warnings, [])
+            self.assertTrue(state.agent_sessions_path.exists())
+
+    def test_record_agent_session_uses_unknown_when_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            manager = OptimizeGuidanceManager()
+            state = manager.prepare_unsupervised_session(
+                workdir,
+                operator_path=workdir / "kernel.py",
+                agent_name="codex",
+                test_mode="differential",
+                bench_mode="standalone",
+            )
+
+            manager.record_agent_session(
+                state,
+                role="worker",
+                session_id=None,
+                agent="codex",
+            )
+
+            payload = json.loads(state.agent_sessions_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["session_id"], "unknown")
 
     def test_prepare_uses_claude_file_and_restores_existing_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

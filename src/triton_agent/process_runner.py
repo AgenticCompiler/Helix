@@ -64,6 +64,7 @@ def run_process(
             stall_timeout_seconds=stall_timeout_seconds,
             stdout=stdout,
             output_filter=output_filter,
+            session_id_extractor=session_id_extractor or (lambda _text: None),
             interrupt_policy=interrupt_policy,
         )
     if mode == "buffered":
@@ -167,6 +168,7 @@ def run_streaming_process(
     stall_timeout_seconds: int,
     stdout: Optional[TextIO] = None,
     output_filter: Optional[OutputFilter] = None,
+    session_id_extractor: Optional[Callable[[str], Optional[str]]] = None,
     interrupt_policy: Optional[InterruptPolicy] = None,
 ) -> AgentResult:
     if _IS_WINDOWS:
@@ -176,6 +178,7 @@ def run_streaming_process(
             stall_timeout_seconds=stall_timeout_seconds,
             stdout=stdout,
             output_filter=output_filter,
+            session_id_extractor=session_id_extractor or (lambda _text: None),
             interrupt_policy=interrupt_policy,
         )
     return _run_streaming_process_pty(
@@ -184,6 +187,7 @@ def run_streaming_process(
         stall_timeout_seconds=stall_timeout_seconds,
         stdout=stdout,
         output_filter=output_filter,
+        session_id_extractor=session_id_extractor or (lambda _text: None),
         interrupt_policy=interrupt_policy,
     )
 
@@ -194,6 +198,7 @@ def _run_streaming_process_windows(
     stall_timeout_seconds: int,
     stdout: Optional[TextIO] = None,
     output_filter: Optional[OutputFilter] = None,
+    session_id_extractor: Callable[[str], Optional[str]] = lambda _text: None,
     interrupt_policy: Optional[InterruptPolicy] = None,
 ) -> AgentResult:
     """Windows-compatible streaming using threads to drain stdout and stderr."""
@@ -207,6 +212,7 @@ def _run_streaming_process_windows(
     output_chunks: list[str] = []
     start_ref: list[float] = [time.monotonic()]
     stalled_ref: list[bool] = [False]
+    session_id_ref: list[str | None] = [None]
     lock = threading.Lock()
 
     def reader() -> None:
@@ -222,6 +228,7 @@ def _run_streaming_process_windows(
                     output_chunks.append(filtered)
                     print(filtered, file=stdout or sys.stdout, end="", flush=True)
                 start_ref[0] = time.monotonic()
+                session_id_ref[0] = session_id_ref[0] or session_id_extractor(text)
 
     reader_thread = threading.Thread(target=reader, daemon=True)
     reader_thread.start()
@@ -252,7 +259,7 @@ def _run_streaming_process_windows(
             stdout="".join(output_chunks),
             stderr="",
             stalled=False,
-            session_id=None,
+            session_id=session_id_ref[0],
         )
 
     reader_thread.join()
@@ -267,7 +274,7 @@ def _run_streaming_process_windows(
         stdout="".join(output_chunks),
         stderr="",
         stalled=stalled_ref[0],
-        session_id=None,
+        session_id=session_id_ref[0],
     )
 
 
@@ -277,6 +284,7 @@ def _run_streaming_process_pty(
     stall_timeout_seconds: int,
     stdout: Optional[TextIO] = None,
     output_filter: Optional[OutputFilter] = None,
+    session_id_extractor: Callable[[str], Optional[str]] = lambda _text: None,
     interrupt_policy: Optional[InterruptPolicy] = None,
 ) -> AgentResult:
     """Unix PTY-backed streaming so the child sees a terminal and flushes incrementally."""
@@ -296,6 +304,7 @@ def _run_streaming_process_pty(
     )
     os.close(slave_fd)
     start = time.monotonic()
+    session_id: Optional[str] = None
 
     try:
         while True:
@@ -314,6 +323,7 @@ def _run_streaming_process_pty(
                         output_chunks.append(filtered)
                         print(filtered, file=stdout or sys.stdout, end="")
                     start = time.monotonic()
+                    session_id = session_id or session_id_extractor(text)
                 elif process.poll() is not None:
                     break
             elif process.poll() is not None:
@@ -325,7 +335,7 @@ def _run_streaming_process_pty(
                     stdout="".join(output_chunks),
                     stderr="",
                     stalled=True,
-                    session_id=None,
+                    session_id=session_id,
                 )
         if output_filter is not None:
             trailing = output_filter.feed("", flush=True)
@@ -337,7 +347,7 @@ def _run_streaming_process_pty(
             stdout="".join(output_chunks),
             stderr="",
             stalled=False,
-            session_id=None,
+            session_id=session_id,
         )
     except KeyboardInterrupt:
         if interrupt_policy is None:
@@ -353,7 +363,7 @@ def _run_streaming_process_pty(
             stdout="".join(output_chunks),
             stderr="",
             stalled=False,
-            session_id=None,
+            session_id=session_id,
         )
     finally:
         os.close(master_fd)

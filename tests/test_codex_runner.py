@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.backends.codex import CodexRunner
+from triton_agent.backends.codex import CodexRunner, _extract_session_id
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.prompts import build_prompt
 
@@ -365,6 +365,14 @@ class CodexRunnerTests(unittest.TestCase):
             self.assertIn("Read `opt-note.md`", resumed_request)
             self.assertIn("existing `opt-round-*` directories", resumed_request)
             self.assertIn("profiling or IR-backed evidence", resumed_request)
+
+    def test_session_id_extractor_reads_codex_startup_text(self) -> None:
+        line = "session id: 019da9c2-dfcb-7c71-a2f9-7a90bab2e0f5\n"
+
+        self.assertEqual(
+            _extract_session_id(line),
+            "019da9c2-dfcb-7c71-a2f9-7a90bab2e0f5",
+        )
 
 
 def _ok_result() -> AgentResult:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 import os
 from pathlib import Path
 from typing import List, Optional
@@ -12,6 +13,9 @@ class SharedOptimizeGuidanceState:
     guidance_path: Path
     backup_path: Optional[Path]
     created_guidance: bool
+    archive_root: Path
+    run_archive_dir: Path
+    agent_sessions_path: Path
 
 
 @dataclass
@@ -19,8 +23,6 @@ class OptimizeGuidanceState(SharedOptimizeGuidanceState):
     round_brief_path: Path
     supervisor_report_path: Path
     history_dir: Path
-    archive_root: Path
-    run_archive_dir: Path
     shared_guidance_snapshot_path: Path
     created_paths: tuple[Path, ...]
 
@@ -39,6 +41,8 @@ class OptimizeGuidanceManager:
         guidance_path = workdir / self._guidance_filename(agent_name)
         guidance_preexisting = guidance_path.exists()
         backup_path: Optional[Path] = None
+        archive_root = workdir / "optimize-logs" / "triton-agent"
+        run_archive_dir = archive_root / self._new_run_id()
 
         if guidance_preexisting:
             backup_path = self._next_backup_path(guidance_path)
@@ -58,14 +62,21 @@ class OptimizeGuidanceManager:
             guidance_path=guidance_path,
             backup_path=backup_path,
             created_guidance=not guidance_preexisting,
+            archive_root=archive_root,
+            run_archive_dir=run_archive_dir,
+            agent_sessions_path=run_archive_dir / "agent-sessions.jsonl",
         )
 
     def archive(self, state: OptimizeGuidanceState) -> list[str]:
         warnings: list[str] = []
         archive_dir = state.run_archive_dir
-        if archive_dir.exists() and any(archive_dir.iterdir()):
-            warnings.append(f"Refusing to overwrite existing optimize log archive at {archive_dir}")
-            return warnings
+        if archive_dir.exists():
+            unexpected_paths = [
+                path for path in archive_dir.iterdir() if path != state.agent_sessions_path
+            ]
+            if unexpected_paths:
+                warnings.append(f"Refusing to overwrite existing optimize log archive at {archive_dir}")
+                return warnings
 
         try:
             (archive_dir / "final").mkdir(parents=True, exist_ok=True)
@@ -130,7 +141,7 @@ class OptimizeGuidanceManager:
         history_dir = runtime_root / "history"
         history_dir.mkdir(parents=True, exist_ok=True)
         archive_root = workdir / "optimize-logs" / "triton-agent"
-        run_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+        run_id = self._new_run_id()
         run_archive_dir = archive_root / run_id
         shared_guidance_snapshot_path = run_archive_dir / "shared-guidance.md"
 
@@ -153,11 +164,12 @@ class OptimizeGuidanceManager:
             guidance_path=guidance_path,
             backup_path=backup_path,
             created_guidance=not guidance_preexisting,
+            archive_root=archive_root,
+            run_archive_dir=run_archive_dir,
+            agent_sessions_path=run_archive_dir / "agent-sessions.jsonl",
             round_brief_path=round_brief_path,
             supervisor_report_path=supervisor_report_path,
             history_dir=history_dir,
-            archive_root=archive_root,
-            run_archive_dir=run_archive_dir,
             shared_guidance_snapshot_path=shared_guidance_snapshot_path,
             created_paths=(
                 guidance_path,
@@ -186,6 +198,31 @@ class OptimizeGuidanceManager:
                     f"from {state.backup_path}: {exc}"
                 )
         return warnings
+
+    def record_agent_session(
+        self,
+        state: SharedOptimizeGuidanceState,
+        *,
+        role: str,
+        session_id: str | None,
+        agent: str,
+    ) -> str | None:
+        payload = {
+            "timestamp": datetime.now(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z"),
+            "role": role,
+            "session_id": session_id or "unknown",
+            "agent": agent,
+        }
+        try:
+            state.agent_sessions_path.parent.mkdir(parents=True, exist_ok=True)
+            with state.agent_sessions_path.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(payload, separators=(",", ":")) + "\n")
+        except OSError as exc:
+            return f"Failed to record optimize agent session at {state.agent_sessions_path}: {exc}"
+        return None
 
     def cleanup_supervised_session(self, state: OptimizeGuidanceState) -> list[str]:
         warnings: list[str] = []
@@ -275,6 +312,9 @@ class OptimizeGuidanceManager:
         if agent_name == "claude":
             return "CLAUDE.md"
         return "AGENTS.md"
+
+    def _new_run_id(self) -> str:
+        return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
 
     def _next_backup_path(self, guidance_path: Path) -> Path:
         candidate = guidance_path.with_suffix(guidance_path.suffix + ".triton-agent.bak")

@@ -53,11 +53,12 @@ class OptimizeRuntimeTests(unittest.TestCase):
             guidance_path=guidance_path,
             backup_path=None,
             created_guidance=False,
+            archive_root=archive_root,
+            run_archive_dir=run_archive_dir,
+            agent_sessions_path=run_archive_dir / "agent-sessions.jsonl",
             round_brief_path=round_brief_path,
             supervisor_report_path=supervisor_report_path,
             history_dir=history_dir,
-            archive_root=archive_root,
-            run_archive_dir=run_archive_dir,
             shared_guidance_snapshot_path=shared_guidance_snapshot_path,
             created_paths=(round_brief_path, supervisor_report_path),
         )
@@ -287,7 +288,12 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             latest_round="opt-round-1",
                             brief_lines=("Stop after auditing opt-round-1.",),
                         )
-                    return AgentResult(return_code=0, stdout="ok", stderr="")
+                    session_id = (
+                        "019da9c2-dfcb-7c71-a2f9-7a90bab2e0f5"
+                        if request.optimize_role == "worker"
+                        else "119da9c2-dfcb-7c71-a2f9-7a90bab2e0f5"
+                    )
+                    return AgentResult(return_code=0, stdout="ok", stderr="", session_id=session_id)
 
             self_outer = self
             runner = FakeRunner()
@@ -326,6 +332,16 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertTrue((run_archive / "final" / "round-brief.md").exists())
             self.assertTrue((run_archive / "final" / "supervisor-report.md").exists())
             self.assertTrue((run_archive / "history").exists())
+            session_lines = (run_archive / "agent-sessions.jsonl").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(session_lines), 2)
+            session_entries = [json.loads(line) for line in session_lines]
+            self.assertEqual(
+                [(entry["role"], entry["session_id"], entry["agent"]) for entry in session_entries],
+                [
+                    ("worker", "019da9c2-dfcb-7c71-a2f9-7a90bab2e0f5", "codex"),
+                    ("supervisor", "119da9c2-dfcb-7c71-a2f9-7a90bab2e0f5", "codex"),
+                ],
+            )
 
     def test_run_supervisor_appends_history_snapshots_across_rounds(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -473,7 +489,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     self.saw_guidance_file = (workdir / "AGENTS.md").exists()
                     if self.saw_guidance_file:
                         self.guidance_content = (workdir / "AGENTS.md").read_text(encoding="utf-8")
-                    return AgentResult(return_code=0, stdout="ok", stderr="")
+                    return AgentResult(return_code=0, stdout="ok", stderr="", session_id=None)
 
                 def resume(
                     self,
@@ -503,7 +519,15 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIsNone(runner.calls[0].supervisor_report_path)
             self.assertFalse((workdir / "AGENTS.md").exists())
             self.assertFalse((workdir / ".triton-agent").exists())
-            self.assertFalse((workdir / "optimize-logs").exists())
+            archive_root = workdir / "optimize-logs" / "triton-agent"
+            run_archives = [path for path in archive_root.iterdir() if path.is_dir()]
+            self.assertEqual(len(run_archives), 1)
+            session_lines = (run_archives[0] / "agent-sessions.jsonl").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(session_lines), 1)
+            session_entry = json.loads(session_lines[0])
+            self.assertEqual(session_entry["role"], "worker")
+            self.assertEqual(session_entry["session_id"], "unknown")
+            self.assertEqual(session_entry["agent"], "codex")
             mocked_prepare.assert_not_called()
 
     def test_run_optimize_request_unsupervised_retries_with_resume(self) -> None:

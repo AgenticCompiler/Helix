@@ -127,6 +127,24 @@ class StreamingProcessRunnerTests(unittest.TestCase):
         self.assertEqual(stdout.getvalue(), "line one\nline two\n")
         self.assertEqual(result.stdout, "line one\nline two\n")
 
+    def test_streaming_collects_session_id(self) -> None:
+        stdout = StringIO()
+        process = _StreamingFakeProcess(wait_code=0)
+        chunks = [b"session id: session-1\n", b""]
+        with patch("triton_agent.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+                with patch("triton_agent.process_runner.select.select", side_effect=[([11], [], []), ([11], [], [])]):
+                    with patch("triton_agent.process_runner.os.read", side_effect=chunks):
+                        with patch("triton_agent.process_runner.os.close"):
+                            result = run_streaming_process(
+                                ["codex", "exec"],
+                                "/tmp",
+                                stall_timeout_seconds=10,
+                                stdout=stdout,
+                                session_id_extractor=lambda text: "session-1" if "session id:" in text else None,
+                            )
+        self.assertEqual(result.session_id, "session-1")
+
     def test_streaming_filter_can_remove_diff_blocks(self) -> None:
         from triton_agent.backends.codex import _UnifiedDiffFilter
 

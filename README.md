@@ -222,6 +222,7 @@ Optimize behavior:
 - Generate missing harnesses only when the required validation artifact is absent.
 - Allow the agent to do minimal repair work during baseline preparation when that is required to reach a correct, benchmarkable starting point.
 - Keep canonical optimize-session performance comparisons anchored to `baseline/perf.txt`, even when a round also compares locally against its chosen parent.
+- Record each optimize code agent launch under `optimize-logs/triton-agent/<run-id>/agent-sessions.jsonl` with timestamp, role, session id, and agent backend. Missing session ids are recorded as `unknown`.
 - Run optimize as explicit worker rounds with a supervisor audit between rounds instead of relying on one unconstrained agent pass.
 - Keep the shared workspace guidance role-neutral; worker versus supervisor role assignment comes from the launch prompt plus the live `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md` handoff files.
 - Use fresh agent invocations for worker and supervisor passes so role-specific optimize context does not leak across the session.

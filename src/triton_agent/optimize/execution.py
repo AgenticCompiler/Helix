@@ -7,7 +7,11 @@ from typing import Any, TextIO, cast
 
 from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult
-from triton_agent.optimize.guidance import OptimizeGuidanceManager, OptimizeGuidanceState
+from triton_agent.optimize.guidance import (
+    OptimizeGuidanceManager,
+    OptimizeGuidanceState,
+    SharedOptimizeGuidanceState,
+)
 from triton_agent.optimize.models import GateDecision, GateResult
 from triton_agent.optimize.run_loop import OptimizeRunLoop
 from triton_agent.prompts import build_optimize_supervisor_prompt
@@ -18,26 +22,44 @@ class RecoveryRunnerAdapter:
     def __init__(
         self,
         runner: AgentRunner,
+        guidance_manager: OptimizeGuidanceManager,
+        guidance_state: SharedOptimizeGuidanceState,
         stdout: TextIO | None = None,
         stderr: TextIO | None = None,
     ) -> None:
         self._runner = runner
+        self._guidance_manager = guidance_manager
+        self._guidance_state = guidance_state
         self._stdout = stdout
         self._stderr = stderr
 
     def run(self, request: AgentRequest) -> AgentResult:
         if self._stdout is None and self._stderr is None:
-            return cast(Any, self._runner).run(request)
-        return cast(Any, self._runner).run(request, stdout=self._stdout, stderr=self._stderr)
+            result = cast(Any, self._runner).run(request)
+        else:
+            result = cast(Any, self._runner).run(request, stdout=self._stdout, stderr=self._stderr)
+        self._record_session(request, result)
+        return result
 
     def resume(self, request: AgentRequest, summary: str) -> AgentResult:
         if self._stdout is None and self._stderr is None:
-            return cast(Any, self._runner).resume(request, summary)
-        return cast(Any, self._runner).resume(
-            request,
-            summary,
-            stdout=self._stdout,
-            stderr=self._stderr,
+            result = cast(Any, self._runner).resume(request, summary)
+        else:
+            result = cast(Any, self._runner).resume(
+                request,
+                summary,
+                stdout=self._stdout,
+                stderr=self._stderr,
+            )
+        self._record_session(request, result)
+        return result
+
+    def _record_session(self, request: AgentRequest, result: AgentResult) -> None:
+        self._guidance_manager.record_agent_session(
+            self._guidance_state,
+            role=request.optimize_role or "worker",
+            session_id=result.session_id,
+            agent=request.agent_name,
         )
 
 
@@ -48,8 +70,10 @@ class SupervisedOptimizeAdapter:
         guidance_state: OptimizeGuidanceState,
         stdout: TextIO | None = None,
         stderr: TextIO | None = None,
+        guidance_manager: OptimizeGuidanceManager | None = None,
     ) -> None:
         self._runner = runner
+        self._guidance_manager = guidance_manager or OptimizeGuidanceManager()
         self._guidance_state = guidance_state
         self._stdout = stdout
         self._stderr = stderr
@@ -210,8 +234,16 @@ class SupervisedOptimizeAdapter:
 
     def _run_request(self, request: AgentRequest) -> AgentResult:
         if self._stdout is None and self._stderr is None:
-            return cast(Any, self._runner).run(request)
-        return cast(Any, self._runner).run(request, stdout=self._stdout, stderr=self._stderr)
+            result = cast(Any, self._runner).run(request)
+        else:
+            result = cast(Any, self._runner).run(request, stdout=self._stdout, stderr=self._stderr)
+        self._guidance_manager.record_agent_session(
+            self._guidance_state,
+            role=request.optimize_role or "worker",
+            session_id=result.session_id,
+            agent=request.agent_name,
+        )
+        return result
 
     def _parse_supervisor_decision(self, report_content: str) -> str | None:
         match = re.search(r"^Decision:\s*(.+?)\s*$", report_content, re.MULTILINE)
@@ -250,7 +282,13 @@ def execute_supervised_optimize(
             guidance_manager.describe_prepare_supervised_session(guidance_state),
         )
     try:
-        adapter = SupervisedOptimizeAdapter(runner, guidance_state, stdout=stdout, stderr=stderr)
+        adapter = SupervisedOptimizeAdapter(
+            runner,
+            guidance_state,
+            stdout=stdout,
+            stderr=stderr,
+            guidance_manager=guidance_manager,
+        )
         return OptimizeRunLoop().run(adapter, request)
     finally:
         if request.verbose:
@@ -289,7 +327,13 @@ def execute_unsupervised_optimize(
         )
     try:
         return OptimizeRunLoop().run(
-            RecoveryRunnerAdapter(runner, stdout=stdout, stderr=stderr),
+            RecoveryRunnerAdapter(
+                runner,
+                guidance_manager,
+                shared_guidance_state,
+                stdout=stdout,
+                stderr=stderr,
+            ),
             request,
         )
     finally:
