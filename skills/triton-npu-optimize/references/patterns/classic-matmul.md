@@ -99,6 +99,13 @@ On Ascend Triton, make the two `tl.dot` operand dtypes explicit when there is an
 
 If the operator must preserve a true `fp32` matmul path, treat that as a separate validated path rather than assuming the backend handles it the same as mixed precision.
 
+When a single tiled rewrite is fast but fails the existing correctness contract for some dtypes or shape regimes, prefer **dtype-specialized or shape-specialized dispatch** over discarding the idea entirely. A common fallback is:
+
+- `fp16` and sufficiently large `M`: tiled matmul path
+- `fp32` or small shapes: baseline-style reduction path
+
+Use this when the performance win is real for one operating regime, but a unified replacement changes accumulation order or precision behavior too much for another regime.
+
 ## Host Launch Template
 
 ```python
@@ -122,6 +129,27 @@ matmul_kernel[grid](
 ```
 
 Treat those tile values as a starting point, not as a universal rule.
+
+## Dispatch Rule
+
+Do not assume the classic tiled path must replace every input regime.
+
+Prefer a dispatched design when evidence shows:
+
+- tiled matmul is clearly faster for `fp16` or larger shapes
+- baseline-style reduction is more accurate or cheaper for `fp32` or smaller shapes
+- the correctness gate rejects one unified implementation
+
+Typical host-side decision pattern:
+
+```python
+if x.dtype == torch.float16 and M >= LARGE_M_THRESHOLD:
+    launch_tiled_matmul(...)
+else:
+    launch_baseline_reduction(...)
+```
+
+The exact threshold should come from benchmark evidence, not from a fixed guess.
 
 ## Expected Benefit
 
@@ -160,5 +188,6 @@ If your evidence says the kernel already has the right structure but block size 
 - confirm the second operand really arrives as `[BK, BN]`
 - confirm masks on `M`, `N`, and `K`
 - confirm fused bias or activation broadcasting
+- if you introduce dispatch, validate each dispatched regime explicitly
 - benchmark against the previous implementation
 - record whether the win came from lower scalar pressure, better matmul lowering, or better epilogue amortization

@@ -74,12 +74,13 @@ Avoid selecting a parent that:
 15. When the round needs a deeper explanation than benchmark numbers alone provide, use `triton-npu-analyze-round-performance`.
     - Write the standalone analysis to `opt-round-N/perf-analysis.md`.
 16. When the hot loop is structurally a matmul or reduction over `K`, read the classic tiled matmul pattern reference before rewriting the kernel so the round follows the standard tiled `tl.dot` pattern deliberately instead of ad hoc loop surgery.
-17. If the benchmark regresses, either:
+17. If a single implementation cannot satisfy both performance and correctness across all operating regimes, consider a dtype-specialized or shape-specialized dispatch instead of forcing one kernel structure on every case.
+18. If the benchmark regresses, either:
    - revise the round in place if the optimization idea is still promising, or
    - stop advancing that round and return to candidate selection for a new branch
-18. Complete the round only after the optimized candidate shows a measurable win over the chosen comparison target.
-19. Use `baseline/perf.txt` for canonical optimize-session metrics even when a round also compares locally against its parent.
-20. When the optimize session is pausing or ending, refresh the final `## Overall Summary` block in `opt-note.md` so the top-level note states the best round, overall outcome, `Avg improvement`, `Geomean speedup`, `Total speedup` (use `triton-npu-run-eval` compare-perf to calculate), any useful validated branches, and why that round was pursued.
+19. Complete the round only after the optimized candidate shows a measurable win over the chosen comparison target.
+20. Use `baseline/perf.txt` for canonical optimize-session metrics even when a round also compares locally against its parent.
+21. When the optimize session is pausing or ending, refresh the final `## Overall Summary` block in `opt-note.md` so the top-level note states the best round, overall outcome, `Avg improvement`, `Geomean speedup`, `Total speedup` (use `triton-npu-run-eval` compare-perf to calculate), any useful validated branches, and why that round was pursued.
 
 ## Comparison Target
 
