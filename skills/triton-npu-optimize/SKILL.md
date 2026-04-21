@@ -113,13 +113,12 @@ Use it for concise notes such as:
 17. After correctness passes, run benchmark validation; when benchmark timing alone does not explain the result well enough, use `triton-npu-profile-operator` to gather operator-level evidence and keep the resulting profiler artifacts under the current round directory.
 18. When a round needs deeper diagnosis, use `triton-npu-analyze-round-performance` and write `opt-round-N/perf-analysis.md`.
 19. When the kernel is structurally matmul-like, read the classic tiled matmul pattern reference from `references/patterns/` before rewriting the hot loop so the round records the standard tiled-matmul shape, dtype, and masking rules explicitly.
-20. If one unified tiled rewrite is fast but fails correctness or loses efficiency on some dtype or shape regimes, prefer a documented dtype-specialized or shape-specialized dispatch over discarding the optimization idea entirely.
-21. After both baseline and round benchmark perf artifacts exist, use the `triton-npu-run-eval` skill to run `compare-perf` through `../triton-npu-run-eval/scripts/run-command.py`, and use that output as the only source for `Avg improvement`, `Geomean speedup`, `Total speedup`, and any claimed benchmark delta.
-22. Do not hand-calculate speedups or percentage improvements from raw perf files.
-23. Compare round benchmark results against `baseline/perf.txt` for canonical optimize-session metrics, even when the current round also compares locally against its chosen parent.
-24. When IR inspection is needed to understand compiler lowering or confirm an optimization effect, use `triton-npu-analyze-ir`, capture into `opt-round-N/ir/`, and inspect that same directory directly.
-25. Run the sibling `triton-npu-optimize-check` skill with `check-round` and repair the current round until it passes before starting another round or stopping.
-26. Use the benchmark, profiler, IR evidence, `perf-analysis.md` when present, and `compare-perf` output to decide whether to keep iterating, abandon the direction, or finalize the round `summary.md`, update `opt-note.md`, and preserve any reusable insight in `learned_lessons.md`.
+20. After both baseline and round benchmark perf artifacts exist, use the `triton-npu-run-eval` skill to run `compare-perf` through `../triton-npu-run-eval/scripts/run-command.py`, and use that output as the only source for `Avg improvement`, `Geomean speedup`, `Total speedup`, and any claimed benchmark delta.
+21. Do not hand-calculate speedups or percentage improvements from raw perf files.
+22. Compare round benchmark results against `baseline/perf.txt` for canonical optimize-session metrics, even when the current round also compares locally against its chosen parent.
+23. When IR inspection is needed to understand compiler lowering or confirm an optimization effect, use `triton-npu-analyze-ir`, capture into `opt-round-N/ir/`, and inspect that same directory directly.
+24. Run the sibling `triton-npu-optimize-check` skill with `check-round` and repair the current round until it passes before starting another round or stopping.
+25. Use the benchmark, profiler, IR evidence, `perf-analysis.md` when present, and `compare-perf` output to decide whether to keep iterating, abandon the direction, or finalize the round `summary.md`, update `opt-note.md`, and preserve any reusable insight in `learned_lessons.md`.
 
 ## Quality Rules
 
@@ -142,7 +141,6 @@ Use it for concise notes such as:
 - Prefer selective pattern reading over bulk-loading all optimization references.
 - Do not begin with blind tiling, autotune, or launch-parameter search when the available evidence does not justify that direction.
 - Prefer the strongest validated optimization idea, whether it comes from the pattern library or your own Triton and Ascend NPU knowledge.
-- When one implementation does not serve all dtype or shape regimes well, prefer an explicitly validated dispatched design over forcing one kernel shape onto every case.
 - Do not silently discard optimization intent; preserve important comments that explain why a change helps.
 - When optimizing kernel code, you may treat missing `propagate_nan` on kernel compare helpers such as `tl.maximum()` and `tl.minimum()` as a consistency repair opportunity: inspect those call sites and add `propagate_nan=tl.PropagateNan.ALL` where it is missing when you want NaN propagation to be explicit and consistent, but note that this can change NaN-input behavior and should be treated as a semantic choice rather than a no-op cleanup.
 - Record within-round attempts continuously so long-running rounds do not lose intermediate learning.
