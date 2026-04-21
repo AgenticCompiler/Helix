@@ -15,6 +15,7 @@ This README is organized by task so you can quickly find the right command for t
 - `optimize`: optimize one operator.
 - `optimize-status`: summarize optimization progress across many workspaces.
 - `optimize-verify`: rerun tests and benchmarks for the current best optimize round.
+- `optimize-verify-batch`: verify many optimize workspaces under one root.
 - `optimize-batch`: optimize many operator workspaces.
 - `compare-result`: compare two archived correctness result files.
 - `compare-perf`: compare two archived performance files.
@@ -41,6 +42,7 @@ uv run triton-agent gen-eval-batch --input .
 uv run triton-agent optimize-status --input operators_root
 uv run triton-agent optimize-status --input operators_root --format markdown
 uv run triton-agent optimize-verify --input .
+uv run triton-agent optimize-verify-batch --input operators_root
 uv run triton-agent optimize-batch --input operators_root
 ```
 
@@ -271,10 +273,14 @@ then `baseline_perf.txt`, then the existing non-`opt_` fallback rule.
 - `名称`
 - `Geomean speedup`
 - `Total speedup`
+- `Verified`
 - `Notes`
 
 The Markdown table excludes `NO-SESSION` workspaces and sorts rows by name.
 Workspaces with optimize artifacts but missing comparable speedup data stay in the table and render those cells as `-`.
+The `Verified` column shows `Verified` only when the latest `opt-verify/verify-*/verify-state.json`
+for that workspace is a complete successful run with passed test, rerun baseline benchmark,
+rerun best benchmark, and compare-perf results. Otherwise it renders `-`.
 The `Notes` column uses compact labels such as `best≠log` for computed/logged best-round mismatch
 and `warn` for other warnings.
 
@@ -309,6 +315,26 @@ opt-verify/verify-YYYYMMDD-HHMMSS/
 
 The directory contains the copied operator, copied harnesses, `test.log`, `bench.log`, generated result or
 perf files, `compare-perf.txt` when a benchmark comparison runs, and `verify-state.json`.
+
+### Verify Many Optimize Workspaces
+
+```bash
+uv run triton-agent optimize-verify-batch --input operators_root
+uv run triton-agent optimize-verify-batch --input operators_root --force-verify
+```
+
+Use this command when you want to validate every verifiable optimize workspace under one root.
+The command scans immediate child workspaces and:
+
+- reuses the latest `opt-verify/verify-*/verify-state.json` by default
+- reruns verification when `--force-verify` is supplied
+- skips workspaces that do not have enough baseline or best-round artifacts to run `optimize-verify`
+- continues after individual workspace failures and reports a non-zero exit code when any rerun fails
+
+Common options:
+
+- `--force-verify`: rerun verification even when a latest verify result already exists.
+- `--verbose`
 
 ### Optimize In Batch
 

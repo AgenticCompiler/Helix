@@ -96,6 +96,7 @@ class CliParserTests(unittest.TestCase):
             ("run_bench", CommandKind.RUN_BENCH),
             ("optimize_status", CommandKind.OPTIMIZE_STATUS),
             ("optimize_verify", CommandKind.OPTIMIZE_VERIFY),
+            ("optimize_verify_batch", CommandKind.OPTIMIZE_VERIFY_BATCH),
             ("optimize_batch", CommandKind.OPTIMIZE_BATCH),
         ]
 
@@ -108,6 +109,8 @@ class CliParserTests(unittest.TestCase):
                     argv = [alias, "--bench-file", "bench_kernel.py", "--operator-file", "kernel.py"]
                 elif expected_kind == CommandKind.OPTIMIZE_VERIFY:
                     argv = [alias, "-i", "workspace"]
+                elif expected_kind == CommandKind.OPTIMIZE_VERIFY_BATCH:
+                    argv = [alias, "-i", "workspace-root"]
                 args = parser.parse_args(_normalize_command_aliases(argv))
                 self.assertEqual(args.command_kind, expected_kind)
 
@@ -124,6 +127,7 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("compare-perf", help_text)
         self.assertIn("optimize-status", help_text)
         self.assertIn("optimize-verify", help_text)
+        self.assertIn("optimize-verify-batch", help_text)
         self.assertIn("optimize-batch", help_text)
         self.assertNotIn("gen_eval_batch", help_text)
         self.assertNotIn("gen_eval", help_text)
@@ -135,6 +139,7 @@ class CliParserTests(unittest.TestCase):
         self.assertNotIn("compare_perf", help_text)
         self.assertNotIn("optimize_status", help_text)
         self.assertNotIn("optimize_verify", help_text)
+        self.assertNotIn("optimize_verify_batch", help_text)
         self.assertNotIn("optimize_batch", help_text)
 
     def test_optimize_verify_maps_to_command_kind(self) -> None:
@@ -175,6 +180,24 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.remote, "alice@example.com")
         self.assertEqual(args.remote_workdir, "/tmp/triton-agent")
         self.assertTrue(args.keep_remote_workdir)
+
+    def test_optimize_verify_batch_maps_to_command_kind(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-verify-batch", "-i", "workspace-root"])
+        self.assertEqual(args.command, "optimize-verify-batch")
+        self.assertEqual(args.command_kind, CommandKind.OPTIMIZE_VERIFY_BATCH)
+        self.assertEqual(args.input, "workspace-root")
+        self.assertFalse(args.force_verify)
+        self.assertFalse(args.verbose)
+        self.assertFalse(hasattr(args, "agent"))
+        self.assertFalse(hasattr(args, "interact"))
+        self.assertFalse(hasattr(args, "output"))
+
+    def test_optimize_verify_batch_accepts_force_verify(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-verify-batch", "-i", "workspace-root", "--force-verify"])
+        self.assertEqual(args.command_kind, CommandKind.OPTIMIZE_VERIFY_BATCH)
+        self.assertTrue(args.force_verify)
 
     def test_run_bench_has_common_options(self) -> None:
         parser = build_parser()
@@ -1150,6 +1173,24 @@ class PathResolutionTests(unittest.TestCase):
                 "latency-a: 9\nlatency-b: 10\n",
                 encoding="utf-8",
             )
+            verify_dir = ok_workspace / "opt-verify" / "verify-20260421-120000"
+            verify_dir.mkdir(parents=True)
+            (verify_dir / "verify-state.json").write_text(
+                "\n".join(
+                    [
+                        "{",
+                        '  "verify-result": {',
+                        '    "test": {"status": "passed"},',
+                        '    "rerun_baseline_bench": {"status": "passed"},',
+                        '    "rerun_best_bench": {"status": "passed"},',
+                        '    "compare_perf": {"status": "passed"}',
+                        "  }",
+                        "}",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
 
             stdout = StringIO()
             with redirect_stdout(stdout):
@@ -1157,9 +1198,9 @@ class PathResolutionTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()
-            self.assertIn("| 名称 | Geomean speedup | Total speedup | Notes |", rendered)
-            self.assertIn("| beta | 1.49x | 1.58x | best≠log |", rendered)
-            self.assertIn("| zeta | - | - | warn |", rendered)
+            self.assertIn("| 名称 | Geomean speedup | Total speedup | Verified | Notes |", rendered)
+            self.assertIn("| beta | 1.49x | 1.58x | Verified | best≠log |", rendered)
+            self.assertIn("| zeta | - | - | - | warn |", rendered)
             self.assertLess(rendered.index("| beta |"), rendered.index("| zeta |"))
             self.assertNotIn("fresh", rendered)
             self.assertNotIn("Summary:", rendered)

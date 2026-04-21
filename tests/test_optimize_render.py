@@ -29,6 +29,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 best_round="round-2",
                 logged_best="round-2",
                 warnings=(),
+                latest_verify_state=None,
+                verified=False,
             ),
             OptimizeStatusWorkspace(
                 workspace=Path("/tmp/gamma"),
@@ -41,6 +43,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 best_round=None,
                 logged_best=None,
                 warnings=(),
+                latest_verify_state=None,
+                verified=False,
             ),
             OptimizeStatusWorkspace(
                 workspace=Path("/tmp/zeta"),
@@ -53,6 +57,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 best_round=None,
                 logged_best=None,
                 warnings=("missing perf artifact for opt-round-28",),
+                latest_verify_state=None,
+                verified=False,
             ),
         ]
 
@@ -76,6 +82,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 best_round=None,
                 logged_best=None,
                 warnings=("missing perf artifact for opt-round-28",),
+                latest_verify_state=None,
+                verified=False,
             )
         ]
 
@@ -102,6 +110,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 best_round=None,
                 logged_best=None,
                 warnings=("missing perf artifact for opt-round-28",),
+                latest_verify_state=None,
+                verified=False,
             )
         ]
 
@@ -131,6 +141,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 best_round=None,
                 logged_best=None,
                 warnings=(),
+                latest_verify_state=None,
+                verified=False,
             ),
             OptimizeStatusWorkspace(
                 workspace=Path("/tmp/zeta"),
@@ -143,6 +155,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 best_round=None,
                 logged_best=None,
                 warnings=("missing comparable round perf data",),
+                latest_verify_state=None,
+                verified=False,
             ),
             OptimizeStatusWorkspace(
                 workspace=Path("/tmp/beta"),
@@ -155,6 +169,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 best_round="round-2",
                 logged_best="round-2",
                 warnings=(),
+                latest_verify_state=Path("/tmp/beta/opt-verify/verify-20260421-120000/verify-state.json"),
+                verified=True,
             ),
             OptimizeStatusWorkspace(
                 workspace=Path("/tmp/gamma"),
@@ -170,16 +186,18 @@ class OptimizeRenderTests(unittest.TestCase):
                     "numeric best round != logged best. "
                     "computed speedup: 1.49x, 1.58x; logged speedup: 1.16x, 1.18x",
                 ),
+                latest_verify_state=Path("/tmp/gamma/opt-verify/verify-20260421-120000/verify-state.json"),
+                verified=False,
             ),
         ]
 
         render_optimize_status_results(results, stdout=stream, output_format="markdown")
 
         rendered = stream.getvalue()
-        self.assertIn("| 名称 | Geomean speedup | Total speedup | Notes |", rendered)
-        self.assertIn("| beta | 1.25x | 1.30x | - |", rendered)
-        self.assertIn("| gamma | 1.49x | 1.58x | best≠log |", rendered)
-        self.assertIn("| zeta | - | - | warn |", rendered)
+        self.assertIn("| 名称 | Geomean speedup | Total speedup | Verified | Notes |", rendered)
+        self.assertIn("| beta | 1.25x | 1.30x | Verified | - |", rendered)
+        self.assertIn("| gamma | 1.49x | 1.58x | - | best≠log |", rendered)
+        self.assertIn("| zeta | - | - | - | warn |", rendered)
         self.assertLess(rendered.index("| beta |"), rendered.index("| gamma |"))
         self.assertLess(rendered.index("| gamma |"), rendered.index("| zeta |"))
         self.assertNotIn("omega", rendered)

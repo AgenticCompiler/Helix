@@ -15,6 +15,7 @@ from triton_agent.commands.optimize import (
     handle_optimize_batch,
     handle_optimize_status,
     handle_optimize_verify,
+    handle_optimize_verify_batch,
 )
 from triton_agent.models import CommandKind
 
@@ -51,6 +52,7 @@ class _CommandSpec:
     has_force_overwrite: bool = False
     has_format: bool = False
     has_verify_phase: bool = False
+    has_force_verify: bool = False
 
 
 _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
@@ -138,6 +140,11 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_bench_mode=True,
         has_verify_phase=True,
     ),
+    CommandKind.OPTIMIZE_VERIFY_BATCH: _CommandSpec(
+        handler=handle_optimize_verify_batch,
+        has_output=False,
+        has_force_verify=True,
+    ),
     CommandKind.OPTIMIZE: _CommandSpec(
         handler=handle_optimize,
         has_remote=True,
@@ -175,6 +182,8 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--format", default="text", choices=_FORMAT_CHOICES)
         if spec.has_verify_phase:
             subparser.add_argument("--phase", default="all", choices=_VERIFY_PHASE_CHOICES)
+        if spec.has_force_verify:
+            subparser.add_argument("--force-verify", action="store_true")
         if spec.has_remote:
             subparser.add_argument("--remote")
             subparser.add_argument("--remote-workdir")
@@ -267,6 +276,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "compare_perf": "compare-perf",
         "optimize_status": "optimize-status",
         "optimize_verify": "optimize-verify",
+        "optimize_verify_batch": "optimize-verify-batch",
         "optimize_batch": "optimize-batch",
     }
     normalized = list(argv)

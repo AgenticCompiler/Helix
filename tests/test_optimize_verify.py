@@ -253,12 +253,19 @@ class OptimizeVerifyTests(unittest.TestCase):
             self.assertEqual(verify_result["rerun_baseline_bench"]["status"], "passed")
             self.assertEqual(verify_result["rerun_baseline_bench"]["return_code"], 0)
             self.assertEqual(
+                verify_result["rerun_baseline_bench"]["latency"],
+                {"latency-a": 11.0, "latency-b": 22.0},
+            )
+            self.assertEqual(
                 verify_result["rerun_best_bench"]["perf_artifact"],
                 "opt-verify/verify-20260420-153012/kernel_perf.txt",
             )
             self.assertEqual(verify_result["rerun_best_bench"]["status"], "passed")
             self.assertEqual(verify_result["rerun_best_bench"]["return_code"], 0)
-            self.assertEqual(verify_result["rerun_best_bench"]["latency_ids"], ["latency-a", "latency-b"])
+            self.assertEqual(
+                verify_result["rerun_best_bench"]["latency"],
+                {"latency-a": 8.0, "latency-b": 18.0},
+            )
             self.assertEqual(verify_result["compare_perf"]["status"], "passed")
             self.assertEqual(verify_result["compare_perf"]["return_code"], 0)
             self.assertEqual(

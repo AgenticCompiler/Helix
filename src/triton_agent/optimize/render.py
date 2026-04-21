@@ -106,6 +106,8 @@ def render_optimize_status_results(
         print(_style(stream, f"  Best round: {item.best_round or 'unknown'}", _BODY_COLOR), file=stream)
         if item.logged_best is not None:
             print(_style(stream, f"  Logged best: {item.logged_best}", _BODY_COLOR), file=stream)
+        if item.latest_verify_state is not None:
+            print(_style(stream, f"  Latest verify: {item.latest_verify_state}", _BODY_COLOR), file=stream)
         for warning in item.warnings:
             print(_style(stream, f"  Warning: {warning}", _WARNING_COLOR), file=stream)
 
@@ -131,14 +133,15 @@ def render_optimize_status_markdown_table(
         for item in sorted(results, key=_optimize_status_markdown_sort_key)
         if item.state != "no-session"
     ]
-    print("| 名称 | Geomean speedup | Total speedup | Notes |", file=stream)
-    print("| --- | --- | --- | --- |", file=stream)
+    print("| 名称 | Geomean speedup | Total speedup | Verified | Notes |", file=stream)
+    print("| --- | --- | --- | --- | --- |", file=stream)
     for item in rows:
         print(
             "| "
             f"{item.workspace.name} | "
             f"{format_optimize_status_speedup_cell(item.geomean_speedup)} | "
             f"{format_optimize_status_speedup_cell(item.total_speedup)} | "
+            f"{format_optimize_status_verified_cell(item)} | "
             f"{format_optimize_status_notes_cell(item)} |",
             file=stream,
         )
@@ -157,6 +160,10 @@ def format_optimize_status_speedup_cell(value: float | None) -> str:
     if value is None:
         return "-"
     return format_optimize_status_speedup(value)
+
+
+def format_optimize_status_verified_cell(item: OptimizeStatusWorkspace) -> str:
+    return "Verified" if item.verified else "-"
 
 
 def format_optimize_status_notes_cell(item: OptimizeStatusWorkspace) -> str:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import re
 from collections.abc import Iterable
@@ -33,6 +34,7 @@ def inspect_optimize_status_workspace(
 ) -> OptimizeStatusWorkspace:
     del verbose
     opt_note, round_dirs, top_level_perf_files = collect_optimize_status_artifacts(workspace)
+    latest_verify_state, verified = inspect_latest_verify_result(workspace)
 
     has_artifacts = bool(opt_note.exists() or round_dirs or top_level_perf_files)
     if not has_artifacts:
@@ -47,6 +49,8 @@ def inspect_optimize_status_workspace(
             best_round=None,
             logged_best=None,
             warnings=(),
+            latest_verify_state=latest_verify_state,
+            verified=verified,
         )
 
     warnings: list[str] = []
@@ -154,6 +158,8 @@ def inspect_optimize_status_workspace(
             best_round=best_round.round_name,
             logged_best=logged_best,
             warnings=tuple(dict.fromkeys(warnings)),
+            latest_verify_state=latest_verify_state,
+            verified=verified,
         )
 
     if baseline_path is None and not baseline_selection_failed:
@@ -172,6 +178,8 @@ def inspect_optimize_status_workspace(
         best_round=None,
         logged_best=logged_best,
         warnings=tuple(dict.fromkeys(warnings)),
+        latest_verify_state=latest_verify_state,
+        verified=verified,
     )
 
 
@@ -198,6 +206,52 @@ def collect_optimize_status_artifacts(
     )
     top_level_perf_files = sorted(workspace.glob("*_perf.txt"))
     return opt_note, round_dirs, top_level_perf_files
+
+
+def inspect_latest_verify_result(workspace: Path) -> tuple[Path | None, bool]:
+    state_path = find_latest_verify_state(workspace)
+    if state_path is None:
+        return None, False
+    return state_path, verify_state_is_verified(state_path)
+
+
+def find_latest_verify_state(workspace: Path) -> Path | None:
+    verify_root = workspace / "opt-verify"
+    if not verify_root.is_dir():
+        return None
+    candidates = sorted(
+        path / "verify-state.json"
+        for path in verify_root.iterdir()
+        if path.is_dir() and path.name.startswith("verify-") and (path / "verify-state.json").is_file()
+    )
+    if not candidates:
+        return None
+    return candidates[-1]
+
+
+def verify_state_is_verified(state_path: Path) -> bool:
+    try:
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    verify_result = payload.get("verify-result")
+    if not isinstance(verify_result, dict):
+        return False
+    verify_result_dict = cast(dict[str, object], verify_result)
+    required_entries: tuple[object | None, ...] = (
+        verify_result_dict.get("test"),
+        verify_result_dict.get("rerun_baseline_bench"),
+        verify_result_dict.get("rerun_best_bench"),
+        verify_result_dict.get("compare_perf"),
+    )
+    for entry in required_entries:
+        if not isinstance(entry, dict):
+            return False
+        entry_dict = cast(dict[str, object], entry)
+        status = entry_dict.get("status")
+        if status != "passed":
+            return False
+    return True
 
 
 def select_baseline_perf_file(

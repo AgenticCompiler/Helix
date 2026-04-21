@@ -128,8 +128,8 @@ Write `verify-state.json` in the verification directory as a compact verificatio
 `verify-result` records:
 
 - `test`: status, return code, log path, and result artifact path.
-- `rerun_baseline_bench`: status, return code, log path, perf artifact path, and latency ids.
-- `rerun_best_bench`: status, return code, log path, perf artifact path, and latency ids.
+- `rerun_baseline_bench`: status, return code, log path, perf artifact path, and `latency`, where `latency` stores the rerun baseline perf values as `latency case id -> latency value`.
+- `rerun_best_bench`: status, return code, log path, perf artifact path, and `latency`, where `latency` stores the rerun best perf values as `latency case id -> latency value`.
 - `compare_perf`: status, return code, and comparison log path.
 - `speedup`: fresh `avg_improvement`, `geomean_speedup`, `total_speedup`, and warnings computed from the rerun baseline and rerun best benchmark artifacts.
 - `consistency`: status plus deltas between `verify-result.speedup` and `selection.optimize_status` for average improvement, geomean speedup, and total speedup.

@@ -1,6 +1,7 @@
 import sys
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -13,6 +14,35 @@ from triton_agent.optimize.status import (
 
 
 class OptimizeStatusTests(unittest.TestCase):
+    def _write_verify_state(
+        self,
+        workspace: Path,
+        verify_name: str,
+        *,
+        test_status: str = "passed",
+        baseline_bench_status: str = "passed",
+        best_bench_status: str = "passed",
+        compare_status: str = "passed",
+    ) -> Path:
+        verify_dir = workspace / "opt-verify" / verify_name
+        verify_dir.mkdir(parents=True)
+        state_path = verify_dir / "verify-state.json"
+        state_path.write_text(
+            json.dumps(
+                {
+                    "verify-result": {
+                        "test": {"status": test_status},
+                        "rerun_baseline_bench": {"status": baseline_bench_status},
+                        "rerun_best_bench": {"status": best_bench_status},
+                        "compare_perf": {"status": compare_status},
+                    }
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return state_path
+
     def test_parse_logged_best_round_prefers_overall_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             note = Path(tmp) / "opt-note.md"
@@ -170,6 +200,61 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertEqual(status.state, "no-session")
             self.assertIsNone(status.best_round)
             self.assertEqual(status.warnings, ())
+            self.assertIsNone(status.latest_verify_state)
+            self.assertFalse(status.verified)
+
+    def test_inspect_optimize_status_workspace_uses_latest_successful_verify_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_one.mkdir()
+            (round_one / "perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 18\n",
+                encoding="utf-8",
+            )
+            self._write_verify_state(
+                workspace,
+                "verify-20260421-100000",
+                compare_status="failed",
+            )
+            latest_state = self._write_verify_state(
+                workspace,
+                "verify-20260421-120000",
+            )
+
+            status = inspect_optimize_status_workspace(workspace)
+
+            self.assertEqual(status.state, "ok")
+            self.assertEqual(status.latest_verify_state, latest_state)
+            self.assertTrue(status.verified)
+
+    def test_inspect_optimize_status_workspace_marks_partial_latest_verify_as_unverified(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_one.mkdir()
+            (round_one / "perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 18\n",
+                encoding="utf-8",
+            )
+            latest_state = self._write_verify_state(
+                workspace,
+                "verify-20260421-120000",
+                compare_status="failed",
+            )
+
+            status = inspect_optimize_status_workspace(workspace)
+
+            self.assertEqual(status.latest_verify_state, latest_state)
+            self.assertFalse(status.verified)
 
     def test_inspect_optimize_status_workspace_ignores_extra_round_perf_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

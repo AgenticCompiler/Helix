@@ -65,6 +65,8 @@ class OptimizeStatusWorkspace:
     best_round: str | None
     logged_best: str | None
     warnings: tuple[str, ...]
+    latest_verify_state: Path | None = None
+    verified: bool = False
 
 
 @dataclass(frozen=True)

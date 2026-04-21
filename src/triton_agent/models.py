@@ -17,6 +17,7 @@ class CommandKind(str, Enum):
     COMPARE_PERF = "compare-perf"
     OPTIMIZE_STATUS = "optimize-status"
     OPTIMIZE_VERIFY = "optimize-verify"
+    OPTIMIZE_VERIFY_BATCH = "optimize-verify-batch"
     OPTIMIZE = "optimize"
     OPTIMIZE_BATCH = "optimize-batch"
 
@@ -32,6 +33,7 @@ COMMAND_TO_SKILL = {
     CommandKind.COMPARE_PERF: "",
     CommandKind.OPTIMIZE_STATUS: "",
     CommandKind.OPTIMIZE_VERIFY: "",
+    CommandKind.OPTIMIZE_VERIFY_BATCH: "",
     CommandKind.OPTIMIZE: "triton-npu-optimize",
     CommandKind.OPTIMIZE_BATCH: "",
 }

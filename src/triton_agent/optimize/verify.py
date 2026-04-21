@@ -322,15 +322,21 @@ def _write_verify_state(
     baseline_perf_path: Path | None,
     best_perf_path: Path | None,
 ) -> Path:
-    speedup_state, latency_ids = _build_speedup_state(target, baseline_perf_path, best_perf_path)
+    speedup_state = _build_speedup_state(target, baseline_perf_path, best_perf_path)
     state = {
         "selection": _build_selection_state(target),
         "workspace": _build_workspace_state(target),
         "inputs": _build_inputs_state(target, test_mode=test_mode, bench_mode=bench_mode),
         "verify-result": {
             "test": test_entry,
-            "rerun_baseline_bench": _with_latency_ids(baseline_bench_entry, latency_ids),
-            "rerun_best_bench": _with_latency_ids(best_bench_entry, latency_ids),
+            "rerun_baseline_bench": _with_latency(
+                baseline_bench_entry,
+                _build_latency_state(baseline_perf_path),
+            ),
+            "rerun_best_bench": _with_latency(
+                best_bench_entry,
+                _build_latency_state(best_perf_path),
+            ),
             "compare_perf": compare_entry,
             "speedup": speedup_state,
             "consistency": _build_consistency_state(target.optimize_status, speedup_state),
@@ -395,7 +401,7 @@ def _build_speedup_state(
     target: OptimizeVerifyTarget,
     baseline_perf_path: Path | None,
     best_perf_path: Path | None,
-) -> tuple[dict[str, object], list[str]]:
+) -> dict[str, object]:
     missing_perf_warnings: list[str] = []
     if baseline_perf_path is None:
         missing_perf_warnings.append("missing rerun baseline perf data")
@@ -408,8 +414,7 @@ def _build_speedup_state(
                 "geomean_speedup": None,
                 "total_speedup": None,
                 "warnings": missing_perf_warnings,
-            },
-            [],
+            }
         )
 
     warnings: list[str] = []
@@ -429,8 +434,7 @@ def _build_speedup_state(
                 "geomean_speedup": None,
                 "total_speedup": None,
                 "warnings": [str(exc)],
-            },
-            [],
+            }
         )
 
     latency_ids = sorted(baseline_values)
@@ -459,19 +463,25 @@ def _build_speedup_state(
                 "geomean_speedup": None,
                 "total_speedup": None,
                 "warnings": warnings or ["missing comparable verify perf data"],
-            },
-            latency_ids,
+            }
         )
 
-    return (
-        {
-            "avg_improvement": _mean_value(improvement_values),
-            "geomean_speedup": _geomean_value(speedup_values),
-            "total_speedup": sum(valid_baseline_values) / sum(valid_verify_values),
-            "warnings": warnings,
-        },
-        latency_ids,
-    )
+    return {
+        "avg_improvement": _mean_value(improvement_values),
+        "geomean_speedup": _geomean_value(speedup_values),
+        "total_speedup": sum(valid_baseline_values) / sum(valid_verify_values),
+        "warnings": warnings,
+    }
+
+
+def _build_latency_state(perf_path: Path | None) -> dict[str, float] | None:
+    if perf_path is None:
+        return None
+    try:
+        parser = _load_bench_perf_parser()
+        return dict(parser.parse_perf_file(perf_path))
+    except (OSError, ValueError):
+        return None
 
 
 def _build_consistency_state(
@@ -507,13 +517,13 @@ def _build_consistency_state(
     }
 
 
-def _with_latency_ids(
+def _with_latency(
     bench_entry: dict[str, object] | None,
-    latency_ids: list[str],
+    latency: dict[str, float] | None,
 ) -> dict[str, object] | None:
     if bench_entry is None:
         return None
-    return {**bench_entry, "latency_ids": latency_ids}
+    return {**bench_entry, "latency": latency}
 
 
 def _metric_delta(actual: object, expected: float | None) -> float | None:
