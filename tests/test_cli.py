@@ -2513,14 +2513,7 @@ class PathResolutionTests(unittest.TestCase):
             request = mocked.call_args.args[1]
             self.assertTrue(request.require_analysis)
             self.assertEqual(request.target_chip, "A5")
-            self.assertEqual(
-                request.staged_skill_names,
-                (
-                    "triton-npu-optimize",
-                    "triton-npu-optimize-check",
-                    "triton-npu-analyze-round-performance",
-                ),
-            )
+            self.assertIsNone(request.staged_skill_names)
 
     def test_main_optimize_passes_supervise_mode_to_prompt_and_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

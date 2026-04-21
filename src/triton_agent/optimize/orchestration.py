@@ -15,13 +15,6 @@ from triton_agent.prompts import append_additional_user_instructions, build_prom
 from triton_agent.skills import SkillLinkManager
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
-OPTIMIZE_STAGED_SKILLS = (
-    "triton-npu-optimize",
-    "triton-npu-optimize-check",
-    "triton-npu-analyze-round-performance",
-)
-
-
 def build_optimize_request(
     input_path: Path,
     workdir: Path,
@@ -84,7 +77,7 @@ def build_optimize_request(
         require_analysis=options.require_analysis,
         no_agent_session=options.no_agent_session,
         supervise=options.supervise,
-        staged_skill_names=OPTIMIZE_STAGED_SKILLS,
+        staged_skill_names=None,
         optimize_role="worker" if options.supervise == "on" else None,
         target_chip=options.target_chip,
     )
