@@ -3,6 +3,7 @@ import tempfile
 import unittest
 import json
 from pathlib import Path
+from typing import Union
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -23,8 +24,8 @@ class OptimizeStatusTests(unittest.TestCase):
         baseline_bench_status: str = "passed",
         best_bench_status: str = "passed",
         compare_status: str = "passed",
-        geomean_speedup: float | None = None,
-        total_speedup: float | None = None,
+        geomean_speedup: Union[float, None] = None,
+        total_speedup: Union[float, None] = None,
     ) -> Path:
         speedup: dict[str, object] = {}
         if geomean_speedup is not None:

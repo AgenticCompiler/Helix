@@ -279,7 +279,7 @@ def inspect_verify_state_summary(state_path: Path) -> tuple[bool, float | None, 
 def _optional_float(value: object) -> float | None:
     if isinstance(value, bool):
         return None
-    if isinstance(value, int | float):
+    if isinstance(value, (int, float)):
         return float(value)
     return None
 
