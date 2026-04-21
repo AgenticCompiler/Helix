@@ -7,9 +7,47 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.optimize.round_contract import inspect_round_artifacts, load_round_state
+from triton_agent.skill_loader import load_skill_script_module
 
 
 class OptimizeRoundContractTests(unittest.TestCase):
+    def test_runtime_round_helpers_match_shared_optimize_check_contract(self) -> None:
+        module = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            round_dir = Path(tmp) / "opt-round-1"
+            round_dir.mkdir()
+            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
+            (round_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+            (round_dir / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-1",
+                        "parent_round": "round-0",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "perf.txt",
+                        "canonical_baseline": "baseline",
+                        "comparison_target": "baseline/perf.txt",
+                        "perf_summary_source": "compare-perf",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                        "next_recommendation": "continue",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(load_round_state(round_dir), module.load_round_state(round_dir))
+            self.assertEqual(
+                inspect_round_artifacts(round_dir),
+                module.inspect_round_artifacts(round_dir),
+            )
+
     def test_load_round_state_requires_core_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             round_dir = Path(tmp) / "opt-round-1"

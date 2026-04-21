@@ -11,9 +11,45 @@ from triton_agent.optimize.baseline import (
     inspect_baseline_artifacts,
     load_baseline_state,
 )
+from triton_agent.skill_loader import load_skill_script_module
 
 
 class OptimizeBaselineTests(unittest.TestCase):
+    def test_runtime_baseline_helpers_match_shared_optimize_check_contract(self) -> None:
+        module = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "standalone",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-0: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+
+            self.assertEqual(load_baseline_state(workspace), module.load_baseline_state(workspace))
+            self.assertEqual(
+                inspect_baseline_artifacts(workspace),
+                module.inspect_baseline_artifacts(workspace),
+            )
+            self.assertEqual(baseline_gate_issues(workspace), module.baseline_gate_issues(workspace))
+
     def test_load_baseline_state_requires_core_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
