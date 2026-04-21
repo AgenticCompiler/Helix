@@ -26,7 +26,6 @@ class OptimizeRunOptions:
     prompt: str | None
     target_chip: Literal["A3", "A5"] = "A5"
     compiler_source_analysis: Literal["off", "auto"] = "off"
-    compiler_source_path: str | None = None
 
 
 @dataclass(frozen=True)

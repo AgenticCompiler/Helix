@@ -276,7 +276,6 @@ def execute_supervised_optimize(
         require_analysis=request.require_analysis,
         compiler_source_path=request.compiler_source_path,
         compiler_source_commit=request.compiler_source_commit,
-        compiler_source_dirty=request.compiler_source_dirty,
     )
     if request.verbose:
         emit_verbose_lines(
@@ -323,7 +322,6 @@ def execute_unsupervised_optimize(
         require_analysis=request.require_analysis,
         compiler_source_path=request.compiler_source_path,
         compiler_source_commit=request.compiler_source_commit,
-        compiler_source_dirty=request.compiler_source_dirty,
     )
     if request.verbose:
         emit_verbose_lines(

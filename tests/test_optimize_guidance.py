@@ -214,13 +214,12 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
                 bench_mode="standalone",
                 compiler_source_path=source_path,
                 compiler_source_commit="abc123",
-                compiler_source_dirty=False,
             )
 
             guidance_content = state.guidance_path.read_text(encoding="utf-8")
             self.assertIn("Compiler source analysis is enabled", guidance_content)
             self.assertIn(f"Compiler source path: {source_path}", guidance_content)
-            self.assertIn("Compiler source commit: abc123 (clean).", guidance_content)
+            self.assertIn("Compiler source commit: abc123.", guidance_content)
             self.assertIn("Treat the compiler source checkout as read-only.", guidance_content)
             self.assertIn("Do not run git clone, git fetch, git pull", guidance_content)
             self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", guidance_content)
@@ -239,13 +238,12 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
                 agent_name="codex",
                 compiler_source_path=source_path,
                 compiler_source_commit="abc123",
-                compiler_source_dirty=True,
             )
 
             guidance_content = state.guidance_path.read_text(encoding="utf-8")
             self.assertIn("Compiler source analysis is enabled", guidance_content)
             self.assertIn(f"Compiler source path: {source_path}", guidance_content)
-            self.assertIn("Compiler source commit: abc123 (dirty).", guidance_content)
+            self.assertIn("Compiler source commit: abc123.", guidance_content)
             self.assertIn("Treat the compiler source checkout as read-only.", guidance_content)
             self.assertIn("then IR evidence, then compiler source", guidance_content)
             self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", guidance_content)

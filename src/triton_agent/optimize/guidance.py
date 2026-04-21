@@ -41,7 +41,6 @@ class OptimizeGuidanceManager:
         require_analysis: bool = False,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
-        compiler_source_dirty: bool | None = None,
     ) -> SharedOptimizeGuidanceState:
         guidance_path = workdir / self._guidance_filename(agent_name)
         guidance_preexisting = guidance_path.exists()
@@ -62,7 +61,6 @@ class OptimizeGuidanceManager:
                 require_analysis=require_analysis,
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
-                compiler_source_dirty=compiler_source_dirty,
             ),
             encoding="utf-8",
         )
@@ -131,7 +129,6 @@ class OptimizeGuidanceManager:
         require_analysis: bool = False,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
-        compiler_source_dirty: bool | None = None,
     ) -> OptimizeGuidanceState:
         guidance_path = workdir / self._guidance_filename(agent_name)
         guidance_preexisting = guidance_path.exists()
@@ -162,7 +159,6 @@ class OptimizeGuidanceManager:
                 require_analysis=require_analysis,
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
-                compiler_source_dirty=compiler_source_dirty,
             ),
             encoding="utf-8",
         )
@@ -350,7 +346,6 @@ class OptimizeGuidanceManager:
         require_analysis: bool,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
-        compiler_source_dirty: bool | None = None,
     ) -> str:
         analysis_block = ""
         if require_analysis:
@@ -363,7 +358,6 @@ class OptimizeGuidanceManager:
             compiler_source_analysis_lines(
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
-                compiler_source_dirty=compiler_source_dirty,
             )
         )
         if compiler_source_block:
@@ -389,7 +383,6 @@ class OptimizeGuidanceManager:
         require_analysis: bool,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
-        compiler_source_dirty: bool | None = None,
     ) -> str:
         analysis_block = ""
         if require_analysis:
@@ -402,7 +395,6 @@ class OptimizeGuidanceManager:
             compiler_source_analysis_lines(
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
-                compiler_source_dirty=compiler_source_dirty,
             )
         )
         if compiler_source_block:

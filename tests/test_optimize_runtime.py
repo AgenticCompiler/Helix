@@ -266,7 +266,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertEqual(request.compiler_source_analysis, "off")
             self.assertIsNone(request.compiler_source_path)
             self.assertIsNone(request.compiler_source_commit)
-            self.assertIsNone(request.compiler_source_dirty)
 
     def test_build_optimize_request_provisions_compiler_source_when_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -292,7 +291,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode=None,
                 prompt=None,
                 compiler_source_analysis="auto",
-                compiler_source_path=str(source_path),
             )
 
             with patch(
@@ -300,19 +298,16 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 return_value=CompilerSourceInfo(
                     path=source_path,
                     commit="abc123",
-                    dirty=False,
                 ),
             ) as mocked:
                 request = build_optimize_request(operator, workdir, options)
 
             mocked.assert_called_once_with(
                 mode="auto",
-                source_path=source_path,
             )
             self.assertEqual(request.compiler_source_analysis, "auto")
             self.assertEqual(request.compiler_source_path, source_path)
             self.assertEqual(request.compiler_source_commit, "abc123")
-            self.assertFalse(request.compiler_source_dirty)
             self.assertIn("Compiler source path: ", request.prompt)
             self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", request.prompt)
 
@@ -821,7 +816,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode=None,
                 prompt=None,
                 compiler_source_analysis="auto",
-                compiler_source_path=str(source_path),
             )
             captured_requests: List[AgentRequest] = []
 
@@ -839,7 +833,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 return_value=CompilerSourceInfo(
                     path=source_path,
                     commit="abc123",
-                    dirty=False,
                 ),
             ):
                 with patch(
@@ -860,7 +853,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 self.assertEqual(request.compiler_source_analysis, "auto")
                 self.assertEqual(request.compiler_source_path, source_path)
                 self.assertEqual(request.compiler_source_commit, "abc123")
-                self.assertFalse(request.compiler_source_dirty)
 
     def test_run_optimize_batch_skips_completed_workspace_from_root_status_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

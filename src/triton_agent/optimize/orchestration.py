@@ -39,16 +39,10 @@ def build_optimize_request(
         if options.output
         else default_generated_output_path(CommandKind.OPTIMIZE, input_path, test_mode=test_mode)
     )
-    requested_compiler_source_path = (
-        Path(options.compiler_source_path).expanduser().resolve()
-        if options.compiler_source_path is not None
-        else None
-    )
     compiler_source = None
     if options.compiler_source_analysis != "off":
         compiler_source = prepare_compiler_source(
             mode=options.compiler_source_analysis,
-            source_path=requested_compiler_source_path,
         )
     if compiler_source is not None:
         built_prompt = build_prompt(
@@ -68,7 +62,6 @@ def build_optimize_request(
             target_chip=options.target_chip,
             compiler_source_path=compiler_source.path,
             compiler_source_commit=compiler_source.commit,
-            compiler_source_dirty=compiler_source.dirty,
         )
     else:
         built_prompt = build_prompt(
@@ -117,7 +110,6 @@ def build_optimize_request(
         compiler_source_analysis=options.compiler_source_analysis,
         compiler_source_path=compiler_source.path if compiler_source is not None else None,
         compiler_source_commit=compiler_source.commit if compiler_source is not None else None,
-        compiler_source_dirty=compiler_source.dirty if compiler_source is not None else None,
     )
 
 

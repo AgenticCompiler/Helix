@@ -18,7 +18,6 @@ from triton_agent.output import render_result
 def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     options = optimize_run_options_from_args(args)
     _validate_agent_options(parser, args)
-    _validate_compiler_source_options(parser, options)
     try:
         validate_optimize_options(
             CommandKind.OPTIMIZE,
@@ -60,7 +59,6 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
 
 def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     options = optimize_run_options_from_args(args)
-    _validate_compiler_source_options(parser, options)
     try:
         validate_optimize_options(
             CommandKind.OPTIMIZE_BATCH,
@@ -134,18 +132,9 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         prompt=getattr(args, "prompt", None),
         target_chip=target_chip,
         compiler_source_analysis="auto" if compiler_source_enabled else "off",
-        compiler_source_path=getattr(args, "compiler_source_path", None),
     )
 
 
 def _validate_agent_options(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     if getattr(args, "agent", None) == "openhands" and bool(getattr(args, "interact", False)):
         parser.error("OpenHands backend does not support --interact yet.")
-
-
-def _validate_compiler_source_options(
-    parser: argparse.ArgumentParser,
-    options: OptimizeRunOptions,
-) -> None:
-    if options.compiler_source_path is not None and options.compiler_source_analysis == "off":
-        parser.error("--compiler-source-path requires --enable-compiler-source-analysis")

@@ -167,7 +167,6 @@ class OptimizeRunLoop:
                         supervise=current_request.supervise,
                         compiler_source_path=current_request.compiler_source_path,
                         compiler_source_commit=current_request.compiler_source_commit,
-                        compiler_source_dirty=current_request.compiler_source_dirty,
                     ),
                     optimize_role="worker",
                 )
@@ -182,7 +181,6 @@ class OptimizeRunLoop:
                         supervise=current_request.supervise,
                         compiler_source_path=current_request.compiler_source_path,
                         compiler_source_commit=current_request.compiler_source_commit,
-                        compiler_source_dirty=current_request.compiler_source_dirty,
                     ),
                     optimize_role="worker",
                 )
@@ -253,7 +251,6 @@ class OptimizeRunLoop:
         supervise: str = "on",
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
-        compiler_source_dirty: bool | None = None,
     ) -> str:
         return build_optimize_resume_prompt(
             summary,
@@ -262,7 +259,6 @@ class OptimizeRunLoop:
             supervise="off" if supervise == "off" else "on",
             compiler_source_path=compiler_source_path,
             compiler_source_commit=compiler_source_commit,
-            compiler_source_dirty=compiler_source_dirty,
         )
 
 

@@ -725,13 +725,11 @@ class CliParserTests(unittest.TestCase):
                 "-i",
                 "kernel.py",
                 "--enable-compiler-source-analysis",
-                "--compiler-source-path",
-                "/tmp/AscendNPU-IR",
             ]
         )
 
         self.assertTrue(args.enable_compiler_source_analysis)
-        self.assertEqual(args.compiler_source_path, "/tmp/AscendNPU-IR")
+        self.assertFalse(hasattr(args, "compiler_source_path"))
 
     def test_optimize_batch_accepts_compiler_source_analysis_options(self) -> None:
         parser = build_parser()
@@ -741,13 +739,11 @@ class CliParserTests(unittest.TestCase):
                 "-i",
                 "operators",
                 "--enable-compiler-source-analysis",
-                "--compiler-source-path",
-                "/tmp/AscendNPU-IR",
             ]
         )
 
         self.assertTrue(args.enable_compiler_source_analysis)
-        self.assertEqual(args.compiler_source_path, "/tmp/AscendNPU-IR")
+        self.assertFalse(hasattr(args, "compiler_source_path"))
 
     def test_optimize_command_defaults_target_chip_to_a5(self) -> None:
         parser = build_parser()
@@ -3265,12 +3261,11 @@ class PromptTests(unittest.TestCase):
             bench_mode="standalone",
             compiler_source_path=Path("/tmp/AscendNPU-IR"),
             compiler_source_commit="abc123",
-            compiler_source_dirty=False,
         )
 
         self.assertIn("Compiler source analysis is enabled", prompt)
         self.assertIn("Compiler source path: /tmp/AscendNPU-IR", prompt)
-        self.assertIn("Compiler source commit: abc123 (clean).", prompt)
+        self.assertIn("Compiler source commit: abc123.", prompt)
         self.assertIn("Treat the compiler source checkout as read-only.", prompt)
         self.assertIn("Do not run git clone, git fetch, git pull", prompt)
         self.assertIn("then IR evidence, then compiler source", prompt)
@@ -3323,12 +3318,11 @@ class PromptTests(unittest.TestCase):
             bench_mode="standalone",
             compiler_source_path=Path("/tmp/AscendNPU-IR"),
             compiler_source_commit="abc123",
-            compiler_source_dirty=True,
         )
 
         self.assertIn("Compiler source analysis is enabled", prompt)
         self.assertIn("Compiler source path: /tmp/AscendNPU-IR", prompt)
-        self.assertIn("Compiler source commit: abc123 (dirty).", prompt)
+        self.assertIn("Compiler source commit: abc123.", prompt)
         self.assertIn("Use the staged `triton-npu-analyze-compiler-source` skill", prompt)
         self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", prompt)
 
@@ -3337,12 +3331,11 @@ class PromptTests(unittest.TestCase):
             "Round gate passed.",
             compiler_source_path=Path("/tmp/AscendNPU-IR"),
             compiler_source_commit="abc123",
-            compiler_source_dirty=False,
         )
 
         self.assertIn("Compiler source analysis is enabled", prompt)
         self.assertIn("Compiler source path: /tmp/AscendNPU-IR", prompt)
-        self.assertIn("Compiler source commit: abc123 (clean).", prompt)
+        self.assertIn("Compiler source commit: abc123.", prompt)
         self.assertIn("Round gate passed.", prompt)
         self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", prompt)
 

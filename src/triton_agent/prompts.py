@@ -29,15 +29,13 @@ def compiler_source_analysis_lines(
     *,
     compiler_source_path: Path | None,
     compiler_source_commit: str | None,
-    compiler_source_dirty: bool | None,
 ) -> list[str]:
     if compiler_source_path is None or compiler_source_commit is None:
         return []
-    dirty_text = "dirty" if compiler_source_dirty else "clean"
     return [
         "Compiler source analysis is enabled for this optimize run.",
         f"Compiler source path: {compiler_source_path}",
-        f"Compiler source commit: {compiler_source_commit} ({dirty_text}).",
+        f"Compiler source commit: {compiler_source_commit}.",
         "Treat the compiler source checkout as read-only.",
         "Do not run git clone, git fetch, git pull, or modify files in the compiler source checkout.",
         "Use the staged `triton-npu-analyze-compiler-source` skill only when compiler source evidence is needed.",
@@ -66,7 +64,6 @@ def build_optimize_worker_prompt(
     require_analysis: bool = False,
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
-    compiler_source_dirty: bool | None = None,
 ) -> str:
     del input_path, output_path, test_mode, bench_mode, min_rounds
     lines = [
@@ -102,7 +99,6 @@ def build_optimize_worker_prompt(
         compiler_source_analysis_lines(
             compiler_source_path=compiler_source_path,
             compiler_source_commit=compiler_source_commit,
-            compiler_source_dirty=compiler_source_dirty,
         )
     )
     lines.extend(baseline_state_contract_lines())
@@ -135,7 +131,6 @@ def build_optimize_unsupervised_prompt(
     require_analysis: bool = False,
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
-    compiler_source_dirty: bool | None = None,
 ) -> str:
     del input_path, output_path, test_mode, bench_mode
     lines = [
@@ -168,7 +163,6 @@ def build_optimize_unsupervised_prompt(
         compiler_source_analysis_lines(
             compiler_source_path=compiler_source_path,
             compiler_source_commit=compiler_source_commit,
-            compiler_source_dirty=compiler_source_dirty,
         )
     )
     if min_rounds is not None:
@@ -253,7 +247,6 @@ def build_prompt(
     target_chip: str | None = None,
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
-    compiler_source_dirty: bool | None = None,
 ) -> str:
     should_resume_existing_session = (
         continue_optimize if resume_existing_session is None else resume_existing_session
@@ -334,7 +327,6 @@ def build_prompt(
                     require_analysis=require_analysis,
                     compiler_source_path=compiler_source_path,
                     compiler_source_commit=compiler_source_commit,
-                    compiler_source_dirty=compiler_source_dirty,
                 ).splitlines()
             )
         else:
@@ -350,7 +342,6 @@ def build_prompt(
                     require_analysis=require_analysis,
                     compiler_source_path=compiler_source_path,
                     compiler_source_commit=compiler_source_commit,
-                    compiler_source_dirty=compiler_source_dirty,
                 ).splitlines()
             )
     else:
@@ -366,7 +357,6 @@ def build_optimize_resume_prompt(
     supervise: Literal["on", "off"] = "off",
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
-    compiler_source_dirty: bool | None = None,
 ) -> str:
     lines: list[str] = []
     if base_prompt:
@@ -410,7 +400,6 @@ def build_optimize_resume_prompt(
         compiler_source_analysis_lines(
             compiler_source_path=compiler_source_path,
             compiler_source_commit=compiler_source_commit,
-            compiler_source_dirty=compiler_source_dirty,
         )
     )
     lines.extend(["", f"Progress summary:\n{summary}"])

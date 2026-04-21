@@ -17,7 +17,6 @@ RunGit = Callable[[list[str], Optional[Path]], str]
 class CompilerSourceInfo:
     path: Path
     commit: str
-    dirty: bool
 
 
 def triton_agent_home() -> Path:
@@ -35,7 +34,6 @@ def default_compiler_source_path(home: Path | None = None) -> Path:
 def prepare_compiler_source(
     *,
     mode: CompilerSourceMode,
-    source_path: Path | None,
     triton_agent_home: Path | None = None,
     run_git: RunGit | None = None,
 ) -> CompilerSourceInfo | None:
@@ -45,9 +43,9 @@ def prepare_compiler_source(
         raise ValueError(f"Unsupported compiler source analysis mode: {mode}")
 
     git_runner = run_git or _run_git
-    checkout = source_path.expanduser().resolve() if source_path is not None else default_compiler_source_path(triton_agent_home)
+    checkout = default_compiler_source_path(triton_agent_home)
 
-    if source_path is None and not checkout.exists():
+    if not checkout.exists():
         checkout.parent.mkdir(parents=True, exist_ok=True)
         git_runner(
             [
@@ -63,8 +61,7 @@ def prepare_compiler_source(
 
     _validate_git_checkout(checkout)
     commit = _inspect_commit(checkout, git_runner)
-    dirty = _inspect_dirty(checkout, git_runner)
-    return CompilerSourceInfo(path=checkout, commit=commit, dirty=dirty)
+    return CompilerSourceInfo(path=checkout, commit=commit)
 
 
 def _run_git(args: list[str], cwd: Path | None = None) -> str:
@@ -98,7 +95,3 @@ def _inspect_commit(path: Path, run_git: RunGit) -> str:
     if not commit:
         raise ValueError(f"Unable to resolve compiler source commit for {path}")
     return commit
-
-
-def _inspect_dirty(path: Path, run_git: RunGit) -> bool:
-    return bool(run_git(["git", "status", "--porcelain"], path).strip())

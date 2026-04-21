@@ -169,7 +169,6 @@ class GenerationContractTests(unittest.TestCase):
         content = _read("README.md")
 
         self.assertIn("--enable-compiler-source-analysis", content)
-        self.assertIn("--compiler-source-path <path>", content)
         self.assertIn("~/.triton-agent/compiler-sources/AscendNPU-IR/", content)
         self.assertIn("read-only", content)
         self.assertIn("escalation", content)

@@ -191,7 +191,6 @@ Common options:
 - `--reset-optimize`: only valid with `--resume fresh`; remove known optimize-session artifacts before starting a new run while keeping reusable test and benchmark harnesses.
 - `--require-analysis`: strengthen analysis-first optimize guidance before the first code-changing round.
 - `--enable-compiler-source-analysis`: allow the optimize agent to use compiler source as an escalation after benchmark, profiler, and IR evidence.
-- `--compiler-source-path <path>`: use an existing local AscendNPU-IR checkout; valid only with `--enable-compiler-source-analysis`.
 - `--min-rounds <N>`: require at least N optimization rounds.
 - `--no-agent-session`: disable persistent agent sessions when supported.
 - `--interact`
@@ -209,7 +208,7 @@ uv run triton-agent optimize --input a.py --enable-compiler-source-analysis
 uv run triton-agent optimize --input a.py --prompt "Prioritize memory-coalescing improvements."
 ```
 
-Compiler source analysis is opt-in. When enabled without `--compiler-source-path`, the CLI prepares a shallow AscendNPU-IR checkout under `~/.triton-agent/compiler-sources/AscendNPU-IR/` before launching the agent. The launched agent receives only the local path and commit, treats the checkout as read-only, and must not clone, fetch, pull, or modify compiler source. This option enables an escalation path for difficult compiler-side explanations; it does not require compiler-source analysis in every round.
+Compiler source analysis is opt-in. When enabled, the CLI prepares a shallow AscendNPU-IR checkout under `~/.triton-agent/compiler-sources/AscendNPU-IR/` before launching the agent, using the configured Triton Agent home when `TRITON_AGENT_HOME` is set. The launched agent receives only the local path and commit, treats the checkout as read-only, and must not clone, fetch, pull, or modify compiler source. This option enables an escalation path for difficult compiler-side explanations; it does not require compiler-source analysis in every round.
 
 Resume modes:
 
@@ -365,7 +364,6 @@ Common options:
 - `--reset-optimize`: when used with `--resume fresh`, clear known optimize artifacts for each workspace and reset the batch status file before rerunning
 - `--require-analysis`
 - `--enable-compiler-source-analysis`
-- `--compiler-source-path <path>`
 - `--min-rounds <N>`
 - `--no-agent-session`
 - `--max-concurrency <N>`: defaults to `1`

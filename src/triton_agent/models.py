@@ -68,7 +68,6 @@ class AgentRequest:
     compiler_source_analysis: Literal["off", "auto"] = "off"
     compiler_source_path: Optional[Path] = None
     compiler_source_commit: Optional[str] = None
-    compiler_source_dirty: Optional[bool] = None
 
     def with_prompt(self, prompt: str) -> "AgentRequest":
         return replace(self, prompt=prompt)
