@@ -67,8 +67,6 @@ def matmul_kernel(
 
         a = tl.load(a_ptrs, mask=a_mask, other=0.0)
         b = tl.load(b_ptrs, mask=b_mask, other=0.0)
-        a = a.to(tl.float16)
-        b = b.to(tl.float16)
         acc += tl.dot(a, b)
 ```
 
@@ -90,14 +88,21 @@ Separate these choices:
 2. accumulator dtype
 3. final store dtype
 
-On Ascend Triton, make the two `tl.dot` operand dtypes explicit when there is any chance they may differ. A common pattern is:
+On Ascend Triton, make the two `tl.dot` operand dtypes match, but do not lower them to `fp16` by default when the real operator inputs are already `fp32` or `fp16`. The default pattern is:
 
-- `a`, `b`: `fp16`
-- `acc`: `fp32`
-- fused epilogue: `fp32`
-- final store: output tensor dtype
+- keep `a` and `b` in the loaded input dtype when both sides already match
+- use `acc`: `fp32`
+- keep the fused epilogue in `fp32`
+- store in the output tensor dtype
 
-If the operator must preserve a true `fp32` matmul path, treat that as a separate validated path rather than assuming the backend handles it the same as mixed precision.
+Only add an explicit cast when the two operands would otherwise differ in dtype and you have validated that the cast is both numerically acceptable and performance-positive.
+
+When a single tiled rewrite is fast but fails the existing correctness contract for some dtypes or shape regimes, prefer **dtype-specialized or shape-specialized dispatch** over discarding the idea entirely. A common fallback is:
+
+- `fp16` and sufficiently large `M`: tiled matmul path
+- `fp32` or small shapes: baseline-style reduction path
+
+Use this when the performance win is real for one operating regime, but a unified replacement changes accumulation order or precision behavior too much for another regime.
 
 ## Host Launch Template
 
@@ -122,6 +127,27 @@ matmul_kernel[grid](
 ```
 
 Treat those tile values as a starting point, not as a universal rule.
+
+## Dispatch Rule
+
+Do not assume the classic tiled path must replace every input regime.
+
+Prefer a dispatched design when evidence shows:
+
+- tiled matmul is clearly faster for `fp16` or larger shapes
+- baseline-style reduction is more accurate or cheaper for `fp32` or smaller shapes
+- the correctness gate rejects one unified implementation
+
+Typical host-side decision pattern:
+
+```python
+if x.dtype == torch.float16 and M >= LARGE_M_THRESHOLD:
+    launch_tiled_matmul(...)
+else:
+    launch_baseline_reduction(...)
+```
+
+The exact threshold should come from benchmark evidence, not from a fixed guess.
 
 ## Expected Benefit
 
@@ -160,5 +186,6 @@ If your evidence says the kernel already has the right structure but block size 
 - confirm the second operand really arrives as `[BK, BN]`
 - confirm masks on `M`, `N`, and `K`
 - confirm fused bias or activation broadcasting
+- if you introduce dispatch, validate each dispatched regime explicitly
 - benchmark against the previous implementation
 - record whether the win came from lower scalar pressure, better matmul lowering, or better epilogue amortization

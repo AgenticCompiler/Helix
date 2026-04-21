@@ -96,6 +96,7 @@ class GenerationContractTests(unittest.TestCase):
         reference = _read("skills/triton-npu-optimize/references/patterns/classic-matmul.md")
         self.assertIn("classic-matmul", index)
         self.assertIn("manual matmul or K-reduction", index)
+        self.assertIn("dtype-specialized or shape-specialized paths", index)
         self.assertIn("matmul-like", reference)
         self.assertIn("BLOCK_M", reference)
         self.assertIn("BLOCK_N", reference)
@@ -104,8 +105,11 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("offs_n", reference)
         self.assertIn("offs_k", reference)
         self.assertIn("acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)", reference)
-        self.assertIn("a = a.to(tl.float16)", reference)
-        self.assertIn("b = b.to(tl.float16)", reference)
+        self.assertIn("a = tl.load(a_ptrs, mask=a_mask, other=0.0)", reference)
+        self.assertIn("b = tl.load(b_ptrs, mask=b_mask, other=0.0)", reference)
+        self.assertIn("do not lower them to `fp16` by default", reference)
+        self.assertIn("sufficiently large `M`: tiled matmul path", reference)
+        self.assertIn("small shapes: baseline-style reduction path", reference)
 
     def test_optimize_artifacts_reference_documents_state_declared_paths(self) -> None:
         artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")

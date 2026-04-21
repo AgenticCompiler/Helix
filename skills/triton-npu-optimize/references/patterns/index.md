@@ -47,6 +47,8 @@ Read this index first. Then read only the one or two most relevant detailed patt
   - more regular matmul lowering
   - less scalar-heavy reduction structure
   - better epilogue amortization on larger shapes
+- Common follow-up:
+  - if one unified rewrite is not acceptable for every regime, split into dtype-specialized or shape-specialized paths
 - Main risk:
   - tile setup overhead can hurt small shapes
   - forced mixed precision may change float32 behavior
@@ -268,6 +270,7 @@ Read this index first. Then read only the one or two most relevant detailed patt
 - Use `classic-matmul` when the kernel should first become a standard tiled `tl.dot` loop.
 - Use `software-pipeline` when that tiled loop already exists and the next issue is overlap.
 - Use `tiling` when the main issue is UB footprint, block size, or live intermediate size.
+- If tiled matmul is only good for part of the operating envelope, prefer validated dtype/shape dispatch over forcing a single implementation everywhere.
 - Do not choose `software-pipeline` as a substitute for a missing structural rewrite.
 - If the bottleneck looks compare or mask heavy, start with:
   - `vec-cmp`
