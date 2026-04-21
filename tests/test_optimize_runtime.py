@@ -13,13 +13,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.optimize.batch import run_optimize_batch
 import triton_agent.optimize.execution as execution_module
+from triton_agent.optimize.compiler_source import CompilerSourceInfo
 from triton_agent.optimize.models import GateDecision, OptimizeRunOptions
 from triton_agent.optimize.execution import (
     SupervisedOptimizeAdapter,
     _count_round_directories,
     _latest_round_dir,
 )
-from triton_agent.optimize.orchestration import run_optimize_request
+from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
 from triton_agent.optimize.guidance import OptimizeGuidanceState
 
 
@@ -233,6 +234,87 @@ class OptimizeRuntimeTests(unittest.TestCase):
 
             self.assertIs(result, expected)
             mocked.assert_called_once()
+
+    def test_build_optimize_request_skips_compiler_source_when_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                require_analysis=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+            )
+
+            with patch("triton_agent.optimize.orchestration.prepare_compiler_source") as mocked:
+                request = build_optimize_request(operator, workdir, options)
+
+            mocked.assert_not_called()
+            self.assertEqual(request.compiler_source_analysis, "off")
+            self.assertIsNone(request.compiler_source_path)
+            self.assertIsNone(request.compiler_source_commit)
+            self.assertIsNone(request.compiler_source_dirty)
+
+    def test_build_optimize_request_provisions_compiler_source_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            source_path = (workdir / "AscendNPU-IR").resolve()
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                require_analysis=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                compiler_source_analysis="auto",
+                compiler_source_path=str(source_path),
+            )
+
+            with patch(
+                "triton_agent.optimize.orchestration.prepare_compiler_source",
+                return_value=CompilerSourceInfo(
+                    path=source_path,
+                    commit="abc123",
+                    dirty=False,
+                ),
+            ) as mocked:
+                request = build_optimize_request(operator, workdir, options)
+
+            mocked.assert_called_once_with(
+                mode="auto",
+                source_path=source_path,
+            )
+            self.assertEqual(request.compiler_source_analysis, "auto")
+            self.assertEqual(request.compiler_source_path, source_path)
+            self.assertEqual(request.compiler_source_commit, "abc123")
+            self.assertFalse(request.compiler_source_dirty)
+            self.assertIn("Compiler source path: ", request.prompt)
+            self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", request.prompt)
 
     def test_run_optimize_request_invokes_worker_then_supervisor_roles(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -710,6 +792,75 @@ class OptimizeRuntimeTests(unittest.TestCase):
             for prompt in captured_prompts:
                 self.assertIn("Additional user instructions:", prompt)
                 self.assertIn("Avoid changing numerics.", prompt)
+
+    def test_run_optimize_batch_passes_compiler_source_settings_to_each_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source_path = root / "AscendNPU-IR"
+            for name in ("kernel_a", "kernel_b"):
+                workspace = root / name
+                workspace.mkdir()
+                operator = workspace / "kernel.py"
+                operator.write_text("print('x')\n", encoding="utf-8")
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                require_analysis=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                compiler_source_analysis="auto",
+                compiler_source_path=str(source_path),
+            )
+            captured_requests: List[AgentRequest] = []
+
+            def fake_run_request(
+                request: AgentRequest,
+                stdout: Optional[object] = None,
+                stderr: Optional[object] = None,
+            ) -> AgentResult:
+                del stdout, stderr
+                captured_requests.append(request)
+                return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            with patch(
+                "triton_agent.optimize.orchestration.prepare_compiler_source",
+                return_value=CompilerSourceInfo(
+                    path=source_path,
+                    commit="abc123",
+                    dirty=False,
+                ),
+            ):
+                with patch(
+                    "triton_agent.optimize.batch.render_batch_optimize_results",
+                    return_value=0,
+                ):
+                    exit_code = run_optimize_batch(
+                        root,
+                        options,
+                        max_concurrency=1,
+                        stdout=StringIO(),
+                        run_request=fake_run_request,
+                    )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(len(captured_requests), 2)
+            for request in captured_requests:
+                self.assertEqual(request.compiler_source_analysis, "auto")
+                self.assertEqual(request.compiler_source_path, source_path)
+                self.assertEqual(request.compiler_source_commit, "abc123")
+                self.assertFalse(request.compiler_source_dirty)
 
     def test_run_optimize_batch_skips_completed_workspace_from_root_status_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

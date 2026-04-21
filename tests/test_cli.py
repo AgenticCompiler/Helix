@@ -30,6 +30,7 @@ from triton_agent.paths import (
 )
 from triton_agent.prompts import (
     append_additional_user_instructions,
+    build_optimize_resume_prompt,
     build_optimize_supervisor_prompt,
     build_optimize_unsupervised_prompt,
     build_optimize_worker_prompt,
@@ -715,6 +716,38 @@ class CliParserTests(unittest.TestCase):
         parser = build_parser()
         args = parser.parse_args(["optimize", "-i", "kernel.py", "--require-analysis"])
         self.assertTrue(args.require_analysis)
+
+    def test_optimize_accepts_compiler_source_analysis_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "optimize",
+                "-i",
+                "kernel.py",
+                "--enable-compiler-source-analysis",
+                "--compiler-source-path",
+                "/tmp/AscendNPU-IR",
+            ]
+        )
+
+        self.assertTrue(args.enable_compiler_source_analysis)
+        self.assertEqual(args.compiler_source_path, "/tmp/AscendNPU-IR")
+
+    def test_optimize_batch_accepts_compiler_source_analysis_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "optimize-batch",
+                "-i",
+                "operators",
+                "--enable-compiler-source-analysis",
+                "--compiler-source-path",
+                "/tmp/AscendNPU-IR",
+            ]
+        )
+
+        self.assertTrue(args.enable_compiler_source_analysis)
+        self.assertEqual(args.compiler_source_path, "/tmp/AscendNPU-IR")
 
     def test_optimize_command_defaults_target_chip_to_a5(self) -> None:
         parser = build_parser()
@@ -3224,6 +3257,25 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Target chip for this optimize session: A5.", prompt)
         self.assertIn("prefer changes that fit A5", prompt)
 
+    def test_build_optimize_worker_prompt_mentions_compiler_source_when_enabled(self) -> None:
+        prompt = build_optimize_worker_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            compiler_source_path=Path("/tmp/AscendNPU-IR"),
+            compiler_source_commit="abc123",
+            compiler_source_dirty=False,
+        )
+
+        self.assertIn("Compiler source analysis is enabled", prompt)
+        self.assertIn("Compiler source path: /tmp/AscendNPU-IR", prompt)
+        self.assertIn("Compiler source commit: abc123 (clean).", prompt)
+        self.assertIn("Treat the compiler source checkout as read-only.", prompt)
+        self.assertIn("Do not run git clone, git fetch, git pull", prompt)
+        self.assertIn("then IR evidence, then compiler source", prompt)
+        self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", prompt)
+
     def test_build_optimize_unsupervised_prompt_mentions_baseline_state_contract(self) -> None:
         prompt = build_optimize_unsupervised_prompt(
             Path("/tmp/op.py"),
@@ -3262,6 +3314,37 @@ class PromptTests(unittest.TestCase):
         self.assertIn("does not count as a successful optimize round", prompt)
         self.assertIn("Target chip for this optimize session: A5.", prompt)
         self.assertIn("prefer changes that fit A5", prompt)
+
+    def test_build_optimize_unsupervised_prompt_mentions_compiler_source_when_enabled(self) -> None:
+        prompt = build_optimize_unsupervised_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            compiler_source_path=Path("/tmp/AscendNPU-IR"),
+            compiler_source_commit="abc123",
+            compiler_source_dirty=True,
+        )
+
+        self.assertIn("Compiler source analysis is enabled", prompt)
+        self.assertIn("Compiler source path: /tmp/AscendNPU-IR", prompt)
+        self.assertIn("Compiler source commit: abc123 (dirty).", prompt)
+        self.assertIn("Use the staged `triton-npu-analyze-compiler-source` skill", prompt)
+        self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", prompt)
+
+    def test_build_optimize_resume_prompt_preserves_compiler_source_when_enabled(self) -> None:
+        prompt = build_optimize_resume_prompt(
+            "Round gate passed.",
+            compiler_source_path=Path("/tmp/AscendNPU-IR"),
+            compiler_source_commit="abc123",
+            compiler_source_dirty=False,
+        )
+
+        self.assertIn("Compiler source analysis is enabled", prompt)
+        self.assertIn("Compiler source path: /tmp/AscendNPU-IR", prompt)
+        self.assertIn("Compiler source commit: abc123 (clean).", prompt)
+        self.assertIn("Round gate passed.", prompt)
+        self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", prompt)
 
     def test_build_optimize_unsupervised_prompt_mentions_min_rounds_when_requested(self) -> None:
         prompt = build_optimize_unsupervised_prompt(

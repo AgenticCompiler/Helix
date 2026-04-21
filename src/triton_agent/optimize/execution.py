@@ -274,6 +274,9 @@ def execute_supervised_optimize(
         request.workdir,
         agent_name=request.agent_name,
         require_analysis=request.require_analysis,
+        compiler_source_path=request.compiler_source_path,
+        compiler_source_commit=request.compiler_source_commit,
+        compiler_source_dirty=request.compiler_source_dirty,
     )
     if request.verbose:
         emit_verbose_lines(
@@ -318,6 +321,9 @@ def execute_unsupervised_optimize(
         bench_mode=request.bench_mode or "standalone",
         agent_name=request.agent_name,
         require_analysis=request.require_analysis,
+        compiler_source_path=request.compiler_source_path,
+        compiler_source_commit=request.compiler_source_commit,
+        compiler_source_dirty=request.compiler_source_dirty,
     )
     if request.verbose:
         emit_verbose_lines(

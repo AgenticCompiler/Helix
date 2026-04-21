@@ -141,6 +141,39 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("A5", architecture_ref)
         self.assertIn("L0C", architecture_ref)
 
+    def test_compiler_source_analysis_skill_documents_read_only_cli_provisioned_source(self) -> None:
+        content = _read("skills/triton-npu-analyze-compiler-source/SKILL.md")
+
+        self.assertIn("CLI-provided local source path", content)
+        self.assertIn("Do not run `git clone`, `git fetch`, or `git pull`", content)
+        self.assertIn("Treat the compiler source checkout as read-only", content)
+        self.assertIn("AscendNPU-IR", content)
+        self.assertIn("opt-round-N/compiler-analysis.md", content)
+        self.assertIn("Source Files Inspected", content)
+        self.assertIn("Confidence And Evidence Gaps", content)
+        self.assertIn("version mismatch", content)
+        self.assertIn("Detailed source indexing is deferred", content)
+
+    def test_optimize_skills_document_compiler_source_escalation(self) -> None:
+        optimize = _read("skills/triton-npu-optimize/SKILL.md")
+        workflow = _read("skills/triton-npu-optimize/references/workflow.md")
+        round_analysis = _read("skills/triton-npu-analyze-round-performance/SKILL.md")
+
+        self.assertIn("triton-npu-analyze-compiler-source", optimize)
+        self.assertIn("compiler source analysis is enabled", optimize)
+        self.assertIn("after profiler and IR evidence", workflow)
+        self.assertIn("opt-round-N/compiler-analysis.md", workflow)
+        self.assertIn("compiler source analysis is enabled", round_analysis)
+
+    def test_readme_documents_compiler_source_analysis_options(self) -> None:
+        content = _read("README.md")
+
+        self.assertIn("--enable-compiler-source-analysis", content)
+        self.assertIn("--compiler-source-path <path>", content)
+        self.assertIn("~/.triton-agent/compiler-sources/AscendNPU-IR/", content)
+        self.assertIn("read-only", content)
+        self.assertIn("escalation", content)
+
     def test_optimize_skill_allows_non_pattern_optimization_knowledge(self) -> None:
         optimize = _read("skills/triton-npu-optimize/SKILL.md")
         self.assertIn("Pattern references are helpful guidance, not the only allowed source of ideas.", optimize)

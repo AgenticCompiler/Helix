@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
+from triton_agent.prompts import compiler_source_analysis_lines
+
 
 @dataclass
 class SharedOptimizeGuidanceState:
@@ -37,6 +39,9 @@ class OptimizeGuidanceManager:
         bench_mode: str,
         agent_name: str,
         require_analysis: bool = False,
+        compiler_source_path: Path | None = None,
+        compiler_source_commit: str | None = None,
+        compiler_source_dirty: bool | None = None,
     ) -> SharedOptimizeGuidanceState:
         guidance_path = workdir / self._guidance_filename(agent_name)
         guidance_preexisting = guidance_path.exists()
@@ -55,6 +60,9 @@ class OptimizeGuidanceManager:
                 test_mode=test_mode,
                 bench_mode=bench_mode,
                 require_analysis=require_analysis,
+                compiler_source_path=compiler_source_path,
+                compiler_source_commit=compiler_source_commit,
+                compiler_source_dirty=compiler_source_dirty,
             ),
             encoding="utf-8",
         )
@@ -121,6 +129,9 @@ class OptimizeGuidanceManager:
         workdir: Path,
         agent_name: str,
         require_analysis: bool = False,
+        compiler_source_path: Path | None = None,
+        compiler_source_commit: str | None = None,
+        compiler_source_dirty: bool | None = None,
     ) -> OptimizeGuidanceState:
         guidance_path = workdir / self._guidance_filename(agent_name)
         guidance_preexisting = guidance_path.exists()
@@ -149,6 +160,9 @@ class OptimizeGuidanceManager:
             self._render_shared_guidance(
                 guidance_filename=guidance_path.name,
                 require_analysis=require_analysis,
+                compiler_source_path=compiler_source_path,
+                compiler_source_commit=compiler_source_commit,
+                compiler_source_dirty=compiler_source_dirty,
             ),
             encoding="utf-8",
         )
@@ -334,6 +348,9 @@ class OptimizeGuidanceManager:
         test_mode: str,
         bench_mode: str,
         require_analysis: bool,
+        compiler_source_path: Path | None = None,
+        compiler_source_commit: str | None = None,
+        compiler_source_dirty: bool | None = None,
     ) -> str:
         analysis_block = ""
         if require_analysis:
@@ -341,6 +358,16 @@ class OptimizeGuidanceManager:
                 "- Require profiling or IR-backed evidence before the first code-changing round when possible.\n"
                 "- Do not begin with blind tiling or launch-parameter search.\n"
             )
+
+        compiler_source_block = "\n".join(
+            compiler_source_analysis_lines(
+                compiler_source_path=compiler_source_path,
+                compiler_source_commit=compiler_source_commit,
+                compiler_source_dirty=compiler_source_dirty,
+            )
+        )
+        if compiler_source_block:
+            compiler_source_block += "\n"
 
         return (
             f"# {guidance_filename}\n\n"
@@ -352,6 +379,7 @@ class OptimizeGuidanceManager:
             f"Use `{bench_mode}` benchmark validation for this optimize session.\n"
             f"Optimize the operator at `{operator_path.name}`.\n"
             f"{analysis_block}"
+            f"{compiler_source_block}"
         )
 
     def _render_shared_guidance(
@@ -359,6 +387,9 @@ class OptimizeGuidanceManager:
         *,
         guidance_filename: str,
         require_analysis: bool,
+        compiler_source_path: Path | None = None,
+        compiler_source_commit: str | None = None,
+        compiler_source_dirty: bool | None = None,
     ) -> str:
         analysis_block = ""
         if require_analysis:
@@ -366,6 +397,16 @@ class OptimizeGuidanceManager:
                 "- Require profiling or IR-backed evidence before the first code-changing round when possible.\n"
                 "- Do not begin with blind tiling or launch-parameter search.\n"
             )
+
+        compiler_source_block = "\n".join(
+            compiler_source_analysis_lines(
+                compiler_source_path=compiler_source_path,
+                compiler_source_commit=compiler_source_commit,
+                compiler_source_dirty=compiler_source_dirty,
+            )
+        )
+        if compiler_source_block:
+            compiler_source_block += "\n"
 
         return (
             f"# {guidance_filename}\n\n"
@@ -377,4 +418,5 @@ class OptimizeGuidanceManager:
             "Treat `baseline/` as the canonical optimize baseline.\n"
             "Use `compare-perf` as the authoritative source for round performance summaries.\n"
             f"{analysis_block}"
+            f"{compiler_source_block}"
         )

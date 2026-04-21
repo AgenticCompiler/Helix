@@ -73,12 +73,15 @@ Avoid selecting a parent that:
       ```
 15. When the round needs a deeper explanation than benchmark numbers alone provide, use `triton-npu-analyze-round-performance`.
     - Write the standalone analysis to `opt-round-N/perf-analysis.md`.
-16. If the benchmark regresses, either:
+16. When compiler source analysis is enabled and the round still has a concrete compiler-side question after profiler and IR evidence, use `triton-npu-analyze-compiler-source`.
+    - Write the standalone analysis to `opt-round-N/compiler-analysis.md`.
+    - Treat source-derived conclusions as source-informed hypotheses when the checkout commit is not known to match the installed compiler or toolchain.
+17. If the benchmark regresses, either:
    - revise the round in place if the optimization idea is still promising, or
    - stop advancing that round and return to candidate selection for a new branch
-17. Complete the round only after the optimized candidate shows a measurable win over the chosen comparison target.
-18. Use `baseline/perf.txt` for canonical optimize-session metrics even when a round also compares locally against its parent.
-19. When the optimize session is pausing or ending, refresh the final `## Overall Summary` block in `opt-note.md` so the top-level note states the best round, overall outcome, `Avg improvement`, `Geomean speedup`, `Total speedup` (use `triton-npu-run-eval` compare-perf to calculate), any useful validated branches, and why that round was pursued.
+18. Complete the round only after the optimized candidate shows a measurable win over the chosen comparison target.
+19. Use `baseline/perf.txt` for canonical optimize-session metrics even when a round also compares locally against its parent.
+20. When the optimize session is pausing or ending, refresh the final `## Overall Summary` block in `opt-note.md` so the top-level note states the best round, overall outcome, `Avg improvement`, `Geomean speedup`, `Total speedup` (use `triton-npu-run-eval` compare-perf to calculate), any useful validated branches, and why that round was pursued.
 
 ## Comparison Target
 
@@ -103,6 +106,7 @@ A round is complete only when all of the following are true:
 - benchmark evidence is saved
 - any profiler or IR evidence used in the round decision is saved under the round directory
 - any standalone deep-dive analysis artifact is saved as `opt-round-N/perf-analysis.md` when the round used that workflow
+- any compiler source analysis artifact is saved as `opt-round-N/compiler-analysis.md` when the round used that workflow
 - the round summary explains the optimization points and measured outcome
 - `opt-note.md` is updated with a concise entry
 - the final best round is judged by `Geomean speedup`

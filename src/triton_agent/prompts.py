@@ -25,6 +25,26 @@ def strict_learned_lessons_lines() -> list[str]:
     ]
 
 
+def compiler_source_analysis_lines(
+    *,
+    compiler_source_path: Path | None,
+    compiler_source_commit: str | None,
+    compiler_source_dirty: bool | None,
+) -> list[str]:
+    if compiler_source_path is None or compiler_source_commit is None:
+        return []
+    dirty_text = "dirty" if compiler_source_dirty else "clean"
+    return [
+        "Compiler source analysis is enabled for this optimize run.",
+        f"Compiler source path: {compiler_source_path}",
+        f"Compiler source commit: {compiler_source_commit} ({dirty_text}).",
+        "Treat the compiler source checkout as read-only.",
+        "Do not run git clone, git fetch, git pull, or modify files in the compiler source checkout.",
+        "Use the staged `triton-npu-analyze-compiler-source` skill only when compiler source evidence is needed.",
+        "Prefer the evidence ladder first: benchmark and correctness results, then profiler evidence, then IR evidence, then compiler source.",
+    ]
+
+
 def append_additional_user_instructions(prompt: str, user_prompt: str | None) -> str:
     if user_prompt is None:
         return prompt
@@ -44,6 +64,9 @@ def build_optimize_worker_prompt(
     min_rounds: int | None = None,
     resume_existing_session: bool = False,
     require_analysis: bool = False,
+    compiler_source_path: Path | None = None,
+    compiler_source_commit: str | None = None,
+    compiler_source_dirty: bool | None = None,
 ) -> str:
     del input_path, output_path, test_mode, bench_mode, min_rounds
     lines = [
@@ -75,6 +98,13 @@ def build_optimize_worker_prompt(
         "The current round must pass `check-round` through `triton-npu-optimize-check` before the invocation ends.",
         "Do not self-approve whether the optimize session should continue.",
     ]
+    lines.extend(
+        compiler_source_analysis_lines(
+            compiler_source_path=compiler_source_path,
+            compiler_source_commit=compiler_source_commit,
+            compiler_source_dirty=compiler_source_dirty,
+        )
+    )
     lines.extend(baseline_state_contract_lines())
     if resume_existing_session:
         lines.extend(
@@ -103,6 +133,9 @@ def build_optimize_unsupervised_prompt(
     min_rounds: int | None = None,
     resume_existing_session: bool = False,
     require_analysis: bool = False,
+    compiler_source_path: Path | None = None,
+    compiler_source_commit: str | None = None,
+    compiler_source_dirty: bool | None = None,
 ) -> str:
     del input_path, output_path, test_mode, bench_mode
     lines = [
@@ -131,6 +164,13 @@ def build_optimize_unsupervised_prompt(
         "Do not begin the next round until the current round passes `check-round` through `triton-npu-optimize-check`.",
         "Record round outcomes and keep optimize artifacts up to date before stopping.",
     ]
+    lines.extend(
+        compiler_source_analysis_lines(
+            compiler_source_path=compiler_source_path,
+            compiler_source_commit=compiler_source_commit,
+            compiler_source_dirty=compiler_source_dirty,
+        )
+    )
     if min_rounds is not None:
         lines.insert(
             2,
@@ -211,6 +251,9 @@ def build_prompt(
     require_analysis: bool = False,
     supervise: Literal["on", "off"] = "off",
     target_chip: str | None = None,
+    compiler_source_path: Path | None = None,
+    compiler_source_commit: str | None = None,
+    compiler_source_dirty: bool | None = None,
 ) -> str:
     should_resume_existing_session = (
         continue_optimize if resume_existing_session is None else resume_existing_session
@@ -289,6 +332,9 @@ def build_prompt(
                     min_rounds=min_rounds,
                     resume_existing_session=should_resume_existing_session,
                     require_analysis=require_analysis,
+                    compiler_source_path=compiler_source_path,
+                    compiler_source_commit=compiler_source_commit,
+                    compiler_source_dirty=compiler_source_dirty,
                 ).splitlines()
             )
         else:
@@ -302,6 +348,9 @@ def build_prompt(
                     min_rounds=min_rounds,
                     resume_existing_session=should_resume_existing_session,
                     require_analysis=require_analysis,
+                    compiler_source_path=compiler_source_path,
+                    compiler_source_commit=compiler_source_commit,
+                    compiler_source_dirty=compiler_source_dirty,
                 ).splitlines()
             )
     else:
@@ -315,6 +364,9 @@ def build_optimize_resume_prompt(
     base_prompt: str | None = None,
     require_analysis: bool = False,
     supervise: Literal["on", "off"] = "off",
+    compiler_source_path: Path | None = None,
+    compiler_source_commit: str | None = None,
+    compiler_source_dirty: bool | None = None,
 ) -> str:
     lines: list[str] = []
     if base_prompt:
@@ -354,5 +406,12 @@ def build_optimize_resume_prompt(
         lines.append(
             "Before the next code-changing round, gather profiling or IR-backed evidence, or record why the existing evidence is already sufficient."
         )
+    lines.extend(
+        compiler_source_analysis_lines(
+            compiler_source_path=compiler_source_path,
+            compiler_source_commit=compiler_source_commit,
+            compiler_source_dirty=compiler_source_dirty,
+        )
+    )
     lines.extend(["", f"Progress summary:\n{summary}"])
     return "\n".join(lines)

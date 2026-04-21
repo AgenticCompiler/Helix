@@ -165,6 +165,9 @@ class OptimizeRunLoop:
                         self._build_gate_summary(gate_result),
                         require_analysis=current_request.require_analysis,
                         supervise=current_request.supervise,
+                        compiler_source_path=current_request.compiler_source_path,
+                        compiler_source_commit=current_request.compiler_source_commit,
+                        compiler_source_dirty=current_request.compiler_source_dirty,
                     ),
                     optimize_role="worker",
                 )
@@ -177,6 +180,9 @@ class OptimizeRunLoop:
                         self._build_gate_summary(gate_result),
                         require_analysis=current_request.require_analysis,
                         supervise=current_request.supervise,
+                        compiler_source_path=current_request.compiler_source_path,
+                        compiler_source_commit=current_request.compiler_source_commit,
+                        compiler_source_dirty=current_request.compiler_source_dirty,
                     ),
                     optimize_role="worker",
                 )
@@ -245,12 +251,18 @@ class OptimizeRunLoop:
         *,
         require_analysis: bool = False,
         supervise: str = "on",
+        compiler_source_path: Path | None = None,
+        compiler_source_commit: str | None = None,
+        compiler_source_dirty: bool | None = None,
     ) -> str:
         return build_optimize_resume_prompt(
             summary,
             base_prompt=base_prompt,
             require_analysis=require_analysis,
             supervise="off" if supervise == "off" else "on",
+            compiler_source_path=compiler_source_path,
+            compiler_source_commit=compiler_source_commit,
+            compiler_source_dirty=compiler_source_dirty,
         )
 
 
