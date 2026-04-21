@@ -10,6 +10,13 @@ In standard Triton code, the kernel often executes synchronously: it waits for a
 
 Implement **Software Pipelining (Double Buffering)** combined with **Block Pointers**. This allows the NPU to fetch the *next* tile of data from memory while simultaneously performing computation on the *current* tile.
 
+Choose this pattern when the main problem is **overlap**, not basic kernel structure. The question it answers is:
+
+- can an already tiled loop overlap memory transfer with compute more effectively
+
+If the hot loop is still fundamentally manual reduction code and has not yet become a regular tiled `tl.dot` loop, prefer `classic-matmul` first.
+If the main issue is UB overflow or an oversized working set rather than pipeline gaps, prefer `tiling`.
+
 ### Key Principles
 
 1.  **Use `tl.make_block_ptr`**: Replaces manual pointer arithmetic. It allows the hardware to utilize specialized 2D DMA controllers, reducing Scalar Unit overhead.
@@ -90,6 +97,7 @@ def matmul_kernel(a_ptr, b_ptr, c_ptr, K, BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE
 1.  **Tiny Inner Loops**: If the loop only runs 1 or 2 times, the pre-fetch overhead might exceed the savings.
 2.  **Extreme Memory Pressure**: If the tile size is so large that the Unified Buffer cannot hold two sets of tiles (current and next).
 3.  **Dependency Chains**: If Tile `i+1` depends on the result of the computation of Tile `i`.
+4.  **Pre-tiling rewrite still needed**: If the loop should first be rewritten into a regular tiled matmul or another clearer tile-based structure.
 
 ## Implementation Checklist
 
@@ -98,3 +106,19 @@ def matmul_kernel(a_ptr, b_ptr, c_ptr, K, BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE
 - [ ] Inside the loop, use `tl.advance` to update pointers.
 - [ ] Ensure the final `tl.dot` or math operation uses the previously loaded tile.
 - [ ] Verify that the total memory used by all active tiles (current + next) does not exceed NPU UB capacity.
+
+## Boundary With Nearby Patterns
+
+### vs `classic-matmul`
+
+- `classic-matmul` answers whether the kernel should be rewritten into a standard tiled `tl.dot` form
+- `software-pipeline` answers whether that tiled form should overlap loads and compute more aggressively
+
+Do not use `software-pipeline` as a substitute for a missing tiled-matmul rewrite.
+
+### vs `tiling`
+
+- `software-pipeline` keeps multiple tiles live to improve overlap
+- `tiling` reduces tile or sub-block footprint to fit UB and control working-set size
+
+If overlap would require more live data than UB can hold, solve the tiling problem before pushing harder on software pipelining.

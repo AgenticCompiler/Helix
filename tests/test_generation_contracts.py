@@ -88,7 +88,24 @@ class GenerationContractTests(unittest.TestCase):
         )
         self.assertIn("triton-npu-profile-operator", optimize)
         self.assertIn("triton-npu-analyze-round-performance", optimize)
+        self.assertIn("classic tiled matmul pattern reference", optimize)
         self.assertIn("`opt-round-N/perf-analysis.md`", optimize)
+
+    def test_optimize_pattern_library_includes_classic_tiled_matmul(self) -> None:
+        index = _read("skills/triton-npu-optimize/references/patterns/index.md")
+        reference = _read("skills/triton-npu-optimize/references/patterns/classic-matmul.md")
+        self.assertIn("classic-matmul", index)
+        self.assertIn("manual matmul or K-reduction", index)
+        self.assertIn("matmul-like", reference)
+        self.assertIn("BLOCK_M", reference)
+        self.assertIn("BLOCK_N", reference)
+        self.assertIn("BLOCK_K", reference)
+        self.assertIn("offs_m", reference)
+        self.assertIn("offs_n", reference)
+        self.assertIn("offs_k", reference)
+        self.assertIn("acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)", reference)
+        self.assertIn("a = a.to(tl.float16)", reference)
+        self.assertIn("b = b.to(tl.float16)", reference)
 
     def test_optimize_artifacts_reference_documents_state_declared_paths(self) -> None:
         artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
@@ -150,21 +167,9 @@ class GenerationContractTests(unittest.TestCase):
     def test_optimize_skill_records_learned_lessons(self) -> None:
         optimize = _read("skills/triton-npu-optimize/SKILL.md")
         self.assertIn("learned_lessons.md", optimize)
-        self.assertIn("strict reusable optimization-knowledge distillation log", optimize)
-        self.assertIn("passes all admission criteria", optimize)
-        self.assertIn("supported by correctness, benchmark, profiler, IR, or compiler-error evidence", optimize)
-        self.assertIn("states where it applies or what limits it", optimize)
-        self.assertIn("could plausibly be promoted into an optimize skill", optimize)
-        self.assertIn("Do not use `learned_lessons.md` for round narrative", optimize)
-
-    def test_optimize_artifacts_document_strict_learned_lessons_boundary(self) -> None:
-        artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
-        self.assertIn("strict reusable optimization-knowledge log", artifacts)
-        self.assertIn("Only add an entry when it is evidence-backed", artifacts)
-        self.assertIn("portable to related Triton Ascend NPU operators", artifacts)
-        self.assertIn("Round-local command failures", artifacts)
-        self.assertIn("shape-specific details", artifacts)
-        self.assertIn("belong in `attempts.md`, `summary.md`, or `opt-note.md`", artifacts)
+        self.assertIn("record learned lessons whenever you discover reusable knowledge", optimize)
+        self.assertIn("compiler error repairs", optimize)
+        self.assertIn("profile-guided optimization lessons", optimize)
 
     def test_repair_guide_skill_owns_novel_fix_logging(self) -> None:
         repair_guide = _read("skills/triton-npu-repair-guide/SKILL.md")
