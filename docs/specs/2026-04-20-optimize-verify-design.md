@@ -4,7 +4,7 @@
 
 Add an `optimize-verify` subcommand that validates the current best optimize round without mutating existing optimize artifacts.
 
-The command selects the numeric best round using the same performance ranking as `optimize-status`, copies that round's operator and the reusable harness files into a fresh verification directory, and runs correctness and benchmark validation from that directory.
+The command selects the numeric best round using the same performance ranking as `optimize-status`, copies both the best-round operator and the baseline operator plus the reusable harness files into a fresh verification directory, and runs correctness plus benchmark validation from that directory.
 
 ## Goals
 
@@ -45,11 +45,14 @@ The command creates a fresh directory:
 ```text
 <workspace>/opt-verify/verify-YYYYMMDD-HHMMSS/
   <operator>.py
+  baseline_<operator>.py
   <test-harness>.py
   <bench-harness>.py
   test.log
-  bench.log
+  rerun-baseline-bench.log
+  rerun-best-bench.log
   <operator>_result.pt
+  baseline_<operator>_perf.txt
   <operator>_perf.txt
   compare-perf.txt
   verify-state.json
@@ -67,13 +70,14 @@ The command selects the best round by reusing the `optimize-status` numeric rank
 
 The command reads `baseline/state.json` for:
 
+- `baseline_operator`
 - `test_file`
 - `test_mode`
 - `bench_file`
 - `bench_mode`
 - `perf_artifact`
 
-The command reads the selected round contract to find the round-local operator. It copies that operator plus the declared test and benchmark harnesses into the verification directory before executing anything.
+The command reads the selected round contract to find the round-local operator. It copies that operator, the declared baseline operator snapshot, and the declared test and benchmark harnesses into the verification directory before executing anything.
 
 ## Execution
 
@@ -86,13 +90,19 @@ For correctness verification, call the existing test runner with:
 For benchmark verification, call the existing benchmark runner with:
 
 - benchmark file: copied benchmark harness in the verification directory
-- operator file: copied operator in the verification directory
+- operator file: copied baseline operator in the verification directory
 - benchmark mode: `baseline/state.json`, unless overridden by `--bench-mode`
 
-After a successful benchmark, run `compare-perf` using:
+Then rerun benchmark verification with:
 
-- baseline: path from `baseline/state.json` normally resolving to `baseline/perf.txt`
-- compare: perf artifact produced beside the copied operator
+- benchmark file: copied benchmark harness in the verification directory
+- operator file: copied best-round operator in the verification directory
+- benchmark mode: `baseline/state.json`, unless overridden by `--bench-mode`
+
+After both rerun benchmarks succeed, run `compare-perf` using:
+
+- baseline: perf artifact produced beside the copied baseline operator
+- compare: perf artifact produced beside the copied best-round operator
 
 Save the comparison output to `compare-perf.txt`.
 
@@ -101,8 +111,8 @@ Save the comparison output to `compare-perf.txt`.
 Write `verify-state.json` in the verification directory as a compact verification record:
 
 - `selection`: selected numeric best round, selected round directory, source operator path, and `numeric_best_source`.
-- `workspace`: verification run directory and copied operator path.
-- `inputs`: source and copied harness paths, effective test and benchmark modes, and baseline perf path.
+- `workspace`: verification run directory, copied best-round operator path, and copied baseline operator path.
+- `inputs`: source and copied harness paths, effective test and benchmark modes, and the historical baseline perf path from `baseline/state.json`.
 - `verify-result`: execution records, fresh speedup metrics, and consistency deltas for this verification run.
 
 `selection.optimize_status` records the speedup metrics that `optimize-status` computed when selecting the best round:
@@ -118,12 +128,13 @@ Write `verify-state.json` in the verification directory as a compact verificatio
 `verify-result` records:
 
 - `test`: status, return code, log path, and result artifact path.
-- `bench`: status, return code, log path, perf artifact path, and latency ids.
+- `rerun_baseline_bench`: status, return code, log path, perf artifact path, and latency ids.
+- `rerun_best_bench`: status, return code, log path, perf artifact path, and latency ids.
 - `compare_perf`: status, return code, and comparison log path.
-- `speedup`: fresh `avg_improvement`, `geomean_speedup`, `total_speedup`, and warnings computed from the verification benchmark artifact.
+- `speedup`: fresh `avg_improvement`, `geomean_speedup`, `total_speedup`, and warnings computed from the rerun baseline and rerun best benchmark artifacts.
 - `consistency`: status plus deltas between `verify-result.speedup` and `selection.optimize_status` for average improvement, geomean speedup, and total speedup.
 
-`verify-result.speedup` uses `null` metric values and a warning when no fresh benchmark artifact is available, such as a test-only run or a failed correctness phase.
+`verify-result.speedup` uses `null` metric values and warnings when rerun baseline or rerun best benchmark artifacts are unavailable, such as a test-only run or a failed benchmark phase.
 
 `verify-result.consistency.status` is `matched` when geomean speedup and total speedup deltas are both within `0.2`; `avg_improvement_delta` is recorded for diagnostics but does not decide matched versus mismatched.
 

@@ -51,8 +51,10 @@ class OptimizeVerifyTarget:
     selected_round: str
     round_dir: Path
     source_operator: Path
+    source_baseline_operator: Path
     verify_dir: Path
     copied_operator: Path
+    baseline_operator: Path
     source_test_file: Path
     test_file: Path
     test_mode: str
@@ -85,6 +87,11 @@ def prepare_optimize_verify_target(
         raise ValueError(f"Best round directory does not exist: {round_dir}")
 
     baseline_state = load_baseline_state(workspace)
+    source_baseline_operator = _resolve_workspace_file(
+        workspace,
+        baseline_state.baseline_operator,
+        label="baseline_operator",
+    )
     source_test_file = _resolve_workspace_file(workspace, baseline_state.test_file, label="test_file")
     source_bench_file = _resolve_workspace_file(workspace, baseline_state.bench_file, label="bench_file")
     baseline_perf = _resolve_workspace_file(
@@ -99,7 +106,9 @@ def prepare_optimize_verify_target(
 
     verify_dir = _create_unique_verify_dir(workspace, timestamp_label=timestamp_label)
     copied_operator = verify_dir / round_artifacts.operator_path.name
+    baseline_operator = verify_dir / f"baseline_{source_baseline_operator.name}"
     shutil.copy2(round_artifacts.operator_path, copied_operator)
+    shutil.copy2(source_baseline_operator, baseline_operator)
     test_file = _copy_verify_input(source_test_file, verify_dir)
     bench_file = _copy_verify_input(source_bench_file, verify_dir)
 
@@ -108,8 +117,10 @@ def prepare_optimize_verify_target(
         selected_round=status.best_round,
         round_dir=round_dir,
         source_operator=round_artifacts.operator_path,
+        source_baseline_operator=source_baseline_operator,
         verify_dir=verify_dir,
         copied_operator=copied_operator,
+        baseline_operator=baseline_operator,
         source_test_file=source_test_file,
         test_file=test_file,
         test_mode=baseline_state.test_mode,
@@ -128,10 +139,12 @@ def run_optimize_verify(
     test_mode = options.test_mode or target.test_mode
     bench_mode = options.bench_mode or target.bench_mode
     test_entry: dict[str, object] | None = None
-    bench_entry: dict[str, object] | None = None
+    baseline_bench_entry: dict[str, object] | None = None
+    best_bench_entry: dict[str, object] | None = None
     compare_entry: dict[str, object] | None = None
     archived_result: Path | None = None
-    perf_path: Path | None = None
+    baseline_perf_path: Path | None = None
+    best_perf_path: Path | None = None
     return_code = 0
 
     if options.phase in {"all", "test"}:
@@ -150,9 +163,11 @@ def run_optimize_verify(
                 test_mode=test_mode,
                 bench_mode=bench_mode,
                 test_entry=test_entry,
-                bench_entry=bench_entry,
+                baseline_bench_entry=baseline_bench_entry,
+                best_bench_entry=best_bench_entry,
                 compare_entry=compare_entry,
-                verify_perf_path=perf_path,
+                baseline_perf_path=baseline_perf_path,
+                best_perf_path=best_perf_path,
             )
             return OptimizeVerifyResult(
                 return_code=return_code,
@@ -161,19 +176,41 @@ def run_optimize_verify(
             )
 
     if options.phase in {"all", "bench"}:
-        bench_result, perf_path = _run_bench(target, options, bench_mode)
-        _write_result_log(target.verify_dir / "bench.log", bench_result)
-        bench_entry = {
-            "status": _execution_status(bench_result.return_code),
-            "return_code": bench_result.return_code,
-            "log": _relative_path(target.workspace, target.verify_dir / "bench.log"),
-            "perf_artifact": _relative_or_none(target.workspace, perf_path),
+        baseline_bench_result, baseline_perf_path = _run_bench(
+            target,
+            options,
+            bench_mode,
+            target.baseline_operator,
+        )
+        baseline_bench_log = target.verify_dir / "rerun-baseline-bench.log"
+        _write_result_log(baseline_bench_log, baseline_bench_result)
+        baseline_bench_entry = {
+            "status": _execution_status(baseline_bench_result.return_code),
+            "return_code": baseline_bench_result.return_code,
+            "log": _relative_path(target.workspace, baseline_bench_log),
+            "perf_artifact": _relative_or_none(target.workspace, baseline_perf_path),
         }
-        return_code = bench_result.return_code
-        if return_code == 0 and perf_path is not None:
+        return_code = baseline_bench_result.return_code
+        if return_code == 0 and baseline_perf_path is not None:
+            best_bench_result, best_perf_path = _run_bench(
+                target,
+                options,
+                bench_mode,
+                target.copied_operator,
+            )
+            best_bench_log = target.verify_dir / "rerun-best-bench.log"
+            _write_result_log(best_bench_log, best_bench_result)
+            best_bench_entry = {
+                "status": _execution_status(best_bench_result.return_code),
+                "return_code": best_bench_result.return_code,
+                "log": _relative_path(target.workspace, best_bench_log),
+                "perf_artifact": _relative_or_none(target.workspace, best_perf_path),
+            }
+            return_code = best_bench_result.return_code
+        if return_code == 0 and baseline_perf_path is not None and best_perf_path is not None:
             compare_output = io.StringIO()
             with contextlib.redirect_stdout(compare_output):
-                compare_code = compare_perf_files(target.baseline_perf, perf_path)
+                compare_code = compare_perf_files(baseline_perf_path, best_perf_path)
             compare_log = target.verify_dir / "compare-perf.txt"
             compare_log.write_text(compare_output.getvalue(), encoding="utf-8")
             compare_entry = {
@@ -188,9 +225,11 @@ def run_optimize_verify(
         test_mode=test_mode,
         bench_mode=bench_mode,
         test_entry=test_entry,
-        bench_entry=bench_entry,
+        baseline_bench_entry=baseline_bench_entry,
+        best_bench_entry=best_bench_entry,
         compare_entry=compare_entry,
-        verify_perf_path=perf_path,
+        baseline_perf_path=baseline_perf_path,
+        best_perf_path=best_perf_path,
     )
     return OptimizeVerifyResult(
         return_code=return_code,
@@ -247,12 +286,13 @@ def _run_bench(
     target: OptimizeVerifyTarget,
     options: OptimizeVerifyOptions,
     bench_mode: str,
+    operator_file: Path,
 ) -> tuple[AgentResult, Path | None]:
     if options.remote is None:
-        return run_local_bench(target.bench_file, target.copied_operator, bench_mode)
+        return run_local_bench(target.bench_file, operator_file, bench_mode)
     result, perf_path, _remote_workspace = run_remote_bench(
         target.bench_file,
-        target.copied_operator,
+        operator_file,
         bench_mode,
         options.remote,
         options.remote_workdir,
@@ -276,18 +316,21 @@ def _write_verify_state(
     test_mode: str,
     bench_mode: str,
     test_entry: dict[str, object] | None,
-    bench_entry: dict[str, object] | None,
+    baseline_bench_entry: dict[str, object] | None,
+    best_bench_entry: dict[str, object] | None,
     compare_entry: dict[str, object] | None,
-    verify_perf_path: Path | None,
+    baseline_perf_path: Path | None,
+    best_perf_path: Path | None,
 ) -> Path:
-    speedup_state, latency_ids = _build_speedup_state(target, verify_perf_path)
+    speedup_state, latency_ids = _build_speedup_state(target, baseline_perf_path, best_perf_path)
     state = {
         "selection": _build_selection_state(target),
         "workspace": _build_workspace_state(target),
         "inputs": _build_inputs_state(target, test_mode=test_mode, bench_mode=bench_mode),
         "verify-result": {
             "test": test_entry,
-            "bench": _with_latency_ids(bench_entry, latency_ids),
+            "rerun_baseline_bench": _with_latency_ids(baseline_bench_entry, latency_ids),
+            "rerun_best_bench": _with_latency_ids(best_bench_entry, latency_ids),
             "compare_perf": compare_entry,
             "speedup": speedup_state,
             "consistency": _build_consistency_state(target.optimize_status, speedup_state),
@@ -311,6 +354,7 @@ def _build_workspace_state(target: OptimizeVerifyTarget) -> dict[str, object]:
     return {
         "verify_dir": _relative_path(target.workspace, target.verify_dir),
         "operator": _relative_path(target.workspace, target.copied_operator),
+        "baseline_operator": _relative_path(target.workspace, target.baseline_operator),
     }
 
 
@@ -349,15 +393,21 @@ def _build_optimize_status_state(status: OptimizeStatusWorkspace) -> dict[str, o
 
 def _build_speedup_state(
     target: OptimizeVerifyTarget,
-    verify_perf_path: Path | None,
+    baseline_perf_path: Path | None,
+    best_perf_path: Path | None,
 ) -> tuple[dict[str, object], list[str]]:
-    if verify_perf_path is None:
+    missing_perf_warnings: list[str] = []
+    if baseline_perf_path is None:
+        missing_perf_warnings.append("missing rerun baseline perf data")
+    if best_perf_path is None:
+        missing_perf_warnings.append("missing rerun best perf data")
+    if missing_perf_warnings:
         return (
             {
                 "avg_improvement": None,
                 "geomean_speedup": None,
                 "total_speedup": None,
-                "warnings": ["missing verify perf data"],
+                "warnings": missing_perf_warnings,
             },
             [],
         )
@@ -365,8 +415,13 @@ def _build_speedup_state(
     warnings: list[str] = []
     try:
         parser = _load_bench_perf_parser()
-        baseline_values = parser.parse_perf_file(target.baseline_perf)
-        verify_values = parser.parse_required_perf_file(verify_perf_path, baseline_values.keys())
+        resolved_baseline_perf_path = cast(Path, baseline_perf_path)
+        resolved_best_perf_path = cast(Path, best_perf_path)
+        baseline_values = parser.parse_perf_file(resolved_baseline_perf_path)
+        verify_values = parser.parse_required_perf_file(
+            resolved_best_perf_path,
+            baseline_values.keys(),
+        )
     except (OSError, ValueError) as exc:
         return (
             {
@@ -390,7 +445,7 @@ def _build_speedup_state(
             warnings.append(f"baseline latency must be > 0 for {latency_id}")
             continue
         if verify_value <= 0:
-            warnings.append(f"verify latency must be > 0 for {latency_id}")
+            warnings.append(f"best latency must be > 0 for {latency_id}")
             continue
         improvement_values.append((baseline_value - verify_value) / baseline_value)
         speedup_values.append(baseline_value / verify_value)

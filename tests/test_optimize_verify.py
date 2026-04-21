@@ -105,6 +105,8 @@ class OptimizeVerifyTests(unittest.TestCase):
             self.assertEqual(target.test_file, target.verify_dir / "differential_test_kernel.py")
             self.assertEqual(target.source_bench_file, workspace / "bench_kernel.py")
             self.assertEqual(target.bench_file, target.verify_dir / "bench_kernel.py")
+            self.assertEqual(target.source_baseline_operator, workspace / "baseline" / "kernel.py")
+            self.assertEqual(target.baseline_operator, target.verify_dir / "baseline_kernel.py")
             self.assertEqual(target.test_mode, "differential")
             self.assertEqual(target.bench_mode, "standalone")
             self.assertEqual(target.baseline_perf, workspace / "baseline" / "perf.txt")
@@ -135,8 +137,10 @@ class OptimizeVerifyTests(unittest.TestCase):
                 workspace,
                 timestamp_label="20260420-153012",
             )
+            baseline_perf_path = target.verify_dir / "baseline_kernel_perf.txt"
             perf_path = target.verify_dir / "kernel_perf.txt"
             result_path = target.verify_dir / "kernel_result.pt"
+            baseline_perf_path.write_text("latency-a: 11\nlatency-b: 22\n", encoding="utf-8")
             perf_path.write_text("latency-a: 8\nlatency-b: 18\n", encoding="utf-8")
 
             with patch(
@@ -145,7 +149,10 @@ class OptimizeVerifyTests(unittest.TestCase):
             ) as run_test:
                 with patch(
                     "triton_agent.optimize.verify.run_local_bench",
-                    return_value=(AgentResult(return_code=0, stdout="bench ok\n", stderr=""), perf_path),
+                    side_effect=[
+                        (AgentResult(return_code=0, stdout="baseline bench ok\n", stderr=""), baseline_perf_path),
+                        (AgentResult(return_code=0, stdout="bench ok\n", stderr=""), perf_path),
+                    ],
                 ) as run_bench:
                     with patch(
                         "triton_agent.optimize.verify.compare_perf_files",
@@ -162,14 +169,23 @@ class OptimizeVerifyTests(unittest.TestCase):
                 target.copied_operator,
                 target.test_mode,
             )
-            run_bench.assert_called_once_with(
-                target.bench_file,
-                target.copied_operator,
-                target.bench_mode,
+            self.assertEqual(
+                run_bench.call_args_list,
+                [
+                    ((target.bench_file, target.baseline_operator, target.bench_mode), {}),
+                    ((target.bench_file, target.copied_operator, target.bench_mode), {}),
+                ],
             )
-            compare_perf.assert_called_once_with(target.baseline_perf, perf_path)
+            compare_perf.assert_called_once_with(baseline_perf_path, perf_path)
             self.assertEqual((target.verify_dir / "test.log").read_text(encoding="utf-8"), "test ok\n")
-            self.assertEqual((target.verify_dir / "bench.log").read_text(encoding="utf-8"), "bench ok\n")
+            self.assertEqual(
+                (target.verify_dir / "rerun-best-bench.log").read_text(encoding="utf-8"),
+                "bench ok\n",
+            )
+            self.assertEqual(
+                (target.verify_dir / "rerun-baseline-bench.log").read_text(encoding="utf-8"),
+                "baseline bench ok\n",
+            )
 
             state = json.loads((target.verify_dir / "verify-state.json").read_text(encoding="utf-8"))
             self.assertEqual(
@@ -204,6 +220,7 @@ class OptimizeVerifyTests(unittest.TestCase):
                 {
                     "verify_dir": "opt-verify/verify-20260420-153012",
                     "operator": "opt-verify/verify-20260420-153012/kernel.py",
+                    "baseline_operator": "opt-verify/verify-20260420-153012/baseline_kernel.py",
                 },
             )
             self.assertEqual(
@@ -229,31 +246,45 @@ class OptimizeVerifyTests(unittest.TestCase):
                 verify_result["test"]["result_artifact"],
                 "opt-verify/verify-20260420-153012/kernel_result.pt",
             )
-            self.assertEqual(verify_result["bench"]["status"], "passed")
-            self.assertEqual(verify_result["bench"]["return_code"], 0)
             self.assertEqual(
-                verify_result["bench"]["perf_artifact"],
+                verify_result["rerun_baseline_bench"]["perf_artifact"],
+                "opt-verify/verify-20260420-153012/baseline_kernel_perf.txt",
+            )
+            self.assertEqual(verify_result["rerun_baseline_bench"]["status"], "passed")
+            self.assertEqual(verify_result["rerun_baseline_bench"]["return_code"], 0)
+            self.assertEqual(
+                verify_result["rerun_best_bench"]["perf_artifact"],
                 "opt-verify/verify-20260420-153012/kernel_perf.txt",
             )
-            self.assertEqual(verify_result["bench"]["latency_ids"], ["latency-a", "latency-b"])
+            self.assertEqual(verify_result["rerun_best_bench"]["status"], "passed")
+            self.assertEqual(verify_result["rerun_best_bench"]["return_code"], 0)
+            self.assertEqual(verify_result["rerun_best_bench"]["latency_ids"], ["latency-a", "latency-b"])
             self.assertEqual(verify_result["compare_perf"]["status"], "passed")
             self.assertEqual(verify_result["compare_perf"]["return_code"], 0)
             self.assertEqual(
                 sorted(verify_result["speedup"]),
                 ["avg_improvement", "geomean_speedup", "total_speedup", "warnings"],
             )
-            self.assertAlmostEqual(verify_result["speedup"]["avg_improvement"], 0.15)
-            self.assertAlmostEqual(verify_result["speedup"]["geomean_speedup"], (10 / 8 * 20 / 18) ** 0.5)
-            self.assertAlmostEqual(verify_result["speedup"]["total_speedup"], 30 / 26)
+            self.assertAlmostEqual(verify_result["speedup"]["avg_improvement"], ((11 - 8) / 11 + (22 - 18) / 22) / 2)
+            self.assertAlmostEqual(verify_result["speedup"]["geomean_speedup"], (11 / 8 * 22 / 18) ** 0.5)
+            self.assertAlmostEqual(verify_result["speedup"]["total_speedup"], 33 / 26)
             self.assertEqual(verify_result["speedup"]["warnings"], [])
             self.assertEqual(
                 verify_result["consistency"],
                 {
                     "status": "matched",
-                    "geomean_speedup_delta": 0.0,
-                    "total_speedup_delta": 0.0,
-                    "avg_improvement_delta": 0.0,
+                    "geomean_speedup_delta": verify_result["consistency"]["geomean_speedup_delta"],
+                    "total_speedup_delta": verify_result["consistency"]["total_speedup_delta"],
+                    "avg_improvement_delta": verify_result["consistency"]["avg_improvement_delta"],
                 },
+            )
+            self.assertAlmostEqual(
+                verify_result["consistency"]["geomean_speedup_delta"],
+                ((11 / 8 * 22 / 18) ** 0.5) - ((10 / 8 * 20 / 18) ** 0.5),
+            )
+            self.assertAlmostEqual(
+                verify_result["consistency"]["total_speedup_delta"],
+                (33 / 26) - (30 / 26),
             )
 
     def test_run_optimize_verify_test_phase_skips_benchmark(self) -> None:
@@ -291,12 +322,16 @@ class OptimizeVerifyTests(unittest.TestCase):
                 workspace,
                 timestamp_label="20260420-153012",
             )
+            baseline_perf_path = target.verify_dir / "baseline_kernel_perf.txt"
             perf_path = target.verify_dir / "kernel_perf.txt"
 
             with patch("triton_agent.optimize.verify.run_local_test") as run_test:
                 with patch(
                     "triton_agent.optimize.verify.run_local_bench",
-                    return_value=(AgentResult(return_code=0, stdout="", stderr=""), perf_path),
+                    side_effect=[
+                        (AgentResult(return_code=0, stdout="", stderr=""), baseline_perf_path),
+                        (AgentResult(return_code=0, stdout="", stderr=""), perf_path),
+                    ],
                 ) as run_bench:
                     with patch(
                         "triton_agent.optimize.verify.compare_perf_files",
@@ -309,8 +344,8 @@ class OptimizeVerifyTests(unittest.TestCase):
 
             self.assertEqual(result.return_code, 0)
             run_test.assert_not_called()
-            run_bench.assert_called_once()
-            compare_perf.assert_called_once_with(target.baseline_perf, perf_path)
+            self.assertEqual(run_bench.call_count, 2)
+            compare_perf.assert_called_once_with(baseline_perf_path, perf_path)
 
     def test_run_optimize_verify_consistency_ignores_avg_improvement_and_uses_wide_tolerance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -330,12 +365,17 @@ class OptimizeVerifyTests(unittest.TestCase):
                     total_speedup=1.0,
                 ),
             )
+            baseline_perf_path = target.verify_dir / "baseline_kernel_perf.txt"
             perf_path = target.verify_dir / "kernel_perf.txt"
+            baseline_perf_path.write_text("latency-a: 9\nlatency-b: 18\n", encoding="utf-8")
             perf_path.write_text("latency-a: 8\nlatency-b: 18\n", encoding="utf-8")
 
             with patch(
                 "triton_agent.optimize.verify.run_local_bench",
-                return_value=(AgentResult(return_code=0, stdout="", stderr=""), perf_path),
+                side_effect=[
+                    (AgentResult(return_code=0, stdout="", stderr=""), baseline_perf_path),
+                    (AgentResult(return_code=0, stdout="", stderr=""), perf_path),
+                ],
             ):
                 with patch(
                     "triton_agent.optimize.verify.compare_perf_files",
@@ -349,7 +389,7 @@ class OptimizeVerifyTests(unittest.TestCase):
             state = json.loads((target.verify_dir / "verify-state.json").read_text(encoding="utf-8"))
             consistency = state["verify-result"]["consistency"]
             self.assertEqual(consistency["status"], "matched")
-            self.assertAlmostEqual(consistency["avg_improvement_delta"], 0.35)
+            self.assertAlmostEqual(consistency["avg_improvement_delta"], ((9 - 8) / 9 + (18 - 18) / 18) / 2 + 0.2)
             self.assertGreater(abs(consistency["avg_improvement_delta"]), 0.2)
             self.assertLessEqual(abs(consistency["geomean_speedup_delta"]), 0.2)
             self.assertLessEqual(abs(consistency["total_speedup_delta"]), 0.2)
@@ -380,9 +420,13 @@ class OptimizeVerifyTests(unittest.TestCase):
             verify_result = state["verify-result"]
             self.assertEqual(verify_result["test"]["return_code"], 1)
             self.assertEqual(verify_result["test"]["status"], "failed")
-            self.assertIsNone(verify_result["bench"])
+            self.assertIsNone(verify_result["rerun_baseline_bench"])
+            self.assertIsNone(verify_result["rerun_best_bench"])
             self.assertIsNone(verify_result["speedup"]["avg_improvement"])
-            self.assertEqual(verify_result["speedup"]["warnings"], ["missing verify perf data"])
+            self.assertEqual(
+                verify_result["speedup"]["warnings"],
+                ["missing rerun baseline perf data", "missing rerun best perf data"],
+            )
             self.assertEqual(verify_result["consistency"]["status"], "incomplete")
 
 
