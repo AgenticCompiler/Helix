@@ -133,8 +133,12 @@ def render_optimize_status_markdown_table(
         for item in sorted(results, key=_optimize_status_markdown_sort_key)
         if item.state != "no-session"
     ]
-    print("| 名称 | Geomean speedup | Total speedup | Verified | Notes |", file=stream)
-    print("| --- | --- | --- | --- | --- |", file=stream)
+    print(
+        "| 名称 | Geomean speedup | Total speedup | Verified | "
+        "Verified Geomean speedup | Verified Total speedup | Notes |",
+        file=stream,
+    )
+    print("| --- | --- | --- | --- | --- | --- | --- |", file=stream)
     for item in rows:
         print(
             "| "
@@ -142,6 +146,8 @@ def render_optimize_status_markdown_table(
             f"{format_optimize_status_speedup_cell(item.geomean_speedup)} | "
             f"{format_optimize_status_speedup_cell(item.total_speedup)} | "
             f"{format_optimize_status_verified_cell(item)} | "
+            f"{format_optimize_status_verified_speedup_cell(item.verified_geomean_speedup)} | "
+            f"{format_optimize_status_verified_speedup_cell(item.verified_total_speedup)} | "
             f"{format_optimize_status_notes_cell(item)} |",
             file=stream,
         )
@@ -159,6 +165,12 @@ def _optimize_status_markdown_sort_key(item: OptimizeStatusWorkspace) -> str:
 def format_optimize_status_speedup_cell(value: float | None) -> str:
     if value is None:
         return "-"
+    return format_optimize_status_speedup(value)
+
+
+def format_optimize_status_verified_speedup_cell(value: float | None) -> str:
+    if value is None:
+        return ""
     return format_optimize_status_speedup(value)
 
 

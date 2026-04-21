@@ -34,7 +34,9 @@ def inspect_optimize_status_workspace(
 ) -> OptimizeStatusWorkspace:
     del verbose
     opt_note, round_dirs, top_level_perf_files = collect_optimize_status_artifacts(workspace)
-    latest_verify_state, verified = inspect_latest_verify_result(workspace)
+    latest_verify_state, verified, verified_geomean_speedup, verified_total_speedup = inspect_latest_verify_result(
+        workspace
+    )
 
     has_artifacts = bool(opt_note.exists() or round_dirs or top_level_perf_files)
     if not has_artifacts:
@@ -51,6 +53,8 @@ def inspect_optimize_status_workspace(
             warnings=(),
             latest_verify_state=latest_verify_state,
             verified=verified,
+            verified_geomean_speedup=verified_geomean_speedup,
+            verified_total_speedup=verified_total_speedup,
         )
 
     warnings: list[str] = []
@@ -160,6 +164,8 @@ def inspect_optimize_status_workspace(
             warnings=tuple(dict.fromkeys(warnings)),
             latest_verify_state=latest_verify_state,
             verified=verified,
+            verified_geomean_speedup=verified_geomean_speedup,
+            verified_total_speedup=verified_total_speedup,
         )
 
     if baseline_path is None and not baseline_selection_failed:
@@ -180,6 +186,8 @@ def inspect_optimize_status_workspace(
         warnings=tuple(dict.fromkeys(warnings)),
         latest_verify_state=latest_verify_state,
         verified=verified,
+        verified_geomean_speedup=verified_geomean_speedup,
+        verified_total_speedup=verified_total_speedup,
     )
 
 
@@ -208,11 +216,12 @@ def collect_optimize_status_artifacts(
     return opt_note, round_dirs, top_level_perf_files
 
 
-def inspect_latest_verify_result(workspace: Path) -> tuple[Path | None, bool]:
+def inspect_latest_verify_result(workspace: Path) -> tuple[Path | None, bool, float | None, float | None]:
     state_path = find_latest_verify_state(workspace)
     if state_path is None:
-        return None, False
-    return state_path, verify_state_is_verified(state_path)
+        return None, False, None, None
+    verified, geomean_speedup, total_speedup = inspect_verify_state_summary(state_path)
+    return state_path, verified, geomean_speedup, total_speedup
 
 
 def find_latest_verify_state(workspace: Path) -> Path | None:
@@ -230,13 +239,18 @@ def find_latest_verify_state(workspace: Path) -> Path | None:
 
 
 def verify_state_is_verified(state_path: Path) -> bool:
+    verified, _, _ = inspect_verify_state_summary(state_path)
+    return verified
+
+
+def inspect_verify_state_summary(state_path: Path) -> tuple[bool, float | None, float | None]:
     try:
         payload = json.loads(state_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return False
+        return False, None, None
     verify_result = payload.get("verify-result")
     if not isinstance(verify_result, dict):
-        return False
+        return False, None, None
     verify_result_dict = cast(dict[str, object], verify_result)
     required_entries: tuple[object | None, ...] = (
         verify_result_dict.get("test"),
@@ -246,12 +260,28 @@ def verify_state_is_verified(state_path: Path) -> bool:
     )
     for entry in required_entries:
         if not isinstance(entry, dict):
-            return False
+            return False, None, None
         entry_dict = cast(dict[str, object], entry)
         status = entry_dict.get("status")
         if status != "passed":
-            return False
-    return True
+            return False, None, None
+    speedup = verify_result_dict.get("speedup")
+    if not isinstance(speedup, dict):
+        return True, None, None
+    speedup_dict = cast(dict[str, object], speedup)
+    return (
+        True,
+        _optional_float(speedup_dict.get("geomean_speedup")),
+        _optional_float(speedup_dict.get("total_speedup")),
+    )
+
+
+def _optional_float(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    return None
 
 
 def select_baseline_perf_file(

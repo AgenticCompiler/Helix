@@ -67,6 +67,8 @@ class OptimizeStatusWorkspace:
     warnings: tuple[str, ...]
     latest_verify_state: Path | None = None
     verified: bool = False
+    verified_geomean_speedup: float | None = None
+    verified_total_speedup: float | None = None
 
 
 @dataclass(frozen=True)

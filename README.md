@@ -274,6 +274,8 @@ then `baseline_perf.txt`, then the existing non-`opt_` fallback rule.
 - `Geomean speedup`
 - `Total speedup`
 - `Verified`
+- `Verified Geomean speedup`
+- `Verified Total speedup`
 - `Notes`
 
 The Markdown table excludes `NO-SESSION` workspaces and sorts rows by name.
@@ -281,6 +283,8 @@ Workspaces with optimize artifacts but missing comparable speedup data stay in t
 The `Verified` column shows `Verified` only when the latest `opt-verify/verify-*/verify-state.json`
 for that workspace is a complete successful run with passed test, rerun baseline benchmark,
 rerun best benchmark, and compare-perf results. Otherwise it renders `-`.
+The verified speedup columns use the same latest successful verify state and stay blank when the
+workspace has no verified result.
 The `Notes` column uses compact labels such as `best≠log` for computed/logged best-round mismatch
 and `warn` for other warnings.
 

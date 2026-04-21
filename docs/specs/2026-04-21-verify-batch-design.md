@@ -42,12 +42,13 @@ These flags apply uniformly to every workspace in the batch run. A single invoca
 
 Keep `optimize-status` read-only. It must not run verification.
 
-Add a `Verified` column to markdown output:
+Add verification columns to markdown output:
 
 - show `Verified` only when the latest verification result is complete and successful
-- show `-` otherwise
+- show `Verified Geomean speedup` and `Verified Total speedup` from the latest verified speedup summary
+- leave verified speedup cells blank otherwise
 
-Text output may include the latest verify state path for diagnostics, but markdown should stay compact and only use `Verified` or `-`.
+Text output may include the latest verify state path for diagnostics, but markdown should stay compact.
 
 ## Reuse And Rerun Semantics
 
@@ -174,10 +175,11 @@ The batch command should return:
 
 ### Markdown
 
-Add a `Verified` column with values:
+Add verification columns with compact values:
 
 - `Verified`
 - `-`
+- verified speedup values formatted as `Nx`
 
 Do not include verify paths or detailed consistency information in markdown output.
 

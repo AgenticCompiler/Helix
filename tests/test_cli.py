@@ -1224,7 +1224,11 @@ class PathResolutionTests(unittest.TestCase):
                         '    "test": {"status": "passed"},',
                         '    "rerun_baseline_bench": {"status": "passed"},',
                         '    "rerun_best_bench": {"status": "passed"},',
-                        '    "compare_perf": {"status": "passed"}',
+                        '    "compare_perf": {"status": "passed"},',
+                        '    "speedup": {',
+                        '      "geomean_speedup": 1.22,',
+                        '      "total_speedup": 1.28',
+                        "    }",
                         "  }",
                         "}",
                     ]
@@ -1239,9 +1243,13 @@ class PathResolutionTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()
-            self.assertIn("| 名称 | Geomean speedup | Total speedup | Verified | Notes |", rendered)
-            self.assertIn("| beta | 1.49x | 1.58x | Verified | best≠log |", rendered)
-            self.assertIn("| zeta | - | - | - | warn |", rendered)
+            self.assertIn(
+                "| 名称 | Geomean speedup | Total speedup | Verified | "
+                "Verified Geomean speedup | Verified Total speedup | Notes |",
+                rendered,
+            )
+            self.assertIn("| beta | 1.49x | 1.58x | Verified | 1.22x | 1.28x | best≠log |", rendered)
+            self.assertIn("| zeta | - | - | - |  |  | warn |", rendered)
             self.assertLess(rendered.index("| beta |"), rendered.index("| zeta |"))
             self.assertNotIn("fresh", rendered)
             self.assertNotIn("Summary:", rendered)
