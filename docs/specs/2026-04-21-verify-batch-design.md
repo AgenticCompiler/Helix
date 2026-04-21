@@ -1,4 +1,4 @@
-# `optimize-verify-batch` Design
+# `verify-batch` Design
 
 ## Goal
 
@@ -13,8 +13,8 @@ The new flow should let users run verification across a root directory of operat
 Add a new CLI command:
 
 ```bash
-uv run triton-agent optimize-verify-batch -i operators_root
-uv run triton-agent optimize-verify-batch -i operators_root --force-verify
+uv run triton-agent verify-batch -i operators_root
+uv run triton-agent verify-batch -i operators_root --force-verify
 ```
 
 Behavior:
@@ -26,6 +26,17 @@ Behavior:
    - rerun verification when `--force-verify` is supplied
 4. Skip non-verifiable workspaces without aborting the whole batch run.
 5. Return a non-zero exit code when any workspace verification run fails.
+
+### Remote execution
+
+`verify-batch` should accept the same remote execution flags as `verify`:
+
+- `--remote`
+- `--remote-workdir`
+- `--keep-remote-workdir`
+- `--verbose`
+
+These flags apply uniformly to every workspace in the batch run. A single invocation does not support per-workspace remote overrides.
 
 ### `optimize-status` display
 
@@ -40,7 +51,7 @@ Text output may include the latest verify state path for diagnostics, but markdo
 
 ## Reuse And Rerun Semantics
 
-`optimize-verify-batch` should use this policy:
+`verify-batch` should use this policy:
 
 - default: reuse the latest verify result if one exists for the workspace
 - `--force-verify`: always rerun verification and generate a fresh verify directory
@@ -51,7 +62,7 @@ This keeps the batch command automation-friendly without forcing a heavy rerun o
 
 Do not create a separate set of batch-only validation rules.
 
-Reuse the existing `prepare_optimize_verify_target()` contract from `src/triton_agent/optimize/verify.py`. A workspace is verifiable only when the existing single-workspace verify path can prepare successfully, which means the workspace has enough data to run the same verification flow:
+Reuse the existing `prepare_verify_target()` contract from `src/triton_agent/verification/core.py`. A workspace is verifiable only when the existing single-workspace verify path can prepare successfully, which means the workspace has enough data to run the same verification flow:
 
 - baseline metadata and artifacts
 - a numeric best round
@@ -106,16 +117,16 @@ Keep execution behavior separate from status reporting.
 ### CLI and command entrypoints
 
 - `src/triton_agent/cli.py`
-  - register `optimize-verify-batch`
+  - register `verify-batch`
   - add `--force-verify`
-- `src/triton_agent/commands/optimize.py`
-  - add `handle_optimize_verify_batch`
+- `src/triton_agent/commands/verification.py`
+  - add `handle_verify_batch`
 
 ### Batch verification logic
 
 Add a feature-local module:
 
-- `src/triton_agent/optimize/verify_batch.py`
+- `src/triton_agent/verification/batch.py`
 
 Responsibilities:
 
@@ -179,12 +190,14 @@ Text output may include the latest verify state path when present. This keeps di
 Add or update tests for:
 
 1. CLI parser
-   - `optimize-verify-batch` maps to a command kind
+   - `verify-batch` maps to a command kind
    - `--force-verify` parses correctly
+   - batch verify accepts the same remote flags as single-workspace verify
 
 2. Batch verify behavior
    - reuse latest verify result by default
    - rerun when `--force-verify` is present
+   - propagate shared remote options to every rerun verification
    - skip non-verifiable workspaces
    - continue after one workspace fails
    - return non-zero when any rerun verification fails

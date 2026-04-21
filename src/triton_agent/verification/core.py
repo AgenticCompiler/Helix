@@ -35,7 +35,7 @@ class BenchPerfParserModule(Protocol):
 
 
 @dataclass(frozen=True)
-class OptimizeVerifyOptions:
+class VerifyOptions:
     phase: Phase = "all"
     test_mode: str | None = None
     bench_mode: str | None = None
@@ -46,7 +46,7 @@ class OptimizeVerifyOptions:
 
 
 @dataclass(frozen=True)
-class OptimizeVerifyTarget:
+class VerifyTarget:
     workspace: Path
     selected_round: str
     round_dir: Path
@@ -66,17 +66,17 @@ class OptimizeVerifyTarget:
 
 
 @dataclass(frozen=True)
-class OptimizeVerifyResult:
+class VerifyResult:
     return_code: int
     verify_dir: Path
     state_path: Path
 
 
-def prepare_optimize_verify_target(
+def prepare_verify_target(
     workspace: Path,
     *,
     timestamp_label: str | None = None,
-) -> OptimizeVerifyTarget:
+) -> VerifyTarget:
     status = inspect_optimize_status_workspace(workspace)
     if status.best_round is None:
         raise ValueError(f"No numeric best round available for workspace: {workspace}")
@@ -112,7 +112,7 @@ def prepare_optimize_verify_target(
     test_file = _copy_verify_input(source_test_file, verify_dir)
     bench_file = _copy_verify_input(source_bench_file, verify_dir)
 
-    return OptimizeVerifyTarget(
+    return VerifyTarget(
         workspace=workspace,
         selected_round=status.best_round,
         round_dir=round_dir,
@@ -132,10 +132,10 @@ def prepare_optimize_verify_target(
     )
 
 
-def run_optimize_verify(
-    target: OptimizeVerifyTarget,
-    options: OptimizeVerifyOptions,
-) -> OptimizeVerifyResult:
+def run_verify(
+    target: VerifyTarget,
+    options: VerifyOptions,
+) -> VerifyResult:
     test_mode = options.test_mode or target.test_mode
     bench_mode = options.bench_mode or target.bench_mode
     test_entry: dict[str, object] | None = None
@@ -169,7 +169,7 @@ def run_optimize_verify(
                 baseline_perf_path=baseline_perf_path,
                 best_perf_path=best_perf_path,
             )
-            return OptimizeVerifyResult(
+            return VerifyResult(
                 return_code=return_code,
                 verify_dir=target.verify_dir,
                 state_path=state_path,
@@ -231,7 +231,7 @@ def run_optimize_verify(
         baseline_perf_path=baseline_perf_path,
         best_perf_path=best_perf_path,
     )
-    return OptimizeVerifyResult(
+    return VerifyResult(
         return_code=return_code,
         verify_dir=target.verify_dir,
         state_path=state_path,
@@ -264,8 +264,8 @@ def _create_unique_verify_dir(workspace: Path, *, timestamp_label: str | None = 
 
 
 def _run_test(
-    target: OptimizeVerifyTarget,
-    options: OptimizeVerifyOptions,
+    target: VerifyTarget,
+    options: VerifyOptions,
     test_mode: str,
 ) -> tuple[AgentResult, Path | None]:
     if options.remote is None:
@@ -283,8 +283,8 @@ def _run_test(
 
 
 def _run_bench(
-    target: OptimizeVerifyTarget,
-    options: OptimizeVerifyOptions,
+    target: VerifyTarget,
+    options: VerifyOptions,
     bench_mode: str,
     operator_file: Path,
 ) -> tuple[AgentResult, Path | None]:
@@ -311,7 +311,7 @@ def _execution_status(return_code: int) -> str:
 
 
 def _write_verify_state(
-    target: OptimizeVerifyTarget,
+    target: VerifyTarget,
     *,
     test_mode: str,
     bench_mode: str,
@@ -347,7 +347,7 @@ def _write_verify_state(
     return state_path
 
 
-def _build_selection_state(target: OptimizeVerifyTarget) -> dict[str, object]:
+def _build_selection_state(target: VerifyTarget) -> dict[str, object]:
     return {
         "round_dir": _relative_path(target.workspace, target.round_dir),
         "source_operator": _relative_path(target.workspace, target.source_operator),
@@ -356,7 +356,7 @@ def _build_selection_state(target: OptimizeVerifyTarget) -> dict[str, object]:
     }
 
 
-def _build_workspace_state(target: OptimizeVerifyTarget) -> dict[str, object]:
+def _build_workspace_state(target: VerifyTarget) -> dict[str, object]:
     return {
         "verify_dir": _relative_path(target.workspace, target.verify_dir),
         "operator": _relative_path(target.workspace, target.copied_operator),
@@ -365,7 +365,7 @@ def _build_workspace_state(target: OptimizeVerifyTarget) -> dict[str, object]:
 
 
 def _build_inputs_state(
-    target: OptimizeVerifyTarget,
+    target: VerifyTarget,
     *,
     test_mode: str,
     bench_mode: str,
@@ -398,7 +398,7 @@ def _build_optimize_status_state(status: OptimizeStatusWorkspace) -> dict[str, o
 
 
 def _build_speedup_state(
-    target: OptimizeVerifyTarget,
+    target: VerifyTarget,
     baseline_perf_path: Path | None,
     best_perf_path: Path | None,
 ) -> dict[str, object]:

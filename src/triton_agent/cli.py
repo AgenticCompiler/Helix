@@ -10,12 +10,11 @@ from triton_agent.commands.execution import handle_run_bench, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
 from triton_agent.commands.generation import handle_gen_eval
 from triton_agent.commands.generation import handle_gen_eval_batch
+from triton_agent.commands.verification import handle_verify, handle_verify_batch
 from triton_agent.commands.optimize import (
     handle_optimize,
     handle_optimize_batch,
     handle_optimize_status,
-    handle_optimize_verify,
-    handle_optimize_verify_batch,
 )
 from triton_agent.models import CommandKind
 
@@ -30,11 +29,22 @@ _RESUME_CHOICES = ("auto", "continue", "fresh")
 _SUPERVISE_CHOICES = ("on", "off")
 _TARGET_CHIP_CHOICES = ("A3", "A5")
 _VERIFY_PHASE_CHOICES = ("all", "test", "bench")
+_TOP_LEVEL_DESCRIPTION = "Generate, run, verify, and optimize Triton NPU operator workflows."
+_TOP_LEVEL_EXAMPLES = (
+    "triton-agent gen-test -i kernel.py",
+    "triton-agent run-test --test-file test_kernel.py --operator-file kernel.py",
+    "triton-agent compare-perf --baseline baseline.txt --compare candidate.txt",
+    "triton-agent verify -i .",
+    "triton-agent optimize -i kernel.py --agent codex",
+)
 
 
 @dataclass(frozen=True)
 class _CommandSpec:
     handler: _Handler
+    help_group: str
+    help_summary: str
+    description: str
     input_mode: str = "input"
     has_output: bool = True
     has_verbose: bool = True
@@ -58,6 +68,9 @@ class _CommandSpec:
 _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
     CommandKind.GEN_EVAL: _CommandSpec(
         handler=handle_gen_eval,
+        help_group="Generation",
+        help_summary="Generate test and benchmark harnesses for one operator.",
+        description="Generate test and benchmark harnesses for one operator file.",
         has_remote=True,
         has_agent=True,
         has_interact=True,
@@ -70,6 +83,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
     ),
     CommandKind.GEN_EVAL_BATCH: _CommandSpec(
         handler=handle_gen_eval_batch,
+        help_group="Generation",
+        help_summary="Generate evaluation harnesses for multiple workspaces.",
+        description="Generate evaluation harnesses for multiple operator workspaces.",
         has_output=False,
         has_remote=True,
         has_agent=True,
@@ -82,6 +98,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
     ),
     CommandKind.GEN_TEST: _CommandSpec(
         handler=handle_gen_test,
+        help_group="Generation",
+        help_summary="Generate a test harness for one operator.",
+        description="Generate a test harness for one operator file.",
         has_remote=True,
         has_agent=True,
         has_interact=True,
@@ -92,6 +111,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
     ),
     CommandKind.RUN_TEST: _CommandSpec(
         handler=handle_run_test,
+        help_group="Execution",
+        help_summary="Run a generated test harness against an operator.",
+        description="Run a generated test harness against one operator file.",
         input_mode="run-test",
         has_remote=True,
         keep_remote_workdir=True,
@@ -99,6 +121,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
     ),
     CommandKind.GEN_BENCH: _CommandSpec(
         handler=handle_gen_bench,
+        help_group="Generation",
+        help_summary="Generate a benchmark harness for one operator.",
+        description="Generate a benchmark harness for one operator file.",
         has_remote=True,
         has_agent=True,
         has_interact=True,
@@ -109,6 +134,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
     ),
     CommandKind.RUN_BENCH: _CommandSpec(
         handler=handle_run_bench,
+        help_group="Execution",
+        help_summary="Run a generated benchmark harness against an operator.",
+        description="Run a generated benchmark harness against one operator file.",
         input_mode="run-bench",
         has_remote=True,
         keep_remote_workdir=True,
@@ -116,23 +144,35 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
     ),
     CommandKind.COMPARE_RESULT: _CommandSpec(
         handler=handle_compare_result,
+        help_group="Comparison",
+        help_summary="Compare oracle and candidate result files.",
+        description="Compare oracle and candidate result files for correctness.",
         input_mode="compare-result",
         has_output=False,
         has_remote=True,
     ),
     CommandKind.COMPARE_PERF: _CommandSpec(
         handler=handle_compare_perf,
+        help_group="Comparison",
+        help_summary="Compare baseline and candidate performance reports.",
+        description="Compare baseline and candidate performance reports.",
         input_mode="compare-perf",
         has_output=False,
         has_verbose=False,
     ),
     CommandKind.OPTIMIZE_STATUS: _CommandSpec(
         handler=handle_optimize_status,
+        help_group="Optimization",
+        help_summary="Show optimization status for one workspace.",
+        description="Show optimization status for one workspace.",
         has_output=False,
         has_format=True,
     ),
-    CommandKind.OPTIMIZE_VERIFY: _CommandSpec(
-        handler=handle_optimize_verify,
+    CommandKind.VERIFY: _CommandSpec(
+        handler=handle_verify,
+        help_group="Verification",
+        help_summary="Verify test and benchmark artifacts for one workspace.",
+        description="Verify test and benchmark artifacts for one optimization workspace.",
         has_output=False,
         has_remote=True,
         keep_remote_workdir=True,
@@ -140,13 +180,21 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_bench_mode=True,
         has_verify_phase=True,
     ),
-    CommandKind.OPTIMIZE_VERIFY_BATCH: _CommandSpec(
-        handler=handle_optimize_verify_batch,
+    CommandKind.VERIFY_BATCH: _CommandSpec(
+        handler=handle_verify_batch,
+        help_group="Verification",
+        help_summary="Verify artifacts for multiple optimization workspaces.",
+        description="Verify artifacts for multiple optimization workspaces.",
         has_output=False,
+        has_remote=True,
+        keep_remote_workdir=True,
         has_force_verify=True,
     ),
     CommandKind.OPTIMIZE: _CommandSpec(
         handler=handle_optimize,
+        help_group="Optimization",
+        help_summary="Run the optimization workflow for one operator.",
+        description="Run the optimization workflow for one operator file.",
         has_remote=True,
         has_agent=True,
         has_interact=True,
@@ -157,6 +205,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
     ),
     CommandKind.OPTIMIZE_BATCH: _CommandSpec(
         handler=handle_optimize_batch,
+        help_group="Optimization",
+        help_summary="Run optimization across multiple workspaces.",
+        description="Run optimization across multiple operator workspaces.",
         has_output=False,
         has_remote=True,
         has_agent=True,
@@ -170,12 +221,22 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="triton-agent")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    parser = argparse.ArgumentParser(
+        prog="triton-agent",
+        usage="triton-agent [-h] COMMAND ...",
+        description=_TOP_LEVEL_DESCRIPTION,
+        epilog=_build_top_level_epilog(),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
     for command_kind in CommandKind:
         spec = _COMMAND_SPECS[command_kind]
-        subparser = subparsers.add_parser(command_kind.value)
+        subparser = subparsers.add_parser(
+            command_kind.value,
+            help=spec.help_summary,
+            description=spec.description,
+        )
         subparser.set_defaults(command_kind=command_kind)
         _add_primary_arguments(subparser, spec)
         if spec.has_format:
@@ -234,6 +295,22 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _build_top_level_epilog() -> str:
+    lines = ["Command groups:"]
+    group_names = ("Generation", "Execution", "Comparison", "Verification", "Optimization")
+    for group_name in group_names:
+        lines.append(f"{group_name}:")
+        for command_kind in CommandKind:
+            spec = _COMMAND_SPECS[command_kind]
+            if spec.help_group == group_name:
+                lines.append(f"  {command_kind.value:<22} {spec.help_summary}")
+    lines.append("")
+    lines.append("Examples:")
+    for example in _TOP_LEVEL_EXAMPLES:
+        lines.append(f"  {example}")
+    return "\n".join(lines)
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(_normalize_command_aliases(argv))
@@ -275,8 +352,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "compare_result": "compare-result",
         "compare_perf": "compare-perf",
         "optimize_status": "optimize-status",
-        "optimize_verify": "optimize-verify",
-        "optimize_verify_batch": "optimize-verify-batch",
+        "verify_batch": "verify-batch",
         "optimize_batch": "optimize-batch",
     }
     normalized = list(argv)

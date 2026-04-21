@@ -9,10 +9,10 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.models import AgentResult
-from triton_agent.optimize.verify import OptimizeVerifyOptions, prepare_optimize_verify_target, run_optimize_verify
+from triton_agent.verification.core import VerifyOptions, prepare_verify_target, run_verify
 
 
-class OptimizeVerifyTests(unittest.TestCase):
+class VerifyTests(unittest.TestCase):
     def _write_baseline(self, workspace: Path) -> None:
         baseline_dir = workspace / "baseline"
         baseline_dir.mkdir()
@@ -87,7 +87,7 @@ class OptimizeVerifyTests(unittest.TestCase):
             self._write_round(workspace, 1, "latency-a: 9\nlatency-b: 19\n")
             best_round = self._write_round(workspace, 2, "latency-a: 6\nlatency-b: 12\n")
 
-            target = prepare_optimize_verify_target(
+            target = prepare_verify_target(
                 workspace,
                 timestamp_label="20260420-153012",
             )
@@ -120,7 +120,7 @@ class OptimizeVerifyTests(unittest.TestCase):
             existing.mkdir(parents=True)
             (existing / "kernel.py").write_text("existing\n", encoding="utf-8")
 
-            target = prepare_optimize_verify_target(
+            target = prepare_verify_target(
                 workspace,
                 timestamp_label="20260420-153012",
             )
@@ -128,12 +128,12 @@ class OptimizeVerifyTests(unittest.TestCase):
             self.assertEqual(target.verify_dir, workspace / "opt-verify" / "verify-20260420-153012-2")
             self.assertEqual((existing / "kernel.py").read_text(encoding="utf-8"), "existing\n")
 
-    def test_run_optimize_verify_all_uses_copied_operator_and_writes_state(self) -> None:
+    def test_run_verify_all_uses_copied_operator_and_writes_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             self._write_baseline(workspace)
             self._write_round(workspace, 1, "latency-a: 8\nlatency-b: 18\n")
-            target = prepare_optimize_verify_target(
+            target = prepare_verify_target(
                 workspace,
                 timestamp_label="20260420-153012",
             )
@@ -144,23 +144,23 @@ class OptimizeVerifyTests(unittest.TestCase):
             perf_path.write_text("latency-a: 8\nlatency-b: 18\n", encoding="utf-8")
 
             with patch(
-                "triton_agent.optimize.verify.run_local_test",
+                "triton_agent.verification.core.run_local_test",
                 return_value=(AgentResult(return_code=0, stdout="test ok\n", stderr=""), result_path),
             ) as run_test:
                 with patch(
-                    "triton_agent.optimize.verify.run_local_bench",
+                    "triton_agent.verification.core.run_local_bench",
                     side_effect=[
                         (AgentResult(return_code=0, stdout="baseline bench ok\n", stderr=""), baseline_perf_path),
                         (AgentResult(return_code=0, stdout="bench ok\n", stderr=""), perf_path),
                     ],
                 ) as run_bench:
                     with patch(
-                        "triton_agent.optimize.verify.compare_perf_files",
+                        "triton_agent.verification.core.compare_perf_files",
                         return_value=0,
                     ) as compare_perf:
-                        result = run_optimize_verify(
+                        result = run_verify(
                             target,
-                            OptimizeVerifyOptions(phase="all"),
+                            VerifyOptions(phase="all"),
                         )
 
             self.assertEqual(result.return_code, 0)
@@ -294,25 +294,25 @@ class OptimizeVerifyTests(unittest.TestCase):
                 (33 / 26) - (30 / 26),
             )
 
-    def test_run_optimize_verify_test_phase_skips_benchmark(self) -> None:
+    def test_run_verify_test_phase_skips_benchmark(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             self._write_baseline(workspace)
             self._write_round(workspace, 1, "latency-a: 8\nlatency-b: 18\n")
-            target = prepare_optimize_verify_target(
+            target = prepare_verify_target(
                 workspace,
                 timestamp_label="20260420-153012",
             )
 
             with patch(
-                "triton_agent.optimize.verify.run_local_test",
+                "triton_agent.verification.core.run_local_test",
                 return_value=(AgentResult(return_code=0, stdout="", stderr=""), None),
             ) as run_test:
-                with patch("triton_agent.optimize.verify.run_local_bench") as run_bench:
-                    with patch("triton_agent.optimize.verify.compare_perf_files") as compare_perf:
-                        result = run_optimize_verify(
+                with patch("triton_agent.verification.core.run_local_bench") as run_bench:
+                    with patch("triton_agent.verification.core.compare_perf_files") as compare_perf:
+                        result = run_verify(
                             target,
-                            OptimizeVerifyOptions(phase="test"),
+                            VerifyOptions(phase="test"),
                         )
 
             self.assertEqual(result.return_code, 0)
@@ -320,33 +320,33 @@ class OptimizeVerifyTests(unittest.TestCase):
             run_bench.assert_not_called()
             compare_perf.assert_not_called()
 
-    def test_run_optimize_verify_bench_phase_runs_compare_perf(self) -> None:
+    def test_run_verify_bench_phase_runs_compare_perf(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             self._write_baseline(workspace)
             self._write_round(workspace, 1, "latency-a: 8\nlatency-b: 18\n")
-            target = prepare_optimize_verify_target(
+            target = prepare_verify_target(
                 workspace,
                 timestamp_label="20260420-153012",
             )
             baseline_perf_path = target.verify_dir / "baseline_kernel_perf.txt"
             perf_path = target.verify_dir / "kernel_perf.txt"
 
-            with patch("triton_agent.optimize.verify.run_local_test") as run_test:
+            with patch("triton_agent.verification.core.run_local_test") as run_test:
                 with patch(
-                    "triton_agent.optimize.verify.run_local_bench",
+                    "triton_agent.verification.core.run_local_bench",
                     side_effect=[
                         (AgentResult(return_code=0, stdout="", stderr=""), baseline_perf_path),
                         (AgentResult(return_code=0, stdout="", stderr=""), perf_path),
                     ],
                 ) as run_bench:
                     with patch(
-                        "triton_agent.optimize.verify.compare_perf_files",
+                        "triton_agent.verification.core.compare_perf_files",
                         return_value=0,
                     ) as compare_perf:
-                        result = run_optimize_verify(
+                        result = run_verify(
                             target,
-                            OptimizeVerifyOptions(phase="bench"),
+                            VerifyOptions(phase="bench"),
                         )
 
             self.assertEqual(result.return_code, 0)
@@ -354,12 +354,12 @@ class OptimizeVerifyTests(unittest.TestCase):
             self.assertEqual(run_bench.call_count, 2)
             compare_perf.assert_called_once_with(baseline_perf_path, perf_path)
 
-    def test_run_optimize_verify_consistency_ignores_avg_improvement_and_uses_wide_tolerance(self) -> None:
+    def test_run_verify_consistency_ignores_avg_improvement_and_uses_wide_tolerance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             self._write_baseline(workspace)
             self._write_round(workspace, 1, "latency-a: 8\nlatency-b: 18\n")
-            target = prepare_optimize_verify_target(
+            target = prepare_verify_target(
                 workspace,
                 timestamp_label="20260420-153012",
             )
@@ -378,19 +378,19 @@ class OptimizeVerifyTests(unittest.TestCase):
             perf_path.write_text("latency-a: 8\nlatency-b: 18\n", encoding="utf-8")
 
             with patch(
-                "triton_agent.optimize.verify.run_local_bench",
+                "triton_agent.verification.core.run_local_bench",
                 side_effect=[
                     (AgentResult(return_code=0, stdout="", stderr=""), baseline_perf_path),
                     (AgentResult(return_code=0, stdout="", stderr=""), perf_path),
                 ],
             ):
                 with patch(
-                    "triton_agent.optimize.verify.compare_perf_files",
+                    "triton_agent.verification.core.compare_perf_files",
                     return_value=0,
                 ):
-                    run_optimize_verify(
+                    run_verify(
                         target,
-                        OptimizeVerifyOptions(phase="bench"),
+                        VerifyOptions(phase="bench"),
                     )
 
             state = json.loads((target.verify_dir / "verify-state.json").read_text(encoding="utf-8"))
@@ -401,24 +401,24 @@ class OptimizeVerifyTests(unittest.TestCase):
             self.assertLessEqual(abs(consistency["geomean_speedup_delta"]), 0.2)
             self.assertLessEqual(abs(consistency["total_speedup_delta"]), 0.2)
 
-    def test_run_optimize_verify_stops_after_failed_test_in_all_phase(self) -> None:
+    def test_run_verify_stops_after_failed_test_in_all_phase(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             self._write_baseline(workspace)
             self._write_round(workspace, 1, "latency-a: 8\nlatency-b: 18\n")
-            target = prepare_optimize_verify_target(
+            target = prepare_verify_target(
                 workspace,
                 timestamp_label="20260420-153012",
             )
 
             with patch(
-                "triton_agent.optimize.verify.run_local_test",
+                "triton_agent.verification.core.run_local_test",
                 return_value=(AgentResult(return_code=1, stdout="", stderr="failed\n"), None),
             ):
-                with patch("triton_agent.optimize.verify.run_local_bench") as run_bench:
-                    result = run_optimize_verify(
+                with patch("triton_agent.verification.core.run_local_bench") as run_bench:
+                    result = run_verify(
                         target,
-                        OptimizeVerifyOptions(phase="all"),
+                        VerifyOptions(phase="all"),
                     )
 
             self.assertEqual(result.return_code, 1)

@@ -15,9 +15,9 @@ class CommandKind(str, Enum):
     RUN_BENCH = "run-bench"
     COMPARE_RESULT = "compare-result"
     COMPARE_PERF = "compare-perf"
+    VERIFY = "verify"
+    VERIFY_BATCH = "verify-batch"
     OPTIMIZE_STATUS = "optimize-status"
-    OPTIMIZE_VERIFY = "optimize-verify"
-    OPTIMIZE_VERIFY_BATCH = "optimize-verify-batch"
     OPTIMIZE = "optimize"
     OPTIMIZE_BATCH = "optimize-batch"
 
@@ -31,9 +31,9 @@ COMMAND_TO_SKILL = {
     CommandKind.RUN_BENCH: "",
     CommandKind.COMPARE_RESULT: "",
     CommandKind.COMPARE_PERF: "",
+    CommandKind.VERIFY: "",
+    CommandKind.VERIFY_BATCH: "",
     CommandKind.OPTIMIZE_STATUS: "",
-    CommandKind.OPTIMIZE_VERIFY: "",
-    CommandKind.OPTIMIZE_VERIFY_BATCH: "",
     CommandKind.OPTIMIZE: "triton-npu-optimize",
     CommandKind.OPTIMIZE_BATCH: "",
 }

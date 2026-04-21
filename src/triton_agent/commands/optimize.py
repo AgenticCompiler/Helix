@@ -12,8 +12,6 @@ from triton_agent.optimize.render import render_optimize_status_results
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
 from triton_agent.optimize.status import inspect_optimize_status_workspace, scan_optimize_status_workspaces, workspace_has_optimize_artifacts
 from triton_agent.optimize.validation import validate_optimize_options
-from triton_agent.optimize.verify_batch import run_optimize_verify_batch
-from triton_agent.optimize.verify import OptimizeVerifyOptions, prepare_optimize_verify_target, run_optimize_verify
 from triton_agent.output import render_result
 
 
@@ -100,48 +98,6 @@ def handle_optimize_status(parser: argparse.ArgumentParser, args: argparse.Names
         return 1
     results = scan_optimize_status_workspaces(root, verbose=bool(getattr(args, "verbose", False)))
     return render_optimize_status_results(results, output_format=str(getattr(args, "format", "text")))
-
-
-def handle_optimize_verify(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
-    workspace = Path(args.input).expanduser().resolve()
-    if not workspace.exists():
-        parser.error(f"Input path does not exist: {workspace}")
-    if not workspace.is_dir():
-        parser.error(f"Input path is not a directory: {workspace}")
-
-    options = OptimizeVerifyOptions(
-        phase=cast(Literal["all", "test", "bench"], str(getattr(args, "phase", "all"))),
-        test_mode=getattr(args, "test_mode", None),
-        bench_mode=getattr(args, "bench_mode", None),
-        remote=getattr(args, "remote", None),
-        remote_workdir=getattr(args, "remote_workdir", None),
-        keep_remote_workdir=bool(getattr(args, "keep_remote_workdir", False)),
-        verbose=bool(getattr(args, "verbose", False)),
-    )
-    try:
-        target = prepare_optimize_verify_target(workspace)
-        result = run_optimize_verify(target, options)
-    except (FileNotFoundError, RuntimeError, ValueError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
-
-    print(f"Verification directory: {result.verify_dir}")
-    print(f"State file: {result.state_path}")
-    print(f"Return code: {result.return_code}")
-    return result.return_code
-
-
-def handle_optimize_verify_batch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
-    root = Path(args.input).expanduser().resolve()
-    if not root.exists():
-        parser.error(f"Input path does not exist: {root}")
-    if not root.is_dir():
-        parser.error(f"Input path is not a directory: {root}")
-    return run_optimize_verify_batch(
-        root,
-        force_verify=bool(getattr(args, "force_verify", False)),
-        options=OptimizeVerifyOptions(verbose=bool(getattr(args, "verbose", False))),
-    )
 
 
 def _validate_supervise_mode(args: argparse.Namespace) -> Literal["on", "off"]:

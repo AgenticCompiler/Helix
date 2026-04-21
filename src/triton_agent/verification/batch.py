@@ -7,19 +7,19 @@ from typing import TextIO
 from triton_agent.optimize.models import BatchOptimizeResult
 from triton_agent.optimize.render import render_batch_optimize_results
 from triton_agent.optimize.status import find_latest_verify_state
-from triton_agent.optimize.verify import (
-    OptimizeVerifyOptions,
-    prepare_optimize_verify_target,
-    run_optimize_verify,
+from triton_agent.verification.core import (
+    VerifyOptions,
+    prepare_verify_target,
+    run_verify,
 )
 
 
-def run_optimize_verify_batch(
+def run_verify_batch(
     root: Path,
     *,
     force_verify: bool = False,
     stdout: TextIO | None = None,
-    options: OptimizeVerifyOptions | None = None,
+    options: VerifyOptions | None = None,
 ) -> int:
     stream = stdout or sys.stdout
     workspaces = sorted(path for path in root.iterdir() if path.is_dir())
@@ -27,7 +27,7 @@ def run_optimize_verify_batch(
         print(f"No operator workspaces found under {root}", file=sys.stderr)
         return 1
 
-    verify_options = options or OptimizeVerifyOptions()
+    verify_options = options or VerifyOptions()
     results: list[BatchOptimizeResult] = []
     for workspace in workspaces:
         latest_state = find_latest_verify_state(workspace)
@@ -41,7 +41,7 @@ def run_optimize_verify_batch(
             )
             continue
         try:
-            target = prepare_optimize_verify_target(workspace)
+            target = prepare_verify_target(workspace)
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
             results.append(
                 BatchOptimizeResult(
@@ -51,7 +51,7 @@ def run_optimize_verify_batch(
                 )
             )
             continue
-        result = run_optimize_verify(target, verify_options)
+        result = run_verify(target, verify_options)
         if result.return_code == 0:
             results.append(
                 BatchOptimizeResult(

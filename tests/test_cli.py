@@ -95,8 +95,7 @@ class CliParserTests(unittest.TestCase):
             ("gen_bench", CommandKind.GEN_BENCH),
             ("run_bench", CommandKind.RUN_BENCH),
             ("optimize_status", CommandKind.OPTIMIZE_STATUS),
-            ("optimize_verify", CommandKind.OPTIMIZE_VERIFY),
-            ("optimize_verify_batch", CommandKind.OPTIMIZE_VERIFY_BATCH),
+            ("verify_batch", CommandKind.VERIFY_BATCH),
             ("optimize_batch", CommandKind.OPTIMIZE_BATCH),
         ]
 
@@ -107,9 +106,7 @@ class CliParserTests(unittest.TestCase):
                     argv = [alias, "--test-file", "test_kernel.py", "--operator-file", "kernel.py"]
                 elif expected_kind == CommandKind.RUN_BENCH:
                     argv = [alias, "--bench-file", "bench_kernel.py", "--operator-file", "kernel.py"]
-                elif expected_kind == CommandKind.OPTIMIZE_VERIFY:
-                    argv = [alias, "-i", "workspace"]
-                elif expected_kind == CommandKind.OPTIMIZE_VERIFY_BATCH:
+                elif expected_kind == CommandKind.VERIFY_BATCH:
                     argv = [alias, "-i", "workspace-root"]
                 args = parser.parse_args(_normalize_command_aliases(argv))
                 self.assertEqual(args.command_kind, expected_kind)
@@ -126,8 +123,8 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("compare-result", help_text)
         self.assertIn("compare-perf", help_text)
         self.assertIn("optimize-status", help_text)
-        self.assertIn("optimize-verify", help_text)
-        self.assertIn("optimize-verify-batch", help_text)
+        self.assertIn("verify", help_text)
+        self.assertIn("verify-batch", help_text)
         self.assertIn("optimize-batch", help_text)
         self.assertNotIn("gen_eval_batch", help_text)
         self.assertNotIn("gen_eval", help_text)
@@ -138,15 +135,40 @@ class CliParserTests(unittest.TestCase):
         self.assertNotIn("compare_result", help_text)
         self.assertNotIn("compare_perf", help_text)
         self.assertNotIn("optimize_status", help_text)
-        self.assertNotIn("optimize_verify", help_text)
-        self.assertNotIn("optimize_verify_batch", help_text)
+        self.assertNotIn("optimize-verify", help_text)
+        self.assertNotIn("optimize-verify-batch", help_text)
         self.assertNotIn("optimize_batch", help_text)
 
-    def test_optimize_verify_maps_to_command_kind(self) -> None:
+    def test_top_level_help_groups_commands_and_examples(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize-verify", "-i", "workspace"])
-        self.assertEqual(args.command, "optimize-verify")
-        self.assertEqual(args.command_kind, CommandKind.OPTIMIZE_VERIFY)
+        help_text = parser.format_help()
+        self.assertIn("Generate, run, verify, and optimize Triton NPU operator workflows.", help_text)
+        self.assertIn("Command groups:", help_text)
+        self.assertIn("Generation:", help_text)
+        self.assertIn("Execution:", help_text)
+        self.assertIn("Comparison:", help_text)
+        self.assertIn("Verification:", help_text)
+        self.assertIn("Optimization:", help_text)
+        self.assertIn("Examples:", help_text)
+        self.assertIn("triton-agent gen-test -i kernel.py", help_text)
+        self.assertIn("triton-agent optimize -i kernel.py --agent codex", help_text)
+        self.assertIn("triton-agent verify -i .", help_text)
+
+    def test_subcommand_help_includes_command_description(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            with redirect_stdout(StringIO()) as stdout:
+                parser.parse_args(["gen-test", "--help"])
+        help_text = stdout.getvalue()
+        self.assertIn("Generate a test harness for one operator file.", help_text)
+        self.assertIn("--agent", help_text)
+        self.assertIn("--test-mode", help_text)
+
+    def test_verify_maps_to_command_kind(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["verify", "-i", "workspace"])
+        self.assertEqual(args.command, "verify")
+        self.assertEqual(args.command_kind, CommandKind.VERIFY)
         self.assertEqual(args.input, "workspace")
         self.assertEqual(args.phase, "all")
         self.assertIsNone(args.test_mode)
@@ -160,11 +182,11 @@ class CliParserTests(unittest.TestCase):
         self.assertFalse(hasattr(args, "output"))
         self.assertFalse(hasattr(args, "show_output"))
 
-    def test_optimize_verify_accepts_phase_and_remote_options(self) -> None:
+    def test_verify_accepts_phase_and_remote_options(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
             [
-                "optimize-verify",
+                "verify",
                 "-i",
                 "workspace",
                 "--phase",
@@ -181,11 +203,11 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.remote_workdir, "/tmp/triton-agent")
         self.assertTrue(args.keep_remote_workdir)
 
-    def test_optimize_verify_batch_maps_to_command_kind(self) -> None:
+    def test_verify_batch_maps_to_command_kind(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize-verify-batch", "-i", "workspace-root"])
-        self.assertEqual(args.command, "optimize-verify-batch")
-        self.assertEqual(args.command_kind, CommandKind.OPTIMIZE_VERIFY_BATCH)
+        args = parser.parse_args(["verify-batch", "-i", "workspace-root"])
+        self.assertEqual(args.command, "verify-batch")
+        self.assertEqual(args.command_kind, CommandKind.VERIFY_BATCH)
         self.assertEqual(args.input, "workspace-root")
         self.assertFalse(args.force_verify)
         self.assertFalse(args.verbose)
@@ -193,11 +215,30 @@ class CliParserTests(unittest.TestCase):
         self.assertFalse(hasattr(args, "interact"))
         self.assertFalse(hasattr(args, "output"))
 
-    def test_optimize_verify_batch_accepts_force_verify(self) -> None:
+    def test_verify_batch_accepts_force_verify(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize-verify-batch", "-i", "workspace-root", "--force-verify"])
-        self.assertEqual(args.command_kind, CommandKind.OPTIMIZE_VERIFY_BATCH)
+        args = parser.parse_args(["verify-batch", "-i", "workspace-root", "--force-verify"])
+        self.assertEqual(args.command_kind, CommandKind.VERIFY_BATCH)
         self.assertTrue(args.force_verify)
+
+    def test_verify_batch_accepts_remote_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "verify-batch",
+                "-i",
+                "workspace-root",
+                "--remote",
+                "alice@example.com",
+                "--remote-workdir",
+                "/tmp/triton-agent",
+                "--keep-remote-workdir",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.VERIFY_BATCH)
+        self.assertEqual(args.remote, "alice@example.com")
+        self.assertEqual(args.remote_workdir, "/tmp/triton-agent")
+        self.assertTrue(args.keep_remote_workdir)
 
     def test_run_bench_has_common_options(self) -> None:
         parser = build_parser()

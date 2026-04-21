@@ -1,10 +1,10 @@
-# Optimize Verify Batch Implementation Plan
+# Verify Batch Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add `optimize-verify-batch`, teach `optimize-status` to surface the latest successful verification as `Verified`, and keep status reporting read-only.
+**Goal:** Add `verify-batch`, teach `optimize-status` to surface the latest successful verification as `Verified`, and keep status reporting read-only.
 
-**Architecture:** Extend the command surface with a dedicated batch verify entrypoint instead of overloading `optimize-status`. Keep single-workspace verification in `optimize/verify.py`, add a focused `optimize/verify_batch.py` module for root-level orchestration and latest-result reuse, and teach optimize status inspection/rendering to read the newest `verify-state.json` and derive a compact `verified` flag.
+**Architecture:** Extend the command surface with a dedicated batch verify entrypoint instead of overloading `optimize-status`. Keep single-workspace verification in `verification/core.py`, add a focused `verification/batch.py` module for root-level orchestration and latest-result reuse, and teach optimize status inspection/rendering to read the newest `verify-state.json` and derive a compact `verified` flag.
 
 **Tech Stack:** Python 3.11, `argparse`, `pathlib`, existing optimize status/verify helpers, Python `unittest`
 
@@ -20,15 +20,15 @@
 - [ ] **Step 1: Write the failing parser tests**
 
 Add parser coverage for:
-- `optimize-verify-batch -i workspace-root`
-- `optimize_verify_batch -i workspace-root`
-- `optimize-verify-batch -i workspace-root --force-verify`
+- `verify-batch -i workspace-root`
+- `verify_batch -i workspace-root`
+- `verify-batch -i workspace-root --force-verify`
 
 Assert the command kind, `input`, and `force_verify` values.
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `uv run python -m unittest tests.test_cli.CliParserTests.test_optimize_verify_batch_maps_to_command_kind tests.test_cli.CliParserTests.test_optimize_verify_batch_accepts_force_verify -v`
+Run: `uv run python -m unittest tests.test_cli.CliParserTests.test_verify_batch_maps_to_command_kind tests.test_cli.CliParserTests.test_verify_batch_accepts_force_verify -v`
 
 Expected: FAIL because the command kind and parser arguments do not exist yet.
 
@@ -36,7 +36,7 @@ Expected: FAIL because the command kind and parser arguments do not exist yet.
 
 Update:
 - `src/triton_agent/models.py`
-  - add `CommandKind.OPTIMIZE_VERIFY_BATCH = "optimize-verify-batch"`
+  - add `CommandKind.VERIFY_BATCH = "verify-batch"`
   - add an empty `COMMAND_TO_SKILL` mapping entry
 - `src/triton_agent/cli.py`
   - register the new command in `_COMMAND_SPECS`
@@ -45,7 +45,7 @@ Update:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `uv run python -m unittest tests.test_cli.CliParserTests.test_optimize_verify_batch_maps_to_command_kind tests.test_cli.CliParserTests.test_optimize_verify_batch_accepts_force_verify -v`
+Run: `uv run python -m unittest tests.test_cli.CliParserTests.test_verify_batch_maps_to_command_kind tests.test_cli.CliParserTests.test_verify_batch_accepts_force_verify -v`
 
 Expected: PASS
 
@@ -112,7 +112,7 @@ git commit -m "feat: surface latest optimize verify status"
 ### Task 3: Add batch verify orchestration with reuse and force-rerun behavior
 
 **Files:**
-- Create: `src/triton_agent/optimize/verify_batch.py`
+- Create: `src/triton_agent/verification/batch.py`
 - Modify: `tests/test_cli.py`
 - Modify: `src/triton_agent/commands/optimize.py`
 - Modify: `src/triton_agent/optimize/render.py`
@@ -125,48 +125,48 @@ Add tests for:
 - skipping non-verifiable workspaces
 - continuing after one workspace fails
 - returning non-zero when any rerun fails
-- `main(["optimize-verify-batch", ...])` dispatches the batch command correctly
+- `main(["verify-batch", ...])` dispatches the batch command correctly
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `uv run python -m unittest tests.test_cli.PathResolutionTests.test_main_optimize_verify_batch_reuses_latest_verify tests.test_cli.PathResolutionTests.test_main_optimize_verify_batch_force_verify_reruns -v`
+Run: `uv run python -m unittest tests.test_verify_batch -v`
 
 Expected: FAIL because the batch command handler and orchestration module do not exist.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Add `src/triton_agent/optimize/verify_batch.py` with focused helpers to:
+Add `src/triton_agent/verification/batch.py` with focused helpers to:
 - scan child workspace directories under a root
 - discover the latest verify state
 - decide reuse vs rerun
-- call `prepare_optimize_verify_target()` and `run_optimize_verify()` only when rerun is needed
+- call `prepare_verify_target()` and `run_verify()` only when rerun is needed
 - collect per-workspace outcomes
 - produce an exit code for the batch command
 
 Update:
 - `src/triton_agent/commands/optimize.py`
-  - add `handle_optimize_verify_batch`
+  - add `handle_verify_batch`
 - `src/triton_agent/optimize/render.py`
   - add a renderer for batch verify outcomes if the new command needs explicit summary output
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `uv run python -m unittest tests.test_cli.PathResolutionTests.test_main_optimize_verify_batch_reuses_latest_verify tests.test_cli.PathResolutionTests.test_main_optimize_verify_batch_force_verify_reruns -v`
+Run: `uv run python -m unittest tests.test_verify_batch -v`
 
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/triton_agent/optimize/verify_batch.py src/triton_agent/commands/optimize.py src/triton_agent/optimize/render.py tests/test_cli.py
-git commit -m "feat: add optimize verify batch orchestration"
+git add src/triton_agent/verification/batch.py src/triton_agent/commands/verification.py src/triton_agent/optimize/render.py tests/test_cli.py tests/test_verify_batch.py
+git commit -m "feat: add verify batch orchestration"
 ```
 
 ### Task 4: Update docs and run full verification
 
 **Files:**
 - Modify: `README.md`
-- Modify: `docs/specs/2026-04-21-optimize-verify-batch-design.md`
+- Modify: `docs/specs/2026-04-21-verify-batch-design.md`
 
 - [ ] **Step 1: Write the failing docs-oriented regression expectation**
 
@@ -174,7 +174,7 @@ This task is doc and verification focused, so use the existing code/tests from T
 
 - [ ] **Step 2: Run focused verification before doc updates**
 
-Run: `uv run python -m unittest tests.test_cli tests.test_optimize_status tests.test_optimize_render tests.test_optimize_verify -v`
+Run: `uv run python -m unittest tests.test_cli tests.test_optimize_status tests.test_optimize_render tests.test_verify -v`
 
 Expected: PASS before updating docs.
 
@@ -182,10 +182,10 @@ Expected: PASS before updating docs.
 
 Update:
 - `README.md`
-  - document `optimize-verify-batch`
+  - document `verify-batch`
   - document `--force-verify`
   - document the `Verified` markdown column semantics
-- `docs/specs/2026-04-21-optimize-verify-batch-design.md`
+- `docs/specs/2026-04-21-verify-batch-design.md`
   - adjust wording only if implementation details changed during delivery
 
 - [ ] **Step 4: Run full repository verification**
@@ -203,6 +203,6 @@ Expected:
 - [ ] **Step 5: Commit**
 
 ```bash
-git add README.md docs/specs/2026-04-21-optimize-verify-batch-design.md
+git add README.md docs/specs/2026-04-21-verify-batch-design.md
 git commit -m "docs: document optimize verify batch"
 ```

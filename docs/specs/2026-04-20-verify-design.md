@@ -1,8 +1,8 @@
-# Optimize Verify Design
+# Verify Design
 
 ## Summary
 
-Add an `optimize-verify` subcommand that validates the current best optimize round without mutating existing optimize artifacts.
+Add a `verify` subcommand that validates the current best optimize round without mutating existing optimize artifacts.
 
 The command selects the numeric best round using the same performance ranking as `optimize-status`, copies both the best-round operator and the baseline operator plus the reusable harness files into a fresh verification directory, and runs correctness plus benchmark validation from that directory.
 
@@ -27,9 +27,9 @@ The command selects the numeric best round using the same performance ranking as
 Run:
 
 ```bash
-uv run triton-agent optimize-verify --input .
-uv run triton-agent optimize-verify --input . --phase test
-uv run triton-agent optimize-verify --input . --phase bench
+uv run triton-agent verify --input .
+uv run triton-agent verify --input . --phase test
+uv run triton-agent verify --input . --phase bench
 ```
 
 `--input` must point to one operator workspace with optimize artifacts.
@@ -155,5 +155,5 @@ When a runner fails after the verification directory is created, keep the direct
 - Unit test target resolution from baseline and round contracts.
 - Unit test fresh verification directory creation and operator copy behavior.
 - Unit test phase-specific execution with mocked runners.
-- CLI parser tests for `optimize-verify`, `optimize_verify`, `--phase`, local and remote execution flags.
+- CLI parser tests for `verify`, `--phase`, local and remote execution flags.
 - CLI handler tests proving execution uses the copied operator path, not the original round operator.
