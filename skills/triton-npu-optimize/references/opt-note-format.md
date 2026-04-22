@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`opt-note.md` is the top-level running log for the optimization session.
+`opt-note.md` is the top-level running log for the optimization session's completed round records and final outcome summary.
 
 Use it to:
 
@@ -22,6 +22,7 @@ Use it to:
 - Mention whether the round is now the current best candidate.
 - Record both the parent and the measured improvement or regression status.
 - Mention the optimization point in a way that reflects why the round was pursued.
+- Do not put session-start diagnosis, tentative bottleneck narrative, or other pre-round analysis above the round history; keep that reasoning in round-local artifacts such as `opt-round-N/attempts.md`.
 - Keep exactly one `## Overall Summary` section at the end of the file.
 - Refresh the existing overall summary when the optimize session continues instead of appending a second final section.
 
@@ -80,6 +81,7 @@ Next step: profile round-3 if more latency reduction is needed.
 - Prefer user-visible outcomes over implementation trivia.
 - Keep the note readable as a project history log.
 - Put detailed reasoning, code snippets, and deeper analysis in the per-round summary instead of the top-level note.
+- Put initial hypotheses, evolving reasoning, and diagnosis pivots in `opt-round-N/attempts.md`, `summary.md`, or `perf-analysis.md`, not in the top-level note.
 - Keep the top-level note concise, but make sure a reader can still tell why the chosen round direction was reasonable.
 - Use `Geomean speedup` as the headline metric for the final best round and include `Total speedup` as the whole-workload view.
 - Use `Validated branches` to list non-best rounds that are still worth revisiting later.

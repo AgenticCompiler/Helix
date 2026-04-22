@@ -189,6 +189,40 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("could plausibly be promoted into an optimize skill", optimize)
         self.assertIn("Do not use `learned_lessons.md` for round narrative", optimize)
 
+    def test_optimize_docs_keep_opt_note_round_only_and_put_initial_hypothesis_in_attempts(self) -> None:
+        optimize = _read("skills/triton-npu-optimize/SKILL.md")
+        workflow = _read("skills/triton-npu-optimize/references/workflow.md")
+        opt_note = _read("skills/triton-npu-optimize/references/opt-note-format.md")
+        artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
+
+        self.assertIn("completed round entries and one final `## Overall Summary`", optimize)
+        self.assertIn(
+            "For round 1, record the initial round hypothesis in `opt-round-1/attempts.md`",
+            optimize,
+        )
+        self.assertIn(
+            "Treat `opt-note.md` as the top-level round ledger plus one final `## Overall Summary`",
+            workflow,
+        )
+        self.assertIn(
+            "For round 1, record the starting hypothesis in `opt-round-1/attempts.md`",
+            workflow,
+        )
+        self.assertIn(
+            "completed round records and final outcome summary",
+            opt_note,
+        )
+        self.assertIn(
+            "Do not put session-start diagnosis, tentative bottleneck narrative, or other pre-round analysis above the round history",
+            opt_note,
+        )
+        self.assertIn(
+            "Do not write session-start diagnosis or tentative bottleneck narrative in `opt-note.md`",
+            artifacts,
+        )
+        self.assertNotIn("Record a short diagnosis before the first code-changing round", optimize)
+        self.assertNotIn("Write a short diagnosis summary before the first code-changing round", workflow)
+
     def test_optimize_artifacts_document_strict_learned_lessons_boundary(self) -> None:
         artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
         self.assertIn("strict reusable optimization-knowledge log", artifacts)

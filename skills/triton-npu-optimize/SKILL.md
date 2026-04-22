@@ -24,7 +24,7 @@ Use this skill when the user wants the operator itself improved rather than only
 - One `attempts.md` inside each round directory, updated throughout the round
 - One `summary.md` inside each completed round directory
 - Round-local benchmark evidence, with optional `profile/` and `ir/` evidence directories when deeper investigation is needed
-- Updated `opt-note.md` in the operator workspace
+- Updated `opt-note.md` in the operator workspace with completed round entries and one final `## Overall Summary`
 - Updated `learned_lessons.md` in the operator workspace only when the run discovers reusable optimization knowledge that passes the strict admission criteria
 - Correctness, benchmark, and profiling evidence produced through the `triton-npu-run-eval` skill
 
@@ -112,9 +112,9 @@ Do not use `learned_lessons.md` for round narrative, local command failures, fai
 7. Populate every required `baseline/state.json` field exactly as described in [artifacts.md](references/artifacts.md), and set `baseline_established` to `true` only after `correctness_status` and `benchmark_status` are both `passed`.
 8. Treat the canonical baseline as the session-level comparison target, not as an optimization round.
 9. Run the sibling `triton-npu-optimize-check` skill with `check-baseline` and keep repairing baseline state until it passes.
-10. Record a short diagnosis before the first code-changing round. The diagnosis should name the suspected bottleneck, the current evidence, and what kind of optimization direction looks justified.
-11. Create `opt-round-N/`, copy the chosen parent operator into it, and start `attempts.md` immediately so every meaningful attempt and measurement is recorded.
-12. Before editing code, state the optimization hypothesis for the round, explain why it may help, and cite the supporting evidence. Evidence may come from code inspection, benchmark behavior, profiling, IR inspection, or a combination of them.
+10. Create `opt-round-N/`, copy the chosen parent operator into it, and start `attempts.md` immediately so every meaningful attempt and measurement is recorded.
+11. For round 1, record the initial round hypothesis in `opt-round-1/attempts.md` before the first code change. State why it may help, what evidence supports starting there, and why profiling or IR capture is being skipped when those tools are not used yet.
+12. Before editing code for any round, state the optimization hypothesis for the round, explain why it may help, and cite the supporting evidence. Evidence may come from code inspection, benchmark behavior, profiling, IR inspection, or a combination of them.
 13. If you skip profiling or IR capture for a round, explain in `attempts.md` why the existing evidence is already sufficient.
 14. Read `references/patterns/index.md`, pick one optimization hypothesis, and read only the one or two detailed pattern references that match that hypothesis when they are relevant; if a better hypothesis comes from your own Triton or NPU optimization knowledge, use that hypothesis directly and document it clearly.
 15. Apply one coherent optimization theme for the round, then run correctness validation before trusting any performance result.

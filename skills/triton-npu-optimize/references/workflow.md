@@ -27,7 +27,7 @@ Turn operator optimization into a repeatable search process over validated candi
 10. Populate `baseline/state.json` using the exact baseline artifact contract in [artifacts.md](artifacts.md).
 11. Set `baseline_established` to `true` only after `correctness_status` and `benchmark_status` are both `passed`.
 12. Initialize `opt-note.md` if it does not exist.
-13. Write a short diagnosis summary before the first code-changing round so later readers can see the suspected bottleneck and the initial evidence.
+13. Treat `opt-note.md` as the top-level round ledger plus one final `## Overall Summary`; do not write session-start diagnosis or tentative bottleneck narrative there.
 
 ## Candidate Selection
 
@@ -57,7 +57,7 @@ Avoid selecting a parent that:
    - more parallel load order
    - reduced unnecessary masking
    - software pipelining
-6. Record the initial hypothesis in `attempts.md`, including why it may help and what evidence supports it.
+6. For round 1, record the starting hypothesis in `opt-round-1/attempts.md`; for later rounds, record the initial round hypothesis in that round's `attempts.md`, including why it may help and what evidence supports it.
 7. If you are not collecting profiling or IR evidence for this round, record why the current code or benchmark evidence is already sufficient.
 8. Apply the optimization.
 9. Record the code change in `attempts.md`.

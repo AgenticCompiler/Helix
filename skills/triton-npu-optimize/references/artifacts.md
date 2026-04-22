@@ -17,6 +17,14 @@ Expected long-lived artifacts:
 - `opt-round-2/`
 - ...
 
+## Top-Level Session Note
+
+`opt-note.md` is the top-level ledger for completed round entries and one final `## Overall Summary`.
+
+Do not write session-start diagnosis or tentative bottleneck narrative in `opt-note.md`.
+
+For round 1, record the starting hypothesis in `opt-round-1/attempts.md`. For later rounds, keep the initial hypothesis in that round's `attempts.md`.
+
 ## Baseline Directory
 
 The canonical optimize baseline lives under `baseline/`.
