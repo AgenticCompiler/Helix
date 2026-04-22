@@ -2,9 +2,9 @@
 
 ## Goal
 
-Add a batch verification command for optimize workspaces while keeping `optimize-status` read-only.
+Add a batch verification command for optimize workspaces while keeping `status` read-only.
 
-The new flow should let users run verification across a root directory of operator workspaces, reuse the latest verification result by default, optionally force a rerun, and expose a compact verification signal in `optimize-status`.
+The new flow should let users run verification across a root directory of operator workspaces, reuse the latest verification result by default, optionally force a rerun, and expose a compact verification signal in `status`.
 
 ## User-Facing Changes
 
@@ -38,9 +38,9 @@ Behavior:
 
 These flags apply uniformly to every workspace in the batch run. A single invocation does not support per-workspace remote overrides.
 
-### `optimize-status` display
+### `status` display
 
-Keep `optimize-status` read-only. It must not run verification.
+Keep `status` read-only. It must not run verification.
 
 Add verification columns to markdown output:
 
@@ -88,7 +88,7 @@ The latest result should be selected by verify directory name ordering, not file
 
 ## Verified Semantics
 
-The `Verified` marker in `optimize-status` should only be shown when the latest verify result is a full, successful verification run.
+The `Verified` marker in `status` should only be shown when the latest verify result is a full, successful verification run.
 
 That means the latest `verify-state.json` must contain:
 
@@ -106,7 +106,7 @@ Extend `OptimizeStatusWorkspace` with read-only verification metadata so renderi
 - `latest_verify_state: Path | None`
 - `verified: bool`
 
-These fields are derived from the latest verify result on disk. `optimize-status` should not need to understand all verify details beyond:
+These fields are derived from the latest verify result on disk. `status` should not need to understand all verify details beyond:
 
 - where the latest state file is
 - whether that latest result qualifies as `Verified`
@@ -166,7 +166,7 @@ The batch command should return:
 
 ### Status rendering
 
-`optimize-status` must never fail just because the latest verify result is malformed or incomplete. In that case:
+`status` must never fail just because the latest verify result is malformed or incomplete. In that case:
 
 - keep `latest_verify_state` when the file exists
 - set `verified = False`
@@ -209,7 +209,7 @@ Add or update tests for:
    - mark `verified = True` only for full successful runs
    - keep `verified = False` for partial or failed runs
 
-4. `optimize-status` rendering
+4. `status` rendering
    - markdown includes `Verified`
    - successful latest verify shows `Verified`
    - missing, partial, or failed latest verify shows `-`

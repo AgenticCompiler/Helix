@@ -10,11 +10,11 @@ from triton_agent.commands.execution import handle_run_bench, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
 from triton_agent.commands.generation import handle_gen_eval
 from triton_agent.commands.generation import handle_gen_eval_batch
+from triton_agent.commands.status import handle_status
 from triton_agent.commands.verification import handle_verify, handle_verify_batch
 from triton_agent.commands.optimize import (
     handle_optimize,
     handle_optimize_batch,
-    handle_optimize_status,
 )
 from triton_agent.models import CommandKind
 
@@ -35,6 +35,7 @@ _TOP_LEVEL_EXAMPLES = (
     "triton-agent run-test --test-file test_kernel.py --operator-file kernel.py",
     "triton-agent compare-perf --baseline baseline.txt --compare candidate.txt",
     "triton-agent verify -i .",
+    "triton-agent status -i .",
     "triton-agent optimize -i kernel.py --agent codex",
 )
 
@@ -160,9 +161,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_output=False,
         has_verbose=False,
     ),
-    CommandKind.OPTIMIZE_STATUS: _CommandSpec(
-        handler=handle_optimize_status,
-        help_group="Optimization",
+    CommandKind.STATUS: _CommandSpec(
+        handler=handle_status,
+        help_group="Status",
         help_summary="Show optimization status for one workspace.",
         description="Show optimization status for one workspace.",
         has_output=False,
@@ -298,7 +299,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _build_top_level_epilog() -> str:
     lines = ["Command groups:"]
-    group_names = ("Generation", "Execution", "Comparison", "Verification", "Optimization")
+    group_names = ("Generation", "Execution", "Comparison", "Status", "Verification", "Optimization")
     for group_name in group_names:
         lines.append(f"{group_name}:")
         for command_kind in CommandKind:
@@ -352,7 +353,6 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "run_bench": "run-bench",
         "compare_result": "compare-result",
         "compare_perf": "compare-perf",
-        "optimize_status": "optimize-status",
         "verify_batch": "verify-batch",
         "optimize_batch": "optimize-batch",
     }

@@ -13,7 +13,7 @@ This README is organized by task so you can quickly find the right command for t
 - `gen-bench`: generate a benchmark for one operator.
 - `run-bench`: run an existing generated benchmark.
 - `optimize`: optimize one operator.
-- `optimize-status`: summarize optimization progress across many workspaces.
+- `status`: summarize optimization progress across many workspaces.
 - `verify`: rerun tests and benchmarks for the current best optimize round.
 - `verify-batch`: verify many optimize workspaces under one root.
 - `optimize-batch`: optimize many operator workspaces.
@@ -39,8 +39,8 @@ For batch workflows, point `--input` at either a directory whose immediate child
 ```bash
 uv run triton-agent gen-eval-batch --input operators_root
 uv run triton-agent gen-eval-batch --input .
-uv run triton-agent optimize-status --input operators_root
-uv run triton-agent optimize-status --input operators_root --format markdown
+uv run triton-agent status --input operators_root
+uv run triton-agent status --input operators_root --format markdown
 uv run triton-agent verify --input .
 uv run triton-agent verify-batch --input operators_root
 uv run triton-agent optimize-batch --input operators_root
@@ -260,9 +260,9 @@ Common options:
 ### Check Optimization Status
 
 ```bash
-uv run triton-agent optimize-status --input operators_root
-uv run triton-agent optimize-status --input .
-uv run triton-agent optimize-status --input operators_root --format markdown
+uv run triton-agent status --input operators_root
+uv run triton-agent status --input .
+uv run triton-agent status --input operators_root --format markdown
 ```
 
 Use this command to get a read-only summary of optimization progress across workspaces.

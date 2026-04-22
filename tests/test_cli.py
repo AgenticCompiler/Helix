@@ -14,6 +14,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import triton_agent.cli as cli_module
+import triton_agent.commands.optimize as optimize_commands
 from triton_agent.cli import (
     _normalize_command_aliases,
     build_parser,
@@ -52,6 +53,9 @@ class CliParserTests(unittest.TestCase):
         self.assertFalse(hasattr(cli_module, "compare_remote_result_files"))
         self.assertFalse(hasattr(cli_module, "compare_perf_files"))
         self.assertFalse(hasattr(cli_module, "parse_perf_file"))
+
+    def test_optimize_command_module_no_longer_owns_status_handler(self) -> None:
+        self.assertFalse(hasattr(optimize_commands, "handle_optimize_status"))
 
     def test_command_definitions_cover_every_command_kind(self) -> None:
         self.assertEqual(set(cli_module._COMMAND_SPECS), set(CommandKind))
@@ -95,7 +99,6 @@ class CliParserTests(unittest.TestCase):
             ("run_test", CommandKind.RUN_TEST),
             ("gen_bench", CommandKind.GEN_BENCH),
             ("run_bench", CommandKind.RUN_BENCH),
-            ("optimize_status", CommandKind.OPTIMIZE_STATUS),
             ("verify_batch", CommandKind.VERIFY_BATCH),
             ("optimize_batch", CommandKind.OPTIMIZE_BATCH),
         ]
@@ -123,7 +126,7 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("run-bench", help_text)
         self.assertIn("compare-result", help_text)
         self.assertIn("compare-perf", help_text)
-        self.assertIn("optimize-status", help_text)
+        self.assertIn("status", help_text)
         self.assertIn("verify", help_text)
         self.assertIn("verify-batch", help_text)
         self.assertIn("optimize-batch", help_text)
@@ -135,6 +138,7 @@ class CliParserTests(unittest.TestCase):
         self.assertNotIn("run_bench", help_text)
         self.assertNotIn("compare_result", help_text)
         self.assertNotIn("compare_perf", help_text)
+        self.assertNotIn("optimize-status", help_text)
         self.assertNotIn("optimize_status", help_text)
         self.assertNotIn("optimize-verify", help_text)
         self.assertNotIn("optimize-verify-batch", help_text)
@@ -148,12 +152,14 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("Generation:", help_text)
         self.assertIn("Execution:", help_text)
         self.assertIn("Comparison:", help_text)
+        self.assertIn("Status:", help_text)
         self.assertIn("Verification:", help_text)
         self.assertIn("Optimization:", help_text)
         self.assertIn("Examples:", help_text)
         self.assertIn("triton-agent gen-test -i kernel.py", help_text)
         self.assertIn("triton-agent optimize -i kernel.py --agent codex", help_text)
         self.assertIn("triton-agent verify -i .", help_text)
+        self.assertIn("triton-agent status -i .", help_text)
 
     def test_subcommand_help_includes_command_description(self) -> None:
         parser = build_parser()
@@ -850,10 +856,10 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.target_chip, "A5")
         self.assertEqual(options.target_chip, "A5")
 
-    def test_optimize_status_maps_to_command_kind(self) -> None:
+    def test_status_maps_to_command_kind(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize-status", "-i", "kernels"])
-        self.assertEqual(args.command_kind, CommandKind.OPTIMIZE_STATUS)
+        args = parser.parse_args(["status", "-i", "kernels"])
+        self.assertEqual(args.command_kind, CommandKind.STATUS)
         self.assertTrue(args.verbose is False)
         self.assertEqual(args.format, "text")
         self.assertFalse(hasattr(args, "agent"))
@@ -861,10 +867,15 @@ class CliParserTests(unittest.TestCase):
         self.assertFalse(hasattr(args, "remote"))
         self.assertFalse(hasattr(args, "output"))
 
-    def test_optimize_status_accepts_markdown_format(self) -> None:
+    def test_status_accepts_markdown_format(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize-status", "-i", "kernels", "--format", "markdown"])
+        args = parser.parse_args(["status", "-i", "kernels", "--format", "markdown"])
         self.assertEqual(args.format, "markdown")
+
+    def test_optimize_status_no_longer_parses(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["optimize-status", "-i", "kernels"])
 
     def test_optimize_batch_accepts_optimize_options(self) -> None:
         parser = build_parser()
@@ -928,41 +939,41 @@ class CliParserTests(unittest.TestCase):
 
 
 class PathResolutionTests(unittest.TestCase):
-    def test_main_optimize_status_rejects_missing_root(self) -> None:
+    def test_main_status_rejects_missing_root(self) -> None:
         stderr = StringIO()
         with redirect_stderr(stderr):
             with self.assertRaises(SystemExit) as exc:
-                main(["optimize-status", "-i", "/tmp/definitely-missing-triton-agent-root"])
+                main(["status", "-i", "/tmp/definitely-missing-triton-agent-root"])
 
         self.assertEqual(exc.exception.code, 2)
         self.assertIn("Input path does not exist", stderr.getvalue())
 
-    def test_main_optimize_status_reports_empty_root(self) -> None:
+    def test_main_status_reports_empty_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             stderr = StringIO()
 
             with redirect_stderr(stderr):
-                exit_code = main(["optimize-status", "-i", str(root)])
+                exit_code = main(["status", "-i", str(root)])
 
             self.assertEqual(exit_code, 1)
             self.assertIn("No operator workspaces found under", stderr.getvalue())
 
-    def test_main_optimize_status_reports_no_session_workspaces(self) -> None:
+    def test_main_status_reports_no_session_workspaces(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "fresh").mkdir()
             stdout = StringIO()
 
             with redirect_stdout(stdout):
-                exit_code = main(["optimize-status", "-i", str(root)])
+                exit_code = main(["status", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()
             self.assertIn("[NO-SESSION] fresh", rendered)
             self.assertIn("Summary: 0 ok, 0 warning, 1 no-session", rendered)
 
-    def test_main_optimize_status_accepts_single_workspace_input(self) -> None:
+    def test_main_status_accepts_single_workspace_input(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             (workspace / "kernel_perf.txt").write_text(
@@ -978,7 +989,7 @@ class PathResolutionTests(unittest.TestCase):
 
             stdout = StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["optimize-status", "-i", str(workspace)])
+                exit_code = main(["status", "-i", str(workspace)])
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()
@@ -986,7 +997,7 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("Best round: round-1", rendered)
             self.assertNotIn("[NO-SESSION] opt-round-1", rendered)
 
-    def test_main_optimize_status_sorts_no_session_first_then_remaining_by_name(self) -> None:
+    def test_main_status_sorts_no_session_first_then_remaining_by_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "gamma").mkdir()
@@ -1019,14 +1030,14 @@ class PathResolutionTests(unittest.TestCase):
 
             stdout = StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["optimize-status", "-i", str(root)])
+                exit_code = main(["status", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()
             self.assertLess(rendered.index("[NO-SESSION] gamma"), rendered.index("[OK] alpha"))
             self.assertLess(rendered.index("[OK] alpha"), rendered.index("[WARN] zeta"))
 
-    def test_main_optimize_status_reports_numeric_best_and_logged_best(self) -> None:
+    def test_main_status_reports_numeric_best_and_logged_best(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             workspace = root / "matmul"
@@ -1069,7 +1080,7 @@ class PathResolutionTests(unittest.TestCase):
 
             stdout = StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["optimize-status", "-i", str(root)])
+                exit_code = main(["status", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()
@@ -1088,7 +1099,7 @@ class PathResolutionTests(unittest.TestCase):
                 rendered,
             )
 
-    def test_main_optimize_status_prefers_overall_summary_logged_best(self) -> None:
+    def test_main_status_prefers_overall_summary_logged_best(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             workspace = root / "matmul"
@@ -1127,7 +1138,7 @@ class PathResolutionTests(unittest.TestCase):
 
             stdout = StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["optimize-status", "-i", str(root)])
+                exit_code = main(["status", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()
@@ -1139,7 +1150,7 @@ class PathResolutionTests(unittest.TestCase):
                 rendered,
             )
 
-    def test_main_optimize_status_warns_when_perf_ids_do_not_match(self) -> None:
+    def test_main_status_warns_when_perf_ids_do_not_match(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             workspace = root / "layernorm"
@@ -1157,7 +1168,7 @@ class PathResolutionTests(unittest.TestCase):
 
             stdout = StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["optimize-status", "-i", str(root)])
+                exit_code = main(["status", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()
@@ -1170,7 +1181,7 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("missing required latency ids", rendered)
             self.assertIn("Summary: 0 ok, 1 warning, 0 no-session", rendered)
 
-    def test_main_optimize_status_prefers_non_opt_top_level_perf_as_baseline(self) -> None:
+    def test_main_status_prefers_non_opt_top_level_perf_as_baseline(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             workspace = root / "matmul"
@@ -1192,7 +1203,7 @@ class PathResolutionTests(unittest.TestCase):
 
             stdout = StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["optimize-status", "-i", str(root)])
+                exit_code = main(["status", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()
@@ -1200,7 +1211,7 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("Best round: round-1", rendered)
             self.assertNotIn("Warning: found multiple baseline perf files", rendered)
 
-    def test_main_optimize_status_renders_markdown_table(self) -> None:
+    def test_main_status_renders_markdown_table(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "fresh").mkdir()
@@ -1268,7 +1279,7 @@ class PathResolutionTests(unittest.TestCase):
 
             stdout = StringIO()
             with redirect_stdout(stdout):
-                exit_code = main(["optimize-status", "-i", str(root), "--format", "markdown"])
+                exit_code = main(["status", "-i", str(root), "--format", "markdown"])
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()

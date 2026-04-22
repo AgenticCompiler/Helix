@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.optimize.models import OptimizeStatusWorkspace
-from triton_agent.optimize.render import render_optimize_status_results
+from triton_agent.status.render import render_optimize_status_results
 
 
 class _TTYStringIO(StringIO):
