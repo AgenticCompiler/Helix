@@ -57,7 +57,6 @@ def build_optimize_request(
             options.remote_workdir,
             options.min_rounds,
             resolution.resume_existing_session,
-            require_analysis=options.require_analysis,
             supervise=options.supervise,
             target_chip=options.target_chip,
             compiler_source_path=compiler_source.path,
@@ -76,7 +75,6 @@ def build_optimize_request(
             options.remote_workdir,
             options.min_rounds,
             resolution.resume_existing_session,
-            require_analysis=options.require_analysis,
             supervise=options.supervise,
             target_chip=options.target_chip,
         )
@@ -101,7 +99,6 @@ def build_optimize_request(
         workdir=workdir,
         min_rounds=options.min_rounds,
         continue_optimize=resolution.resume_existing_session,
-        require_analysis=options.require_analysis,
         no_agent_session=options.no_agent_session,
         supervise=options.supervise,
         staged_skill_names=None,

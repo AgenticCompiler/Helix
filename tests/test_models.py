@@ -46,7 +46,6 @@ class AgentRequestTests(unittest.TestCase):
             workdir=Path("/tmp"),
             min_rounds=2,
             continue_optimize=True,
-            require_analysis=True,
             no_agent_session=True,
             supervise="on",
             staged_skill_names=(
@@ -73,7 +72,6 @@ class AgentRequestTests(unittest.TestCase):
         self.assertEqual(updated.skill_name, request.skill_name)
         self.assertEqual(updated.min_rounds, request.min_rounds)
         self.assertEqual(updated.continue_optimize, request.continue_optimize)
-        self.assertEqual(updated.require_analysis, request.require_analysis)
         self.assertEqual(updated.no_agent_session, request.no_agent_session)
         self.assertEqual(updated.supervise, request.supervise)
         self.assertEqual(updated.staged_skill_names, request.staged_skill_names)

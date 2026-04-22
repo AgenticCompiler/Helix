@@ -57,7 +57,6 @@ class AgentRequest:
     workdir: Path
     min_rounds: Optional[int] = None
     continue_optimize: bool = False
-    require_analysis: bool = False
     no_agent_session: bool = False
     supervise: Literal["on", "off"] = "off"
     staged_skill_names: tuple[str, ...] | None = None

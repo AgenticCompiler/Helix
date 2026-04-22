@@ -189,7 +189,6 @@ Common options:
 - `--bench-mode standalone|msprof`: default is `standalone`
 - `--resume auto|continue|fresh`: default is `auto`
 - `--reset-optimize`: only valid with `--resume fresh`; remove known optimize-session artifacts before starting a new run while keeping reusable test and benchmark harnesses.
-- `--require-analysis`: strengthen analysis-first optimize guidance before the first code-changing round.
 - `--enable-compiler-source-analysis`: allow the optimize agent to use compiler source as an escalation after benchmark, profiler, and IR evidence.
 - `--min-rounds <N>`: require at least N optimization rounds.
 - `--no-agent-session`: disable persistent agent sessions when supported.
@@ -203,7 +202,6 @@ Examples:
 ```bash
 uv run triton-agent optimize --input a.py --min-rounds 3
 uv run triton-agent optimize --input a.py --resume continue
-uv run triton-agent optimize --input a.py --require-analysis
 uv run triton-agent optimize --input a.py --enable-compiler-source-analysis
 uv run triton-agent optimize --input a.py --prompt "Prioritize memory-coalescing improvements."
 ```
@@ -220,6 +218,10 @@ Resume modes:
 Optimize behavior:
 
 - Establish or reuse a canonical `baseline/` directory before treating `opt-round-1` as the first optimization round.
+- If `baseline/` is missing or invalid, baseline preparation is handled by `triton-npu-prepare-optimize-baseline` before round work begins.
+- Every optimize run follows the default layered analysis ladder: pattern triage -> profiling diagnosis -> IR attribution -> compiler-source escalation.
+- Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.
+- Use compiler source only as the deepest escalation, and only when `--enable-compiler-source-analysis` is set.
 - Keep canonical baseline assets under:
   - `baseline/state.json`
   - `baseline/perf.txt`
@@ -362,7 +364,6 @@ Common options:
 - `--bench-mode standalone|msprof`
 - `--resume auto|continue|fresh`
 - `--reset-optimize`: when used with `--resume fresh`, clear known optimize artifacts for each workspace and reset the batch status file before rerunning
-- `--require-analysis`
 - `--enable-compiler-source-analysis`
 - `--min-rounds <N>`
 - `--no-agent-session`

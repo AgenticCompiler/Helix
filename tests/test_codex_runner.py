@@ -353,7 +353,6 @@ class CodexRunnerTests(unittest.TestCase):
                 ),
                 workdir=workspace,
                 min_rounds=3,
-                require_analysis=True,
                 supervise="on",
             )
             with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
@@ -364,7 +363,10 @@ class CodexRunnerTests(unittest.TestCase):
             self.assertIn("Continue the existing optimize task", resumed_request)
             self.assertIn("Read `opt-note.md`", resumed_request)
             self.assertIn("existing `opt-round-*` directories", resumed_request)
-            self.assertIn("profiling or IR-backed evidence", resumed_request)
+            self.assertIn(
+                "Escalate analysis in this order: pattern triage, profiling diagnosis, IR attribution, compiler-source escalation.",
+                resumed_request,
+            )
 
     def test_session_id_extractor_reads_codex_startup_text(self) -> None:
         line = "session id: 019da9c2-dfcb-7c71-a2f9-7a90bab2e0f5\n"

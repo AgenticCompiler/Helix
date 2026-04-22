@@ -19,7 +19,7 @@ _BACKEND_SKILL_DIRS = {
 
 
 class SkillLinkManagerTests(unittest.TestCase):
-    def test_repo_skills_stage_optimize_and_optimize_check_for_codex(self) -> None:
+    def test_repo_skills_stage_optimize_baseline_and_optimize_check_for_codex(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
@@ -31,6 +31,7 @@ class SkillLinkManagerTests(unittest.TestCase):
                 workspace,
                 skill_names=(
                     "triton-npu-optimize",
+                    "triton-npu-prepare-optimize-baseline",
                     "triton-npu-optimize-check",
                     "triton-npu-analyze-round-performance",
                 ),
@@ -38,6 +39,7 @@ class SkillLinkManagerTests(unittest.TestCase):
 
             target = self._skills_target(workspace, "codex")
             self.assertTrue((target / "triton-npu-optimize" / "SKILL.md").exists())
+            self.assertTrue((target / "triton-npu-prepare-optimize-baseline" / "SKILL.md").exists())
             self.assertTrue((target / "triton-npu-optimize-check" / "SKILL.md").exists())
             self.assertTrue((target / "triton-npu-analyze-round-performance" / "SKILL.md").exists())
             manager.cleanup(links)

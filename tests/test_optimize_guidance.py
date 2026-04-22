@@ -175,7 +175,7 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             self.assertEqual(guidance_path.read_text(encoding="utf-8"), "original content\n")
             self.assertFalse(state.backup_path is not None and state.backup_path.exists())
 
-    def test_prepare_mentions_strict_analysis_in_shared_guidance(self) -> None:
+    def test_prepare_shared_guidance_defaults_to_layered_analysis(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
@@ -185,12 +185,19 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             state = manager.prepare_supervised_session(
                 workdir,
                 agent_name="codex",
-                require_analysis=True,
             )
 
             shared_content = state.guidance_path.read_text(encoding="utf-8")
             self.assertIn(
-                "Require profiling or IR-backed evidence before the first code-changing round when possible.",
+                "Choose the analysis level for each round before editing code.",
+                shared_content,
+            )
+            self.assertIn(
+                "Escalate analysis in this order: pattern triage, profiling diagnosis, IR attribution, compiler-source escalation.",
+                shared_content,
+            )
+            self.assertIn(
+                "Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.",
                 shared_content,
             )
             self.assertIn("Do not begin with blind tiling or launch-parameter search.", shared_content)

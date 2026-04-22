@@ -100,7 +100,6 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         min_rounds=getattr(args, "min_rounds", None),
         resume_mode=str(getattr(args, "resume", "auto")),
         reset_optimize=bool(getattr(args, "reset_optimize", False)),
-        require_analysis=bool(getattr(args, "require_analysis", False)),
         no_agent_session=bool(getattr(args, "no_agent_session", False)),
         supervise=_validate_supervise_mode(args),
         output=getattr(args, "output", None),

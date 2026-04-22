@@ -28,7 +28,6 @@ class OptimizeRunOptions:
     min_rounds: int | None
     resume_mode: str
     reset_optimize: bool
-    require_analysis: bool
     no_agent_session: bool
     supervise: Literal["on", "off"]
     output: str | None

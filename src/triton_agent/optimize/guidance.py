@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
-from triton_agent.prompts import compiler_source_analysis_lines
+from triton_agent.prompts import compiler_source_analysis_lines, layered_analysis_lines
 
 
 @dataclass
@@ -38,7 +38,6 @@ class OptimizeGuidanceManager:
         test_mode: str,
         bench_mode: str,
         agent_name: str,
-        require_analysis: bool = False,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
     ) -> SharedOptimizeGuidanceState:
@@ -58,7 +57,6 @@ class OptimizeGuidanceManager:
                 operator_path=operator_path,
                 test_mode=test_mode,
                 bench_mode=bench_mode,
-                require_analysis=require_analysis,
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
             ),
@@ -126,7 +124,6 @@ class OptimizeGuidanceManager:
         self,
         workdir: Path,
         agent_name: str,
-        require_analysis: bool = False,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
     ) -> OptimizeGuidanceState:
@@ -156,7 +153,6 @@ class OptimizeGuidanceManager:
         guidance_path.write_text(
             self._render_shared_guidance(
                 guidance_filename=guidance_path.name,
-                require_analysis=require_analysis,
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
             ),
@@ -343,16 +339,12 @@ class OptimizeGuidanceManager:
         operator_path: Path,
         test_mode: str,
         bench_mode: str,
-        require_analysis: bool,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
     ) -> str:
-        analysis_block = ""
-        if require_analysis:
-            analysis_block = (
-                "- Require profiling or IR-backed evidence before the first code-changing round when possible.\n"
-                "- Do not begin with blind tiling or launch-parameter search.\n"
-            )
+        analysis_block = "".join(
+            f"- {line}\n" for line in layered_analysis_lines(round_scope="each round")
+        )
 
         compiler_source_block = "\n".join(
             compiler_source_analysis_lines(
@@ -380,16 +372,12 @@ class OptimizeGuidanceManager:
         self,
         *,
         guidance_filename: str,
-        require_analysis: bool,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
     ) -> str:
-        analysis_block = ""
-        if require_analysis:
-            analysis_block = (
-                "- Require profiling or IR-backed evidence before the first code-changing round when possible.\n"
-                "- Do not begin with blind tiling or launch-parameter search.\n"
-            )
+        analysis_block = "".join(
+            f"- {line}\n" for line in layered_analysis_lines(round_scope="each round")
+        )
 
         compiler_source_block = "\n".join(
             compiler_source_analysis_lines(

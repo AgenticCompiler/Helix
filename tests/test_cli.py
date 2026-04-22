@@ -718,10 +718,10 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["optimize", "-i", "kernel.py", "--no-agent-session"])
         self.assertTrue(args.no_agent_session)
 
-    def test_optimize_command_accepts_require_analysis(self) -> None:
+    def test_optimize_command_rejects_require_analysis(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize", "-i", "kernel.py", "--require-analysis"])
-        self.assertTrue(args.require_analysis)
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["optimize", "-i", "kernel.py", "--require-analysis"])
 
     def test_optimize_accepts_compiler_source_analysis_options(self) -> None:
         parser = build_parser()
@@ -804,7 +804,6 @@ class CliParserTests(unittest.TestCase):
             min_rounds=None,
             resume="auto",
             reset_optimize=False,
-            require_analysis=False,
             no_agent_session=False,
             supervise="maybe",
             output=None,
@@ -898,7 +897,6 @@ class CliParserTests(unittest.TestCase):
                 "4",
                 "--resume",
                 "continue",
-                "--require-analysis",
                 "--target-chip",
                 "A3",
                 "--no-agent-session",
@@ -914,7 +912,6 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.bench_mode, "msprof")
         self.assertEqual(args.min_rounds, 4)
         self.assertEqual(args.resume, "continue")
-        self.assertTrue(args.require_analysis)
         self.assertEqual(args.target_chip, "A3")
         self.assertTrue(args.no_agent_session)
         self.assertEqual(args.max_concurrency, 3)
@@ -925,10 +922,10 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["optimize-batch", "-i", "kernels"])
         self.assertEqual(args.resume, "auto")
 
-    def test_optimize_batch_accepts_require_analysis(self) -> None:
+    def test_optimize_batch_rejects_require_analysis(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize-batch", "-i", "kernels", "--require-analysis"])
-        self.assertTrue(args.require_analysis)
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["optimize-batch", "-i", "kernels", "--require-analysis"])
 
     def test_optimize_batch_accepts_reset_optimize(self) -> None:
         parser = build_parser()
@@ -1832,7 +1829,6 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 continue_optimize,
-                require_analysis=False,
                 supervise="off",
                 target_chip=None,
             ):
@@ -1841,7 +1837,6 @@ class PathResolutionTests(unittest.TestCase):
                 captured["remote_workdir"] = remote_workdir
                 captured["min_rounds"] = min_rounds
                 captured["continue_optimize"] = continue_optimize
-                captured["require_analysis"] = require_analysis
                 return "Prompt body"
 
             def _fake_create_runner(_agent_name):
@@ -1976,14 +1971,12 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 resume_existing_session,
-                require_analysis=False,
                 supervise="off",
                 target_chip=None,
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
                 captured["resume_existing_session"] = resume_existing_session
-                captured["require_analysis"] = require_analysis
                 return "Prompt body"
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
@@ -2019,7 +2012,6 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(captured["test_mode"], "standalone")
             self.assertEqual(captured["bench_mode"], "msprof")
             self.assertFalse(captured["resume_existing_session"])
-            self.assertFalse(captured["require_analysis"])
 
     def test_main_optimize_resume_auto_treats_prepared_harnesses_as_no_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2053,7 +2045,6 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 resume_existing_session,
-                require_analysis=False,
                 supervise="off",
                 target_chip=None,
             ):
@@ -2306,14 +2297,12 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 resume_existing_session,
-                require_analysis=False,
                 supervise="off",
                 target_chip=None,
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
                 captured["resume_existing_session"] = resume_existing_session
-                captured["require_analysis"] = require_analysis
                 return "Prompt body"
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
@@ -2339,7 +2328,6 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(captured["test_mode"], "differential")
             self.assertEqual(captured["bench_mode"], "msprof")
             self.assertTrue(captured["resume_existing_session"])
-            self.assertFalse(captured["require_analysis"])
             request = mocked.call_args.args[1]
             self.assertEqual(request.test_mode, "differential")
             self.assertEqual(request.bench_mode, "msprof")
@@ -2396,7 +2384,6 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 resume_existing_session,
-                require_analysis=False,
                 supervise="off",
                 target_chip=None,
             ):
@@ -2506,62 +2493,18 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(exc.exception.code, 2)
             self.assertIn("found multiple candidate operator files", stderr.getvalue())
 
-    def test_main_optimize_passes_require_analysis_to_prompt_and_request(self) -> None:
+    def test_main_optimize_rejects_require_analysis(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(["optimize", "-i", str(operator), "--require-analysis"])
 
-            captured = {}
-            fake_result = AgentResult(return_code=0, stdout="", stderr="")
-
-            def _fake_build_prompt(
-                command_kind,
-                input_path,
-                operator_path,
-                output_path,
-                test_mode,
-                bench_mode,
-                force_overwrite,
-                remote,
-                remote_workdir,
-                min_rounds,
-                resume_existing_session,
-                require_analysis=False,
-                supervise="off",
-                target_chip=None,
-            ):
-                captured["require_analysis"] = require_analysis
-                captured["supervise"] = supervise
-                captured["target_chip"] = target_chip
-                return "Prompt body"
-
-            with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
-                with patch(
-                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
-                    return_value=fake_result,
-                ) as mocked:
-                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
-                        with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
-                            return_value=[],
-                        ):
-                            with patch(
-                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
-                                return_value=[],
-                            ):
-                                exit_code = main(
-                                    ["optimize", "-i", str(operator), "--require-analysis"]
-                                )
-
-            self.assertEqual(exit_code, 0)
-            self.assertTrue(captured["require_analysis"])
-            self.assertEqual(captured["supervise"], "off")
-            self.assertEqual(captured["target_chip"], "A5")
-            request = mocked.call_args.args[1]
-            self.assertTrue(request.require_analysis)
-            self.assertEqual(request.target_chip, "A5")
-            self.assertIsNone(request.staged_skill_names)
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn("--require-analysis", stderr.getvalue())
 
     def test_main_optimize_passes_supervise_mode_to_prompt_and_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2584,7 +2527,6 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 resume_existing_session,
-                require_analysis=False,
                 supervise="off",
                 target_chip=None,
             ):
@@ -2639,7 +2581,6 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 resume_existing_session,
-                require_analysis=False,
                 supervise="off",
                 target_chip=None,
             ):
@@ -3221,8 +3162,13 @@ class PromptTests(unittest.TestCase):
         self.assertIn("This invocation owns exactly one round.", prompt)
         self.assertIn("Read `.triton-agent/round-brief.md`", prompt)
         self.assertNotIn("optimize-worker.md", prompt)
+        self.assertIn("Use the staged `triton-npu-prepare-optimize-baseline` skill", prompt)
         self.assertIn("Use the staged `triton-npu-optimize-check` skill", prompt)
         self.assertIn(
+            "baseline preparation is needed, use the staged `triton-npu-prepare-optimize-baseline` skill",
+            prompt.lower(),
+        )
+        self.assertNotIn(
             "use the staged `triton-npu-optimize-check` skill to run `check-baseline`",
             prompt.lower(),
         )
@@ -3290,8 +3236,13 @@ class PromptTests(unittest.TestCase):
             bench_mode="standalone",
         )
         self.assertIn("This invocation is an unsupervised optimize run.", prompt)
+        self.assertIn("Use the staged `triton-npu-prepare-optimize-baseline` skill", prompt)
         self.assertIn("Use the staged `triton-npu-optimize-check` skill", prompt)
         self.assertIn(
+            "baseline preparation is needed, use the staged `triton-npu-prepare-optimize-baseline` skill",
+            prompt.lower(),
+        )
+        self.assertNotIn(
             "use the staged `triton-npu-optimize-check` skill to run `check-baseline`",
             prompt.lower(),
         )
@@ -3374,6 +3325,8 @@ class PromptTests(unittest.TestCase):
         self.assertIn("This invocation is an audit and handoff pass", prompt)
         self.assertIn("Read `/tmp/opt-round-3`", prompt)
         self.assertIn("Use only existing `compare-perf` results", prompt)
+        self.assertIn("`triton-npu-prepare-optimize-baseline`", prompt)
+        self.assertIn("`triton-npu-optimize-check`", prompt)
         self.assertIn("Write `.triton-agent/supervisor-report.md`", prompt)
         self.assertIn("Write `.triton-agent/round-brief.md`", prompt)
         self.assertIn("Do not edit the operator implementation", prompt)
@@ -3599,7 +3552,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Continue the existing optimization session", prompt)
         self.assertIn("Read `opt-note.md`", prompt)
 
-    def test_optimize_prompt_strict_analysis_mentions_first_round_gate(self) -> None:
+    def test_optimize_prompt_defaults_to_layered_analysis(self) -> None:
         prompt = build_prompt(
             CommandKind.OPTIMIZE,
             Path("/tmp/op.py"),
@@ -3608,11 +3561,17 @@ class PromptTests(unittest.TestCase):
             test_mode="differential",
             bench_mode="standalone",
             force_overwrite=False,
-            require_analysis=True,
             supervise="on",
         )
-        self.assertIn("Before the first code-changing round", prompt)
-        self.assertIn("profiling or IR-backed evidence", prompt)
+        self.assertIn("Choose the analysis level for the round before editing code.", prompt)
+        self.assertIn(
+            "Escalate analysis in this order: pattern triage, profiling diagnosis, IR attribution, compiler-source escalation.",
+            prompt,
+        )
+        self.assertIn(
+            "Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.",
+            prompt,
+        )
         self.assertIn("Do not begin with blind tiling or launch-parameter search", prompt)
 
     def test_optimize_prompt_defaults_to_unsupervised_mode(self) -> None:

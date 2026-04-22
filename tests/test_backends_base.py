@@ -70,7 +70,6 @@ class SharedRunnerBaseTests(unittest.TestCase):
                     supervise="on",
                 ),
                 workdir=workspace,
-                require_analysis=True,
                 supervise="on",
             )
 
@@ -80,7 +79,10 @@ class SharedRunnerBaseTests(unittest.TestCase):
             resumed_prompt = mocked.call_args.args[0][-1]
             self.assertIn("Continue the existing optimize task", resumed_prompt)
             self.assertIn("This invocation is the optimize worker role.", resumed_prompt)
-            self.assertIn("profiling or IR-backed evidence", resumed_prompt)
+            self.assertIn(
+                "Escalate analysis in this order: pattern triage, profiling diagnosis, IR attribution, compiler-source escalation.",
+                resumed_prompt,
+            )
             self.assertIn(
                 "`learned_lessons.md` is only for reusable, evidence-backed optimization or profiling rules",
                 resumed_prompt,
