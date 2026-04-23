@@ -7,6 +7,7 @@ from typing import TextIO
 from triton_agent.backends.factory import create_runner
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
 from triton_agent.optimize import execution as optimize_execution
+from triton_agent.optimize.compiler_source import prepare_compiler_source
 from triton_agent.optimize.guidance import OptimizeGuidanceManager
 from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.resume import resolve_optimize_resume, reset_optimize_workspace
@@ -38,8 +39,13 @@ def build_optimize_request(
         if options.output
         else default_generated_output_path(CommandKind.OPTIMIZE, input_path, test_mode=test_mode)
     )
-    prompt = append_additional_user_instructions(
-        build_prompt(
+    compiler_source = None
+    if options.compiler_source_analysis != "off":
+        compiler_source = prepare_compiler_source(
+            mode=options.compiler_source_analysis,
+        )
+    if compiler_source is not None:
+        built_prompt = build_prompt(
             CommandKind.OPTIMIZE,
             input_path,
             input_path,
@@ -51,10 +57,29 @@ def build_optimize_request(
             options.remote_workdir,
             options.min_rounds,
             resolution.resume_existing_session,
-            require_analysis=options.require_analysis,
             supervise=options.supervise,
             target_chip=options.target_chip,
-        ),
+            compiler_source_path=compiler_source.path,
+            compiler_source_commit=compiler_source.commit,
+        )
+    else:
+        built_prompt = build_prompt(
+            CommandKind.OPTIMIZE,
+            input_path,
+            input_path,
+            output_path,
+            test_mode,
+            bench_mode,
+            False,
+            options.remote,
+            options.remote_workdir,
+            options.min_rounds,
+            resolution.resume_existing_session,
+            supervise=options.supervise,
+            target_chip=options.target_chip,
+        )
+    prompt = append_additional_user_instructions(
+        built_prompt,
         options.prompt,
     )
     return AgentRequest(
@@ -74,12 +99,14 @@ def build_optimize_request(
         workdir=workdir,
         min_rounds=options.min_rounds,
         continue_optimize=resolution.resume_existing_session,
-        require_analysis=options.require_analysis,
         no_agent_session=options.no_agent_session,
         supervise=options.supervise,
         staged_skill_names=None,
         optimize_role="worker" if options.supervise == "on" else None,
         target_chip=options.target_chip,
+        compiler_source_analysis=options.compiler_source_analysis,
+        compiler_source_path=compiler_source.path if compiler_source is not None else None,
+        compiler_source_commit=compiler_source.commit if compiler_source is not None else None,
     )
 
 

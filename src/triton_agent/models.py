@@ -17,7 +17,7 @@ class CommandKind(str, Enum):
     COMPARE_PERF = "compare-perf"
     VERIFY = "verify"
     VERIFY_BATCH = "verify-batch"
-    OPTIMIZE_STATUS = "optimize-status"
+    STATUS = "status"
     OPTIMIZE = "optimize"
     OPTIMIZE_BATCH = "optimize-batch"
 
@@ -33,7 +33,7 @@ COMMAND_TO_SKILL = {
     CommandKind.COMPARE_PERF: "",
     CommandKind.VERIFY: "",
     CommandKind.VERIFY_BATCH: "",
-    CommandKind.OPTIMIZE_STATUS: "",
+    CommandKind.STATUS: "",
     CommandKind.OPTIMIZE: "triton-npu-optimize",
     CommandKind.OPTIMIZE_BATCH: "",
 }
@@ -57,7 +57,6 @@ class AgentRequest:
     workdir: Path
     min_rounds: Optional[int] = None
     continue_optimize: bool = False
-    require_analysis: bool = False
     no_agent_session: bool = False
     supervise: Literal["on", "off"] = "off"
     staged_skill_names: tuple[str, ...] | None = None
@@ -65,6 +64,9 @@ class AgentRequest:
     round_brief_path: Optional[Path] = None
     supervisor_report_path: Optional[Path] = None
     target_chip: Literal["A3", "A5"] = "A5"
+    compiler_source_analysis: Literal["off", "auto"] = "off"
+    compiler_source_path: Optional[Path] = None
+    compiler_source_commit: Optional[str] = None
 
     def with_prompt(self, prompt: str) -> "AgentRequest":
         return replace(self, prompt=prompt)

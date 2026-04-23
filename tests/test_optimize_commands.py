@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.cli import build_parser
-from triton_agent.commands.optimize import handle_optimize
+from triton_agent.commands.optimize import handle_optimize, optimize_run_options_from_args
 
 
 class OptimizeCommandHandlerTests(unittest.TestCase):
@@ -30,6 +30,22 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
                 handle_optimize(parser, args)
 
             self.assertEqual(exc.exception.code, 2)
+
+    def test_optimize_run_options_maps_compiler_source_analysis(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "optimize",
+                "-i",
+                "kernel.py",
+                "--enable-compiler-source-analysis",
+            ]
+        )
+
+        options = optimize_run_options_from_args(args)
+
+        self.assertEqual(options.compiler_source_analysis, "auto")
+        self.assertFalse(hasattr(options, "compiler_source_path"))
 
 
 if __name__ == "__main__":

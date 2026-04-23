@@ -16,7 +16,7 @@ from triton_agent.models import AgentResult
 from triton_agent.optimize.models import OptimizeStatusWorkspace
 from triton_agent.optimize.baseline import load_baseline_state
 from triton_agent.optimize.round_contract import inspect_round_artifacts
-from triton_agent.optimize.status import inspect_optimize_status_workspace
+from triton_agent.status.core import inspect_optimize_status_workspace
 from triton_agent.skill_loader import load_operator_eval_script_module
 
 

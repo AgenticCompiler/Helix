@@ -144,7 +144,6 @@ class OptimizeSupervisorTests(unittest.TestCase):
                     build_optimize_resume_prompt(
                         summary,
                         base_prompt=request.prompt,
-                        require_analysis=request.require_analysis,
                         supervise=request.supervise,
                     )
                 )
@@ -211,7 +210,6 @@ class OptimizeSupervisorTests(unittest.TestCase):
                     build_optimize_resume_prompt(
                         summary,
                         base_prompt=request.prompt,
-                        require_analysis=request.require_analysis,
                         supervise=request.supervise,
                     )
                 )
@@ -270,7 +268,6 @@ class OptimizeSupervisorTests(unittest.TestCase):
                     build_optimize_resume_prompt(
                         summary,
                         base_prompt=request.prompt,
-                        require_analysis=request.require_analysis,
                         supervise=request.supervise,
                     )
                 )
@@ -819,7 +816,6 @@ class OptimizeSupervisorTests(unittest.TestCase):
                         build_optimize_resume_prompt(
                             summary,
                             base_prompt=request.prompt,
-                            require_analysis=request.require_analysis,
                             supervise=request.supervise,
                         )
                     )
@@ -838,7 +834,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
             self.assertIn("Continue the existing optimize task", runner.resume_prompts[0])
             self.assertIn("Read `opt-note.md`", runner.resume_prompts[0])
 
-    def test_restarts_with_strict_analysis_wording_when_enabled(self) -> None:
+    def test_restarts_with_layered_analysis_wording_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             (workspace / "opt-round-1").mkdir()
@@ -858,7 +854,6 @@ class OptimizeSupervisorTests(unittest.TestCase):
                 prompt="Optimize this operator",
                 workdir=workspace,
                 min_rounds=2,
-                require_analysis=True,
                 supervise="on",
             )
             class BackendLikeRoundCreatingRunner:
@@ -876,7 +871,6 @@ class OptimizeSupervisorTests(unittest.TestCase):
                         build_optimize_resume_prompt(
                             summary,
                             base_prompt=request.prompt,
-                            require_analysis=request.require_analysis,
                             supervise=request.supervise,
                         )
                     )
@@ -890,7 +884,10 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
             self.assertEqual(result.return_code, 0)
             self.assertEqual(len(runner.resume_requests), 1)
-            self.assertIn("profiling or IR-backed evidence", runner.resume_prompts[0])
+            self.assertIn(
+                "Escalate analysis in this order: pattern triage, profiling diagnosis, IR attribution, compiler-source escalation.",
+                runner.resume_prompts[0],
+            )
 
     def test_unsupervised_min_rounds_fails_when_resume_makes_no_progress(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -976,7 +973,6 @@ class OptimizeSupervisorTests(unittest.TestCase):
                         build_optimize_resume_prompt(
                             summary,
                             base_prompt=request.prompt,
-                            require_analysis=request.require_analysis,
                             supervise=request.supervise,
                         )
                     )

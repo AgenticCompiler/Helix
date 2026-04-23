@@ -104,7 +104,6 @@ class SupervisedOptimizeAdapter:
             prompt=build_optimize_supervisor_prompt(
                 request.workdir,
                 latest_round_dir=latest_round_dir,
-                require_analysis=request.require_analysis,
             ),
             skill_name="triton-npu-optimize",
             optimize_role="supervisor",
@@ -273,7 +272,8 @@ def execute_supervised_optimize(
     guidance_state = guidance_manager.prepare_supervised_session(
         request.workdir,
         agent_name=request.agent_name,
-        require_analysis=request.require_analysis,
+        compiler_source_path=request.compiler_source_path,
+        compiler_source_commit=request.compiler_source_commit,
     )
     if request.verbose:
         emit_verbose_lines(
@@ -317,7 +317,8 @@ def execute_unsupervised_optimize(
         test_mode=request.test_mode or "differential",
         bench_mode=request.bench_mode or "standalone",
         agent_name=request.agent_name,
-        require_analysis=request.require_analysis,
+        compiler_source_path=request.compiler_source_path,
+        compiler_source_commit=request.compiler_source_commit,
     )
     if request.verbose:
         emit_verbose_lines(

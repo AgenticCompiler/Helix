@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.optimize.models import OptimizeStatusWorkspace
-from triton_agent.optimize.render import render_optimize_status_results
+from triton_agent.status.render import render_optimize_status_results
 
 
 class _TTYStringIO(StringIO):
@@ -31,6 +31,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 warnings=(),
                 latest_verify_state=None,
                 verified=False,
+                verified_geomean_speedup=None,
+                verified_total_speedup=None,
             ),
             OptimizeStatusWorkspace(
                 workspace=Path("/tmp/gamma"),
@@ -45,6 +47,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 warnings=(),
                 latest_verify_state=None,
                 verified=False,
+                verified_geomean_speedup=None,
+                verified_total_speedup=None,
             ),
             OptimizeStatusWorkspace(
                 workspace=Path("/tmp/zeta"),
@@ -59,6 +63,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 warnings=("missing perf artifact for opt-round-28",),
                 latest_verify_state=None,
                 verified=False,
+                verified_geomean_speedup=None,
+                verified_total_speedup=None,
             ),
         ]
 
@@ -84,6 +90,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 warnings=("missing perf artifact for opt-round-28",),
                 latest_verify_state=None,
                 verified=False,
+                verified_geomean_speedup=None,
+                verified_total_speedup=None,
             )
         ]
 
@@ -112,6 +120,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 warnings=("missing perf artifact for opt-round-28",),
                 latest_verify_state=None,
                 verified=False,
+                verified_geomean_speedup=None,
+                verified_total_speedup=None,
             )
         ]
 
@@ -143,6 +153,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 warnings=(),
                 latest_verify_state=None,
                 verified=False,
+                verified_geomean_speedup=None,
+                verified_total_speedup=None,
             ),
             OptimizeStatusWorkspace(
                 workspace=Path("/tmp/zeta"),
@@ -157,6 +169,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 warnings=("missing comparable round perf data",),
                 latest_verify_state=None,
                 verified=False,
+                verified_geomean_speedup=None,
+                verified_total_speedup=None,
             ),
             OptimizeStatusWorkspace(
                 workspace=Path("/tmp/beta"),
@@ -171,6 +185,8 @@ class OptimizeRenderTests(unittest.TestCase):
                 warnings=(),
                 latest_verify_state=Path("/tmp/beta/opt-verify/verify-20260421-120000/verify-state.json"),
                 verified=True,
+                verified_geomean_speedup=1.22,
+                verified_total_speedup=1.28,
             ),
             OptimizeStatusWorkspace(
                 workspace=Path("/tmp/gamma"),
@@ -188,16 +204,22 @@ class OptimizeRenderTests(unittest.TestCase):
                 ),
                 latest_verify_state=Path("/tmp/gamma/opt-verify/verify-20260421-120000/verify-state.json"),
                 verified=False,
+                verified_geomean_speedup=None,
+                verified_total_speedup=None,
             ),
         ]
 
         render_optimize_status_results(results, stdout=stream, output_format="markdown")
 
         rendered = stream.getvalue()
-        self.assertIn("| 名称 | Geomean speedup | Total speedup | Verified | Notes |", rendered)
-        self.assertIn("| beta | 1.25x | 1.30x | Verified | - |", rendered)
-        self.assertIn("| gamma | 1.49x | 1.58x | - | best≠log |", rendered)
-        self.assertIn("| zeta | - | - | - | warn |", rendered)
+        self.assertIn(
+            "| 名称 | Geomean speedup | Total speedup | Verified | "
+            "Verified Geomean speedup | Verified Total speedup | Notes |",
+            rendered,
+        )
+        self.assertIn("| beta | 1.25x | 1.30x | Verified | 1.22x | 1.28x | - |", rendered)
+        self.assertIn("| gamma | 1.49x | 1.58x | - |  |  | best≠log |", rendered)
+        self.assertIn("| zeta | - | - | - |  |  | warn |", rendered)
         self.assertLess(rendered.index("| beta |"), rendered.index("| gamma |"))
         self.assertLess(rendered.index("| gamma |"), rendered.index("| zeta |"))
         self.assertNotIn("omega", rendered)

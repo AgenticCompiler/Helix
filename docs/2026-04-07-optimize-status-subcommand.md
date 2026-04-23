@@ -44,10 +44,10 @@ Summary: 1 ok, 1 warning, 0 no-session
 Markdown table mode:
 
 ```text
-| 名称 | Geomean speedup | Total speedup |
-| --- | --- | --- |
-| layernorm | - | - |
-| matmul | 1.18x | 1.22x |
+| 名称 | Geomean speedup | Total speedup | Verified | Verified Geomean speedup | Verified Total speedup | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| layernorm | - | - | - |  |  | warn |
+| matmul | 1.18x | 1.22x | Verified | 1.16x | 1.20x | - |
 ```
 
 ## CLI Contract
@@ -63,6 +63,7 @@ In `markdown` mode:
 - render only the Markdown table
 - exclude `no-session` workspaces
 - keep `warning` and `ok` workspaces in the usual sort order
+- leave verified speedup cells blank unless the latest verify state is complete and passed
 - use `-` when a workspace cannot produce one or both speedup values
 
 ## Workspace Discovery

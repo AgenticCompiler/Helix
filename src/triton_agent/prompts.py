@@ -25,6 +25,37 @@ def strict_learned_lessons_lines() -> list[str]:
     ]
 
 
+def layered_analysis_lines(*, round_scope: str) -> list[str]:
+    return [
+        f"Choose the analysis level for {round_scope} before editing code.",
+        "Escalate analysis in this order: pattern triage, profiling diagnosis, IR attribution, compiler-source escalation.",
+        "Use pattern triage only to decide whether a strong pattern-backed hypothesis already exists.",
+        "Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.",
+        "Use IR attribution only after profiler-backed symptoms need explanation.",
+        "Use compiler-source escalation only when profiler and IR evidence have already narrowed the issue.",
+        "When starting from a deeper level, cite the reused evidence path and explain why the shallower level is already established or insufficient.",
+        "Do not begin with blind tiling or launch-parameter search.",
+    ]
+
+
+def compiler_source_analysis_lines(
+    *,
+    compiler_source_path: Path | None,
+    compiler_source_commit: str | None,
+) -> list[str]:
+    if compiler_source_path is None or compiler_source_commit is None:
+        return []
+    return [
+        "Compiler source analysis is enabled for this optimize run.",
+        f"Compiler source path: {compiler_source_path}",
+        f"Compiler source commit: {compiler_source_commit}.",
+        "Treat the compiler source checkout as read-only.",
+        "Do not run git clone, git fetch, git pull, or modify files in the compiler source checkout.",
+        "Use the staged `triton-npu-analyze-compiler-source` skill only when compiler source evidence is needed.",
+        "Prefer the evidence ladder first: benchmark and correctness results, then profiler evidence, then IR evidence, then compiler source.",
+    ]
+
+
 def append_additional_user_instructions(prompt: str, user_prompt: str | None) -> str:
     if user_prompt is None:
         return prompt
@@ -43,7 +74,8 @@ def build_optimize_worker_prompt(
     target_chip: str = "A5",
     min_rounds: int | None = None,
     resume_existing_session: bool = False,
-    require_analysis: bool = False,
+    compiler_source_path: Path | None = None,
+    compiler_source_commit: str | None = None,
 ) -> str:
     del input_path, output_path, test_mode, bench_mode, min_rounds
     lines = [
@@ -56,9 +88,10 @@ def build_optimize_worker_prompt(
         "You must continue optimizing the Triton Ascend NPU kernel path itself.",
         "Do not replace the core computation with a pure PyTorch implementation just to improve final outputs or benchmark numbers.",
         "A round that bypasses the Triton kernel path with pure PyTorch code does not count as a successful optimize round.",
-        "Use the staged `triton-npu-optimize-check` skill to validate the baseline and the completed round.",
+        "Use the staged `triton-npu-prepare-optimize-baseline` skill when baseline artifacts are missing or invalid.",
+        "Use the staged `triton-npu-optimize-check` skill to validate the completed round.",
         "Establish or reuse `baseline/` before creating `opt-round-1`.",
-        "If baseline work is needed, use the staged `triton-npu-optimize-check` skill to run `check-baseline` and keep repairing the baseline until it passes.",
+        "If baseline preparation is needed, use the staged `triton-npu-prepare-optimize-baseline` skill and continue only after it has repaired the baseline through `check-baseline`.",
         "Use `baseline/perf.txt` for canonical performance comparisons.",
         "Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.",
         "Use the staged `triton-npu-analyze-round-performance` skill when a round needs deeper diagnosis from profile or IR evidence.",
@@ -67,6 +100,7 @@ def build_optimize_worker_prompt(
         "State the optimization hypothesis and why it may help before editing code for each round.",
         "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
         "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
+        *layered_analysis_lines(round_scope="the round"),
         *strict_learned_lessons_lines(),
         f"Target chip for this optimize session: {target_chip}.",
         f"When ranking optimization points, prefer changes that fit {target_chip} unless the round artifacts prove a different chip target.",
@@ -75,19 +109,18 @@ def build_optimize_worker_prompt(
         "The current round must pass `check-round` through `triton-npu-optimize-check` before the invocation ends.",
         "Do not self-approve whether the optimize session should continue.",
     ]
+    lines.extend(
+        compiler_source_analysis_lines(
+            compiler_source_path=compiler_source_path,
+            compiler_source_commit=compiler_source_commit,
+        )
+    )
     lines.extend(baseline_state_contract_lines())
     if resume_existing_session:
         lines.extend(
             [
                 "Continue the existing optimization session instead of restarting from scratch.",
                 "Read `opt-note.md`, existing `opt-round-*` directories, and existing round logs before making changes.",
-            ]
-        )
-    if require_analysis:
-        lines.extend(
-            [
-                "Before the first code-changing round, gather profiling or IR-backed evidence, or record a concrete reason why one analysis path is unavailable and the remaining evidence is sufficient.",
-                "Do not begin with blind tiling or launch-parameter search.",
             ]
         )
     return "\n".join(lines)
@@ -102,7 +135,8 @@ def build_optimize_unsupervised_prompt(
     target_chip: str = "A5",
     min_rounds: int | None = None,
     resume_existing_session: bool = False,
-    require_analysis: bool = False,
+    compiler_source_path: Path | None = None,
+    compiler_source_commit: str | None = None,
 ) -> str:
     del input_path, output_path, test_mode, bench_mode
     lines = [
@@ -113,9 +147,10 @@ def build_optimize_unsupervised_prompt(
         "You must continue optimizing the Triton Ascend NPU kernel path itself.",
         "Do not replace the core computation with a pure PyTorch implementation just to improve final outputs or benchmark numbers.",
         "A round that bypasses the Triton kernel path with pure PyTorch code does not count as a successful optimize round.",
-        "Use the staged `triton-npu-optimize-check` skill to validate the baseline and every completed round.",
+        "Use the staged `triton-npu-prepare-optimize-baseline` skill when baseline artifacts are missing or invalid.",
+        "Use the staged `triton-npu-optimize-check` skill to validate every completed round.",
         "Establish or reuse `baseline/` before creating `opt-round-1`.",
-        "If baseline work is needed, use the staged `triton-npu-optimize-check` skill to run `check-baseline` and keep repairing the baseline until it passes.",
+        "If baseline preparation is needed, use the staged `triton-npu-prepare-optimize-baseline` skill and continue only after it has repaired the baseline through `check-baseline`.",
         "Use `baseline/perf.txt` for canonical performance comparisons.",
         "Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.",
         "Use the staged `triton-npu-analyze-round-performance` skill when a round needs deeper diagnosis from profile or IR evidence.",
@@ -124,6 +159,7 @@ def build_optimize_unsupervised_prompt(
         "State the optimization hypothesis and why it may help before editing code for each round.",
         "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
         "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
+        *layered_analysis_lines(round_scope="the round"),
         *strict_learned_lessons_lines(),
         f"Target chip for this optimize session: {target_chip}.",
         f"When ranking optimization points, prefer changes that fit {target_chip} unless the round artifacts prove a different chip target.",
@@ -131,6 +167,12 @@ def build_optimize_unsupervised_prompt(
         "Do not begin the next round until the current round passes `check-round` through `triton-npu-optimize-check`.",
         "Record round outcomes and keep optimize artifacts up to date before stopping.",
     ]
+    lines.extend(
+        compiler_source_analysis_lines(
+            compiler_source_path=compiler_source_path,
+            compiler_source_commit=compiler_source_commit,
+        )
+    )
     if min_rounds is not None:
         lines.insert(
             2,
@@ -148,13 +190,6 @@ def build_optimize_unsupervised_prompt(
                 "Read `opt-note.md`, existing `opt-round-*` directories, and existing round logs before making changes.",
             ]
         )
-    if require_analysis:
-        lines.extend(
-            [
-                "Before the first code-changing round, gather profiling or IR-backed evidence, or record a concrete reason why one analysis path is unavailable and the remaining evidence is sufficient.",
-                "Do not begin with blind tiling or launch-parameter search.",
-            ]
-        )
     return "\n".join(lines)
 
 
@@ -162,7 +197,6 @@ def build_optimize_supervisor_prompt(
     workdir: Path,
     *,
     latest_round_dir: Path | None = None,
-    require_analysis: bool = False,
 ) -> str:
     lines = [
         "This invocation is the optimize supervisor role.",
@@ -172,25 +206,23 @@ def build_optimize_supervisor_prompt(
     if latest_round_dir is not None:
         lines.append(f"Read `{latest_round_dir}` before acting.")
         lines.extend(
-        [
-            "Apply only metadata repairs derived from existing facts.",
-            "Use only existing `compare-perf` results when auditing or restating performance conclusions.",
-            "Read the staged `triton-npu-optimize` skill and `triton-npu-optimize-check` skill as the workflow contract that the worker round was supposed to follow.",
-            "Read the latest `opt-round-N/attempts.md`, `summary.md`, and `round-state.json` before deciding anything.",
-            "Read existing benchmark, profiler, and IR artifacts only when they already exist and are needed to verify the worker's recorded claims.",
-            "Reject rounds that preserve only the public API shape but replace the Triton kernel path with pure PyTorch computation.",
-            "Write `.triton-agent/supervisor-report.md` with a `Decision:` line and a `Blocking issues:` line.",
-            "Write `.triton-agent/round-brief.md` with the next-worker handoff; when continuation is not allowed, record the stop or repair reason there.",
-            "Do not edit the operator implementation.",
-            "Do not perform open-ended optimization work.",
-            "Do not fabricate missing correctness, benchmark, profiler, or IR evidence.",
-            "Do not launch new profiler or IR collection from the supervisor pass.",
-            "Do not silently promote an invalid round to current best.",
-        ]
-    )
-    if require_analysis:
-        lines.append(
-            "Require existing profiling or IR-backed evidence, or require the next worker round to record why the remaining evidence is sufficient."
+            [
+                "Apply only metadata repairs derived from existing facts.",
+                "Use only existing `compare-perf` results when auditing or restating performance conclusions.",
+                "Read the staged `triton-npu-optimize`, `triton-npu-prepare-optimize-baseline`, and `triton-npu-optimize-check` skills as the workflow contract that the worker round was supposed to follow.",
+                "Audit the worker against this analysis ladder: pattern triage, profiling diagnosis, IR attribution, compiler-source escalation.",
+                "Require the recorded analysis level, escalation reason, and cited evidence path to agree with the round artifacts.",
+                "Read the latest `opt-round-N/attempts.md`, `summary.md`, and `round-state.json` before deciding anything.",
+                "Read existing benchmark, profiler, and IR artifacts only when they already exist and are needed to verify the worker's recorded claims.",
+                "Reject rounds that preserve only the public API shape but replace the Triton kernel path with pure PyTorch computation.",
+                "Write `.triton-agent/supervisor-report.md` with a `Decision:` line and a `Blocking issues:` line.",
+                "Write `.triton-agent/round-brief.md` with the next-worker handoff; when continuation is not allowed, record the stop or repair reason there.",
+                "Do not edit the operator implementation.",
+                "Do not perform open-ended optimization work.",
+                "Do not fabricate missing correctness, benchmark, profiler, or IR evidence.",
+                "Do not launch new profiler or IR collection from the supervisor pass.",
+                "Do not silently promote an invalid round to current best.",
+            ]
         )
     return "\n".join(lines)
 
@@ -208,9 +240,10 @@ def build_prompt(
     min_rounds: int | None = None,
     continue_optimize: bool = False,
     resume_existing_session: bool | None = None,
-    require_analysis: bool = False,
     supervise: Literal["on", "off"] = "off",
     target_chip: str | None = None,
+    compiler_source_path: Path | None = None,
+    compiler_source_commit: str | None = None,
 ) -> str:
     should_resume_existing_session = (
         continue_optimize if resume_existing_session is None else resume_existing_session
@@ -288,7 +321,8 @@ def build_prompt(
                     target_chip=target_chip or "A5",
                     min_rounds=min_rounds,
                     resume_existing_session=should_resume_existing_session,
-                    require_analysis=require_analysis,
+                    compiler_source_path=compiler_source_path,
+                    compiler_source_commit=compiler_source_commit,
                 ).splitlines()
             )
         else:
@@ -301,7 +335,8 @@ def build_prompt(
                     target_chip=target_chip or "A5",
                     min_rounds=min_rounds,
                     resume_existing_session=should_resume_existing_session,
-                    require_analysis=require_analysis,
+                    compiler_source_path=compiler_source_path,
+                    compiler_source_commit=compiler_source_commit,
                 ).splitlines()
             )
     else:
@@ -313,8 +348,9 @@ def build_optimize_resume_prompt(
     summary: str,
     *,
     base_prompt: str | None = None,
-    require_analysis: bool = False,
     supervise: Literal["on", "off"] = "off",
+    compiler_source_path: Path | None = None,
+    compiler_source_commit: str | None = None,
 ) -> str:
     lines: list[str] = []
     if base_prompt:
@@ -345,14 +381,17 @@ def build_optimize_resume_prompt(
         "Reuse the established `baseline/` directory instead of redefining the canonical baseline.",
         "Keep the optimize workflow hypothesis-driven: explain why each next change may help and what evidence supports it.",
         "Use `compare-perf` output as the only source for performance deltas and speedup metrics.",
+        *layered_analysis_lines(round_scope="the round"),
         *strict_learned_lessons_lines(),
     ]
     if supervise == "off" and base_prompt:
         continuation_lines.insert(0, "This invocation continues an unsupervised optimize task.")
     lines.extend(continuation_lines)
-    if require_analysis:
-        lines.append(
-            "Before the next code-changing round, gather profiling or IR-backed evidence, or record why the existing evidence is already sufficient."
+    lines.extend(
+        compiler_source_analysis_lines(
+            compiler_source_path=compiler_source_path,
+            compiler_source_commit=compiler_source_commit,
         )
+    )
     lines.extend(["", f"Progress summary:\n{summary}"])
     return "\n".join(lines)

@@ -13,7 +13,7 @@ This README is organized by task so you can quickly find the right command for t
 - `gen-bench`: generate a benchmark for one operator.
 - `run-bench`: run an existing generated benchmark.
 - `optimize`: optimize one operator.
-- `optimize-status`: summarize optimization progress across many workspaces.
+- `status`: summarize optimization progress across many workspaces.
 - `verify`: rerun tests and benchmarks for the current best optimize round.
 - `verify-batch`: verify many optimize workspaces under one root.
 - `optimize-batch`: optimize many operator workspaces.
@@ -39,8 +39,8 @@ For batch workflows, point `--input` at either a directory whose immediate child
 ```bash
 uv run triton-agent gen-eval-batch --input operators_root
 uv run triton-agent gen-eval-batch --input .
-uv run triton-agent optimize-status --input operators_root
-uv run triton-agent optimize-status --input operators_root --format markdown
+uv run triton-agent status --input operators_root
+uv run triton-agent status --input operators_root --format markdown
 uv run triton-agent verify --input .
 uv run triton-agent verify-batch --input operators_root
 uv run triton-agent optimize-batch --input operators_root
@@ -189,7 +189,7 @@ Common options:
 - `--bench-mode standalone|msprof`: default is `standalone`
 - `--resume auto|continue|fresh`: default is `auto`
 - `--reset-optimize`: only valid with `--resume fresh`; remove known optimize-session artifacts before starting a new run while keeping reusable test and benchmark harnesses.
-- `--require-analysis`: strengthen analysis-first optimize guidance before the first code-changing round.
+- `--enable-compiler-source-analysis`: allow the optimize agent to use compiler source as an escalation after benchmark, profiler, and IR evidence.
 - `--min-rounds <N>`: require at least N optimization rounds.
 - `--no-agent-session`: disable persistent agent sessions when supported.
 - `--interact`
@@ -202,9 +202,11 @@ Examples:
 ```bash
 uv run triton-agent optimize --input a.py --min-rounds 3
 uv run triton-agent optimize --input a.py --resume continue
-uv run triton-agent optimize --input a.py --require-analysis
+uv run triton-agent optimize --input a.py --enable-compiler-source-analysis
 uv run triton-agent optimize --input a.py --prompt "Prioritize memory-coalescing improvements."
 ```
+
+Compiler source analysis is opt-in. When enabled, the CLI prepares a shallow AscendNPU-IR checkout under `~/.triton-agent/compiler-sources/AscendNPU-IR/` before launching the agent, using the configured Triton Agent home when `TRITON_AGENT_HOME` is set. The launched agent receives only the local path and commit, treats the checkout as read-only, and must not clone, fetch, pull, or modify compiler source. This option enables an escalation path for difficult compiler-side explanations; it does not require compiler-source analysis in every round.
 
 Resume modes:
 
@@ -216,6 +218,10 @@ Resume modes:
 Optimize behavior:
 
 - Establish or reuse a canonical `baseline/` directory before treating `opt-round-1` as the first optimization round.
+- If `baseline/` is missing or invalid, baseline preparation is handled by `triton-npu-prepare-optimize-baseline` before round work begins.
+- Every optimize run follows the default layered analysis ladder: pattern triage -> profiling diagnosis -> IR attribution -> compiler-source escalation.
+- Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.
+- Use compiler source only as the deepest escalation, and only when `--enable-compiler-source-analysis` is set.
 - Keep canonical baseline assets under:
   - `baseline/state.json`
   - `baseline/perf.txt`
@@ -256,9 +262,9 @@ Common options:
 ### Check Optimization Status
 
 ```bash
-uv run triton-agent optimize-status --input operators_root
-uv run triton-agent optimize-status --input .
-uv run triton-agent optimize-status --input operators_root --format markdown
+uv run triton-agent status --input operators_root
+uv run triton-agent status --input .
+uv run triton-agent status --input operators_root --format markdown
 ```
 
 Use this command to get a read-only summary of optimization progress across workspaces.
@@ -274,6 +280,8 @@ then `baseline_perf.txt`, then the existing non-`opt_` fallback rule.
 - `Geomean speedup`
 - `Total speedup`
 - `Verified`
+- `Verified Geomean speedup`
+- `Verified Total speedup`
 - `Notes`
 
 The Markdown table excludes `NO-SESSION` workspaces and sorts rows by name.
@@ -281,6 +289,8 @@ Workspaces with optimize artifacts but missing comparable speedup data stay in t
 The `Verified` column shows `Verified` only when the latest `opt-verify/verify-*/verify-state.json`
 for that workspace is a complete successful run with passed test, rerun baseline benchmark,
 rerun best benchmark, and compare-perf results. Otherwise it renders `-`.
+The verified speedup columns use the same latest successful verify state and stay blank when the
+workspace has no verified result.
 The `Notes` column uses compact labels such as `best≠log` for computed/logged best-round mismatch
 and `warn` for other warnings.
 
@@ -354,7 +364,7 @@ Common options:
 - `--bench-mode standalone|msprof`
 - `--resume auto|continue|fresh`
 - `--reset-optimize`: when used with `--resume fresh`, clear known optimize artifacts for each workspace and reset the batch status file before rerunning
-- `--require-analysis`
+- `--enable-compiler-source-analysis`
 - `--min-rounds <N>`
 - `--no-agent-session`
 - `--max-concurrency <N>`: defaults to `1`

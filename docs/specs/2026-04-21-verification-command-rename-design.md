@@ -72,7 +72,7 @@ Even after the rename:
 
 - `verify` still validates the current best optimize round.
 - `verify-batch` still operates on optimize workspaces under a root directory.
-- `optimize-status` still reads the latest verification state from `opt-verify/verify-*/verify-state.json`.
+- `status` still reads the latest verification state from `opt-verify/verify-*/verify-state.json`.
 - remote flags for `verify-batch` still apply uniformly to every workspace in the batch run.
 
 ## Tests And Docs

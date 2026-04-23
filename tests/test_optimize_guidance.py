@@ -175,7 +175,7 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             self.assertEqual(guidance_path.read_text(encoding="utf-8"), "original content\n")
             self.assertFalse(state.backup_path is not None and state.backup_path.exists())
 
-    def test_prepare_mentions_strict_analysis_in_shared_guidance(self) -> None:
+    def test_prepare_shared_guidance_defaults_to_layered_analysis(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
@@ -185,15 +185,75 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             state = manager.prepare_supervised_session(
                 workdir,
                 agent_name="codex",
-                require_analysis=True,
             )
 
             shared_content = state.guidance_path.read_text(encoding="utf-8")
             self.assertIn(
-                "Require profiling or IR-backed evidence before the first code-changing round when possible.",
+                "Choose the analysis level for each round before editing code.",
+                shared_content,
+            )
+            self.assertIn(
+                "Escalate analysis in this order: pattern triage, profiling diagnosis, IR attribution, compiler-source escalation.",
+                shared_content,
+            )
+            self.assertIn(
+                "Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.",
                 shared_content,
             )
             self.assertIn("Do not begin with blind tiling or launch-parameter search.", shared_content)
+
+            warnings = manager.cleanup_supervised_session(state)
+            self.assertEqual(warnings, [])
+
+    def test_prepare_unsupervised_mentions_compiler_source_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            source_path = workdir / "AscendNPU-IR"
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            manager = OptimizeGuidanceManager()
+            state = manager.prepare_unsupervised_session(
+                workdir,
+                operator_path=operator,
+                agent_name="codex",
+                test_mode="differential",
+                bench_mode="standalone",
+                compiler_source_path=source_path,
+                compiler_source_commit="abc123",
+            )
+
+            guidance_content = state.guidance_path.read_text(encoding="utf-8")
+            self.assertIn("Compiler source analysis is enabled", guidance_content)
+            self.assertIn(f"Compiler source path: {source_path}", guidance_content)
+            self.assertIn("Compiler source commit: abc123.", guidance_content)
+            self.assertIn("Treat the compiler source checkout as read-only.", guidance_content)
+            self.assertIn("Do not run git clone, git fetch, git pull", guidance_content)
+            self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", guidance_content)
+
+            warnings = manager.cleanup_unsupervised_session(state)
+            self.assertEqual(warnings, [])
+
+    def test_prepare_supervised_mentions_compiler_source_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            source_path = workdir / "AscendNPU-IR"
+
+            manager = OptimizeGuidanceManager()
+            state = manager.prepare_supervised_session(
+                workdir,
+                agent_name="codex",
+                compiler_source_path=source_path,
+                compiler_source_commit="abc123",
+            )
+
+            guidance_content = state.guidance_path.read_text(encoding="utf-8")
+            self.assertIn("Compiler source analysis is enabled", guidance_content)
+            self.assertIn(f"Compiler source path: {source_path}", guidance_content)
+            self.assertIn("Compiler source commit: abc123.", guidance_content)
+            self.assertIn("Treat the compiler source checkout as read-only.", guidance_content)
+            self.assertIn("then IR evidence, then compiler source", guidance_content)
+            self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", guidance_content)
 
             warnings = manager.cleanup_supervised_session(state)
             self.assertEqual(warnings, [])

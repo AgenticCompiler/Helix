@@ -3,10 +3,11 @@ import tempfile
 import unittest
 import json
 from pathlib import Path
+from typing import Union
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.optimize.status import (
+from triton_agent.status.core import (
     inspect_optimize_status_workspace,
     parse_logged_best_round,
     workspace_has_optimize_artifacts,
@@ -23,7 +24,14 @@ class OptimizeStatusTests(unittest.TestCase):
         baseline_bench_status: str = "passed",
         best_bench_status: str = "passed",
         compare_status: str = "passed",
+        geomean_speedup: Union[float, None] = None,
+        total_speedup: Union[float, None] = None,
     ) -> Path:
+        speedup: dict[str, object] = {}
+        if geomean_speedup is not None:
+            speedup["geomean_speedup"] = geomean_speedup
+        if total_speedup is not None:
+            speedup["total_speedup"] = total_speedup
         verify_dir = workspace / "opt-verify" / verify_name
         verify_dir.mkdir(parents=True)
         state_path = verify_dir / "verify-state.json"
@@ -35,6 +43,7 @@ class OptimizeStatusTests(unittest.TestCase):
                         "rerun_baseline_bench": {"status": baseline_bench_status},
                         "rerun_best_bench": {"status": best_bench_status},
                         "compare_perf": {"status": compare_status},
+                        "speedup": speedup,
                     }
                 }
             )
@@ -224,6 +233,8 @@ class OptimizeStatusTests(unittest.TestCase):
             latest_state = self._write_verify_state(
                 workspace,
                 "verify-20260421-120000",
+                geomean_speedup=1.23,
+                total_speedup=1.34,
             )
 
             status = inspect_optimize_status_workspace(workspace)
@@ -231,6 +242,8 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertEqual(status.state, "ok")
             self.assertEqual(status.latest_verify_state, latest_state)
             self.assertTrue(status.verified)
+            self.assertAlmostEqual(status.verified_geomean_speedup or 0.0, 1.23)
+            self.assertAlmostEqual(status.verified_total_speedup or 0.0, 1.34)
 
     def test_inspect_optimize_status_workspace_marks_partial_latest_verify_as_unverified(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -255,6 +268,8 @@ class OptimizeStatusTests(unittest.TestCase):
 
             self.assertEqual(status.latest_verify_state, latest_state)
             self.assertFalse(status.verified)
+            self.assertIsNone(status.verified_geomean_speedup)
+            self.assertIsNone(status.verified_total_speedup)
 
     def test_inspect_optimize_status_workspace_ignores_extra_round_perf_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

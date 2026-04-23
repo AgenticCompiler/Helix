@@ -6,7 +6,7 @@ from typing import TextIO
 
 from triton_agent.optimize.models import BatchOptimizeResult
 from triton_agent.optimize.render import render_batch_optimize_results
-from triton_agent.optimize.status import find_latest_verify_state
+from triton_agent.status.core import find_latest_verify_state
 from triton_agent.verification.core import (
     VerifyOptions,
     prepare_verify_target,

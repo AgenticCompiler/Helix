@@ -5,6 +5,17 @@ from enum import Enum
 from pathlib import Path
 from typing import Literal
 
+from triton_agent.optimize.skill_contract import optimize_check_module
+
+
+_OPTIMIZE_CHECK_MODULE = optimize_check_module()
+
+BaselineState = _OPTIMIZE_CHECK_MODULE.BaselineState  # type: ignore[reportUnknownVariableType]
+BaselineArtifactsInspection = _OPTIMIZE_CHECK_MODULE.BaselineArtifactsInspection  # type: ignore[reportUnknownVariableType]
+RoundState = _OPTIMIZE_CHECK_MODULE.RoundState  # type: ignore[reportUnknownVariableType]
+RoundArtifactsInspection = _OPTIMIZE_CHECK_MODULE.RoundArtifactsInspection  # type: ignore[reportUnknownVariableType]
+OptimizeCheckResult = _OPTIMIZE_CHECK_MODULE.OptimizeCheckResult  # type: ignore[reportUnknownVariableType]
+
 
 @dataclass(frozen=True)
 class OptimizeRunOptions:
@@ -17,7 +28,6 @@ class OptimizeRunOptions:
     min_rounds: int | None
     resume_mode: str
     reset_optimize: bool
-    require_analysis: bool
     no_agent_session: bool
     supervise: Literal["on", "off"]
     output: str | None
@@ -25,6 +35,7 @@ class OptimizeRunOptions:
     bench_mode: str | None
     prompt: str | None
     target_chip: Literal["A3", "A5"] = "A5"
+    compiler_source_analysis: Literal["off", "auto"] = "off"
 
 
 @dataclass(frozen=True)
@@ -67,67 +78,8 @@ class OptimizeStatusWorkspace:
     warnings: tuple[str, ...]
     latest_verify_state: Path | None = None
     verified: bool = False
-
-
-@dataclass(frozen=True)
-class BaselineState:
-    baseline_kind: str
-    source_operator: str
-    baseline_operator: str
-    test_file: str
-    test_mode: str
-    bench_file: str
-    bench_mode: str
-    perf_artifact: str
-    correctness_status: str
-    benchmark_status: str
-    baseline_established: bool
-    preparation_notes: str | None = None
-    baseline_repairs_summary: str | None = None
-
-
-@dataclass(frozen=True)
-class BaselineArtifactsInspection:
-    baseline_dir: Path
-    state_path: Path | None
-    perf_path: Path | None
-    operator_path: Path | None
-    issues: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class RoundState:
-    round_name: str
-    parent_round: str
-    hypothesis: str
-    evidence_sources: tuple[str, ...]
-    correctness_status: str
-    benchmark_status: str
-    perf_artifact: str
-    canonical_baseline: str
-    comparison_target: str
-    perf_summary_source: str
-    summary_path: str
-    opt_note_updated: bool
-    next_recommendation: str
-    analysis_skipped_reason: str | None = None
-    profile_dir: str | None = None
-    ir_dir: str | None = None
-    perf_analysis_path: str | None = None
-    analysis_comparison_sources: tuple[str, ...] = ()
-    validated_candidate: bool | None = None
-
-
-@dataclass(frozen=True)
-class RoundArtifactsInspection:
-    round_dir: Path
-    operator_path: Path | None
-    attempts_path: Path | None
-    summary_path: Path | None
-    perf_path: Path | None
-    perf_analysis_path: Path | None
-    round_state_path: Path | None
-    issues: tuple[str, ...]
+    verified_geomean_speedup: float | None = None
+    verified_total_speedup: float | None = None
 
 
 class GateDecision(str, Enum):
@@ -146,12 +98,3 @@ class GateResult:
     next_parent_round: str | None = None
     next_hypothesis: str | None = None
     required_evidence_for_next_round: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class OptimizeCheckResult:
-    ok: bool
-    kind: Literal["baseline", "round"]
-    decision: Literal["pass", "revise-required", "hard-fail"]
-    issues: tuple[str, ...]
-    summary: str

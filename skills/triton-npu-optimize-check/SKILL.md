@@ -28,3 +28,6 @@ python3 scripts/optimize_check.py check-round --round-dir opt-round-1
 - When a check fails, treat the returned issues as the repair checklist.
 - Do not start the next optimize round until the current check passes.
 - Do not use this skill to invent missing evidence or to replace benchmark, correctness, profile, or IR work that the workflow still requires.
+- Do not use this skill to generate missing harnesses, repair operator logic, or invent missing baseline evidence.
+- Baseline preparation belongs to `triton-npu-prepare-optimize-baseline`.
+- Open-ended round analysis belongs to `triton-npu-optimize`.

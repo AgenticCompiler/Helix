@@ -76,16 +76,23 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("Do not", eval_gen)
         self.assertIn("opt-round", eval_gen)
 
-    def test_optimize_skill_includes_remote_command_examples(self) -> None:
+    def test_optimize_baseline_preparation_uses_dedicated_skill(self) -> None:
         optimize = _read("skills/triton-npu-optimize/SKILL.md")
-        self.assertIn(
-            "Use the bundled helper script at [`../triton-npu-run-eval/scripts/run-command.py`](../triton-npu-run-eval/scripts/run-command.py) for generation, validation, profiling, and comparison commands; if the outer optimize task is remote-aware, carry the same remote flags through those commands.",
-            optimize,
+        baseline = _read("skills/triton-npu-prepare-optimize-baseline/SKILL.md")
+        optimize_check = _read("skills/triton-npu-optimize-check/SKILL.md")
+        readme = _read("README.md")
+
+        self.assertTrue(
+            (REPO_ROOT / "skills" / "triton-npu-prepare-optimize-baseline" / "SKILL.md").exists()
         )
-        self.assertIn(
-            "Generate missing tests or benchmarks through `../triton-npu-run-eval/scripts/run-command.py` before starting any optimization round.",
-            optimize,
-        )
+        self.assertIn("triton-npu-prepare-optimize-baseline", optimize)
+        self.assertIn("triton-npu-gen-test", baseline)
+        self.assertIn("triton-npu-gen-bench", baseline)
+        self.assertIn("triton-npu-run-eval", baseline)
+        self.assertIn("triton-npu-optimize-check", baseline)
+        self.assertNotIn("../triton-npu-run-eval/scripts/run-command.py", optimize)
+        self.assertIn("Do not use this skill to generate missing harnesses", optimize_check)
+        self.assertIn("triton-npu-prepare-optimize-baseline", readme)
         self.assertIn("triton-npu-profile-operator", optimize)
         self.assertIn("triton-npu-analyze-round-performance", optimize)
         self.assertIn("classic tiled matmul pattern reference", optimize)
@@ -162,6 +169,41 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("A5", architecture_ref)
         self.assertIn("L0C", architecture_ref)
 
+    def test_compiler_source_analysis_skill_documents_read_only_cli_provisioned_source(self) -> None:
+        content = _read("skills/triton-npu-analyze-compiler-source/SKILL.md")
+
+        self.assertIn("CLI-provided local source path", content)
+        self.assertIn("Do not run `git clone`, `git fetch`, or `git pull`", content)
+        self.assertIn("Treat the compiler source checkout as read-only", content)
+        self.assertIn("AscendNPU-IR", content)
+        self.assertIn("opt-round-N/compiler-analysis.md", content)
+        self.assertIn("Source Files Inspected", content)
+        self.assertIn("Confidence And Evidence Gaps", content)
+        self.assertIn("version mismatch", content)
+        self.assertIn("Detailed source indexing is deferred", content)
+
+    def test_optimize_skills_document_compiler_source_escalation(self) -> None:
+        optimize = _read("skills/triton-npu-optimize/SKILL.md")
+        round_analysis = _read("skills/triton-npu-analyze-round-performance/SKILL.md")
+
+        self.assertIn("compiler-source escalation", optimize)
+        self.assertIn("triton-npu-analyze-compiler-source", optimize)
+        self.assertIn("compiler source analysis is enabled", optimize)
+        self.assertIn("after profiler and IR evidence", optimize)
+        self.assertIn("opt-round-N/compiler-analysis.md", optimize)
+        self.assertIn("compiler source analysis is enabled", round_analysis)
+        self.assertFalse(
+            (REPO_ROOT / "skills" / "triton-npu-optimize" / "references" / "workflow.md").exists()
+        )
+
+    def test_readme_documents_compiler_source_analysis_options(self) -> None:
+        content = _read("README.md")
+
+        self.assertIn("--enable-compiler-source-analysis", content)
+        self.assertIn("~/.triton-agent/compiler-sources/AscendNPU-IR/", content)
+        self.assertIn("read-only", content)
+        self.assertIn("escalation", content)
+
     def test_optimize_skill_allows_non_pattern_optimization_knowledge(self) -> None:
         optimize = _read("skills/triton-npu-optimize/SKILL.md")
         self.assertIn("Pattern references are helpful guidance, not the only allowed source of ideas.", optimize)
@@ -171,9 +213,75 @@ class GenerationContractTests(unittest.TestCase):
     def test_optimize_skill_records_learned_lessons(self) -> None:
         optimize = _read("skills/triton-npu-optimize/SKILL.md")
         self.assertIn("learned_lessons.md", optimize)
-        self.assertIn("record learned lessons whenever you discover reusable knowledge", optimize)
-        self.assertIn("compiler error repairs", optimize)
-        self.assertIn("profile-guided optimization lessons", optimize)
+        self.assertIn("strict reusable optimization-knowledge distillation log", optimize)
+        self.assertIn("passes all admission criteria", optimize)
+        self.assertIn("supported by correctness, benchmark, profiler, IR, or compiler-error evidence", optimize)
+        self.assertIn("states where it applies or what limits it", optimize)
+        self.assertIn("could plausibly be promoted into an optimize skill", optimize)
+        self.assertIn("Do not use `learned_lessons.md` for round narrative", optimize)
+
+    def test_optimize_docs_keep_opt_note_round_only_and_put_initial_hypothesis_in_attempts(self) -> None:
+        optimize = _read("skills/triton-npu-optimize/SKILL.md")
+        opt_note = _read("skills/triton-npu-optimize/references/opt-note-format.md")
+        artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
+
+        self.assertIn("completed round entries and one final `## Overall Summary`", optimize)
+        self.assertIn(
+            "For round 1, record the initial round hypothesis in `opt-round-1/attempts.md`",
+            optimize,
+        )
+        self.assertIn("top-level round ledger plus final `## Overall Summary`", optimize)
+        self.assertIn(
+            "completed round records and final outcome summary",
+            opt_note,
+        )
+        self.assertIn(
+            "Do not put session-start diagnosis, tentative bottleneck narrative, or other pre-round analysis above the round history",
+            opt_note,
+        )
+        self.assertIn(
+            "Do not write session-start diagnosis or tentative bottleneck narrative in `opt-note.md`",
+            artifacts,
+        )
+        self.assertNotIn("Record a short diagnosis before the first code-changing round", optimize)
+        self.assertFalse(
+            (REPO_ROOT / "skills" / "triton-npu-optimize" / "references" / "workflow.md").exists()
+        )
+
+    def test_optimize_docs_make_layered_analysis_default_and_remove_require_analysis_flag(self) -> None:
+        optimize = _read("skills/triton-npu-optimize/SKILL.md")
+        artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
+        readme = _read("README.md")
+
+        self.assertIn("## Core Loop", optimize)
+        self.assertIn("## Stage 2: Layered Analysis", optimize)
+        self.assertIn("### pattern triage", optimize)
+        self.assertIn("### profiling diagnosis", optimize)
+        self.assertIn("### IR attribution", optimize)
+        self.assertIn("### compiler-source escalation", optimize)
+        self.assertIn(
+            "Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough",
+            optimize,
+        )
+        self.assertIn("the current analysis level", artifacts)
+        self.assertIn("why the round stayed at that level or why it escalated deeper", artifacts)
+        self.assertIn(
+            "pattern triage -> profiling diagnosis -> IR attribution -> compiler-source escalation",
+            readme,
+        )
+        self.assertNotIn("--require-analysis", readme)
+        self.assertFalse(
+            (REPO_ROOT / "skills" / "triton-npu-optimize" / "references" / "workflow.md").exists()
+        )
+
+    def test_optimize_artifacts_document_strict_learned_lessons_boundary(self) -> None:
+        artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
+        self.assertIn("strict reusable optimization-knowledge log", artifacts)
+        self.assertIn("Only add an entry when it is evidence-backed", artifacts)
+        self.assertIn("portable to related Triton Ascend NPU operators", artifacts)
+        self.assertIn("Round-local command failures", artifacts)
+        self.assertIn("shape-specific details", artifacts)
+        self.assertIn("belong in `attempts.md`, `summary.md`, or `opt-note.md`", artifacts)
 
     def test_repair_guide_skill_owns_novel_fix_logging(self) -> None:
         repair_guide = _read("skills/triton-npu-repair-guide/SKILL.md")
