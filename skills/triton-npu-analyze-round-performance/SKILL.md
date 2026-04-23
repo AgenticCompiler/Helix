@@ -24,7 +24,7 @@ Use two complementary analysis paths to find performance problems:
 
 Use profiler-first layered analysis. Start from profiler evidence, deepen into `.bin` when the CSV-level view is not enough, and use IR as explanation and attribution rather than as the default entrypoint.
 
-When compiler source analysis is enabled by the launch prompt or workspace guidance, treat it as a later escalation after profile and IR analysis. Use `triton-npu-analyze-compiler-source` only when this skill has narrowed the problem to a concrete compiler error, suspicious pass transition, or lowering symptom that still needs source-level explanation.
+When compiler source analysis is enabled by the launch prompt or workspace guidance, treat it as a later escalation after profile and IR analysis. Use `triton-npu-analyze-compiler-source` only when this skill has narrowed the problem to a concrete performance-related compiler-side question that still needs source-backed explanation before the next operator change is clear.
 
 Read [references/ascend-npu-profiling-analysis.md](references/ascend-npu-profiling-analysis.md) when the round needs deeper interpretation of `op_summary`, `task_time`, `api_statistic`, `msprof` JSON, or `.bin` signals.
 Read [references/ascend-npu-optimization-guidance.md](references/ascend-npu-optimization-guidance.md) when you need help turning profiling symptoms and IR findings into concrete potential optimization points.

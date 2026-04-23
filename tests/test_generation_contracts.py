@@ -151,18 +151,49 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("A5", architecture_ref)
         self.assertIn("L0C", architecture_ref)
 
-    def test_compiler_source_analysis_skill_documents_read_only_cli_provisioned_source(self) -> None:
+    def test_compiler_source_analysis_skill_focuses_on_performance_navigation_and_next_action(
+        self,
+    ) -> None:
         content = _read("skills/triton-npu-analyze-compiler-source/SKILL.md")
 
-        self.assertIn("CLI-provided local source path", content)
-        self.assertIn("Do not run `git clone`, `git fetch`, or `git pull`", content)
+        self.assertIn("Analyze Compiler Source For Performance", content)
+        self.assertIn("Round Performance Question", content)
+        self.assertIn("Round Evidence Used", content)
+        self.assertIn("Recommended Next Operator Change", content)
+        self.assertIn("references/navigation-map.md", content)
+        self.assertIn("references/perf-question-playbook.md", content)
+        self.assertIn("Inspect `<compiler-source-dir>/docs/` first", content)
+        self.assertIn("`<compiler-source-dir>/bishengir/lib/` for implementation evidence", content)
+        self.assertIn("`<compiler-source-dir>/bishengir/include/` only when declarations", content)
+        self.assertIn(
+            "`<compiler-source-dir>/bishengir/test/` only when a minimal example is genuinely necessary",
+            content,
+        )
         self.assertIn("Treat the compiler source checkout as read-only", content)
-        self.assertIn("AscendNPU-IR", content)
-        self.assertIn("opt-round-N/compiler-analysis.md", content)
-        self.assertIn("Source Files Inspected", content)
-        self.assertIn("Confidence And Evidence Gaps", content)
-        self.assertIn("version mismatch", content)
-        self.assertIn("Detailed source indexing is deferred", content)
+        self.assertIn("Do not run `git clone`, `git fetch`, or `git pull`", content)
+        self.assertIn("CLI-provided compiler source path and commit", content)
+        self.assertNotIn("compiler error", content.lower())
+
+    def test_compiler_source_navigation_references_exist_and_capture_expected_sections(self) -> None:
+        navigation = _read(
+            "skills/triton-npu-analyze-compiler-source/references/navigation-map.md"
+        )
+        playbook = _read(
+            "skills/triton-npu-analyze-compiler-source/references/perf-question-playbook.md"
+        )
+
+        self.assertIn("# Compiler Source Navigation Map", navigation)
+        self.assertIn("## Default Reading Order", navigation)
+        self.assertIn("round evidence -> <compiler-source-dir>/docs", navigation)
+        self.assertIn("## Symptom To Subtree", navigation)
+        self.assertIn("## Search Recipes", navigation)
+        self.assertIn("## Anti-Patterns", navigation)
+
+        self.assertIn("# Performance Question Playbook", playbook)
+        self.assertIn("## Suspicious Stage Transition", playbook)
+        self.assertIn("## Vectorization Loss", playbook)
+        self.assertIn("## Copy Or Sync Growth", playbook)
+        self.assertIn("## Turning Source Findings Into Operator Actions", playbook)
 
     def test_optimize_skills_document_compiler_source_escalation(self) -> None:
         optimize = _read("skills/triton-npu-optimize/SKILL.md")
@@ -171,9 +202,13 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("compiler-source escalation", optimize)
         self.assertIn("triton-npu-analyze-compiler-source", optimize)
         self.assertIn("compiler source analysis is enabled", optimize)
+        self.assertIn("performance-focused explanation", optimize)
+        self.assertIn("next operator change", optimize)
         self.assertIn("after profiler and IR evidence", optimize)
         self.assertIn("opt-round-N/compiler-analysis.md", optimize)
         self.assertIn("compiler source analysis is enabled", round_analysis)
+        self.assertIn("performance-related compiler-side question", round_analysis)
+        self.assertIn("next operator change", round_analysis)
         self.assertFalse(
             (REPO_ROOT / "skills" / "triton-npu-optimize" / "references" / "workflow.md").exists()
         )
