@@ -33,6 +33,29 @@ Read this index first. Then read only the one or two most relevant detailed patt
 - Read next:
   - [tiling.md](tiling.md)
 
+### `classic-matmul`
+
+- Use when:
+  - the kernel is logically an `M x N` output with a regular reduction over `K`
+  - the current implementation is row-wise multiply-plus-sum code or another manual reduction that should become `tl.dot`
+  - the hot loop is matmul-like even if it is not written as an obvious GEMM today
+- Signals:
+  - repeated `tl.load` plus elementwise multiply plus `tl.sum`
+  - scalar-heavy pointer math or reduction structure around the K loop
+  - a fused epilogue already exists and would amortize better over a real output tile
+- Expected benefit:
+  - more regular matmul lowering
+  - less scalar-heavy reduction structure
+  - better epilogue amortization on larger shapes
+- Common follow-up:
+  - if one unified rewrite is not acceptable for every regime, split into dtype-specialized or shape-specialized paths
+- Main risk:
+  - tile setup overhead can hurt small shapes
+  - forced mixed precision may change float32 behavior
+- Read next:
+  - [classic-matmul.md](classic-matmul.md)
+  - then `software-pipeline.md` only if the tiled loop still shows load/compute gaps
+
 ### `reorder-load`
 
 - Use when:
@@ -68,6 +91,7 @@ Read this index first. Then read only the one or two most relevant detailed patt
   - extra UB pressure from keeping multiple tiles live
 - Read next:
   - [software-pipeline.md](software-pipeline.md)
+  - prefer `classic-matmul.md` first if the loop is still manual reduction code
 
 ### `autotune`
 
@@ -239,6 +263,9 @@ Read this index first. Then read only the one or two most relevant detailed patt
   - `software-pipeline`
   - `cache-use`
   - `tiling`
+- If the bottleneck is structurally a manual matmul or K-reduction, start with:
+  - `classic-matmul`
+  - then `software-pipeline` only after the loop is already a real tiled matmul
 - If the bottleneck looks gather or scatter heavy, start with:
   - `gather-load`
   - `discrete-memory-access`
@@ -253,6 +280,14 @@ Read this index first. Then read only the one or two most relevant detailed patt
   - `parallel`
 - If the bottleneck looks UB-limited because of intermediates, start with:
   - `slice-intermediate`
+
+## Common Boundary Rules
+
+- Use `classic-matmul` when the kernel should first become a standard tiled `tl.dot` loop.
+- Use `software-pipeline` when that tiled loop already exists and the next issue is overlap.
+- Use `tiling` when the main issue is UB footprint, block size, or live intermediate size.
+- If tiled matmul is only good for part of the operating envelope, prefer validated dtype/shape dispatch over forcing a single implementation everywhere.
+- Do not choose `software-pipeline` as a substitute for a missing structural rewrite.
 - If the bottleneck looks compare or mask heavy, start with:
   - `vec-cmp`
 - If the kernel is row-wise and one-row-per-program looks under-filled, start with:
