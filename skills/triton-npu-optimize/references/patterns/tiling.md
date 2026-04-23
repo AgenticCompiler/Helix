@@ -16,6 +16,13 @@
 
 Introduce **hierarchical tiling** (also called sub-blocking) to further subdivide large blocks:
 
+Choose this pattern when the main problem is **working-set size**. The question it answers is:
+
+- how should the kernel reduce per-program memory footprint so tiles and intermediates fit UB safely
+
+If the kernel should first be re-expressed as a standard tiled matmul, prefer `classic-matmul`.
+If the tiled loop already exists and the remaining problem is poor memory/compute overlap, prefer `software-pipeline`.
+
 ### Key Principles
 
 1. **Two-level blocking**: Separate task scheduling from memory management
@@ -159,6 +166,7 @@ def masked_fill(inp, mask, value):
 1. **Small BLOCK_SIZE** No significant memory pressure
 2. **Simple operations** with single tensor - UB usage is minimal
 3. **Already optimized** with sub-blocking present
+4. **Structure is the real problem** - if the current kernel is really a manual matmul or reduction that should first become a regular tiled `tl.dot` loop
 
 ## Implementation Checklist
 
@@ -184,6 +192,27 @@ def masked_fill(inp, mask, value):
 - UB overflow kernels become functional
 - Performance impact: -5% to +10% depending on operation complexity
 - Enables larger batch sizes and more efficient task scheduling
+
+## Boundary With Nearby Patterns
+
+### vs `classic-matmul`
+
+- `tiling` reduces memory footprint inside the chosen kernel structure
+- `classic-matmul` changes a manual reduction structure into a tiled matmul structure
+
+Use `classic-matmul` when the kernel is logically a matmul but is still coded as row-wise multiply-plus-sum.
+Use `tiling` when the structure is acceptable but block sizes or intermediates are too large.
+
+### vs `software-pipeline`
+
+- `tiling` reduces live memory footprint
+- `software-pipeline` deliberately keeps multiple tiles live to overlap transfer and compute
+
+These can compose, but the order matters:
+
+1. make the structure reasonable
+2. make the footprint fit UB
+3. then add overlap if profiling still justifies it
 
 ## Code Transformation Pattern
 

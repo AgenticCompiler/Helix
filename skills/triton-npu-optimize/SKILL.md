@@ -60,6 +60,7 @@ Use this skill when the user wants the operator itself improved rather than only
 - Pattern references are helpful guidance, not the only allowed source of ideas.
 - If your own Triton, Ascend NPU, or kernel-optimization knowledge suggests a stronger direction than the current pattern library, you may use that direction directly as long as you still record the hypothesis clearly and validate it with the same correctness and benchmark gates.
 - You do not need an existing pattern file to justify every optimization round.
+- When the kernel is structurally matmul-like, read the classic tiled matmul pattern reference before rewriting the hot loop so the round records the standard tiled-matmul shape, dtype, and masking rules explicitly.
 - Do not treat pattern triage as permission for blind pattern search.
 
 ### profiling diagnosis
