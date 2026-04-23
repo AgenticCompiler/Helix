@@ -28,6 +28,7 @@ def strict_learned_lessons_lines() -> list[str]:
 def layered_analysis_lines(*, round_scope: str) -> list[str]:
     return [
         f"Choose the analysis level for {round_scope} before editing code.",
+        "Record the round's primary analysis level separately from its supporting evidence.",
         "Escalate analysis in this order: pattern triage, profiling diagnosis, IR attribution, compiler-source escalation.",
         "Use pattern triage only to decide whether a strong pattern-backed hypothesis already exists.",
         "Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.",
@@ -96,6 +97,7 @@ def build_optimize_worker_prompt(
         "Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.",
         "Use the staged `triton-npu-analyze-round-performance` skill when a round needs deeper diagnosis from profile or IR evidence.",
         "When you use that analysis flow, write `opt-round-N/perf-analysis.md` as the standalone analysis artifact.",
+        "Use `triton-npu-analyze-ir` as the IR evidence companion when IR attribution is needed, while `triton-npu-analyze-round-performance` remains the owner of `opt-round-N/perf-analysis.md`.",
         "Reuse existing correctness tests and benchmark cases when they already exist; generate them only when required artifacts are missing.",
         "State the optimization hypothesis and why it may help before editing code for each round.",
         "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
@@ -155,6 +157,7 @@ def build_optimize_unsupervised_prompt(
         "Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.",
         "Use the staged `triton-npu-analyze-round-performance` skill when a round needs deeper diagnosis from profile or IR evidence.",
         "When you use that analysis flow, write `opt-round-N/perf-analysis.md` as the standalone analysis artifact.",
+        "Use `triton-npu-analyze-ir` as the IR evidence companion when IR attribution is needed, while `triton-npu-analyze-round-performance` remains the owner of `opt-round-N/perf-analysis.md`.",
         "Reuse existing correctness tests and benchmark cases when they already exist; generate them only when required artifacts are missing.",
         "State the optimization hypothesis and why it may help before editing code for each round.",
         "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",

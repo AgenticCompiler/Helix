@@ -8,6 +8,14 @@ description: Use when an optimize round needs deep performance diagnosis from ro
 Diagnose one `opt-round-N/` at a time and write the result to `opt-round-N/perf-analysis.md`.
 
 This skill is for deep round analysis inside `triton-npu-optimize`, not for supervisor audits and not for whole-session summaries.
+This skill is the owner of `opt-round-N/perf-analysis.md` for round-level performance diagnosis inside `triton-npu-optimize`.
+
+It supports both:
+
+- `profile-only diagnosis`
+- `profile-plus-IR diagnosis`
+
+When IR attribution is needed, use `triton-npu-analyze-ir` as the IR evidence companion for capture, navigation, and stage-level inspection. That does not transfer ownership of `opt-round-N/perf-analysis.md`.
 
 Use two complementary analysis paths to find performance problems:
 
@@ -59,6 +67,7 @@ Read the references in this order:
    - Do not block the round analysis if comparable evidence is missing.
    - Record missing comparison inputs as an evidence gap rather than guessing.
 9. Write `opt-round-N/perf-analysis.md`.
+   - Either `profile-only diagnosis` or `profile-plus-IR diagnosis` is acceptable, as long as the document makes the evidence path clear.
 
 ## Output contract
 
@@ -96,6 +105,7 @@ Inside `## Diagnosis`, prefer these subsections:
 - Treat IR as optional but strongly preferred when profiler evidence alone does not explain the likely implementation problem.
 - Use IR as explanation and attribution for profiler symptoms, not as the default entrypoint.
 - Use profiling analysis and IR analysis together when one source alone cannot explain the performance problem confidently.
+- Keep artifact ownership here even when IR evidence is used; `triton-npu-analyze-ir` is the IR evidence companion, not the owner of `perf-analysis.md`.
 - Distinguish facts from inference.
 - Cite the specific profile path, IR path, stage name, or operator name that supports each nontrivial conclusion.
 - Do not stop at profiler or IR symptoms. The final diagnosis must point to likely problems in the current operator implementation.

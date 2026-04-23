@@ -200,6 +200,10 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
                 "Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.",
                 shared_content,
             )
+            self.assertIn(
+                "Record the round's primary analysis level separately from its supporting evidence.",
+                shared_content,
+            )
             self.assertIn("Do not begin with blind tiling or launch-parameter search.", shared_content)
 
             warnings = manager.cleanup_supervised_session(state)

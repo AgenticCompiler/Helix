@@ -132,6 +132,9 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("profiler-first layered analysis", content)
         self.assertIn("IR as explanation and attribution", content)
         self.assertIn("two complementary analysis paths", content)
+        self.assertIn("owner of `opt-round-N/perf-analysis.md`", content)
+        self.assertIn("`profile-only diagnosis`", content)
+        self.assertIn("`profile-plus-IR diagnosis`", content)
         self.assertIn("potential optimization points", content)
         self.assertIn("## Binary Signals", content)
         self.assertIn("## Diagnosis", content)
@@ -242,8 +245,18 @@ class GenerationContractTests(unittest.TestCase):
             "Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough",
             optimize,
         )
+        self.assertIn("Primary analysis level", optimize)
+        self.assertIn("Supporting evidence", optimize)
+        self.assertIn(
+            "`triton-npu-analyze-round-performance` may still own `opt-round-N/perf-analysis.md`",
+            optimize,
+        )
+        self.assertIn("Escalation: <from> -> <to>", optimize)
+        self.assertIn("Escalation reason:", optimize)
         self.assertIn("the current analysis level", artifacts)
         self.assertIn("why the round stayed at that level or why it escalated deeper", artifacts)
+        self.assertIn("Primary analysis level", artifacts)
+        self.assertIn("Supporting evidence", artifacts)
         self.assertIn(
             "pattern triage -> profiling diagnosis -> IR attribution -> compiler-source escalation",
             readme,

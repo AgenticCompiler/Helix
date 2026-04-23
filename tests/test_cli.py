@@ -3572,6 +3572,10 @@ class PromptTests(unittest.TestCase):
             "Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.",
             prompt,
         )
+        self.assertIn(
+            "Record the round's primary analysis level separately from its supporting evidence.",
+            prompt,
+        )
         self.assertIn("Do not begin with blind tiling or launch-parameter search", prompt)
 
     def test_optimize_prompt_defaults_to_unsupervised_mode(self) -> None:

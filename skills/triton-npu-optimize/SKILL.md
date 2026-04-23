@@ -45,7 +45,8 @@ Use this skill when the user wants the operator itself improved rather than only
 - Create `opt-round-N/` from a validated parent candidate and keep parent-child traceability explicit.
 - Start `attempts.md` immediately so every meaningful attempt and measurement is recorded.
 - For round 1, record the initial round hypothesis in `opt-round-1/attempts.md` before the first code change.
-- Record the current analysis level, why it may help, and what evidence supports starting there.
+- Record the current analysis level as `Primary analysis level`, and record `Supporting evidence` separately.
+- Record why that level may help and what evidence supports starting there.
 - If the round starts from reused deeper evidence, cite the reused evidence path and explain why the shallower level is already established or insufficient.
 - Treat `opt-note.md` as the top-level round ledger plus final `## Overall Summary`.
 
@@ -56,7 +57,12 @@ Optimize analysis is layered.
 - Default escalation order: `pattern triage -> profiling diagnosis -> IR attribution -> compiler-source escalation`.
 - Start each round at the shallowest level that can justify the next move.
 - Escalate only when the current level is insufficient.
+- Keep `Primary analysis level` distinct from `Supporting evidence` in round records.
+- Using IR as supporting evidence does not automatically change the round's primary analysis level.
 - Record the chosen level and why the round stayed there or escalated deeper.
+- Show the level explicitly in `attempts.md`, for example `Primary analysis level: profiling diagnosis`.
+- When a round escalates, record both `Escalation: <from> -> <to>` and `Escalation reason: <why the previous level was insufficient>`.
+- Do not rely on the presence of `profile/`, `ir/`, or `perf-analysis.md` to imply the current level; state it directly.
 
 ### pattern triage
 
@@ -73,11 +79,14 @@ Optimize analysis is layered.
 - Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.
 - Use the sibling `triton-npu-profile-operator` skill when benchmark numbers need operator-level performance evidence, hotspot diagnosis, bottleneck analysis, or profiler-backed comparison across runs.
 - Use the sibling `triton-npu-analyze-round-performance` skill when one round needs a deeper diagnosis that should end in `opt-round-N/perf-analysis.md`, especially for scalar/vector/cube imbalance, transfer-heavy behavior, or suspected pipeline overlap issues.
+- This deeper diagnosis may end as either `profile-only diagnosis` or `profile-plus-IR diagnosis`.
 - Write `opt-round-N/perf-analysis.md` when the deeper round-analysis flow is used.
 
 ### IR attribution
 
 - Use IR attribution only after profiler-backed symptoms still need explanation.
+- `triton-npu-analyze-round-performance` may still own `opt-round-N/perf-analysis.md` when the round deepens from profiler evidence into IR-backed attribution.
+- In that flow, use `triton-npu-analyze-ir` as the IR evidence companion for capture, navigation, and stage-level inspection.
 - Use the sibling `triton-npu-analyze-ir` skill when compiler lowering details, stage-to-stage IR changes, or round-local IR evidence are needed to explain benchmark behavior.
 - Keep IR evidence under `opt-round-N/ir/`.
 - In optimize rounds, keep IR capture round-local, for example:
@@ -89,7 +98,8 @@ Optimize analysis is layered.
 ### compiler-source escalation
 
 - Use compiler-source escalation only when compiler source analysis is enabled and after profiler and IR evidence have narrowed a concrete compiler-side question.
-- When compiler source analysis is enabled, treat the compiler source checkout as read-only and use the sibling `triton-npu-analyze-compiler-source` skill only when compiler-source evidence is genuinely needed.
+- Use the sibling `triton-npu-analyze-compiler-source` skill only when the round still needs performance-focused explanation before the next operator change is clear.
+- When compiler source analysis is enabled, treat the compiler source checkout as read-only and use compiler-source evidence only when it is genuinely needed.
 - Write `opt-round-N/compiler-analysis.md`.
 
 ## Stage 3: Validate And Record
@@ -104,8 +114,8 @@ Optimize analysis is layered.
 
 ## Round Records
 
-- `attempts.md`: chronological round log for the current round, including the current analysis level, the starting hypothesis, escalation reasons, meaningful code changes, correctness failures, and benchmark outcomes.
-- `summary.md`: round conclusion, optimization points that mattered, the final analysis level, and which evidence actually decided the round.
+- `attempts.md`: chronological round log for the current round, including `Primary analysis level`, `Supporting evidence`, the starting hypothesis, escalation reasons, meaningful code changes, correctness failures, and benchmark outcomes.
+- `summary.md`: round conclusion, optimization points that mattered, the final analysis level, supporting evidence that decided the round, and unresolved questions if deeper analysis may still be needed.
 - `opt-note.md`: top-level round ledger plus final `## Overall Summary`.
 
 ## Learned Lessons

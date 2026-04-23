@@ -128,6 +128,8 @@ Use these subdirectories consistently:
 
 - parent round or parent candidate
 - optimization hypothesis
+- `Primary analysis level`
+- `Supporting evidence`
 - final analysis level
 - why that hypothesis looked plausible
 - what evidence motivated the round
@@ -147,6 +149,8 @@ The optimization points section is required. This is the part future engineers a
 Record at least:
 
 - the initial round hypothesis
+- `Primary analysis level`
+- `Supporting evidence`
 - the current analysis level
 - why the hypothesis may help
 - what evidence supports the round direction
@@ -172,7 +176,7 @@ Keep entries chronological so another engineer can reconstruct how the round evo
 - When a round needs deeper diagnosis, prefer writing a standalone `perf-analysis.md` in the round directory.
 - Treat `perf-analysis.md` as optional in the first iteration of this workflow, not a required artifact for every round.
 - When `round-state.json` declares `perf_analysis_path`, that path becomes the authoritative location for the analysis file.
-- Treat the content and structure of `perf-analysis.md` as owned by the deep-analysis skill, not by the optimize workflow contract.
+- Treat the content and structure of `perf-analysis.md` as owned by `triton-npu-analyze-round-performance`, not by the optimize workflow contract.
 
 ## Profile And IR Evidence
 
