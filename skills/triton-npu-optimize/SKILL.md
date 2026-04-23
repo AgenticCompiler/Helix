@@ -20,7 +20,6 @@ Use this skill when the user wants the operator itself improved rather than only
 - `baseline/`
 - `opt-round-N/`
 - completed round entries and one final `## Overall Summary` in `opt-note.md`
-- updated `learned_lessons.md` only when the session discovers reusable optimization knowledge that passes the admission bar
 - round-local `profile/`, `ir/`, `perf-analysis.md`, or `compiler-analysis.md` artifacts when deeper investigation is needed
 
 ## Core Loop
@@ -51,6 +50,13 @@ Use this skill when the user wants the operator itself improved rather than only
 - Treat `opt-note.md` as the top-level round ledger plus final `## Overall Summary`.
 
 ## Stage 2: Layered Analysis
+
+Optimize analysis is layered.
+
+- Default escalation order: `pattern triage -> profiling diagnosis -> IR attribution -> compiler-source escalation`.
+- Start each round at the shallowest level that can justify the next move.
+- Escalate only when the current level is insufficient.
+- Record the chosen level and why the round stayed there or escalated deeper.
 
 ### pattern triage
 
@@ -91,10 +97,8 @@ Use this skill when the user wants the operator itself improved rather than only
 - Run correctness validation before trusting any performance result.
 - After correctness passes, run benchmark validation and preserve the round-local benchmark evidence.
 - Use `baseline/perf.txt` for canonical optimize-session performance comparisons, even when the current round also compares locally against its parent.
-- Always use the `triton-npu-run-eval` skill to run `compare-perf` after both baseline and round perf artifacts exist.
-- Use the `triton-npu-run-eval` skill to run `compare-perf` after both baseline and round perf artifacts exist.
-- Always use the `triton-npu-run-eval` skill's `compare-perf` flow as the authoritative source for performance deltas and speedup metrics once comparable perf artifacts exist.
-- Use `compare-perf` as the only source for `Avg improvement`, `Geomean speedup`, `Total speedup`, and any claimed benchmark delta.
+- Once baseline and round perf artifacts both exist, use the `triton-npu-run-eval` skill to run `compare-perf`.
+- Treat the `triton-npu-run-eval` skill's `compare-perf` flow as the only authority for claimed benchmark deltas and speedups, including `Avg improvement`, `Geomean speedup`, `Total speedup`, and any claimed benchmark delta.
 - Do not hand-calculate speedups or percentage improvements from raw perf files.
 - Use the sibling `triton-npu-optimize-check` skill to run `check-round` and repair the current round until it passes before continuing or stopping.
 
@@ -103,9 +107,12 @@ Use this skill when the user wants the operator itself improved rather than only
 - `attempts.md`: chronological round log for the current round, including the current analysis level, the starting hypothesis, escalation reasons, meaningful code changes, correctness failures, and benchmark outcomes.
 - `summary.md`: round conclusion, optimization points that mattered, the final analysis level, and which evidence actually decided the round.
 - `opt-note.md`: top-level round ledger plus final `## Overall Summary`.
-- `learned_lessons.md`: strict reusable knowledge only.
+
+## Learned Lessons
 
 Maintain `learned_lessons.md` in the operator workspace as a strict reusable optimization-knowledge distillation log.
+
+Admission criteria:
 
 Append a lesson only when it passes all admission criteria:
 
@@ -123,7 +130,9 @@ Use `learned_lessons.md` for concise distilled rules such as:
 - new optimization points inferred from recurring Triton code patterns
 - validated benchmark interpretation rules that would help future rounds start faster
 
-Do not use `learned_lessons.md` for round narrative, local command failures, failed guesses, temporary troubleshooting notes, file names, shape-specific details, or summaries of what happened in one round. Put that material in `opt-round-N/attempts.md`, `opt-round-N/summary.md`, or `opt-note.md` instead.
+Do not use `learned_lessons.md` for round narrative, local command failures, failed guesses, temporary troubleshooting notes, file names, shape-specific details, or summaries of what happened in one round.
+
+Put round-local narrative, temporary troubleshooting notes, command failures, and shape-specific details in `opt-round-N/attempts.md`, `opt-round-N/summary.md`, or `opt-note.md` instead.
 
 ## Hard Rules
 
@@ -132,5 +141,3 @@ Do not use `learned_lessons.md` for round narrative, local command failures, fai
 - Do not replace the core computation with pure PyTorch just to improve benchmark numbers.
 - Do not claim success for a round without both correctness evidence and benchmark evidence.
 - Do not begin with blind tiling, autotune, or launch-parameter search when the available evidence does not justify that direction.
-- Do not put round narrative into `learned_lessons.md`.
-- Record reusable compiler fixes, profile interpretations, and newly discovered optimization heuristics in `learned_lessons.md` while they are still fresh, but only when they pass the strict admission criteria.

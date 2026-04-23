@@ -253,6 +253,27 @@ class GenerationContractTests(unittest.TestCase):
             (REPO_ROOT / "skills" / "triton-npu-optimize" / "references" / "workflow.md").exists()
         )
 
+    def test_optimize_skill_declares_layered_analysis_and_deduplicates_compare_perf_and_lessons(self) -> None:
+        optimize = _read("skills/triton-npu-optimize/SKILL.md")
+
+        self.assertIn("Optimize analysis is layered.", optimize)
+        self.assertIn(
+            "Default escalation order: `pattern triage -> profiling diagnosis -> IR attribution -> compiler-source escalation`.",
+            optimize,
+        )
+        self.assertIn(
+            "Start each round at the shallowest level that can justify the next move.",
+            optimize,
+        )
+        self.assertLess(optimize.index("Optimize analysis is layered."), optimize.index("### pattern triage"))
+        self.assertEqual(
+            optimize.count("use the `triton-npu-run-eval` skill to run `compare-perf`"),
+            1,
+        )
+        self.assertIn("## Learned Lessons", optimize)
+        self.assertIn("Admission criteria:", optimize)
+        self.assertIn("Put round-local narrative", optimize)
+
     def test_optimize_artifacts_document_strict_learned_lessons_boundary(self) -> None:
         artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
         self.assertIn("strict reusable optimization-knowledge log", artifacts)
