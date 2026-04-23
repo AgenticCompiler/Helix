@@ -76,6 +76,37 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("Do not", eval_gen)
         self.assertIn("opt-round", eval_gen)
 
+    def test_convert_skill_and_readme_document_differential_only_conversion(self) -> None:
+        convert_skill = _read("skills/triton-npu-convert-pytorch-operator/SKILL.md")
+        readme = _read("README.md")
+
+        self.assertTrue(
+            (REPO_ROOT / "skills" / "triton-npu-convert-pytorch-operator" / "SKILL.md").exists()
+        )
+        self.assertIn("trailing input-helper block", convert_skill)
+        self.assertIn("Do not execute the original input operator file", convert_skill)
+        self.assertIn("correctness oracle", convert_skill)
+        self.assertIn("differential test", convert_skill)
+        self.assertIn("triton_<origin-name>.py", convert_skill)
+        self.assertIn("## Converted Example", convert_skill)
+        self.assertIn("@triton.jit", convert_skill)
+        self.assertIn("def triton_add", convert_skill)
+        self.assertIn("class ModelNew", convert_skill)
+        self.assertIn("def get_inputs()", convert_skill)
+        self.assertIn("def get_init_inputs()", convert_skill)
+        self.assertNotIn("construct `ModelNew(*get_init_inputs())`", convert_skill)
+        self.assertNotIn("call `model(*get_inputs())`", convert_skill)
+        self.assertIn("Do not introduce unnecessary code.", convert_skill)
+        self.assertIn("Target Ascend NPU only", convert_skill)
+        self.assertIn("Do not add CUDA-only, CPU-only, MPS, or generic multi-backend dispatch branches", convert_skill)
+        self.assertNotIn("triton-npu-prepare-optimize-baseline", convert_skill)
+        self.assertNotIn("reusable baseline", convert_skill.lower())
+        self.assertNotIn("benchmark", convert_skill.lower())
+        self.assertIn("gen-convert", readme)
+        self.assertIn("Triton NPU-backed PyTorch operator", readme)
+        self.assertIn("differential correctness validation", readme)
+        self.assertNotIn("preparing `baseline/`", readme)
+
     def test_optimize_baseline_preparation_uses_dedicated_skill(self) -> None:
         optimize = _read("skills/triton-npu-optimize/SKILL.md")
         baseline = _read("skills/triton-npu-prepare-optimize-baseline/SKILL.md")

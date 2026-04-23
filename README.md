@@ -10,6 +10,7 @@ This README is organized by task so you can quickly find the right command for t
 - `run-test`: run an existing generated test.
 - `gen-eval`: generate both test and benchmark assets for one operator.
 - `gen-eval-batch`: generate evaluation assets for many operator workspaces.
+- `gen-convert`: convert one PyTorch operator into a Triton NPU-backed PyTorch operator and validate it with differential testing.
 - `gen-bench`: generate a benchmark for one operator.
 - `run-bench`: run an existing generated benchmark.
 - `optimize`: optimize one operator.
@@ -27,6 +28,8 @@ Most workflows start from a single operator file:
 ```bash
 uv run triton-agent gen-test --input a.py
 uv run triton-agent run-test --test-file test_a.py --operator-file a.py
+
+uv run triton-agent gen-convert --input a.py
 
 uv run triton-agent gen-bench --input a.py
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
@@ -121,6 +124,44 @@ Example:
 
 ```bash
 uv run triton-agent gen-eval --input a.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
+```
+
+## Convert PyTorch Operators
+
+Use `gen-convert` when you want a new Triton NPU-backed PyTorch operator file instead of an in-place optimize round.
+
+```bash
+uv run triton-agent gen-convert --input a.py
+```
+
+What it is for:
+
+- converting one source PyTorch operator into a Triton NPU-backed PyTorch operator
+- preserving the input file's trailing input-helper block in the converted output
+- validating the converted operator through differential correctness validation against the original operator
+
+Common options:
+
+- `--output triton_a.py`: write to a specific converted-operator path.
+- `--agent codex|opencode|pi|claude|openhands|traecli`
+- `--test-mode differential`
+- `--interact`
+- `--show-output`
+- `--force-overwrite`
+- `--remote user@host[:port]`
+- `--remote-workdir <path>`
+
+Behavior:
+
+- The original input operator file is treated as source material and differential correctness oracle and must not be executed by this workflow.
+- The converted output defaults to `triton_<origin-name>.py`.
+- The input file's trailing input-helper block should remain available in the converted output.
+- The workflow generates and executes a differential test for the converted output before finishing.
+
+Example:
+
+```bash
+uv run triton-agent gen-convert --input a.py --output triton_a.py
 ```
 
 ## Generate Benchmarks

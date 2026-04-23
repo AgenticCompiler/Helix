@@ -6,10 +6,65 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+import triton_agent.optimize.guidance as optimize_guidance
 from triton_agent.optimize.guidance import OptimizeGuidanceManager
 
 
 class OptimizeGuidanceManagerTests(unittest.TestCase):
+    def test_render_bullet_block_formats_markdown_list(self) -> None:
+        rendered = optimize_guidance._render_bullet_block(
+            [
+                "Read files cautiously.",
+                "Follow the user's instructions strictly.",
+            ]
+        )
+
+        self.assertEqual(
+            rendered,
+            "- Read files cautiously.\n"
+            "- Follow the user's instructions strictly.\n",
+        )
+
+    def test_render_line_block_joins_lines_and_omits_empty_block(self) -> None:
+        self.assertEqual(
+            optimize_guidance._render_line_block(
+                [
+                    "Compiler source analysis is enabled for this optimize run.",
+                    "Treat the compiler source checkout as read-only.",
+                ]
+            ),
+            "Compiler source analysis is enabled for this optimize run.\n"
+            "Treat the compiler source checkout as read-only.\n",
+        )
+        self.assertEqual(optimize_guidance._render_line_block([]), "")
+
+    def test_unsupervised_guidance_template_inlines_shared_rule_block(self) -> None:
+        template = optimize_guidance._UNSUPERVISED_GUIDANCE_TEMPLATE
+
+        self.assertIn("{guidance_filename}", template)
+        self.assertIn("{test_mode}", template)
+        self.assertIn("{bench_mode}", template)
+        self.assertIn("{operator_name}", template)
+        self.assertIn("{analysis_block}", template)
+        self.assertIn("{compiler_source_block}", template)
+        self.assertIn(
+            "- Read files cautiously. Do not read unrelated files speculatively or just in case.\n",
+            template,
+        )
+        self.assertNotIn("{guidance_rules_block}", template)
+
+    def test_shared_guidance_template_inlines_shared_rule_block(self) -> None:
+        template = optimize_guidance._SHARED_GUIDANCE_TEMPLATE
+
+        self.assertIn("{guidance_filename}", template)
+        self.assertIn("{analysis_block}", template)
+        self.assertIn("{compiler_source_block}", template)
+        self.assertIn(
+            "- Read files cautiously. Do not read unrelated files speculatively or just in case.\n",
+            template,
+        )
+        self.assertNotIn("{guidance_rules_block}", template)
+
     def test_prepare_unsupervised_session_creates_self_contained_guidance_file_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
@@ -35,6 +90,14 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             self.assertIn("## Triton Agent Optimize Session", guidance_content)
             self.assertIn("This workspace is under an unsupervised optimize run.", guidance_content)
             self.assertIn("Own the end-to-end optimize session.", guidance_content)
+            self.assertIn(
+                "Read files cautiously. Do not read unrelated files speculatively or just in case.",
+                guidance_content,
+            )
+            self.assertIn(
+                "Follow the user's instructions strictly.",
+                guidance_content,
+            )
             self.assertIn("Use `differential` correctness validation", guidance_content)
             self.assertIn("Use `standalone` benchmark validation", guidance_content)
             self.assertIn("Use the staged `triton-npu-optimize` skill", guidance_content)
@@ -167,6 +230,14 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             self.assertEqual(state.guidance_path, guidance_path)
             self.assertIn("# CLAUDE.md", shared_content)
             self.assertIn("## Triton Agent Optimize Orchestration", shared_content)
+            self.assertIn(
+                "Read files cautiously. Do not read unrelated files speculatively or just in case.",
+                shared_content,
+            )
+            self.assertIn(
+                "Follow the user's instructions strictly.",
+                shared_content,
+            )
             self.assertIn("Role-specific behavior comes from the launch prompt.", shared_content)
             self.assertNotIn("Improve the Triton operator", shared_content)
 

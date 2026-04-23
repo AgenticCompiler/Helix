@@ -5,9 +5,78 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+from textwrap import dedent
 from typing import List, Optional
 
 from triton_agent.prompts import compiler_source_analysis_lines, layered_analysis_lines
+
+
+def _render_bullet_block(lines: list[str]) -> str:
+    return "".join(f"- {line}\n" for line in lines)
+
+
+def _render_line_block(lines: list[str]) -> str:
+    if not lines:
+        return ""
+    return "\n".join(lines) + "\n"
+
+
+_OPTIMIZE_GUIDANCE_RULES_BLOCK = dedent(
+    """\
+    - Read files cautiously. Do not read unrelated files speculatively or just in case.
+    - Prefer the smallest source that can unblock the next decision.
+    - Follow the user's instructions strictly.
+    - Treat user priorities, constraints, and workflow guidance as binding unless they conflict with a safety or correctness requirement.
+    """
+)
+
+
+_UNSUPERVISED_GUIDANCE_TEMPLATE = (
+    dedent(
+        """\
+        # {guidance_filename}
+
+        ## Triton Agent Optimize Session
+
+        This workspace is under an unsupervised optimize run.
+
+        """
+    )
+    + _OPTIMIZE_GUIDANCE_RULES_BLOCK
+    + dedent(
+        """\
+        Own the end-to-end optimize session.
+        Use the staged `triton-npu-optimize` skill as the workflow source of truth.
+        Use `{test_mode}` correctness validation for this optimize session.
+        Use `{bench_mode}` benchmark validation for this optimize session.
+        Optimize the operator at `{operator_name}`.
+        {analysis_block}{compiler_source_block}"""
+    )
+)
+
+
+_SHARED_GUIDANCE_TEMPLATE = (
+    dedent(
+        """\
+        # {guidance_filename}
+
+        ## Triton Agent Optimize Orchestration
+
+        This workspace is under optimize orchestration.
+
+        """
+    )
+    + _OPTIMIZE_GUIDANCE_RULES_BLOCK
+    + dedent(
+        """\
+        Use the staged workspace skills as the workflow source of truth.
+        Role-specific behavior comes from the launch prompt.
+        Use `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md` as live handoff files.
+        Treat `baseline/` as the canonical optimize baseline.
+        Use `compare-perf` as the authoritative source for round performance summaries.
+        {analysis_block}{compiler_source_block}"""
+    )
+)
 
 
 @dataclass
@@ -342,30 +411,20 @@ class OptimizeGuidanceManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
     ) -> str:
-        analysis_block = "".join(
-            f"- {line}\n" for line in layered_analysis_lines(round_scope="each round")
-        )
-
-        compiler_source_block = "\n".join(
-            compiler_source_analysis_lines(
-                compiler_source_path=compiler_source_path,
-                compiler_source_commit=compiler_source_commit,
-            )
-        )
-        if compiler_source_block:
-            compiler_source_block += "\n"
-
-        return (
-            f"# {guidance_filename}\n\n"
-            "## Triton Agent Optimize Session\n\n"
-            "This workspace is under an unsupervised optimize run.\n\n"
-            "Own the end-to-end optimize session.\n"
-            "Use the staged `triton-npu-optimize` skill as the workflow source of truth.\n"
-            f"Use `{test_mode}` correctness validation for this optimize session.\n"
-            f"Use `{bench_mode}` benchmark validation for this optimize session.\n"
-            f"Optimize the operator at `{operator_path.name}`.\n"
-            f"{analysis_block}"
-            f"{compiler_source_block}"
+        return _UNSUPERVISED_GUIDANCE_TEMPLATE.format(
+            guidance_filename=guidance_filename,
+            test_mode=test_mode,
+            bench_mode=bench_mode,
+            operator_name=operator_path.name,
+            analysis_block=_render_bullet_block(
+                layered_analysis_lines(round_scope="each round")
+            ),
+            compiler_source_block=_render_line_block(
+                compiler_source_analysis_lines(
+                    compiler_source_path=compiler_source_path,
+                    compiler_source_commit=compiler_source_commit,
+                )
+            ),
         )
 
     def _render_shared_guidance(
@@ -375,28 +434,15 @@ class OptimizeGuidanceManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
     ) -> str:
-        analysis_block = "".join(
-            f"- {line}\n" for line in layered_analysis_lines(round_scope="each round")
-        )
-
-        compiler_source_block = "\n".join(
-            compiler_source_analysis_lines(
-                compiler_source_path=compiler_source_path,
-                compiler_source_commit=compiler_source_commit,
-            )
-        )
-        if compiler_source_block:
-            compiler_source_block += "\n"
-
-        return (
-            f"# {guidance_filename}\n\n"
-            "## Triton Agent Optimize Orchestration\n\n"
-            "This workspace is under optimize orchestration.\n\n"
-            "Use the staged workspace skills as the workflow source of truth.\n"
-            "Role-specific behavior comes from the launch prompt.\n"
-            "Use `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md` as live handoff files.\n"
-            "Treat `baseline/` as the canonical optimize baseline.\n"
-            "Use `compare-perf` as the authoritative source for round performance summaries.\n"
-            f"{analysis_block}"
-            f"{compiler_source_block}"
+        return _SHARED_GUIDANCE_TEMPLATE.format(
+            guidance_filename=guidance_filename,
+            analysis_block=_render_bullet_block(
+                layered_analysis_lines(round_scope="each round")
+            ),
+            compiler_source_block=_render_line_block(
+                compiler_source_analysis_lines(
+                    compiler_source_path=compiler_source_path,
+                    compiler_source_commit=compiler_source_commit,
+                )
+            ),
         )

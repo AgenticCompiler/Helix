@@ -10,6 +10,7 @@ from triton_agent.paths import default_generated_output_path
 
 PROMPT_INTROS = {
     CommandKind.GEN_EVAL: "Repair the operator when needed, then generate correctness tests and a benchmark.",
+    CommandKind.GEN_CONVERT: "Convert the PyTorch operator into a Triton NPU-backed PyTorch operator and validate it with differential correctness testing.",
     CommandKind.GEN_TEST: "Generate correctness tests for the operator file.",
     CommandKind.RUN_TEST: "Run the generated correctness tests for the operator file.",
     CommandKind.GEN_BENCH: "Generate a benchmark for the operator file.",
@@ -296,13 +297,29 @@ def build_prompt(
         lines.append(f"Remote execution target: {remote}")
         if remote_workdir is not None:
             lines.append(f"Remote execution root: {remote_workdir}")
+        if command_kind in {CommandKind.GEN_EVAL, CommandKind.GEN_EVAL_BATCH, CommandKind.OPTIMIZE}:
+            lines.append(
+                "When you execute generated test cases or benchmark cases in this task, include the "
+                "same `--remote` setting and reuse `--remote-workdir` when provided."
+            )
+        elif command_kind in {CommandKind.GEN_TEST, CommandKind.GEN_CONVERT}:
+            lines.append(
+                "When you execute generated test cases in this task, include the same `--remote` "
+                "setting and reuse `--remote-workdir` when provided."
+            )
+        elif command_kind == CommandKind.GEN_BENCH:
+            lines.append(
+                "When you execute generated benchmark cases in this task, include the same "
+                "`--remote` setting and reuse `--remote-workdir` when provided."
+            )
+    if command_kind == CommandKind.GEN_TEST:
         lines.append(
-            "When you execute generated test cases or benchmark cases in this task, include the "
-            "same `--remote` setting and reuse `--remote-workdir` when provided."
+            "After generating the artifact, execute the generated test case. "
+            "If execution fails, repair the generated artifact and retry automatically."
         )
-    if command_kind in {CommandKind.GEN_TEST, CommandKind.GEN_BENCH}:
+    if command_kind == CommandKind.GEN_BENCH:
         lines.append(
-            "After generating the artifact, execute the generated test or benchmark case. "
+            "After generating the artifact, execute the generated benchmark case. "
             "If execution fails, repair the generated artifact and retry automatically."
         )
     if command_kind == CommandKind.GEN_EVAL:
@@ -312,6 +329,25 @@ def build_prompt(
                 "Generate both the test harness and the benchmark harness in this task.",
                 "After generating them, both generated artifacts must be executed before the task finishes.",
                 "If validation fails, repair the generated harness when the harness is at fault, or repair the original operator file when the operator is at fault, then retry.",
+            ]
+        )
+    if command_kind == CommandKind.GEN_CONVERT:
+        lines.extend(
+            [
+                "Treat the input operator file as source material only.",
+                "Do not execute the original input operator file.",
+                "Treat the input operator file as source material and the differential correctness oracle.",
+                "Write the converted operator to the requested output path and keep the original input file unchanged.",
+                "Preserve the trailing input-helper block from the input file in the converted output so later harnesses can reuse it.",
+                "When generating or validating harnesses, you may add broader coverage and do not need to limit yourself to only the preserved trailing helpers.",
+                "Do not introduce unnecessary wrappers, compatibility branches, helper layers, or scaffolding.",
+                "Keep the converted artifact as a PyTorch-facing operator backed by a Triton NPU kernel path.",
+                "Target Ascend NPU only for this conversion flow and do not add CUDA, CPU, MPS, or generic multi-backend fallback logic unless the source file already requires shared import structure around the public API.",
+                "Do not inline correctness or benchmark harness code into the converted operator file.",
+                "Do not benchmark this workflow.",
+                "Do not create `baseline/`.",
+                "Generate a differential test for the converted output and execute it.",
+                "Validate the converted output by comparing it against the original operator behavior.",
             ]
         )
 

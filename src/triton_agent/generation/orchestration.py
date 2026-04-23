@@ -20,6 +20,13 @@ GEN_EVAL_STAGED_SKILLS = (
     "triton-npu-run-eval",
 )
 
+GEN_CONVERT_STAGED_SKILLS = (
+    "triton-npu-convert-pytorch-operator",
+    "triton-npu-gen-test",
+    "triton-npu-run-eval",
+    "triton-npu-repair-guide",
+)
+
 
 def build_generation_request(
     command_kind: CommandKind,
@@ -28,7 +35,11 @@ def build_generation_request(
     workdir: Path,
     options: GenerationOptions,
 ) -> AgentRequest:
-    staged_skill_names = GEN_EVAL_STAGED_SKILLS if command_kind == CommandKind.GEN_EVAL else None
+    staged_skill_names = None
+    if command_kind == CommandKind.GEN_EVAL:
+        staged_skill_names = GEN_EVAL_STAGED_SKILLS
+    elif command_kind == CommandKind.GEN_CONVERT:
+        staged_skill_names = GEN_CONVERT_STAGED_SKILLS
     output_path = resolve_generation_output_path(
         command_kind,
         input_path,

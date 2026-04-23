@@ -17,6 +17,10 @@ def handle_gen_eval(parser: argparse.ArgumentParser, args: argparse.Namespace) -
     return _handle_generation_command(parser, args, CommandKind.GEN_EVAL)
 
 
+def handle_gen_convert(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    return _handle_generation_command(parser, args, CommandKind.GEN_CONVERT)
+
+
 def handle_gen_eval_batch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     root = Path(args.input).expanduser().resolve()
     if not root.exists():

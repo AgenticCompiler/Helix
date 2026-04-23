@@ -82,6 +82,24 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.agent, "codex")
         self.assertFalse(args.interact)
 
+    def test_gen_convert_maps_to_command_kind(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["gen-convert", "-i", "kernel.py"])
+        self.assertEqual(args.command, "gen-convert")
+        self.assertEqual(args.command_kind, CommandKind.GEN_CONVERT)
+        self.assertEqual(args.test_mode, "differential")
+        self.assertFalse(hasattr(args, "bench_mode"))
+        self.assertEqual(args.agent, "codex")
+        self.assertFalse(args.interact)
+
+    def test_gen_convert_rejects_non_differential_test_mode(self) -> None:
+        parser = build_parser()
+        stderr = StringIO()
+        with self.assertRaises(SystemExit) as exc, redirect_stderr(stderr):
+            parser.parse_args(["gen-convert", "-i", "kernel.py", "--test-mode", "standalone"])
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn("differential", stderr.getvalue())
+
     def test_gen_test_maps_to_command_kind(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["gen-test", "-i", "kernel.py"])
@@ -95,6 +113,7 @@ class CliParserTests(unittest.TestCase):
         cases = [
             ("gen_eval_batch", CommandKind.GEN_EVAL_BATCH),
             ("gen_eval", CommandKind.GEN_EVAL),
+            ("gen_convert", CommandKind.GEN_CONVERT),
             ("gen_test", CommandKind.GEN_TEST),
             ("run_test", CommandKind.RUN_TEST),
             ("gen_bench", CommandKind.GEN_BENCH),
@@ -120,6 +139,7 @@ class CliParserTests(unittest.TestCase):
         help_text = parser.format_help()
         self.assertIn("gen-eval-batch", help_text)
         self.assertIn("gen-eval", help_text)
+        self.assertIn("gen-convert", help_text)
         self.assertIn("gen-test", help_text)
         self.assertIn("run-test", help_text)
         self.assertIn("gen-bench", help_text)
@@ -132,6 +152,7 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("optimize-batch", help_text)
         self.assertNotIn("gen_eval_batch", help_text)
         self.assertNotIn("gen_eval", help_text)
+        self.assertNotIn("gen_convert", help_text)
         self.assertNotIn("gen_test", help_text)
         self.assertNotIn("run_test", help_text)
         self.assertNotIn("gen_bench", help_text)
@@ -155,6 +176,7 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("Status:", help_text)
         self.assertIn("Verification:", help_text)
         self.assertIn("Optimization:", help_text)
+        self.assertIn("gen-convert", help_text)
         self.assertIn("Examples:", help_text)
         self.assertIn("triton-agent gen-test -i kernel.py", help_text)
         self.assertIn("triton-agent optimize -i kernel.py --agent codex", help_text)
@@ -3452,7 +3474,7 @@ class PromptTests(unittest.TestCase):
             bench_mode=None,
             force_overwrite=False,
         )
-        self.assertIn("After generating the artifact, execute the generated test or benchmark case", prompt)
+        self.assertIn("After generating the artifact, execute the generated test case", prompt)
         self.assertIn("repair the generated artifact and retry automatically", prompt)
 
     def test_gen_bench_prompt_requires_execute_and_autofix(self) -> None:
@@ -3465,7 +3487,7 @@ class PromptTests(unittest.TestCase):
             bench_mode="standalone",
             force_overwrite=False,
         )
-        self.assertIn("After generating the artifact, execute the generated test or benchmark case", prompt)
+        self.assertIn("After generating the artifact, execute the generated benchmark case", prompt)
         self.assertIn("repair the generated artifact and retry automatically", prompt)
 
     def test_prompt_mentions_remote_execution_context(self) -> None:
@@ -3482,7 +3504,7 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("Remote execution target: alice@example.com:2200", prompt)
         self.assertIn("Remote execution root: /tmp/triton-agent", prompt)
-        self.assertIn("When you execute generated test cases or benchmark cases", prompt)
+        self.assertIn("When you execute generated test cases in this task", prompt)
         self.assertIn("include the same `--remote` setting", prompt)
 
     def test_gen_eval_prompt_mentions_remote_execution_context(self) -> None:
@@ -3501,6 +3523,28 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Remote execution root: /tmp/triton-agent", prompt)
         self.assertIn("both generated artifacts must be executed", prompt)
         self.assertIn("include the same `--remote` setting", prompt)
+
+    def test_gen_convert_prompt_mentions_differential_validation_without_baseline(self) -> None:
+        prompt = build_prompt(
+            CommandKind.GEN_CONVERT,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/triton_op.py"),
+            test_mode="differential",
+            bench_mode=None,
+            force_overwrite=False,
+        )
+        self.assertIn("Do not execute the original input operator file.", prompt)
+        self.assertIn("Preserve the trailing input-helper block", prompt)
+        self.assertIn("Treat the input operator file as source material and the differential correctness oracle.", prompt)
+        self.assertIn("Generate a differential test for the converted output and execute it.", prompt)
+        self.assertIn("Validate the converted output by comparing it against the original operator behavior.", prompt)
+        self.assertIn("Do not introduce unnecessary wrappers, compatibility branches, helper layers, or scaffolding.", prompt)
+        self.assertIn("Target Ascend NPU only for this conversion flow", prompt)
+        self.assertIn("Do not benchmark this workflow.", prompt)
+        self.assertIn("Do not create `baseline/`.", prompt)
+        self.assertNotIn("triton-npu-prepare-optimize-baseline", prompt)
+        self.assertIn("Requested output: /tmp/triton_op.py", prompt)
 
     def test_optimize_prompt_mentions_requested_modes(self) -> None:
         prompt = build_prompt(

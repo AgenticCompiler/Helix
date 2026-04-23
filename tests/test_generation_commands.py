@@ -9,7 +9,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.cli import build_parser
-from triton_agent.commands.generation import handle_gen_eval, handle_gen_test
+from triton_agent.commands.generation import handle_gen_convert, handle_gen_eval, handle_gen_test
 from triton_agent.generation.models import GenerationOptions
 from triton_agent.generation.outputs import (
     prepare_generation_targets,
@@ -36,6 +36,18 @@ class GenerationHelpersTests(unittest.TestCase):
 
         self.assertEqual(output_path, Path("/tmp/differential_test_kernel.py"))
 
+    def test_resolve_generation_output_path_uses_triton_prefix_for_gen_convert(self) -> None:
+        operator = Path("/tmp/kernel.py")
+
+        output_path = resolve_generation_output_path(
+            CommandKind.GEN_CONVERT,
+            operator,
+            explicit_output=None,
+            test_mode="differential",
+        )
+
+        self.assertEqual(output_path, Path("/tmp/triton_kernel.py"))
+
     def test_prepare_generation_target_rejects_existing_file_without_overwrite(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "test_kernel.py"
@@ -47,6 +59,24 @@ class GenerationHelpersTests(unittest.TestCase):
                     Path(tmp) / "kernel.py",
                     output,
                     test_mode="standalone",
+                    force_overwrite=False,
+                )
+
+    def test_prepare_generation_targets_rejects_existing_gen_convert_artifact_without_overwrite(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = Path(tmp) / "kernel.py"
+            output = Path(tmp) / "triton_kernel.py"
+            input_path.write_text("print('x')\n", encoding="utf-8")
+            output.write_text("existing converted operator", encoding="utf-8")
+
+            with self.assertRaisesRegex(FileExistsError, "Output file already exists"):
+                prepare_generation_targets(
+                    CommandKind.GEN_CONVERT,
+                    input_path,
+                    output,
+                    test_mode="differential",
                     force_overwrite=False,
                 )
 
@@ -158,6 +188,40 @@ class GenerationHelpersTests(unittest.TestCase):
 
         self.assertIsNone(request.output_path)
 
+    def test_build_generation_request_for_gen_convert_uses_differential_only_skills(self) -> None:
+        request = build_generation_request(
+            CommandKind.GEN_CONVERT,
+            Path("/tmp/kernel.py"),
+            Path("/tmp/kernel.py"),
+            Path("/tmp"),
+            GenerationOptions(
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                continue_optimize=False,
+                output=None,
+                test_mode="differential",
+                bench_mode=None,
+            ),
+        )
+
+        self.assertEqual(
+            request.staged_skill_names,
+            (
+                "triton-npu-convert-pytorch-operator",
+                "triton-npu-gen-test",
+                "triton-npu-run-eval",
+                "triton-npu-repair-guide",
+            ),
+        )
+        self.assertEqual(request.skill_name, "triton-npu-convert-pytorch-operator")
+        self.assertEqual(request.output_path, Path("/tmp/triton_kernel.py"))
+
 
 class GenerationCommandHandlerTests(unittest.TestCase):
     def test_handle_gen_test_rejects_openhands_interactive_mode(self) -> None:
@@ -210,6 +274,45 @@ class GenerationCommandHandlerTests(unittest.TestCase):
             self.assertEqual(
                 captured["output_path"],
                 (Path(tmp) / "differential_test_kernel.py").resolve(),
+            )
+
+    def test_handle_gen_convert_builds_request_with_default_output(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            operator = Path(tmp) / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            args = parser.parse_args(
+                [
+                    "gen-convert",
+                    "-i",
+                    str(operator),
+                ]
+            )
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            captured: dict[str, object] = {}
+
+            def _fake_run(request):
+                captured["output_path"] = request.output_path
+                captured["staged_skill_names"] = request.staged_skill_names
+                return fake_result
+
+            with patch("triton_agent.commands.generation.run_generation_request", side_effect=_fake_run):
+                exit_code = handle_gen_convert(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(
+                captured["output_path"],
+                (Path(tmp) / "triton_kernel.py").resolve(),
+            )
+            self.assertEqual(
+                captured["staged_skill_names"],
+                (
+                    "triton-npu-convert-pytorch-operator",
+                    "triton-npu-gen-test",
+                    "triton-npu-run-eval",
+                    "triton-npu-repair-guide",
+                ),
             )
 
     def test_handle_gen_eval_builds_request_with_restricted_skills(self) -> None:
