@@ -66,6 +66,60 @@ def append_additional_user_instructions(prompt: str, user_prompt: str | None) ->
     return f"{prompt}\n\nAdditional user instructions:\n{stripped_prompt}"
 
 
+def _shared_optimize_prompt_lines(
+    *,
+    target_chip: str,
+    optimize_check_line: str,
+) -> list[str]:
+    return [
+        "PyTorch-facing public API may remain as a wrapper when that is the intended operator entrypoint.",
+        "You must continue optimizing the Triton Ascend NPU kernel path itself.",
+        "Do not replace the core computation with a pure PyTorch implementation just to improve final outputs or benchmark numbers.",
+        "A round that bypasses the Triton kernel path with pure PyTorch code does not count as a successful optimize round.",
+        "Use the staged `triton-npu-prepare-optimize-baseline` skill when baseline artifacts are missing or invalid.",
+        optimize_check_line,
+        "Establish or reuse `baseline/` before creating `opt-round-1`.",
+        "If baseline preparation is needed, use the staged `triton-npu-prepare-optimize-baseline` skill and continue only after it has repaired the baseline through `check-baseline`.",
+        "Use `baseline/perf.txt` for canonical performance comparisons.",
+        "Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.",
+        "Use the staged `triton-npu-analyze-round-performance` skill when a round needs deeper diagnosis from profile or IR evidence.",
+        "When you use that analysis flow, write `opt-round-N/perf-analysis.md` as the standalone analysis artifact.",
+        "Use `triton-npu-analyze-ir` as the IR evidence companion when IR attribution is needed, while `triton-npu-analyze-round-performance` remains the owner of `opt-round-N/perf-analysis.md`.",
+        "Reuse existing correctness tests and benchmark cases when they already exist; generate them only when required artifacts are missing.",
+        "State the optimization hypothesis and why it may help before editing code for each round.",
+        "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
+        "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
+        *layered_analysis_lines(round_scope="the round"),
+        *strict_learned_lessons_lines(),
+        f"Target chip for this optimize session: {target_chip}.",
+        f"When ranking optimization points, prefer changes that fit {target_chip} unless the round artifacts prove a different chip target.",
+    ]
+
+
+def _finalize_optimize_prompt_lines(
+    *,
+    lines: list[str],
+    resume_existing_session: bool,
+    compiler_source_path: Path | None,
+    compiler_source_commit: str | None,
+) -> str:
+    lines.extend(
+        compiler_source_analysis_lines(
+            compiler_source_path=compiler_source_path,
+            compiler_source_commit=compiler_source_commit,
+        )
+    )
+    lines.extend(baseline_state_contract_lines())
+    if resume_existing_session:
+        lines.extend(
+            [
+                "Continue the existing optimization session instead of restarting from scratch.",
+                "Read `opt-note.md`, existing `opt-round-*` directories, and existing round logs before making changes.",
+            ]
+        )
+    return "\n".join(lines)
+
+
 def build_optimize_worker_prompt(
     input_path: Path,
     output_path: Path | None,
@@ -85,47 +139,21 @@ def build_optimize_worker_prompt(
         "Read `.triton-agent/round-brief.md` before acting.",
         "Treat this as a long-running task.",
         "Keep making progress until the current round is complete.",
-        "PyTorch-facing public API may remain as a wrapper when that is the intended operator entrypoint.",
-        "You must continue optimizing the Triton Ascend NPU kernel path itself.",
-        "Do not replace the core computation with a pure PyTorch implementation just to improve final outputs or benchmark numbers.",
-        "A round that bypasses the Triton kernel path with pure PyTorch code does not count as a successful optimize round.",
-        "Use the staged `triton-npu-prepare-optimize-baseline` skill when baseline artifacts are missing or invalid.",
-        "Use the staged `triton-npu-optimize-check` skill to validate the completed round.",
-        "Establish or reuse `baseline/` before creating `opt-round-1`.",
-        "If baseline preparation is needed, use the staged `triton-npu-prepare-optimize-baseline` skill and continue only after it has repaired the baseline through `check-baseline`.",
-        "Use `baseline/perf.txt` for canonical performance comparisons.",
-        "Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.",
-        "Use the staged `triton-npu-analyze-round-performance` skill when a round needs deeper diagnosis from profile or IR evidence.",
-        "When you use that analysis flow, write `opt-round-N/perf-analysis.md` as the standalone analysis artifact.",
-        "Use `triton-npu-analyze-ir` as the IR evidence companion when IR attribution is needed, while `triton-npu-analyze-round-performance` remains the owner of `opt-round-N/perf-analysis.md`.",
-        "Reuse existing correctness tests and benchmark cases when they already exist; generate them only when required artifacts are missing.",
-        "State the optimization hypothesis and why it may help before editing code for each round.",
-        "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
-        "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
-        *layered_analysis_lines(round_scope="the round"),
-        *strict_learned_lessons_lines(),
-        f"Target chip for this optimize session: {target_chip}.",
-        f"When ranking optimization points, prefer changes that fit {target_chip} unless the round artifacts prove a different chip target.",
+        *_shared_optimize_prompt_lines(
+            target_chip=target_chip,
+            optimize_check_line="Use the staged `triton-npu-optimize-check` skill to validate the completed round.",
+        ),
         "Produce all required round artifacts before stopping.",
         "After finishing the round, use the staged `triton-npu-optimize-check` skill to run `check-round` and repair the round until it passes.",
         "The current round must pass `check-round` through `triton-npu-optimize-check` before the invocation ends.",
         "Do not self-approve whether the optimize session should continue.",
     ]
-    lines.extend(
-        compiler_source_analysis_lines(
-            compiler_source_path=compiler_source_path,
-            compiler_source_commit=compiler_source_commit,
-        )
+    return _finalize_optimize_prompt_lines(
+        lines=lines,
+        resume_existing_session=resume_existing_session,
+        compiler_source_path=compiler_source_path,
+        compiler_source_commit=compiler_source_commit,
     )
-    lines.extend(baseline_state_contract_lines())
-    if resume_existing_session:
-        lines.extend(
-            [
-                "Continue the existing optimization session instead of restarting from scratch.",
-                "Read `opt-note.md`, existing `opt-round-*` directories, and existing round logs before making changes.",
-            ]
-        )
-    return "\n".join(lines)
 
 
 def build_optimize_unsupervised_prompt(
@@ -145,37 +173,14 @@ def build_optimize_unsupervised_prompt(
         "This invocation is an unsupervised optimize run.",
         "Own the end-to-end optimize session and continue optimizing until the session should stop.",
         "Treat this as a long-running task.",
-        "PyTorch-facing public API may remain as a wrapper when that is the intended operator entrypoint.",
-        "You must continue optimizing the Triton Ascend NPU kernel path itself.",
-        "Do not replace the core computation with a pure PyTorch implementation just to improve final outputs or benchmark numbers.",
-        "A round that bypasses the Triton kernel path with pure PyTorch code does not count as a successful optimize round.",
-        "Use the staged `triton-npu-prepare-optimize-baseline` skill when baseline artifacts are missing or invalid.",
-        "Use the staged `triton-npu-optimize-check` skill to validate every completed round.",
-        "Establish or reuse `baseline/` before creating `opt-round-1`.",
-        "If baseline preparation is needed, use the staged `triton-npu-prepare-optimize-baseline` skill and continue only after it has repaired the baseline through `check-baseline`.",
-        "Use `baseline/perf.txt` for canonical performance comparisons.",
-        "Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.",
-        "Use the staged `triton-npu-analyze-round-performance` skill when a round needs deeper diagnosis from profile or IR evidence.",
-        "When you use that analysis flow, write `opt-round-N/perf-analysis.md` as the standalone analysis artifact.",
-        "Use `triton-npu-analyze-ir` as the IR evidence companion when IR attribution is needed, while `triton-npu-analyze-round-performance` remains the owner of `opt-round-N/perf-analysis.md`.",
-        "Reuse existing correctness tests and benchmark cases when they already exist; generate them only when required artifacts are missing.",
-        "State the optimization hypothesis and why it may help before editing code for each round.",
-        "Explain what evidence supports the change, using benchmark behavior, profiling, IR inspection, code structure, or a combination of them.",
-        "If you skip profiling or IR capture for a round, explain why the existing evidence is already sufficient.",
-        *layered_analysis_lines(round_scope="the round"),
-        *strict_learned_lessons_lines(),
-        f"Target chip for this optimize session: {target_chip}.",
-        f"When ranking optimization points, prefer changes that fit {target_chip} unless the round artifacts prove a different chip target.",
+        *_shared_optimize_prompt_lines(
+            target_chip=target_chip,
+            optimize_check_line="Use the staged `triton-npu-optimize-check` skill to validate every completed round.",
+        ),
         "After finishing each round, use the staged `triton-npu-optimize-check` skill to run `check-round` and repair the round until it passes.",
         "Do not begin the next round until the current round passes `check-round` through `triton-npu-optimize-check`.",
         "Record round outcomes and keep optimize artifacts up to date before stopping.",
     ]
-    lines.extend(
-        compiler_source_analysis_lines(
-            compiler_source_path=compiler_source_path,
-            compiler_source_commit=compiler_source_commit,
-        )
-    )
     if min_rounds is not None:
         lines.insert(
             2,
@@ -185,15 +190,12 @@ def build_optimize_unsupervised_prompt(
             3,
             f"Once {min_rounds} optimization rounds are complete, stop the session after the current round passes `check-round` through `triton-npu-optimize-check` unless there is a concrete reason to continue.",
         )
-    lines.extend(baseline_state_contract_lines())
-    if resume_existing_session:
-        lines.extend(
-            [
-                "Continue the existing optimization session instead of restarting from scratch.",
-                "Read `opt-note.md`, existing `opt-round-*` directories, and existing round logs before making changes.",
-            ]
-        )
-    return "\n".join(lines)
+    return _finalize_optimize_prompt_lines(
+        lines=lines,
+        resume_existing_session=resume_existing_session,
+        compiler_source_path=compiler_source_path,
+        compiler_source_commit=compiler_source_commit,
+    )
 
 
 def build_optimize_supervisor_prompt(
