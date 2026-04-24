@@ -11,7 +11,7 @@ from contextlib import redirect_stdout
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.cli import build_parser
-from triton_agent.generation.models import GenerationOptions
+from triton_agent.convert.models import ConvertOptions
 from triton_agent.models import AgentResult, CommandKind
 
 
@@ -59,7 +59,7 @@ class ConvertRuntimeTests(unittest.TestCase):
             Path("/tmp/kernel.py"),
             Path("/tmp/kernel.py"),
             Path("/tmp"),
-            GenerationOptions(
+            ConvertOptions(
                 interact=False,
                 verbose=False,
                 show_output=False,
@@ -67,11 +67,9 @@ class ConvertRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 remote=None,
                 remote_workdir=None,
-                min_rounds=None,
-                continue_optimize=False,
                 output=None,
                 test_mode="differential",
-                bench_mode=None,
+                prompt=None,
             ),
         )
 
@@ -87,6 +85,30 @@ class ConvertRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(request.skill_name, "triton-npu-convert-pytorch-operator")
         self.assertEqual(request.output_path, Path("/tmp/triton_kernel.py"))
+
+    def test_build_convert_request_appends_user_prompt(self) -> None:
+        from triton_agent.convert.orchestration import build_convert_request
+
+        request = build_convert_request(
+            Path("/tmp/kernel.py"),
+            Path("/tmp/kernel.py"),
+            Path("/tmp"),
+            ConvertOptions(
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                remote=None,
+                remote_workdir=None,
+                output=None,
+                test_mode="differential",
+                prompt="Keep the exported function name.",
+            ),
+        )
+
+        self.assertIn("Additional user instructions:", request.prompt)
+        self.assertIn("Keep the exported function name.", request.prompt)
 
     def test_handle_convert_builds_request_with_default_output(self) -> None:
         from triton_agent.commands.convert import handle_convert
@@ -195,7 +217,7 @@ class ConvertBatchTests(unittest.TestCase):
 
             exit_code = run_convert_batch(
                 root,
-                GenerationOptions(
+                ConvertOptions(
                     interact=False,
                     verbose=False,
                     show_output=False,
@@ -203,11 +225,9 @@ class ConvertBatchTests(unittest.TestCase):
                     agent_name="codex",
                     remote=None,
                     remote_workdir=None,
-                    min_rounds=None,
-                    continue_optimize=False,
                     output=None,
                     test_mode="differential",
-                    bench_mode=None,
+                    prompt=None,
                 ),
                 max_concurrency=1,
                 run_request=_fake_run,
@@ -215,6 +235,50 @@ class ConvertBatchTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(seen_inputs, [root / "operator.py"])
+
+    def test_run_convert_batch_applies_user_prompt_to_each_workspace_request(self) -> None:
+        from triton_agent.convert.batch import run_convert_batch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("kernel_a", "kernel_b"):
+                workspace = root / name
+                workspace.mkdir()
+                operator = workspace / "kernel.py"
+                operator.write_text("print('x')\n", encoding="utf-8")
+
+            options = ConvertOptions(
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                remote=None,
+                remote_workdir=None,
+                output=None,
+                test_mode="differential",
+                prompt="Avoid changing numerics.",
+            )
+
+            captured_prompts: list[str] = []
+
+            def _fake_run(request, stdout=None, stderr=None):
+                del stdout, stderr
+                captured_prompts.append(request.prompt)
+                return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            exit_code = run_convert_batch(
+                root,
+                options,
+                max_concurrency=1,
+                run_request=_fake_run,
+            )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(len(captured_prompts), 2)
+            for prompt in captured_prompts:
+                self.assertIn("Additional user instructions:", prompt)
+                self.assertIn("Avoid changing numerics.", prompt)
 
     def test_render_batch_convert_results_renders_summary(self) -> None:
         from triton_agent.convert.batch import BatchConvertResult, render_batch_convert_results

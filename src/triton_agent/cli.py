@@ -63,6 +63,7 @@ class _CommandSpec:
     has_bench_mode: bool = False
     bench_mode_default: str | None = None
     has_optimize_options: bool = False
+    has_prompt: bool = False
     max_concurrency_default: int | None = None
     has_force_overwrite: bool = False
     has_format: bool = False
@@ -113,6 +114,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_test_mode=True,
         test_mode_default="differential",
         test_mode_choices=("differential",),
+        has_prompt=True,
         has_force_overwrite=True,
     ),
     CommandKind.CONVERT_BATCH: _CommandSpec(
@@ -127,6 +129,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_test_mode=True,
         test_mode_default="differential",
         test_mode_choices=("differential",),
+        has_prompt=True,
         max_concurrency_default=2,
     ),
     CommandKind.GEN_TEST: _CommandSpec(
@@ -235,6 +238,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_test_mode=True,
         has_bench_mode=True,
         has_optimize_options=True,
+        has_prompt=True,
     ),
     CommandKind.OPTIMIZE_BATCH: _CommandSpec(
         handler=handle_optimize_batch,
@@ -248,6 +252,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_test_mode=True,
         has_bench_mode=True,
         has_optimize_options=True,
+        has_prompt=True,
         max_concurrency_default=1,
     ),
 }
@@ -319,6 +324,7 @@ def build_parser() -> argparse.ArgumentParser:
                 default="off",
                 choices=_SUPERVISE_CHOICES,
             )
+        if spec.has_prompt:
             subparser.add_argument("--prompt")
         if spec.max_concurrency_default is not None:
             subparser.add_argument("--max-concurrency", type=int, default=spec.max_concurrency_default)

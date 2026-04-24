@@ -103,6 +103,30 @@ class CliParserTests(unittest.TestCase):
         self.assertFalse(hasattr(args, "interact"))
         self.assertFalse(hasattr(args, "output"))
 
+    def test_convert_command_accepts_user_prompt(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["convert", "-i", "kernel.py", "--prompt", "Keep the API shape."])
+        self.assertEqual(args.prompt, "Keep the API shape.")
+        from triton_agent.commands.convert import convert_options_from_args
+        from triton_agent.convert.models import ConvertOptions
+
+        options = convert_options_from_args(args)
+        self.assertIsInstance(options, ConvertOptions)
+        self.assertEqual(options.prompt, "Keep the API shape.")
+
+    def test_convert_batch_accepts_user_prompt(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["convert-batch", "-i", "kernels", "--prompt", "Avoid numerics changes."]
+        )
+        self.assertEqual(args.prompt, "Avoid numerics changes.")
+        from triton_agent.commands.convert import convert_options_from_args
+        from triton_agent.convert.models import ConvertOptions
+
+        options = convert_options_from_args(args)
+        self.assertIsInstance(options, ConvertOptions)
+        self.assertEqual(options.prompt, "Avoid numerics changes.")
+
     def test_convert_rejects_non_differential_test_mode(self) -> None:
         parser = build_parser()
         stderr = StringIO()

@@ -5,9 +5,9 @@ import sys
 from pathlib import Path
 
 from triton_agent.convert.batch import resolve_batch_convert_operator_file, run_convert_batch
+from triton_agent.convert.models import ConvertOptions
 from triton_agent.convert.orchestration import build_convert_request, run_convert_request
 from triton_agent.convert.outputs import prepare_convert_target
-from triton_agent.generation.models import GenerationOptions
 from triton_agent.output import render_result
 from triton_agent.verbose import emit_verbose_lines
 
@@ -76,8 +76,8 @@ def _validate_agent_options(parser: argparse.ArgumentParser, args: argparse.Name
         parser.error("OpenHands backend does not support --interact yet.")
 
 
-def convert_options_from_args(args: argparse.Namespace) -> GenerationOptions:
-    return GenerationOptions(
+def convert_options_from_args(args: argparse.Namespace) -> ConvertOptions:
+    return ConvertOptions(
         interact=bool(getattr(args, "interact", False)),
         verbose=bool(getattr(args, "verbose", False)),
         show_output=bool(getattr(args, "show_output", False)),
@@ -85,9 +85,7 @@ def convert_options_from_args(args: argparse.Namespace) -> GenerationOptions:
         agent_name=args.agent,
         remote=getattr(args, "remote", None),
         remote_workdir=getattr(args, "remote_workdir", None),
-        min_rounds=getattr(args, "min_rounds", None),
-        continue_optimize=bool(getattr(args, "continue_optimize", False)),
         output=getattr(args, "output", None),
         test_mode=getattr(args, "test_mode", None),
-        bench_mode=getattr(args, "bench_mode", None),
+        prompt=getattr(args, "prompt", None),
     )

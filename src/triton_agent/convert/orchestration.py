@@ -5,10 +5,10 @@ from pathlib import Path
 from typing import Any, TextIO, cast
 
 from triton_agent.backends.factory import create_runner
+from triton_agent.convert.models import ConvertOptions
 from triton_agent.convert.outputs import resolve_convert_output_path
-from triton_agent.generation.models import GenerationOptions
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
-from triton_agent.prompts import build_prompt
+from triton_agent.prompts import append_additional_user_instructions, build_prompt
 from triton_agent.skills import SkillLinkManager
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
@@ -25,21 +25,24 @@ def build_convert_request(
     input_path: Path,
     operator_path: Path,
     workdir: Path,
-    options: GenerationOptions,
+    options: ConvertOptions,
 ) -> AgentRequest:
     output_path = resolve_convert_output_path(input_path, explicit_output=options.output)
-    prompt = build_prompt(
-        CommandKind.CONVERT,
-        input_path,
-        operator_path,
-        output_path,
-        options.test_mode,
-        options.bench_mode,
-        options.force_overwrite,
-        options.remote,
-        options.remote_workdir,
-        options.min_rounds,
-        options.continue_optimize,
+    prompt = append_additional_user_instructions(
+        build_prompt(
+            CommandKind.CONVERT,
+            input_path,
+            operator_path,
+            output_path,
+            options.test_mode,
+            None,
+            options.force_overwrite,
+            options.remote,
+            options.remote_workdir,
+            None,
+            False,
+        ),
+        options.prompt,
     )
     return AgentRequest(
         command_kind=CommandKind.CONVERT,
@@ -47,7 +50,7 @@ def build_convert_request(
         operator_path=operator_path,
         output_path=output_path,
         test_mode=options.test_mode,
-        bench_mode=options.bench_mode,
+        bench_mode=None,
         interact=options.interact,
         verbose=options.verbose,
         show_output=options.show_output,
@@ -56,8 +59,8 @@ def build_convert_request(
         skill_name=COMMAND_TO_SKILL[CommandKind.CONVERT],
         prompt=prompt,
         workdir=workdir,
-        min_rounds=options.min_rounds,
-        continue_optimize=options.continue_optimize,
+        min_rounds=None,
+        continue_optimize=False,
         no_agent_session=False,
         staged_skill_names=CONVERT_STAGED_SKILLS,
     )

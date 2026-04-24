@@ -15,8 +15,8 @@ from triton_agent.batch_utils import (
     is_batch_operator_candidate,
     resolve_batch_operator_file,
 )
+from triton_agent.convert.models import ConvertOptions
 from triton_agent.convert.orchestration import build_convert_request, run_convert_request
-from triton_agent.generation.models import GenerationOptions
 from triton_agent.models import AgentResult
 
 _BATCH_CONVERT_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_", "triton_")
@@ -38,7 +38,7 @@ class BatchConvertResult:
 
 def run_convert_batch(
     root: Path,
-    options: GenerationOptions,
+    options: ConvertOptions,
     *,
     max_concurrency: int,
     stdout: TextIO | None = None,
