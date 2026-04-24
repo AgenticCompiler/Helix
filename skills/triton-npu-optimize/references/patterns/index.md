@@ -216,6 +216,22 @@ Read this index first. Then read only the one or two most relevant detailed patt
 - Read next:
   - [vec-cmp.md](vec-cmp.md)
 
+### `program-multiple-rows`
+
+- Use when:
+  - the kernel is row-wise (row reduction or row-fused epilogue) and each program currently maps **one row**
+  - the per-program work looks too small and scalar/control overhead is suspicious
+- Signals:
+  - IR shows `tensor<1xf32>` running state plus frequent `tensor.extract`/`tensor.insert` bookkeeping
+  - profiling/timeline shows scalar-heavy prologue and many tiny programs for large `B`
+- Expected benefit:
+  - fewer programs, wider `(BLOCK_M, BLOCK_N)` tiles, better amortization of address/mask/control work
+- Main risk:
+  - `BLOCK_M * BLOCK_N` too large for UB/registers; must tune and validate
+  - does not fix redundant extra global memory passes by itself
+- Read next:
+  - [program-multiple-rows.md](program-multiple-rows.md)
+
 ## Symptom-First Shortcuts
 
 - If the bottleneck looks memory-bandwidth or latency bound, start with:
@@ -239,6 +255,8 @@ Read this index first. Then read only the one or two most relevant detailed patt
   - `slice-intermediate`
 - If the bottleneck looks compare or mask heavy, start with:
   - `vec-cmp`
+- If the kernel is row-wise and one-row-per-program looks under-filled, start with:
+  - `program-multiple-rows`
 
 ## Reading Discipline
 
