@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from triton_agent.convert.batch import run_convert_batch
+from triton_agent.convert.batch import resolve_batch_convert_operator_file, run_convert_batch
 from triton_agent.convert.orchestration import build_convert_request, run_convert_request
 from triton_agent.convert.outputs import prepare_convert_target
 from triton_agent.generation.models import GenerationOptions
@@ -17,11 +17,19 @@ def handle_convert(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
     if not input_path.exists():
         parser.error(f"Input path does not exist: {input_path}")
     _validate_agent_options(parser, args)
-    workdir = input_path.parent
+    if input_path.is_dir():
+        try:
+            operator_path = resolve_batch_convert_operator_file(input_path)
+        except ValueError as exc:
+            parser.error(str(exc))
+        workdir = input_path
+    else:
+        operator_path = input_path
+        workdir = input_path.parent
     options = convert_options_from_args(args)
     request = build_convert_request(
-        input_path,
-        input_path,
+        operator_path,
+        operator_path,
         workdir,
         options,
     )

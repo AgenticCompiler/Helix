@@ -129,6 +129,42 @@ class ConvertRuntimeTests(unittest.TestCase):
                 ),
             )
 
+    def test_handle_convert_workspace_input_uses_workspace_as_workdir(self) -> None:
+        from triton_agent.commands.convert import handle_convert
+
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            args = parser.parse_args(
+                [
+                    "convert",
+                    "-i",
+                    str(workspace),
+                ]
+            )
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            captured: dict[str, object] = {}
+
+            def _fake_run(request):
+                captured["input_path"] = request.input_path
+                captured["workdir"] = request.workdir
+                captured["output_path"] = request.output_path
+                return fake_result
+
+            with patch("triton_agent.commands.convert.run_convert_request", side_effect=_fake_run):
+                exit_code = handle_convert(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["input_path"], operator.resolve())
+            self.assertEqual(captured["workdir"], workspace.resolve())
+            self.assertEqual(
+                captured["output_path"],
+                (workspace / "triton_kernel.py").resolve(),
+            )
+
 
 class ConvertBatchTests(unittest.TestCase):
     def test_resolve_batch_convert_operator_file_excludes_triton_prefixed_candidates(self) -> None:

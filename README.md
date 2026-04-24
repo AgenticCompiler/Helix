@@ -136,6 +136,8 @@ Use `convert` when you want a new Triton NPU-backed PyTorch operator file instea
 uv run triton-agent convert --input a.py
 ```
 
+You may also point `--input` at a single operator workspace directory when that directory contains exactly one candidate operator file, for example `uv run triton-agent convert --input .`.
+
 What it is for:
 
 - converting one source PyTorch operator into a Triton NPU-backed PyTorch operator
@@ -159,6 +161,7 @@ Behavior:
 - The converted output defaults to `triton_<origin-name>.py`.
 - The input file's trailing input-helper block should remain available in the converted output.
 - The workflow generates and executes a differential test for the converted output before finishing.
+- When `--input` is a workspace directory, staged skills and agent cwd are rooted at that workspace.
 
 Example:
 
