@@ -17,8 +17,6 @@ def default_generated_output_path(
         return input_path.with_name(f"test_{stem}.py")
     if command_kind == CommandKind.GEN_BENCH:
         return input_path.with_name(f"bench_{stem}.py")
-    if command_kind == CommandKind.GEN_CONVERT:
-        return input_path.with_name(f"triton_{stem}.py")
     if command_kind == CommandKind.OPTIMIZE:
         return input_path.with_name(f"opt_{stem}.py")
     raise ValueError(f"Command {command_kind.value} does not generate a default output file")

@@ -7,7 +7,7 @@ from typing import Callable
 
 from triton_agent.models import AgentRequest, AgentResult
 from triton_agent.process_runner import InterruptPolicy, OutputFilter, run_process
-from triton_agent.prompts import build_optimize_resume_prompt
+from triton_agent.optimize.prompts import build_optimize_resume_prompt
 from triton_agent.verbose import emit_verbose_lines, format_command_messages
 
 

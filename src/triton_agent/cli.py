@@ -5,9 +5,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Optional
 
+from triton_agent.commands.convert import handle_convert, handle_convert_batch
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
 from triton_agent.commands.execution import handle_run_bench, handle_run_test
-from triton_agent.commands.generation import handle_gen_bench, handle_gen_convert, handle_gen_test
+from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
 from triton_agent.commands.generation import handle_gen_eval
 from triton_agent.commands.generation import handle_gen_eval_batch
 from triton_agent.commands.status import handle_status
@@ -32,7 +33,8 @@ _VERIFY_PHASE_CHOICES = ("all", "test", "bench")
 _TOP_LEVEL_DESCRIPTION = "Generate, run, verify, and optimize Triton NPU operator workflows."
 _TOP_LEVEL_EXAMPLES = (
     "triton-agent gen-test -i kernel.py",
-    "triton-agent gen-convert -i kernel.py",
+    "triton-agent convert -i kernel.py",
+    "triton-agent convert-batch -i kernels",
     "triton-agent run-test --test-file test_kernel.py --operator-file kernel.py",
     "triton-agent compare-perf --baseline baseline.txt --compare candidate.txt",
     "triton-agent verify -i .",
@@ -99,9 +101,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         bench_mode_default="standalone",
         max_concurrency_default=2,
     ),
-    CommandKind.GEN_CONVERT: _CommandSpec(
-        handler=handle_gen_convert,
-        help_group="Generation",
+    CommandKind.CONVERT: _CommandSpec(
+        handler=handle_convert,
+        help_group="Conversion",
         help_summary="Convert one PyTorch operator into a Triton NPU-backed PyTorch operator.",
         description="Convert one PyTorch operator file into a Triton NPU-backed PyTorch operator.",
         has_remote=True,
@@ -112,6 +114,20 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         test_mode_default="differential",
         test_mode_choices=("differential",),
         has_force_overwrite=True,
+    ),
+    CommandKind.CONVERT_BATCH: _CommandSpec(
+        handler=handle_convert_batch,
+        help_group="Conversion",
+        help_summary="Convert multiple operator workspaces.",
+        description="Convert multiple operator workspaces through the convert workflow.",
+        has_output=False,
+        has_remote=True,
+        has_agent=True,
+        has_show_output=True,
+        has_test_mode=True,
+        test_mode_default="differential",
+        test_mode_choices=("differential",),
+        max_concurrency_default=2,
     ),
     CommandKind.GEN_TEST: _CommandSpec(
         handler=handle_gen_test,
@@ -314,7 +330,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _build_top_level_epilog() -> str:
     lines = ["Command groups:"]
-    group_names = ("Generation", "Execution", "Comparison", "Status", "Verification", "Optimization")
+    group_names = (
+        "Generation",
+        "Conversion",
+        "Execution",
+        "Comparison",
+        "Status",
+        "Verification",
+        "Optimization",
+    )
     for group_name in group_names:
         lines.append(f"{group_name}:")
         for command_kind in CommandKind:
@@ -362,7 +386,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
     aliases = {
         "gen_eval": "gen-eval",
         "gen_eval_batch": "gen-eval-batch",
-        "gen_convert": "gen-convert",
+        "convert_batch": "convert-batch",
         "gen_test": "gen-test",
         "run_test": "run-test",
         "gen_bench": "gen-bench",

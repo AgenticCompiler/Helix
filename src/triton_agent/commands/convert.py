@@ -4,63 +4,33 @@ import argparse
 import sys
 from pathlib import Path
 
-from triton_agent.generation.batch import run_gen_eval_batch
+from triton_agent.convert.batch import run_convert_batch
+from triton_agent.convert.orchestration import build_convert_request, run_convert_request
+from triton_agent.convert.outputs import prepare_convert_target
 from triton_agent.generation.models import GenerationOptions
-from triton_agent.generation.outputs import prepare_generation_targets
-from triton_agent.generation.orchestration import build_generation_request, run_generation_request
-from triton_agent.models import CommandKind
 from triton_agent.output import render_result
 from triton_agent.verbose import emit_verbose_lines
 
 
-def handle_gen_eval(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
-    return _handle_generation_command(parser, args, CommandKind.GEN_EVAL)
-
-
-def handle_gen_eval_batch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
-    root = Path(args.input).expanduser().resolve()
-    if not root.exists():
-        parser.error(f"Input path does not exist: {root}")
-    if not root.is_dir():
-        parser.error(f"Input path is not a directory: {root}")
-    max_concurrency = args.max_concurrency
-    if max_concurrency < 1:
-        parser.error("--max-concurrency must be at least 1")
-    return run_gen_eval_batch(root, generation_options_from_args(args), max_concurrency=max_concurrency)
-
-
-def handle_gen_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
-    return _handle_generation_command(parser, args, CommandKind.GEN_TEST)
-
-
-def handle_gen_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
-    return _handle_generation_command(parser, args, CommandKind.GEN_BENCH)
-
-
-def _handle_generation_command(
-    parser: argparse.ArgumentParser,
-    args: argparse.Namespace,
-    command_kind: CommandKind,
-) -> int:
+def handle_convert(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     input_path = Path(args.input).expanduser().resolve()
     if not input_path.exists():
         parser.error(f"Input path does not exist: {input_path}")
     _validate_agent_options(parser, args)
     workdir = input_path.parent
-    options = generation_options_from_args(args)
-    request = build_generation_request(
-        command_kind,
+    options = convert_options_from_args(args)
+    request = build_convert_request(
         input_path,
         input_path,
         workdir,
         options,
     )
+    output_path = request.output_path
+    if output_path is None:
+        parser.error("Internal error: convert request did not resolve an output path.")
     try:
-        file_messages = prepare_generation_targets(
-            command_kind,
-            input_path,
-            request.output_path,
-            test_mode=request.test_mode,
+        file_messages = prepare_convert_target(
+            output_path,
             force_overwrite=options.force_overwrite,
         )
     except (FileExistsError, IsADirectoryError) as exc:
@@ -68,7 +38,7 @@ def _handle_generation_command(
     if options.verbose:
         emit_verbose_lines(sys.stderr, "files", file_messages)
     try:
-        result = run_generation_request(request)
+        result = run_convert_request(request)
     except FileNotFoundError as exc:
         parser.error(
             f"Agent executable not found: {exc}. "
@@ -78,12 +48,27 @@ def _handle_generation_command(
     return result.return_code
 
 
+def handle_convert_batch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    root = Path(args.input).expanduser().resolve()
+    if not root.exists():
+        parser.error(f"Input path does not exist: {root}")
+    if not root.is_dir():
+        parser.error(f"Input path is not a directory: {root}")
+    if args.max_concurrency < 1:
+        parser.error("--max-concurrency must be at least 1")
+    return run_convert_batch(
+        root,
+        convert_options_from_args(args),
+        max_concurrency=args.max_concurrency,
+    )
+
+
 def _validate_agent_options(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     if getattr(args, "agent", None) == "openhands" and bool(getattr(args, "interact", False)):
         parser.error("OpenHands backend does not support --interact yet.")
 
 
-def generation_options_from_args(args: argparse.Namespace) -> GenerationOptions:
+def convert_options_from_args(args: argparse.Namespace) -> GenerationOptions:
     return GenerationOptions(
         interact=bool(getattr(args, "interact", False)),
         verbose=bool(getattr(args, "verbose", False)),

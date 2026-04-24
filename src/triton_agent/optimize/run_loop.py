@@ -7,7 +7,7 @@ from typing import Protocol, cast
 
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.optimize.models import GateDecision, GateResult
-from triton_agent.prompts import build_optimize_resume_prompt
+from triton_agent.optimize.prompts import build_optimize_resume_prompt
 
 _TRANSIENT_AGENT_FAILURE_PATTERNS = (
     "429 too many requests",

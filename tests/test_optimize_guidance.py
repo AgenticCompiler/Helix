@@ -6,13 +6,89 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import triton_agent.optimize.guidance as optimize_guidance
-from triton_agent.optimize.guidance import OptimizeGuidanceManager
+import triton_agent.optimize.memory_file as optimize_memory_file
+from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsManager
 
 
-class OptimizeGuidanceManagerTests(unittest.TestCase):
+class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
+    def test_memory_file_manager_selects_agents_by_default(self) -> None:
+        from triton_agent.optimize.memory_file import MemoryFileManager
+
+        manager = MemoryFileManager()
+
+        self.assertEqual(manager.guidance_filename("codex"), "AGENTS.md")
+
+    def test_memory_file_manager_selects_claude_memory_file(self) -> None:
+        from triton_agent.optimize.memory_file import MemoryFileManager
+
+        manager = MemoryFileManager()
+
+        self.assertEqual(manager.guidance_filename("claude"), "CLAUDE.md")
+
+    def test_runtime_handoff_manager_creates_and_cleans_runtime_tree(self) -> None:
+        from triton_agent.optimize.runtime_handoff import RuntimeHandoffManager
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            manager = RuntimeHandoffManager()
+
+            state = manager.prepare(workdir)
+
+            self.assertTrue(state.round_brief_path.exists())
+            self.assertTrue(state.supervisor_report_path.exists())
+            self.assertTrue(state.history_dir.exists())
+
+            warnings = manager.cleanup(state)
+
+            self.assertEqual(warnings, [])
+            self.assertFalse((workdir / ".triton-agent").exists())
+
+    def test_archive_manager_builds_run_paths(self) -> None:
+        from triton_agent.optimize.archive import ArchiveManager
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            manager = ArchiveManager(run_id_factory=lambda: "20260423-123456-000000")
+
+            state = manager.prepare(workdir, include_shared_guidance_snapshot=True)
+
+            self.assertEqual(state.archive_root, workdir / "optimize-logs" / "triton-agent")
+            self.assertEqual(
+                state.run_archive_dir,
+                state.archive_root / "20260423-123456-000000",
+            )
+            self.assertEqual(
+                state.agent_sessions_path,
+                state.run_archive_dir / "agent-sessions.jsonl",
+            )
+            self.assertEqual(
+                state.shared_guidance_snapshot_path,
+                state.run_archive_dir / "shared-guidance.md",
+            )
+
+    def test_archive_manager_records_agent_session_compact_jsonl(self) -> None:
+        from triton_agent.optimize.archive import ArchiveManager
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            manager = ArchiveManager(run_id_factory=lambda: "20260423-123456-000000")
+            state = manager.prepare(workdir)
+
+            warning = manager.record_agent_session(
+                state,
+                role="worker",
+                session_id="019da9c2-dfcb-7c71-a2f9-7a90bab2e0f5",
+                agent="codex",
+            )
+
+            self.assertIsNone(warning)
+            lines = state.agent_sessions_path.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(lines), 1)
+            payload = json.loads(lines[0])
+            self.assertEqual(set(payload), {"timestamp", "role", "session_id", "agent"})
+
     def test_render_bullet_block_formats_markdown_list(self) -> None:
-        rendered = optimize_guidance._render_bullet_block(
+        rendered = optimize_memory_file._render_bullet_block(
             [
                 "Read files cautiously.",
                 "Follow the user's instructions strictly.",
@@ -27,7 +103,7 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
 
     def test_render_line_block_joins_lines_and_omits_empty_block(self) -> None:
         self.assertEqual(
-            optimize_guidance._render_line_block(
+            optimize_memory_file._render_line_block(
                 [
                     "Compiler source analysis is enabled for this optimize run.",
                     "Treat the compiler source checkout as read-only.",
@@ -36,10 +112,10 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             "Compiler source analysis is enabled for this optimize run.\n"
             "Treat the compiler source checkout as read-only.\n",
         )
-        self.assertEqual(optimize_guidance._render_line_block([]), "")
+        self.assertEqual(optimize_memory_file._render_line_block([]), "")
 
     def test_unsupervised_guidance_template_inlines_shared_rule_block(self) -> None:
-        template = optimize_guidance._UNSUPERVISED_GUIDANCE_TEMPLATE
+        template = optimize_memory_file._UNSUPERVISED_GUIDANCE_TEMPLATE
 
         self.assertIn("{guidance_filename}", template)
         self.assertIn("{test_mode}", template)
@@ -54,7 +130,7 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
         self.assertNotIn("{guidance_rules_block}", template)
 
     def test_shared_guidance_template_inlines_shared_rule_block(self) -> None:
-        template = optimize_guidance._SHARED_GUIDANCE_TEMPLATE
+        template = optimize_memory_file._SHARED_GUIDANCE_TEMPLATE
 
         self.assertIn("{guidance_filename}", template)
         self.assertIn("{analysis_block}", template)
@@ -71,7 +147,7 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
 
-            manager = OptimizeGuidanceManager()
+            manager = OptimizeSessionArtifactsManager()
             state = manager.prepare_unsupervised_session(
                 workdir,
                 operator_path=operator,
@@ -116,7 +192,7 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
 
-            manager = OptimizeGuidanceManager()
+            manager = OptimizeSessionArtifactsManager()
             state = manager.prepare_supervised_session(
                 workdir,
                 agent_name="codex",
@@ -160,7 +236,7 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
     def test_record_agent_session_appends_compact_jsonl(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            manager = OptimizeGuidanceManager()
+            manager = OptimizeSessionArtifactsManager()
             state = manager.prepare_unsupervised_session(
                 workdir,
                 operator_path=workdir / "kernel.py",
@@ -191,7 +267,7 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
     def test_record_agent_session_uses_unknown_when_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            manager = OptimizeGuidanceManager()
+            manager = OptimizeSessionArtifactsManager()
             state = manager.prepare_unsupervised_session(
                 workdir,
                 operator_path=workdir / "kernel.py",
@@ -218,7 +294,7 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             guidance_path = workdir / "CLAUDE.md"
             guidance_path.write_text("original content\n", encoding="utf-8")
 
-            manager = OptimizeGuidanceManager()
+            manager = OptimizeSessionArtifactsManager()
             state = manager.prepare_supervised_session(
                 workdir,
                 agent_name="claude",
@@ -252,7 +328,7 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
 
-            manager = OptimizeGuidanceManager()
+            manager = OptimizeSessionArtifactsManager()
             state = manager.prepare_supervised_session(
                 workdir,
                 agent_name="codex",
@@ -287,7 +363,7 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
 
-            manager = OptimizeGuidanceManager()
+            manager = OptimizeSessionArtifactsManager()
             state = manager.prepare_unsupervised_session(
                 workdir,
                 operator_path=operator,
@@ -314,7 +390,7 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             workdir = Path(tmp)
             source_path = workdir / "AscendNPU-IR"
 
-            manager = OptimizeGuidanceManager()
+            manager = OptimizeSessionArtifactsManager()
             state = manager.prepare_supervised_session(
                 workdir,
                 agent_name="codex",
@@ -342,7 +418,7 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             runtime_root.mkdir()
             (runtime_root / "leftover.txt").write_text("busy\n", encoding="utf-8")
 
-            manager = OptimizeGuidanceManager()
+            manager = OptimizeSessionArtifactsManager()
 
             with self.assertRaisesRegex(RuntimeError, "Existing \\.triton-agent/ directory contains data"):
                 manager.prepare_supervised_session(
@@ -356,7 +432,7 @@ class OptimizeGuidanceManagerTests(unittest.TestCase):
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
 
-            manager = OptimizeGuidanceManager()
+            manager = OptimizeSessionArtifactsManager()
             state = manager.prepare_supervised_session(
                 workdir,
                 agent_name="codex",

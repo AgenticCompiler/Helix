@@ -5,40 +5,31 @@ from pathlib import Path
 from typing import Any, TextIO, cast
 
 from triton_agent.backends.factory import create_runner
+from triton_agent.convert.outputs import resolve_convert_output_path
 from triton_agent.generation.models import GenerationOptions
-from triton_agent.generation.outputs import resolve_generation_output_path
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
 from triton_agent.prompts import build_prompt
 from triton_agent.skills import SkillLinkManager
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
-GEN_EVAL_STAGED_SKILLS = (
-    "triton-npu-gen-eval-suite",
+CONVERT_STAGED_SKILLS = (
+    "triton-npu-convert-pytorch-operator",
     "triton-npu-gen-test",
-    "triton-npu-gen-bench",
     "triton-npu-run-eval",
+    "triton-npu-repair-guide",
 )
 
 
-def build_generation_request(
-    command_kind: CommandKind,
+def build_convert_request(
     input_path: Path,
     operator_path: Path,
     workdir: Path,
     options: GenerationOptions,
 ) -> AgentRequest:
-    staged_skill_names = None
-    if command_kind == CommandKind.GEN_EVAL:
-        staged_skill_names = GEN_EVAL_STAGED_SKILLS
-    output_path = resolve_generation_output_path(
-        command_kind,
-        input_path,
-        explicit_output=options.output,
-        test_mode=options.test_mode,
-    )
+    output_path = resolve_convert_output_path(input_path, explicit_output=options.output)
     prompt = build_prompt(
-        command_kind,
+        CommandKind.CONVERT,
         input_path,
         operator_path,
         output_path,
@@ -51,7 +42,7 @@ def build_generation_request(
         options.continue_optimize,
     )
     return AgentRequest(
-        command_kind=command_kind,
+        command_kind=CommandKind.CONVERT,
         input_path=input_path,
         operator_path=operator_path,
         output_path=output_path,
@@ -62,17 +53,17 @@ def build_generation_request(
         show_output=options.show_output,
         force_overwrite=options.force_overwrite,
         agent_name=options.agent_name,
-        skill_name=COMMAND_TO_SKILL[command_kind],
+        skill_name=COMMAND_TO_SKILL[CommandKind.CONVERT],
         prompt=prompt,
         workdir=workdir,
         min_rounds=options.min_rounds,
         continue_optimize=options.continue_optimize,
         no_agent_session=False,
-        staged_skill_names=staged_skill_names,
+        staged_skill_names=CONVERT_STAGED_SKILLS,
     )
 
 
-def run_generation_request(
+def run_convert_request(
     request: AgentRequest,
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,

@@ -16,7 +16,6 @@ def resolve_generation_output_path(
     if explicit_output:
         return Path(explicit_output).expanduser().resolve()
     if command_kind in {
-        CommandKind.GEN_CONVERT,
         CommandKind.GEN_TEST,
         CommandKind.GEN_BENCH,
         CommandKind.OPTIMIZE,
@@ -33,7 +32,6 @@ def prepare_generation_target(
     if output_path is None:
         return []
     if command_kind not in {
-        CommandKind.GEN_CONVERT,
         CommandKind.GEN_TEST,
         CommandKind.GEN_BENCH,
     }:

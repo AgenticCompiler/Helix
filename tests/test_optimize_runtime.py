@@ -21,7 +21,10 @@ from triton_agent.optimize.execution import (
     _latest_round_dir,
 )
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
-from triton_agent.optimize.guidance import OptimizeGuidanceState
+from triton_agent.optimize.archive import ArchiveState
+from triton_agent.optimize.memory_file import MemoryFileState
+from triton_agent.optimize.runtime_handoff import RuntimeHandoffState
+from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsState
 
 
 class OptimizeRuntimeTests(unittest.TestCase):
@@ -36,7 +39,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
     def test_optimize_gate_module_has_been_removed(self) -> None:
         self.assertIsNone(importlib.util.find_spec("triton_agent.optimize.gate"))
 
-    def _build_guidance_state(self, workdir: Path) -> OptimizeGuidanceState:
+    def _build_guidance_state(self, workdir: Path) -> OptimizeSessionArtifactsState:
         runtime_root = workdir / ".triton-agent"
         runtime_root.mkdir(parents=True, exist_ok=True)
         guidance_path = workdir / "AGENTS.md"
@@ -50,18 +53,25 @@ class OptimizeRuntimeTests(unittest.TestCase):
         archive_root = workdir / "optimize-logs" / "triton-agent"
         run_archive_dir = archive_root / "run-001"
         shared_guidance_snapshot_path = run_archive_dir / "shared-guidance.md"
-        return OptimizeGuidanceState(
-            guidance_path=guidance_path,
-            backup_path=None,
-            created_guidance=False,
-            archive_root=archive_root,
-            run_archive_dir=run_archive_dir,
-            agent_sessions_path=run_archive_dir / "agent-sessions.jsonl",
-            round_brief_path=round_brief_path,
-            supervisor_report_path=supervisor_report_path,
-            history_dir=history_dir,
-            shared_guidance_snapshot_path=shared_guidance_snapshot_path,
-            created_paths=(round_brief_path, supervisor_report_path),
+        return OptimizeSessionArtifactsState(
+            memory_file=MemoryFileState(
+                guidance_path=guidance_path,
+                backup_path=None,
+                created_guidance=False,
+            ),
+            archive=ArchiveState(
+                archive_root=archive_root,
+                run_archive_dir=run_archive_dir,
+                agent_sessions_path=run_archive_dir / "agent-sessions.jsonl",
+                shared_guidance_snapshot_path=shared_guidance_snapshot_path,
+            ),
+            runtime_handoff=RuntimeHandoffState(
+                runtime_root=runtime_root,
+                round_brief_path=round_brief_path,
+                supervisor_report_path=supervisor_report_path,
+                history_dir=history_dir,
+                created_paths=(round_brief_path, supervisor_report_path),
+            ),
         )
 
     def _write_baseline(self, workdir: Path) -> None:
@@ -128,7 +138,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
 
     def _write_supervisor_handoff(
         self,
-        guidance_state: OptimizeGuidanceState,
+        guidance_state: OptimizeSessionArtifactsState,
         *,
         decision: str,
         issues: tuple[str, ...] = (),
@@ -309,7 +319,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
             self.assertNotIn(
                 "triton-npu-convert-pytorch-operator",
-                request.staged_skill_names,
+                request.staged_skill_names or (),
             )
 
     def test_build_optimize_request_provisions_compiler_source_when_enabled(self) -> None:
@@ -422,7 +432,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
                 with patch(
-                    "triton_agent.optimize.orchestration.OptimizeGuidanceManager.prepare_supervised_session",
+                    "triton_agent.optimize.orchestration.OptimizeSessionArtifactsManager.prepare_supervised_session",
                     return_value=guidance_state,
                 ):
                     result = run_optimize_request(request)
@@ -626,7 +636,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             runner = FakeRunner()
             with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
                 with patch(
-                    "triton_agent.optimize.orchestration.OptimizeGuidanceManager.prepare_supervised_session"
+                    "triton_agent.optimize.orchestration.OptimizeSessionArtifactsManager.prepare_supervised_session"
                 ) as mocked_prepare:
                     result = run_optimize_request(request)
 
@@ -1397,7 +1407,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
                 with patch(
-                    "triton_agent.optimize.orchestration.OptimizeGuidanceManager.prepare_supervised_session",
+                    "triton_agent.optimize.orchestration.OptimizeSessionArtifactsManager.prepare_supervised_session",
                     return_value=guidance_state,
                 ):
                     result = run_optimize_request(request)

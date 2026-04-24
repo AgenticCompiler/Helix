@@ -82,23 +82,40 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.agent, "codex")
         self.assertFalse(args.interact)
 
-    def test_gen_convert_maps_to_command_kind(self) -> None:
+    def test_convert_maps_to_command_kind(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["gen-convert", "-i", "kernel.py"])
-        self.assertEqual(args.command, "gen-convert")
-        self.assertEqual(args.command_kind, CommandKind.GEN_CONVERT)
+        args = parser.parse_args(["convert", "-i", "kernel.py"])
+        self.assertEqual(args.command, "convert")
+        self.assertEqual(args.command_kind, CommandKind.CONVERT)
         self.assertEqual(args.test_mode, "differential")
         self.assertFalse(hasattr(args, "bench_mode"))
         self.assertEqual(args.agent, "codex")
         self.assertFalse(args.interact)
 
-    def test_gen_convert_rejects_non_differential_test_mode(self) -> None:
+    def test_convert_batch_maps_to_command_kind(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["convert-batch", "-i", "kernels"])
+        self.assertEqual(args.command, "convert-batch")
+        self.assertEqual(args.command_kind, CommandKind.CONVERT_BATCH)
+        self.assertEqual(args.max_concurrency, 2)
+        self.assertEqual(args.test_mode, "differential")
+        self.assertEqual(args.agent, "codex")
+        self.assertFalse(hasattr(args, "interact"))
+        self.assertFalse(hasattr(args, "output"))
+
+    def test_convert_rejects_non_differential_test_mode(self) -> None:
         parser = build_parser()
         stderr = StringIO()
         with self.assertRaises(SystemExit) as exc, redirect_stderr(stderr):
-            parser.parse_args(["gen-convert", "-i", "kernel.py", "--test-mode", "standalone"])
+            parser.parse_args(["convert", "-i", "kernel.py", "--test-mode", "standalone"])
         self.assertEqual(exc.exception.code, 2)
         self.assertIn("differential", stderr.getvalue())
+
+    def test_gen_convert_is_no_longer_a_valid_command(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit) as exc:
+            parser.parse_args(["gen-convert", "-i", "kernel.py"])
+        self.assertEqual(exc.exception.code, 2)
 
     def test_gen_test_maps_to_command_kind(self) -> None:
         parser = build_parser()
@@ -113,7 +130,8 @@ class CliParserTests(unittest.TestCase):
         cases = [
             ("gen_eval_batch", CommandKind.GEN_EVAL_BATCH),
             ("gen_eval", CommandKind.GEN_EVAL),
-            ("gen_convert", CommandKind.GEN_CONVERT),
+            ("convert", CommandKind.CONVERT),
+            ("convert_batch", CommandKind.CONVERT_BATCH),
             ("gen_test", CommandKind.GEN_TEST),
             ("run_test", CommandKind.RUN_TEST),
             ("gen_bench", CommandKind.GEN_BENCH),
@@ -131,15 +149,18 @@ class CliParserTests(unittest.TestCase):
                     argv = [alias, "--bench-file", "bench_kernel.py", "--operator-file", "kernel.py"]
                 elif expected_kind == CommandKind.VERIFY_BATCH:
                     argv = [alias, "-i", "workspace-root"]
+                elif expected_kind == CommandKind.CONVERT_BATCH:
+                    argv = [alias, "-i", "workspace-root"]
                 args = parser.parse_args(_normalize_command_aliases(argv))
                 self.assertEqual(args.command_kind, expected_kind)
 
-    def test_help_keeps_only_canonical_kebab_case_commands(self) -> None:
+    def test_help_keeps_only_canonical_convert_commands(self) -> None:
         parser = build_parser()
         help_text = parser.format_help()
+        self.assertIn("convert", help_text)
+        self.assertIn("convert-batch", help_text)
         self.assertIn("gen-eval-batch", help_text)
         self.assertIn("gen-eval", help_text)
-        self.assertIn("gen-convert", help_text)
         self.assertIn("gen-test", help_text)
         self.assertIn("run-test", help_text)
         self.assertIn("gen-bench", help_text)
@@ -150,9 +171,11 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("verify", help_text)
         self.assertIn("verify-batch", help_text)
         self.assertIn("optimize-batch", help_text)
+        self.assertNotIn("gen-convert", help_text)
         self.assertNotIn("gen_eval_batch", help_text)
         self.assertNotIn("gen_eval", help_text)
         self.assertNotIn("gen_convert", help_text)
+        self.assertNotIn("convert_batch", help_text)
         self.assertNotIn("gen_test", help_text)
         self.assertNotIn("run_test", help_text)
         self.assertNotIn("gen_bench", help_text)
@@ -176,7 +199,9 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("Status:", help_text)
         self.assertIn("Verification:", help_text)
         self.assertIn("Optimization:", help_text)
-        self.assertIn("gen-convert", help_text)
+        self.assertIn("Conversion:", help_text)
+        self.assertIn("convert", help_text)
+        self.assertIn("convert-batch", help_text)
         self.assertIn("Examples:", help_text)
         self.assertIn("triton-agent gen-test -i kernel.py", help_text)
         self.assertIn("triton-agent optimize -i kernel.py --agent codex", help_text)
@@ -3524,9 +3549,9 @@ class PromptTests(unittest.TestCase):
         self.assertIn("both generated artifacts must be executed", prompt)
         self.assertIn("include the same `--remote` setting", prompt)
 
-    def test_gen_convert_prompt_mentions_differential_validation_without_baseline(self) -> None:
+    def test_convert_prompt_mentions_differential_validation_without_baseline(self) -> None:
         prompt = build_prompt(
-            CommandKind.GEN_CONVERT,
+            CommandKind.CONVERT,
             Path("/tmp/op.py"),
             Path("/tmp/op.py"),
             Path("/tmp/triton_op.py"),

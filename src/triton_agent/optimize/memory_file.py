@@ -1,0 +1,248 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from textwrap import dedent
+from typing import Optional
+
+from triton_agent.optimize.prompts import compiler_source_analysis_lines, layered_analysis_lines
+
+
+@dataclass
+class MemoryFileState:
+    """Temporary top-level memory file (`AGENTS.md` or `CLAUDE.md`) for one run."""
+
+    guidance_path: Path
+    backup_path: Optional[Path]
+    created_guidance: bool
+
+
+def _render_bullet_block(lines: list[str]) -> str:
+    return "".join(f"- {line}\n" for line in lines)
+
+
+def _render_line_block(lines: list[str]) -> str:
+    if not lines:
+        return ""
+    return "\n".join(lines) + "\n"
+
+
+_OPTIMIZE_GUIDANCE_RULES_BLOCK = dedent(
+    """\
+    - Read files cautiously. Do not read unrelated files speculatively or just in case.
+    - Prefer the smallest source that can unblock the next decision.
+    - Follow the user's instructions strictly.
+    - Treat user priorities, constraints, and workflow guidance as binding unless they conflict with a safety or correctness requirement.
+    """
+)
+
+
+_UNSUPERVISED_GUIDANCE_TEMPLATE = (
+    dedent(
+        """\
+        # {guidance_filename}
+
+        ## Triton Agent Optimize Session
+
+        This workspace is under an unsupervised optimize run.
+
+        """
+    )
+    + _OPTIMIZE_GUIDANCE_RULES_BLOCK
+    + dedent(
+        """\
+        Own the end-to-end optimize session.
+        Use the staged `triton-npu-optimize` skill as the workflow source of truth.
+        Use `{test_mode}` correctness validation for this optimize session.
+        Use `{bench_mode}` benchmark validation for this optimize session.
+        Optimize the operator at `{operator_name}`.
+        {analysis_block}{compiler_source_block}"""
+    )
+)
+
+
+_SHARED_GUIDANCE_TEMPLATE = (
+    dedent(
+        """\
+        # {guidance_filename}
+
+        ## Triton Agent Optimize Orchestration
+
+        This workspace is under optimize orchestration.
+
+        """
+    )
+    + _OPTIMIZE_GUIDANCE_RULES_BLOCK
+    + dedent(
+        """\
+        Use the staged workspace skills as the workflow source of truth.
+        Role-specific behavior comes from the launch prompt.
+        Use `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md` as live handoff files.
+        Treat `baseline/` as the canonical optimize baseline.
+        Use `compare-perf` as the authoritative source for round performance summaries.
+        {analysis_block}{compiler_source_block}"""
+    )
+)
+
+
+class MemoryFileManager:
+    """Owns rendering and lifecycle for the temporary workspace memory file."""
+
+    def guidance_filename(self, agent_name: str) -> str:
+        if agent_name == "claude":
+            return "CLAUDE.md"
+        return "AGENTS.md"
+
+    def prepare_unsupervised(
+        self,
+        workdir: Path,
+        *,
+        operator_path: Path,
+        test_mode: str,
+        bench_mode: str,
+        agent_name: str,
+        compiler_source_path: Path | None = None,
+        compiler_source_commit: str | None = None,
+    ) -> MemoryFileState:
+        """Write the single-agent optimize memory file into the workspace root."""
+        return self._prepare(
+            workdir,
+            agent_name=agent_name,
+            content=self._render_unsupervised_guidance(
+                guidance_filename=self.guidance_filename(agent_name),
+                operator_path=operator_path,
+                test_mode=test_mode,
+                bench_mode=bench_mode,
+                compiler_source_path=compiler_source_path,
+                compiler_source_commit=compiler_source_commit,
+            ),
+        )
+
+    def prepare_shared(
+        self,
+        workdir: Path,
+        *,
+        agent_name: str,
+        compiler_source_path: Path | None = None,
+        compiler_source_commit: str | None = None,
+    ) -> MemoryFileState:
+        """Write the shared orchestration memory file used by supervised optimize."""
+        return self._prepare(
+            workdir,
+            agent_name=agent_name,
+            content=self._render_shared_guidance(
+                guidance_filename=self.guidance_filename(agent_name),
+                compiler_source_path=compiler_source_path,
+                compiler_source_commit=compiler_source_commit,
+            ),
+        )
+
+    def cleanup(self, state: MemoryFileState) -> list[str]:
+        """Delete a temporary memory file or restore the user's original one."""
+        warnings: list[str] = []
+        if state.backup_path is None:
+            try:
+                if state.created_guidance and state.guidance_path.exists():
+                    state.guidance_path.unlink()
+            except OSError as exc:
+                warnings.append(
+                    f"Failed to remove temporary guidance file {state.guidance_path}: {exc}"
+                )
+        else:
+            try:
+                state.guidance_path.write_bytes(state.backup_path.read_bytes())
+                state.backup_path.unlink()
+            except OSError as exc:
+                warnings.append(
+                    "Failed to restore original guidance file "
+                    f"from {state.backup_path}: {exc}"
+                )
+        return warnings
+
+    def describe_prepare(self, state: MemoryFileState, *, description: str) -> list[str]:
+        messages: list[str] = []
+        if state.backup_path is not None:
+            messages.append(f"backed up workspace guidance file to {state.backup_path}")
+        messages.append(f"wrote {description} {state.guidance_path}")
+        return messages
+
+    def describe_cleanup(self, state: MemoryFileState) -> list[str]:
+        if state.backup_path is None:
+            return [f"removing temporary guidance file {state.guidance_path}"]
+        return [
+            f"restoring workspace guidance file from {state.backup_path}",
+            f"removing backup file {state.backup_path}",
+        ]
+
+    def _prepare(self, workdir: Path, *, agent_name: str, content: str) -> MemoryFileState:
+        """Backup any existing memory file, then replace it with optimize guidance."""
+        guidance_path = workdir / self.guidance_filename(agent_name)
+        guidance_preexisting = guidance_path.exists()
+        backup_path: Optional[Path] = None
+
+        if guidance_preexisting:
+            backup_path = self._next_backup_path(guidance_path)
+            backup_path.write_bytes(guidance_path.read_bytes())
+
+        guidance_path.write_text(content, encoding="utf-8")
+        return MemoryFileState(
+            guidance_path=guidance_path,
+            backup_path=backup_path,
+            created_guidance=not guidance_preexisting,
+        )
+
+    def _next_backup_path(self, guidance_path: Path) -> Path:
+        candidate = guidance_path.with_suffix(guidance_path.suffix + ".triton-agent.bak")
+        counter = 1
+        while candidate.exists():
+            candidate = guidance_path.with_suffix(
+                guidance_path.suffix + f".triton-agent.{counter}.bak"
+            )
+            counter += 1
+        return candidate
+
+    def _render_unsupervised_guidance(
+        self,
+        *,
+        guidance_filename: str,
+        operator_path: Path,
+        test_mode: str,
+        bench_mode: str,
+        compiler_source_path: Path | None = None,
+        compiler_source_commit: str | None = None,
+    ) -> str:
+        return _UNSUPERVISED_GUIDANCE_TEMPLATE.format(
+            guidance_filename=guidance_filename,
+            test_mode=test_mode,
+            bench_mode=bench_mode,
+            operator_name=operator_path.name,
+            analysis_block=_render_bullet_block(
+                layered_analysis_lines(round_scope="each round")
+            ),
+            compiler_source_block=_render_line_block(
+                compiler_source_analysis_lines(
+                    compiler_source_path=compiler_source_path,
+                    compiler_source_commit=compiler_source_commit,
+                )
+            ),
+        )
+
+    def _render_shared_guidance(
+        self,
+        *,
+        guidance_filename: str,
+        compiler_source_path: Path | None = None,
+        compiler_source_commit: str | None = None,
+    ) -> str:
+        return _SHARED_GUIDANCE_TEMPLATE.format(
+            guidance_filename=guidance_filename,
+            analysis_block=_render_bullet_block(
+                layered_analysis_lines(round_scope="each round")
+            ),
+            compiler_source_block=_render_line_block(
+                compiler_source_analysis_lines(
+                    compiler_source_path=compiler_source_path,
+                    compiler_source_commit=compiler_source_commit,
+                )
+            ),
+        )

@@ -7,14 +7,14 @@ from typing import Any, TextIO, cast
 
 from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult
-from triton_agent.optimize.guidance import (
-    OptimizeGuidanceManager,
-    OptimizeGuidanceState,
-    SharedOptimizeGuidanceState,
+from triton_agent.optimize.session_artifacts import (
+    OptimizeSessionArtifactsManager,
+    OptimizeSessionArtifactsState,
+    SharedOptimizeSessionArtifactsState,
 )
 from triton_agent.optimize.models import GateDecision, GateResult
 from triton_agent.optimize.run_loop import OptimizeRunLoop
-from triton_agent.prompts import build_optimize_supervisor_prompt
+from triton_agent.optimize.prompts import build_optimize_supervisor_prompt
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
@@ -22,14 +22,14 @@ class RecoveryRunnerAdapter:
     def __init__(
         self,
         runner: AgentRunner,
-        guidance_manager: OptimizeGuidanceManager,
-        guidance_state: SharedOptimizeGuidanceState,
+        artifacts_manager: OptimizeSessionArtifactsManager,
+        artifacts_state: SharedOptimizeSessionArtifactsState,
         stdout: TextIO | None = None,
         stderr: TextIO | None = None,
     ) -> None:
         self._runner = runner
-        self._guidance_manager = guidance_manager
-        self._guidance_state = guidance_state
+        self._artifacts_manager = artifacts_manager
+        self._artifacts_state = artifacts_state
         self._stdout = stdout
         self._stderr = stderr
 
@@ -55,8 +55,8 @@ class RecoveryRunnerAdapter:
         return result
 
     def _record_session(self, request: AgentRequest, result: AgentResult) -> None:
-        self._guidance_manager.record_agent_session(
-            self._guidance_state,
+        self._artifacts_manager.record_agent_session(
+            self._artifacts_state,
             role=request.optimize_role or "worker",
             session_id=result.session_id,
             agent=request.agent_name,
@@ -67,14 +67,14 @@ class SupervisedOptimizeAdapter:
     def __init__(
         self,
         runner: AgentRunner,
-        guidance_state: OptimizeGuidanceState,
+        artifacts_state: OptimizeSessionArtifactsState,
         stdout: TextIO | None = None,
         stderr: TextIO | None = None,
-        guidance_manager: OptimizeGuidanceManager | None = None,
+        artifacts_manager: OptimizeSessionArtifactsManager | None = None,
     ) -> None:
         self._runner = runner
-        self._guidance_manager = guidance_manager or OptimizeGuidanceManager()
-        self._guidance_state = guidance_state
+        self._artifacts_manager = artifacts_manager or OptimizeSessionArtifactsManager()
+        self._artifacts_state = artifacts_state
         self._stdout = stdout
         self._stderr = stderr
 
@@ -83,8 +83,8 @@ class SupervisedOptimizeAdapter:
             request,
             optimize_role="worker",
             no_agent_session=True,
-            round_brief_path=self._guidance_state.round_brief_path,
-            supervisor_report_path=self._guidance_state.supervisor_report_path,
+            round_brief_path=self._artifacts_state.round_brief_path,
+            supervisor_report_path=self._artifacts_state.supervisor_report_path,
         )
         return self._run_request(worker_request)
 
@@ -109,8 +109,8 @@ class SupervisedOptimizeAdapter:
             optimize_role="supervisor",
             interact=False,
             no_agent_session=True,
-            round_brief_path=self._guidance_state.round_brief_path,
-            supervisor_report_path=self._guidance_state.supervisor_report_path,
+            round_brief_path=self._artifacts_state.round_brief_path,
+            supervisor_report_path=self._artifacts_state.supervisor_report_path,
         )
         supervisor_result = self._run_request(supervisor_request)
         if not supervisor_result.succeeded:
@@ -138,7 +138,7 @@ class SupervisedOptimizeAdapter:
         return gate_result
 
     def _read_supervisor_gate_result(self, latest_round_dir: Path) -> GateResult:
-        report_path = self._guidance_state.supervisor_report_path
+        report_path = self._artifacts_state.supervisor_report_path
         try:
             report_content = report_path.read_text(encoding="utf-8")
         except OSError as exc:
@@ -194,7 +194,7 @@ class SupervisedOptimizeAdapter:
         if latest_round_dir is not None:
             report_lines.append(f"Latest round: {latest_round_dir.name}")
         report_content = "\n".join(report_lines) + "\n"
-        self._guidance_state.supervisor_report_path.write_text(report_content, encoding="utf-8")
+        self._artifacts_state.supervisor_report_path.write_text(report_content, encoding="utf-8")
 
         brief_lines = [
             "# Optimize Round Brief",
@@ -206,21 +206,21 @@ class SupervisedOptimizeAdapter:
         elif latest_round_dir is not None:
             brief_lines.append(f"Continue from `{latest_round_dir.name}`.")
         brief_content = "\n".join(brief_lines) + "\n"
-        self._guidance_state.round_brief_path.write_text(brief_content, encoding="utf-8")
+        self._artifacts_state.round_brief_path.write_text(brief_content, encoding="utf-8")
 
         self._snapshot_live_handoff_files()
 
     def _snapshot_live_handoff_files(self) -> None:
-        history_dir = self._guidance_state.history_dir
+        history_dir = self._artifacts_state.history_dir
         history_dir.mkdir(parents=True, exist_ok=True)
         round_label = self._next_history_round_label()
-        brief_content = self._guidance_state.round_brief_path.read_text(encoding="utf-8")
-        report_content = self._guidance_state.supervisor_report_path.read_text(encoding="utf-8")
+        brief_content = self._artifacts_state.round_brief_path.read_text(encoding="utf-8")
+        report_content = self._artifacts_state.supervisor_report_path.read_text(encoding="utf-8")
         (history_dir / f"{round_label}-brief.md").write_text(brief_content, encoding="utf-8")
         (history_dir / f"{round_label}-supervisor-report.md").write_text(report_content, encoding="utf-8")
 
     def _next_history_round_label(self) -> str:
-        history_dir = self._guidance_state.history_dir
+        history_dir = self._artifacts_state.history_dir
         max_index = 0
         for path in history_dir.glob("round-*.md"):
             if not path.is_file():
@@ -236,8 +236,8 @@ class SupervisedOptimizeAdapter:
             result = cast(Any, self._runner).run(request)
         else:
             result = cast(Any, self._runner).run(request, stdout=self._stdout, stderr=self._stderr)
-        self._guidance_manager.record_agent_session(
-            self._guidance_state,
+        self._artifacts_manager.record_agent_session(
+            self._artifacts_state,
             role=request.optimize_role or "worker",
             session_id=result.session_id,
             agent=request.agent_name,
@@ -262,14 +262,14 @@ class SupervisedOptimizeAdapter:
 
 def execute_supervised_optimize(
     runner: AgentRunner,
-    guidance_manager: OptimizeGuidanceManager,
+    artifacts_manager: OptimizeSessionArtifactsManager,
     request: AgentRequest,
     *,
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
     verbose_stream: TextIO,
 ) -> AgentResult:
-    guidance_state = guidance_manager.prepare_supervised_session(
+    artifacts_state = artifacts_manager.prepare_supervised_session(
         request.workdir,
         agent_name=request.agent_name,
         compiler_source_path=request.compiler_source_path,
@@ -279,15 +279,15 @@ def execute_supervised_optimize(
         emit_verbose_lines(
             verbose_stream,
             "agents",
-            guidance_manager.describe_prepare_supervised_session(guidance_state),
+            artifacts_manager.describe_prepare_supervised_session(artifacts_state),
         )
     try:
         adapter = SupervisedOptimizeAdapter(
             runner,
-            guidance_state,
+            artifacts_state,
             stdout=stdout,
             stderr=stderr,
-            guidance_manager=guidance_manager,
+            artifacts_manager=artifacts_manager,
         )
         return OptimizeRunLoop().run(adapter, request)
     finally:
@@ -295,23 +295,23 @@ def execute_supervised_optimize(
             emit_verbose_lines(
                 verbose_stream,
                 "agents",
-                guidance_manager.describe_cleanup_supervised_session(guidance_state),
+                artifacts_manager.describe_cleanup_supervised_session(artifacts_state),
             )
-        warnings = guidance_manager.cleanup_supervised_session(guidance_state)
+        warnings = artifacts_manager.cleanup_supervised_session(artifacts_state)
         for warning in warnings:
             emit_verbose(verbose_stream, "agents", warning)
 
 
 def execute_unsupervised_optimize(
     runner: AgentRunner,
-    guidance_manager: OptimizeGuidanceManager,
+    artifacts_manager: OptimizeSessionArtifactsManager,
     request: AgentRequest,
     *,
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
     verbose_stream: TextIO,
 ) -> AgentResult:
-    shared_guidance_state = guidance_manager.prepare_unsupervised_session(
+    shared_artifacts_state = artifacts_manager.prepare_unsupervised_session(
         request.workdir,
         operator_path=request.input_path,
         test_mode=request.test_mode or "differential",
@@ -324,14 +324,14 @@ def execute_unsupervised_optimize(
         emit_verbose_lines(
             verbose_stream,
             "agents",
-            guidance_manager.describe_prepare_unsupervised_session(shared_guidance_state),
+            artifacts_manager.describe_prepare_unsupervised_session(shared_artifacts_state),
         )
     try:
         return OptimizeRunLoop().run(
             RecoveryRunnerAdapter(
                 runner,
-                guidance_manager,
-                shared_guidance_state,
+                artifacts_manager,
+                shared_artifacts_state,
                 stdout=stdout,
                 stderr=stderr,
             ),
@@ -342,9 +342,9 @@ def execute_unsupervised_optimize(
             emit_verbose_lines(
                 verbose_stream,
                 "agents",
-                guidance_manager.describe_cleanup_unsupervised_session(shared_guidance_state),
+                artifacts_manager.describe_cleanup_unsupervised_session(shared_artifacts_state),
             )
-        warnings = guidance_manager.cleanup_unsupervised_session(shared_guidance_state)
+        warnings = artifacts_manager.cleanup_unsupervised_session(shared_artifacts_state)
         for warning in warnings:
             emit_verbose(verbose_stream, "agents", warning)
 

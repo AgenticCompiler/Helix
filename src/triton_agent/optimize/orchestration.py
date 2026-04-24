@@ -8,7 +8,7 @@ from triton_agent.backends.factory import create_runner
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
 from triton_agent.optimize import execution as optimize_execution
 from triton_agent.optimize.compiler_source import prepare_compiler_source
-from triton_agent.optimize.guidance import OptimizeGuidanceManager
+from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsManager
 from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.resume import resolve_optimize_resume, reset_optimize_workspace
 from triton_agent.paths import default_generated_output_path
@@ -143,11 +143,11 @@ def run_optimize_request(
         emit_verbose_lines(verbose_stream, "skills", manager.describe_prepare(links))
     try:
         runner = create_runner(request.agent_name)
-        guidance_manager = OptimizeGuidanceManager()
+        artifacts_manager = OptimizeSessionArtifactsManager()
         if request.supervise == "on":
             return optimize_execution.execute_supervised_optimize(
                 runner,
-                guidance_manager,
+                artifacts_manager,
                 request,
                 stdout=stdout,
                 stderr=stderr,
@@ -155,7 +155,7 @@ def run_optimize_request(
             )
         return optimize_execution.execute_unsupervised_optimize(
             runner,
-            guidance_manager,
+            artifacts_manager,
             request,
             stdout=stdout,
             stderr=stderr,

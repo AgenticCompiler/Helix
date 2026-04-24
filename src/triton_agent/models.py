@@ -9,7 +9,8 @@ from typing import Literal, Optional
 class CommandKind(str, Enum):
     GEN_EVAL = "gen-eval"
     GEN_EVAL_BATCH = "gen-eval-batch"
-    GEN_CONVERT = "gen-convert"
+    CONVERT = "convert"
+    CONVERT_BATCH = "convert-batch"
     GEN_TEST = "gen-test"
     RUN_TEST = "run-test"
     GEN_BENCH = "gen-bench"
@@ -26,7 +27,8 @@ class CommandKind(str, Enum):
 COMMAND_TO_SKILL = {
     CommandKind.GEN_EVAL: "triton-npu-gen-eval-suite",
     CommandKind.GEN_EVAL_BATCH: "",
-    CommandKind.GEN_CONVERT: "triton-npu-convert-pytorch-operator",
+    CommandKind.CONVERT: "triton-npu-convert-pytorch-operator",
+    CommandKind.CONVERT_BATCH: "",
     CommandKind.GEN_TEST: "triton-npu-gen-test",
     CommandKind.RUN_TEST: "",
     CommandKind.GEN_BENCH: "triton-npu-gen-bench",

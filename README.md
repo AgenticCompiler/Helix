@@ -10,7 +10,8 @@ This README is organized by task so you can quickly find the right command for t
 - `run-test`: run an existing generated test.
 - `gen-eval`: generate both test and benchmark assets for one operator.
 - `gen-eval-batch`: generate evaluation assets for many operator workspaces.
-- `gen-convert`: convert one PyTorch operator into a Triton NPU-backed PyTorch operator and validate it with differential testing.
+- `convert`: convert one PyTorch operator into a Triton NPU-backed PyTorch operator and validate it with differential testing.
+- `convert-batch`: convert many operator workspaces.
 - `gen-bench`: generate a benchmark for one operator.
 - `run-bench`: run an existing generated benchmark.
 - `optimize`: optimize one operator.
@@ -29,7 +30,8 @@ Most workflows start from a single operator file:
 uv run triton-agent gen-test --input a.py
 uv run triton-agent run-test --test-file test_a.py --operator-file a.py
 
-uv run triton-agent gen-convert --input a.py
+uv run triton-agent convert --input a.py
+uv run triton-agent convert-batch --input operators_root
 
 uv run triton-agent gen-bench --input a.py
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
@@ -128,10 +130,10 @@ uv run triton-agent gen-eval --input a.py --remote user@host:2222 --remote-workd
 
 ## Convert PyTorch Operators
 
-Use `gen-convert` when you want a new Triton NPU-backed PyTorch operator file instead of an in-place optimize round.
+Use `convert` when you want a new Triton NPU-backed PyTorch operator file instead of an in-place optimize round.
 
 ```bash
-uv run triton-agent gen-convert --input a.py
+uv run triton-agent convert --input a.py
 ```
 
 What it is for:
@@ -161,7 +163,7 @@ Behavior:
 Example:
 
 ```bash
-uv run triton-agent gen-convert --input a.py --output triton_a.py
+uv run triton-agent convert --input a.py --output triton_a.py
 ```
 
 ## Generate Benchmarks
@@ -282,7 +284,7 @@ Optimize behavior:
 
 ## Work On Many Operators
 
-Use the batch commands when `--input` points to a directory of operator workspaces. `gen-eval-batch` and `optimize-batch` can also accept one operator workspace directory directly.
+Use the batch commands when `--input` points to a directory of operator workspaces. `gen-eval-batch`, `convert-batch`, and `optimize-batch` can also accept one operator workspace directory directly.
 
 ### Generate Evaluation Assets In Batch
 
@@ -295,6 +297,21 @@ Common options:
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--test-mode standalone|differential`
 - `--bench-mode standalone|msprof`
+- `--max-concurrency <N>`
+- `--show-output`
+- `--remote user@host[:port]`
+- `--remote-workdir <path>`
+
+### Convert Operators In Batch
+
+```bash
+uv run triton-agent convert-batch --input operators_root
+```
+
+Common options:
+
+- `--agent codex|opencode|pi|claude|openhands|traecli`
+- `--test-mode differential`
 - `--max-concurrency <N>`
 - `--show-output`
 - `--remote user@host[:port]`
