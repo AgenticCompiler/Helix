@@ -72,20 +72,39 @@ class LocalBenchRunnerTests(unittest.TestCase):
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
             bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: abs_\n# kernel: abs_kernel\n",
+                "# bench-mode: msprof\n# api-name: abs_\n",
                 encoding="utf-8",
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
-            results = [
-                make_skill_result(0, "2\n", ""),
-                make_skill_result(0, "Task Duration(us): 10.5\n", ""),
-                make_skill_result(0, "Task Duration(us): 11.5\n", ""),
-            ]
-            with patch.object(module, "run_buffered_process", return_value=results[0]), patch.object(
+            created_output_dirs: list[Path] = []
+
+            def _fake_streaming(command, workdir, stall_timeout_seconds):
+                self.assertEqual(workdir, str(root))
+                self.assertEqual(stall_timeout_seconds, 900)
+                self.assertEqual(command[0], "msprof")
+                self.assertTrue(command[1].startswith("--output="))
+                output_dir = Path(command[1].split("=", 1)[1])
+                created_output_dirs.append(output_dir)
+                case_idx = int(command[-1])
+                csv_path = output_dir / f"op_statistic_20260424{case_idx}.csv"
+                csv_path.write_text(
+                    "\n".join(
+                        [
+                            "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                            f"0,OpA,AI_CORE,1,{10 + case_idx},1,{case_idx * 1.5},2,50",
+                            f"0,OpB,AI_VECTOR_CORE,1,{20 + case_idx},2,{case_idx * 2.5},3,50",
+                        ]
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return make_skill_result(0, f"profile {case_idx}\n", "")
+
+            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "2\n", "")), patch.object(
                 module,
                 "run_streaming_process",
-                side_effect=results[1:],
+                side_effect=_fake_streaming,
             ) as mocked:
                 result, perf_path = module.run_local_bench(
                     bench_file,
@@ -99,12 +118,16 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(perf_path, root / "abs_perf.txt")
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
-                "latency-case-1: 10.5\nlatency-case-2: 11.5\n",
+                "latency-case-1: 4.0\nlatency-case-2: 8.0\n",
             )
             self.assertEqual(mocked.call_count, 2)
             case_command = mocked.call_args_list[1].args[0]
-            self.assertEqual(case_command[:3], ["msprof", "op", "--kernel-name=abs_kernel"])
+            self.assertEqual(case_command[0], "msprof")
+            self.assertTrue(case_command[1].startswith("--output="))
+            self.assertEqual(case_command[2:4], [sys.executable, "bench_abs.py"])
             self.assertIn("--bench", case_command)
+            self.assertTrue(created_output_dirs)
+            self.assertTrue(all(not path.exists() for path in created_output_dirs))
 
     def test_run_local_bench_msprof_accepts_zero_duration_output(self) -> None:
         module = load_bench_runner_module()
@@ -113,19 +136,31 @@ class LocalBenchRunnerTests(unittest.TestCase):
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
             bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: abs_\n# kernel: abs_kernel\n",
+                "# bench-mode: msprof\n# api-name: abs_\n",
                 encoding="utf-8",
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
-            results = [
-                make_skill_result(0, "1\n", ""),
-                make_skill_result(0, "Task Duration(us): 0.000000\n", ""),
-            ]
-            with patch.object(module, "run_buffered_process", return_value=results[0]), patch.object(
+            def _fake_streaming(command, workdir, stall_timeout_seconds):
+                self.assertEqual(command[0], "msprof")
+                self.assertTrue(command[1].startswith("--output="))
+                output_dir = Path(command[1].split("=", 1)[1])
+                (output_dir / "op_statistic_1.csv").write_text(
+                    "\n".join(
+                        [
+                            "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                            "0,Zero,AI_CORE,1,0,0,0.000000,0,100",
+                        ]
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return make_skill_result(0, "", "")
+
+            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
                 module,
                 "run_streaming_process",
-                side_effect=results[1:],
+                side_effect=_fake_streaming,
             ):
                 result, perf_path = module.run_local_bench(
                     bench_file,
@@ -138,10 +173,10 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 self.fail("expected msprof perf path")
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
-                "latency-case-1: 0.000000\n",
+                "latency-case-1: 0.0\n",
             )
 
-    def test_run_local_bench_msprof_requires_kernel_metadata(self) -> None:
+    def test_run_local_bench_msprof_fails_when_statistic_csv_is_missing(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -150,12 +185,17 @@ class LocalBenchRunnerTests(unittest.TestCase):
             bench_file.write_text("# bench-mode: msprof\n", encoding="utf-8")
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
-            with self.assertRaises(ValueError):
-                module.run_local_bench(
-                    bench_file,
-                    operator_file,
-                    "msprof",
-                )
+            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+                module,
+                "run_streaming_process",
+                return_value=make_skill_result(0, "", ""),
+            ):
+                with self.assertRaises(FileNotFoundError):
+                    module.run_local_bench(
+                        bench_file,
+                        operator_file,
+                        "msprof",
+                    )
 
     def test_compare_perf_files_reports_per_case_deltas(self) -> None:
         module = load_bench_runner_module()

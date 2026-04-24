@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import csv
 import math
 import os
-import re
 import sys
+import tempfile
 from pathlib import Path
 
 from run_runtime import (
+    ResultPayload,
     cleanup_remote_workspace,
     copy_file_to_remote,
     create_remote_workspace,
@@ -95,7 +97,7 @@ def run_local_bench(
     bench_file: Path,
     operator_file: Path,
     bench_mode: str,
-) -> tuple[dict[str, object], Path | None]:
+) -> tuple[ResultPayload, Path | None]:
     if bench_mode == "msprof":
         return _run_local_bench_msprof(bench_file, operator_file)
     return _run_local_bench_standalone(bench_file, operator_file)
@@ -110,7 +112,7 @@ def run_remote_bench(
     keep_remote_workdir: bool = False,
     verbose: bool = False,
     stderr=None,
-) -> tuple[dict[str, object], Path | None, str]:
+) -> tuple[ResultPayload, Path | None, str]:
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
     )
@@ -150,7 +152,7 @@ def run_remote_bench(
 def _run_local_bench_standalone(
     bench_file: Path,
     operator_file: Path,
-) -> tuple[dict[str, object], Path | None]:
+) -> tuple[ResultPayload, Path | None]:
     command = [sys.executable, str(bench_file), "--operator-file", str(operator_file)]
     result = run_streaming_process(command, str(bench_file.parent), stall_timeout_seconds=900)
     if not result_succeeded(result):
@@ -169,7 +171,7 @@ def _run_remote_bench_standalone(
     operator_file: Path,
     verbose: bool = False,
     stderr=None,
-) -> tuple[dict[str, object], Path | None, str]:
+) -> tuple[ResultPayload, Path | None, str]:
     result = run_remote_command_streaming(
         spec,
         remote_workspace,
@@ -189,12 +191,7 @@ def _run_remote_bench_standalone(
 def _run_local_bench_msprof(
     bench_file: Path,
     operator_file: Path,
-) -> tuple[dict[str, object], Path | None]:
-    metadata = parse_bench_metadata(bench_file)
-    kernel_name = metadata.get("kernel")
-    if not kernel_name:
-        raise ValueError(f"Benchmark metadata is missing required 'kernel' entry: {bench_file}")
-
+) -> tuple[ResultPayload, Path | None]:
     count_result = run_buffered_process(
         [sys.executable, bench_file.name, "--num-bench"],
         str(bench_file.parent),
@@ -210,34 +207,34 @@ def _run_local_bench_msprof(
     normalized_lines: list[str] = []
 
     for case_idx in range(1, case_count + 1):
-        command = [
-            "msprof",
-            "op",
-            f"--kernel-name={kernel_name}",
-            sys.executable,
-            bench_file.name,
-            "--operator-file",
-            operator_arg,
-            "--bench",
-            str(case_idx),
-        ]
-        result = run_streaming_process(command, str(bench_file.parent), stall_timeout_seconds=900)
-        stdout_chunks.append(str(result["stdout"]))
-        stderr_chunks.append(str(result["stderr"]))
-        if not result_succeeded(result):
-            return (
-                make_result(
-                    return_code=int(result["return_code"]),
-                    stdout="".join(stdout_chunks),
-                    stderr="".join(stderr_chunks),
-                    stalled=bool(result["stalled"]),
-                    session_id=result["session_id"],
-                ),
-                None,
-            )
+        with tempfile.TemporaryDirectory(prefix="triton-agent-msprof-") as output_dir:
+            command = [
+                "msprof",
+                f"--output={output_dir}",
+                sys.executable,
+                bench_file.name,
+                "--operator-file",
+                operator_arg,
+                "--bench",
+                str(case_idx),
+            ]
+            result = run_streaming_process(command, str(bench_file.parent), stall_timeout_seconds=900)
+            stdout_chunks.append(str(result["stdout"]))
+            stderr_chunks.append(str(result["stderr"]))
+            if not result_succeeded(result):
+                return (
+                    make_result(
+                        return_code=int(result["return_code"]),
+                        stdout="".join(stdout_chunks),
+                        stderr="".join(stderr_chunks),
+                        stalled=bool(result["stalled"]),
+                        session_id=result["session_id"],
+                    ),
+                    None,
+                )
 
-        duration = _extract_msprof_duration(f"{result['stdout']}\n{result['stderr']}")
-        normalized_lines.append(f"latency-case-{case_idx}: {duration}")
+            duration = _format_latency_value(_sum_msprof_avg_time(Path(output_dir)))
+            normalized_lines.append(f"latency-case-{case_idx}: {duration}")
 
     perf_path = _write_perf_lines(_perf_output_path(bench_file, operator_file), normalized_lines)
     return (make_result(return_code=0, stdout="".join(stdout_chunks), stderr="".join(stderr_chunks)), perf_path)
@@ -250,12 +247,7 @@ def _run_remote_bench_msprof(
     operator_file: Path,
     verbose: bool = False,
     stderr=None,
-) -> tuple[dict[str, object], Path | None, str]:
-    metadata = parse_bench_metadata(bench_file)
-    kernel_name = metadata.get("kernel")
-    if not kernel_name:
-        raise ValueError(f"Benchmark metadata is missing required 'kernel' entry: {bench_file}")
-
+) -> tuple[ResultPayload, Path | None, str]:
     count_result = run_remote_command_buffered(
         spec,
         remote_workspace,
@@ -272,40 +264,60 @@ def _run_remote_bench_msprof(
     normalized_lines: list[str] = []
 
     for case_idx in range(1, case_count + 1):
-        result = run_remote_command_streaming(
+        output_dir = _create_remote_msprof_output_dir(
             spec,
             remote_workspace,
-            [
-                "msprof",
-                "op",
-                f"--kernel-name={kernel_name}",
-                "python3",
-                bench_file.name,
-                "--operator-file",
-                operator_file.name,
-                "--bench",
-                str(case_idx),
-            ],
             verbose=verbose,
             stderr=stderr,
         )
-        stdout_chunks.append(str(result["stdout"]))
-        stderr_chunks.append(str(result["stderr"]))
-        if not result_succeeded(result):
-            return (
-                make_result(
-                    return_code=int(result["return_code"]),
-                    stdout="".join(stdout_chunks),
-                    stderr="".join(stderr_chunks),
-                    stalled=bool(result["stalled"]),
-                    session_id=result["session_id"],
-                ),
-                None,
+        try:
+            result = run_remote_command_streaming(
+                spec,
                 remote_workspace,
+                [
+                    "msprof",
+                    f"--output={output_dir}",
+                    "python3",
+                    bench_file.name,
+                    "--operator-file",
+                    operator_file.name,
+                    "--bench",
+                    str(case_idx),
+                ],
+                verbose=verbose,
+                stderr=stderr,
             )
+            stdout_chunks.append(str(result["stdout"]))
+            stderr_chunks.append(str(result["stderr"]))
+            if not result_succeeded(result):
+                return (
+                    make_result(
+                        return_code=int(result["return_code"]),
+                        stdout="".join(stdout_chunks),
+                        stderr="".join(stderr_chunks),
+                        stalled=bool(result["stalled"]),
+                        session_id=result["session_id"],
+                    ),
+                    None,
+                    remote_workspace,
+                )
 
-        duration = _extract_msprof_duration(f"{result['stdout']}\n{result['stderr']}")
-        normalized_lines.append(f"latency-case-{case_idx}: {duration}")
+            duration = _read_remote_msprof_avg_time(
+                spec,
+                remote_workspace,
+                output_dir,
+                verbose=verbose,
+                stderr=stderr,
+            )
+            normalized_lines.append(f"latency-case-{case_idx}: {duration}")
+        finally:
+            _cleanup_remote_msprof_output_dir(
+                spec,
+                remote_workspace,
+                output_dir,
+                verbose=verbose,
+                stderr=stderr,
+            )
 
     perf_path = _write_perf_lines(_perf_output_path(bench_file, operator_file), normalized_lines)
     return (
@@ -339,11 +351,128 @@ def _parse_case_count(stdout: str) -> int:
     raise ValueError("Unable to parse benchmark case count from --num-bench output.")
 
 
-def _extract_msprof_duration(output: str) -> str:
-    match = re.search(r"Task Duration\(us\):\s*([0-9]+(?:\.[0-9]+)?)", output)
-    if not match:
-        raise FileNotFoundError("msprof output did not contain Task Duration(us).")
-    return match.group(1)
+def _sum_msprof_avg_time(output_dir: Path) -> float:
+    csv_path = _find_latest_msprof_statistic_csv(output_dir)
+    with csv_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        fieldnames = reader.fieldnames or []
+        if "Avg Time(us)" not in fieldnames:
+            raise ValueError(f"Missing required column 'Avg Time(us)' in {csv_path}")
+        total = 0.0
+        row_count = 0
+        for row in reader:
+            avg_time = (row.get("Avg Time(us)") or "").strip()
+            if not avg_time:
+                raise ValueError(f"Empty 'Avg Time(us)' value in {csv_path}")
+            total += float(avg_time)
+            row_count += 1
+    if row_count == 0:
+        raise ValueError(f"No rows found in {csv_path}")
+    return total
+
+
+def _find_latest_msprof_statistic_csv(output_dir: Path) -> Path:
+    matches = sorted(
+        path for path in output_dir.rglob("op_statistic_*.csv") if path.is_file()
+    )
+    if not matches:
+        raise FileNotFoundError(f"No op_statistic_*.csv found under {output_dir}")
+    return max(matches, key=lambda path: path.stat().st_mtime_ns)
+
+
+def _format_latency_value(value: float) -> str:
+    rendered = f"{value:.6f}".rstrip("0").rstrip(".")
+    if "." not in rendered:
+        rendered += ".0"
+    return rendered
+
+
+def _create_remote_msprof_output_dir(
+    spec,
+    remote_workspace: str,
+    verbose: bool = False,
+    stderr=None,
+) -> str:
+    result = run_remote_command_buffered(
+        spec,
+        remote_workspace,
+        ["mktemp", "-d"],
+        verbose=verbose,
+        stderr=stderr,
+    )
+    if not result_succeeded(result):
+        raise RuntimeError(result["stderr"] or result["stdout"] or "Failed to create remote msprof output directory.")
+    output_dir = str(result["stdout"]).strip().splitlines()[-1].strip() if str(result["stdout"]).strip() else ""
+    if not output_dir:
+        raise RuntimeError("Remote msprof output directory command did not return a path.")
+    return output_dir
+
+
+def _read_remote_msprof_avg_time(
+    spec,
+    remote_workspace: str,
+    output_dir: str,
+    verbose: bool = False,
+    stderr=None,
+) -> str:
+    script = """
+import csv
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+matches = sorted(path for path in root.rglob("op_statistic_*.csv") if path.is_file())
+if not matches:
+    raise SystemExit(f"No op_statistic_*.csv found under {root}")
+csv_path = max(matches, key=lambda path: path.stat().st_mtime_ns)
+
+with csv_path.open("r", encoding="utf-8", newline="") as handle:
+    reader = csv.DictReader(handle)
+    fieldnames = reader.fieldnames or []
+    if "Avg Time(us)" not in fieldnames:
+        raise SystemExit(f"Missing required column 'Avg Time(us)' in {csv_path}")
+    total = 0.0
+    row_count = 0
+    for row in reader:
+        value = (row.get("Avg Time(us)") or "").strip()
+        if not value:
+            raise SystemExit(f"Empty 'Avg Time(us)' value in {csv_path}")
+        total += float(value)
+        row_count += 1
+
+if row_count == 0:
+    raise SystemExit(f"No rows found in {csv_path}")
+print(total)
+""".strip()
+    result = run_remote_command_buffered(
+        spec,
+        remote_workspace,
+        ["python3", "-c", script, output_dir],
+        verbose=verbose,
+        stderr=stderr,
+    )
+    if not result_succeeded(result):
+        raise RuntimeError(result["stderr"] or result["stdout"] or "Failed to parse remote msprof statistic CSV.")
+    value = str(result["stdout"]).strip().splitlines()[-1].strip() if str(result["stdout"]).strip() else ""
+    if not value:
+        raise RuntimeError(f"Remote msprof statistic parser did not return a value for {output_dir}.")
+    return _format_latency_value(float(value))
+
+
+def _cleanup_remote_msprof_output_dir(
+    spec,
+    remote_workspace: str,
+    output_dir: str,
+    verbose: bool = False,
+    stderr=None,
+) -> None:
+    run_remote_command_buffered(
+        spec,
+        remote_workspace,
+        ["rm", "-rf", output_dir],
+        verbose=verbose,
+        stderr=stderr,
+    )
 
 
 def _parse_perf_file(path: Path) -> dict[str, float]:

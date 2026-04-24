@@ -6,6 +6,7 @@ from pathlib import Path
 
 import compare_result_payloads as result_payload_compare
 from run_runtime import (
+    ResultPayload,
     cleanup_remote_workspace,
     copy_file_from_remote,
     copy_file_to_remote,
@@ -28,7 +29,7 @@ def run_local_test(
     test_file: Path,
     operator_file: Path,
     test_mode: str,
-) -> tuple[dict[str, object], Path | None]:
+) -> tuple[ResultPayload, Path | None]:
     command = [sys.executable, str(test_file), "--operator-file", str(operator_file)]
     result = run_streaming_process(command, str(test_file.parent), stall_timeout_seconds=900)
     archived_result = None
@@ -64,7 +65,7 @@ def run_remote_test(
     keep_remote_workdir: bool = False,
     verbose: bool = False,
     stderr=None,
-) -> tuple[dict[str, object], Path | None, str]:
+) -> tuple[ResultPayload, Path | None, str]:
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
     )

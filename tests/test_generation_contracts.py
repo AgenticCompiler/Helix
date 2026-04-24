@@ -12,8 +12,10 @@ def _read(relative_path: str) -> str:
 class GenerationContractTests(unittest.TestCase):
     def test_pyright_configuration_keeps_tests_basic_while_src_is_strict(self) -> None:
         content = _read("pyproject.toml")
+        self.assertIn('include = ["src", "tests", "skills/*/scripts"]', content)
         self.assertIn('typeCheckingMode = "basic"', content)
         self.assertIn('strict = ["src"]', content)
+        self.assertNotIn('"skills",', content)
 
     def test_test_gen_skill_requires_header_metadata_and_no_runtime_api_flag(self) -> None:
         content = _read("skills/triton-npu-gen-test/SKILL.md")

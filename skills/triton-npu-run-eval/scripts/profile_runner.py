@@ -6,6 +6,7 @@ from pathlib import Path
 
 from bench_runner import parse_bench_metadata
 from run_runtime import (
+    ResultPayload,
     cleanup_remote_workspace,
     copy_directory_from_remote,
     copy_file_to_remote,
@@ -23,7 +24,7 @@ def run_local_profile_bench(
     operator_file: Path,
     bench_mode: str,
     bench_case: int | None = None,
-) -> tuple[dict[str, object], Path | None]:
+) -> tuple[ResultPayload, Path | None]:
     if bench_mode == "msprof":
         result = _run_local_profile_msprof(bench_file, operator_file, bench_case)
     else:
@@ -44,7 +45,7 @@ def run_remote_profile_bench(
     keep_remote_workdir: bool = False,
     verbose: bool = False,
     stderr=None,
-) -> tuple[dict[str, object], Path | None, str]:
+) -> tuple[ResultPayload, Path | None, str]:
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
     )
@@ -106,7 +107,7 @@ def run_remote_profile_bench(
 def _run_local_profile_standalone(
     bench_file: Path,
     operator_file: Path,
-) -> dict[str, object]:
+) -> ResultPayload:
     operator_arg = os.path.relpath(operator_file, bench_file.parent)
     return run_streaming_process(
         ["msprof", sys.executable, bench_file.name, "--operator-file", operator_arg],
@@ -119,7 +120,7 @@ def _run_local_profile_msprof(
     bench_file: Path,
     operator_file: Path,
     bench_case: int | None,
-) -> dict[str, object]:
+) -> ResultPayload:
     kernel_name = _resolve_kernel_name(bench_file)
     selected_case = _resolve_bench_case_local(bench_file, bench_case)
     operator_arg = os.path.relpath(operator_file, bench_file.parent)
@@ -147,7 +148,7 @@ def _run_remote_profile_standalone(
     operator_file: Path,
     verbose: bool = False,
     stderr=None,
-) -> dict[str, object]:
+) -> ResultPayload:
     return run_remote_command_streaming(
         spec,
         remote_workspace,
@@ -165,7 +166,7 @@ def _run_remote_profile_msprof(
     bench_case: int | None,
     verbose: bool = False,
     stderr=None,
-) -> dict[str, object]:
+) -> ResultPayload:
     kernel_name = _resolve_kernel_name(bench_file)
     selected_case = _resolve_bench_case_remote(
         spec,

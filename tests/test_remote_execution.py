@@ -248,6 +248,84 @@ class RemoteExecutionTests(unittest.TestCase):
         self.assertEqual(remote_workspace, "/tmp/remote-clean")
         cleanup.assert_called_once_with("spec", "/tmp/remote-clean", verbose=False, stderr=None)
 
+    def test_run_remote_bench_msprof_sums_avg_time_from_remote_csv_and_cleans_profiler_tmpdirs(self) -> None:
+        module = load_bench_runner_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_kernel.py"
+            operator_file = root / "kernel.py"
+            bench_file.write_text("# bench-mode: msprof\n", encoding="utf-8")
+            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
+
+            issued_tmp_dirs: list[str] = []
+            removed_tmp_dirs: list[str] = []
+            next_tmp_index = 0
+            next_latency_index = 0
+            temp_dirs = ["/tmp/msprof-case-1", "/tmp/msprof-case-2"]
+            latency_values = ["4.0\n", "8.0\n"]
+
+            def _fake_remote_buffered(spec, remote_workspace, command, **kwargs):
+                nonlocal next_tmp_index, next_latency_index
+                self.assertEqual(spec, "spec")
+                self.assertEqual(remote_workspace, "/tmp/remote-msprof")
+                if command == ["python3", "bench_kernel.py", "--num-bench"]:
+                    return make_skill_result(0, "2\n", "")
+                if command == ["mktemp", "-d"]:
+                    value = temp_dirs[next_tmp_index]
+                    next_tmp_index += 1
+                    return make_skill_result(0, f"{value}\n", "")
+                if isinstance(command, list) and command[:2] == ["python3", "-c"]:
+                    value = latency_values[next_latency_index]
+                    next_latency_index += 1
+                    return make_skill_result(0, value, "")
+                if isinstance(command, list) and command[:2] == ["rm", "-rf"]:
+                    removed_tmp_dirs.append(command[2])
+                    return make_skill_result(0, "", "")
+                self.fail(f"unexpected buffered remote command: {command}")
+
+            def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
+                self.assertEqual(spec, "spec")
+                self.assertEqual(remote_workspace, "/tmp/remote-msprof")
+                self.assertEqual(command[0], "msprof")
+                self.assertTrue(command[1].startswith("--output="))
+                self.assertEqual(command[2:4], ["python3", "bench_kernel.py"])
+                issued_tmp_dirs.append(command[1].split("=", 1)[1])
+                return make_skill_result(0, "profile stdout\n", "")
+
+            with patch.object(
+                module,
+                "create_remote_workspace",
+                return_value=("spec", "/tmp/remote-msprof"),
+            ), patch.object(module, "copy_file_to_remote"), patch.object(
+                module,
+                "run_remote_command_buffered",
+                side_effect=_fake_remote_buffered,
+            ), patch.object(
+                module,
+                "run_remote_command_streaming",
+                side_effect=_fake_remote_streaming,
+            ), patch.object(module, "cleanup_remote_workspace") as cleanup:
+                result, perf_path, remote_workspace = module.run_remote_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                    "alice@example.com",
+                    None,
+                )
+
+            self.assertEqual(result["return_code"], 0)
+            self.assertEqual(remote_workspace, "/tmp/remote-msprof")
+            self.assertEqual(issued_tmp_dirs, temp_dirs)
+            self.assertEqual(removed_tmp_dirs, temp_dirs)
+            if perf_path is None:
+                self.fail("expected msprof perf path")
+            self.assertEqual(
+                perf_path.read_text(encoding="utf-8"),
+                "latency-case-1: 4.0\nlatency-case-2: 8.0\n",
+            )
+            cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
+
     def test_run_remote_bench_quotes_filenames_with_spaces(self) -> None:
         module = load_bench_runner_module()
 

@@ -37,10 +37,9 @@ per-file-ignores = {"tests/*.py" = ["E402"]}
 
 [tool.pyright]
 pythonVersion = "3.9"
-include = ["src", "tests"]
+include = ["src", "tests", "skills/*/scripts"]
 exclude = [
     "**/__pycache__",
-    "skills",
     "workspace",
     "src/triton_agent.egg-info",
 ]

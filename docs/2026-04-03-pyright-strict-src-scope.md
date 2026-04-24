@@ -2,7 +2,7 @@
 
 ## Summary
 
-Keep repository-wide Pyright analysis enabled, but apply strict type checking only to `src/` while leaving `tests/` at the default basic level.
+Keep repository-wide Pyright analysis enabled, apply strict type checking only to `src/`, keep `tests/` at the default basic level, and keep `skills/*/scripts/` at the default basic level.
 
 ## Rationale
 
@@ -10,11 +10,12 @@ Pyright does not offer a clean directory-level downgrade from a global `strict` 
 
 ## Intended Behavior
 
-- `uv run pyright` analyzes both `src/` and `tests/`.
+- `uv run pyright` analyzes `src/`, `tests/`, and `skills/*/scripts/`.
 - Files under `src/` are checked in strict mode.
 - Files under `tests/` remain at the default basic mode unless explicitly promoted later.
+- Files under `skills/*/scripts/` remain at the default basic mode unless explicitly promoted later.
 
 ## Verification
 
 - Update the repository contract test to assert the `pyproject.toml` Pyright settings.
-- Run `uv run pyright` and fix any new strict findings under `src/`.
+- Run `uv run pyright` and fix any new findings under `src/`, `tests/`, or `skills/*/scripts/`.
