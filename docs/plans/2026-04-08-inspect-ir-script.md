@@ -42,7 +42,7 @@
 - Modify: `skills/triton-npu-analyze-ir/SKILL.md`
 - Modify: `README.md`
 - Modify: `AGENTS.md`
-- Modify: `docs/2026-04-08-inspect-ir-script.md`
+- Modify: `docs/notes/2026-04-08-inspect-ir-script.md`
 
 - [ ] **Step 1: Update the IR analyzer skill so it tells agents to use `inspect_ir.py` after capture for stage navigation, summaries, and diffs**
 - [ ] **Step 2: Add concise README guidance for the new inspection workflow and example commands**

@@ -70,7 +70,7 @@ Expected: PASS
 **Files:**
 - Modify: `README.md`
 - Modify: `AGENTS.md`
-- Modify: `docs/2026-04-03-pi-backend.md`
+- Modify: `docs/notes/2026-04-03-pi-backend.md`
 
 - [ ] **Step 1: Update user-facing docs**
 

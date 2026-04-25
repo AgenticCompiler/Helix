@@ -43,7 +43,8 @@
 - Write a short design document before implementing behavior changes.
 - Keep design/spec documents under `docs/specs/`.
 - Keep implementation plans under `docs/plans/`.
-- Keep behavior and workflow documents under `docs/` with date-prefixed filenames such as `YYYY-MM-DD-<topic>.md`.
+- Keep focused behavior and workflow documents under `docs/notes/` with date-prefixed filenames such as `YYYY-MM-DD-<topic>.md`.
+- Keep review and audit reports under `docs/reviews/`.
 - Update `AGENTS.md` only when durable project rules change; keep implementation detail, command examples, and feature semantics in `README.md` and focused docs.
 - Document behavior in terms of user-visible semantics first and implementation details second.
 - Use `AGENTS.md` for stable project rules and workflow expectations.

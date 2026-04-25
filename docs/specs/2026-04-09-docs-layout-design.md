@@ -4,7 +4,7 @@
 
 - Move repository-owned planning documents from `docs/superpowers/plans/` to `docs/plans/`.
 - Move repository-owned design/spec documents from `docs/superpowers/specs/` to `docs/specs/`.
-- Keep behavior and design notes that already live directly under `docs/` unchanged.
+- Keep behavior and design notes under `docs/notes/` once the top-level cleanup is complete.
 - Update repository rules so future work stores specs under `docs/specs/` and implementation plans under `docs/plans/`.
 
 ## Goals
@@ -25,7 +25,7 @@
   - repository design/spec documents used before implementation
 - `docs/plans/`
   - repository implementation plans used during execution
-- `docs/`
+- `docs/notes/`
   - user-visible behavior, design notes, backend notes, and focused workflow docs
 
 ## Migration Rules
@@ -39,7 +39,7 @@
 
 - New design/spec docs go under `docs/specs/`.
 - New implementation plans go under `docs/plans/`.
-- User-visible behavior docs continue to live under `docs/` with date-prefixed names when appropriate.
+- User-visible behavior docs continue to live under `docs/notes/` with date-prefixed names when appropriate.
 - `AGENTS.md` should document the new locations so future work does not recreate the old split layout.
 
 ## Verification

@@ -116,8 +116,8 @@ Expected: PASS
 **Files:**
 - Modify: `README.md`
 - Modify: `AGENTS.md`
-- Modify: `docs/2026-03-31-triton-agent-cli.md`
-- Modify: `docs/2026-03-31-run-command-explicit-operator-and-artifact-paths.md`
+- Modify: `docs/notes/2026-03-31-triton-agent-cli.md`
+- Modify: `docs/notes/2026-03-31-run-command-explicit-operator-and-artifact-paths.md`
 
 - [ ] **Step 1: Update user-facing docs**
 

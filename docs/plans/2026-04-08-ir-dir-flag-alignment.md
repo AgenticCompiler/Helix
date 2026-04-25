@@ -35,9 +35,9 @@
 - Modify: `skills/triton-npu-analyze-ir/SKILL.md`
 - Modify: `README.md`
 - Modify: `AGENTS.md`
-- Modify: `docs/2026-04-07-triton-npu-analyze-ir-skill.md`
-- Modify: `docs/2026-04-08-inspect-ir-script.md`
-- Modify: `docs/2026-04-08-inspect-ir-ranking-and-change-scan.md`
+- Modify: `docs/notes/2026-04-07-ascend-operator-ir-analyzer-skill.md`
+- Modify: `docs/notes/2026-04-08-inspect-ir-script.md`
+- Modify: `docs/notes/2026-04-08-inspect-ir-ranking-and-change-scan.md`
 
 - [ ] **Step 1: Update command examples and parameter references to use `--ir-dir`**
 - [ ] **Step 2: Keep optimize-facing wording aligned with `opt-round-N/ir/`**

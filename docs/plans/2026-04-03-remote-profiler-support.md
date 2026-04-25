@@ -61,8 +61,8 @@
 **Files:**
 - Modify: `README.md`
 - Modify: `AGENTS.md`
-- Modify: `docs/2026-04-02-triton-npu-profile-operator-skill.md`
-- Create: `docs/2026-04-03-remote-profiler-support.md`
+- Modify: `docs/notes/2026-04-02-ascend-npu-operator-profiler-skill.md`
+- Create: `docs/notes/2026-04-03-remote-profiler-support.md`
 
 - [ ] **Step 1: Write a short design doc that explains why profiler remote support belongs in the unified triton-npu-run-eval runtime instead of inside the profiler skill**
 - [ ] **Step 2: Add README examples for local and remote `profile-bench` usage and note the `standalone` versus `msprof` argument differences**

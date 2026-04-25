@@ -70,7 +70,7 @@ Expected: PASS
 - Modify: `skills/triton-npu-optimize/references/opt-note-format.md`
 - Modify: `skills/triton-npu-optimize/references/workflow.md`
 - Modify: `src/triton_agent/optimize/guidance.py`
-- Modify: `docs/2026-04-07-optimize-status-subcommand.md`
+- Modify: `docs/notes/2026-04-07-optimize-status-subcommand.md`
 
 - [ ] **Step 1: Update `opt-note.md` format guidance**
 

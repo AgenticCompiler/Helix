@@ -13,7 +13,7 @@
 ### Task 1: Specify and cover interrupt behavior
 
 **Files:**
-- Create: `docs/2026-04-07-optimize-graceful-interrupt.md`
+- Create: `docs/notes/2026-04-07-optimize-graceful-interrupt.md`
 - Modify: `tests/test_process_runner.py`
 - Modify: `tests/test_supervisor.py`
 

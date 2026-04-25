@@ -36,7 +36,7 @@
 **Files:**
 - Modify: `skills/triton-npu-analyze-ir/SKILL.md`
 - Modify: `README.md`
-- Modify: `docs/2026-04-08-inspect-ir-ranking-and-change-scan.md`
+- Modify: `docs/notes/2026-04-08-inspect-ir-ranking-and-change-scan.md`
 
 - [ ] **Step 1: Update the skill so ranking and change scanning are recommended before ad hoc file browsing**
 - [ ] **Step 2: Add one concise README example for `find-changes`**

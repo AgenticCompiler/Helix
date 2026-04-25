@@ -38,7 +38,7 @@
 **Files:**
 - Modify: `README.md`
 - Modify: `AGENTS.md`
-- Create: `docs/2026-04-03-batch-optimize-subcommand.md`
+- Create: `docs/notes/2026-04-03-batch-optimize-subcommand.md`
 
 - [ ] **Step 1: Document the new command examples and semantics in `README.md`**
 - [ ] **Step 2: Update `AGENTS.md` so the new subcommand is part of the durable command contract**

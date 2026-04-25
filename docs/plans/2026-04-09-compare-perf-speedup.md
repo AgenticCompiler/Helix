@@ -12,7 +12,7 @@
 - Modify: `tests/test_bench_runner.py`
 - Modify: `skills/triton-npu-run-eval/SKILL.md`
 - Modify: `README.md`
-- Modify: `docs/2026-04-01-compare-perf-subcommand.md`
+- Modify: `docs/notes/2026-04-01-compare-perf-subcommand.md`
 
 ## Steps
 

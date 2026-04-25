@@ -68,8 +68,8 @@ Expected: PASS
 
 **Files:**
 - Modify: `README.md`
-- Modify: `docs/2026-04-01-compare-perf-subcommand.md`
-- Modify: `docs/2026-04-07-optimize-status-subcommand.md`
+- Modify: `docs/notes/2026-04-01-compare-perf-subcommand.md`
+- Modify: `docs/notes/2026-04-07-optimize-status-subcommand.md`
 
 - [ ] **Step 1: Update user-facing wording**
 

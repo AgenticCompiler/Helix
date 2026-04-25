@@ -55,7 +55,7 @@
 - Modify: `skills/triton-npu-analyze-ir/SKILL.md`
 - Modify: `README.md`
 - Modify: `AGENTS.md`
-- Modify: `docs/2026-04-07-triton-npu-analyze-ir-skill.md`
+- Modify: `docs/notes/2026-04-07-ascend-operator-ir-analyzer-skill.md`
 
 - [ ] **Step 1: Write concise trigger-focused skill metadata that makes the new skill discoverable for Triton Ascend IR capture and analysis requests**
 - [ ] **Step 2: Document the default workflow around `capture_ir.py`, archive inspection, and optional profiler pairing**

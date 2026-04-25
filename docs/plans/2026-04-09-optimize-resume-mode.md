@@ -226,7 +226,7 @@ Expected: PASS
 - Modify: `src/triton_agent/optimize/batch.py`
 - Modify: `README.md`
 - Modify: `AGENTS.md`
-- Modify: `docs/2026-04-02-optimize-continue-mode.md`
+- Modify: `docs/notes/2026-04-02-optimize-continue-mode.md`
 - Modify: `tests/test_cli.py`
 
 - [ ] **Step 1: Write the failing batch and documentation-facing tests**

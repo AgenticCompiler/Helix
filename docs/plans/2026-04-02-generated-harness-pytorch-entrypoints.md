@@ -104,10 +104,10 @@ Expected: PASS
 ### Task 4: Align Repository Documentation
 
 **Files:**
-- Modify: `docs/2026-04-01-generated-harness-metadata.md`
+- Modify: `docs/notes/2026-04-01-generated-harness-metadata.md`
 - Modify: `README.md`
 - Modify: `AGENTS.md`
-- Modify: `docs/2026-04-02-generated-harness-pytorch-entrypoints.md`
+- Modify: `docs/notes/2026-04-02-generated-harness-pytorch-entrypoints.md`
 
 - [ ] **Step 1: Write the failing test**
 

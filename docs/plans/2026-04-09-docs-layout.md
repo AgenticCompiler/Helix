@@ -67,7 +67,7 @@ Add explicit repo rules such as:
 ```md
 - Keep design/spec documents under `docs/specs/`.
 - Keep implementation plans under `docs/plans/`.
-- Keep behavior and focused workflow documents under `docs/`.
+- Keep behavior and focused workflow documents under `docs/notes/`.
 ```
 
 - [ ] **Step 2: Re-read the updated rules**

@@ -140,7 +140,7 @@ Expected: PASS
 
 - [ ] **Step 1: Re-read the design doc and confirm the implementation stayed inside the intended optimize-only scope**
 
-Check: `docs/2026-04-07-cli-optimize-refactor-layering.md`
+Check: `docs/notes/2026-04-07-cli-optimize-refactor-layering.md`
 
 - [ ] **Step 2: Run repository verification**
 
