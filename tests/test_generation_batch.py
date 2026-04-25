@@ -7,9 +7,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.generation.batch import (
     is_batch_gen_eval_operator_candidate,
+    run_gen_eval_batch,
     resolve_batch_gen_eval_operator_file,
     summarize_batch_gen_eval_failure,
 )
+from triton_agent.generation.models import GenerationOptions
 from triton_agent.models import AgentResult
 
 
@@ -63,6 +65,48 @@ class GenerationBatchHelpersTests(unittest.TestCase):
         summary = summarize_batch_gen_eval_failure(result)
 
         self.assertEqual(summary, "gen-eval exited with return code 7")
+
+    def test_run_gen_eval_batch_applies_user_prompt_to_each_workspace_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("kernel_a", "kernel_b"):
+                workspace = root / name
+                workspace.mkdir()
+                (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+
+            prompts: list[str] = []
+
+            def _fake_run(request, stdout=None, stderr=None):
+                del stdout, stderr
+                prompts.append(request.prompt)
+                return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            exit_code = run_gen_eval_batch(
+                root,
+                GenerationOptions(
+                    interact=False,
+                    verbose=False,
+                    show_output=False,
+                    force_overwrite=False,
+                    agent_name="codex",
+                    remote=None,
+                    remote_workdir=None,
+                    min_rounds=None,
+                    continue_optimize=False,
+                    output=None,
+                    test_mode="differential",
+                    bench_mode="standalone",
+                    prompt="Avoid changing numerics.",
+                ),
+                max_concurrency=1,
+                run_request=_fake_run,
+            )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(len(prompts), 2)
+            for prompt in prompts:
+                self.assertIn("Additional user instructions:", prompt)
+                self.assertIn("Avoid changing numerics.", prompt)
 
 
 if __name__ == "__main__":

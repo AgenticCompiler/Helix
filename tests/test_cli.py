@@ -82,6 +82,20 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.agent, "codex")
         self.assertFalse(args.interact)
 
+    def test_gen_eval_accepts_user_prompt(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["gen-eval", "-i", "kernel.py", "--prompt", "Avoid broad operator rewrites."]
+        )
+        self.assertEqual(args.prompt, "Avoid broad operator rewrites.")
+
+        from triton_agent.commands.generation import generation_options_from_args
+        from triton_agent.generation.models import GenerationOptions
+
+        options = generation_options_from_args(args)
+        self.assertIsInstance(options, GenerationOptions)
+        self.assertEqual(options.prompt, "Avoid broad operator rewrites.")
+
     def test_convert_maps_to_command_kind(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["convert", "-i", "kernel.py"])
@@ -148,6 +162,46 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.GEN_TEST)
         self.assertEqual(args.agent, "codex")
         self.assertFalse(args.interact)
+
+    def test_gen_eval_batch_accepts_user_prompt(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["gen-eval-batch", "-i", "kernels", "--prompt", "Avoid changing numerics."]
+        )
+        self.assertEqual(args.prompt, "Avoid changing numerics.")
+
+        from triton_agent.commands.generation import generation_options_from_args
+        from triton_agent.generation.models import GenerationOptions
+
+        options = generation_options_from_args(args)
+        self.assertIsInstance(options, GenerationOptions)
+        self.assertEqual(options.prompt, "Avoid changing numerics.")
+
+    def test_gen_test_accepts_user_prompt(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["gen-test", "-i", "kernel.py", "--prompt", "Preserve helper names."])
+        self.assertEqual(args.prompt, "Preserve helper names.")
+
+        from triton_agent.commands.generation import generation_options_from_args
+        from triton_agent.generation.models import GenerationOptions
+
+        options = generation_options_from_args(args)
+        self.assertIsInstance(options, GenerationOptions)
+        self.assertEqual(options.prompt, "Preserve helper names.")
+
+    def test_gen_bench_accepts_user_prompt(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["gen-bench", "-i", "kernel.py", "--prompt", "Keep benchmark shapes small."]
+        )
+        self.assertEqual(args.prompt, "Keep benchmark shapes small.")
+
+        from triton_agent.commands.generation import generation_options_from_args
+        from triton_agent.generation.models import GenerationOptions
+
+        options = generation_options_from_args(args)
+        self.assertIsInstance(options, GenerationOptions)
+        self.assertEqual(options.prompt, "Keep benchmark shapes small.")
 
     def test_snake_case_aliases_map_to_same_command_kind(self) -> None:
         parser = build_parser()

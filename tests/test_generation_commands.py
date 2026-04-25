@@ -120,6 +120,7 @@ class GenerationHelpersTests(unittest.TestCase):
                 output=None,
                 test_mode="differential",
                 bench_mode="standalone",
+                prompt=None,
             ),
         )
 
@@ -153,10 +154,63 @@ class GenerationHelpersTests(unittest.TestCase):
                 output=None,
                 test_mode="differential",
                 bench_mode="standalone",
+                prompt=None,
             ),
         )
 
         self.assertIsNone(request.output_path)
+
+    def test_build_generation_request_appends_user_prompt_for_gen_eval(self) -> None:
+        request = build_generation_request(
+            CommandKind.GEN_EVAL,
+            Path("/tmp/kernel.py"),
+            Path("/tmp/kernel.py"),
+            Path("/tmp"),
+            GenerationOptions(
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                continue_optimize=False,
+                output=None,
+                test_mode="differential",
+                bench_mode="standalone",
+                prompt="Avoid broad operator rewrites.",
+            ),
+        )
+
+        self.assertIn("Additional user instructions:", request.prompt)
+        self.assertIn("Avoid broad operator rewrites.", request.prompt)
+
+    def test_build_generation_request_appends_user_prompt_for_gen_test(self) -> None:
+        request = build_generation_request(
+            CommandKind.GEN_TEST,
+            Path("/tmp/kernel.py"),
+            Path("/tmp/kernel.py"),
+            Path("/tmp"),
+            GenerationOptions(
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                continue_optimize=False,
+                output=None,
+                test_mode="standalone",
+                bench_mode=None,
+                prompt="Preserve helper names.",
+            ),
+        )
+
+        self.assertIn("Additional user instructions:", request.prompt)
+        self.assertIn("Preserve helper names.", request.prompt)
 
 class GenerationCommandHandlerTests(unittest.TestCase):
     def test_handle_gen_test_rejects_openhands_interactive_mode(self) -> None:

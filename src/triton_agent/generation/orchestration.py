@@ -8,7 +8,7 @@ from triton_agent.backends.factory import create_runner
 from triton_agent.generation.models import GenerationOptions
 from triton_agent.generation.outputs import resolve_generation_output_path
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
-from triton_agent.prompts import build_prompt
+from triton_agent.prompts import append_additional_user_instructions, build_prompt
 from triton_agent.skills import SkillLinkManager
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
@@ -37,18 +37,21 @@ def build_generation_request(
         explicit_output=options.output,
         test_mode=options.test_mode,
     )
-    prompt = build_prompt(
-        command_kind,
-        input_path,
-        operator_path,
-        output_path,
-        options.test_mode,
-        options.bench_mode,
-        options.force_overwrite,
-        options.remote,
-        options.remote_workdir,
-        options.min_rounds,
-        options.continue_optimize,
+    prompt = append_additional_user_instructions(
+        build_prompt(
+            command_kind,
+            input_path,
+            operator_path,
+            output_path,
+            options.test_mode,
+            options.bench_mode,
+            options.force_overwrite,
+            options.remote,
+            options.remote_workdir,
+            options.min_rounds,
+            options.continue_optimize,
+        ),
+        options.prompt,
     )
     return AgentRequest(
         command_kind=command_kind,

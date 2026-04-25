@@ -85,6 +85,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         test_mode_default="differential",
         has_bench_mode=True,
         bench_mode_default="standalone",
+        has_prompt=True,
         has_force_overwrite=True,
     ),
     CommandKind.GEN_EVAL_BATCH: _CommandSpec(
@@ -100,6 +101,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         test_mode_default="differential",
         has_bench_mode=True,
         bench_mode_default="standalone",
+        has_prompt=True,
         max_concurrency_default=2,
     ),
     CommandKind.CONVERT: _CommandSpec(
@@ -143,6 +145,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_show_output=True,
         has_test_mode=True,
         test_mode_default="standalone",
+        has_prompt=True,
         has_force_overwrite=True,
     ),
     CommandKind.RUN_TEST: _CommandSpec(
@@ -166,6 +169,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_show_output=True,
         has_bench_mode=True,
         bench_mode_default="standalone",
+        has_prompt=True,
         has_force_overwrite=True,
     ),
     CommandKind.RUN_BENCH: _CommandSpec(

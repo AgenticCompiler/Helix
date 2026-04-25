@@ -17,3 +17,4 @@ class GenerationOptions:
     output: str | None
     test_mode: str | None
     bench_mode: str | None
+    prompt: str | None = None
