@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Protocol, cast
@@ -8,12 +7,6 @@ from typing import Protocol, cast
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.optimize.models import GateDecision, GateResult
 from triton_agent.optimize.prompts import build_optimize_resume_prompt
-
-_TRANSIENT_AGENT_FAILURE_PATTERNS = (
-    "429 too many requests",
-    "exceeded retry limit",
-    "rate limit",
-)
 
 
 class SupportsOptimizeRecovery(Protocol):
@@ -80,13 +73,10 @@ class OptimizeRunLoop:
                 return result
             if current_request.interact:
                 return result
-            is_transient_failure = self._is_transient_agent_failure(result)
-            if not (result.stalled or is_transient_failure) or attempt >= self.max_recovery_attempts:
+            if not result.stalled or attempt >= self.max_recovery_attempts:
                 return result
 
             attempt += 1
-            if is_transient_failure:
-                self._sleep_before_retry(attempt)
             resume_summary = self._build_summary(result)
 
     def _resume_until_round_requirement_satisfied(
@@ -135,25 +125,10 @@ class OptimizeRunLoop:
                     break
                 if current_request.interact or worker_attempt >= self.max_recovery_attempts:
                     return worker_result
-                is_transient_worker_failure = self._is_transient_agent_failure(worker_result)
-                if not (worker_result.stalled or is_transient_worker_failure):
+                if not worker_result.stalled:
                     return worker_result
                 worker_attempt += 1
-                if is_transient_worker_failure:
-                    self._sleep_before_retry(worker_attempt)
-
-            supervisor_attempt = 0
-            while True:
-                gate_result = runner.run_supervisor(current_request, worker_result)
-                is_transient_gate_failure = self._is_transient_gate_failure(gate_result)
-                if (
-                    current_request.interact
-                    or supervisor_attempt >= self.max_recovery_attempts
-                    or not is_transient_gate_failure
-                ):
-                    break
-                supervisor_attempt += 1
-                self._sleep_before_retry(supervisor_attempt)
+            gate_result = runner.run_supervisor(current_request, worker_result)
 
             if gate_result.decision == GateDecision.PASS_STOP:
                 return worker_result
@@ -212,24 +187,6 @@ class OptimizeRunLoop:
     def _build_gate_summary(self, gate_result: GateResult) -> str:
         issues = "; ".join(gate_result.blocking_issues) if gate_result.blocking_issues else "none"
         return f"Gate decision: {gate_result.decision.value}. Blocking issues: {issues}"
-
-    def _sleep_before_retry(self, retry_number: int) -> None:
-        time.sleep(self._retry_delay_seconds(retry_number))
-
-    def _retry_delay_seconds(self, retry_number: int) -> float:
-        return float(2 ** (retry_number - 1))
-
-    def _is_transient_agent_failure(self, result: AgentResult) -> bool:
-        if result.stalled or result.return_code == 130:
-            return False
-        combined = f"{result.stdout}\n{result.stderr}".lower()
-        return any(pattern in combined for pattern in _TRANSIENT_AGENT_FAILURE_PATTERNS)
-
-    def _is_transient_gate_failure(self, gate_result: GateResult) -> bool:
-        if gate_result.decision != GateDecision.HARD_FAIL:
-            return False
-        combined = "\n".join(gate_result.blocking_issues).lower()
-        return any(pattern in combined for pattern in _TRANSIENT_AGENT_FAILURE_PATTERNS)
 
     def _with_default_optimize_role(self, request: AgentRequest) -> AgentRequest:
         if (

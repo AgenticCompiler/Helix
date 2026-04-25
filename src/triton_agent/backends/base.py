@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import sys
+import time
 from abc import ABC, abstractmethod
 from typing import Optional, TextIO
 from typing import Callable
@@ -31,16 +33,7 @@ class AgentRunner(ABC):
         command = self.build_command(request)
         if request.verbose:
             self._log_launch_command(command, stderr or sys.stderr)
-        return run_process(
-            command,
-            str(request.workdir),
-            mode=self._select_mode(request),
-            stall_timeout_seconds=self.stall_timeout_seconds,
-            session_id_extractor=self.session_id_extractor(),
-            stdout=stdout,
-            output_filter=self.output_filter(request),
-            interrupt_policy=self.interrupt_policy(request),
-        )
+        return self._run_with_retry(command, request, stdout=stdout)
 
     def interrupt_policy(self, request: AgentRequest) -> InterruptPolicy | None:
         if request.interact or request.command_kind != request.command_kind.OPTIMIZE:
@@ -77,3 +70,77 @@ class AgentRunner(ABC):
         if request.show_output:
             return "streaming"
         return "buffered"
+
+    def _run_with_retry(
+        self,
+        command: list[str],
+        request: AgentRequest,
+        *,
+        stdout: Optional[TextIO] = None,
+    ) -> AgentResult:
+        result = self._run_once(command, request, stdout=stdout)
+        if request.interact:
+            return result
+
+        max_retries = _code_agent_max_retries()
+        attempt = 0
+        while _is_transient_agent_failure(result) and attempt < max_retries:
+            attempt += 1
+            time.sleep(_retry_delay_seconds(attempt))
+            result = self._run_once(command, request, stdout=stdout)
+        return result
+
+    def _run_once(
+        self,
+        command: list[str],
+        request: AgentRequest,
+        *,
+        stdout: Optional[TextIO] = None,
+    ) -> AgentResult:
+        return run_process(
+            command,
+            str(request.workdir),
+            mode=self._select_mode(request),
+            stall_timeout_seconds=self.stall_timeout_seconds,
+            session_id_extractor=self.session_id_extractor(),
+            stdout=stdout,
+            output_filter=self.output_filter(request),
+            interrupt_policy=self.interrupt_policy(request),
+        )
+
+
+_TRANSIENT_AGENT_FAILURE_PATTERNS = (
+    "429 too many requests",
+    "exceeded retry limit",
+    "rate limit",
+)
+_CODE_AGENT_MAX_RETRIES_ENV = "TRITON_AGENT_CODE_AGENT_MAX_RETRIES"
+_DEFAULT_CODE_AGENT_MAX_RETRIES = 2
+
+
+def _is_transient_agent_failure(result: AgentResult) -> bool:
+    if result.stalled or result.return_code == 130:
+        return False
+    combined = f"{result.stdout}\n{result.stderr}".lower()
+    return any(pattern in combined for pattern in _TRANSIENT_AGENT_FAILURE_PATTERNS)
+
+
+def _retry_delay_seconds(retry_number: int) -> float:
+    return float(2 ** (retry_number - 1))
+
+
+def _code_agent_max_retries() -> int:
+    raw_value = os.environ.get(_CODE_AGENT_MAX_RETRIES_ENV)
+    if raw_value is None:
+        return _DEFAULT_CODE_AGENT_MAX_RETRIES
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(
+            f"{_CODE_AGENT_MAX_RETRIES_ENV} must be a non-negative integer, got {raw_value!r}"
+        ) from exc
+    if value < 0:
+        raise ValueError(
+            f"{_CODE_AGENT_MAX_RETRIES_ENV} must be a non-negative integer, got {raw_value!r}"
+        )
+    return value
