@@ -1,3 +1,4 @@
+import os
 import sys
 import tempfile
 import unittest
@@ -180,6 +181,66 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 perf_path.read_text(encoding="utf-8"),
                 'latency-case-1: 0.0\n# raw-op-statistic-case-1: {"ops":[{"op_type":"Zero","avg_time_us":0.0}]}\n',
             )
+
+    def test_run_local_bench_msprof_keeps_artifacts_under_configured_output_root(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            keep_root = root / "kept-msprof"
+            bench_file.write_text(
+                "# bench-mode: msprof\n# api-name: abs_\n# kernel: KeepMe\n",
+                encoding="utf-8",
+            )
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+
+            created_output_dirs: list[Path] = []
+
+            def _fake_streaming(command, workdir, stall_timeout_seconds):
+                self.assertEqual(command[0], "msprof")
+                self.assertTrue(command[1].startswith("--output="))
+                output_dir = Path(command[1].split("=", 1)[1])
+                created_output_dirs.append(output_dir)
+                (output_dir / "op_statistic_1.csv").write_text(
+                    "\n".join(
+                        [
+                            "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                            "0,KeepMe,AI_CORE,1,11,1,4.5,6,100",
+                        ]
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return make_skill_result(0, "", "")
+
+            with patch.dict(os.environ, {"TRITON_AGENT_MSPROF_OUTPUT_DIR": str(keep_root)}, clear=False), patch.object(
+                module,
+                "run_buffered_process",
+                return_value=make_skill_result(0, "1\n", ""),
+            ), patch.object(
+                module,
+                "run_streaming_process",
+                side_effect=_fake_streaming,
+            ):
+                result, perf_path = module.run_local_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                )
+
+            self.assertEqual(result["return_code"], 0)
+            if perf_path is None:
+                self.fail("expected msprof perf path")
+            self.assertEqual(
+                perf_path.read_text(encoding="utf-8"),
+                'latency-case-1: 4.5\n# raw-op-statistic-case-1: {"ops":[{"op_type":"KeepMe","avg_time_us":4.5}]}\n',
+            )
+            self.assertTrue(keep_root.exists())
+            self.assertTrue(created_output_dirs)
+            self.assertTrue(all(path.exists() for path in created_output_dirs))
+            self.assertTrue(all(keep_root in path.parents for path in created_output_dirs))
+            self.assertTrue(all((path / "op_statistic_1.csv").exists() for path in created_output_dirs))
 
     def test_run_local_bench_msprof_fails_when_statistic_csv_is_missing(self) -> None:
         module = load_bench_runner_module()

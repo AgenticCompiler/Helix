@@ -7,6 +7,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from typing import TypedDict
 
 from run_runtime import (
     ResultPayload,
@@ -20,6 +21,18 @@ from run_runtime import (
     run_remote_command_streaming,
     run_streaming_process,
 )
+
+_LOCAL_MSPROF_OUTPUT_DIR_ENV = "TRITON_AGENT_MSPROF_OUTPUT_DIR"
+
+
+class MsprofAvgRow(TypedDict):
+    op_type: str
+    avg_time_us: float
+
+
+class MsprofMetrics(TypedDict):
+    kernel_avg_time_us: float
+    ops: list[MsprofAvgRow]
 
 
 def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
@@ -207,9 +220,11 @@ def _run_local_bench_msprof(
     stdout_chunks = [str(count_result["stdout"])]
     stderr_chunks = [str(count_result["stderr"])]
     normalized_lines: list[str] = []
+    preserved_run_dir = _create_local_msprof_preserved_run_dir()
 
     for case_idx in range(1, case_count + 1):
-        with tempfile.TemporaryDirectory(prefix="triton-agent-msprof-") as output_dir:
+        output_dir, temp_dir = _create_local_msprof_output_dir(case_idx, preserved_run_dir)
+        try:
             command = [
                 "msprof",
                 f"--output={output_dir}",
@@ -235,8 +250,11 @@ def _run_local_bench_msprof(
                     None,
                 )
 
-            metrics = _read_local_msprof_metrics(Path(output_dir), kernel_name)
+            metrics = _read_local_msprof_metrics(output_dir, kernel_name)
             normalized_lines.extend(_format_msprof_perf_lines(case_idx, metrics))
+        finally:
+            if temp_dir is not None:
+                temp_dir.cleanup()
 
     perf_path = _write_perf_lines(_perf_output_path(bench_file, operator_file), normalized_lines)
     return (make_result(return_code=0, stdout="".join(stdout_chunks), stderr="".join(stderr_chunks)), perf_path)
@@ -363,7 +381,7 @@ def _resolve_kernel_name(bench_file: Path) -> str:
     return kernel_name
 
 
-def _load_msprof_avg_rows(output_dir: Path) -> list[dict[str, float | str]]:
+def _load_msprof_avg_rows(output_dir: Path) -> list[MsprofAvgRow]:
     csv_path = _find_latest_msprof_statistic_csv(output_dir)
     with csv_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
@@ -372,7 +390,7 @@ def _load_msprof_avg_rows(output_dir: Path) -> list[dict[str, float | str]]:
             raise ValueError(f"Missing required column 'Avg Time(us)' in {csv_path}")
         if "OP Type" not in fieldnames:
             raise ValueError(f"Missing required column 'OP Type' in {csv_path}")
-        rows: list[dict[str, float | str]] = []
+        rows: list[MsprofAvgRow] = []
         row_count = 0
         for row in reader:
             avg_time = (row.get("Avg Time(us)") or "").strip()
@@ -410,9 +428,9 @@ def _format_latency_value(value: float) -> str:
 
 
 def _resolve_msprof_metrics(
-    rows: list[dict[str, float | str]],
+    rows: list[MsprofAvgRow],
     kernel_name: str,
-) -> dict[str, object]:
+) -> MsprofMetrics:
     kernel_avg_time_us: float | None = None
     for row in rows:
         if str(row["op_type"]) == kernel_name:
@@ -424,22 +442,47 @@ def _resolve_msprof_metrics(
         "kernel_avg_time_us": kernel_avg_time_us,
         "ops": [
             {
-                "op_type": str(row["op_type"]),
-                "avg_time_us": float(row["avg_time_us"]),
+                "op_type": row["op_type"],
+                "avg_time_us": row["avg_time_us"],
             }
             for row in rows
         ],
     }
 
 
-def _read_local_msprof_metrics(output_dir: Path, kernel_name: str) -> dict[str, object]:
+def _read_local_msprof_metrics(output_dir: Path, kernel_name: str) -> MsprofMetrics:
     return _resolve_msprof_metrics(_load_msprof_avg_rows(output_dir), kernel_name)
 
 
-def _format_msprof_perf_lines(case_idx: int, metrics: dict[str, object]) -> list[str]:
+def _create_local_msprof_preserved_run_dir() -> Path | None:
+    configured_root = os.environ.get(_LOCAL_MSPROF_OUTPUT_DIR_ENV)
+    if not configured_root:
+        return None
+    root = Path(configured_root).expanduser()
+    if root.exists() and not root.is_dir():
+        raise ValueError(
+            f"{_LOCAL_MSPROF_OUTPUT_DIR_ENV} must point to a directory: {root}"
+        )
+    root.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix="triton-agent-msprof-", dir=str(root)))
+
+
+def _create_local_msprof_output_dir(
+    case_idx: int,
+    preserved_run_dir: Path | None,
+) -> tuple[Path, tempfile.TemporaryDirectory[str] | None]:
+    if preserved_run_dir is None:
+        temp_dir = tempfile.TemporaryDirectory(prefix="triton-agent-msprof-")
+        return Path(temp_dir.name), temp_dir
+    output_dir = preserved_run_dir / f"case-{case_idx}"
+    output_dir.mkdir(parents=True, exist_ok=False)
+    return output_dir, None
+
+
+def _format_msprof_perf_lines(case_idx: int, metrics: MsprofMetrics) -> list[str]:
     raw_payload = json.dumps({"ops": metrics["ops"]}, separators=(",", ":"))
     return [
-        f"latency-case-{case_idx}: {_format_latency_value(float(metrics['kernel_avg_time_us']))}",
+        f"latency-case-{case_idx}: {_format_latency_value(metrics['kernel_avg_time_us'])}",
         f"# raw-op-statistic-case-{case_idx}: {raw_payload}",
     ]
 
@@ -472,7 +515,7 @@ def _read_remote_msprof_metrics(
     kernel_name: str,
     verbose: bool = False,
     stderr=None,
-) -> dict[str, object]:
+) -> MsprofMetrics:
     script = """
 import csv
 import json
