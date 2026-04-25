@@ -28,6 +28,7 @@
 - Clean up only the copied skill paths created by the current run.
 - Never delete or replace user-owned files or directories during cleanup.
 - Treat the top-level `workspace/` directory as a placeholder area for local experimentation, not as repository-owned source, fixture, or verification input.
+- When modifying Python files under `skills/*/scripts/`, always run an additional file-scoped `pyright` strict check for the touched script before considering the change complete, even though the repository default keeps those scripts in basic mode.
 
 ## Agent Backends
 
