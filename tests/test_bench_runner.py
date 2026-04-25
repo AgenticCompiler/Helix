@@ -72,7 +72,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
             bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: abs_\n",
+                "# bench-mode: msprof\n# api-name: abs_\n# kernel: OpB\n",
                 encoding="utf-8",
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
@@ -118,7 +118,12 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(perf_path, root / "abs_perf.txt")
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
-                "latency-case-1: 4.0\nlatency-case-2: 8.0\n",
+                (
+                    'latency-case-1: 2.5\n'
+                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":1.5},{"op_type":"OpB","avg_time_us":2.5}]}\n'
+                    'latency-case-2: 5.0\n'
+                    '# raw-op-statistic-case-2: {"ops":[{"op_type":"OpA","avg_time_us":3.0},{"op_type":"OpB","avg_time_us":5.0}]}\n'
+                ),
             )
             self.assertEqual(mocked.call_count, 2)
             case_command = mocked.call_args_list[1].args[0]
@@ -136,7 +141,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
             bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: abs_\n",
+                "# bench-mode: msprof\n# api-name: abs_\n# kernel: Zero\n",
                 encoding="utf-8",
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
@@ -173,7 +178,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 self.fail("expected msprof perf path")
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
-                "latency-case-1: 0.0\n",
+                'latency-case-1: 0.0\n# raw-op-statistic-case-1: {"ops":[{"op_type":"Zero","avg_time_us":0.0}]}\n',
             )
 
     def test_run_local_bench_msprof_fails_when_statistic_csv_is_missing(self) -> None:
@@ -182,7 +187,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
-            bench_file.write_text("# bench-mode: msprof\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\n# kernel: OpB\n", encoding="utf-8")
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
             with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
@@ -191,6 +196,42 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 return_value=make_skill_result(0, "", ""),
             ):
                 with self.assertRaises(FileNotFoundError):
+                    module.run_local_bench(
+                        bench_file,
+                        operator_file,
+                        "msprof",
+                    )
+
+    def test_run_local_bench_msprof_fails_when_kernel_row_is_missing(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            bench_file.write_text("# bench-mode: msprof\n# kernel: MissingKernel\n", encoding="utf-8")
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+
+            def _fake_streaming(command, workdir, stall_timeout_seconds):
+                output_dir = Path(command[1].split("=", 1)[1])
+                (output_dir / "op_statistic_1.csv").write_text(
+                    "\n".join(
+                        [
+                            "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                            "0,OpA,AI_CORE,1,10,1,1.5,2,50",
+                            "0,OpB,AI_VECTOR_CORE,1,20,2,2.5,3,50",
+                        ]
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return make_skill_result(0, "", "")
+
+            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+                module,
+                "run_streaming_process",
+                side_effect=_fake_streaming,
+            ):
+                with self.assertRaises(ValueError):
                     module.run_local_bench(
                         bench_file,
                         operator_file,
@@ -275,6 +316,35 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertIn("PASS: compared 2 latency entries", output)
             self.assertIn("latency-a", output)
             self.assertIn("latency-b", output)
+
+    def test_compare_perf_files_ignores_comment_lines_in_both_inputs(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "compare_perf.txt"
+            baseline.write_text(
+                "latency-case-1: 10\n# raw-op-statistic-case-1: {\"ops\":[{\"op_type\":\"Kernel\",\"avg_time_us\":10.0}]}\n",
+                encoding="utf-8",
+            )
+            compare.write_text(
+                "latency-case-1: 8\n# raw-op-statistic-case-1: {\"ops\":[{\"op_type\":\"Kernel\",\"avg_time_us\":8.0}]}\n",
+                encoding="utf-8",
+            )
+
+            stdout_path = Path(tmp) / "stdout.txt"
+            original_stdout = sys.stdout
+            try:
+                with stdout_path.open("w", encoding="utf-8") as handle:
+                    sys.stdout = handle
+                    return_code = module.compare_perf_files(baseline, compare)
+            finally:
+                sys.stdout = original_stdout
+
+            output = stdout_path.read_text(encoding="utf-8")
+            self.assertEqual(return_code, 0)
+            self.assertIn("latency-case-1", output)
+            self.assertIn("delta=-20.00%", output)
 
     def test_compare_perf_files_preserves_original_display_precision(self) -> None:
         module = load_bench_runner_module()

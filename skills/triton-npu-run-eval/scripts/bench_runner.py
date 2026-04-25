@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import math
 import os
 import sys
@@ -192,6 +193,7 @@ def _run_local_bench_msprof(
     bench_file: Path,
     operator_file: Path,
 ) -> tuple[ResultPayload, Path | None]:
+    kernel_name = _resolve_kernel_name(bench_file)
     count_result = run_buffered_process(
         [sys.executable, bench_file.name, "--num-bench"],
         str(bench_file.parent),
@@ -233,8 +235,8 @@ def _run_local_bench_msprof(
                     None,
                 )
 
-            duration = _format_latency_value(_sum_msprof_avg_time(Path(output_dir)))
-            normalized_lines.append(f"latency-case-{case_idx}: {duration}")
+            metrics = _read_local_msprof_metrics(Path(output_dir), kernel_name)
+            normalized_lines.extend(_format_msprof_perf_lines(case_idx, metrics))
 
     perf_path = _write_perf_lines(_perf_output_path(bench_file, operator_file), normalized_lines)
     return (make_result(return_code=0, stdout="".join(stdout_chunks), stderr="".join(stderr_chunks)), perf_path)
@@ -248,6 +250,7 @@ def _run_remote_bench_msprof(
     verbose: bool = False,
     stderr=None,
 ) -> tuple[ResultPayload, Path | None, str]:
+    kernel_name = _resolve_kernel_name(bench_file)
     count_result = run_remote_command_buffered(
         spec,
         remote_workspace,
@@ -302,14 +305,15 @@ def _run_remote_bench_msprof(
                     remote_workspace,
                 )
 
-            duration = _read_remote_msprof_avg_time(
+            metrics = _read_remote_msprof_metrics(
                 spec,
                 remote_workspace,
                 output_dir,
+                kernel_name,
                 verbose=verbose,
                 stderr=stderr,
             )
-            normalized_lines.append(f"latency-case-{case_idx}: {duration}")
+            normalized_lines.extend(_format_msprof_perf_lines(case_idx, metrics))
         finally:
             _cleanup_remote_msprof_output_dir(
                 spec,
@@ -351,24 +355,42 @@ def _parse_case_count(stdout: str) -> int:
     raise ValueError("Unable to parse benchmark case count from --num-bench output.")
 
 
-def _sum_msprof_avg_time(output_dir: Path) -> float:
+def _resolve_kernel_name(bench_file: Path) -> str:
+    metadata = parse_bench_metadata(bench_file)
+    kernel_name = metadata.get("kernel")
+    if not kernel_name:
+        raise ValueError(f"Benchmark metadata is missing required 'kernel' entry: {bench_file}")
+    return kernel_name
+
+
+def _load_msprof_avg_rows(output_dir: Path) -> list[dict[str, float | str]]:
     csv_path = _find_latest_msprof_statistic_csv(output_dir)
     with csv_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         fieldnames = reader.fieldnames or []
         if "Avg Time(us)" not in fieldnames:
             raise ValueError(f"Missing required column 'Avg Time(us)' in {csv_path}")
-        total = 0.0
+        if "OP Type" not in fieldnames:
+            raise ValueError(f"Missing required column 'OP Type' in {csv_path}")
+        rows: list[dict[str, float | str]] = []
         row_count = 0
         for row in reader:
             avg_time = (row.get("Avg Time(us)") or "").strip()
             if not avg_time:
                 raise ValueError(f"Empty 'Avg Time(us)' value in {csv_path}")
-            total += float(avg_time)
+            op_type = (row.get("OP Type") or "").strip()
+            if not op_type:
+                raise ValueError(f"Empty 'OP Type' value in {csv_path}")
+            rows.append(
+                {
+                    "op_type": op_type,
+                    "avg_time_us": float(avg_time),
+                }
+            )
             row_count += 1
     if row_count == 0:
         raise ValueError(f"No rows found in {csv_path}")
-    return total
+    return rows
 
 
 def _find_latest_msprof_statistic_csv(output_dir: Path) -> Path:
@@ -385,6 +407,41 @@ def _format_latency_value(value: float) -> str:
     if "." not in rendered:
         rendered += ".0"
     return rendered
+
+
+def _resolve_msprof_metrics(
+    rows: list[dict[str, float | str]],
+    kernel_name: str,
+) -> dict[str, object]:
+    kernel_avg_time_us: float | None = None
+    for row in rows:
+        if str(row["op_type"]) == kernel_name:
+            kernel_avg_time_us = float(row["avg_time_us"])
+            break
+    if kernel_avg_time_us is None:
+        raise ValueError(f"Kernel '{kernel_name}' not found in op_statistic rows.")
+    return {
+        "kernel_avg_time_us": kernel_avg_time_us,
+        "ops": [
+            {
+                "op_type": str(row["op_type"]),
+                "avg_time_us": float(row["avg_time_us"]),
+            }
+            for row in rows
+        ],
+    }
+
+
+def _read_local_msprof_metrics(output_dir: Path, kernel_name: str) -> dict[str, object]:
+    return _resolve_msprof_metrics(_load_msprof_avg_rows(output_dir), kernel_name)
+
+
+def _format_msprof_perf_lines(case_idx: int, metrics: dict[str, object]) -> list[str]:
+    raw_payload = json.dumps({"ops": metrics["ops"]}, separators=(",", ":"))
+    return [
+        f"latency-case-{case_idx}: {_format_latency_value(float(metrics['kernel_avg_time_us']))}",
+        f"# raw-op-statistic-case-{case_idx}: {raw_payload}",
+    ]
 
 
 def _create_remote_msprof_output_dir(
@@ -408,19 +465,22 @@ def _create_remote_msprof_output_dir(
     return output_dir
 
 
-def _read_remote_msprof_avg_time(
+def _read_remote_msprof_metrics(
     spec,
     remote_workspace: str,
     output_dir: str,
+    kernel_name: str,
     verbose: bool = False,
     stderr=None,
-) -> str:
+) -> dict[str, object]:
     script = """
 import csv
+import json
 import pathlib
 import sys
 
 root = pathlib.Path(sys.argv[1])
+kernel_name = sys.argv[2]
 matches = sorted(path for path in root.rglob("op_statistic_*.csv") if path.is_file())
 if not matches:
     raise SystemExit(f"No op_statistic_*.csv found under {root}")
@@ -431,23 +491,35 @@ with csv_path.open("r", encoding="utf-8", newline="") as handle:
     fieldnames = reader.fieldnames or []
     if "Avg Time(us)" not in fieldnames:
         raise SystemExit(f"Missing required column 'Avg Time(us)' in {csv_path}")
-    total = 0.0
+    if "OP Type" not in fieldnames:
+        raise SystemExit(f"Missing required column 'OP Type' in {csv_path}")
+    ops = []
     row_count = 0
     for row in reader:
         value = (row.get("Avg Time(us)") or "").strip()
         if not value:
             raise SystemExit(f"Empty 'Avg Time(us)' value in {csv_path}")
-        total += float(value)
+        op_type = (row.get("OP Type") or "").strip()
+        if not op_type:
+            raise SystemExit(f"Empty 'OP Type' value in {csv_path}")
+        ops.append({"op_type": op_type, "avg_time_us": float(value)})
         row_count += 1
 
 if row_count == 0:
     raise SystemExit(f"No rows found in {csv_path}")
-print(total)
+kernel_avg_time_us = None
+for row in ops:
+    if row["op_type"] == kernel_name:
+        kernel_avg_time_us = row["avg_time_us"]
+        break
+if kernel_avg_time_us is None:
+    raise SystemExit(f"Kernel '{kernel_name}' not found in op_statistic rows.")
+print(json.dumps({"kernel_avg_time_us": kernel_avg_time_us, "ops": ops}, separators=(",", ":")))
 """.strip()
     result = run_remote_command_buffered(
         spec,
         remote_workspace,
-        ["python3", "-c", script, output_dir],
+        ["python3", "-c", script, output_dir, kernel_name],
         verbose=verbose,
         stderr=stderr,
     )
@@ -456,7 +528,17 @@ print(total)
     value = str(result["stdout"]).strip().splitlines()[-1].strip() if str(result["stdout"]).strip() else ""
     if not value:
         raise RuntimeError(f"Remote msprof statistic parser did not return a value for {output_dir}.")
-    return _format_latency_value(float(value))
+    parsed = json.loads(value)
+    return {
+        "kernel_avg_time_us": float(parsed["kernel_avg_time_us"]),
+        "ops": [
+            {
+                "op_type": str(row["op_type"]),
+                "avg_time_us": float(row["avg_time_us"]),
+            }
+            for row in parsed["ops"]
+        ],
+    }
 
 
 def _cleanup_remote_msprof_output_dir(
@@ -485,6 +567,8 @@ def _parse_perf_entries(path: Path) -> dict[str, tuple[str, float]]:
     for line_no, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         line = raw_line.strip()
         if not line:
+            continue
+        if line.startswith("#"):
             continue
         if ":" not in line:
             raise ValueError(f"{path}:{line_no} is not a 'latency-<id>: <value>' line")
@@ -528,7 +612,7 @@ def _parse_required_perf_entries(
     display_values: dict[str, str] = {}
     for line_no, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         line = raw_line.strip()
-        if not line or ":" not in line:
+        if not line or line.startswith("#") or ":" not in line:
             continue
         key, value = line.split(":", 1)
         latency_id = key.strip()

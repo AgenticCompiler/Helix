@@ -255,18 +255,21 @@ class RemoteExecutionTests(unittest.TestCase):
             root = Path(tmp)
             bench_file = root / "bench_kernel.py"
             operator_file = root / "kernel.py"
-            bench_file.write_text("# bench-mode: msprof\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\n# kernel: KernelB\n", encoding="utf-8")
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
 
             issued_tmp_dirs: list[str] = []
             removed_tmp_dirs: list[str] = []
             next_tmp_index = 0
-            next_latency_index = 0
+            next_payload_index = 0
             temp_dirs = ["/tmp/msprof-case-1", "/tmp/msprof-case-2"]
-            latency_values = ["4.0\n", "8.0\n"]
+            metric_payloads = [
+                '{"kernel_avg_time_us":2.5,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}]}\n',
+                '{"kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelA","avg_time_us":3.0},{"op_type":"KernelB","avg_time_us":5.0}]}\n',
+            ]
 
             def _fake_remote_buffered(spec, remote_workspace, command, **kwargs):
-                nonlocal next_tmp_index, next_latency_index
+                nonlocal next_tmp_index, next_payload_index
                 self.assertEqual(spec, "spec")
                 self.assertEqual(remote_workspace, "/tmp/remote-msprof")
                 if command == ["python3", "bench_kernel.py", "--num-bench"]:
@@ -276,8 +279,8 @@ class RemoteExecutionTests(unittest.TestCase):
                     next_tmp_index += 1
                     return make_skill_result(0, f"{value}\n", "")
                 if isinstance(command, list) and command[:2] == ["python3", "-c"]:
-                    value = latency_values[next_latency_index]
-                    next_latency_index += 1
+                    value = metric_payloads[next_payload_index]
+                    next_payload_index += 1
                     return make_skill_result(0, value, "")
                 if isinstance(command, list) and command[:2] == ["rm", "-rf"]:
                     removed_tmp_dirs.append(command[2])
@@ -322,7 +325,12 @@ class RemoteExecutionTests(unittest.TestCase):
                 self.fail("expected msprof perf path")
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
-                "latency-case-1: 4.0\nlatency-case-2: 8.0\n",
+                (
+                    'latency-case-1: 2.5\n'
+                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}]}\n'
+                    'latency-case-2: 5.0\n'
+                    '# raw-op-statistic-case-2: {"ops":[{"op_type":"KernelA","avg_time_us":3.0},{"op_type":"KernelB","avg_time_us":5.0}]}\n'
+                ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
 
