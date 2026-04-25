@@ -425,7 +425,7 @@ def _build_speedup_state(
         baseline_values = parser.parse_perf_file(resolved_baseline_perf_path)
         verify_values = parser.parse_required_perf_file(
             resolved_best_perf_path,
-            baseline_values.keys(),
+            baseline_values,
         )
     except (OSError, ValueError) as exc:
         return (

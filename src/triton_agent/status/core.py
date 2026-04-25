@@ -100,7 +100,7 @@ def inspect_optimize_status_workspace(
         try:
             round_values = _load_bench_perf_parser().parse_required_perf_file(
                 perf_path,
-                baseline_values.keys(),
+                baseline_values,
             )
         except ValueError as exc:
             warnings.append(str(exc))

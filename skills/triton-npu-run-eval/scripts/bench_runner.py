@@ -6,8 +6,9 @@ import math
 import os
 import sys
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from run_runtime import (
     ResultPayload,
@@ -31,8 +32,29 @@ class MsprofAvgRow(TypedDict):
 
 
 class MsprofMetrics(TypedDict):
-    kernel_avg_time_us: float
+    kernel_avg_time_us: float | None
     ops: list[MsprofAvgRow]
+
+
+ComparisonMode = Literal["latency", "total-op"]
+
+
+@dataclass(frozen=True)
+class PerfEntry:
+    display_value: str
+    numeric_value: float
+    comparison_mode: ComparisonMode
+
+
+class PerfValueMap(dict[str, float]):
+    def __init__(
+        self,
+        values: dict[str, float],
+        *,
+        comparison_modes: dict[str, ComparisonMode],
+    ) -> None:
+        super().__init__(values)
+        self.comparison_modes = comparison_modes
 
 
 def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
@@ -56,16 +78,16 @@ def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
 def compare_perf_files(baseline_perf: Path, compare_perf: Path) -> int:
     try:
         baseline_entries = _parse_perf_entries(baseline_perf)
-        compare_entries = _parse_required_perf_entries(compare_perf, baseline_entries.keys())
+        compare_entries = _parse_required_perf_entries(compare_perf, baseline_entries)
     except ValueError as exc:
         print(f"FAIL: {exc}")
         return 1
 
     baseline = {
-        latency_id: value for latency_id, (_display_value, value) in baseline_entries.items()
+        latency_id: entry.numeric_value for latency_id, entry in baseline_entries.items()
     }
     compare = {
-        latency_id: value for latency_id, (_display_value, value) in compare_entries.items()
+        latency_id: entry.numeric_value for latency_id, entry in compare_entries.items()
     }
     baseline_ids = set(baseline)
     compare_ids = set(compare)
@@ -84,8 +106,8 @@ def compare_perf_files(baseline_perf: Path, compare_perf: Path) -> int:
     for latency_id in sorted(baseline):
         baseline_value = baseline[latency_id]
         compare_value = compare[latency_id]
-        baseline_display = baseline_entries[latency_id][0]
-        compare_display = compare_entries[latency_id][0]
+        baseline_display = baseline_entries[latency_id].display_value
+        compare_display = compare_entries[latency_id].display_value
         print(
             f"{latency_id}: baseline={baseline_display}, "
             f"compare={compare_display}, "
@@ -436,8 +458,6 @@ def _resolve_msprof_metrics(
         if str(row["op_type"]) == kernel_name:
             kernel_avg_time_us = float(row["avg_time_us"])
             break
-    if kernel_avg_time_us is None:
-        raise ValueError(f"Kernel '{kernel_name}' not found in op_statistic rows.")
     return {
         "kernel_avg_time_us": kernel_avg_time_us,
         "ops": [
@@ -463,8 +483,12 @@ def _create_local_msprof_preserved_run_dir() -> Path | None:
         raise ValueError(
             f"{_LOCAL_MSPROF_OUTPUT_DIR_ENV} must point to a directory: {root}"
         )
-    root.mkdir(parents=True, exist_ok=True)
-    return Path(tempfile.mkdtemp(prefix="triton-agent-msprof-", dir=str(root)))
+    if not root.exists():
+        root.mkdir(parents=True, exist_ok=True)
+        _set_directory_owner_only(root)
+    run_dir = Path(tempfile.mkdtemp(prefix="triton-agent-msprof-", dir=str(root)))
+    _set_directory_owner_only(run_dir)
+    return run_dir
 
 
 def _create_local_msprof_output_dir(
@@ -476,13 +500,23 @@ def _create_local_msprof_output_dir(
         return Path(temp_dir.name), temp_dir
     output_dir = preserved_run_dir / f"case-{case_idx}"
     output_dir.mkdir(parents=True, exist_ok=False)
+    _set_directory_owner_only(output_dir)
     return output_dir, None
+
+
+def _set_directory_owner_only(path: Path) -> None:
+    path.chmod(0o700)
 
 
 def _format_msprof_perf_lines(case_idx: int, metrics: MsprofMetrics) -> list[str]:
     raw_payload = json.dumps({"ops": metrics["ops"]}, separators=(",", ":"))
+    latency_value = (
+        "NA"
+        if metrics["kernel_avg_time_us"] is None
+        else _format_latency_value(metrics["kernel_avg_time_us"])
+    )
     return [
-        f"latency-case-{case_idx}: {_format_latency_value(metrics['kernel_avg_time_us'])}",
+        f"latency-case-{case_idx}: {latency_value}",
         f"# raw-op-statistic-case-{case_idx}: {raw_payload}",
     ]
 
@@ -555,8 +589,6 @@ for row in ops:
     if row["op_type"] == kernel_name:
         kernel_avg_time_us = row["avg_time_us"]
         break
-if kernel_avg_time_us is None:
-    raise SystemExit(f"Kernel '{kernel_name}' not found in op_statistic rows.")
 print(json.dumps({"kernel_avg_time_us": kernel_avg_time_us, "ops": ops}, separators=(",", ":")))
 """.strip()
     result = run_remote_command_buffered(
@@ -573,7 +605,9 @@ print(json.dumps({"kernel_avg_time_us": kernel_avg_time_us, "ops": ops}, separat
         raise RuntimeError(f"Remote msprof statistic parser did not return a value for {output_dir}.")
     parsed = json.loads(value)
     return {
-        "kernel_avg_time_us": float(parsed["kernel_avg_time_us"]),
+        "kernel_avg_time_us": (
+            None if parsed["kernel_avg_time_us"] is None else float(parsed["kernel_avg_time_us"])
+        ),
         "ops": [
             {
                 "op_type": str(row["op_type"]),
@@ -601,13 +635,18 @@ def _cleanup_remote_msprof_output_dir(
 
 
 def _parse_perf_file(path: Path) -> dict[str, float]:
-    return {latency_id: value for latency_id, (_display_value, value) in _parse_perf_entries(path).items()}
+    entries = _parse_perf_entries(path)
+    return PerfValueMap(
+        {latency_id: entry.numeric_value for latency_id, entry in entries.items()},
+        comparison_modes={latency_id: entry.comparison_mode for latency_id, entry in entries.items()},
+    )
 
 
-def _parse_perf_entries(path: Path) -> dict[str, tuple[str, float]]:
-    values: dict[str, float] = {}
-    display_values: dict[str, str] = {}
-    for line_no, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+def _parse_perf_entries(path: Path) -> dict[str, PerfEntry]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    raw_totals = _parse_raw_op_statistic_totals(path, lines)
+    entries: dict[str, PerfEntry] = {}
+    for line_no, raw_line in enumerate(lines, start=1):
         line = raw_line.strip()
         if not line:
             continue
@@ -620,25 +659,34 @@ def _parse_perf_entries(path: Path) -> dict[str, tuple[str, float]]:
         if not latency_id.startswith("latency-"):
             raise ValueError(f"{path}:{line_no} does not start with 'latency-'")
         value_text = value.strip()
+        if latency_id in entries:
+            raise ValueError(f"{path}:{line_no} duplicates latency id '{latency_id}'")
+        if value_text == "NA":
+            total_op_value = _require_raw_total(path, line_no, latency_id, raw_totals)
+            entries[latency_id] = PerfEntry(
+                display_value=f"NA ({_format_total_op_display(total_op_value)})",
+                numeric_value=total_op_value,
+                comparison_mode="total-op",
+            )
+            continue
         try:
             parsed_value = float(value_text)
         except ValueError as exc:
             raise ValueError(f"{path}:{line_no} has invalid latency value '{value_text}'") from exc
-        if latency_id in values:
-            raise ValueError(f"{path}:{line_no} duplicates latency id '{latency_id}'")
-        values[latency_id] = parsed_value
-        display_values[latency_id] = value_text
-    if not values:
+        entries[latency_id] = PerfEntry(
+            display_value=value_text,
+            numeric_value=parsed_value,
+            comparison_mode="latency",
+        )
+    if not entries:
         raise ValueError(f"{path} did not contain any latency-<id>: <value> entries")
-    return {
-        latency_id: (display_values[latency_id], values[latency_id]) for latency_id in values
-    }
+    return entries
 
 
 def _parse_required_perf_file(path: Path, required_latency_ids) -> dict[str, float]:
     return {
-        latency_id: value
-        for latency_id, (_display_value, value) in _parse_required_perf_entries(
+        latency_id: entry.numeric_value
+        for latency_id, entry in _parse_required_perf_entries(
             path, required_latency_ids
         ).items()
     }
@@ -646,14 +694,15 @@ def _parse_required_perf_file(path: Path, required_latency_ids) -> dict[str, flo
 
 def _parse_required_perf_entries(
     path: Path, required_latency_ids
-) -> dict[str, tuple[str, float]]:
-    required_ids = set(required_latency_ids)
+) -> dict[str, PerfEntry]:
+    required_ids, comparison_modes = _resolve_required_latency_requirements(required_latency_ids)
     if not required_ids:
         return {}
 
-    values: dict[str, float] = {}
-    display_values: dict[str, str] = {}
-    for line_no, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    lines = path.read_text(encoding="utf-8").splitlines()
+    raw_totals = _parse_raw_op_statistic_totals(path, lines)
+    entries: dict[str, PerfEntry] = {}
+    for line_no, raw_line in enumerate(lines, start=1):
         line = raw_line.strip()
         if not line or line.startswith("#") or ":" not in line:
             continue
@@ -662,21 +711,114 @@ def _parse_required_perf_entries(
         if latency_id not in required_ids:
             continue
         value_text = value.strip()
+        if latency_id in entries:
+            raise ValueError(f"{path}:{line_no} duplicates latency id '{latency_id}'")
+        if comparison_modes[latency_id] == "total-op":
+            total_op_value = _require_raw_total(path, line_no, latency_id, raw_totals)
+            display_value = (
+                f"NA ({_format_total_op_display(total_op_value)})"
+                if value_text == "NA"
+                else _format_total_op_display(total_op_value)
+            )
+            entries[latency_id] = PerfEntry(
+                display_value=display_value,
+                numeric_value=total_op_value,
+                comparison_mode="total-op",
+            )
+            continue
+        if value_text == "NA":
+            raise ValueError(
+                f"{path}:{line_no} has latency value 'NA' but baseline requires kernel latency"
+            )
         try:
             parsed_value = float(value_text)
         except ValueError as exc:
             raise ValueError(f"{path}:{line_no} has invalid latency value '{value_text}'") from exc
-        if latency_id in values:
-            raise ValueError(f"{path}:{line_no} duplicates latency id '{latency_id}'")
-        values[latency_id] = parsed_value
-        display_values[latency_id] = value_text
+        entries[latency_id] = PerfEntry(
+            display_value=value_text,
+            numeric_value=parsed_value,
+            comparison_mode="latency",
+        )
 
-    missing_ids = sorted(required_ids - set(values))
+    missing_ids = sorted(required_ids - set(entries))
     if missing_ids:
         raise ValueError(f"{path} is missing required latency ids: {missing_ids}")
-    return {
-        latency_id: (display_values[latency_id], values[latency_id]) for latency_id in values
+    return entries
+
+
+def _parse_raw_op_statistic_totals(path: Path, lines: list[str]) -> dict[str, float]:
+    totals: dict[str, float] = {}
+    for line_no, raw_line in enumerate(lines, start=1):
+        line = raw_line.strip()
+        if not line.startswith("# raw-op-statistic-"):
+            continue
+        body = line[1:].strip()
+        if ":" not in body:
+            raise ValueError(f"{path}:{line_no} is not a '# raw-op-statistic-<id>: <json>' line")
+        key, value = body.split(":", 1)
+        raw_stat_id = key.strip()
+        latency_id = f"latency-{raw_stat_id.removeprefix('raw-op-statistic-')}"
+        if latency_id in totals:
+            raise ValueError(f"{path}:{line_no} duplicates raw-op statistic for '{latency_id}'")
+        try:
+            payload = json.loads(value.strip())
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{path}:{line_no} has invalid raw-op-statistic JSON") from exc
+        ops = payload.get("ops")
+        if not isinstance(ops, list):
+            raise ValueError(f"{path}:{line_no} raw-op-statistic JSON is missing an 'ops' list")
+        total = 0.0
+        for op in ops:
+            if not isinstance(op, dict):
+                raise ValueError(f"{path}:{line_no} raw-op-statistic ops entries must be objects")
+            avg_time_us = op.get("avg_time_us")
+            if not isinstance(avg_time_us, (int, float)):
+                raise ValueError(
+                    f"{path}:{line_no} raw-op-statistic ops entries must include numeric 'avg_time_us'"
+                )
+            total += float(avg_time_us)
+        totals[latency_id] = total
+    return totals
+
+
+def _resolve_required_latency_requirements(
+    required_latency_ids,
+) -> tuple[set[str], dict[str, ComparisonMode]]:
+    required_ids = set(required_latency_ids)
+    comparison_modes: dict[str, ComparisonMode] = {
+        latency_id: "latency" for latency_id in required_ids
     }
+    if isinstance(required_latency_ids, dict):
+        for latency_id in required_ids:
+            value = required_latency_ids[latency_id]
+            if isinstance(value, PerfEntry):
+                comparison_modes[latency_id] = value.comparison_mode
+        return required_ids, comparison_modes
+    raw_modes = getattr(required_latency_ids, "comparison_modes", None)
+    if isinstance(raw_modes, dict):
+        for latency_id in required_ids:
+            mode = raw_modes.get(latency_id)
+            if mode in ("latency", "total-op"):
+                comparison_modes[latency_id] = mode
+    return required_ids, comparison_modes
+
+
+def _require_raw_total(
+    path: Path,
+    line_no: int,
+    latency_id: str,
+    raw_totals: dict[str, float],
+) -> float:
+    total = raw_totals.get(latency_id)
+    if total is None:
+        raise ValueError(
+            f"{path}:{line_no} requires '# raw-op-statistic-{latency_id.removeprefix('latency-')}: ...' to provide total-op fallback"
+        )
+    return total
+
+
+def _format_total_op_display(value: float) -> str:
+    return f"total-op={_format_latency_value(value)}"
 
 
 def _format_delta_percent(baseline: float, compare: float) -> str:

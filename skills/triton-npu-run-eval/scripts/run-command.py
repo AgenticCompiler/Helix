@@ -243,14 +243,14 @@ def _load_bench_functions():
 
 def _load_compare_result_functions():
     _ensure_script_dir_on_path()
-    from compare_result import compare_remote_result_files, compare_result_files
+    from test_runner import compare_remote_result_files, compare_result_files
 
     return compare_result_files, compare_remote_result_files
 
 
 def _load_compare_perf_function():
     _ensure_script_dir_on_path()
-    from compare_perf import compare_perf_files
+    from bench_runner import compare_perf_files
 
     return compare_perf_files
 

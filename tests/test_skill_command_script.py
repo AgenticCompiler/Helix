@@ -6,7 +6,6 @@ import importlib.util
 from io import StringIO
 from pathlib import Path
 
-
 class SkillCommandScriptTests(unittest.TestCase):
     def test_render_result_accepts_skill_result_payload(self) -> None:
         script = (
@@ -133,6 +132,46 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertIn("--bench", completed.stdout)
         self.assertIn("--target-op", completed.stdout)
         self.assertIn("--keep-remote-workdir", completed.stdout)
+
+    def test_load_compare_perf_function_reuses_bench_runner_implementation(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_compare_perf_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        compare_perf = module._load_compare_perf_function()
+
+        self.assertEqual(compare_perf.__name__, "compare_perf_files")
+        self.assertEqual(compare_perf.__module__, "bench_runner")
+
+    def test_load_compare_result_functions_reuse_test_runner_implementation(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_compare_result_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        compare_result, compare_remote_result = module._load_compare_result_functions()
+
+        self.assertEqual(compare_result.__name__, "compare_result_files")
+        self.assertEqual(compare_result.__module__, "test_runner")
+        self.assertEqual(compare_remote_result.__name__, "compare_remote_result_files")
+        self.assertEqual(compare_remote_result.__module__, "test_runner")
 
     def test_optimize_check_script_help_runs_without_installed_entrypoint(self) -> None:
         script = (
