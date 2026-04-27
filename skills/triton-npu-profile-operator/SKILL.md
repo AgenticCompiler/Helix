@@ -48,7 +48,8 @@ Profile Ascend NPU operators with `msprof` and summarize the resulting timing da
 
 - Prefer `python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench ...` for benchmark profiling, especially when the workflow is remote-aware.
 - If the benchmark metadata says `# bench-mode: standalone`, profile `python3 bench_<op>.py --operator-file <operator-file>` and do not pass `--bench`; standalone mode must not receive `--bench` or `--num-bench`.
-- If the benchmark metadata says `# bench-mode: msprof`, first query `--num-bench`, then profile one selected `--bench <N>` case; this mode requires resolvable `# kernel:` metadata in the benchmark header.
+- If the benchmark metadata says `# bench-mode: msprof`, first query `--num-bench`, then profile one selected `--bench <N>` case; this mode requires resolvable `# kernels:` metadata in the benchmark header.
+- Pass `--kernel-name <name>` when the benchmark metadata declares more than one kernel. If the metadata resolves to exactly one kernel, `profile-bench` may choose it automatically.
 - When the outer task is remote-aware, pass the same `--remote` and `--remote-workdir` settings through `profile-bench` so profiling runs on the remote machine while the resulting `PROF_*` directory is copied back locally.
 - Keep direct `msprof <command>` only as a local fallback when there is no generated benchmark harness or when the user explicitly wants a manual invocation.
 - Treat `op_summary_*.csv` as potentially large. Do not dump it into the conversation or read it naively line-by-line into memory if a streaming pass is enough.
@@ -74,11 +75,12 @@ Profile Ascend NPU operators with `msprof` and summarize the resulting timing da
 - `msprof`
   - Use:
     ```bash
-    python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench 1
+    python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench 1 --kernel-name <kernel>
     ```
   - The helper will first query `python3 bench_<operator>.py --num-bench`.
   - The helper then profiles one selected `--bench <N>` case and defaults to case `1` when `--bench` is omitted.
-  - This mode requires benchmark metadata with `# kernel: <resolved_kernel_name>`.
+  - This mode requires benchmark metadata with `# kernels: <resolved_kernel_names>`.
+  - When the benchmark metadata declares more than one kernel, pass `--kernel-name <name>` explicitly.
 
 ## Validation checks
 

@@ -229,7 +229,7 @@ def _run_local_bench_msprof(
     bench_file: Path,
     operator_file: Path,
 ) -> tuple[ResultPayload, Path | None]:
-    kernel_name = _resolve_kernel_name(bench_file)
+    kernel_names = resolve_bench_kernel_names(bench_file)
     count_result = run_buffered_process(
         [sys.executable, bench_file.name, "--num-bench"],
         str(bench_file.parent),
@@ -273,7 +273,7 @@ def _run_local_bench_msprof(
                     None,
                 )
 
-            metrics = _read_local_msprof_metrics(output_dir, kernel_name)
+            metrics = _read_local_msprof_metrics(output_dir, kernel_names)
             normalized_lines.extend(_format_msprof_perf_lines(case_idx, metrics))
         finally:
             if temp_dir is not None:
@@ -291,7 +291,7 @@ def _run_remote_bench_msprof(
     verbose: bool = False,
     stderr=None,
 ) -> tuple[ResultPayload, Path | None, str]:
-    kernel_name = _resolve_kernel_name(bench_file)
+    kernel_names = resolve_bench_kernel_names(bench_file)
     count_result = run_remote_command_buffered(
         spec,
         remote_workspace,
@@ -350,7 +350,7 @@ def _run_remote_bench_msprof(
                 spec,
                 remote_workspace,
                 output_dir,
-                kernel_name,
+                kernel_names,
                 verbose=verbose,
                 stderr=stderr,
             )
@@ -396,12 +396,23 @@ def _parse_case_count(stdout: str) -> int:
     raise ValueError("Unable to parse benchmark case count from --num-bench output.")
 
 
-def _resolve_kernel_name(bench_file: Path) -> str:
+def resolve_bench_kernel_names(bench_file: Path) -> list[str]:
     metadata = parse_bench_metadata(bench_file)
-    kernel_name = metadata.get("kernel")
-    if not kernel_name:
-        raise ValueError(f"Benchmark metadata is missing required 'kernel' entry: {bench_file}")
-    return kernel_name
+    return _parse_kernel_names(metadata, bench_file)
+
+
+def _parse_kernel_names(metadata: dict[str, str], bench_file: Path) -> list[str]:
+    kernels_value = metadata.get("kernels")
+    if kernels_value is not None:
+        kernel_names = [part.strip() for part in kernels_value.split(",") if part.strip()]
+    else:
+        kernel_name = (metadata.get("kernel") or "").strip()
+        kernel_names = [kernel_name] if kernel_name else []
+    if not kernel_names:
+        raise ValueError(
+            f"Benchmark metadata is missing required 'kernels' entry: {bench_file}"
+        )
+    return kernel_names
 
 
 def _load_msprof_avg_rows(output_dir: Path) -> list[MsprofAvgRow]:
@@ -452,13 +463,13 @@ def _format_latency_value(value: float) -> str:
 
 def _resolve_msprof_metrics(
     rows: list[MsprofAvgRow],
-    kernel_name: str,
+    kernel_names: list[str],
 ) -> MsprofMetrics:
-    kernel_avg_time_us: float | None = None
-    for row in rows:
-        if str(row["op_type"]) == kernel_name:
-            kernel_avg_time_us = float(row["avg_time_us"])
-            break
+    kernel_name_set = set(kernel_names)
+    matched_avg_times = [
+        float(row["avg_time_us"]) for row in rows if str(row["op_type"]) in kernel_name_set
+    ]
+    kernel_avg_time_us = sum(matched_avg_times) if matched_avg_times else None
     return {
         "kernel_avg_time_us": kernel_avg_time_us,
         "ops": [
@@ -471,8 +482,8 @@ def _resolve_msprof_metrics(
     }
 
 
-def _read_local_msprof_metrics(output_dir: Path, kernel_name: str) -> MsprofMetrics:
-    return _resolve_msprof_metrics(_load_msprof_avg_rows(output_dir), kernel_name)
+def _read_local_msprof_metrics(output_dir: Path, kernel_names: list[str]) -> MsprofMetrics:
+    return _resolve_msprof_metrics(_load_msprof_avg_rows(output_dir), kernel_names)
 
 
 def _create_local_msprof_preserved_run_dir() -> Path | None:
@@ -547,7 +558,7 @@ def _read_remote_msprof_metrics(
     spec,
     remote_workspace: str,
     output_dir: str,
-    kernel_name: str,
+    kernel_names: list[str],
     verbose: bool = False,
     stderr=None,
 ) -> MsprofMetrics:
@@ -558,7 +569,7 @@ import pathlib
 import sys
 
 root = pathlib.Path(sys.argv[1])
-kernel_name = sys.argv[2]
+kernel_names = set(json.loads(sys.argv[2]))
 matches = sorted(path for path in root.rglob("op_statistic_*.csv") if path.is_file())
 if not matches:
     raise SystemExit(f"No op_statistic_*.csv found under {root}")
@@ -585,17 +596,14 @@ with csv_path.open("r", encoding="utf-8", newline="") as handle:
 
 if row_count == 0:
     raise SystemExit(f"No rows found in {csv_path}")
-kernel_avg_time_us = None
-for row in ops:
-    if row["op_type"] == kernel_name:
-        kernel_avg_time_us = row["avg_time_us"]
-        break
+matched = [row["avg_time_us"] for row in ops if row["op_type"] in kernel_names]
+kernel_avg_time_us = sum(matched) if matched else None
 print(json.dumps({"kernel_avg_time_us": kernel_avg_time_us, "ops": ops}, separators=(",", ":")))
 """.strip()
     result = run_remote_command_buffered(
         spec,
         remote_workspace,
-        ["python3", "-c", script, output_dir, kernel_name],
+        ["python3", "-c", script, output_dir, json.dumps(kernel_names)],
         verbose=verbose,
         stderr=stderr,
     )

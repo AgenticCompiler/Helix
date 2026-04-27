@@ -212,6 +212,34 @@ class GenerationHelpersTests(unittest.TestCase):
         self.assertIn("Additional user instructions:", request.prompt)
         self.assertIn("Preserve helper names.", request.prompt)
 
+    def test_build_generation_request_for_gen_test_prefers_model_entrypoint_over_wrapper_chain(
+        self,
+    ) -> None:
+        request = build_generation_request(
+            CommandKind.GEN_TEST,
+            Path("/tmp/kernel.py"),
+            Path("/tmp/kernel.py"),
+            Path("/tmp"),
+            GenerationOptions(
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                continue_optimize=False,
+                output=None,
+                test_mode="standalone",
+                bench_mode=None,
+                prompt=None,
+            ),
+        )
+
+        self.assertIn("When a `class Model` (or equivalent `torch.nn.Module`) calls a wrapper", request.prompt)
+        self.assertIn("prefer that module class as the public entrypoint", request.prompt)
+
 class GenerationCommandHandlerTests(unittest.TestCase):
     def test_handle_gen_test_rejects_openhands_interactive_mode(self) -> None:
         parser = build_parser()

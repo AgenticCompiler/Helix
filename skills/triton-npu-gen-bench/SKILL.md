@@ -17,6 +17,7 @@ Use this skill when the user needs a performance benchmark file for standalone t
   - `triton-wrapper`: a Python wrapper function that calls Triton kernel functions
   - `torch-function`: a plain PyTorch-facing function or operator entrypoint that may internally call Triton kernels
   - `torch-module`: a `torch.nn.Module` class that represents the operator or model entrypoint and supports no-argument construction
+- When a `class Model` (or equivalent `torch.nn.Module`) calls a wrapper function and that wrapper launches the Triton kernel, prefer the module class as the public entrypoint rather than selecting the intermediate wrapper function.
 - Benchmark generation targets the resolved public entrypoint, not the raw kernel functions.
 - If no valid public entrypoint can be identified, stop and explain that benchmark generation cannot proceed safely.
 
@@ -46,7 +47,7 @@ The generated benchmark file must include a short metadata header near the top o
 - `# bench-mode: <mode>`
 - `# api-name: <resolved-entrypoint>`
 - `# api-kind: <triton-wrapper|torch-function|torch-module>`
-- `# kernel: <resolved-primary-triton-kernel>`
+- `# kernels: <resolved_kernel_names>`
 
 The generated benchmark file must accept only `--operator-file` at runtime for standalone mode, use `importlib` dynamic loading, and load the runtime callable according to the embedded `api-name` and `api-kind` metadata. Msprof mode additionally requires `--bench <N>` and `--num-bench`.
 
@@ -65,7 +66,8 @@ If the outer task is marked for remote execution, carry the same remote flags in
 
 ## Workflow
 
-1. Read the operator file and resolve the public entrypoint, `api-kind`, primary Triton kernel, and realistic benchmark inputs.
+1. Read the operator file and resolve the public entrypoint, `api-kind`, one or more Triton kernel names, and realistic benchmark inputs.
+   - When the file has a `Model -> wrapper -> kernel` structure, resolve the module class as the entrypoint if it is a valid no-argument `torch-module`.
 2. If the public entrypoint is missing, ambiguous, or unsafe to use, stop and report the problem instead of guessing.
 3. Select the requested benchmark mode and read the corresponding spec before generating code.
 4. Generate a benchmark harness that follows the selected spec, keeps setup separate from measurement when practical, and writes the required metadata header.
@@ -84,7 +86,7 @@ If the outer task is marked for remote execution, carry the same remote flags in
 - When auto-fix mode is active, only repair the generated benchmark file; do not modify the operator file.
 - Do not treat raw `@triton.jit` kernel functions as direct harness APIs.
 - Do not guess constructor arguments for `torch-module`; if no-argument construction is not safe, stop with an explicit explanation.
-- For `msprof`, fail explicitly if the public entrypoint is usable but the Triton kernel name cannot be resolved safely.
+- For `msprof`, fail explicitly if the public entrypoint is usable but the Triton kernel names cannot be resolved safely.
 
 ## Self-Repair on Failure
 

@@ -81,11 +81,12 @@ Required changes:
 
 ## Selection Rules For Generators
 
-The generator should resolve entrypoints using this precedence:
+The generator should resolve entrypoints using user-facing ownership first:
 
-1. A clear public Triton wrapper function when present and obviously intended as the operator API.
-2. Otherwise, a clear public PyTorch function/operator that represents the user-facing callable.
-3. Otherwise, a clear `torch.nn.Module` class that represents the operator or model entrypoint and supports no-argument construction.
+1. When a clear `torch.nn.Module` entrypoint such as `class Model` calls an intermediate wrapper and that wrapper launches the Triton kernel, prefer the module class as the public API.
+2. Otherwise, a clear public Triton wrapper function when present and obviously intended as the operator API.
+3. Otherwise, a clear public PyTorch function/operator that represents the user-facing callable.
+4. Otherwise, a clear `torch.nn.Module` class that represents the operator or model entrypoint and supports no-argument construction.
 
 Stop and explain the ambiguity instead of guessing when:
 

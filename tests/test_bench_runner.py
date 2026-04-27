@@ -135,6 +135,59 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertTrue(created_output_dirs)
             self.assertTrue(all(not path.exists() for path in created_output_dirs))
 
+    def test_run_local_bench_msprof_sums_multiple_declared_kernels(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            bench_file.write_text(
+                "# bench-mode: msprof\n# api-name: abs_\n# kernels: OpA, OpB\n",
+                encoding="utf-8",
+            )
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+
+            def _fake_streaming(command, workdir, stall_timeout_seconds):
+                self.assertEqual(workdir, str(root))
+                self.assertEqual(stall_timeout_seconds, 900)
+                self.assertEqual(command[0], "msprof")
+                self.assertTrue(command[1].startswith("--output="))
+                output_dir = Path(command[1].split("=", 1)[1])
+                (output_dir / "op_statistic_1.csv").write_text(
+                    "\n".join(
+                        [
+                            "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                            "0,OpA,AI_CORE,1,11,1,1.5,2,50",
+                            "0,OpB,AI_VECTOR_CORE,1,21,2,2.5,3,50",
+                        ]
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return make_skill_result(0, "profile 1\n", "")
+
+            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+                module,
+                "run_streaming_process",
+                side_effect=_fake_streaming,
+            ):
+                result, perf_path = module.run_local_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                )
+
+            self.assertEqual(result["return_code"], 0)
+            if perf_path is None:
+                self.fail("expected msprof perf path")
+            self.assertEqual(
+                perf_path.read_text(encoding="utf-8"),
+                (
+                    'latency-case-1: 4.0\n'
+                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":1.5},{"op_type":"OpB","avg_time_us":2.5}]}\n'
+                ),
+            )
+
     def test_run_local_bench_msprof_accepts_zero_duration_output(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:

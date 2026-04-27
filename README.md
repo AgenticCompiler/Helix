@@ -216,6 +216,8 @@ Example:
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py
 ```
 
+For `msprof` benchmarks with multiple declared kernels, `run-bench` aggregates all kernels from benchmark metadata while `profile-bench` should be invoked with an explicit `--kernel-name <name>` unless the metadata resolves to exactly one kernel.
+
 ## Optimize One Operator
 
 Use `optimize` when you want the agent to iterate on one operator and produce optimization rounds.

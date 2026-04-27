@@ -105,6 +105,119 @@ class ProfileRunnerTests(unittest.TestCase):
                         bench_case=2,
                     )
 
+    def test_run_local_profile_bench_msprof_auto_selects_single_declared_kernel(self) -> None:
+        module = load_profile_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_kernel.py"
+            operator_file = root / "kernel.py"
+            profile_dir = root / "PROF_demo"
+            output_dir = profile_dir / "mindstudio_profiler_output"
+            output_dir.mkdir(parents=True)
+            (output_dir / "op_statistic_1.csv").write_text("header\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\n# kernels: kernel_name\n", encoding="utf-8")
+            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
+
+            count_result = make_skill_result(0, "1\n", "")
+            profile_result = make_skill_result(0, "profile stdout\n", "")
+            with patch.object(module, "run_buffered_process", return_value=count_result), patch.object(
+                module,
+                "run_streaming_process",
+                return_value=profile_result,
+            ) as mocked:
+                result, resolved_profile_dir = module.run_local_profile_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                )
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertEqual(resolved_profile_dir, profile_dir)
+        self.assertEqual(
+            mocked.call_args.args[0],
+            [
+                "msprof",
+                "op",
+                "--kernel-name=kernel_name",
+                sys.executable,
+                "bench_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--bench",
+                "1",
+            ],
+        )
+
+    def test_run_local_profile_bench_msprof_uses_explicit_kernel_name(self) -> None:
+        module = load_profile_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_kernel.py"
+            operator_file = root / "kernel.py"
+            profile_dir = root / "PROF_demo"
+            output_dir = profile_dir / "mindstudio_profiler_output"
+            output_dir.mkdir(parents=True)
+            (output_dir / "op_statistic_1.csv").write_text("header\n", encoding="utf-8")
+            bench_file.write_text(
+                "# bench-mode: msprof\n# kernels: kernel_a, kernel_b\n",
+                encoding="utf-8",
+            )
+            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
+
+            count_result = make_skill_result(0, "2\n", "")
+            profile_result = make_skill_result(0, "profile stdout\n", "")
+            with patch.object(module, "run_buffered_process", return_value=count_result), patch.object(
+                module,
+                "run_streaming_process",
+                return_value=profile_result,
+            ) as mocked:
+                result, resolved_profile_dir = module.run_local_profile_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                    bench_case=2,
+                    kernel_name="kernel_b",
+                )
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertEqual(resolved_profile_dir, profile_dir)
+        self.assertEqual(
+            mocked.call_args.args[0],
+            [
+                "msprof",
+                "op",
+                "--kernel-name=kernel_b",
+                sys.executable,
+                "bench_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--bench",
+                "2",
+            ],
+        )
+
+    def test_run_local_profile_bench_msprof_rejects_multi_kernel_metadata_without_kernel_name(self) -> None:
+        module = load_profile_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_kernel.py"
+            operator_file = root / "kernel.py"
+            bench_file.write_text(
+                "# bench-mode: msprof\n# kernels: kernel_a, kernel_b\n",
+                encoding="utf-8",
+            )
+            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "Multiple benchmark kernels declared; rerun profile-bench with --kernel-name",
+            ):
+                module.run_local_profile_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                )
+
     def test_run_remote_profile_bench_copies_profile_dir_back_and_keeps_workspace_when_requested(self) -> None:
         module = load_profile_runner_module()
         with tempfile.TemporaryDirectory() as tmp:

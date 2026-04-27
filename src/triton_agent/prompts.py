@@ -124,10 +124,20 @@ def build_prompt(
             )
     if command_kind == CommandKind.GEN_TEST:
         lines.append(
+            "When a `class Model` (or equivalent `torch.nn.Module`) calls a wrapper function "
+            "and that wrapper launches the Triton kernel, prefer that module class as the "
+            "public entrypoint rather than selecting the intermediate wrapper function."
+        )
+        lines.append(
             "After generating the artifact, execute the generated test case. "
             "If execution fails, repair the generated artifact and retry automatically."
         )
     if command_kind == CommandKind.GEN_BENCH:
+        lines.append(
+            "When a `class Model` (or equivalent `torch.nn.Module`) calls a wrapper function "
+            "and that wrapper launches the Triton kernel, prefer that module class as the "
+            "public entrypoint rather than selecting the intermediate wrapper function."
+        )
         lines.append(
             "After generating the artifact, execute the generated benchmark case. "
             "If execution fails, repair the generated artifact and retry automatically."
@@ -135,6 +145,9 @@ def build_prompt(
     if command_kind == CommandKind.GEN_EVAL:
         lines.extend(
             [
+                "When a `class Model` (or equivalent `torch.nn.Module`) calls a wrapper function "
+                "and that wrapper launches the Triton kernel, prefer that module class as the "
+                "public entrypoint rather than selecting the intermediate wrapper function.",
                 "You may edit the original operator file directly when the operator implementation is at fault.",
                 "Generate both the test harness and the benchmark harness in this task.",
                 "After generating them, both generated artifacts must be executed before the task finishes.",

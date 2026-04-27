@@ -17,6 +17,7 @@ Use this skill when the user wants a new correctness test file, wants a specific
   - `triton-wrapper`: a Python wrapper function that calls Triton kernel functions
   - `torch-function`: a plain PyTorch-facing function or operator entrypoint that may internally call Triton kernels
   - `torch-module`: a `torch.nn.Module` class that represents the operator or model entrypoint and supports no-argument construction
+- When a `class Model` (or equivalent `torch.nn.Module`) calls a wrapper function and that wrapper launches the Triton kernel, prefer the module class as the public entrypoint rather than selecting the intermediate wrapper function.
 - Test generation targets the resolved public entrypoint, not the raw kernel functions.
 - If no valid public entrypoint can be identified, stop and explain that test generation cannot proceed safely.
 
@@ -49,7 +50,7 @@ The generated test file must include a short metadata header near the top of the
 - `# test-mode: <mode>`
 - `# api-name: <resolved-entrypoint>`
 - `# api-kind: <triton-wrapper|torch-function|torch-module>`
-- `# kernel: <resolved-primary-triton-kernel>`
+- `# kernels: <resolved_kernel_names>`
 
 The generated test file must accept only `--operator-file` at runtime, use `importlib` dynamic loading, and load the runtime callable according to the embedded `api-name` and `api-kind` metadata.
 
@@ -71,6 +72,7 @@ If the outer task is marked for remote execution, carry the same remote flags in
 ## Workflow
 
 1. Read the operator code and identify the public entrypoint, entrypoint kind, tensor arguments, scalar arguments, shapes, dtypes, and kernel launch requirements.
+   - When the file has a `Model -> wrapper -> kernel` structure, resolve the module class as the entrypoint if it is a valid no-argument `torch-module`.
 2. Confirm that the file contains a supported public entrypoint that should be tested.
 3. If no supported public entrypoint can be resolved, stop and report the problem instead of guessing.
 4. Read the corresponding spec file before generating the test.

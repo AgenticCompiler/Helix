@@ -25,7 +25,7 @@ The benchmark file must include this metadata header near the top of the file:
 # bench-mode: msprof
 # api-name: <name>
 # api-kind: <triton-wrapper|torch-function|torch-module>
-# kernel: <name>
+# kernels: <name>
 ```
 
 | Command | Behavior |
@@ -46,7 +46,7 @@ The benchmark file must include this metadata header near the top of the file:
 - If `--operator-file` is set: load `<operator-file>` from that directory, and then from the loaded module, use the generated harness's `# api-name:` and `# api-kind:` contract to obtain the operator API.
 - Use `importlib.util.spec_from_file_location` and `exec_module` to load the module.
 - If that named API does not exist in the runtime operator file, fail explicitly instead of guessing.
-- If the public entrypoint is valid but the Triton kernel name cannot be resolved safely, fail explicitly because msprof mode still requires a stable `# kernel:` value.
+- If the public entrypoint is valid but the Triton kernel names cannot be resolved safely, fail explicitly because msprof mode still requires stable `# kernels:` metadata.
 
 #### 3.1 `triton-wrapper`
 
@@ -125,7 +125,7 @@ If a `torch-module` entrypoint requires constructor arguments, fail explicitly w
 # bench-mode: msprof
 # api-name: <resolved_entrypoint>
 # api-kind: <resolved_api_kind>
-# kernel: <resolved_kernel_name>
+# kernels: <resolved_kernel_names>
 
 import argparse
 import importlib.util

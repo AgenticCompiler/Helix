@@ -23,7 +23,7 @@ The benchmark file must include this metadata header near the top of the file:
 # bench-mode: standalone
 # api-name: <name>
 # api-kind: <triton-wrapper|torch-function|torch-module>
-# kernel: <name>
+# kernels: <name>
 ```
 
 The benchmark file must accept the following arguments when run as `python bench_<op>.py`:
@@ -128,7 +128,7 @@ If a `torch-module` entrypoint requires constructor arguments, fail explicitly w
 # bench-mode: standalone
 # api-name: <resolved_entrypoint>
 # api-kind: <resolved_api_kind>
-# kernel: <resolved_kernel_name>
+# kernels: <resolved_kernel_names>
 
 import argparse
 import importlib.util

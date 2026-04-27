@@ -36,6 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     profile_bench.add_argument("--operator-file", required=True)
     profile_bench.add_argument("--bench-mode", choices=["standalone", "msprof"])
     profile_bench.add_argument("--bench", type=int)
+    profile_bench.add_argument("--kernel-name")
     profile_bench.add_argument("--target-op")
     profile_bench.add_argument("--remote")
     profile_bench.add_argument("--remote-workdir")
@@ -136,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.remote,
                     args.remote_workdir,
                     bench_case=args.bench,
+                    kernel_name=args.kernel_name,
                     keep_remote_workdir=args.keep_remote_workdir,
                     verbose=args.verbose,
                     stderr=sys.stderr,
@@ -146,6 +148,7 @@ def main(argv: list[str] | None = None) -> int:
                     operator_file,
                     resolved_bench_mode,
                     bench_case=args.bench,
+                    kernel_name=args.kernel_name,
                 )
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
             print(str(exc), file=sys.stderr)

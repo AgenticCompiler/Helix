@@ -31,6 +31,11 @@
 
 These lines are intended for both human inspection and future machine parsing.
 
+- Benchmark and test harnesses may record one or more Triton kernel names with:
+  - `# kernels: <name>`
+  - `# kernels: <name-a>, <name-b>, ...`
+- Runtime consumers should stay backward-compatible with older single-kernel `# kernel:` metadata when reading existing generated files.
+
 ## Runtime loading contract
 
 - The generated harness loads the operator module from `--operator-file` with `importlib`.

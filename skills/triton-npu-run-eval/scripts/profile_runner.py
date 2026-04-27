@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-from bench_runner import parse_bench_metadata
+from bench_runner import resolve_bench_kernel_names
 from run_runtime import (
     ResultPayload,
     cleanup_remote_workspace,
@@ -24,9 +24,10 @@ def run_local_profile_bench(
     operator_file: Path,
     bench_mode: str,
     bench_case: int | None = None,
+    kernel_name: str | None = None,
 ) -> tuple[ResultPayload, Path | None]:
     if bench_mode == "msprof":
-        result = _run_local_profile_msprof(bench_file, operator_file, bench_case)
+        result = _run_local_profile_msprof(bench_file, operator_file, bench_case, kernel_name)
     else:
         result = _run_local_profile_standalone(bench_file, operator_file)
     if not result_succeeded(result):
@@ -42,6 +43,7 @@ def run_remote_profile_bench(
     remote: str,
     remote_workdir: str | None,
     bench_case: int | None = None,
+    kernel_name: str | None = None,
     keep_remote_workdir: bool = False,
     verbose: bool = False,
     stderr=None,
@@ -67,6 +69,7 @@ def run_remote_profile_bench(
                 bench_file,
                 operator_file,
                 bench_case,
+                kernel_name,
                 verbose=verbose,
                 stderr=stderr,
             )
@@ -120,8 +123,9 @@ def _run_local_profile_msprof(
     bench_file: Path,
     operator_file: Path,
     bench_case: int | None,
+    requested_kernel_name: str | None,
 ) -> ResultPayload:
-    kernel_name = _resolve_kernel_name(bench_file)
+    kernel_name = _resolve_profile_kernel_name(bench_file, requested_kernel_name)
     selected_case = _resolve_bench_case_local(bench_file, bench_case)
     operator_arg = os.path.relpath(operator_file, bench_file.parent)
     return run_streaming_process(
@@ -164,10 +168,11 @@ def _run_remote_profile_msprof(
     bench_file: Path,
     operator_file: Path,
     bench_case: int | None,
+    requested_kernel_name: str | None,
     verbose: bool = False,
     stderr=None,
 ) -> ResultPayload:
-    kernel_name = _resolve_kernel_name(bench_file)
+    kernel_name = _resolve_profile_kernel_name(bench_file, requested_kernel_name)
     selected_case = _resolve_bench_case_remote(
         spec,
         remote_workspace,
@@ -195,12 +200,22 @@ def _run_remote_profile_msprof(
     )
 
 
-def _resolve_kernel_name(bench_file: Path) -> str:
-    metadata = parse_bench_metadata(bench_file)
-    kernel_name = metadata.get("kernel")
-    if not kernel_name:
-        raise ValueError(f"Benchmark metadata is missing required 'kernel' entry: {bench_file}")
-    return kernel_name
+def _resolve_profile_kernel_name(
+    bench_file: Path,
+    requested_kernel_name: str | None,
+) -> str:
+    kernel_names = resolve_bench_kernel_names(bench_file)
+    if requested_kernel_name is not None:
+        if requested_kernel_name not in kernel_names:
+            raise ValueError(
+                f"Requested kernel '{requested_kernel_name}' is not declared in benchmark metadata: {kernel_names}"
+            )
+        return requested_kernel_name
+    if len(kernel_names) == 1:
+        return kernel_names[0]
+    raise ValueError(
+        "Multiple benchmark kernels declared; rerun profile-bench with --kernel-name <name>."
+    )
 
 
 def _resolve_bench_case_local(bench_file: Path, bench_case: int | None) -> int:

@@ -11,9 +11,9 @@
   - local: `msprof --output=<tmp-dir> python ... --bench <N>`
   - remote: `msprof --output=<tmp-dir> python3 ... --bench <N>`
 - After the command succeeds, the runner finds `op_statistic_<timestamp>.csv` under `<tmp-dir>`.
-- The runner reads the benchmark header `# kernel: <name>` and finds the `op_statistic` row whose `OP Type` exactly matches that kernel name.
-- The runner uses that matched row's `Avg Time(us)` as the benchmark latency for the case.
-  If no `OP Type` exactly matches the declared kernel name, the runner records `NA` for the latency instead of failing.
+- The runner reads the benchmark header `# kernels: <name-a>, <name-b>, ...` and finds the `op_statistic` rows whose `OP Type` exactly matches the declared kernel names.
+- The runner uses the sum of those matched rows' `Avg Time(us)` values as the benchmark latency for the case.
+  If no `OP Type` exactly matches any declared kernel name, the runner records `NA` for the latency instead of failing.
 - The runner also sums every row's `Avg Time(us)` value as the total profiled runtime for that case.
 - The runner writes two lines per case to the perf artifact:
   - `latency-case-<N>: <kernel_avg_time>`
@@ -38,7 +38,7 @@
 
 - If the profiler output directory or `op_statistic_*.csv` is missing, fail explicitly.
 - If the CSV is missing `Avg Time(us)` or contains no data rows, fail explicitly.
-- If benchmark metadata is missing `# kernel:`, fail explicitly.
+- If benchmark metadata is missing both `# kernels:` and legacy `# kernel:`, fail explicitly.
 - If `TRITON_AGENT_MSPROF_OUTPUT_DIR` points to a non-directory path, fail explicitly.
 - If a perf file contains `latency-case-<N>: NA` but the matching `# raw-op-statistic-case-<N>` comment is missing or malformed, fail explicitly.
 - If comparison needs total-op fallback for a case but the compare-side raw-op statistics are missing or malformed, fail explicitly.

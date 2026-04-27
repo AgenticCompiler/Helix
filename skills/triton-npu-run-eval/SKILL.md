@@ -91,6 +91,7 @@ Notes:
 - Always pass both `--bench-file` and `--operator-file`.
 - If `--bench-mode` is omitted, the command reads `# bench-mode: ...` from the benchmark file.
 - Use `--bench-mode standalone` or `--bench-mode msprof` only when you need to override the embedded metadata.
+- In `msprof` mode, `run-bench` aggregates all kernel names declared by `# kernels:` and remains backward-compatible with legacy single `# kernel:` metadata.
 
 Examples:
 
@@ -120,6 +121,7 @@ Notes:
 - If `--bench-mode` is omitted, the command reads `# bench-mode: ...` from the benchmark file.
 - In `standalone` mode, do not pass `--bench`; the helper profiles the plain `--operator-file` benchmark run.
 - In `msprof` mode, the helper first queries `--num-bench`, then profiles one selected `--bench <N>` case, defaulting to case `1` when you omit `--bench`.
+- In `msprof` mode, pass `--kernel-name <name>` when benchmark metadata declares multiple kernels. If the metadata resolves to exactly one kernel, the helper may choose it automatically.
 
 Remote examples:
 
