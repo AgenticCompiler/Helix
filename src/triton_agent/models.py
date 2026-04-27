@@ -59,6 +59,7 @@ class AgentRequest:
     skill_name: str
     prompt: str
     workdir: Path
+    extra_env: dict[str, str] | None = None
     min_rounds: Optional[int] = None
     continue_optimize: bool = False
     no_agent_session: bool = False

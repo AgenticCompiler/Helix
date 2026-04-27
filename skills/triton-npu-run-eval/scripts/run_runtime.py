@@ -16,6 +16,9 @@ _IS_WINDOWS = sys.platform == "win32"
 if not _IS_WINDOWS:
     import pty
     import select
+else:
+    pty = None
+    select = None
 
 
 class ResultPayload(TypedDict):
@@ -43,6 +46,7 @@ def run_buffered_process(
     command: list[str],
     workdir: str,
     stall_timeout_seconds: int,
+    extra_env: dict[str, str] | None = None,
 ) -> ResultPayload:
     process = subprocess.Popen(
         command,
@@ -50,6 +54,7 @@ def run_buffered_process(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        env=_merged_env(extra_env),
     )
     stdout_lines: list[str] = []
     start = time.monotonic()
@@ -84,10 +89,11 @@ def run_streaming_process(
     workdir: str,
     stall_timeout_seconds: int,
     stdout: Optional[TextIO] = None,
+    extra_env: dict[str, str] | None = None,
 ) -> ResultPayload:
     if _IS_WINDOWS:
-        return _run_streaming_windows(command, workdir, stall_timeout_seconds, stdout)
-    return _run_streaming_pty(command, workdir, stall_timeout_seconds, stdout)
+        return _run_streaming_windows(command, workdir, stall_timeout_seconds, stdout, extra_env)
+    return _run_streaming_pty(command, workdir, stall_timeout_seconds, stdout, extra_env)
 
 
 def _run_streaming_windows(
@@ -95,6 +101,7 @@ def _run_streaming_windows(
     workdir: str,
     stall_timeout_seconds: int,
     stdout: Optional[TextIO] = None,
+    extra_env: dict[str, str] | None = None,
 ) -> ResultPayload:
     process = subprocess.Popen(
         command,
@@ -102,6 +109,7 @@ def _run_streaming_windows(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=False,
+        env=_merged_env(extra_env),
     )
     output_chunks: list[str] = []
     start_ref: list[float] = [time.monotonic()]
@@ -149,7 +157,10 @@ def _run_streaming_pty(
     workdir: str,
     stall_timeout_seconds: int,
     stdout: Optional[TextIO] = None,
+    extra_env: dict[str, str] | None = None,
 ) -> ResultPayload:
+    if pty is None or select is None:
+        raise RuntimeError("PTY streaming is unavailable on this platform")
     master_fd, slave_fd = pty.openpty()
     output_chunks: list[str] = []
     process = subprocess.Popen(
@@ -160,6 +171,7 @@ def _run_streaming_pty(
         stderr=slave_fd,
         text=False,
         close_fds=True,
+        env=_merged_env(extra_env),
     )
     os.close(slave_fd)
     start = time.monotonic()
@@ -302,10 +314,13 @@ def run_remote_command_streaming(
     remote_command: str | Sequence[str],
     verbose: bool = False,
     stderr: TextIO | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> ResultPayload:
+    env_prefix = _shell_env_prefix(extra_env)
+    command_text = _normalize_remote_command(remote_command)
     command = _ssh_command(
         spec,
-        f"cd {shlex.quote(remote_workspace)} && {_normalize_remote_command(remote_command)}",
+        f"cd {shlex.quote(remote_workspace)} && {env_prefix + ' ' if env_prefix else ''}{command_text}",
     )
     _maybe_emit_remote_command(command, verbose, stderr)
     return run_streaming_process(command, ".", stall_timeout_seconds=900)
@@ -317,10 +332,13 @@ def run_remote_command_buffered(
     remote_command: str | Sequence[str],
     verbose: bool = False,
     stderr: TextIO | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> ResultPayload:
+    env_prefix = _shell_env_prefix(extra_env)
+    command_text = _normalize_remote_command(remote_command)
     command = _ssh_command(
         spec,
-        f"cd {shlex.quote(remote_workspace)} && {_normalize_remote_command(remote_command)}",
+        f"cd {shlex.quote(remote_workspace)} && {env_prefix + ' ' if env_prefix else ''}{command_text}",
     )
     _maybe_emit_remote_command(command, verbose, stderr)
     return run_buffered_process(command, ".", stall_timeout_seconds=900)
@@ -392,3 +410,17 @@ def _normalize_remote_command(remote_command: str | Sequence[str]) -> str:
 
 def _resolved_returncode(returncode: int | None) -> int:
     return returncode if returncode is not None else 1
+
+
+def _merged_env(extra_env: dict[str, str] | None) -> dict[str, str] | None:
+    if extra_env is None:
+        return None
+    merged = dict(os.environ)
+    merged.update(extra_env)
+    return merged
+
+
+def _shell_env_prefix(extra_env: dict[str, str] | None) -> str:
+    if not extra_env:
+        return ""
+    return " ".join(f"{key}={shlex.quote(value)}" for key, value in sorted(extra_env.items()))

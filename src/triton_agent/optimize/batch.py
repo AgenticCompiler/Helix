@@ -16,6 +16,12 @@ from triton_agent.batch_utils import (
     resolve_batch_operator_file,
 )
 from triton_agent.models import AgentResult
+from triton_agent.npu_affinity import (
+    BatchNpuAffinityPool,
+    affinity_env_for_device,
+    configured_batch_npu_devices,
+    validate_batch_affinity_capacity,
+)
 from triton_agent.optimize.models import BatchOptimizeResult, BatchOptimizeWorkspace, OptimizeRunOptions
 from triton_agent.optimize.render import render_batch_optimize_results
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
@@ -57,6 +63,25 @@ def run_optimize_batch(
 
     output_lock = threading.Lock()
     stream = stdout or sys.stdout
+    devices = configured_batch_npu_devices()
+    validate_batch_affinity_capacity(devices, max_concurrency=max_concurrency)
+    pool = BatchNpuAffinityPool(devices) if devices is not None else None
+
+    def _run_item(
+        item: BatchOptimizeWorkspace,
+        forwarded_stdout: TextIO | None = None,
+        forwarded_stderr: TextIO | None = None,
+    ) -> AgentResult:
+        request = build_optimize_request(item.operator_file, item.workspace, options)
+        if pool is None:
+            if forwarded_stdout is not None or forwarded_stderr is not None:
+                return optimize_request_runner(request, forwarded_stdout, forwarded_stderr)
+            return optimize_request_runner(request)
+        with pool.acquire() as device:
+            request.extra_env = affinity_env_for_device(device)
+            if forwarded_stdout is not None or forwarded_stderr is not None:
+                return optimize_request_runner(request, forwarded_stdout, forwarded_stderr)
+            return optimize_request_runner(request)
 
     with ThreadPoolExecutor(max_workers=max_concurrency) as executor:
         futures: dict[Future[AgentResult], BatchOptimizeWorkspace] = {}
@@ -71,7 +96,7 @@ def run_optimize_batch(
                 )
                 continue
             try:
-                request = build_optimize_request(item.operator_file, item.workspace, options)
+                build_optimize_request(item.operator_file, item.workspace, options)
             except ValueError as exc:
                 results.append(
                     BatchOptimizeResult(
@@ -91,11 +116,9 @@ def run_optimize_batch(
                 prefix = f"[{item.workspace.name}] "
                 prefixed_stream = PrefixedTextStream(stream, prefix, output_lock)
                 forwarded_stream = cast(TextIO, prefixed_stream)
-                futures[
-                    executor.submit(optimize_request_runner, request, forwarded_stream, forwarded_stream)
-                ] = item
+                futures[executor.submit(_run_item, item, forwarded_stream, forwarded_stream)] = item
             else:
-                futures[executor.submit(optimize_request_runner, request)] = item
+                futures[executor.submit(_run_item, item)] = item
 
         for future in as_completed(futures):
             item = futures[future]

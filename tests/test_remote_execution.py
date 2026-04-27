@@ -1,6 +1,7 @@
 import sys
 import unittest
 from io import StringIO
+from os import environ
 from pathlib import Path
 from unittest.mock import patch
 import tempfile
@@ -84,6 +85,40 @@ class RemoteExecutionTests(unittest.TestCase):
 
         self.assertEqual(result["return_code"], 1)
 
+    def test_run_runtime_buffered_process_merges_extra_env(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        class _FakeStdout:
+            def readline(self) -> str:
+                return ""
+
+        class _FakeStderr:
+            def read(self) -> str:
+                return ""
+
+        class _FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = _FakeStdout()
+                self.stderr = _FakeStderr()
+                self.returncode = 0
+
+            def poll(self):
+                return 0
+
+        with (
+            patch.dict(environ, {"EXISTING_ENV": "base"}, clear=False),
+            patch.object(module.subprocess, "Popen", return_value=_FakeProcess()) as mocked,
+        ):
+            module.run_buffered_process(
+                ["python3", "bench.py"],
+                ".",
+                10,
+                extra_env={"ASCEND_RT_VISIBLE_DEVICES": "4"},
+            )
+
+        self.assertEqual(mocked.call_args.kwargs["env"]["ASCEND_RT_VISIBLE_DEVICES"], "4")
+        self.assertEqual(mocked.call_args.kwargs["env"]["EXISTING_ENV"], "base")
+
     def test_run_remote_command_streaming_shell_joins_sequence_args(self) -> None:
         module = load_operator_eval_script_module("run_runtime")
 
@@ -100,6 +135,21 @@ class RemoteExecutionTests(unittest.TestCase):
         self.assertIn("test kernel.py", command[-1])
         self.assertIn("kernel name.py", command[-1])
         self.assertNotIn("[", command[-1])
+
+    def test_run_remote_command_streaming_prefixes_env_assignments(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        with patch.object(module, "run_streaming_process", return_value=make_skill_result(0, "", "")) as mocked:
+            module.run_remote_command_streaming(
+                module.parse_remote_spec("alice@example.com"),
+                "/tmp/workspace",
+                ["python3", "bench.py"],
+                extra_env={"ASCEND_RT_VISIBLE_DEVICES": "4", "TRITON_AGENT_ASSIGNED_NPU": "4"},
+            )
+
+        command = mocked.call_args.args[0]
+        self.assertIn("ASCEND_RT_VISIBLE_DEVICES=4", command[-1])
+        self.assertIn("TRITON_AGENT_ASSIGNED_NPU=4", command[-1])
 
     def test_run_remote_test_keeps_workspace_when_requested(self) -> None:
         module = load_test_runner_module()

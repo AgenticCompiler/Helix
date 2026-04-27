@@ -106,6 +106,7 @@ class AgentRunner(ABC):
             stdout=stdout,
             output_filter=self.output_filter(request),
             interrupt_policy=self.interrupt_policy(request),
+            extra_env=request.extra_env,
         )
 
 

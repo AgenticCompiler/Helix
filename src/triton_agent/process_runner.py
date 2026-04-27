@@ -54,9 +54,10 @@ def run_process(
     stdout: Optional[TextIO] = None,
     output_filter: Optional[OutputFilter] = None,
     interrupt_policy: Optional[InterruptPolicy] = None,
+    extra_env: Optional[dict[str, str]] = None,
 ) -> AgentResult:
     if mode == "interactive":
-        return run_interactive_process(command, workdir)
+        return run_interactive_process(command, workdir, extra_env=extra_env)
     if mode == "streaming":
         return run_streaming_process(
             command,
@@ -66,6 +67,7 @@ def run_process(
             output_filter=output_filter,
             session_id_extractor=session_id_extractor or (lambda _text: None),
             interrupt_policy=interrupt_policy,
+            extra_env=extra_env,
         )
     if mode == "buffered":
         return run_buffered_process(
@@ -75,12 +77,18 @@ def run_process(
             session_id_extractor=session_id_extractor or (lambda _line: None),
             output_filter=output_filter,
             interrupt_policy=interrupt_policy,
+            extra_env=extra_env,
         )
     raise ValueError(f"Unsupported process runner mode: {mode}")
 
 
-def run_interactive_process(command: list[str], workdir: str) -> AgentResult:
-    completed = subprocess.run(_resolve_command(command), cwd=workdir)
+def run_interactive_process(
+    command: list[str],
+    workdir: str,
+    *,
+    extra_env: Optional[dict[str, str]] = None,
+) -> AgentResult:
+    completed = subprocess.run(_resolve_command(command), cwd=workdir, env=_merged_env(extra_env))
     return AgentResult(
         return_code=completed.returncode,
         stdout="",
@@ -97,6 +105,7 @@ def run_buffered_process(
     session_id_extractor: Callable[[str], Optional[str]],
     output_filter: Optional[OutputFilter] = None,
     interrupt_policy: Optional[InterruptPolicy] = None,
+    extra_env: Optional[dict[str, str]] = None,
 ) -> AgentResult:
     process = subprocess.Popen(
         _resolve_command(command),
@@ -104,6 +113,7 @@ def run_buffered_process(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        env=_merged_env(extra_env),
         start_new_session=interrupt_policy is not None and not _IS_WINDOWS,
     )
     stdout_lines: list[str] = []
@@ -170,6 +180,7 @@ def run_streaming_process(
     output_filter: Optional[OutputFilter] = None,
     session_id_extractor: Optional[Callable[[str], Optional[str]]] = None,
     interrupt_policy: Optional[InterruptPolicy] = None,
+    extra_env: Optional[dict[str, str]] = None,
 ) -> AgentResult:
     if _IS_WINDOWS:
         return _run_streaming_process_windows(
@@ -180,6 +191,7 @@ def run_streaming_process(
             output_filter=output_filter,
             session_id_extractor=session_id_extractor or (lambda _text: None),
             interrupt_policy=interrupt_policy,
+            extra_env=extra_env,
         )
     return _run_streaming_process_pty(
         command,
@@ -189,6 +201,7 @@ def run_streaming_process(
         output_filter=output_filter,
         session_id_extractor=session_id_extractor or (lambda _text: None),
         interrupt_policy=interrupt_policy,
+        extra_env=extra_env,
     )
 
 
@@ -200,6 +213,7 @@ def _run_streaming_process_windows(
     output_filter: Optional[OutputFilter] = None,
     session_id_extractor: Callable[[str], Optional[str]] = lambda _text: None,
     interrupt_policy: Optional[InterruptPolicy] = None,
+    extra_env: Optional[dict[str, str]] = None,
 ) -> AgentResult:
     """Windows-compatible streaming using threads to drain stdout and stderr."""
     process = subprocess.Popen(
@@ -208,6 +222,7 @@ def _run_streaming_process_windows(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=False,
+        env=_merged_env(extra_env),
     )
     output_chunks: list[str] = []
     start_ref: list[float] = [time.monotonic()]
@@ -286,6 +301,7 @@ def _run_streaming_process_pty(
     output_filter: Optional[OutputFilter] = None,
     session_id_extractor: Callable[[str], Optional[str]] = lambda _text: None,
     interrupt_policy: Optional[InterruptPolicy] = None,
+    extra_env: Optional[dict[str, str]] = None,
 ) -> AgentResult:
     """Unix PTY-backed streaming so the child sees a terminal and flushes incrementally."""
     if pty is None or select is None:
@@ -300,6 +316,7 @@ def _run_streaming_process_pty(
         stderr=slave_fd,
         text=False,
         close_fds=True,
+        env=_merged_env(extra_env),
         start_new_session=interrupt_policy is not None,
     )
     os.close(slave_fd)
@@ -371,6 +388,14 @@ def _run_streaming_process_pty(
 
 def _resolved_returncode(returncode: int | None) -> int:
     return returncode if returncode is not None else 1
+
+
+def _merged_env(extra_env: Optional[dict[str, str]]) -> Optional[dict[str, str]]:
+    if extra_env is None:
+        return None
+    merged = dict(os.environ)
+    merged.update(extra_env)
+    return merged
 
 
 def _interrupt_process(process: subprocess.Popen[Any], policy: InterruptPolicy) -> None:

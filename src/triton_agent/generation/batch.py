@@ -18,6 +18,12 @@ from triton_agent.batch_utils import (
 from triton_agent.generation.models import GenerationOptions
 from triton_agent.generation.orchestration import build_generation_request, run_generation_request
 from triton_agent.models import AgentResult, CommandKind
+from triton_agent.npu_affinity import (
+    BatchNpuAffinityPool,
+    affinity_env_for_device,
+    configured_batch_npu_devices,
+    validate_batch_affinity_capacity,
+)
 
 _BATCH_GEN_EVAL_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")
 _BATCH_GEN_EVAL_EXCLUDED_NAMES = {"__init__.py"}
@@ -64,26 +70,42 @@ def run_gen_eval_batch(
 
     output_lock = threading.Lock()
     stream = stdout or sys.stdout
+    devices = configured_batch_npu_devices()
+    validate_batch_affinity_capacity(devices, max_concurrency=max_concurrency)
+    pool = BatchNpuAffinityPool(devices) if devices is not None else None
+
+    def _run_item(
+        item: BatchGenEvalWorkspace,
+        forwarded_stdout: TextIO | None = None,
+        forwarded_stderr: TextIO | None = None,
+    ) -> AgentResult:
+        request = build_generation_request(
+            CommandKind.GEN_EVAL,
+            item.operator_file,
+            item.operator_file,
+            item.workspace,
+            options,
+        )
+        if pool is not None:
+            with pool.acquire() as device:
+                request.extra_env = affinity_env_for_device(device)
+                if forwarded_stdout is not None or forwarded_stderr is not None:
+                    return generation_request_runner(request, forwarded_stdout, forwarded_stderr)
+                return generation_request_runner(request)
+        if forwarded_stdout is not None or forwarded_stderr is not None:
+            return generation_request_runner(request, forwarded_stdout, forwarded_stderr)
+        return generation_request_runner(request)
 
     with ThreadPoolExecutor(max_workers=max_concurrency) as executor:
         futures: dict[Future[AgentResult], BatchGenEvalWorkspace] = {}
         for item in runnable:
-            request = build_generation_request(
-                CommandKind.GEN_EVAL,
-                item.operator_file,
-                item.operator_file,
-                item.workspace,
-                options,
-            )
             if options.show_output:
                 prefix = f"[{item.workspace.name}] "
                 prefixed_stream = PrefixedTextStream(stream, prefix, output_lock)
                 forwarded_stream = cast(TextIO, prefixed_stream)
-                futures[
-                    executor.submit(generation_request_runner, request, forwarded_stream, forwarded_stream)
-                ] = item
+                futures[executor.submit(_run_item, item, forwarded_stream, forwarded_stream)] = item
             else:
-                futures[executor.submit(generation_request_runner, request)] = item
+                futures[executor.submit(_run_item, item)] = item
 
         for future in as_completed(futures):
             item = futures[future]

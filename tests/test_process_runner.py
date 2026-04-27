@@ -2,6 +2,7 @@ import sys
 import unittest
 from errno import EIO
 from io import StringIO
+from os import environ
 from typing import Any, Optional, cast
 from unittest.mock import patch
 import signal
@@ -32,6 +33,22 @@ class BufferedProcessRunnerTests(unittest.TestCase):
             )
         self.assertEqual(result.stdout, "hello\n")
         self.assertEqual(result.session_id, "session-1")
+
+    def test_buffered_process_runner_merges_extra_env(self) -> None:
+        process = _BufferedFakeProcess(stdout_lines=[], stderr_text="", returncode=0)
+        with (
+            patch.dict(environ, {"EXISTING_ENV": "base"}, clear=False),
+            patch("triton_agent.process_runner.subprocess.Popen", return_value=process) as mocked,
+        ):
+            run_buffered_process(
+                ["codex", "exec"],
+                "/tmp",
+                stall_timeout_seconds=10,
+                session_id_extractor=lambda _line: None,
+                extra_env={"ASCEND_RT_VISIBLE_DEVICES": "7"},
+            )
+        self.assertEqual(mocked.call_args.kwargs["env"]["ASCEND_RT_VISIBLE_DEVICES"], "7")
+        self.assertEqual(mocked.call_args.kwargs["env"]["EXISTING_ENV"], "base")
 
     def test_buffered_filter_can_remove_diff_blocks(self) -> None:
         from triton_agent.backends.codex import _UnifiedDiffFilter

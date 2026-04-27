@@ -291,6 +291,21 @@ Optimize behavior:
 
 Use the batch commands when `--input` points to a directory of operator workspaces. `gen-eval-batch`, `convert-batch`, and `optimize-batch` can also accept one operator workspace directory directly.
 
+### Batch NPU Affinity
+
+Set `TRITON_AGENT_BATCH_NPU_DEVICES` to a comma-separated device list when you want concurrent batch workspaces to stay on distinct Ascend NPUs:
+
+```bash
+export TRITON_AGENT_BATCH_NPU_DEVICES=0,1,2,3
+uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
+```
+
+When this variable is set:
+
+- `gen-eval-batch`, `convert-batch`, and `optimize-batch` assign one configured device per running workspace.
+- `--max-concurrency` must not exceed the number of configured devices.
+- the assigned device is exported as `ASCEND_RT_VISIBLE_DEVICES` for launched workspace processes.
+
 ### Generate Evaluation Assets In Batch
 
 ```bash

@@ -43,6 +43,33 @@ class SharedRunnerBaseTests(unittest.TestCase):
             self.assertEqual(mocked.call_args.kwargs["mode"], "streaming")
             self.assertEqual(mocked.call_args.kwargs["stall_timeout_seconds"], 123)
 
+    def test_base_runner_passes_request_extra_env_to_process_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = _DummyRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="dummy",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+                extra_env={"ASCEND_RT_VISIBLE_DEVICES": "2"},
+            )
+
+            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+                runner.run(request)
+
+        self.assertEqual(mocked.call_args.kwargs["extra_env"], {"ASCEND_RT_VISIBLE_DEVICES": "2"})
+
     def test_base_runner_retries_transient_failures_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)

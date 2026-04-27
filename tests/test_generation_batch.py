@@ -1,7 +1,9 @@
 import sys
 import tempfile
 import unittest
+from os import environ
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -107,6 +109,49 @@ class GenerationBatchHelpersTests(unittest.TestCase):
             for prompt in prompts:
                 self.assertIn("Additional user instructions:", prompt)
                 self.assertIn("Avoid changing numerics.", prompt)
+
+    def test_run_gen_eval_batch_assigns_affinity_env_per_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("alpha", "beta"):
+                workspace = root / name
+                workspace.mkdir()
+                (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+
+            seen_envs: list[dict[str, str]] = []
+
+            def _fake_run(request, stdout=None, stderr=None):
+                del stdout, stderr
+                seen_envs.append(request.extra_env or {})
+                return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            with patch.dict(environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0,1"}, clear=False):
+                exit_code = run_gen_eval_batch(
+                    root,
+                    GenerationOptions(
+                        interact=False,
+                        verbose=False,
+                        show_output=False,
+                        force_overwrite=False,
+                        agent_name="codex",
+                        remote=None,
+                        remote_workdir=None,
+                        min_rounds=None,
+                        continue_optimize=False,
+                        output=None,
+                        test_mode="differential",
+                        bench_mode="standalone",
+                        prompt=None,
+                    ),
+                    max_concurrency=2,
+                    run_request=_fake_run,
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(
+                {env["TRITON_AGENT_ASSIGNED_NPU"] for env in seen_envs},
+                {"0", "1"},
+            )
 
 
 if __name__ == "__main__":

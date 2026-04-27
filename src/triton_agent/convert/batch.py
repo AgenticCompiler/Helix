@@ -18,6 +18,12 @@ from triton_agent.batch_utils import (
 from triton_agent.convert.models import ConvertOptions
 from triton_agent.convert.orchestration import build_convert_request, run_convert_request
 from triton_agent.models import AgentResult
+from triton_agent.npu_affinity import (
+    BatchNpuAffinityPool,
+    affinity_env_for_device,
+    configured_batch_npu_devices,
+    validate_batch_affinity_capacity,
+)
 
 _BATCH_CONVERT_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_", "triton_")
 _BATCH_CONVERT_EXCLUDED_NAMES = {"__init__.py"}
@@ -64,25 +70,41 @@ def run_convert_batch(
 
     output_lock = threading.Lock()
     stream = stdout or sys.stdout
+    devices = configured_batch_npu_devices()
+    validate_batch_affinity_capacity(devices, max_concurrency=max_concurrency)
+    pool = BatchNpuAffinityPool(devices) if devices is not None else None
+
+    def _run_item(
+        item: BatchConvertWorkspace,
+        forwarded_stdout: TextIO | None = None,
+        forwarded_stderr: TextIO | None = None,
+    ) -> AgentResult:
+        request = build_convert_request(
+            item.operator_file,
+            item.operator_file,
+            item.workspace,
+            options,
+        )
+        if pool is not None:
+            with pool.acquire() as device:
+                request.extra_env = affinity_env_for_device(device)
+                if forwarded_stdout is not None or forwarded_stderr is not None:
+                    return convert_request_runner(request, forwarded_stdout, forwarded_stderr)
+                return convert_request_runner(request)
+        if forwarded_stdout is not None or forwarded_stderr is not None:
+            return convert_request_runner(request, forwarded_stdout, forwarded_stderr)
+        return convert_request_runner(request)
 
     with ThreadPoolExecutor(max_workers=max_concurrency) as executor:
         futures: dict[Future[AgentResult], BatchConvertWorkspace] = {}
         for item in runnable:
-            request = build_convert_request(
-                item.operator_file,
-                item.operator_file,
-                item.workspace,
-                options,
-            )
             if options.show_output:
                 prefix = f"[{item.workspace.name}] "
                 prefixed_stream = PrefixedTextStream(stream, prefix, output_lock)
                 forwarded_stream = cast(TextIO, prefixed_stream)
-                futures[
-                    executor.submit(convert_request_runner, request, forwarded_stream, forwarded_stream)
-                ] = item
+                futures[executor.submit(_run_item, item, forwarded_stream, forwarded_stream)] = item
             else:
-                futures[executor.submit(convert_request_runner, request)] = item
+                futures[executor.submit(_run_item, item)] = item
 
         for future in as_completed(futures):
             item = futures[future]
