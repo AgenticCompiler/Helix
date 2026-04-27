@@ -391,6 +391,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertIn("Avg improvement: +35.0%", output)
             self.assertIn("Geomean speedup: 1.58x", output)
             self.assertIn("Total speedup: 1.67x", output)
+            self.assertIn("Metric source: kernel", output)
 
     def test_compare_perf_files_fails_when_case_ids_do_not_match(self) -> None:
         module = load_bench_runner_module()
@@ -507,6 +508,43 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertIn("baseline=NA (total-op=10.0)", output)
             self.assertIn("compare=total-op=7.5", output)
             self.assertIn("delta=-25.00%", output)
+            self.assertIn("Metric source: total-op", output)
+
+    def test_compare_perf_files_reports_mixed_metric_source_when_cases_mix_kernel_and_total_op(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "compare_perf.txt"
+            baseline.write_text(
+                (
+                    "latency-case-1: 10\n"
+                    "latency-case-2: NA\n"
+                    '# raw-op-statistic-case-2: {"ops":[{"op_type":"OpA","avg_time_us":4.0},{"op_type":"OpB","avg_time_us":6.0}]}\n'
+                ),
+                encoding="utf-8",
+            )
+            compare.write_text(
+                (
+                    "latency-case-1: 8\n"
+                    "latency-case-2: 3.0\n"
+                    '# raw-op-statistic-case-2: {"ops":[{"op_type":"OpA","avg_time_us":2.5},{"op_type":"OpB","avg_time_us":5.0}]}\n'
+                ),
+                encoding="utf-8",
+            )
+
+            stdout_path = Path(tmp) / "stdout.txt"
+            original_stdout = sys.stdout
+            try:
+                with stdout_path.open("w", encoding="utf-8") as handle:
+                    sys.stdout = handle
+                    return_code = module.compare_perf_files(baseline, compare)
+            finally:
+                sys.stdout = original_stdout
+
+            output = stdout_path.read_text(encoding="utf-8")
+            self.assertEqual(return_code, 0)
+            self.assertIn("Metric source: mixed (kernel + total-op fallback)", output)
 
     def test_compare_perf_files_preserves_original_display_precision(self) -> None:
         module = load_bench_runner_module()

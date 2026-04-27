@@ -117,6 +117,7 @@ def compare_perf_files(baseline_perf: Path, compare_perf: Path) -> int:
     print(f"Avg improvement: {_format_improvement_percent(avg_improvement)}")
     print(f"Geomean speedup: {_format_speedup(geomean_speedup)}")
     print(f"Total speedup: {_format_speedup(total_speedup)}")
+    print(f"Metric source: {_summarize_metric_source(baseline_entries)}")
     print(f"PASS: compared {len(baseline)} latency entries")
     return 0
 
@@ -863,3 +864,12 @@ def _format_speedup(value: float | None) -> str:
     if value is None:
         return "unknown"
     return f"{value:.2f}x"
+
+
+def _summarize_metric_source(entries: dict[str, PerfEntry]) -> str:
+    modes = {entry.comparison_mode for entry in entries.values()}
+    if modes == {"latency"}:
+        return "kernel"
+    if modes == {"total-op"}:
+        return "total-op"
+    return "mixed (kernel + total-op fallback)"

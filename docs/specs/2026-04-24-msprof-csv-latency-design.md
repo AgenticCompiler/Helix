@@ -29,6 +29,10 @@
 - `compare-perf` continues to compare only `latency-case-*` entries and ignores unrelated `# ...` comment lines in both baseline and compare files.
 - When a baseline `latency-case-*` value is `NA`, comparison falls back to the matching case's total profiled runtime.
   The fallback total is derived from the `# raw-op-statistic-case-*` JSON comment in both baseline and compare files so the metric stays aligned.
+- `compare-perf` also prints one final metric-source summary line for the overall comparison:
+  - `Metric source: kernel` when all compared cases use kernel latency
+  - `Metric source: total-op` when all compared cases use total-op fallback
+  - `Metric source: mixed (kernel + total-op fallback)` when the compared set mixes both modes
 
 ## Error Handling
 
@@ -59,3 +63,4 @@
   - baseline comment lines are ignored
   - compare-side comment lines are ignored
   - baseline cases with `NA` fall back to total-op comparison using raw-op statistics from both sides
+  - the final summary reports whether the comparison used kernel, total-op, or mixed metrics
