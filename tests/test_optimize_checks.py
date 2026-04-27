@@ -11,6 +11,68 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.optimize import checks as optimize_checks
 
+TRITON_ROUND_OPERATOR = """\
+import torch
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def add_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask)
+    y = tl.load(y_ptr + offsets, mask=mask)
+    tl.store(out_ptr + offsets, x + y, mask=mask)
+
+
+def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    out = torch.empty_like(x)
+    n_elements = out.numel()
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    add_kernel[grid](x, y, out, n_elements, BLOCK_SIZE=128)
+    return out
+"""
+
+MULTILINE_TRITON_ROUND_OPERATOR = """\
+import torch
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def add_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask)
+    y = tl.load(y_ptr + offsets, mask=mask)
+    tl.store(out_ptr + offsets, x + y, mask=mask)
+
+
+def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    out = torch.empty_like(x)
+    n_elements = out.numel()
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    add_kernel[
+        grid
+    ](
+        x,
+        y,
+        out,
+        n_elements,
+        BLOCK_SIZE=128,
+    )
+    return out
+"""
+
+PURE_TORCH_ROUND_OPERATOR = """\
+import torch
+
+
+def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    return torch.add(x, y)
+"""
+
 
 class OptimizeCheckTests(unittest.TestCase):
     def test_optimize_checks_delegate_to_optimize_check_script_module(self) -> None:
@@ -117,6 +179,44 @@ class OptimizeCheckTests(unittest.TestCase):
             self.assertEqual(result.decision, "revise-required")
             self.assertIn("missing perf-analysis.md", result.issues)
 
+    def test_check_round_rejects_pure_pytorch_operator_rewrite(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            round_dir = self._write_round(
+                workdir,
+                "opt-round-1",
+                next_recommendation="continue",
+                operator_source=PURE_TORCH_ROUND_OPERATOR,
+            )
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertFalse(result.ok)
+            self.assertEqual(result.kind, "round")
+            self.assertEqual(result.decision, "revise-required")
+            self.assertIn(
+                "round operator no longer preserves a recognizable Triton kernel launch path",
+                result.issues,
+            )
+
+    def test_check_round_accepts_multiline_triton_launch_syntax(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            round_dir = self._write_round(
+                workdir,
+                "opt-round-1",
+                next_recommendation="continue",
+                operator_source=MULTILINE_TRITON_ROUND_OPERATOR,
+            )
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertTrue(result.ok)
+            self.assertEqual(result.kind, "round")
+            self.assertEqual(result.decision, "pass")
+
     def _write_baseline(self, workdir: Path) -> None:
         baseline_dir = workdir / "baseline"
         baseline_dir.mkdir(exist_ok=True)
@@ -148,11 +248,12 @@ class OptimizeCheckTests(unittest.TestCase):
         *,
         next_recommendation: str,
         perf_analysis_path: Optional[str] = None,
+        operator_source: str = TRITON_ROUND_OPERATOR,
     ) -> Path:
         round_dir = workdir / round_name
         round_dir.mkdir(exist_ok=True)
         (workdir / "opt-note.md").write_text("## Round\n", encoding="utf-8")
-        (round_dir / "kernel.py").write_text(f"print('{round_name}')\n", encoding="utf-8")
+        (round_dir / "kernel.py").write_text(operator_source, encoding="utf-8")
         (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
         (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
         (round_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")

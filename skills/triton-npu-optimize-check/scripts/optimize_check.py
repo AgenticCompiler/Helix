@@ -5,6 +5,7 @@ import json
 import sys
 from dataclasses import asdict
 from pathlib import Path
+from kernel_continuity_check import KernelContinuityResult, analyze_triton_kernel_continuity
 from optimize_check_contract import (
     BaselineArtifactsInspection,
     BaselineState,
@@ -23,9 +24,11 @@ from optimize_check_contract import (
 __all__ = [
     "BaselineArtifactsInspection",
     "BaselineState",
+    "KernelContinuityResult",
     "OptimizeCheckResult",
     "RoundArtifactsInspection",
     "RoundState",
+    "analyze_triton_kernel_continuity",
     "baseline_gate_issues",
     "build_parser",
     "check_baseline",

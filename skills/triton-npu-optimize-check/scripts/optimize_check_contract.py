@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from kernel_continuity_check import analyze_triton_kernel_continuity
+
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "references" / "contract.json"
 CONTRACT_DATA = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 BASELINE_STATE_FIELDS = {
@@ -302,7 +304,8 @@ def check_baseline(baseline_dir_path: Path) -> OptimizeCheckResult:
 
 
 def check_round(round_dir: Path) -> OptimizeCheckResult:
-    artifact_issues = inspect_round_artifacts(round_dir).issues
+    artifact_inspection = inspect_round_artifacts(round_dir)
+    artifact_issues = artifact_inspection.issues
     if artifact_issues:
         return _build_result(
             kind="round",
@@ -355,6 +358,22 @@ def check_round(round_dir: Path) -> OptimizeCheckResult:
             kind="round",
             decision="revise-required",
             issues=tuple(semantic_issues),
+        )
+
+    operator_path = artifact_inspection.operator_path
+    if operator_path is None:
+        return _build_result(
+            kind="round",
+            decision="revise-required",
+            issues=("missing round-local operator output",),
+        )
+
+    continuity = analyze_triton_kernel_continuity(operator_path)
+    if not continuity.ok:
+        return _build_result(
+            kind="round",
+            decision="revise-required",
+            issues=((continuity.reason or "round operator failed Triton continuity check"),),
         )
 
     return _build_result(kind="round", decision="pass", issues=())
