@@ -68,12 +68,13 @@ Optimize analysis is layered.
 
 - Inspect current code structure and benchmark behavior before choosing a direction.
 - Read `references/patterns/index.md`.
-- Read only the one or two detailed pattern references that match a real hypothesis.
+- Very strongly consider using subagents to read pattern references, scan for potentially useful optimization ideas, and report back which patterns look promising for the current kernel.
+- When subagents are available, prefer using them to broaden pattern exploration before committing to the round hypothesis.
 - Pattern references are helpful guidance, not the only allowed source of ideas.
 - If your own Triton, Ascend NPU, or kernel-optimization knowledge suggests a stronger direction than the current pattern library, you may use that direction directly as long as you still record the hypothesis clearly and validate it with the same correctness and benchmark gates.
 - You do not need an existing pattern file to justify every optimization round.
 - When the kernel is structurally matmul-like, read the classic tiled matmul pattern reference before rewriting the hot loop so the round records the standard tiled-matmul shape, dtype, and masking rules explicitly.
-- Do not treat pattern triage as permission for blind pattern search.
+- Do not treat pattern triage as permission for aimless pattern search without tying the candidate patterns back to the kernel structure or observed evidence.
 
 ### profiling diagnosis
 

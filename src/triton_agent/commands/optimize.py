@@ -24,6 +24,8 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
             reset_optimize=options.reset_optimize,
             test_mode=options.test_mode,
             bench_mode=options.bench_mode,
+            target_chip=options.target_chip,
+            enable_cann_ext_api=options.enable_cann_ext_api,
         )
     except ValueError as exc:
         parser.error(str(exc))
@@ -65,6 +67,8 @@ def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
             reset_optimize=options.reset_optimize,
             test_mode=options.test_mode,
             bench_mode=options.bench_mode,
+            target_chip=options.target_chip,
+            enable_cann_ext_api=options.enable_cann_ext_api,
         )
     except ValueError as exc:
         parser.error(str(exc))
@@ -90,6 +94,7 @@ def _validate_supervise_mode(args: argparse.Namespace) -> Literal["on", "off"]:
 def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptions:
     target_chip = cast(Literal["A3", "A5"], getattr(args, "target_chip", "A5"))
     compiler_source_enabled = bool(getattr(args, "enable_compiler_source_analysis", False))
+    cann_ext_api_enabled = bool(getattr(args, "enable_cann_ext_api", False))
     return OptimizeRunOptions(
         agent_name=args.agent,
         interact=bool(getattr(args, "interact", False)),
@@ -108,6 +113,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         prompt=getattr(args, "prompt", None),
         target_chip=target_chip,
         compiler_source_analysis="auto" if compiler_source_enabled else "off",
+        enable_cann_ext_api=cann_ext_api_enabled,
     )
 
 

@@ -385,6 +385,31 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             warnings = manager.cleanup_unsupervised_session(state)
             self.assertEqual(warnings, [])
 
+    def test_prepare_unsupervised_mentions_cann_ext_api_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            manager = OptimizeSessionArtifactsManager()
+            state = manager.prepare_unsupervised_session(
+                workdir,
+                operator_path=operator,
+                agent_name="codex",
+                test_mode="differential",
+                bench_mode="standalone",
+                enable_cann_ext_api=True,
+            )
+
+            guidance_content = state.guidance_path.read_text(encoding="utf-8")
+            self.assertIn("CANN Triton extension API pattern access is enabled", guidance_content)
+            self.assertIn("triton-npu-cann-ext-api-patterns", guidance_content)
+            self.assertIn("high-value optimization direction", guidance_content)
+            self.assertIn("Give serious attention", guidance_content)
+
+            warnings = manager.cleanup_unsupervised_session(state)
+            self.assertEqual(warnings, [])
+
     def test_prepare_supervised_mentions_compiler_source_when_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
@@ -405,6 +430,26 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertIn("Treat the compiler source checkout as read-only.", guidance_content)
             self.assertIn("then IR evidence, then compiler source", guidance_content)
             self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", guidance_content)
+
+            warnings = manager.cleanup_supervised_session(state)
+            self.assertEqual(warnings, [])
+
+    def test_prepare_supervised_mentions_cann_ext_api_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+
+            manager = OptimizeSessionArtifactsManager()
+            state = manager.prepare_supervised_session(
+                workdir,
+                agent_name="codex",
+                enable_cann_ext_api=True,
+            )
+
+            guidance_content = state.guidance_path.read_text(encoding="utf-8")
+            self.assertIn("CANN Triton extension API pattern access is enabled", guidance_content)
+            self.assertIn("triton-npu-cann-ext-api-patterns", guidance_content)
+            self.assertIn("high-value optimization direction", guidance_content)
+            self.assertIn("Give serious attention", guidance_content)
 
             warnings = manager.cleanup_supervised_session(state)
             self.assertEqual(warnings, [])

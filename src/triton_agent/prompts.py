@@ -60,6 +60,7 @@ def build_prompt(
     target_chip: str | None = None,
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
+    enable_cann_ext_api: bool = False,
 ) -> str:
     should_resume_existing_session = (
         continue_optimize if resume_existing_session is None else resume_existing_session
@@ -187,6 +188,7 @@ def build_prompt(
                     resume_existing_session=should_resume_existing_session,
                     compiler_source_path=compiler_source_path,
                     compiler_source_commit=compiler_source_commit,
+                    enable_cann_ext_api=enable_cann_ext_api,
                 ).splitlines()
             )
         else:
@@ -201,6 +203,7 @@ def build_prompt(
                     resume_existing_session=should_resume_existing_session,
                     compiler_source_path=compiler_source_path,
                     compiler_source_commit=compiler_source_commit,
+                    enable_cann_ext_api=enable_cann_ext_api,
                 ).splitlines()
             )
     else:

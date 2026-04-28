@@ -44,6 +44,17 @@ def compiler_source_analysis_lines(
     ]
 
 
+def cann_ext_api_lines(*, enabled: bool) -> list[str]:
+    if not enabled:
+        return []
+    return [
+        "CANN Triton extension API pattern access is enabled for this optimize run.",
+        "Use the staged `triton-npu-cann-ext-api-patterns` skill for the specialized A5-only pattern guidance.",
+        "Treat these extension APIs and patterns as a high-value optimization direction when the kernel structure matches.",
+        "Give serious attention to whether CANN extension API patterns can improve this kernel instead of treating them as an edge-case option.",
+    ]
+
+
 def _shared_optimize_prompt_lines(
     *,
     target_chip: str,
@@ -80,6 +91,7 @@ def _finalize_optimize_prompt_lines(
     resume_existing_session: bool,
     compiler_source_path: Path | None,
     compiler_source_commit: str | None,
+    enable_cann_ext_api: bool,
 ) -> str:
     lines.extend(
         compiler_source_analysis_lines(
@@ -87,6 +99,7 @@ def _finalize_optimize_prompt_lines(
             compiler_source_commit=compiler_source_commit,
         )
     )
+    lines.extend(cann_ext_api_lines(enabled=enable_cann_ext_api))
     lines.extend(baseline_state_contract_lines())
     if resume_existing_session:
         lines.extend(
@@ -109,6 +122,7 @@ def build_optimize_worker_prompt(
     resume_existing_session: bool = False,
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
+    enable_cann_ext_api: bool = False,
 ) -> str:
     del input_path, output_path, test_mode, bench_mode, min_rounds
     lines = [
@@ -131,6 +145,7 @@ def build_optimize_worker_prompt(
         resume_existing_session=resume_existing_session,
         compiler_source_path=compiler_source_path,
         compiler_source_commit=compiler_source_commit,
+        enable_cann_ext_api=enable_cann_ext_api,
     )
 
 
@@ -145,6 +160,7 @@ def build_optimize_unsupervised_prompt(
     resume_existing_session: bool = False,
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
+    enable_cann_ext_api: bool = False,
 ) -> str:
     del input_path, output_path, test_mode, bench_mode
     lines = [
@@ -173,6 +189,7 @@ def build_optimize_unsupervised_prompt(
         resume_existing_session=resume_existing_session,
         compiler_source_path=compiler_source_path,
         compiler_source_commit=compiler_source_commit,
+        enable_cann_ext_api=enable_cann_ext_api,
     )
 
 

@@ -97,6 +97,7 @@ class OptimizeSessionArtifactsManager:
         agent_name: str,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
+        enable_cann_ext_api: bool = False,
     ) -> SharedOptimizeSessionArtifactsState:
         """Prepare only the artifacts needed by a single-agent optimize session."""
         archive_state = self._archives.prepare(workdir)
@@ -108,6 +109,7 @@ class OptimizeSessionArtifactsManager:
             agent_name=agent_name,
             compiler_source_path=compiler_source_path,
             compiler_source_commit=compiler_source_commit,
+            enable_cann_ext_api=enable_cann_ext_api,
         )
         return SharedOptimizeSessionArtifactsState(
             memory_file=memory_file_state,
@@ -120,6 +122,7 @@ class OptimizeSessionArtifactsManager:
         agent_name: str,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
+        enable_cann_ext_api: bool = False,
     ) -> OptimizeSessionArtifactsState:
         """Prepare the full artifact set used by worker/supervisor orchestration."""
         runtime_handoff_state = self._runtime_handoffs.prepare(workdir)
@@ -132,6 +135,7 @@ class OptimizeSessionArtifactsManager:
             agent_name=agent_name,
             compiler_source_path=compiler_source_path,
             compiler_source_commit=compiler_source_commit,
+            enable_cann_ext_api=enable_cann_ext_api,
         )
         return OptimizeSessionArtifactsState(
             memory_file=memory_file_state,

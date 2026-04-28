@@ -5,7 +5,11 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Optional
 
-from triton_agent.optimize.prompts import compiler_source_analysis_lines, layered_analysis_lines
+from triton_agent.optimize.prompts import (
+    cann_ext_api_lines,
+    compiler_source_analysis_lines,
+    layered_analysis_lines,
+)
 
 
 @dataclass
@@ -56,7 +60,7 @@ _UNSUPERVISED_GUIDANCE_TEMPLATE = (
         Use `{test_mode}` correctness validation for this optimize session.
         Use `{bench_mode}` benchmark validation for this optimize session.
         Optimize the operator at `{operator_name}`.
-        {analysis_block}{compiler_source_block}"""
+        {analysis_block}{compiler_source_block}{cann_ext_api_block}"""
     )
 )
 
@@ -80,7 +84,7 @@ _SHARED_GUIDANCE_TEMPLATE = (
         Use `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md` as live handoff files.
         Treat `baseline/` as the canonical optimize baseline.
         Use `compare-perf` as the authoritative source for round performance summaries.
-        {analysis_block}{compiler_source_block}"""
+        {analysis_block}{compiler_source_block}{cann_ext_api_block}"""
     )
 )
 
@@ -103,6 +107,7 @@ class MemoryFileManager:
         agent_name: str,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
+        enable_cann_ext_api: bool = False,
     ) -> MemoryFileState:
         """Write the single-agent optimize memory file into the workspace root."""
         return self._prepare(
@@ -115,6 +120,7 @@ class MemoryFileManager:
                 bench_mode=bench_mode,
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
+                enable_cann_ext_api=enable_cann_ext_api,
             ),
         )
 
@@ -125,6 +131,7 @@ class MemoryFileManager:
         agent_name: str,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
+        enable_cann_ext_api: bool = False,
     ) -> MemoryFileState:
         """Write the shared orchestration memory file used by supervised optimize."""
         return self._prepare(
@@ -134,6 +141,7 @@ class MemoryFileManager:
                 guidance_filename=self.guidance_filename(agent_name),
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
+                enable_cann_ext_api=enable_cann_ext_api,
             ),
         )
 
@@ -210,6 +218,7 @@ class MemoryFileManager:
         bench_mode: str,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
+        enable_cann_ext_api: bool = False,
     ) -> str:
         return _UNSUPERVISED_GUIDANCE_TEMPLATE.format(
             guidance_filename=guidance_filename,
@@ -225,6 +234,9 @@ class MemoryFileManager:
                     compiler_source_commit=compiler_source_commit,
                 )
             ),
+            cann_ext_api_block=_render_line_block(
+                cann_ext_api_lines(enabled=enable_cann_ext_api)
+            ),
         )
 
     def _render_shared_guidance(
@@ -233,6 +245,7 @@ class MemoryFileManager:
         guidance_filename: str,
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
+        enable_cann_ext_api: bool = False,
     ) -> str:
         return _SHARED_GUIDANCE_TEMPLATE.format(
             guidance_filename=guidance_filename,
@@ -244,5 +257,8 @@ class MemoryFileManager:
                     compiler_source_path=compiler_source_path,
                     compiler_source_commit=compiler_source_commit,
                 )
+            ),
+            cann_ext_api_block=_render_line_block(
+                cann_ext_api_lines(enabled=enable_cann_ext_api)
             ),
         )

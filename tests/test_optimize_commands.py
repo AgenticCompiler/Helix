@@ -47,6 +47,42 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
         self.assertEqual(options.compiler_source_analysis, "auto")
         self.assertFalse(hasattr(options, "compiler_source_path"))
 
+    def test_optimize_run_options_maps_cann_ext_api(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "optimize",
+                "-i",
+                "kernel.py",
+                "--enable-cann-ext-api",
+            ]
+        )
+
+        options = optimize_run_options_from_args(args)
+
+        self.assertTrue(options.enable_cann_ext_api)
+
+    def test_handle_optimize_rejects_cann_ext_api_without_a5(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            operator = Path(tmp) / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            args = parser.parse_args(
+                [
+                    "optimize",
+                    "-i",
+                    str(operator),
+                    "--target-chip",
+                    "A3",
+                    "--enable-cann-ext-api",
+                ]
+            )
+
+            with self.assertRaises(SystemExit) as exc:
+                handle_optimize(parser, args)
+
+            self.assertEqual(exc.exception.code, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

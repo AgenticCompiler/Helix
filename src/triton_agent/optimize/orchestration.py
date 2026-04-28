@@ -17,7 +17,7 @@ from triton_agent.skills import SkillLinkManager
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
-OPTIMIZE_STAGED_SKILLS = (
+_BASE_OPTIMIZE_STAGED_SKILLS = (
     "triton-npu-optimize",
     "triton-npu-prepare-optimize-baseline",
     "triton-npu-gen-test",
@@ -30,6 +30,14 @@ OPTIMIZE_STAGED_SKILLS = (
     "triton-npu-analyze-compiler-source",
     "triton-npu-repair-guide",
 )
+
+_CANN_EXT_API_SKILL = "triton-npu-cann-ext-api-patterns"
+
+
+def _optimize_staged_skills(*, enable_cann_ext_api: bool) -> tuple[str, ...]:
+    if not enable_cann_ext_api:
+        return _BASE_OPTIMIZE_STAGED_SKILLS
+    return (*_BASE_OPTIMIZE_STAGED_SKILLS, _CANN_EXT_API_SKILL)
 
 
 def build_optimize_request(
@@ -61,39 +69,77 @@ def build_optimize_request(
             mode=options.compiler_source_analysis,
         )
     if compiler_source is not None:
-        built_prompt = build_prompt(
-            CommandKind.OPTIMIZE,
-            input_path,
-            input_path,
-            output_path,
-            test_mode,
-            bench_mode,
-            False,
-            options.remote,
-            options.remote_workdir,
-            options.min_rounds,
-            resolution.resume_existing_session,
-            supervise=options.supervise,
-            target_chip=options.target_chip,
-            compiler_source_path=compiler_source.path,
-            compiler_source_commit=compiler_source.commit,
-        )
+        if options.enable_cann_ext_api:
+            built_prompt = build_prompt(
+                CommandKind.OPTIMIZE,
+                input_path,
+                input_path,
+                output_path,
+                test_mode,
+                bench_mode,
+                False,
+                options.remote,
+                options.remote_workdir,
+                options.min_rounds,
+                resolution.resume_existing_session,
+                supervise=options.supervise,
+                target_chip=options.target_chip,
+                compiler_source_path=compiler_source.path,
+                compiler_source_commit=compiler_source.commit,
+                enable_cann_ext_api=True,
+            )
+        else:
+            built_prompt = build_prompt(
+                CommandKind.OPTIMIZE,
+                input_path,
+                input_path,
+                output_path,
+                test_mode,
+                bench_mode,
+                False,
+                options.remote,
+                options.remote_workdir,
+                options.min_rounds,
+                resolution.resume_existing_session,
+                supervise=options.supervise,
+                target_chip=options.target_chip,
+                compiler_source_path=compiler_source.path,
+                compiler_source_commit=compiler_source.commit,
+            )
     else:
-        built_prompt = build_prompt(
-            CommandKind.OPTIMIZE,
-            input_path,
-            input_path,
-            output_path,
-            test_mode,
-            bench_mode,
-            False,
-            options.remote,
-            options.remote_workdir,
-            options.min_rounds,
-            resolution.resume_existing_session,
-            supervise=options.supervise,
-            target_chip=options.target_chip,
-        )
+        if options.enable_cann_ext_api:
+            built_prompt = build_prompt(
+                CommandKind.OPTIMIZE,
+                input_path,
+                input_path,
+                output_path,
+                test_mode,
+                bench_mode,
+                False,
+                options.remote,
+                options.remote_workdir,
+                options.min_rounds,
+                resolution.resume_existing_session,
+                supervise=options.supervise,
+                target_chip=options.target_chip,
+                enable_cann_ext_api=True,
+            )
+        else:
+            built_prompt = build_prompt(
+                CommandKind.OPTIMIZE,
+                input_path,
+                input_path,
+                output_path,
+                test_mode,
+                bench_mode,
+                False,
+                options.remote,
+                options.remote_workdir,
+                options.min_rounds,
+                resolution.resume_existing_session,
+                supervise=options.supervise,
+                target_chip=options.target_chip,
+            )
     prompt = append_additional_user_instructions(
         built_prompt,
         options.prompt,
@@ -117,7 +163,7 @@ def build_optimize_request(
         continue_optimize=resolution.resume_existing_session,
         no_agent_session=options.no_agent_session,
         supervise=options.supervise,
-        staged_skill_names=OPTIMIZE_STAGED_SKILLS,
+        staged_skill_names=_optimize_staged_skills(enable_cann_ext_api=options.enable_cann_ext_api),
         optimize_role="worker" if options.supervise == "on" else None,
         target_chip=options.target_chip,
         compiler_source_analysis=options.compiler_source_analysis,

@@ -18,6 +18,10 @@ from triton_agent.optimize.prompts import build_optimize_supervisor_prompt
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
+def _request_enables_cann_ext_api(request: AgentRequest) -> bool:
+    return request.staged_skill_names is not None and "triton-npu-cann-ext-api-patterns" in request.staged_skill_names
+
+
 class RecoveryRunnerAdapter:
     def __init__(
         self,
@@ -274,6 +278,7 @@ def execute_supervised_optimize(
         agent_name=request.agent_name,
         compiler_source_path=request.compiler_source_path,
         compiler_source_commit=request.compiler_source_commit,
+        enable_cann_ext_api=_request_enables_cann_ext_api(request),
     )
     if request.verbose:
         emit_verbose_lines(
@@ -319,6 +324,7 @@ def execute_unsupervised_optimize(
         agent_name=request.agent_name,
         compiler_source_path=request.compiler_source_path,
         compiler_source_commit=request.compiler_source_commit,
+        enable_cann_ext_api=_request_enables_cann_ext_api(request),
     )
     if request.verbose:
         emit_verbose_lines(

@@ -36,6 +36,7 @@ class OptimizeRunOptions:
     prompt: str | None
     target_chip: Literal["A3", "A5"] = "A5"
     compiler_source_analysis: Literal["off", "auto"] = "off"
+    enable_cann_ext_api: bool = False
 
 
 @dataclass(frozen=True)

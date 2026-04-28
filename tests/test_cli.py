@@ -862,6 +862,19 @@ class CliParserTests(unittest.TestCase):
         self.assertTrue(args.enable_compiler_source_analysis)
         self.assertFalse(hasattr(args, "compiler_source_path"))
 
+    def test_optimize_accepts_cann_ext_api_option(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "optimize",
+                "-i",
+                "kernel.py",
+                "--enable-cann-ext-api",
+            ]
+        )
+
+        self.assertTrue(args.enable_cann_ext_api)
+
     def test_optimize_batch_accepts_compiler_source_analysis_options(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
@@ -875,6 +888,19 @@ class CliParserTests(unittest.TestCase):
 
         self.assertTrue(args.enable_compiler_source_analysis)
         self.assertFalse(hasattr(args, "compiler_source_path"))
+
+    def test_optimize_batch_accepts_cann_ext_api_option(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "optimize-batch",
+                "-i",
+                "operators",
+                "--enable-cann-ext-api",
+            ]
+        )
+
+        self.assertTrue(args.enable_cann_ext_api)
 
     def test_optimize_command_defaults_target_chip_to_a5(self) -> None:
         parser = build_parser()
@@ -2075,6 +2101,29 @@ class PathResolutionTests(unittest.TestCase):
 
             self.assertEqual(exc.exception.code, 2)
             self.assertIn("--reset-optimize requires --resume fresh", stderr.getvalue())
+
+    def test_main_optimize_rejects_cann_ext_api_without_a5(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(
+                        [
+                            "optimize",
+                            "-i",
+                            str(operator),
+                            "--target-chip",
+                            "A3",
+                            "--enable-cann-ext-api",
+                        ]
+                    )
+
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn("--enable-cann-ext-api requires --target-chip A5", stderr.getvalue())
 
     def test_main_optimize_resume_auto_uses_fresh_for_no_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3353,6 +3402,29 @@ class PromptTests(unittest.TestCase):
         self.assertIn("then IR evidence, then compiler source", prompt)
         self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", prompt)
 
+    def test_build_optimize_worker_prompt_mentions_cann_ext_api_when_enabled(self) -> None:
+        prompt = build_optimize_worker_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            enable_cann_ext_api=True,
+        )
+
+        self.assertIn("CANN Triton extension API pattern access is enabled for this optimize run.", prompt)
+        self.assertIn("Use the staged `triton-npu-cann-ext-api-patterns` skill", prompt)
+
+    def test_build_optimize_worker_prompt_omits_cann_ext_api_when_disabled(self) -> None:
+        prompt = build_optimize_worker_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+        )
+
+        self.assertNotIn("CANN Triton extension API pattern access is enabled", prompt)
+        self.assertNotIn("triton-npu-cann-ext-api-patterns", prompt)
+
     def test_build_optimize_unsupervised_prompt_mentions_baseline_state_contract(self) -> None:
         prompt = build_optimize_unsupervised_prompt(
             Path("/tmp/op.py"),
@@ -3412,6 +3484,18 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Compiler source commit: abc123.", prompt)
         self.assertIn("Use the staged `triton-npu-analyze-compiler-source` skill", prompt)
         self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", prompt)
+
+    def test_build_optimize_unsupervised_prompt_mentions_cann_ext_api_when_enabled(self) -> None:
+        prompt = build_optimize_unsupervised_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            enable_cann_ext_api=True,
+        )
+
+        self.assertIn("CANN Triton extension API pattern access is enabled for this optimize run.", prompt)
+        self.assertIn("Use the staged `triton-npu-cann-ext-api-patterns` skill", prompt)
 
     def test_build_optimize_resume_prompt_preserves_compiler_source_when_enabled(self) -> None:
         prompt = build_optimize_resume_prompt(
