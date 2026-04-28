@@ -91,7 +91,9 @@ Notes:
 - Always pass both `--bench-file` and `--operator-file`.
 - If `--bench-mode` is omitted, the command reads `# bench-mode: ...` from the benchmark file.
 - Use `--bench-mode standalone` or `--bench-mode msprof` only when you need to override the embedded metadata.
-- In `msprof` mode, `run-bench` aggregates all kernel names declared by `# kernels:` and remains backward-compatible with legacy single `# kernel:` metadata.
+- In `msprof` mode, `run-bench` aggregates the stable-order union of benchmark metadata kernels and `@triton.jit` kernels discovered from the runtime `--operator-file`.
+- In `msprof` mode, a failed benchmark case does not stop later cases from running; the generated perf file keeps successful cases and records `# latency-error-case-*` comments for failed ones.
+- In `msprof` mode, kernel-miss cases still write `latency-case-*: NA`, but also include raw op statistics plus a `# latency-error-case-*` explanation.
 
 Examples:
 

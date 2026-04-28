@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import csv
 import json
 import math
@@ -8,9 +9,10 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TypedDict
+from typing import Collection, Literal, TextIO, TypedDict, Union, cast
 
 from run_runtime import (
+    RemoteSpec,
     ResultPayload,
     cleanup_remote_workspace,
     copy_file_to_remote,
@@ -24,6 +26,7 @@ from run_runtime import (
 )
 
 _LOCAL_MSPROF_OUTPUT_DIR_ENV = "TRITON_AGENT_MSPROF_OUTPUT_DIR"
+_MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched op_statistic csv"
 
 
 class MsprofAvgRow(TypedDict):
@@ -55,6 +58,24 @@ class PerfValueMap(dict[str, float]):
     ) -> None:
         super().__init__(values)
         self.comparison_modes = comparison_modes
+
+
+RequiredLatencyIds = Union[Collection[str], dict[str, PerfEntry], PerfValueMap]
+
+
+@dataclass(frozen=True)
+class KernelResolution:
+    kernel_names: list[str]
+    kernel_source: str
+
+
+@dataclass(frozen=True)
+class MsprofCaseRecord:
+    case_idx: int
+    kernel_names: list[str]
+    kernel_source: str
+    metrics: MsprofMetrics | None = None
+    error_message: str | None = None
 
 
 def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
@@ -126,7 +147,7 @@ def parse_perf_file(path: Path) -> dict[str, float]:
     return _parse_perf_file(path)
 
 
-def parse_required_perf_file(path: Path, required_latency_ids) -> dict[str, float]:
+def parse_required_perf_file(path: Path, required_latency_ids: RequiredLatencyIds) -> dict[str, float]:
     return _parse_required_perf_file(path, required_latency_ids)
 
 
@@ -148,7 +169,7 @@ def run_remote_bench(
     remote_workdir: str | None,
     keep_remote_workdir: bool = False,
     verbose: bool = False,
-    stderr=None,
+    stderr: TextIO | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
@@ -202,12 +223,12 @@ def _run_local_bench_standalone(
 
 
 def _run_remote_bench_standalone(
-    spec,
+    spec: RemoteSpec,
     remote_workspace: str,
     bench_file: Path,
     operator_file: Path,
     verbose: bool = False,
-    stderr=None,
+    stderr: TextIO | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
     result = run_remote_command_streaming(
         spec,
@@ -229,7 +250,7 @@ def _run_local_bench_msprof(
     bench_file: Path,
     operator_file: Path,
 ) -> tuple[ResultPayload, Path | None]:
-    kernel_names = resolve_bench_kernel_names(bench_file)
+    resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
     count_result = run_buffered_process(
         [sys.executable, bench_file.name, "--num-bench"],
         str(bench_file.parent),
@@ -242,8 +263,11 @@ def _run_local_bench_msprof(
     operator_arg = os.path.relpath(operator_file, bench_file.parent)
     stdout_chunks = [str(count_result["stdout"])]
     stderr_chunks = [str(count_result["stderr"])]
-    normalized_lines: list[str] = []
+    case_records: list[MsprofCaseRecord] = []
     preserved_run_dir = _create_local_msprof_preserved_run_dir()
+    had_case_failures = False
+    had_stalls = False
+    session_id: str | None = None
 
     for case_idx in range(1, case_count + 1):
         output_dir, temp_dir = _create_local_msprof_output_dir(case_idx, preserved_run_dir)
@@ -261,37 +285,72 @@ def _run_local_bench_msprof(
             result = run_streaming_process(command, str(bench_file.parent), stall_timeout_seconds=900)
             stdout_chunks.append(str(result["stdout"]))
             stderr_chunks.append(str(result["stderr"]))
+            had_stalls = had_stalls or bool(result["stalled"])
+            if result["session_id"] is not None:
+                session_id = result["session_id"]
             if not result_succeeded(result):
-                return (
-                    make_result(
-                        return_code=int(result["return_code"]),
-                        stdout="".join(stdout_chunks),
-                        stderr="".join(stderr_chunks),
-                        stalled=bool(result["stalled"]),
-                        session_id=result["session_id"],
+                had_case_failures = True
+                case_records.append(
+                    MsprofCaseRecord(
+                        case_idx=case_idx,
+                        kernel_names=resolution.kernel_names,
+                        kernel_source=resolution.kernel_source,
+                        error_message=_format_msprof_command_failure(result),
                     ),
-                    None,
                 )
+                continue
 
-            metrics = _read_local_msprof_metrics(output_dir, kernel_names)
-            normalized_lines.extend(_format_msprof_perf_lines(case_idx, metrics))
+            try:
+                metrics = _read_local_msprof_metrics(output_dir, resolution.kernel_names)
+            except (FileNotFoundError, ValueError) as exc:
+                had_case_failures = True
+                case_records.append(
+                    MsprofCaseRecord(
+                        case_idx=case_idx,
+                        kernel_names=resolution.kernel_names,
+                        kernel_source=resolution.kernel_source,
+                        error_message=str(exc),
+                    )
+                )
+                continue
+
+            case_records.append(
+                MsprofCaseRecord(
+                    case_idx=case_idx,
+                    kernel_names=resolution.kernel_names,
+                    kernel_source=resolution.kernel_source,
+                    metrics=metrics,
+                )
+            )
         finally:
             if temp_dir is not None:
                 temp_dir.cleanup()
 
-    perf_path = _write_perf_lines(_perf_output_path(bench_file, operator_file), normalized_lines)
-    return (make_result(return_code=0, stdout="".join(stdout_chunks), stderr="".join(stderr_chunks)), perf_path)
+    perf_path = _write_perf_lines(
+        _perf_output_path(bench_file, operator_file),
+        _render_msprof_case_records(case_records),
+    )
+    return (
+        make_result(
+            return_code=1 if had_case_failures else 0,
+            stdout="".join(stdout_chunks),
+            stderr="".join(stderr_chunks),
+            stalled=had_stalls,
+            session_id=session_id,
+        ),
+        perf_path,
+    )
 
 
 def _run_remote_bench_msprof(
-    spec,
+    spec: RemoteSpec,
     remote_workspace: str,
     bench_file: Path,
     operator_file: Path,
     verbose: bool = False,
-    stderr=None,
+    stderr: TextIO | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
-    kernel_names = resolve_bench_kernel_names(bench_file)
+    resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
     count_result = run_remote_command_buffered(
         spec,
         remote_workspace,
@@ -305,7 +364,10 @@ def _run_remote_bench_msprof(
     case_count = _parse_case_count(str(count_result["stdout"]))
     stdout_chunks = [str(count_result["stdout"])]
     stderr_chunks = [str(count_result["stderr"])]
-    normalized_lines: list[str] = []
+    case_records: list[MsprofCaseRecord] = []
+    had_case_failures = False
+    had_stalls = False
+    session_id: str | None = None
 
     for case_idx in range(1, case_count + 1):
         output_dir = _create_remote_msprof_output_dir(
@@ -333,28 +395,50 @@ def _run_remote_bench_msprof(
             )
             stdout_chunks.append(str(result["stdout"]))
             stderr_chunks.append(str(result["stderr"]))
+            had_stalls = had_stalls or bool(result["stalled"])
+            if result["session_id"] is not None:
+                session_id = result["session_id"]
             if not result_succeeded(result):
-                return (
-                    make_result(
-                        return_code=int(result["return_code"]),
-                        stdout="".join(stdout_chunks),
-                        stderr="".join(stderr_chunks),
-                        stalled=bool(result["stalled"]),
-                        session_id=result["session_id"],
+                had_case_failures = True
+                case_records.append(
+                    MsprofCaseRecord(
+                        case_idx=case_idx,
+                        kernel_names=resolution.kernel_names,
+                        kernel_source=resolution.kernel_source,
+                        error_message=_format_msprof_command_failure(result),
                     ),
-                    None,
-                    remote_workspace,
                 )
+                continue
 
-            metrics = _read_remote_msprof_metrics(
-                spec,
-                remote_workspace,
-                output_dir,
-                kernel_names,
-                verbose=verbose,
-                stderr=stderr,
+            try:
+                metrics = _read_remote_msprof_metrics(
+                    spec,
+                    remote_workspace,
+                    output_dir,
+                    resolution.kernel_names,
+                    verbose=verbose,
+                    stderr=stderr,
+                )
+            except RuntimeError as exc:
+                had_case_failures = True
+                case_records.append(
+                    MsprofCaseRecord(
+                        case_idx=case_idx,
+                        kernel_names=resolution.kernel_names,
+                        kernel_source=resolution.kernel_source,
+                        error_message=str(exc),
+                    )
+                )
+                continue
+
+            case_records.append(
+                MsprofCaseRecord(
+                    case_idx=case_idx,
+                    kernel_names=resolution.kernel_names,
+                    kernel_source=resolution.kernel_source,
+                    metrics=metrics,
+                )
             )
-            normalized_lines.extend(_format_msprof_perf_lines(case_idx, metrics))
         finally:
             _cleanup_remote_msprof_output_dir(
                 spec,
@@ -364,9 +448,18 @@ def _run_remote_bench_msprof(
                 stderr=stderr,
             )
 
-    perf_path = _write_perf_lines(_perf_output_path(bench_file, operator_file), normalized_lines)
+    perf_path = _write_perf_lines(
+        _perf_output_path(bench_file, operator_file),
+        _render_msprof_case_records(case_records),
+    )
     return (
-        make_result(return_code=0, stdout="".join(stdout_chunks), stderr="".join(stderr_chunks)),
+        make_result(
+            return_code=1 if had_case_failures else 0,
+            stdout="".join(stdout_chunks),
+            stderr="".join(stderr_chunks),
+            stalled=had_stalls,
+            session_id=session_id,
+        ),
         perf_path,
         remote_workspace,
     )
@@ -396,23 +489,91 @@ def _parse_case_count(stdout: str) -> int:
     raise ValueError("Unable to parse benchmark case count from --num-bench output.")
 
 
-def resolve_bench_kernel_names(bench_file: Path) -> list[str]:
+def resolve_bench_kernel_names(
+    bench_file: Path,
+    operator_file: Path | None = None,
+) -> list[str]:
+    return resolve_bench_kernel_resolution(bench_file, operator_file).kernel_names
+
+
+def resolve_bench_kernel_resolution(
+    bench_file: Path,
+    operator_file: Path | None = None,
+) -> KernelResolution:
     metadata = parse_bench_metadata(bench_file)
-    return _parse_kernel_names(metadata, bench_file)
+    metadata_kernel_names = _parse_kernel_names(metadata, bench_file, allow_empty=True)
+    operator_kernel_names = (
+        _discover_operator_triton_kernels(operator_file) if operator_file is not None else []
+    )
+    kernel_names = _stable_kernel_union(metadata_kernel_names, operator_kernel_names)
+    if not kernel_names:
+        raise ValueError(
+            f"Benchmark metadata and operator file did not resolve any Triton kernels: {bench_file}"
+        )
+    return KernelResolution(
+        kernel_names=kernel_names,
+        kernel_source=_describe_kernel_source(metadata_kernel_names, operator_kernel_names),
+    )
 
 
-def _parse_kernel_names(metadata: dict[str, str], bench_file: Path) -> list[str]:
+def _parse_kernel_names(
+    metadata: dict[str, str],
+    bench_file: Path,
+    *,
+    allow_empty: bool = False,
+) -> list[str]:
     kernels_value = metadata.get("kernels")
     if kernels_value is not None:
         kernel_names = [part.strip() for part in kernels_value.split(",") if part.strip()]
     else:
         kernel_name = (metadata.get("kernel") or "").strip()
         kernel_names = [kernel_name] if kernel_name else []
-    if not kernel_names:
+    if not kernel_names and not allow_empty:
         raise ValueError(
             f"Benchmark metadata is missing required 'kernels' entry: {bench_file}"
         )
     return kernel_names
+
+
+def _discover_operator_triton_kernels(operator_file: Path) -> list[str]:
+    try:
+        tree = ast.parse(operator_file.read_text(encoding="utf-8"), filename=str(operator_file))
+    except SyntaxError as exc:
+        raise ValueError(f"Failed to parse operator file for Triton kernels: {operator_file}") from exc
+    kernels: list[str] = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and any(
+            _is_triton_jit_decorator(decorator) for decorator in node.decorator_list
+        ):
+            kernels.append(node.name)
+    return kernels
+
+
+def _is_triton_jit_decorator(node: ast.expr) -> bool:
+    if isinstance(node, ast.Call):
+        return _is_triton_jit_decorator(node.func)
+    if isinstance(node, ast.Attribute):
+        return isinstance(node.value, ast.Name) and node.value.id == "triton" and node.attr == "jit"
+    return isinstance(node, ast.Name) and node.id == "jit"
+
+
+def _stable_kernel_union(primary: list[str], secondary: list[str]) -> list[str]:
+    seen: set[str] = set()
+    merged: list[str] = []
+    for kernel_name in [*primary, *secondary]:
+        if kernel_name in seen:
+            continue
+        seen.add(kernel_name)
+        merged.append(kernel_name)
+    return merged
+
+
+def _describe_kernel_source(metadata_kernels: list[str], operator_kernels: list[str]) -> str:
+    if metadata_kernels and operator_kernels:
+        return "metadata+operator"
+    if metadata_kernels:
+        return "metadata"
+    return "operator"
 
 
 def _load_msprof_avg_rows(output_dir: Path) -> list[MsprofAvgRow]:
@@ -520,24 +681,42 @@ def _set_directory_owner_only(path: Path) -> None:
     path.chmod(0o700)
 
 
-def _format_msprof_perf_lines(case_idx: int, metrics: MsprofMetrics) -> list[str]:
-    raw_payload = json.dumps({"ops": metrics["ops"]}, separators=(",", ":"))
-    latency_value = (
-        "NA"
-        if metrics["kernel_avg_time_us"] is None
-        else _format_latency_value(metrics["kernel_avg_time_us"])
-    )
-    return [
-        f"latency-case-{case_idx}: {latency_value}",
-        f"# raw-op-statistic-case-{case_idx}: {raw_payload}",
-    ]
+def _render_msprof_case_records(records: list[MsprofCaseRecord]) -> list[str]:
+    rendered: list[str] = []
+    for record in records:
+        rendered.extend(_render_msprof_case_record(record))
+    return rendered
+
+
+def _render_msprof_case_record(record: MsprofCaseRecord) -> list[str]:
+    lines = [f"latency-case-{record.case_idx}: {_format_case_latency_value(record)}"]
+    if record.metrics is not None:
+        raw_payload = json.dumps({"ops": record.metrics["ops"]}, separators=(",", ":"))
+        lines.append(f"# raw-op-statistic-case-{record.case_idx}: {raw_payload}")
+        if record.metrics["kernel_avg_time_us"] is None:
+            lines.append(f"# latency-error-case-{record.case_idx}: {_MISSING_KERNEL_MATCH_ERROR}")
+    if record.error_message is not None:
+        lines.append(f"# latency-error-case-{record.case_idx}: {record.error_message}")
+    lines.append(f"# resolved-kernels-case-{record.case_idx}: {','.join(record.kernel_names)}")
+    lines.append(f"# kernel-source-case-{record.case_idx}: {record.kernel_source}")
+    return lines
+
+
+def _format_case_latency_value(record: MsprofCaseRecord) -> str:
+    if record.metrics is None or record.metrics["kernel_avg_time_us"] is None:
+        return "NA"
+    return _format_latency_value(record.metrics["kernel_avg_time_us"])
+
+
+def _format_msprof_command_failure(result: ResultPayload) -> str:
+    return f"msprof command failed with return code {int(result['return_code'])}"
 
 
 def _create_remote_msprof_output_dir(
-    spec,
+    spec: RemoteSpec,
     remote_workspace: str,
     verbose: bool = False,
-    stderr=None,
+    stderr: TextIO | None = None,
 ) -> str:
     result = run_remote_command_buffered(
         spec,
@@ -555,12 +734,12 @@ def _create_remote_msprof_output_dir(
 
 
 def _read_remote_msprof_metrics(
-    spec,
+    spec: RemoteSpec,
     remote_workspace: str,
     output_dir: str,
     kernel_names: list[str],
     verbose: bool = False,
-    stderr=None,
+    stderr: TextIO | None = None,
 ) -> MsprofMetrics:
     script = """
 import csv
@@ -628,11 +807,11 @@ print(json.dumps({"kernel_avg_time_us": kernel_avg_time_us, "ops": ops}, separat
 
 
 def _cleanup_remote_msprof_output_dir(
-    spec,
+    spec: RemoteSpec,
     remote_workspace: str,
     output_dir: str,
     verbose: bool = False,
-    stderr=None,
+    stderr: TextIO | None = None,
 ) -> None:
     run_remote_command_buffered(
         spec,
@@ -654,6 +833,7 @@ def _parse_perf_file(path: Path) -> dict[str, float]:
 def _parse_perf_entries(path: Path) -> dict[str, PerfEntry]:
     lines = path.read_text(encoding="utf-8").splitlines()
     raw_totals = _parse_raw_op_statistic_totals(path, lines)
+    latency_errors = _parse_latency_errors(path, lines)
     entries: dict[str, PerfEntry] = {}
     for line_no, raw_line in enumerate(lines, start=1):
         line = raw_line.strip()
@@ -670,6 +850,7 @@ def _parse_perf_entries(path: Path) -> dict[str, PerfEntry]:
         value_text = value.strip()
         if latency_id in entries:
             raise ValueError(f"{path}:{line_no} duplicates latency id '{latency_id}'")
+        _raise_for_uncomparable_latency_error(path, line_no, latency_id, latency_errors)
         if value_text == "NA":
             total_op_value = _require_raw_total(path, line_no, latency_id, raw_totals)
             entries[latency_id] = PerfEntry(
@@ -692,7 +873,7 @@ def _parse_perf_entries(path: Path) -> dict[str, PerfEntry]:
     return entries
 
 
-def _parse_required_perf_file(path: Path, required_latency_ids) -> dict[str, float]:
+def _parse_required_perf_file(path: Path, required_latency_ids: RequiredLatencyIds) -> dict[str, float]:
     return {
         latency_id: entry.numeric_value
         for latency_id, entry in _parse_required_perf_entries(
@@ -702,7 +883,7 @@ def _parse_required_perf_file(path: Path, required_latency_ids) -> dict[str, flo
 
 
 def _parse_required_perf_entries(
-    path: Path, required_latency_ids
+    path: Path, required_latency_ids: RequiredLatencyIds
 ) -> dict[str, PerfEntry]:
     required_ids, comparison_modes = _resolve_required_latency_requirements(required_latency_ids)
     if not required_ids:
@@ -710,6 +891,7 @@ def _parse_required_perf_entries(
 
     lines = path.read_text(encoding="utf-8").splitlines()
     raw_totals = _parse_raw_op_statistic_totals(path, lines)
+    latency_errors = _parse_latency_errors(path, lines)
     entries: dict[str, PerfEntry] = {}
     for line_no, raw_line in enumerate(lines, start=1):
         line = raw_line.strip()
@@ -722,6 +904,7 @@ def _parse_required_perf_entries(
         value_text = value.strip()
         if latency_id in entries:
             raise ValueError(f"{path}:{line_no} duplicates latency id '{latency_id}'")
+        _raise_for_uncomparable_latency_error(path, line_no, latency_id, latency_errors)
         if comparison_modes[latency_id] == "total-op":
             total_op_value = _require_raw_total(path, line_no, latency_id, raw_totals)
             display_value = (
@@ -773,14 +956,19 @@ def _parse_raw_op_statistic_totals(path: Path, lines: list[str]) -> dict[str, fl
             payload = json.loads(value.strip())
         except json.JSONDecodeError as exc:
             raise ValueError(f"{path}:{line_no} has invalid raw-op-statistic JSON") from exc
-        ops = payload.get("ops")
+        if not isinstance(payload, dict):
+            raise ValueError(f"{path}:{line_no} raw-op-statistic JSON must be an object")
+        payload_dict = cast(dict[str, object], payload)
+        ops = payload_dict.get("ops")
         if not isinstance(ops, list):
             raise ValueError(f"{path}:{line_no} raw-op-statistic JSON is missing an 'ops' list")
         total = 0.0
-        for op in ops:
+        typed_ops = cast(list[object], ops)
+        for op in typed_ops:
             if not isinstance(op, dict):
                 raise ValueError(f"{path}:{line_no} raw-op-statistic ops entries must be objects")
-            avg_time_us = op.get("avg_time_us")
+            op_dict = cast(dict[str, object], op)
+            avg_time_us = op_dict.get("avg_time_us")
             if not isinstance(avg_time_us, (int, float)):
                 raise ValueError(
                     f"{path}:{line_no} raw-op-statistic ops entries must include numeric 'avg_time_us'"
@@ -790,21 +978,44 @@ def _parse_raw_op_statistic_totals(path: Path, lines: list[str]) -> dict[str, fl
     return totals
 
 
+def _parse_latency_errors(path: Path, lines: list[str]) -> dict[str, str]:
+    errors: dict[str, str] = {}
+    for line_no, raw_line in enumerate(lines, start=1):
+        line = raw_line.strip()
+        if not line.startswith("# latency-error-"):
+            continue
+        body = line[1:].strip()
+        if ":" not in body:
+            raise ValueError(f"{path}:{line_no} is not a '# latency-error-<id>: <message>' line")
+        key, value = body.split(":", 1)
+        error_id = key.strip()
+        latency_id = f"latency-{error_id.removeprefix('latency-error-')}"
+        if latency_id in errors:
+            raise ValueError(f"{path}:{line_no} duplicates latency error for '{latency_id}'")
+        errors[latency_id] = value.strip()
+    return errors
+
+
 def _resolve_required_latency_requirements(
-    required_latency_ids,
+    required_latency_ids: RequiredLatencyIds,
 ) -> tuple[set[str], dict[str, ComparisonMode]]:
     required_ids = set(required_latency_ids)
     comparison_modes: dict[str, ComparisonMode] = {
         latency_id: "latency" for latency_id in required_ids
     }
     if isinstance(required_latency_ids, dict):
+        typed_required_latency_ids = cast(dict[str, PerfEntry] | PerfValueMap, required_latency_ids)
         for latency_id in required_ids:
-            value = required_latency_ids[latency_id]
+            value = typed_required_latency_ids[latency_id]
             if isinstance(value, PerfEntry):
                 comparison_modes[latency_id] = value.comparison_mode
         return required_ids, comparison_modes
-    raw_modes = getattr(required_latency_ids, "comparison_modes", None)
-    if isinstance(raw_modes, dict):
+    raw_modes = (
+        required_latency_ids.comparison_modes
+        if isinstance(required_latency_ids, PerfValueMap)
+        else None
+    )
+    if raw_modes is not None:
         for latency_id in required_ids:
             mode = raw_modes.get(latency_id)
             if mode in ("latency", "total-op"):
@@ -824,6 +1035,20 @@ def _require_raw_total(
             f"{path}:{line_no} requires '# raw-op-statistic-{latency_id.removeprefix('latency-')}: ...' to provide total-op fallback"
         )
     return total
+
+
+def _raise_for_uncomparable_latency_error(
+    path: Path,
+    line_no: int,
+    latency_id: str,
+    latency_errors: dict[str, str],
+) -> None:
+    error_message = latency_errors.get(latency_id)
+    if error_message is None or error_message == _MISSING_KERNEL_MATCH_ERROR:
+        return
+    raise ValueError(
+        f"{path}:{line_no} cannot compare '{latency_id}' because '# latency-error-{latency_id.removeprefix('latency-')}: {error_message}' is present"
+    )
 
 
 def _format_total_op_display(value: float) -> str:

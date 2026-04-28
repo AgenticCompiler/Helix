@@ -122,8 +122,12 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 (
                     'latency-case-1: 2.5\n'
                     '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":1.5},{"op_type":"OpB","avg_time_us":2.5}]}\n'
+                    '# resolved-kernels-case-1: OpB\n'
+                    '# kernel-source-case-1: metadata\n'
                     'latency-case-2: 5.0\n'
                     '# raw-op-statistic-case-2: {"ops":[{"op_type":"OpA","avg_time_us":3.0},{"op_type":"OpB","avg_time_us":5.0}]}\n'
+                    '# resolved-kernels-case-2: OpB\n'
+                    '# kernel-source-case-2: metadata\n'
                 ),
             )
             self.assertEqual(mocked.call_count, 2)
@@ -185,6 +189,8 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 (
                     'latency-case-1: 4.0\n'
                     '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":1.5},{"op_type":"OpB","avg_time_us":2.5}]}\n'
+                    '# resolved-kernels-case-1: OpA,OpB\n'
+                    '# kernel-source-case-1: metadata\n'
                 ),
             )
 
@@ -232,7 +238,12 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 self.fail("expected msprof perf path")
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
-                'latency-case-1: 0.0\n# raw-op-statistic-case-1: {"ops":[{"op_type":"Zero","avg_time_us":0.0}]}\n',
+                (
+                    'latency-case-1: 0.0\n'
+                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"Zero","avg_time_us":0.0}]}\n'
+                    '# resolved-kernels-case-1: Zero\n'
+                    '# kernel-source-case-1: metadata\n'
+                ),
             )
 
     def test_run_local_bench_msprof_keeps_artifacts_under_configured_output_root(self) -> None:
@@ -287,13 +298,77 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 self.fail("expected msprof perf path")
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
-                'latency-case-1: 4.5\n# raw-op-statistic-case-1: {"ops":[{"op_type":"KeepMe","avg_time_us":4.5}]}\n',
+                (
+                    'latency-case-1: 4.5\n'
+                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"KeepMe","avg_time_us":4.5}]}\n'
+                    '# resolved-kernels-case-1: KeepMe\n'
+                    '# kernel-source-case-1: metadata\n'
+                ),
             )
             self.assertTrue(keep_root.exists())
             self.assertTrue(created_output_dirs)
             self.assertTrue(all(path.exists() for path in created_output_dirs))
             self.assertTrue(all(keep_root in path.parents for path in created_output_dirs))
             self.assertTrue(all((path / "op_statistic_1.csv").exists() for path in created_output_dirs))
+
+    def test_run_local_bench_msprof_continues_after_failed_case_and_persists_perf(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            bench_file.write_text(
+                "# bench-mode: msprof\n# api-name: abs_\n# kernel: KernelB\n",
+                encoding="utf-8",
+            )
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+
+            def _fake_streaming(command, workdir, stall_timeout_seconds):
+                self.assertEqual(workdir, str(root))
+                self.assertEqual(stall_timeout_seconds, 900)
+                case_idx = int(command[-1])
+                output_dir = Path(command[1].split("=", 1)[1])
+                if case_idx == 1:
+                    return make_skill_result(1, "", "case one failed\n")
+                (output_dir / "op_statistic_2.csv").write_text(
+                    "\n".join(
+                        [
+                            "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                            "0,KernelB,AI_CORE,1,20,2,5.0,7,100",
+                        ]
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return make_skill_result(0, "profile 2\n", "")
+
+            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "2\n", "")), patch.object(
+                module,
+                "run_streaming_process",
+                side_effect=_fake_streaming,
+            ):
+                result, perf_path = module.run_local_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                )
+
+            self.assertEqual(result["return_code"], 1)
+            if perf_path is None:
+                self.fail("expected msprof perf path even when one case fails")
+            self.assertEqual(
+                perf_path.read_text(encoding="utf-8"),
+                (
+                    "latency-case-1: NA\n"
+                    "# latency-error-case-1: msprof command failed with return code 1\n"
+                    "# resolved-kernels-case-1: KernelB\n"
+                    "# kernel-source-case-1: metadata\n"
+                    "latency-case-2: 5.0\n"
+                    '# raw-op-statistic-case-2: {"ops":[{"op_type":"KernelB","avg_time_us":5.0}]}\n'
+                    "# resolved-kernels-case-2: KernelB\n"
+                    "# kernel-source-case-2: metadata\n"
+                ),
+            )
 
     def test_run_local_bench_msprof_kept_case_directories_ignore_permissive_umask(self) -> None:
         module = load_bench_runner_module()
@@ -350,7 +425,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertTrue(created_output_dirs)
             self.assertEqual(created_output_dirs[0].stat().st_mode & 0o777, 0o700)
 
-    def test_run_local_bench_msprof_fails_when_statistic_csv_is_missing(self) -> None:
+    def test_run_local_bench_msprof_persists_statistic_csv_error_in_perf_file(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -364,12 +439,20 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 "run_streaming_process",
                 return_value=make_skill_result(0, "", ""),
             ):
-                with self.assertRaises(FileNotFoundError):
-                    module.run_local_bench(
-                        bench_file,
-                        operator_file,
-                        "msprof",
-                    )
+                result, perf_path = module.run_local_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                )
+
+            self.assertEqual(result["return_code"], 1)
+            if perf_path is None:
+                self.fail("expected msprof perf path for csv parse failure")
+            text = perf_path.read_text(encoding="utf-8")
+            self.assertIn("latency-case-1: NA\n", text)
+            self.assertIn("# latency-error-case-1: No op_statistic_*.csv found under", text)
+            self.assertIn("# resolved-kernels-case-1: OpB\n", text)
+            self.assertIn("# kernel-source-case-1: metadata\n", text)
 
     def test_run_local_bench_msprof_records_na_when_kernel_row_is_missing(self) -> None:
         module = load_bench_runner_module()
@@ -414,8 +497,62 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 (
                     'latency-case-1: NA\n'
                     '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":1.5},{"op_type":"OpB","avg_time_us":2.5}]}\n'
+                    '# latency-error-case-1: no resolved kernels matched op_statistic csv\n'
+                    '# resolved-kernels-case-1: MissingKernel\n'
+                    '# kernel-source-case-1: metadata\n'
                 ),
             )
+
+    def test_resolve_bench_kernel_names_unions_metadata_and_operator_kernels(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            bench_file.write_text(
+                "# bench-mode: msprof\n# kernels: MetaKernel\n",
+                encoding="utf-8",
+            )
+            operator_file.write_text(
+                "\n".join(
+                    [
+                        "import triton",
+                        "",
+                        "@triton.jit",
+                        "def MetaKernel(x):",
+                        "    return x",
+                        "",
+                        "@triton.jit()",
+                        "def NewKernel(x):",
+                        "    return x",
+                        "",
+                        "def helper():",
+                        "    return 1",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                module.resolve_bench_kernel_names(bench_file, operator_file),
+                ["MetaKernel", "NewKernel"],
+            )
+
+    def test_resolve_bench_kernel_names_rejects_malformed_operator_source(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            bench_file.write_text(
+                "# bench-mode: msprof\n# kernels: MetaKernel\n",
+                encoding="utf-8",
+            )
+            operator_file.write_text("def broken(:\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "Failed to parse operator file for Triton kernels"):
+                module.resolve_bench_kernel_names(bench_file, operator_file)
 
     def test_compare_perf_files_reports_per_case_deltas(self) -> None:
         module = load_bench_runner_module()
@@ -445,6 +582,37 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertIn("Geomean speedup: 1.58x", output)
             self.assertIn("Total speedup: 1.67x", output)
             self.assertIn("Metric source: kernel", output)
+
+    def test_compare_perf_files_fails_on_case_execution_error_marker(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "compare_perf.txt"
+            baseline.write_text(
+                (
+                    "latency-case-1: NA\n"
+                    "# latency-error-case-1: msprof command failed with return code 1\n"
+                    "# resolved-kernels-case-1: Kernel\n"
+                    "# kernel-source-case-1: metadata\n"
+                ),
+                encoding="utf-8",
+            )
+            compare.write_text("latency-case-1: 8\n", encoding="utf-8")
+
+            stdout_path = root / "stdout.txt"
+            original_stdout = sys.stdout
+            try:
+                with stdout_path.open("w", encoding="utf-8") as handle:
+                    sys.stdout = handle
+                    return_code = module.compare_perf_files(baseline, compare)
+            finally:
+                sys.stdout = original_stdout
+
+            output = stdout_path.read_text(encoding="utf-8")
+            self.assertEqual(return_code, 1)
+            self.assertIn("latency-case-1", output)
+            self.assertIn("latency-error-case-1", output)
 
     def test_compare_perf_files_fails_when_case_ids_do_not_match(self) -> None:
         module = load_bench_runner_module()

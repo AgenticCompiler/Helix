@@ -17,6 +17,18 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn('strict = ["src"]', content)
         self.assertNotIn('"skills",', content)
 
+    def test_skill_script_pyright_wrapper_is_documented_in_agents(self) -> None:
+        agents = _read("AGENTS.md")
+        wrapper = _read("scripts/run-skill-script-pyright.sh")
+        self.assertIn("scripts/run-skill-script-pyright.sh", agents)
+        self.assertIn(
+            "bash scripts/run-skill-script-pyright.sh skills/path/to/script.py",
+            agents,
+        )
+        self.assertIn("UV_CACHE_DIR", wrapper)
+        self.assertIn("uv run pyright", wrapper)
+        self.assertIn('typeCheckingMode = "strict"', wrapper)
+
     def test_test_gen_skill_requires_header_metadata_and_no_runtime_api_flag(self) -> None:
         content = _read("skills/triton-npu-gen-test/SKILL.md")
         self.assertIn("# test-mode:", content)
@@ -284,6 +296,25 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("~/.triton-agent/compiler-sources/AscendNPU-IR/", content)
         self.assertIn("read-only", content)
         self.assertIn("escalation", content)
+
+    def test_readme_documents_cann_ext_api_option(self) -> None:
+        content = _read("README.md")
+
+        self.assertIn("--enable-cann-ext-api", content)
+        self.assertIn("A5", content)
+
+    def test_optimize_skill_family_contains_cann_ext_api_pattern_skill(self) -> None:
+        skill = _read("skills/triton-npu-cann-ext-api-patterns/SKILL.md")
+        index = _read("skills/triton-npu-cann-ext-api-patterns/references/patterns/index.md")
+        pattern = _read("skills/triton-npu-cann-ext-api-patterns/references/patterns/sub_vec_id_1to2.md")
+
+        self.assertIn("CANN Triton extension API", skill)
+        self.assertIn("A5", skill)
+        self.assertIn("references/patterns/index.md", skill)
+        self.assertIn("sub-vec-id-1to2", index)
+        self.assertIn("sub_vec_id_1to2.md", index)
+        self.assertIn("sub_vec_id", pattern)
+        self.assertIn("Quick Start", pattern)
 
     def test_optimize_skill_allows_non_pattern_optimization_knowledge(self) -> None:
         optimize = _read("skills/triton-npu-optimize/SKILL.md")

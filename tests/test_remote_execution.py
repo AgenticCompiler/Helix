@@ -378,8 +378,96 @@ class RemoteExecutionTests(unittest.TestCase):
                 (
                     'latency-case-1: 2.5\n'
                     '# raw-op-statistic-case-1: {"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}]}\n'
+                    '# resolved-kernels-case-1: KernelB\n'
+                    '# kernel-source-case-1: metadata\n'
                     'latency-case-2: 5.0\n'
                     '# raw-op-statistic-case-2: {"ops":[{"op_type":"KernelA","avg_time_us":3.0},{"op_type":"KernelB","avg_time_us":5.0}]}\n'
+                    '# resolved-kernels-case-2: KernelB\n'
+                    '# kernel-source-case-2: metadata\n'
+                ),
+            )
+            cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
+
+    def test_run_remote_bench_msprof_continues_after_failed_case_and_persists_perf(self) -> None:
+        module = load_bench_runner_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_kernel.py"
+            operator_file = root / "kernel.py"
+            bench_file.write_text("# bench-mode: msprof\n# kernel: KernelB\n", encoding="utf-8")
+            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
+
+            removed_tmp_dirs: list[str] = []
+            next_tmp_index = 0
+            next_payload_index = 0
+            temp_dirs = ["/tmp/msprof-case-1", "/tmp/msprof-case-2"]
+            metric_payloads = [
+                '{"kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelB","avg_time_us":5.0}]}\n',
+            ]
+
+            def _fake_remote_buffered(spec, remote_workspace, command, **kwargs):
+                nonlocal next_tmp_index, next_payload_index
+                self.assertEqual(spec, "spec")
+                self.assertEqual(remote_workspace, "/tmp/remote-msprof")
+                if command == ["python3", "bench_kernel.py", "--num-bench"]:
+                    return make_skill_result(0, "2\n", "")
+                if command == ["mktemp", "-d"]:
+                    value = temp_dirs[next_tmp_index]
+                    next_tmp_index += 1
+                    return make_skill_result(0, f"{value}\n", "")
+                if isinstance(command, list) and command[:2] == ["python3", "-c"]:
+                    value = metric_payloads[next_payload_index]
+                    next_payload_index += 1
+                    return make_skill_result(0, value, "")
+                if isinstance(command, list) and command[:2] == ["rm", "-rf"]:
+                    removed_tmp_dirs.append(command[2])
+                    return make_skill_result(0, "", "")
+                self.fail(f"unexpected buffered remote command: {command}")
+
+            def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
+                self.assertEqual(command[0], "msprof")
+                if command[-1] == "1":
+                    return make_skill_result(1, "", "case one failed\n")
+                return make_skill_result(0, "profile stdout\n", "")
+
+            with patch.object(
+                module,
+                "create_remote_workspace",
+                return_value=("spec", "/tmp/remote-msprof"),
+            ), patch.object(module, "copy_file_to_remote"), patch.object(
+                module,
+                "run_remote_command_buffered",
+                side_effect=_fake_remote_buffered,
+            ), patch.object(
+                module,
+                "run_remote_command_streaming",
+                side_effect=_fake_remote_streaming,
+            ), patch.object(module, "cleanup_remote_workspace") as cleanup:
+                result, perf_path, remote_workspace = module.run_remote_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                    "alice@example.com",
+                    None,
+                )
+
+            self.assertEqual(result["return_code"], 1)
+            self.assertEqual(remote_workspace, "/tmp/remote-msprof")
+            self.assertEqual(removed_tmp_dirs, temp_dirs)
+            if perf_path is None:
+                self.fail("expected msprof perf path even when one remote case fails")
+            self.assertEqual(
+                perf_path.read_text(encoding="utf-8"),
+                (
+                    "latency-case-1: NA\n"
+                    "# latency-error-case-1: msprof command failed with return code 1\n"
+                    "# resolved-kernels-case-1: KernelB\n"
+                    "# kernel-source-case-1: metadata\n"
+                    "latency-case-2: 5.0\n"
+                    '# raw-op-statistic-case-2: {"ops":[{"op_type":"KernelB","avg_time_us":5.0}]}\n'
+                    "# resolved-kernels-case-2: KernelB\n"
+                    "# kernel-source-case-2: metadata\n"
                 ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
@@ -450,6 +538,9 @@ class RemoteExecutionTests(unittest.TestCase):
                 (
                     'latency-case-1: NA\n'
                     '# raw-op-statistic-case-1: {"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}]}\n'
+                    '# latency-error-case-1: no resolved kernels matched op_statistic csv\n'
+                    '# resolved-kernels-case-1: MissingKernel\n'
+                    '# kernel-source-case-1: metadata\n'
                 ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
@@ -520,6 +611,8 @@ class RemoteExecutionTests(unittest.TestCase):
                 (
                     'latency-case-1: 4.0\n'
                     '# raw-op-statistic-case-1: {"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}]}\n'
+                    '# resolved-kernels-case-1: KernelA,KernelB\n'
+                    '# kernel-source-case-1: metadata\n'
                 ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)

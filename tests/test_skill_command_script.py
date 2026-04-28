@@ -7,6 +7,42 @@ from io import StringIO
 from pathlib import Path
 
 class SkillCommandScriptTests(unittest.TestCase):
+    def test_skill_script_pyright_wrapper_requires_exactly_one_target(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "scripts"
+            / "run-skill-script-pyright.sh"
+        )
+        completed = subprocess.run(
+            ["bash", str(script)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("<skill-script.py>", completed.stderr)
+        self.assertNotIn("[<skill-script.py> ...]", completed.stderr)
+
+    def test_skill_script_pyright_wrapper_rejects_multiple_targets(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "scripts"
+            / "run-skill-script-pyright.sh"
+        )
+        completed = subprocess.run(
+            [
+                "bash",
+                str(script),
+                "skills/triton-npu-run-eval/scripts/bench_runner.py",
+                "skills/triton-npu-run-eval/scripts/profile_runner.py",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("usage:", completed.stderr)
+
     def test_render_result_accepts_skill_result_payload(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]

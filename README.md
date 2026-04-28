@@ -253,7 +253,12 @@ Example:
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py
 ```
 
-For `msprof` benchmarks with multiple declared kernels, `run-bench` aggregates all kernels from benchmark metadata while `profile-bench` should be invoked with an explicit `--kernel-name <name>` unless the metadata resolves to exactly one kernel.
+For `msprof` benchmarks:
+
+- `run-bench` aggregates the stable-order union of benchmark metadata kernels and `@triton.jit` kernels discovered from the runtime operator file.
+- a failed benchmark case does not stop later cases from running
+- the generated perf file is still written and includes `# latency-error-case-*` comments for failed cases
+- `profile-bench` should still be invoked with an explicit `--kernel-name <name>` unless the metadata resolves to exactly one kernel
 
 ## Optimize One Operator
 
@@ -275,6 +280,7 @@ Common options:
 - `--resume auto|continue|fresh`: default is `auto`
 - `--reset-optimize`: only valid with `--resume fresh`; remove known optimize-session artifacts before starting a new run while keeping reusable test and benchmark harnesses.
 - `--enable-compiler-source-analysis`: allow the optimize agent to use compiler source as an escalation after benchmark, profiler, and IR evidence.
+- `--enable-cann-ext-api`: allow A5-only CANN Triton extension API optimization patterns during optimize runs.
 - `--min-rounds <N>`: require at least N optimization rounds.
 - `--no-agent-session`: disable persistent agent sessions when supported.
 - `--interact`
@@ -288,10 +294,13 @@ Examples:
 uv run triton-agent optimize --input a.py --min-rounds 3
 uv run triton-agent optimize --input a.py --resume continue
 uv run triton-agent optimize --input a.py --enable-compiler-source-analysis
+uv run triton-agent optimize --input a.py --enable-cann-ext-api --target-chip A5
 uv run triton-agent optimize --input a.py --prompt "Prioritize memory-coalescing improvements."
 ```
 
 Compiler source analysis is opt-in. When enabled, the CLI prepares a shallow AscendNPU-IR checkout under `~/.triton-agent/compiler-sources/AscendNPU-IR/` before launching the agent, using the configured Triton Agent home when `TRITON_AGENT_HOME` is set. The launched agent receives only the local path and commit, treats the checkout as read-only, and must not clone, fetch, pull, or modify compiler source. This option enables an escalation path for difficult compiler-side explanations; it does not require compiler-source analysis in every round.
+
+CANN extension API pattern access is also opt-in. When `--enable-cann-ext-api` is set, optimize stages a dedicated skill with specialized CANN Triton extension API guidance, including `sub_vec_id()`-based rewrite patterns. This option is valid only with `--target-chip A5`.
 
 Resume modes:
 
@@ -480,6 +489,7 @@ Common options:
 - `--resume auto|continue|fresh`
 - `--reset-optimize`: when used with `--resume fresh`, clear known optimize artifacts for each workspace and reset the batch status file before rerunning
 - `--enable-compiler-source-analysis`
+- `--enable-cann-ext-api`
 - `--min-rounds <N>`
 - `--no-agent-session`
 - `--max-concurrency <N>`: defaults to `1`
