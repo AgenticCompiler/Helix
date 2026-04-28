@@ -153,8 +153,6 @@ def resolve_optimize_resume(
         raise ValueError(f"resume auto found partial optimize state: {inspection.detail}")
     if requested_test_mode is not None:
         raise ValueError("--resume auto cannot be combined with --test-mode when reusing an existing session")
-    if requested_bench_mode is not None:
-        raise ValueError("--resume auto cannot be combined with --bench-mode when reusing an existing session")
     return ResumeResolution(
         workspace_state="resumable-session",
         resume_existing_session=True,

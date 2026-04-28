@@ -276,7 +276,7 @@ Common options:
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--prompt "..."`: append extra worker instructions without replacing the built-in optimize contract.
 - `--test-mode standalone|differential`: default is `differential`
-- `--bench-mode standalone|msprof`: default is `standalone`
+- `--bench-mode standalone|msprof`: default is `standalone`. Sets the benchmark mode for fresh runs. With `--resume auto`, resumable workspaces keep the benchmark mode recorded in their existing benchmark harness.
 - `--resume auto|continue|fresh`: default is `auto`
 - `--reset-optimize`: only valid with `--resume fresh`; remove known optimize-session artifacts before starting a new run while keeping reusable test and benchmark harnesses.
 - `--enable-compiler-source-analysis`: allow the optimize agent to use compiler source as an escalation after benchmark, profiler, and IR evidence.
@@ -485,7 +485,7 @@ Common options:
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--prompt "..."`: append the same extra worker instructions to every workspace optimize run.
 - `--test-mode standalone|differential`
-- `--bench-mode standalone|msprof`
+- `--bench-mode standalone|msprof`: sets the benchmark mode for fresh workspaces. With `--resume auto`, resumable workspaces keep the benchmark mode recorded in their existing benchmark harness.
 - `--resume auto|continue|fresh`
 - `--reset-optimize`: when used with `--resume fresh`, clear known optimize artifacts for each workspace and reset the batch status file before rerunning
 - `--enable-compiler-source-analysis`
