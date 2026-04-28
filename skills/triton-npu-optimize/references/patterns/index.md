@@ -139,6 +139,39 @@ Read this index first. Then read only the one or two most relevant detailed patt
 - Read next:
   - [compile_hint.md](compile_hint.md)
 
+### `remove-implicit-transpose`
+
+- Use when:
+  - one matmul operand is stored as `[N, K]` but accessed as `[K, N]` via strides
+  - IR shows implicit transpose markers (e.g. `MayImplicitTransposeWithLastAxis`)
+  - CUBE appears starved by transform/control overhead
+- Signals:
+  - transpose-style stride access in code (`[N, K]` treated as `[K, N]`)
+  - IR contains `MayImplicitTransposeWithLastAxis`
+  - profiler shows heavy `WAIT_FLAG_DEVI` and transform-heavy matmul path
+- Expected benefit:
+  - simpler lowering and cheaper transform path by materializing `[K, N]` contiguous
+- Main risk:
+  - extra host-side transpose/copy and memory overhead if weights are not reused
+- Read next:
+  - [remove-implicit-transpose.md](remove-implicit-transpose.md)
+
+### `loop-invariant-hoisting` (LICM)
+
+- Use when:
+  - an inner loop (often K loop) repeats substantial pointer math, mask construction, or bounds bookkeeping
+  - scalar/control overhead appears high relative to useful compute
+- Signals:
+  - repeated `base + delta(loop_var)` expressions inside the loop (e.g. pointer arithmetic)
+  - profiler shows scalar `LD/ST/ADD/CMP` dominating loop time
+  - IR shows repeated arithmetic chains inside `scf.while` bodies
+- Expected benefit:
+  - lower per-iteration scalar/control cost by moving invariants out of the loop
+- Main risk:
+  - incorrectly hoisting a value that depends on the loop variable (or wrong broadcasting)
+- Read next:
+  - [loop-invariant-hoisting.md](loop-invariant-hoisting.md)
+
 ### `diagonal`
 
 - Use when:
