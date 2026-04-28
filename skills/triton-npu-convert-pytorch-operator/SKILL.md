@@ -5,7 +5,7 @@ description: Convert one PyTorch operator into a Triton NPU-backed PyTorch opera
 
 # Convert PyTorch Operator
 
-Convert one PyTorch operator file into a PyTorch-facing operator backed by a Triton NPU kernel path.
+Convert one PyTorch operator file into a PyTorch-facing operator backed by a real Triton Ascend NPU kernel path.
 
 Use this skill when the user wants a new converted operator artifact instead of an in-place optimize round.
 
@@ -29,19 +29,20 @@ Use this skill when the user wants a new converted operator artifact instead of 
 2. Treat the original input operator file as source material and correctness oracle.
 3. Do not execute the original input operator file.
 4. Identify the public PyTorch entrypoint that should remain visible after conversion.
-5. Convert the operator so the delivered output remains PyTorch-facing but calls a Triton NPU kernel path for the converted computation.
-6. You may replace some operators, leave some unchanged, fuse operations, or make algorithmic changes when that helps the Triton NPU path.
-7. Write the converted operator to the requested output path instead of overwriting the original file.
-8. Preserve the trailing input-helper block from the input file in the converted output because later harness generation and validation may need it.
-9. In the common contract shape, preserve helpers such as `get_init_inputs()` and `get_inputs()` instead of dropping or rewriting them away.
-10. Do not introduce unnecessary wrappers, compatibility branches, helper layers, or scaffolding that do not materially serve the converted Triton NPU path.
-11. Target Ascend NPU only for this conversion flow; do not add CUDA, CPU, MPS, or generic multi-backend fallback logic unless the source file already requires shared import structure around the public API.
-12. Do not add differential test code directly into the converted operator file.
-13. Use `triton-npu-gen-test` to generate a differential test for the converted output.
-14. Use the original input operator as the differential reference implementation and the converted output as the system under test.
-15. Use `triton-npu-run-eval` to execute the differential test against the converted output.
-16. If the converted output hits Triton compile, JIT, launch, or kernel-structure errors, use `triton-npu-repair-guide` for operator-side repair heuristics.
-17. Finish only after the differential test passes or a clear environment blocker prevents further progress.
+5. Convert the operator so the delivered output remains PyTorch-facing but implements the converted computation through a real Triton Ascend NPU kernel path.
+6. A PyTorch-facing wrapper or `torch.nn.Module` public API may remain when that is the intended interface, but the converted computation itself must stay on the Triton kernel path.
+7. You may replace some operators, leave some unchanged, fuse operations, or make algorithmic changes when that helps the Triton NPU path.
+8. Write the converted operator to the requested output path instead of overwriting the original file.
+9. Preserve the trailing input-helper block from the input file in the converted output because later harness generation and validation may need it.
+10. In the common contract shape, preserve helpers such as `get_init_inputs()` and `get_inputs()` instead of dropping or rewriting them away.
+11. Do not introduce unnecessary wrappers, compatibility branches, helper layers, or scaffolding that do not materially serve the converted Triton NPU path.
+12. Target Ascend NPU only for this conversion flow; do not add CUDA, CPU, MPS, or generic multi-backend fallback logic unless the source file already requires shared import structure around the public API.
+13. Do not add differential test code directly into the converted operator file.
+14. Use `triton-npu-gen-test` to generate a differential test for the converted output.
+15. Use the original input operator as the differential reference implementation and the converted output as the system under test.
+16. Use `triton-npu-run-eval` to execute the differential test against the converted output.
+17. If the converted output hits Triton compile, JIT, launch, or kernel-structure errors, use `triton-npu-repair-guide` for operator-side repair heuristics.
+18. Finish only after the differential test passes or a clear environment blocker prevents further progress.
 
 ## Converted Example
 
@@ -113,8 +114,10 @@ In this kind of conversion:
 
 - Keep the original input operator file unchanged.
 - Keep the delivered output as a real Triton NPU-backed implementation, not a pure PyTorch fallback.
+- A pure PyTorch rewrite does not satisfy this convert task, even if differential tests pass.
 - Do not introduce unnecessary code.
 - Keep the implementation focused on the Ascend NPU path instead of adding generic backend handling.
+- Keep the converted computation on a real Triton Ascend NPU kernel path even when the public API stays PyTorch-facing.
 - Preserve the input file's trailing input-helper block.
 - Keep the converted file runnable as a PyTorch-facing operator artifact.
 - Prefer targeted conversion over unrelated refactoring.
@@ -130,3 +133,4 @@ In this kind of conversion:
 - Do not call `optimize` or create `opt-round-*` directories from this workflow.
 - Do not create `baseline/` or any optimize-session artifacts from this workflow.
 - Do not replace the converted Triton kernel path with pure PyTorch just to get validation green.
+- Do not submit a pure PyTorch rewrite as the converted result, even when the wrapper signature or differential outputs still look correct.
