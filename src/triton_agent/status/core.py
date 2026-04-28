@@ -9,6 +9,7 @@ from typing import Protocol, cast
 
 from triton_agent.optimize.baseline import baseline_dir
 from triton_agent.optimize.batch import resolve_batch_optimize_operator_file
+from triton_agent.optimize.naming import resolve_round_perf_file
 from triton_agent.optimize.models import OptimizeStatusRound, OptimizeStatusWorkspace
 from triton_agent.skill_loader import load_operator_eval_script_module
 
@@ -25,7 +26,6 @@ class BenchPerfParserModule(Protocol):
 
 def _load_bench_perf_parser() -> BenchPerfParserModule:
     return cast(BenchPerfParserModule, load_operator_eval_script_module("bench_runner"))
-
 
 def inspect_optimize_status_workspace(
     workspace: Path,
@@ -326,13 +326,7 @@ def resolve_workspace_operator_perf_file(workspace: Path, paths: list[Path]) -> 
 
 
 def find_round_perf_file(round_dir: Path) -> Path | None:
-    perf_txt = round_dir / "perf.txt"
-    if perf_txt.is_file():
-        return perf_txt
-    perf_files = sorted(round_dir.glob("*_perf.txt"))
-    if len(perf_files) == 1:
-        return perf_files[0]
-    return None
+    return resolve_round_perf_file(round_dir)
 
 
 def parse_logged_best_round(path: Path) -> str | None:

@@ -1,12 +1,118 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import importlib.util
 import sys
 from pathlib import Path
+from typing import Protocol, cast
+
+from run_runtime import ResultPayload
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+
+
+class ParseMetadataFn(Protocol):
+    def __call__(self, path: Path) -> dict[str, str]: ...
+
+
+class RunLocalTestFn(Protocol):
+    def __call__(
+        self,
+        test_file: Path,
+        operator_file: Path,
+        test_mode: str,
+    ) -> tuple[ResultPayload, Path | None]: ...
+
+
+class RunRemoteTestFn(Protocol):
+    def __call__(
+        self,
+        test_file: Path,
+        operator_file: Path,
+        test_mode: str,
+        remote: str,
+        remote_workdir: str | None,
+        keep_remote_workdir: bool = False,
+        verbose: bool = False,
+        stderr: object | None = None,
+    ) -> tuple[ResultPayload, Path | None, str]: ...
+
+
+class RunLocalBenchFn(Protocol):
+    def __call__(
+        self,
+        bench_file: Path,
+        operator_file: Path,
+        bench_mode: str,
+    ) -> tuple[ResultPayload, Path | None]: ...
+
+
+class RunRemoteBenchFn(Protocol):
+    def __call__(
+        self,
+        bench_file: Path,
+        operator_file: Path,
+        bench_mode: str,
+        remote: str,
+        remote_workdir: str | None,
+        keep_remote_workdir: bool = False,
+        verbose: bool = False,
+        stderr: object | None = None,
+    ) -> tuple[ResultPayload, Path | None, str]: ...
+
+
+class CompareResultFn(Protocol):
+    def __call__(self, oracle_result: Path, new_result: Path, compare_level: str) -> int: ...
+
+
+class CompareRemoteResultFn(Protocol):
+    def __call__(
+        self,
+        oracle_result: Path,
+        new_result: Path,
+        compare_level: str,
+        remote: str,
+        remote_workdir: str | None,
+        verbose: bool = False,
+        stderr: object | None = None,
+    ) -> int: ...
+
+
+class ComparePerfFn(Protocol):
+    def __call__(self, baseline_perf: Path, compare_perf: Path) -> int: ...
+
+
+class RunLocalProfileBenchFn(Protocol):
+    def __call__(
+        self,
+        bench_file: Path,
+        operator_file: Path,
+        bench_mode: str,
+        bench_case: int | None = None,
+        kernel_name: str | None = None,
+    ) -> tuple[ResultPayload, Path | None]: ...
+
+
+class RunRemoteProfileBenchFn(Protocol):
+    def __call__(
+        self,
+        bench_file: Path,
+        operator_file: Path,
+        bench_mode: str,
+        remote: str,
+        remote_workdir: str | None,
+        bench_case: int | None = None,
+        kernel_name: str | None = None,
+        keep_remote_workdir: bool = False,
+        verbose: bool = False,
+        stderr: object | None = None,
+    ) -> tuple[ResultPayload, Path | None, str]: ...
+
+
+class ProfileSummaryModule(Protocol):
+    def build_profile_report(self, profile_dir: Path, target_op: str | None = None) -> str: ...
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -94,10 +200,11 @@ def main(argv: list[str] | None = None) -> int:
         return compare_perf_files(baseline_perf, compare_perf)
 
     if args.command == "run-test":
-        parse_test_metadata, run_local_test, run_remote_test = _load_test_functions()
+        _parse_test_metadata, run_local_test, run_remote_test = _load_test_functions()
         test_file = _resolve_existing_path(parser, args.test_file, "Test file")
         operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
         resolved_test_mode = args.test_mode or _resolve_test_mode_from_metadata(test_file)
+        remote_workspace: str | None = None
         try:
             if args.remote:
                 result, archived_result, remote_workspace = run_remote_test(
@@ -119,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Return code: {result['return_code']}")
         if archived_result is not None:
             print(f"Archived result: {archived_result}")
-        if args.remote and args.keep_remote_workdir:
+        if args.remote and args.keep_remote_workdir and remote_workspace is not None:
             print(f"Remote workspace: {remote_workspace}")
         return int(result["return_code"])
 
@@ -128,6 +235,7 @@ def main(argv: list[str] | None = None) -> int:
         bench_file = _resolve_existing_path(parser, args.bench_file, "Bench file")
         operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
         resolved_bench_mode = args.bench_mode or _resolve_bench_mode_from_metadata(bench_file)
+        remote_workspace: str | None = None
         try:
             if args.remote:
                 result, profile_dir, remote_workspace = run_remote_profile_bench(
@@ -158,14 +266,15 @@ def main(argv: list[str] | None = None) -> int:
         if profile_dir is not None:
             print(f"Profile directory: {profile_dir}")
             print(_build_profile_report(profile_dir, args.target_op))
-        if args.remote and args.keep_remote_workdir:
+        if args.remote and args.keep_remote_workdir and remote_workspace is not None:
             print(f"Remote workspace: {remote_workspace}")
         return int(result["return_code"])
 
     bench_file = _resolve_existing_path(parser, args.bench_file, "Bench file")
     operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
-    parse_bench_metadata, run_local_bench, run_remote_bench = _load_bench_functions()
+    _parse_bench_metadata, run_local_bench, run_remote_bench = _load_bench_functions()
     resolved_bench_mode = args.bench_mode or _resolve_bench_mode_from_metadata(bench_file)
+    remote_workspace: str | None = None
     try:
         if args.remote:
             result, perf_path, remote_workspace = run_remote_bench(
@@ -187,7 +296,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Return code: {result['return_code']}")
     if perf_path is not None:
         print(f"Perf file: {perf_path}")
-    if args.remote and args.keep_remote_workdir:
+        print(f"Saved perf file to: {perf_path}")
+    if args.remote and args.keep_remote_workdir and remote_workspace is not None:
         print(f"Remote workspace: {remote_workspace}")
     return int(result["return_code"])
 
@@ -204,7 +314,7 @@ def _resolve_existing_path(
 
 
 def _resolve_test_mode_from_metadata(test_file: Path) -> str:
-    parse_test_metadata, _, _ = _load_test_functions()
+    parse_test_metadata = _load_test_functions()[0]
     metadata = parse_test_metadata(test_file)
     mode = metadata.get("test-mode")
     if mode not in {"standalone", "differential"}:
@@ -213,7 +323,7 @@ def _resolve_test_mode_from_metadata(test_file: Path) -> str:
 
 
 def _resolve_bench_mode_from_metadata(bench_file: Path) -> str:
-    parse_bench_metadata, _, _ = _load_bench_functions()
+    parse_bench_metadata = _load_bench_functions()[0]
     metadata = parse_bench_metadata(bench_file)
     mode = metadata.get("bench-mode")
     if mode not in {"standalone", "msprof"}:
@@ -221,48 +331,62 @@ def _resolve_bench_mode_from_metadata(bench_file: Path) -> str:
     return mode
 
 
-def _render_result(result, show_output: bool) -> None:
-    stdout = str(result["stdout"])
-    stderr = str(result["stderr"])
+def _render_result(result: ResultPayload, show_output: bool) -> None:
+    stdout = result["stdout"]
+    stderr = result["stderr"]
     if stdout and not show_output:
         print(stdout, end="" if stdout.endswith("\n") else "\n")
     if stderr:
         print(stderr, file=sys.stderr, end="" if stderr.endswith("\n") else "\n")
 
 
-def _load_test_functions():
+def _load_test_functions() -> tuple[ParseMetadataFn, RunLocalTestFn, RunRemoteTestFn]:
     _ensure_script_dir_on_path()
-    from test_runner import parse_test_metadata, run_local_test, run_remote_test
+    module = importlib.import_module("test_runner")
 
-    return parse_test_metadata, run_local_test, run_remote_test
+    return (
+        cast(ParseMetadataFn, getattr(module, "parse_test_metadata")),
+        cast(RunLocalTestFn, getattr(module, "run_local_test")),
+        cast(RunRemoteTestFn, getattr(module, "run_remote_test")),
+    )
 
 
-def _load_bench_functions():
+def _load_bench_functions() -> tuple[ParseMetadataFn, RunLocalBenchFn, RunRemoteBenchFn]:
     _ensure_script_dir_on_path()
     from bench_runner import parse_bench_metadata, run_local_bench, run_remote_bench
 
-    return parse_bench_metadata, run_local_bench, run_remote_bench
+    return (
+        cast(ParseMetadataFn, parse_bench_metadata),
+        cast(RunLocalBenchFn, run_local_bench),
+        cast(RunRemoteBenchFn, run_remote_bench),
+    )
 
 
-def _load_compare_result_functions():
+def _load_compare_result_functions() -> tuple[CompareResultFn, CompareRemoteResultFn]:
     _ensure_script_dir_on_path()
-    from test_runner import compare_remote_result_files, compare_result_files
+    module = importlib.import_module("test_runner")
 
-    return compare_result_files, compare_remote_result_files
+    return (
+        cast(CompareResultFn, getattr(module, "compare_result_files")),
+        cast(CompareRemoteResultFn, getattr(module, "compare_remote_result_files")),
+    )
 
 
-def _load_compare_perf_function():
+def _load_compare_perf_function() -> ComparePerfFn:
     _ensure_script_dir_on_path()
     from bench_runner import compare_perf_files
 
-    return compare_perf_files
+    return cast(ComparePerfFn, compare_perf_files)
 
 
-def _load_profile_functions():
+def _load_profile_functions() -> tuple[RunLocalProfileBenchFn, RunRemoteProfileBenchFn]:
     _ensure_script_dir_on_path()
-    from profile_runner import run_local_profile_bench, run_remote_profile_bench
+    module = importlib.import_module("profile_runner")
 
-    return run_local_profile_bench, run_remote_profile_bench
+    return (
+        cast(RunLocalProfileBenchFn, getattr(module, "run_local_profile_bench")),
+        cast(RunRemoteProfileBenchFn, getattr(module, "run_remote_profile_bench")),
+    )
 
 
 def _build_profile_report(profile_dir: Path, target_op: str | None) -> str:
@@ -270,8 +394,9 @@ def _build_profile_report(profile_dir: Path, target_op: str | None) -> str:
     spec = importlib.util.spec_from_file_location("profile_summary_runtime", script)
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load profiler summary script: {script}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    loaded_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loaded_module)
+    module = cast(ProfileSummaryModule, loaded_module)
     return module.build_profile_report(profile_dir, target_op=target_op)
 
 

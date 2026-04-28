@@ -15,12 +15,14 @@ class OptimizeRoundContractTests(unittest.TestCase):
         module = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
 
         with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             round_dir = Path(tmp) / "opt-round-1"
             round_dir.mkdir()
             (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
             (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
-            (round_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
-            (round_dir / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+            (round_dir / "opt_kernel.py").write_text("print('x')\n", encoding="utf-8")
             (round_dir / "round-state.json").write_text(
                 json.dumps(
                     {
@@ -30,7 +32,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "evidence_sources": ["benchmark"],
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
-                        "perf_artifact": "perf.txt",
+                        "perf_artifact": "opt_kernel_perf.txt",
                         "canonical_baseline": "baseline",
                         "comparison_target": "baseline/perf.txt",
                         "perf_summary_source": "compare-perf",
@@ -66,11 +68,125 @@ class OptimizeRoundContractTests(unittest.TestCase):
 
     def test_inspect_round_artifacts_flags_missing_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             round_dir = Path(tmp) / "opt-round-1"
             round_dir.mkdir()
             (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+            (round_dir / "opt_kernel.py").write_text("print('x')\n", encoding="utf-8")
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-1",
+                        "parent_round": "round-0",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "opt_kernel_perf.txt",
+                        "canonical_baseline": "baseline",
+                        "comparison_target": "baseline/perf.txt",
+                        "perf_summary_source": "compare-perf",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                        "next_recommendation": "continue",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = inspect_round_artifacts(round_dir)
+
+            self.assertIn("missing summary.md", result.issues)
+
+    def test_inspect_round_artifacts_uses_state_declared_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            round_dir = Path(tmp) / "opt-round-1"
+            round_dir.mkdir()
+            reports_dir = round_dir / "reports"
+            reports_dir.mkdir()
+            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            declared_summary = reports_dir / "final.md"
+            declared_summary.write_text("summary\n", encoding="utf-8")
+            declared_perf = round_dir / "opt_kernel_perf.txt"
+            declared_perf.write_text("case0: 1.0\n", encoding="utf-8")
+            (round_dir / "opt_kernel.py").write_text("print('x')\n", encoding="utf-8")
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-1",
+                        "parent_round": "round-0",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "opt_kernel_perf.txt",
+                        "canonical_baseline": "baseline",
+                        "comparison_target": "baseline/perf.txt",
+                        "perf_summary_source": "compare-perf",
+                        "summary_path": "reports/final.md",
+                        "opt_note_updated": True,
+                        "next_recommendation": "continue",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = inspect_round_artifacts(round_dir)
+
+            self.assertEqual(result.summary_path, declared_summary)
+            self.assertEqual(result.perf_path, declared_perf)
+            self.assertEqual(result.issues, ())
+
+    def test_inspect_round_artifacts_prefers_declared_paths_over_legacy_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            round_dir = Path(tmp) / "opt-round-1"
+            round_dir.mkdir()
+            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            (round_dir / "summary.md").write_text("legacy summary\n", encoding="utf-8")
+            (round_dir / "perf.txt").write_text("legacy perf\n", encoding="utf-8")
+            (round_dir / "opt_kernel.py").write_text("print('x')\n", encoding="utf-8")
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-1",
+                        "parent_round": "round-0",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "bench/opt_kernel_perf.txt",
+                        "canonical_baseline": "baseline",
+                        "comparison_target": "baseline/perf.txt",
+                        "perf_summary_source": "compare-perf",
+                        "summary_path": "reports/final.md",
+                        "opt_note_updated": True,
+                        "next_recommendation": "continue",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = inspect_round_artifacts(round_dir)
+
+            self.assertIn("missing reports/final.md", result.issues)
+            self.assertIn("perf_artifact must be opt_kernel_perf.txt", result.issues)
+
+    def test_inspect_round_artifacts_accepts_legacy_round_perf_and_operator_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            round_dir = Path(tmp) / "opt-round-1"
+            round_dir.mkdir()
+            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
+            (round_dir / "kernel.py").write_text("print('legacy operator')\n", encoding="utf-8")
             (round_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
-            (round_dir / "kernel.py").write_text("print('x')\n", encoding="utf-8")
             (round_dir / "round-state.json").write_text(
                 json.dumps(
                     {
@@ -94,83 +210,9 @@ class OptimizeRoundContractTests(unittest.TestCase):
 
             result = inspect_round_artifacts(round_dir)
 
-            self.assertIn("missing summary.md", result.issues)
-
-    def test_inspect_round_artifacts_uses_state_declared_paths(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            round_dir = Path(tmp) / "opt-round-1"
-            round_dir.mkdir()
-            reports_dir = round_dir / "reports"
-            bench_dir = round_dir / "bench"
-            reports_dir.mkdir()
-            bench_dir.mkdir()
-            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
-            declared_summary = reports_dir / "final.md"
-            declared_summary.write_text("summary\n", encoding="utf-8")
-            declared_perf = bench_dir / "candidate_perf.txt"
-            declared_perf.write_text("case0: 1.0\n", encoding="utf-8")
-            (round_dir / "kernel.py").write_text("print('x')\n", encoding="utf-8")
-            (round_dir / "alt_kernel.py").write_text("print('alt')\n", encoding="utf-8")
-            (round_dir / "round-state.json").write_text(
-                json.dumps(
-                    {
-                        "round": "opt-round-1",
-                        "parent_round": "round-0",
-                        "hypothesis": "vectorize loads",
-                        "evidence_sources": ["benchmark"],
-                        "correctness_status": "passed",
-                        "benchmark_status": "passed",
-                        "perf_artifact": "bench/candidate_perf.txt",
-                        "canonical_baseline": "baseline",
-                        "comparison_target": "baseline/perf.txt",
-                        "perf_summary_source": "compare-perf",
-                        "summary_path": "reports/final.md",
-                        "opt_note_updated": True,
-                        "next_recommendation": "continue",
-                    }
-                ),
-                encoding="utf-8",
-            )
-
-            result = inspect_round_artifacts(round_dir)
-
-            self.assertEqual(result.summary_path, declared_summary)
-            self.assertEqual(result.perf_path, declared_perf)
+            self.assertEqual(result.operator_path, round_dir / "kernel.py")
+            self.assertEqual(result.perf_path, round_dir / "perf.txt")
             self.assertEqual(result.issues, ())
-
-    def test_inspect_round_artifacts_prefers_declared_paths_over_legacy_defaults(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            round_dir = Path(tmp) / "opt-round-1"
-            round_dir.mkdir()
-            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
-            (round_dir / "summary.md").write_text("legacy summary\n", encoding="utf-8")
-            (round_dir / "perf.txt").write_text("legacy perf\n", encoding="utf-8")
-            (round_dir / "kernel.py").write_text("print('x')\n", encoding="utf-8")
-            (round_dir / "round-state.json").write_text(
-                json.dumps(
-                    {
-                        "round": "opt-round-1",
-                        "parent_round": "round-0",
-                        "hypothesis": "vectorize loads",
-                        "evidence_sources": ["benchmark"],
-                        "correctness_status": "passed",
-                        "benchmark_status": "passed",
-                        "perf_artifact": "bench/candidate_perf.txt",
-                        "canonical_baseline": "baseline",
-                        "comparison_target": "baseline/perf.txt",
-                        "perf_summary_source": "compare-perf",
-                        "summary_path": "reports/final.md",
-                        "opt_note_updated": True,
-                        "next_recommendation": "continue",
-                    }
-                ),
-                encoding="utf-8",
-            )
-
-            result = inspect_round_artifacts(round_dir)
-
-            self.assertIn("missing reports/final.md", result.issues)
-            self.assertIn("missing bench/candidate_perf.txt", result.issues)
 
     def test_load_round_state_accepts_optional_perf_analysis_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -185,7 +227,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "evidence_sources": ["benchmark", "profile"],
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
-                        "perf_artifact": "perf.txt",
+                        "perf_artifact": "opt_kernel_perf.txt",
                         "canonical_baseline": "baseline",
                         "comparison_target": "baseline/perf.txt",
                         "perf_summary_source": "compare-perf",
@@ -209,12 +251,14 @@ class OptimizeRoundContractTests(unittest.TestCase):
 
     def test_inspect_round_artifacts_uses_declared_perf_analysis_path_when_present(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             round_dir = Path(tmp) / "opt-round-1"
             round_dir.mkdir()
             (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
             (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
-            (round_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
-            (round_dir / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+            (round_dir / "opt_kernel.py").write_text("print('x')\n", encoding="utf-8")
             (round_dir / "perf-analysis.md").write_text("analysis\n", encoding="utf-8")
             (round_dir / "round-state.json").write_text(
                 json.dumps(
@@ -225,7 +269,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "evidence_sources": ["benchmark", "profile"],
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
-                        "perf_artifact": "perf.txt",
+                        "perf_artifact": "opt_kernel_perf.txt",
                         "canonical_baseline": "baseline",
                         "comparison_target": "baseline/perf.txt",
                         "perf_summary_source": "compare-perf",

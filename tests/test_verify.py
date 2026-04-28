@@ -16,6 +16,7 @@ class VerifyTests(unittest.TestCase):
     def _write_baseline(self, workspace: Path) -> None:
         baseline_dir = workspace / "baseline"
         baseline_dir.mkdir()
+        (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
         (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
         (baseline_dir / "perf.txt").write_text(
             "latency-a: 10\nlatency-b: 20\n",
@@ -51,13 +52,13 @@ class VerifyTests(unittest.TestCase):
     def _write_round(self, workspace: Path, round_number: int, perf_text: str) -> Path:
         round_dir = workspace / f"opt-round-{round_number}"
         round_dir.mkdir()
-        (round_dir / "kernel.py").write_text(
+        (round_dir / "opt_kernel.py").write_text(
             f"print('round {round_number}')\n",
             encoding="utf-8",
         )
         (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
         (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
-        (round_dir / "perf.txt").write_text(perf_text, encoding="utf-8")
+        (round_dir / "opt_kernel_perf.txt").write_text(perf_text, encoding="utf-8")
         (round_dir / "round-state.json").write_text(
             json.dumps(
                 {
@@ -67,7 +68,7 @@ class VerifyTests(unittest.TestCase):
                     "evidence_sources": ["benchmark"],
                     "correctness_status": "passed",
                     "benchmark_status": "passed",
-                    "perf_artifact": "perf.txt",
+                    "perf_artifact": "opt_kernel_perf.txt",
                     "canonical_baseline": "baseline",
                     "comparison_target": "baseline/perf.txt",
                     "perf_summary_source": "compare-perf",
@@ -94,9 +95,9 @@ class VerifyTests(unittest.TestCase):
 
             self.assertEqual(target.selected_round, "round-2")
             self.assertEqual(target.round_dir, best_round)
-            self.assertEqual(target.source_operator, best_round / "kernel.py")
+            self.assertEqual(target.source_operator, best_round / "opt_kernel.py")
             self.assertEqual(target.verify_dir, workspace / "opt-verify" / "verify-20260420-153012")
-            self.assertEqual(target.copied_operator, target.verify_dir / "kernel.py")
+            self.assertEqual(target.copied_operator, target.verify_dir / "opt_kernel.py")
             self.assertEqual(
                 target.copied_operator.read_text(encoding="utf-8"),
                 "print('round 2')\n",
@@ -118,7 +119,7 @@ class VerifyTests(unittest.TestCase):
             self._write_round(workspace, 1, "latency-a: 8\nlatency-b: 18\n")
             existing = workspace / "opt-verify" / "verify-20260420-153012"
             existing.mkdir(parents=True)
-            (existing / "kernel.py").write_text("existing\n", encoding="utf-8")
+            (existing / "opt_kernel.py").write_text("existing\n", encoding="utf-8")
 
             target = prepare_verify_target(
                 workspace,
@@ -126,7 +127,54 @@ class VerifyTests(unittest.TestCase):
             )
 
             self.assertEqual(target.verify_dir, workspace / "opt-verify" / "verify-20260420-153012-2")
-            self.assertEqual((existing / "kernel.py").read_text(encoding="utf-8"), "existing\n")
+            self.assertEqual((existing / "opt_kernel.py").read_text(encoding="utf-8"), "existing\n")
+
+    def test_prepare_target_accepts_legacy_round_operator_and_perf_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            self._write_baseline(workspace)
+            round_dir = workspace / "opt-round-1"
+            round_dir.mkdir()
+            (round_dir / "kernel.py").write_text("print('legacy round')\n", encoding="utf-8")
+            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
+            (round_dir / "perf.txt").write_text("latency-a: 8\nlatency-b: 18\n", encoding="utf-8")
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-1",
+                        "parent_round": "baseline",
+                        "hypothesis": "faster",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "perf.txt",
+                        "canonical_baseline": "baseline",
+                        "comparison_target": "baseline/perf.txt",
+                        "perf_summary_source": "compare-perf",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                        "next_recommendation": "stop",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+
+            target = prepare_verify_target(
+                workspace,
+                timestamp_label="20260420-153012",
+            )
+
+            self.assertEqual(target.source_operator, round_dir / "kernel.py")
+            self.assertEqual(target.copied_operator, target.verify_dir / "kernel.py")
+            self.assertEqual(
+                target.copied_operator.read_text(encoding="utf-8"),
+                "print('legacy round')\n",
+            )
 
     def test_run_verify_all_uses_copied_operator_and_writes_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -138,8 +186,8 @@ class VerifyTests(unittest.TestCase):
                 timestamp_label="20260420-153012",
             )
             baseline_perf_path = target.verify_dir / "baseline_kernel_perf.txt"
-            perf_path = target.verify_dir / "kernel_perf.txt"
-            result_path = target.verify_dir / "kernel_result.pt"
+            perf_path = target.verify_dir / "opt_kernel_perf.txt"
+            result_path = target.verify_dir / "opt_kernel_result.pt"
             baseline_perf_path.write_text("latency-a: 11\nlatency-b: 22\n", encoding="utf-8")
             perf_path.write_text("latency-a: 8\nlatency-b: 18\n", encoding="utf-8")
 
@@ -193,7 +241,7 @@ class VerifyTests(unittest.TestCase):
                 ["inputs", "selection", "verify-result", "workspace"],
             )
             self.assertEqual(state["selection"]["round_dir"], "opt-round-1")
-            self.assertEqual(state["selection"]["source_operator"], "opt-round-1/kernel.py")
+            self.assertEqual(state["selection"]["source_operator"], "opt-round-1/opt_kernel.py")
             self.assertEqual(state["selection"]["numeric_best_source"], "optimize-status")
             optimize_status = state["selection"]["optimize_status"]
             self.assertEqual(
@@ -219,7 +267,7 @@ class VerifyTests(unittest.TestCase):
                 state["workspace"],
                 {
                     "verify_dir": "opt-verify/verify-20260420-153012",
-                    "operator": "opt-verify/verify-20260420-153012/kernel.py",
+                    "operator": "opt-verify/verify-20260420-153012/opt_kernel.py",
                     "baseline_operator": "opt-verify/verify-20260420-153012/baseline_kernel.py",
                 },
             )
@@ -244,7 +292,7 @@ class VerifyTests(unittest.TestCase):
             self.assertEqual(verify_result["test"]["return_code"], 0)
             self.assertEqual(
                 verify_result["test"]["result_artifact"],
-                "opt-verify/verify-20260420-153012/kernel_result.pt",
+                "opt-verify/verify-20260420-153012/opt_kernel_result.pt",
             )
             self.assertEqual(
                 verify_result["rerun_baseline_bench"]["perf_artifact"],
@@ -258,7 +306,7 @@ class VerifyTests(unittest.TestCase):
             )
             self.assertEqual(
                 verify_result["rerun_best_bench"]["perf_artifact"],
-                "opt-verify/verify-20260420-153012/kernel_perf.txt",
+                "opt-verify/verify-20260420-153012/opt_kernel_perf.txt",
             )
             self.assertEqual(verify_result["rerun_best_bench"]["status"], "passed")
             self.assertEqual(verify_result["rerun_best_bench"]["return_code"], 0)
@@ -330,7 +378,7 @@ class VerifyTests(unittest.TestCase):
                 timestamp_label="20260420-153012",
             )
             baseline_perf_path = target.verify_dir / "baseline_kernel_perf.txt"
-            perf_path = target.verify_dir / "kernel_perf.txt"
+            perf_path = target.verify_dir / "opt_kernel_perf.txt"
 
             with patch("triton_agent.verification.core.run_local_test") as run_test:
                 with patch(
@@ -373,7 +421,7 @@ class VerifyTests(unittest.TestCase):
                 ),
             )
             baseline_perf_path = target.verify_dir / "baseline_kernel_perf.txt"
-            perf_path = target.verify_dir / "kernel_perf.txt"
+            perf_path = target.verify_dir / "opt_kernel_perf.txt"
             baseline_perf_path.write_text("latency-a: 9\nlatency-b: 18\n", encoding="utf-8")
             perf_path.write_text("latency-a: 8\nlatency-b: 18\n", encoding="utf-8")
 

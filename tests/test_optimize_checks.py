@@ -217,9 +217,48 @@ class OptimizeCheckTests(unittest.TestCase):
             self.assertEqual(result.kind, "round")
             self.assertEqual(result.decision, "pass")
 
+    def test_check_round_accepts_legacy_round_artifact_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            round_dir = workdir / "opt-round-1"
+            round_dir.mkdir(exist_ok=True)
+            (workdir / "opt-note.md").write_text("## Round\n", encoding="utf-8")
+            (round_dir / "kernel.py").write_text(TRITON_ROUND_OPERATOR, encoding="utf-8")
+            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
+            (round_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-1",
+                        "parent_round": "round-0",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "perf.txt",
+                        "canonical_baseline": "baseline",
+                        "comparison_target": "baseline/perf.txt",
+                        "perf_summary_source": "compare-perf",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                        "next_recommendation": "continue",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertTrue(result.ok)
+            self.assertEqual(result.kind, "round")
+            self.assertEqual(result.decision, "pass")
+
     def _write_baseline(self, workdir: Path) -> None:
         baseline_dir = workdir / "baseline"
         baseline_dir.mkdir(exist_ok=True)
+        (workdir / "kernel.py").write_text("print('source')\n", encoding="utf-8")
         (baseline_dir / "state.json").write_text(
             json.dumps(
                 {
@@ -253,10 +292,10 @@ class OptimizeCheckTests(unittest.TestCase):
         round_dir = workdir / round_name
         round_dir.mkdir(exist_ok=True)
         (workdir / "opt-note.md").write_text("## Round\n", encoding="utf-8")
-        (round_dir / "kernel.py").write_text(operator_source, encoding="utf-8")
+        (round_dir / "opt_kernel.py").write_text(operator_source, encoding="utf-8")
         (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
         (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
-        (round_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+        (round_dir / "opt_kernel_perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
         payload = {
             "round": round_name,
             "parent_round": "round-0",
@@ -264,7 +303,7 @@ class OptimizeCheckTests(unittest.TestCase):
             "evidence_sources": ["benchmark"],
             "correctness_status": "passed",
             "benchmark_status": "passed",
-            "perf_artifact": "perf.txt",
+            "perf_artifact": "opt_kernel_perf.txt",
             "canonical_baseline": "baseline",
             "comparison_target": "baseline/perf.txt",
             "perf_summary_source": "compare-perf",

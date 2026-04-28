@@ -6,6 +6,12 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from kernel_continuity_check import analyze_triton_kernel_continuity
+from triton_agent.optimize.naming import (
+    expected_round_operator_name,
+    expected_round_perf_name,
+    resolve_round_operator_file,
+    resolve_round_perf_file,
+)
 
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "references" / "contract.json"
 CONTRACT_DATA = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
@@ -28,8 +34,6 @@ _ROUND_METADATA_FILENAMES = {
     "perf-analysis.md",
     "round-state.json",
 }
-
-
 @dataclass(frozen=True)
 class OptimizeCheckResult:
     ok: bool
@@ -238,6 +242,7 @@ def load_round_state(round_dir: Path) -> RoundState:
 
 
 def inspect_round_artifacts(round_dir: Path) -> RoundArtifactsInspection:
+    workspace = round_dir.parent
     attempts_path = _existing_file(round_dir / "attempts.md")
     round_state_path = _existing_file(round_dir / "round-state.json")
     state: RoundState | None = None
@@ -262,9 +267,10 @@ def inspect_round_artifacts(round_dir: Path) -> RoundArtifactsInspection:
 
     if state is None and summary_path is None:
         summary_path = _existing_file(round_dir / "summary.md")
-    if state is None and perf_path is None:
-        perf_path = _find_perf_artifact(round_dir)
-    operator_path = _find_round_operator(round_dir)
+    expected_operator_name_value, expected_perf_name_value = _expected_round_artifact_names(workspace)
+    if perf_path is None:
+        perf_path = resolve_round_perf_file(round_dir)
+    operator_path = resolve_round_operator_file(round_dir)
 
     issues: list[str] = []
     if attempts_path is None:
@@ -274,11 +280,13 @@ def inspect_round_artifacts(round_dir: Path) -> RoundArtifactsInspection:
     if round_state_path is None:
         issues.append("missing round-state.json")
     if perf_path is None:
-        issues.append(_missing_issue(declared_perf, default_path="perf artifact"))
+        issues.append(_missing_issue(declared_perf, default_path=expected_perf_name_value))
+    elif state is not None and declared_perf != perf_path.name:
+        issues.append(f"perf_artifact must be {expected_perf_name_value}")
     if declared_analysis is not None and perf_analysis_path is None:
         issues.append(_missing_issue(declared_analysis, default_path="perf-analysis.md"))
     if operator_path is None:
-        issues.append("missing round-local operator output")
+        issues.append(f"missing {expected_operator_name_value}")
 
     return RoundArtifactsInspection(
         round_dir=round_dir,
@@ -362,10 +370,11 @@ def check_round(round_dir: Path) -> OptimizeCheckResult:
 
     operator_path = artifact_inspection.operator_path
     if operator_path is None:
+        expected_operator_name_value, _expected_perf_name_value = _expected_round_artifact_names(round_dir.parent)
         return _build_result(
             kind="round",
             decision="revise-required",
-            issues=("missing round-local operator output",),
+            issues=(f"missing {expected_operator_name_value}",),
         )
 
     continuity = analyze_triton_kernel_continuity(operator_path)
@@ -452,32 +461,11 @@ def _find_baseline_operator_snapshot(root: Path) -> Path | None:
     return None
 
 
-def _find_perf_artifact(round_dir: Path) -> Path | None:
-    perf_txt = round_dir / "perf.txt"
-    if perf_txt.is_file():
-        return perf_txt
-    perf_files = sorted(round_dir.glob("*_perf.txt"))
-    if len(perf_files) == 1:
-        return perf_files[0]
-    return None
-
-
-def _find_round_operator(round_dir: Path) -> Path | None:
-    candidates = [
-        path
-        for path in sorted(round_dir.iterdir())
-        if path.is_file()
-        and path.name not in _ROUND_METADATA_FILENAMES
-        and not path.name.endswith("_perf.txt")
-    ]
-    if len(candidates) == 1:
-        return candidates[0]
-    if candidates:
-        preferred_python = [path for path in candidates if path.suffix == ".py"]
-        if len(preferred_python) == 1:
-            return preferred_python[0]
-        return candidates[0]
-    return None
+def _expected_round_artifact_names(workspace: Path) -> tuple[str, str]:
+    try:
+        return expected_round_operator_name(workspace), expected_round_perf_name(workspace)
+    except ValueError:
+        return "opt_<operator>.py", "opt_<operator>_perf.txt"
 
 
 def _missing_issue(relative_path: str | None, *, default_path: str) -> str:

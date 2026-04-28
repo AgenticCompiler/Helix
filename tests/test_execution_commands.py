@@ -78,6 +78,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertIn(f"Perf file: {perf_file}", stdout.getvalue())
+            self.assertIn(f"Saved perf file to: {perf_file}", stdout.getvalue())
 
 
 if __name__ == "__main__":

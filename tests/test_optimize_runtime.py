@@ -78,6 +78,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
     def _write_baseline(self, workdir: Path) -> None:
         baseline_dir = workdir / "baseline"
         baseline_dir.mkdir(exist_ok=True)
+        (workdir / "kernel.py").write_text("print('source')\n", encoding="utf-8")
         (baseline_dir / "state.json").write_text(
             json.dumps(
                 {
@@ -111,10 +112,10 @@ class OptimizeRuntimeTests(unittest.TestCase):
         round_dir = workdir / round_name
         round_dir.mkdir(exist_ok=True)
         (workdir / "opt-note.md").write_text("## Round\n", encoding="utf-8")
-        (round_dir / "kernel.py").write_text(f"print('{round_name}')\n", encoding="utf-8")
+        (round_dir / "opt_kernel.py").write_text(f"print('{round_name}')\n", encoding="utf-8")
         (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
         (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
-        (round_dir / "perf.txt").write_text(perf_text, encoding="utf-8")
+        (round_dir / "opt_kernel_perf.txt").write_text(perf_text, encoding="utf-8")
         (round_dir / "round-state.json").write_text(
             json.dumps(
                 {
@@ -124,7 +125,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     "evidence_sources": ["benchmark"],
                     "correctness_status": "passed",
                     "benchmark_status": "passed",
-                    "perf_artifact": "perf.txt",
+                    "perf_artifact": "opt_kernel_perf.txt",
                     "canonical_baseline": "baseline",
                     "comparison_target": "baseline/perf.txt",
                     "perf_summary_source": "compare-perf",

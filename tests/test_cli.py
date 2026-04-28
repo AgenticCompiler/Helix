@@ -1124,13 +1124,14 @@ class PathResolutionTests(unittest.TestCase):
     def test_main_status_accepts_single_workspace_input(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
-            (round_one / "perf.txt").write_text(
+            (round_one / "opt_kernel_perf.txt").write_text(
                 "latency-a: 8\nlatency-b: 16\n",
                 encoding="utf-8",
             )
@@ -1152,26 +1153,28 @@ class PathResolutionTests(unittest.TestCase):
 
             warning_workspace = root / "zeta"
             warning_workspace.mkdir()
+            (warning_workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (warning_workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
                 encoding="utf-8",
             )
             warning_round = warning_workspace / "opt-round-1"
             warning_round.mkdir()
-            (warning_round / "perf.txt").write_text(
+            (warning_round / "opt_kernel_perf.txt").write_text(
                 "latency-a: 8\n",
                 encoding="utf-8",
             )
 
             ok_workspace = root / "alpha"
             ok_workspace.mkdir()
+            (ok_workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (ok_workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
                 encoding="utf-8",
             )
             ok_round = ok_workspace / "opt-round-1"
             ok_round.mkdir()
-            (ok_round / "perf.txt").write_text(
+            (ok_round / "opt_kernel_perf.txt").write_text(
                 "latency-a: 8\nlatency-b: 16\n",
                 encoding="utf-8",
             )
@@ -1190,6 +1193,7 @@ class PathResolutionTests(unittest.TestCase):
             root = Path(tmp)
             workspace = root / "matmul"
             workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
                 encoding="utf-8",
@@ -1217,11 +1221,11 @@ class PathResolutionTests(unittest.TestCase):
             round_two = workspace / "opt-round-2"
             round_one.mkdir()
             round_two.mkdir()
-            (round_one / "perf.txt").write_text(
+            (round_one / "opt_kernel_perf.txt").write_text(
                 "latency-a: 8\nlatency-b: 18\n",
                 encoding="utf-8",
             )
-            (round_two / "perf.txt").write_text(
+            (round_two / "opt_kernel_perf.txt").write_text(
                 "latency-a: 9\nlatency-b: 10\n",
                 encoding="utf-8",
             )
@@ -1252,6 +1256,7 @@ class PathResolutionTests(unittest.TestCase):
             root = Path(tmp)
             workspace = root / "matmul"
             workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
                 encoding="utf-8",
@@ -1275,11 +1280,11 @@ class PathResolutionTests(unittest.TestCase):
             round_two = workspace / "opt-round-2"
             round_one.mkdir()
             round_two.mkdir()
-            (round_one / "perf.txt").write_text(
+            (round_one / "opt_kernel_perf.txt").write_text(
                 "latency-a: 8\nlatency-b: 18\n",
                 encoding="utf-8",
             )
-            (round_two / "perf.txt").write_text(
+            (round_two / "opt_kernel_perf.txt").write_text(
                 "latency-a: 9\nlatency-b: 10\n",
                 encoding="utf-8",
             )
@@ -1303,13 +1308,14 @@ class PathResolutionTests(unittest.TestCase):
             root = Path(tmp)
             workspace = root / "layernorm"
             workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
-            (round_one / "perf.txt").write_text(
+            (round_one / "opt_kernel_perf.txt").write_text(
                 "latency-a: 8\nlatency-c: 18\n",
                 encoding="utf-8",
             )
@@ -1334,6 +1340,7 @@ class PathResolutionTests(unittest.TestCase):
             root = Path(tmp)
             workspace = root / "matmul"
             workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
                 encoding="utf-8",
@@ -1344,7 +1351,7 @@ class PathResolutionTests(unittest.TestCase):
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
-            (round_one / "perf.txt").write_text(
+            (round_one / "opt_kernel_perf.txt").write_text(
                 "latency-a: 9\nlatency-b: 15\n",
                 encoding="utf-8",
             )
@@ -1366,6 +1373,7 @@ class PathResolutionTests(unittest.TestCase):
 
             warning_workspace = root / "zeta"
             warning_workspace.mkdir()
+            (warning_workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (warning_workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
                 encoding="utf-8",
@@ -1374,6 +1382,7 @@ class PathResolutionTests(unittest.TestCase):
 
             ok_workspace = root / "beta"
             ok_workspace.mkdir()
+            (ok_workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (ok_workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
                 encoding="utf-8",
@@ -1394,11 +1403,11 @@ class PathResolutionTests(unittest.TestCase):
             best_round = ok_workspace / "opt-round-2"
             ok_round.mkdir()
             best_round.mkdir()
-            (ok_round / "perf.txt").write_text(
+            (ok_round / "opt_kernel_perf.txt").write_text(
                 "latency-a: 8\nlatency-b: 18\n",
                 encoding="utf-8",
             )
-            (best_round / "perf.txt").write_text(
+            (best_round / "opt_kernel_perf.txt").write_text(
                 "latency-a: 9\nlatency-b: 10\n",
                 encoding="utf-8",
             )
@@ -3202,6 +3211,7 @@ class PathResolutionTests(unittest.TestCase):
             )
             self.assertIn("Return code: 0", stdout.getvalue())
             self.assertIn(f"Perf file: {perf_file}", stdout.getvalue())
+            self.assertIn(f"Saved perf file to: {perf_file}", stdout.getvalue())
             self.assertNotIn("latency-a", stdout.getvalue())
             self.assertIn("bench stderr", stderr.getvalue())
 

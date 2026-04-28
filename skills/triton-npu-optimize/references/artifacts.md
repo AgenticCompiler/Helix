@@ -73,10 +73,10 @@ Recommended layout:
 
 ```text
 opt-round-N/
-  <optimized-operator>.py
+  opt_<original-operator>.py
   attempts.md
   summary.md
-  perf.txt
+  opt_<original-operator>_perf.txt
   perf-analysis.md
   profile/
   ir/
@@ -167,9 +167,10 @@ Keep entries chronological so another engineer can reconstruct how the round evo
 ## Bench Evidence
 
 - Preserve the normalized benchmark result from `run-bench`.
-- If `run-bench` already writes a perf file under `bench_results/`, either copy the relevant result into the round directory or summarize it in `perf.txt` with a clear reference back to the source file.
+- For a valid round, the round-local perf artifact must be the generated `opt_<original-operator>_perf.txt`.
+- That `opt_<original-operator>_perf.txt` file must be produced by the `triton-npu-run-eval` skill's `run-bench` flow for the round operator, not handwritten, post-processed, or substituted from another workflow.
 - Keep enough evidence to reconstruct the performance claim without rerunning the entire round immediately.
-- Keep `perf.txt` even when profiler or IR evidence also exists; richer evidence does not replace the round's basic benchmark summary.
+- Keep `opt_<original-operator>_perf.txt` even when profiler or IR evidence also exists; richer evidence does not replace the round's basic benchmark summary.
 
 ## Deep Analysis Evidence
 

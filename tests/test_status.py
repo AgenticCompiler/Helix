@@ -100,6 +100,7 @@ class OptimizeStatusTests(unittest.TestCase):
     def test_inspect_optimize_status_workspace_returns_numeric_best_round(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
                 encoding="utf-8",
@@ -127,11 +128,11 @@ class OptimizeStatusTests(unittest.TestCase):
             round_two = workspace / "opt-round-2"
             round_one.mkdir()
             round_two.mkdir()
-            (round_one / "perf.txt").write_text(
+            (round_one / "opt_kernel_perf.txt").write_text(
                 "latency-a: 8\nlatency-b: 18\n",
                 encoding="utf-8",
             )
-            (round_two / "perf.txt").write_text(
+            (round_two / "opt_kernel_perf.txt").write_text(
                 "latency-a: 9\nlatency-b: 10\n",
                 encoding="utf-8",
             )
@@ -158,6 +159,7 @@ class OptimizeStatusTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
                 encoding="utf-8",
@@ -181,11 +183,11 @@ class OptimizeStatusTests(unittest.TestCase):
             round_two = workspace / "opt-round-2"
             round_one.mkdir()
             round_two.mkdir()
-            (round_one / "perf.txt").write_text(
+            (round_one / "opt_kernel_perf.txt").write_text(
                 "latency-a: 8\nlatency-b: 18\n",
                 encoding="utf-8",
             )
-            (round_two / "perf.txt").write_text(
+            (round_two / "opt_kernel_perf.txt").write_text(
                 "latency-a: 9\nlatency-b: 10\n",
                 encoding="utf-8",
             )
@@ -215,13 +217,14 @@ class OptimizeStatusTests(unittest.TestCase):
     def test_inspect_optimize_status_workspace_uses_latest_successful_verify_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
-            (round_one / "perf.txt").write_text(
+            (round_one / "opt_kernel_perf.txt").write_text(
                 "latency-a: 8\nlatency-b: 18\n",
                 encoding="utf-8",
             )
@@ -248,13 +251,14 @@ class OptimizeStatusTests(unittest.TestCase):
     def test_inspect_optimize_status_workspace_marks_partial_latest_verify_as_unverified(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
                 encoding="utf-8",
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
-            (round_one / "perf.txt").write_text(
+            (round_one / "opt_kernel_perf.txt").write_text(
                 "latency-a: 8\nlatency-b: 18\n",
                 encoding="utf-8",
             )
@@ -274,6 +278,7 @@ class OptimizeStatusTests(unittest.TestCase):
     def test_inspect_optimize_status_workspace_ignores_extra_round_perf_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
                 encoding="utf-8",
@@ -282,11 +287,11 @@ class OptimizeStatusTests(unittest.TestCase):
             round_two = workspace / "opt-round-2"
             round_one.mkdir()
             round_two.mkdir()
-            (round_one / "perf.txt").write_text(
+            (round_one / "opt_kernel_perf.txt").write_text(
                 "latency-a: 7\nmean_ms: 11.0\nlatency-b: 15\nnotes: strong round\n",
                 encoding="utf-8",
             )
-            (round_two / "perf.txt").write_text(
+            (round_two / "opt_kernel_perf.txt").write_text(
                 "latency-a: 9\nlatency-b: 19\n",
                 encoding="utf-8",
             )
@@ -304,6 +309,7 @@ class OptimizeStatusTests(unittest.TestCase):
     def test_inspect_optimize_status_workspace_prefers_best_geomean_speedup(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
                 "latency-a: 1\nlatency-b: 100\n",
                 encoding="utf-8",
@@ -312,11 +318,11 @@ class OptimizeStatusTests(unittest.TestCase):
             round_two = workspace / "opt-round-2"
             round_one.mkdir()
             round_two.mkdir()
-            (round_one / "perf.txt").write_text(
+            (round_one / "opt_kernel_perf.txt").write_text(
                 "latency-a: 0.5\nlatency-b: 100\n",
                 encoding="utf-8",
             )
-            (round_two / "perf.txt").write_text(
+            (round_two / "opt_kernel_perf.txt").write_text(
                 "latency-a: 0.9\nlatency-b: 60\n",
                 encoding="utf-8",
             )
@@ -332,6 +338,7 @@ class OptimizeStatusTests(unittest.TestCase):
     def test_inspect_optimize_status_workspace_prefers_baseline_directory_perf(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             baseline_dir = workspace / "baseline"
             baseline_dir.mkdir()
             (baseline_dir / "perf.txt").write_text(
@@ -366,7 +373,7 @@ class OptimizeStatusTests(unittest.TestCase):
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
-            (round_one / "perf.txt").write_text(
+            (round_one / "opt_kernel_perf.txt").write_text(
                 "latency-a: 8\nlatency-b: 18\n",
                 encoding="utf-8",
             )
@@ -376,9 +383,37 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertEqual(status.state, "ok")
             self.assertAlmostEqual(status.baseline_mean or 0.0, 15.0)
 
+    def test_inspect_optimize_status_workspace_accepts_legacy_round_perf_txt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_two = workspace / "opt-round-2"
+            round_one.mkdir()
+            round_two.mkdir()
+            (round_one / "perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 18\n",
+                encoding="utf-8",
+            )
+            (round_two / "perf.txt").write_text(
+                "latency-a: 7\nlatency-b: 15\n",
+                encoding="utf-8",
+            )
+
+            status = inspect_optimize_status_workspace(workspace)
+
+            self.assertEqual(status.state, "ok")
+            self.assertEqual(status.best_round, "round-2")
+            self.assertAlmostEqual(status.best_mean or 0.0, 11.0)
+
     def test_inspect_optimize_status_workspace_prefers_non_opt_baseline_perf_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
             (workspace / "kernel_perf.txt").write_text(
                 "latency-a: 10\nlatency-b: 20\n",
                 encoding="utf-8",
@@ -389,7 +424,7 @@ class OptimizeStatusTests(unittest.TestCase):
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
-            (round_one / "perf.txt").write_text(
+            (round_one / "opt_kernel_perf.txt").write_text(
                 "latency-a: 9\nlatency-b: 15\n",
                 encoding="utf-8",
             )
@@ -414,7 +449,7 @@ class OptimizeStatusTests(unittest.TestCase):
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
-            (round_one / "perf.txt").write_text(
+            (round_one / "opt_Gemm_perf.txt").write_text(
                 "latency-a: 8\nlatency-b: 16\n",
                 encoding="utf-8",
             )
@@ -440,7 +475,7 @@ class OptimizeStatusTests(unittest.TestCase):
             )
             round_one = workspace / "opt-round-1"
             round_one.mkdir()
-            (round_one / "perf.txt").write_text(
+            (round_one / "opt_Gemm_perf.txt").write_text(
                 "latency-a: 8\nlatency-b: 16\n",
                 encoding="utf-8",
             )

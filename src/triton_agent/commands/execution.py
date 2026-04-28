@@ -78,6 +78,7 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
     print(f"Return code: {result.return_code}")
     if perf_path is not None:
         print(f"Perf file: {perf_path}")
+        print(f"Saved perf file to: {perf_path}")
     if args.remote and args.keep_remote_workdir and remote_workspace is not None:
         print(f"Remote workspace: {remote_workspace}")
     return result.return_code

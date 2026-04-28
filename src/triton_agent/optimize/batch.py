@@ -12,10 +12,12 @@ from triton_agent.batch_utils import (
     NO_CANDIDATE_OPERATOR_FILE,
     PrefixedTextStream,
     discover_batch_workspaces,
-    is_batch_operator_candidate,
-    resolve_batch_operator_file,
 )
 from triton_agent.models import AgentResult
+from triton_agent.optimize.naming import (
+    is_batch_optimize_operator_candidate,
+    resolve_batch_optimize_operator_file,
+)
 from triton_agent.npu_affinity import (
     BatchNpuAffinityPool,
     affinity_env_for_device,
@@ -26,8 +28,6 @@ from triton_agent.optimize.models import BatchOptimizeResult, BatchOptimizeWorks
 from triton_agent.optimize.render import render_batch_optimize_results
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
 
-_BATCH_OPTIMIZE_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")
-_BATCH_OPTIMIZE_EXCLUDED_NAMES = {"__init__.py"}
 _BATCH_STATUS_FILENAME = "optimize-batch-status.json"
 _BATCH_STATUS_VERSION = 1
 
@@ -169,23 +169,6 @@ def run_optimize_batch(
                 )
 
     return render_batch_optimize_results(results, stdout=stream)
-
-
-def resolve_batch_optimize_operator_file(workspace: Path) -> Path:
-    return resolve_batch_operator_file(
-        workspace,
-        is_operator_candidate=is_batch_optimize_operator_candidate,
-        no_candidate_message=NO_CANDIDATE_OPERATOR_FILE,
-    )
-
-
-def is_batch_optimize_operator_candidate(path: Path) -> bool:
-    return is_batch_operator_candidate(
-        path,
-        excluded_names=_BATCH_OPTIMIZE_EXCLUDED_NAMES,
-        excluded_prefixes=_BATCH_OPTIMIZE_EXCLUDED_PREFIXES,
-    )
-
 
 def summarize_batch_optimize_failure(result: AgentResult) -> str:
     for output in (result.stderr, result.stdout):
