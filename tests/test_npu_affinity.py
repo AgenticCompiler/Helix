@@ -14,6 +14,12 @@ class BatchNpuAffinityTests(unittest.TestCase):
     def test_parse_batch_npu_devices_trims_whitespace(self) -> None:
         self.assertEqual(parse_batch_npu_devices(" 0, 1 ,2 "), ("0", "1", "2"))
 
+    def test_parse_batch_npu_devices_expands_numeric_ranges(self) -> None:
+        self.assertEqual(
+            parse_batch_npu_devices("0,3-5,8-9"),
+            ("0", "3", "4", "5", "8", "9"),
+        )
+
     def test_parse_batch_npu_devices_rejects_empty_entries(self) -> None:
         with self.assertRaisesRegex(ValueError, "TRITON_AGENT_BATCH_NPU_DEVICES"):
             parse_batch_npu_devices("0,,1")
@@ -21,6 +27,14 @@ class BatchNpuAffinityTests(unittest.TestCase):
     def test_parse_batch_npu_devices_rejects_duplicates(self) -> None:
         with self.assertRaisesRegex(ValueError, "duplicate"):
             parse_batch_npu_devices("0,1,0")
+
+    def test_parse_batch_npu_devices_rejects_descending_ranges(self) -> None:
+        with self.assertRaisesRegex(ValueError, "range"):
+            parse_batch_npu_devices("5-3")
+
+    def test_parse_batch_npu_devices_rejects_malformed_ranges(self) -> None:
+        with self.assertRaisesRegex(ValueError, "range"):
+            parse_batch_npu_devices("1-3-5")
 
     def test_affinity_env_for_device_uses_visible_devices_and_diagnostic_env(self) -> None:
         self.assertEqual(

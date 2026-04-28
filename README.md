@@ -51,6 +51,43 @@ uv run triton-agent verify-batch --input operators_root
 uv run triton-agent optimize-batch --input operators_root
 ```
 
+## Runtime Environment Variables
+
+These are the environment variables that `triton-agent` reads directly at runtime.
+
+| Variable | Required | Used by | Purpose |
+| --- | --- | --- | --- |
+| `TRITON_AGENT_HOME` | No | `optimize`, `optimize-batch` with `--enable-compiler-source-analysis` | Overrides the default Triton Agent home directory. The compiler-source checkout is stored under `<TRITON_AGENT_HOME>/compiler-sources/AscendNPU-IR/` instead of `~/.triton-agent/compiler-sources/AscendNPU-IR/`. |
+| `TRITON_AGENT_BATCH_NPU_DEVICES` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Comma-separated Ascend device list that also supports inclusive numeric ranges such as `0,3-5,8-9`. When set, concurrent batch workspaces are pinned to distinct devices, and `--max-concurrency` must not exceed the number of configured devices. |
+| `TRITON_AGENT_CODE_AGENT_MAX_RETRIES` | No | Agent-backed commands | Non-negative integer retry budget for transient code-agent failures such as rate limits. Default is `2`. Set `0` to disable retries. |
+| `TRITON_AGENT_MSPROF_OUTPUT_DIR` | No | Local `msprof` benchmark runs | Preserves local `msprof` output directories under the given root instead of using auto-cleaned temporary directories. Useful when you want to inspect profiler artifacts after `run-bench`, `verify`, or optimize validation in `msprof` mode. |
+| `LLM_API_KEY` | Only for `--agent openhands` | OpenHands backend | API key forwarded to the OpenHands SDK LLM client. |
+| `LLM_MODEL` | Only for `--agent openhands` | OpenHands backend | Model name passed to the OpenHands SDK LLM client. |
+| `LLM_BASE_URL` | No | OpenHands backend | Optional custom base URL for the OpenHands SDK LLM client. |
+
+Examples:
+
+```bash
+export TRITON_AGENT_BATCH_NPU_DEVICES=0,3-5,8-9
+export TRITON_AGENT_CODE_AGENT_MAX_RETRIES=4
+export TRITON_AGENT_HOME=$HOME/.triton-agent
+uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
+```
+
+```bash
+export LLM_API_KEY=...
+export LLM_MODEL=openai/gpt-4.1
+export LLM_BASE_URL=https://api.example.com/v1
+uv run triton-agent gen-test --input a.py --agent openhands
+```
+
+### Environment Variables Exported By `triton-agent`
+
+These variables are normally set by `triton-agent` for child processes. You usually do not need to export them yourself:
+
+- `ASCEND_RT_VISIBLE_DEVICES`: set for each batch workspace when `TRITON_AGENT_BATCH_NPU_DEVICES` is configured.
+- `TRITON_AGENT_ASSIGNED_NPU`: companion variable that records the device chosen for the current workspace.
+
 ## Generate Tests
 
 Use `gen-test` when you need a correctness harness for one operator.
@@ -293,10 +330,10 @@ Use the batch commands when `--input` points to a directory of operator workspac
 
 ### Batch NPU Affinity
 
-Set `TRITON_AGENT_BATCH_NPU_DEVICES` to a comma-separated device list when you want concurrent batch workspaces to stay on distinct Ascend NPUs:
+Set `TRITON_AGENT_BATCH_NPU_DEVICES` to a comma-separated device list when you want concurrent batch workspaces to stay on distinct Ascend NPUs. The value supports explicit IDs and inclusive numeric ranges:
 
 ```bash
-export TRITON_AGENT_BATCH_NPU_DEVICES=0,1,2,3
+export TRITON_AGENT_BATCH_NPU_DEVICES=0,3-5,8-9
 uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
 ```
 

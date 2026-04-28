@@ -9,6 +9,7 @@
 ## Core Principles
 
 - Keep prompts, comments, logs, and user-visible instructions in English.
+- Do not create or switch to a different git branch unless the user has explicitly confirmed that branch change.
 - Treat the local `skills/` directory as the source of truth for workflow behavior, and write skills as natural-language task guides first.
 - Treat the public operator entrypoint as the API surface for generation workflows.
 - When a skill needs to invoke project commands, prefer bundled helper scripts over assuming installed console entrypoints.
