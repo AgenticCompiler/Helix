@@ -319,6 +319,7 @@ Read this index first. Then read only the one or two most relevant detailed patt
 - Use `classic-matmul` when the kernel should first become a standard tiled `tl.dot` loop.
 - Use `software-pipeline` when that tiled loop already exists and the next issue is overlap.
 - Use `tiling` when the main issue is UB footprint, block size, or live intermediate size.
+- When compare-helper calls such as `tl.maximum()` or `tl.minimum()` appear in the optimized kernel, inspect all similar call sites for omitted `propagate_nan`. Add `propagate_nan=tl.PropagateNan.ALL` when the round intentionally wants explicit, consistent NaN propagation, and record that this can change NaN-input behavior.
 - If tiled matmul is only good for part of the operating envelope, prefer validated dtype/shape dispatch over forcing a single implementation everywhere.
 - Do not choose `software-pipeline` as a substitute for a missing structural rewrite.
 - If the bottleneck looks compare or mask heavy, start with:
