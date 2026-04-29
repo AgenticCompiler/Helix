@@ -104,6 +104,12 @@ Optimize analysis is layered.
 - When compiler source analysis is enabled, treat the compiler source checkout as read-only and use compiler-source evidence only when it is genuinely needed.
 - Write `opt-round-N/compiler-analysis.md`.
 
+## Kernel Semantic Repairs
+
+- During kernel optimization work, inspect kernel compare-helper call sites such as `tl.maximum()` and `tl.minimum()` across the operator, not only the lines touched by the primary optimization.
+- If a kernel compare-helper call omits `propagate_nan`, you may add `propagate_nan=tl.PropagateNan.ALL` as a consistency repair when the intended semantics are explicit NaN propagation.
+- Treat this as a semantic choice because it can change NaN-input behavior. Do not present it as a no-op cleanup.
+
 ## Stage 3: Validate And Record
 
 - Run correctness validation before trusting any performance result.
