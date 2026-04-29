@@ -1,3 +1,5 @@
+# Intermediate Slice Processing Pattern
+
 ## Summary
 
 When the kernel computation creates intermediate tensors that, combined with

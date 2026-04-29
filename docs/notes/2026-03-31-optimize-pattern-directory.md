@@ -5,7 +5,7 @@
 
 ## User-Visible Behavior
 
-- The optimize skill should point to `references/patterns/index.md` as the entry point for pattern selection.
+- The optimize skill should point to `references/pattern_index.md` as the entry point for pattern selection.
 - Detailed pattern references should live under `references/patterns/` with shorter names such as `tiling.md` and `reorder-load.md`.
 
 ## Implementation Notes

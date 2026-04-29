@@ -3986,7 +3986,7 @@ class PromptTests(unittest.TestCase):
             prompt,
         )
         self.assertIn(
-            "Read the generated `references/patterns/index.md` before detailed pattern references.",
+            "Read the generated `references/pattern_index.md` before detailed pattern references.",
             prompt,
         )
         self.assertIn(

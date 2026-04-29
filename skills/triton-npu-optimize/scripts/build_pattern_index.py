@@ -156,7 +156,7 @@ def render_index(cards: list[PatternCard]) -> str:
         lines.append(f"### `{card.identifier}`")
         lines.append("")
         lines.append(f"- Summary: {card.summary}")
-        lines.append(f"- Source: [{card.source_path.name}]({card.source_path.name})")
+        lines.append(f"- Source: [{card.source_path.name}](patterns/{card.source_path.name})")
         if card.use_when:
             lines.append("- Use When:")
             lines.extend(_render_bullets(card.use_when))
@@ -172,12 +172,6 @@ def render_index(cards: list[PatternCard]) -> str:
         if card.signals_ir:
             lines.append("- Signals / IR:")
             lines.extend(_render_bullets(card.signals_ir))
-        if card.verify_after_applying:
-            lines.append("- What To Verify After Applying:")
-            lines.extend(_render_bullets(card.verify_after_applying))
-        if card.related_patterns:
-            lines.append("- Related Patterns:")
-            lines.extend(_render_bullets(card.related_patterns))
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 

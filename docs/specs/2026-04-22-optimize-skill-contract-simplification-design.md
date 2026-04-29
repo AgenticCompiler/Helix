@@ -154,7 +154,7 @@ This is where reference-reading instructions should live.
 This subsection should say:
 
 - inspect current code structure and benchmark behavior
-- read `references/patterns/index.md`
+- read `references/pattern_index.md`
 - read a detailed pattern reference only if the index suggests a real match
 - do not treat this as permission for blind pattern search
 

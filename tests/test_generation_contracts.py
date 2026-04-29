@@ -157,7 +157,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("`opt-round-N/perf-analysis.md`", optimize)
 
     def test_optimize_pattern_library_includes_classic_tiled_matmul(self) -> None:
-        index = _read("skills/triton-npu-optimize/references/patterns/index.md")
+        index = _read("skills/triton-npu-optimize/references/pattern_index.md")
         reference = _read("skills/triton-npu-optimize/references/patterns/classic-matmul.md")
         self.assertIn("classic-matmul", index)
         self.assertIn("manual matmul or K-reduction", index)
@@ -211,11 +211,12 @@ class GenerationContractTests(unittest.TestCase):
                 continue
             content = path.read_text(encoding="utf-8")
             with self.subTest(path=path.name):
+                self.assertTrue(content.startswith("# "))
                 self.assertIn("## Summary", content)
                 self.assertIn("## Use When", content)
 
         optimize = _read("skills/triton-npu-optimize/SKILL.md")
-        self.assertIn("generated `references/patterns/index.md`", optimize)
+        self.assertIn("generated `references/pattern_index.md`", optimize)
         self.assertIn("extract_code_facts.py", optimize)
 
     def test_optimize_pattern_cards_promote_existing_information_into_structured_sections(
@@ -310,10 +311,10 @@ class GenerationContractTests(unittest.TestCase):
     def test_round_performance_skill_points_to_symptom_routing_references(self) -> None:
         skill = _read("skills/triton-npu-analyze-round-performance/SKILL.md")
         symptom_index = _read(
-            "skills/triton-npu-analyze-round-performance/references/symptoms/index.md"
+            "skills/triton-npu-analyze-round-performance/references/symptom_index.md"
         )
         self.assertIn("symptom cards", skill)
-        self.assertIn("references/symptoms/index.md", skill)
+        self.assertIn("references/symptom_index.md", skill)
         self.assertIn("weak-pipeline-overlap", symptom_index)
         self.assertIn("high-transfer-pressure", symptom_index)
 

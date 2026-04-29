@@ -29,7 +29,7 @@ When compiler source analysis is enabled by the launch prompt or workspace guida
 Read [references/ascend-npu-profiling-analysis.md](references/ascend-npu-profiling-analysis.md) when the round needs deeper interpretation of `op_summary`, `task_time`, `api_statistic`, `msprof` JSON, or `.bin` signals.
 Read [references/ascend-npu-optimization-guidance.md](references/ascend-npu-optimization-guidance.md) when you need help turning profiling symptoms and IR findings into concrete potential optimization points.
 Read [references/ascend-npu-architecture-notes.md](references/ascend-npu-architecture-notes.md) when the likely optimization point depends on chip differences such as A3 versus A5 buffer sizes, layout behavior, or cube/vector data handoff.
-Read [references/symptoms/index.md](references/symptoms/index.md) when structured profile or IR evidence is available and you need symptom cards to narrow likely pattern directions before returning to detailed pattern references.
+Read [references/symptom_index.md](references/symptom_index.md) when structured profile or IR evidence is available and you need symptom cards to narrow likely pattern directions before returning to detailed pattern references.
 
 Read the references in this order:
 
@@ -55,7 +55,7 @@ Read the references in this order:
 5. Interpret profiling evidence through the profiling reference instead of ad hoc guesses.
    - Follow [references/ascend-npu-profiling-analysis.md](references/ascend-npu-profiling-analysis.md) for layered signal interpretation.
    - Escalate into `.bin` when CSV-level evidence is still not explanatory enough.
-6. Use `references/symptoms/index.md` and the matching symptom cards to narrow the current hypothesis.
+6. Use `references/symptom_index.md` and the matching symptom cards to narrow the current hypothesis.
    - Start from the symptom index, then read only the one or two symptom cards that best match the extracted evidence.
    - Use symptom cards as routing aids, not as a replacement for the underlying profile or IR evidence.
 7. Decide whether profiler evidence is already sufficient on its own.

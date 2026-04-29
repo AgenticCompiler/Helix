@@ -9,6 +9,14 @@ Rewrite explicit integer compare-heavy logic into a form that is more vector-fri
 - Explicit `i64` or `i32` comparisons appear on the hot path outside the compiler's normal fast load/store mask cases.
 - Comparison-heavy control flow or masking looks like a real vectorization blocker rather than just minor boundary handling.
 
+## Signals
+
+### Code
+
+- Integer comparisons produce explicit boolean masks used in `tl.where`, conditional assignments, or similar hot-path logic.
+- The comparison is written outside the compiler's normal `tl.load` or `tl.store` mask fast path.
+- The code still compares integer operands directly even though vector-friendly `fp32` comparison would preserve semantics.
+
 ## Problem Description
 
 On Huawei Ascend NPU devices, integer comparison operations (`i64` and `i32`) cannot utilize vector processing units and degrade to scalar computation, significantly reducing performance.
@@ -124,10 +132,8 @@ x = tl.load(x_ptr + offsets, mask=mask_fp32)
 
 3. **Non-performance-critical code** - optimization overhead may not be justified
 
-## Implementation Checklist
+## What To Verify After Applying
 
-- [ ] Identify integer comparisons used outside `tl.load`/`tl.store` masks
-- [ ] Verify that the comparison result feeds hot-path conditional logic
-- [ ] Cast both operands to `fp32`
-- [ ] Preserve semantic equivalence
-- [ ] Re-check downstream dtype expectations
+- Verify the comparison result still feeds the same hot-path conditional logic after the dtype rewrite.
+- Verify both operands are cast in a way that preserves semantic equivalence for the downstream mask usage.
+- Re-check downstream dtype expectations and confirm the comparison is no longer a scalarization bottleneck.

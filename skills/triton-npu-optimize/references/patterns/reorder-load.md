@@ -120,6 +120,17 @@ Cycle N+1: load A → load B (parallelizable)
 3. **Memory-bound kernels**: Where memory latency is the performance bottleneck
 4. **NPU targets**: Particularly beneficial for NPU's memory execution model
 
+## Signals
+
+### Code
+
+- Independent load operations are delayed behind unrelated computations or loop-carried dependencies.
+- The hot loop contains several loads with no true dependency between them, but they are still issued serially.
+
+### Profile
+
+- The kernel behaves memory-bound, and reducing avoidable wait between independent loads looks more promising than changing arithmetic.
+
 ## Avoid When
 
 1. **Actual data dependencies**: When the load order affects semantic correctness
@@ -127,9 +138,8 @@ Cycle N+1: load A → load B (parallelizable)
 3. **CPU targets**: CPUs typically have out-of-order execution and hardware scheduling
 4. **Complex dependency graphs**: Where reordering might create subtle race conditions
 
-## Implementation Checklist
+## What To Verify After Applying
 
-- [ ] Identify load instructions blocked by preceding operations
-- [ ] Verify that reordered loads have no data dependencies with moved-past operations
-- [ ] Move independent load instructions as early as possible
-- [ ] Ensure loop-carried dependencies are properly handled
+- Verify each reordered load is independent from the operations it moves past.
+- Verify loop-carried dependencies and semantic ordering remain correct after reordering.
+- Verify the intended memory-level parallelism win actually appears in benchmark or profile evidence.

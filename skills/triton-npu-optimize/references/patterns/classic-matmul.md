@@ -167,23 +167,10 @@ The exact threshold should come from benchmark evidence, not from a fixed guess.
 - larger tiles can increase register or UB pressure
 - forcing `fp16` dot inputs can change `fp32` input semantics
 
-## Boundary With Nearby Patterns
+## Related Patterns
 
-### vs `software-pipeline`
-
-- `classic-matmul` changes the loop into a standard tiled load-plus-dot structure
-- `software-pipeline` assumes that tiled structure already exists and then overlaps current-tile compute with next-tile load
-
-Use `classic-matmul` first when the current hot loop is still written as manual reduction code.
-Use `software-pipeline` after that only if profiling still shows load-then-compute stalls.
-
-### vs `tiling`
-
-- `classic-matmul` is about choosing a matmul-shaped kernel structure
-- `tiling` is about reducing UB pressure or overlarge block working sets
-
-If your evidence says the kernel is structurally matmul-like but scalar-heavy, prefer `classic-matmul`.
-If your evidence says the kernel already has the right structure but block size or intermediate footprint is too large, prefer `tiling`.
+- `software-pipeline`: use it after `classic-matmul` when the tiled structure already exists but profiling still shows load-then-compute stalls.
+- `tiling`: use it when the kernel already has the right tiled structure, but block size or intermediate footprint is still too large for UB.
 
 ## What To Verify After Applying
 

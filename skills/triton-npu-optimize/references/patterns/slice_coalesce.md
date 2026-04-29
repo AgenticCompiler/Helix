@@ -1,3 +1,5 @@
+# Slice Coalescing Pattern
+
 ## Summary
 
 When the kernel performs scatter/gather operations with non-contiguous memory access

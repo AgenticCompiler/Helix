@@ -195,7 +195,7 @@ It should not become a second independently maintained source of pattern metadat
 
 Add a symptom-routing layer under the round-analysis skill:
 
-- `skills/triton-npu-analyze-round-performance/references/symptoms/index.md`
+- `skills/triton-npu-analyze-round-performance/references/symptom_index.md`
 - `skills/triton-npu-analyze-round-performance/references/symptoms/<symptom-id>.md`
 
 This layer owns the profiling and IR time question:
@@ -319,7 +319,7 @@ This can remain a later phase if the existing round artifacts are still easy eno
 
 At `pattern triage`, the agent should:
 
-1. Read the semantic index from `references/patterns/index.md`.
+1. Read the semantic index from `references/pattern_index.md`.
 2. Collect small-scope evidence from:
    - current operator code
    - existing benchmark behavior
@@ -384,7 +384,7 @@ In that case the round should explicitly record:
 
 Update optimize guidance so it explicitly teaches:
 
-- `references/patterns/index.md` is the semantic entrypoint for pattern triage
+- `references/pattern_index.md` is the semantic entrypoint for pattern triage
 - detailed pattern docs are the source of truth and second-level reads during routing
 - pattern selection should use structured code facts and existing benchmark behavior first
 - later profile and IR evidence may narrow or overturn an earlier pattern choice

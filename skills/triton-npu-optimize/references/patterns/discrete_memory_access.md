@@ -1,3 +1,5 @@
+# Discrete Memory Access Staging Pattern
+
 ## Summary
 
 When loading discrete indices, rather than using `tl.load` to load the
@@ -11,35 +13,35 @@ the target values.
 
 ## Detail
 
-此事例旨在说明，在离散访存场景下，如何高效load数据
+This example shows how to load data efficiently for discrete-memory-access workloads.
 
-### 功能
+### Operation
 
-使用triton实现
+Implement the following Triton-style behavior:
 
 ```python
 out = x[idx]
 ```
 
-输入:
+Inputs:
 
 | Input | Shape |
 |-------|-------|
 | x     | (M,)  |
 | idx   | (N,)  |
 
-输出
+Output:
 
 | Input | Shape |
 |-------|-------|
 | out   | (N,)  |
 
-### 差异点概述
+### Key Difference Summary
 
-- gpu直接从global中离散访问取数
-- npu先将数据从global搬至share，再从share中select目标值
+- GPU-style code reads discrete values directly from global memory.
+- NPU-style code first stages data from global memory into shared memory, then selects the target values from the staged buffer.
 
-### 差异点详解
+### Detailed Difference
 
 Code diff of NPU and CUDA
 
@@ -62,11 +64,11 @@ def pick_kernel(
     idx = tl.load(idx_ptr + rn * stride_idx)
     mask = idx < M
 
--   # gpu
--   val = tl.load(x_ptr + idx * stride_x, mask=mask)  # gpu直接从global中离散访问取数
-+   # npu
-+   x_shared = tl.load(x_ptr + rm * stride_x)  # [M]  # npu先将数据从global搬至share
-+   val = tl.gather(x_shared, idx, 0)  # 再从share中select目标值
+-   # GPU path
+-   val = tl.load(x_ptr + idx * stride_x, mask=mask)  # Direct discrete global-memory access
++   # NPU path
++   x_shared = tl.load(x_ptr + rm * stride_x)  # [M] Stage the full range into shared memory
++   val = tl.gather(x_shared, idx, 0)  # Select target values from the shared-memory buffer
 
     tl.store(y_ptr + rn * stride_y, val, mask=mask)
 

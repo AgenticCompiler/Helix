@@ -18,7 +18,7 @@ def layered_analysis_lines(*, round_scope: str) -> list[str]:
         "Record the round's primary analysis level separately from its supporting evidence.",
         "Escalate analysis in this order: pattern triage, profiling diagnosis, IR attribution, compiler-source escalation.",
         "Use pattern triage only to decide whether a strong pattern-backed hypothesis already exists.",
-        "Read the generated `references/patterns/index.md` before detailed pattern references.",
+        "Read the generated `references/pattern_index.md` before detailed pattern references.",
         "Use the staged code-fact extractor when code structure is still unclear at pattern triage.",
         "Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.",
         "Use symptom cards to narrow pattern candidates after structured profiler or IR evidence exists.",

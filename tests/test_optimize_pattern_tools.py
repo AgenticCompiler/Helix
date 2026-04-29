@@ -74,8 +74,81 @@ Extra prose that should stay in the source file but not become a first-line inde
             REPO_ROOT / "skills" / "triton-npu-optimize" / "references" / "patterns"
         )
         generated = module.build_index_text(patterns_dir)
-        checked_in = (patterns_dir / "index.md").read_text(encoding="utf-8")
+        checked_in = (
+            REPO_ROOT
+            / "skills"
+            / "triton-npu-optimize"
+            / "references"
+            / "pattern_index.md"
+        ).read_text(encoding="utf-8")
         self.assertEqual(generated, checked_in)
+
+    def test_generated_index_links_to_pattern_subdirectory(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            patterns_dir = Path(tmp)
+            (patterns_dir / "demo.md").write_text(
+                "# Demo Pattern\n\n## Summary\n\nShort summary.\n\n## Use When\n\n- Stable trigger.\n",
+                encoding="utf-8",
+            )
+            rendered = module.build_index_text(patterns_dir)
+            self.assertIn("[demo.md](patterns/demo.md)", rendered)
+
+    def test_generated_index_omits_post_apply_verification_section(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            patterns_dir = Path(tmp)
+            (patterns_dir / "demo.md").write_text(
+                """# Demo Pattern
+
+## Summary
+
+Short summary.
+
+## Use When
+
+- Stable trigger.
+
+## What To Verify After Applying
+
+- Verify something important after the rewrite.
+""",
+                encoding="utf-8",
+            )
+            rendered = module.build_index_text(patterns_dir)
+            self.assertNotIn("What To Verify After Applying", rendered)
+            self.assertNotIn("Verify something important", rendered)
+
+    def test_generated_index_omits_related_patterns_section(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            patterns_dir = Path(tmp)
+            (patterns_dir / "demo.md").write_text(
+                """# Demo Pattern
+
+## Summary
+
+Short summary.
+
+## Use When
+
+- Stable trigger.
+
+## Related Patterns
+
+- `other-pattern`: Read it after this one when the structure is already normalized.
+""",
+                encoding="utf-8",
+            )
+            rendered = module.build_index_text(patterns_dir)
+            self.assertNotIn("Related Patterns", rendered)
+            self.assertNotIn("other-pattern", rendered)
 
     def test_build_index_ignores_pattern_directory_readme(self) -> None:
         module = _load_skill_script(

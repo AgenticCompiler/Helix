@@ -67,7 +67,7 @@ Optimize analysis is layered.
 ### pattern triage
 
 - Inspect current code structure and benchmark behavior before choosing a direction.
-- Read the generated `references/patterns/index.md` before detailed pattern references.
+- Read the generated `references/pattern_index.md` before detailed pattern references.
 - Read only the one or two most relevant detailed pattern files after the generated index has narrowed the candidate set.
 - When code structure is still unclear at pattern triage, run `python3 scripts/extract_code_facts.py <operator-file> --format json`.
 - Use `extract_code_facts.py` as a structured code-evidence helper only; it does not diagnose symptoms or choose the pattern for you.

@@ -1,3 +1,5 @@
+# Dual Vector-Core Parallel Pattern
+
 ## Summary
 
 Use `tl.parallel` to run tasks in the two vector cores of an aicore at the same time.
@@ -6,6 +8,19 @@ Use `tl.parallel` to run tasks in the two vector cores of an aicore at the same 
 
 - Two independent vector-side computations happen in sequence and can be split across vector cores.
 - The bottleneck is not primarily memory movement, so exposing more vector-core concurrency is more promising than reworking loads.
+
+## Signals
+
+### Code
+
+- Independent type conversions, element-wise operations, or scaling steps already exist on the hot path.
+- The candidate work split is compute-side and independent, rather than shared-bandwidth memory loading.
+
+## Avoid When
+
+- The candidate work items still share a real data dependency.
+- The operation is mostly memory loading, where shared bandwidth is already the limiting factor.
+- The operation is so small that `tl.parallel` overhead is likely larger than the gain.
 
 ## Detail
 
@@ -92,6 +107,12 @@ for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
 - Zero overhead (no extract/insert slice operations needed)
 - Natural work division (one matrix per core)
 
+
+## What To Verify After Applying
+
+- Verify the two parallel branches are actually independent and do not need cross-core ordering.
+- Verify `tl.parallel` is applied to compute-side work rather than shared-bandwidth loads.
+- Verify end-to-end timing improves instead of only making the structure look more parallel.
 
 ### Common pitfalls
 

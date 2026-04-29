@@ -4,7 +4,7 @@
 
 **Goal:** Add the first evidence-routing layer for optimize by making pattern Markdown the authoring source of truth, generating the pattern semantic index from those files, adding a small symptom-routing reference set, and introducing a code-fact extractor that optimize guidance can use during pattern triage.
 
-**Architecture:** Keep the CLI thin and keep the agent as the final decision-maker. Implement one generator script under `skills/triton-npu-optimize/scripts/` that parses predefined Markdown sections and rewrites `references/patterns/index.md`, one code-fact extractor script that emits non-diagnostic structured evidence, a new symptom reference subtree under `triton-npu-analyze-round-performance`, and narrow skill/prompt/test updates that teach the new read order without introducing a new standalone routing skill.
+**Architecture:** Keep the CLI thin and keep the agent as the final decision-maker. Implement one generator script under `skills/triton-npu-optimize/scripts/` that parses predefined Markdown sections and rewrites `references/pattern_index.md`, one code-fact extractor script that emits non-diagnostic structured evidence, a new symptom reference subtree under `triton-npu-analyze-round-performance`, and narrow skill/prompt/test updates that teach the new read order without introducing a new standalone routing skill.
 
 **Tech Stack:** Python 3.11, `unittest`, `ast`, `json`, `argparse`, Markdown skill docs, existing optimize prompt/guidance tests
 
@@ -96,14 +96,14 @@ def test_optimize_pattern_cards_use_required_sections_and_generated_index(self) 
             self.assertIn("## Use When", content)
 
     optimize = _read("skills/triton-npu-optimize/SKILL.md")
-    self.assertIn("generated `references/patterns/index.md`", optimize)
+    self.assertIn("generated `references/pattern_index.md`", optimize)
     self.assertIn("extract_code_facts.py", optimize)
 ```
 
 - [ ] **Step 4: Extend prompt and guidance tests for the new triage read order**
 
 ```python
-self.assertIn("Read the generated `references/patterns/index.md` before detailed pattern references.", prompt)
+self.assertIn("Read the generated `references/pattern_index.md` before detailed pattern references.", prompt)
 self.assertIn("Use the staged code-fact extractor when code structure is still unclear at pattern triage.", prompt)
 self.assertIn("Use symptom cards to narrow pattern candidates after structured profiler or IR evidence exists.", prompt)
 ```
@@ -233,7 +233,7 @@ Expected: `0 errors, 0 warnings, 0 informations`
 - Modify: `skills/triton-npu-optimize/references/patterns/software-pipeline.md`
 - Modify: `skills/triton-npu-optimize/references/patterns/tiling.md`
 - Modify: `skills/triton-npu-optimize/references/patterns/vec-cmp.md`
-- Modify: `skills/triton-npu-optimize/references/patterns/index.md`
+- Modify: `skills/triton-npu-optimize/references/pattern_index.md`
 - Test: `tests/test_optimize_pattern_tools.py`
 - Test: `tests/test_generation_contracts.py`
 
@@ -324,10 +324,10 @@ Run:
 ```bash
 python3 skills/triton-npu-optimize/scripts/build_pattern_index.py \
   --patterns-dir skills/triton-npu-optimize/references/patterns \
-  --output skills/triton-npu-optimize/references/patterns/index.md
+  --output skills/triton-npu-optimize/references/pattern_index.md
 ```
 
-Expected: `skills/triton-npu-optimize/references/patterns/index.md` is rewritten deterministically from the pattern cards.
+Expected: `skills/triton-npu-optimize/references/pattern_index.md` is rewritten deterministically from the pattern cards.
 
 - [ ] **Step 4: Run the repo-consistency and contract tests**
 
@@ -345,7 +345,7 @@ Expected: PASS
 ### Task 4: Add the symptom routing references and wire them into the round-analysis skill
 
 **Files:**
-- Create: `skills/triton-npu-analyze-round-performance/references/symptoms/index.md`
+- Create: `skills/triton-npu-analyze-round-performance/references/symptom_index.md`
 - Create: `skills/triton-npu-analyze-round-performance/references/symptoms/high-scalar-overhead.md`
 - Create: `skills/triton-npu-analyze-round-performance/references/symptoms/high-transfer-pressure.md`
 - Create: `skills/triton-npu-analyze-round-performance/references/symptoms/weak-pipeline-overlap.md`
@@ -361,10 +361,10 @@ Expected: PASS
 def test_round_performance_skill_points_to_symptom_routing_references(self) -> None:
     skill = _read("skills/triton-npu-analyze-round-performance/SKILL.md")
     symptom_index = _read(
-        "skills/triton-npu-analyze-round-performance/references/symptoms/index.md"
+        "skills/triton-npu-analyze-round-performance/references/symptom_index.md"
     )
     self.assertIn("symptom cards", skill)
-    self.assertIn("references/symptoms/index.md", skill)
+    self.assertIn("references/symptom_index.md", skill)
     self.assertIn("weak-pipeline-overlap", symptom_index)
     self.assertIn("high-transfer-pressure", symptom_index)
 ```
@@ -403,7 +403,7 @@ Use this shape for each symptom card:
 
 ```markdown
 4. Extract profile signals first.
-5. Use `references/symptoms/index.md` to choose the most relevant symptom card.
+5. Use `references/symptom_index.md` to choose the most relevant symptom card.
 6. Read only the one or two symptom cards that match the current profile or IR evidence.
 7. Use those cards to narrow pattern candidates before returning to detailed optimize pattern references.
 ```
@@ -490,7 +490,7 @@ def extract_code_facts(operator_path: Path) -> dict[str, object]:
 Add guidance like:
 
 ```markdown
-- Read the generated `references/patterns/index.md` before any detailed pattern reference.
+- Read the generated `references/pattern_index.md` before any detailed pattern reference.
 - When code structure is still unclear, run `python3 ./scripts/extract_code_facts.py --operator-file <operator-file>` and use the returned facts as triage evidence.
 - Use the code facts plus current benchmark behavior to narrow to one or two candidate pattern cards before deeper reads.
 ```
@@ -498,7 +498,7 @@ Add guidance like:
 And prompt lines like:
 
 ```python
-"Read the generated `references/patterns/index.md` before detailed pattern references.",
+"Read the generated `references/pattern_index.md` before detailed pattern references.",
 "At pattern triage, prefer small code-fact evidence before opening multiple full pattern documents.",
 "Use the staged code-fact extractor when the code structure is still unclear at pattern triage.",
 ```

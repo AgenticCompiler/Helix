@@ -352,7 +352,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 shared_content,
             )
             self.assertIn(
-                "Read the generated `references/patterns/index.md` before detailed pattern references.",
+                "Read the generated `references/pattern_index.md` before detailed pattern references.",
                 shared_content,
             )
             self.assertIn(

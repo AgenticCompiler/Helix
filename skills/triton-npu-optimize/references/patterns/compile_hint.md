@@ -1,3 +1,5 @@
+# Compiler Hint Pattern
+
 ## Summary
 
 Try the following compile hints:
@@ -11,6 +13,18 @@ Try the following compile hints:
 
 - The kernel structure already looks close to good, but the compiler still lacks explicit alignment or contiguity information.
 - `tl.dot` tiles, slices, or pointer math are known to satisfy stronger layout assumptions than the code currently expresses.
+
+## Signals
+
+### Code
+
+- `tl.dot` inputs are already aligned in `M` and `N`, so only the `K` direction still needs padding hints.
+- Pointer slices are known contiguous or aligned, but the code does not yet communicate that with `tl.max_contiguous` or `tl.multiple_of`.
+
+## What To Verify After Applying
+
+- Verify the alignment or contiguity assumptions encoded in the hint are actually true for the rewritten slices.
+- Verify the compiler hints changed lowering or performance without changing the logical result.
 
 ## Detail
 
