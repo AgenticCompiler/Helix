@@ -177,7 +177,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("small shapes: baseline-style reduction path", reference)
 
     def test_optimize_pattern_library_fuses_latency_optimizer_guidance(self) -> None:
-        index = _read("skills/triton-npu-optimize/references/patterns/index.md")
+        index = _read("skills/triton-npu-optimize/references/pattern_index.md")
         scalar = _read("skills/triton-npu-optimize/references/patterns/scalar-latency-traps.md")
         layout = _read("skills/triton-npu-optimize/references/patterns/layout-store-and-block-pointers.md")
         grid = _read("skills/triton-npu-optimize/references/patterns/grid-flatten-and-ub-buffering.md")

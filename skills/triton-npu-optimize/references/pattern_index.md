@@ -9,7 +9,7 @@ Read this generated index first. Then read only the one or two most relevant det
 ### `attention-cv-pipeline`
 
 - Summary: Reduce latency in Cube+Vector fused attention-like kernels by cutting vector-side instruction pressure, making mask/scale work cheaper, and using architecture-gated compile options only when the target device supports them.
-- Source: [attention-cv-pipeline.md](attention-cv-pipeline.md)
+- Source: [attention-cv-pipeline.md](patterns/attention-cv-pipeline.md)
 - Use When:
   - A `tl.dot` loop is followed by substantial vector epilogue work such as scale, mask, softmax, dropout, or bias.
   - Profiling suggests Cube and Vector work are close enough that vector-side overhead limits overlap.
@@ -28,11 +28,6 @@ Read this generated index first. Then read only the one or two most relevant det
 - Signals / Profile:
   - Profiling suggests Cube and Vector work are close enough that vector-side instruction pressure is limiting overlap.
   - The kernel is structurally sound, but the post-dot vector path still appears to dominate latency.
-- What To Verify After Applying:
-  - Run correctness with mask-heavy, boundary, and varlen cases when available.
-  - Compare both latency and profiler balance; a vector-instruction reduction should show up in the evidence.
-  - Record any architecture gate in `attempts.md` and `summary.md`.
-  - If backward code exists, verify forward/backward state conventions together.
 
 ### `autotune`
 
@@ -118,7 +113,7 @@ Read this generated index first. Then read only the one or two most relevant det
 ### `grid-flatten-and-ub-buffering`
 
 - Summary: Change work distribution and UB staging when latency is dominated by too many logical tasks, uneven per-core work, physical-core load balance problems, or tiny row-wise memory transfers after a gather/scatter style rewrite.
-- Source: [grid-flatten-and-ub-buffering.md](grid-flatten-and-ub-buffering.md)
+- Source: [grid-flatten-and-ub-buffering.md](patterns/grid-flatten-and-ub-buffering.md)
 - Use When:
   - The logical grid is much larger than the physical AICore or VectorCore count.
   - Work is partitioned by batch or sequence buckets with visible load imbalance.
@@ -131,19 +126,11 @@ Read this generated index first. Then read only the one or two most relevant det
   - Each physical program still processes many tiny rows or row-at-a-time transfers after grid mapping.
 - Signals / Profile:
   - Latency is dominated by too many logical tasks, uneven per-core work, or tiny row-wise memory transfers after a gather or scatter style rewrite.
-- What To Verify After Applying:
-  - Record the physical core assumption and how it is discovered or passed.
-  - Validate edge cases where `TOTAL_TASKS` is not divisible by `NUM_CORES`.
-  - Benchmark small and large shapes if the operator supports both.
-  - If the win depends on row continuity, add that condition to the round summary.
-- Related Patterns:
-  - Complements `program-multiple-rows`: that pattern widens row-wise work inside a program, while this pattern flattens logical work onto physical cores and batches memory movement inside each core.
-  - Combine with `autotune` only after the structural rewrite is correct; tune `TASKS_PER_CORE`, `BLOCK`, and `SUB_BLOCK_SIZE` with enough separation to explain the result.
 
 ### `layout-store-and-block-pointers`
 
 - Summary: Improve latency by reshaping memory layout, block-pointer dimensionality, and store granularity so the NPU sees continuous vector-friendly transfers instead of scalarized transpose or many tiny operations.
-- Source: [layout-store-and-block-pointers.md](layout-store-and-block-pointers.md)
+- Source: [layout-store-and-block-pointers.md](patterns/layout-store-and-block-pointers.md)
 - Use When:
   - Multiple stores target adjacent addresses but are emitted as separate small `tl.store` operations.
   - `tl.store` writes a transposed logical tensor and appears to degrade into scalar element stores.
@@ -156,15 +143,11 @@ Read this generated index first. Then read only the one or two most relevant det
   - A store writes a transposed logical tensor and appears to degrade into scalar element stores.
   - A high-dimensional contiguous tensor is accessed through flattened one-dimensional offsets that stride through an inner dimension.
   - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
-- What To Verify After Applying:
-  - Confirm every changed tensor shape and reduction axis in `attempts.md`.
-  - Run correctness on tail shapes and non-contiguous stride cases when supported.
-  - Benchmark against the canonical baseline and record whether the gain comes from fewer stores, better load shape, or removed transpose overhead.
 
 ### `loop-invariant-hoisting`
 
 - Summary: Apply **Loop-Invariant Code Motion (LICM)** to Triton kernels: move computations that do **not** depend on the loop induction variable out of the loop, so each iteration performs only the minimal work that truly varies.
-- Source: [loop-invariant-hoisting.md](loop-invariant-hoisting.md)
+- Source: [loop-invariant-hoisting.md](patterns/loop-invariant-hoisting.md)
 - Use When:
   - The kernel has a hot inner loop (often a K loop in GEMM-like kernels).
   - Each loop iteration repeats substantial pointer math, mask construction, type casts, or shape bookkeeping.
@@ -181,14 +164,6 @@ Read this generated index first. Then read only the one or two most relevant det
 - Signals / IR:
   - Repeated arithmetic chains (`muli/addi/index_cast`) inside `scf.while` / `scf.for` bodies.
   - Loop bodies contain repeated `subi/minsi/maxsi` patterns for bounds handling.
-- What To Verify After Applying:
-  - **Correctness**: compare against reference across boundary shapes (non-multiples of block sizes).
-  - **Profiler**: reduced scalar instruction mix (`LD/ST/ADD/CMP`) and improved wall time.
-  - **IR sanity**: fewer repeated arithmetic ops inside loop bodies (qualitative evidence).
-- Related Patterns:
-  - Complements **`compile-hint`**: after LICM, add alignment/contiguity hints.
-  - Complements **`software-pipeline`**: LICM simplifies loop bodies; pipeline overlaps remaining transfer/compute.
-  - Complements **`remove-implicit-transpose`**: layout fixes reduce transform work; LICM reduces residual loop control cost.
 
 ### `parallel`
 
@@ -230,7 +205,7 @@ Read this generated index first. Then read only the one or two most relevant det
 ### `remove-implicit-transpose`
 
 - Summary: Eliminate **implicit transpose-style access** on Ascend NPU by **materializing the transposed operand on the host** (or by storing it in the preferred physical layout), instead of relying on stride tricks inside the kernel.
-- Source: [remove-implicit-transpose.md](remove-implicit-transpose.md)
+- Source: [remove-implicit-transpose.md](patterns/remove-implicit-transpose.md)
 - Use When:
   - You implement GEMM / Linear-like kernels where one operand is stored as `[N, K]` but the math needs `[K, N]` (e.g. `y = x @ w.T`).
   - Kernel code accesses the operand with **transpose-like strides** (treats `[N, K]` as `[K, N]`).
@@ -245,15 +220,6 @@ Read this generated index first. Then read only the one or two most relevant det
 - Signals / IR:
   - `annotation.mark {MayImplicitTransposeWithLastAxis}`
   - `memref.reinterpret_cast ... sizes: [*, *], strides: [1, ?]` on the B tile (common transpose-style view)
-- What To Verify After Applying:
-  - **Correctness**: compare output against reference `relu(x @ w.T + bias)` for multiple shapes.
-  - **IR**: confirm `MayImplicitTransposeWithLastAxis` no longer appears for the matmul operand.
-  - **Profiler**: check `WAIT_FLAG_DEVI` and transform ops (`nd2nz`, `MOV_*_ND2NZ`) reduce or become cheaper.
-  - **Benchmark discipline**: include warmup because first-run includes compilation/tuning overhead.
-- Related Patterns:
-  - Complements **`software-pipeline`**: this pattern fixes operand layout; pipeline fixes overlap.
-  - Complements **`tiling`**: layout fix can enable better tiling outcomes.
-  - Often a prerequisite before **`autotune`**: tuning on a structurally suboptimal implicit-transpose layout may mislead.
 
 ### `reorder-load`
 
@@ -278,7 +244,7 @@ Read this generated index first. Then read only the one or two most relevant det
 ### `scalar-latency-traps`
 
 - Summary: Remove scalarizing constructs that make an otherwise vector-friendly Ascend Triton kernel spend time on avoidable scalar control, address arithmetic, or long dependency chains.
-- Source: [scalar-latency-traps.md](scalar-latency-traps.md)
+- Source: [scalar-latency-traps.md](patterns/scalar-latency-traps.md)
 - Use When:
   - Runtime values that are shape constants are passed as normal arguments instead of `tl.constexpr`.
   - Pointer variables are updated with `+=` inside a loop, creating loop-carried address dependencies.
@@ -293,11 +259,6 @@ Read this generated index first. Then read only the one or two most relevant det
   - `tl.where` masks all lanes except a single special position, or has exactly one false lane in a vector.
   - Integer elementwise arithmetic is done as scalar-looking `int64` work even though the value range is safely `int32`.
   - `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
-- What To Verify After Applying:
-  - Record the trap and exact code location in `attempts.md`.
-  - Run correctness before trusting performance.
-  - Use the project benchmark and `compare-perf` authority for any claimed speedup.
-  - If the repair changes specialization keys or host call signatures, verify all call sites.
 
 ### `slice_coalesce`
 
