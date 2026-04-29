@@ -20,6 +20,7 @@
 - Prefer feature-local modules and data over top-level shared helpers unless multiple subsystems truly share the behavior.
 - Prefer additive diagnostics, short actionable validation errors, explicit failures, and protected generated artifacts over silent fallback or implicit overwrite.
 - Keep optimize workflows explicit, evidence-driven, and role-separated: resume semantics must be clear, reusable harnesses should be reused, worker and supervisor responsibilities should stay distinct, and each round should record why a change may help.
+- Treat `skills/triton-npu-optimize/references/patterns/*.md` as the authored source of truth for optimize patterns; after changing a pattern card, regenerate and commit the checked-in pattern index instead of hand-editing it.
 
 ## Workspace And Skills
 

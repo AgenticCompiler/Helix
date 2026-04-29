@@ -4,6 +4,11 @@ When loading discrete indices, rather than using `tl.load` to load the
 discrete set directly, use `tl.load` to load a continuous range first, then use `tl.gather` to select
 the target values.
 
+## Use When
+
+- The central bottleneck is discrete memory access that semantically looks like `out = x[idx]`.
+- Index-driven global loads dominate the hot path, and contiguous staging plus local selection is more plausible than direct scattered reads.
+
 ## Detail
 
 此事例旨在说明，在离散访存场景下，如何高效load数据

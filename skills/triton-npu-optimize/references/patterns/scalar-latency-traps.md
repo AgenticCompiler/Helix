@@ -1,14 +1,27 @@
+# Scalar Latency Trap Removal Pattern
+
 ## Summary
 
 Remove scalarizing constructs that make an otherwise vector-friendly Ascend Triton kernel spend time on avoidable scalar control, address arithmetic, or long dependency chains.
 
 Use this as a trap-elimination pattern before larger rewrites. Apply one repair per round, then validate correctness and benchmark evidence through the normal optimize flow.
 
-## When To Use
+## Use When
 
 - Runtime values that are shape constants are passed as normal arguments instead of `tl.constexpr`.
 - Pointer variables are updated with `+=` inside a loop, creating loop-carried address dependencies.
-- Address expressions use `%` to wrap tail tiles or index boundaries.
+- Address expressions use modulo addressing (`%`) to wrap tail tiles or index boundaries.
+- `tl.where` masks all lanes except a single special position, or has exactly one false lane in a vector.
+- Integer elementwise arithmetic is done as scalar-looking `int64` work even though the value range is safely `int32`.
+- `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
+
+## Signals
+
+### Code
+
+- Runtime values that are shape constants are passed as normal arguments instead of `tl.constexpr`.
+- Pointer variables are updated with `+=` inside a loop, creating loop-carried address dependencies.
+- Address expressions use modulo addressing (`%`) to wrap tail tiles or index boundaries.
 - `tl.where` masks all lanes except a single special position, or has exactly one false lane in a vector.
 - Integer elementwise arithmetic is done as scalar-looking `int64` work even though the value range is safely `int32`.
 - `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
@@ -74,7 +87,7 @@ For a long one-dimensional `tl.cumsum`, consider reshaping to a two-dimensional 
 - Int32 conversion is a semantic promise about value range.
 - Cumsum decomposition must preserve prefix order exactly.
 
-## Verification Checklist
+## What To Verify After Applying
 
 - Record the trap and exact code location in `attempts.md`.
 - Run correctness before trusting performance.

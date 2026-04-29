@@ -29,6 +29,7 @@ When compiler source analysis is enabled by the launch prompt or workspace guida
 Read [references/ascend-npu-profiling-analysis.md](references/ascend-npu-profiling-analysis.md) when the round needs deeper interpretation of `op_summary`, `task_time`, `api_statistic`, `msprof` JSON, or `.bin` signals.
 Read [references/ascend-npu-optimization-guidance.md](references/ascend-npu-optimization-guidance.md) when you need help turning profiling symptoms and IR findings into concrete potential optimization points.
 Read [references/ascend-npu-architecture-notes.md](references/ascend-npu-architecture-notes.md) when the likely optimization point depends on chip differences such as A3 versus A5 buffer sizes, layout behavior, or cube/vector data handoff.
+Read [references/symptoms/index.md](references/symptoms/index.md) when structured profile or IR evidence is available and you need symptom cards to narrow likely pattern directions before returning to detailed pattern references.
 
 Read the references in this order:
 
@@ -54,19 +55,22 @@ Read the references in this order:
 5. Interpret profiling evidence through the profiling reference instead of ad hoc guesses.
    - Follow [references/ascend-npu-profiling-analysis.md](references/ascend-npu-profiling-analysis.md) for layered signal interpretation.
    - Escalate into `.bin` when CSV-level evidence is still not explanatory enough.
-6. Decide whether profiler evidence is already sufficient on its own.
+6. Use `references/symptoms/index.md` and the matching symptom cards to narrow the current hypothesis.
+   - Start from the symptom index, then read only the one or two symptom cards that best match the extracted evidence.
+   - Use symptom cards as routing aids, not as a replacement for the underlying profile or IR evidence.
+7. Decide whether profiler evidence is already sufficient on its own.
    - If the layered profiler signals already explain the likely operator problem well enough, continue to diagnosis.
    - If the profiler signals are suspicious but still not explanatory enough, capture or reuse IR under `opt-round-N/ir/`.
-7. Extract IR performance signals as the second analysis path for explanation and attribution.
+8. Extract IR performance signals as the second analysis path for explanation and attribution.
    - Prefer:
      ```bash
      python3 ../triton-npu-analyze-ir/scripts/inspect_ir.py performance-signals --ir-dir <ir-dir> --format json
      ```
    - Use `list-stages`, `stage-summary`, `find-changes`, or direct file inspection when the heuristic summary points to a specific stage or lowering symptom.
-8. Compare with parent or baseline evidence when it already exists and is useful.
+9. Compare with parent or baseline evidence when it already exists and is useful.
    - Do not block the round analysis if comparable evidence is missing.
    - Record missing comparison inputs as an evidence gap rather than guessing.
-9. Write `opt-round-N/perf-analysis.md`.
+10. Write `opt-round-N/perf-analysis.md`.
    - Either `profile-only diagnosis` or `profile-plus-IR diagnosis` is acceptable, as long as the document makes the evidence path clear.
 
 ## Output contract

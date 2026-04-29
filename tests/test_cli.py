@@ -3985,6 +3985,18 @@ class PromptTests(unittest.TestCase):
             "Record the round's primary analysis level separately from its supporting evidence.",
             prompt,
         )
+        self.assertIn(
+            "Read the generated `references/patterns/index.md` before detailed pattern references.",
+            prompt,
+        )
+        self.assertIn(
+            "Use the staged code-fact extractor when code structure is still unclear at pattern triage.",
+            prompt,
+        )
+        self.assertIn(
+            "Use symptom cards to narrow pattern candidates after structured profiler or IR evidence exists.",
+            prompt,
+        )
         self.assertIn("Do not begin with blind tiling or launch-parameter search", prompt)
 
     def test_optimize_prompt_defaults_to_unsupervised_mode(self) -> None:

@@ -351,6 +351,18 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 "Record the round's primary analysis level separately from its supporting evidence.",
                 shared_content,
             )
+            self.assertIn(
+                "Read the generated `references/patterns/index.md` before detailed pattern references.",
+                shared_content,
+            )
+            self.assertIn(
+                "Use the staged code-fact extractor when code structure is still unclear at pattern triage.",
+                shared_content,
+            )
+            self.assertIn(
+                "Use symptom cards to narrow pattern candidates after structured profiler or IR evidence exists.",
+                shared_content,
+            )
             self.assertIn("Do not begin with blind tiling or launch-parameter search.", shared_content)
 
             warnings = manager.cleanup_supervised_session(state)

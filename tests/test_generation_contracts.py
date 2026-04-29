@@ -204,6 +204,20 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("scale and mask", attention)
         self.assertIn("A5", attention)
 
+    def test_optimize_pattern_cards_use_required_sections_and_generated_index(self) -> None:
+        patterns_dir = REPO_ROOT / "skills" / "triton-npu-optimize" / "references" / "patterns"
+        for path in sorted(patterns_dir.glob("*.md")):
+            if path.name == "index.md":
+                continue
+            content = path.read_text(encoding="utf-8")
+            with self.subTest(path=path.name):
+                self.assertIn("## Summary", content)
+                self.assertIn("## Use When", content)
+
+        optimize = _read("skills/triton-npu-optimize/SKILL.md")
+        self.assertIn("generated `references/patterns/index.md`", optimize)
+        self.assertIn("extract_code_facts.py", optimize)
+
     def test_optimize_artifacts_reference_documents_state_declared_paths(self) -> None:
         artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
         self.assertIn("Treat these state fields as the authoritative artifact references for baseline validation:", artifacts)
@@ -257,6 +271,16 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("A3", architecture_ref)
         self.assertIn("A5", architecture_ref)
         self.assertIn("L0C", architecture_ref)
+
+    def test_round_performance_skill_points_to_symptom_routing_references(self) -> None:
+        skill = _read("skills/triton-npu-analyze-round-performance/SKILL.md")
+        symptom_index = _read(
+            "skills/triton-npu-analyze-round-performance/references/symptoms/index.md"
+        )
+        self.assertIn("symptom cards", skill)
+        self.assertIn("references/symptoms/index.md", skill)
+        self.assertIn("weak-pipeline-overlap", symptom_index)
+        self.assertIn("high-transfer-pressure", symptom_index)
 
     def test_compiler_source_analysis_skill_focuses_on_performance_navigation_and_next_action(
         self,

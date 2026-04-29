@@ -5,6 +5,11 @@ kernels accessing the *same* data from the L2 cache may cause bank conflicts tha
 One can use the diagonal access pattern to replace the usual swizzle pattern to alleviate this problem.
 The example applies this technique to matrix multiplication, but it may be applicable in other contexts.
 
+## Use When
+
+- Large tiled matrix-style work shows poor locality or bank-conflict-like behavior even though the basic tiling is already reasonable.
+- Many programs touch the same cache regions at the same time, so changing block traversal order may improve effective L2 use.
+
 ## Detail
 
 ### Diagonal Matmul

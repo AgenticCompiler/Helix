@@ -1,10 +1,12 @@
+# Attention Cube-Vector Pipeline Pattern
+
 ## Summary
 
 Reduce latency in Cube+Vector fused attention-like kernels by cutting vector-side instruction pressure, making mask/scale work cheaper, and using architecture-gated compile options only when the target device supports them.
 
 Use this after the kernel is already structurally sound. These optimizations are sensitive to numerics, architecture, and forward/backward consistency.
 
-## When To Use
+## Use When
 
 - A `tl.dot` loop is followed by substantial vector epilogue work such as scale, mask, softmax, dropout, or bias.
 - Profiling suggests Cube and Vector work are close enough that vector-side overhead limits overlap.
@@ -12,6 +14,25 @@ Use this after the kernel is already structurally sound. These optimizations are
 - Scale and mask are separate operations before softmax.
 - The code stores log-sum-exp state in a base-2 representation solely because the forward path uses `exp2`.
 - The target is known to be an A5 device such as `ascend950PR` or `ascend950DT`.
+
+## Avoid When
+
+- The kernel is pure Vector work rather than Cube-plus-Vector fused work.
+- Profiling shows memory transfer, not vector epilogue work, is the dominant bottleneck.
+- Architecture-specific compile settings cannot be gated on verified target information.
+
+## Signals
+
+### Code
+
+- A `tl.dot` loop is followed by repeated mask, scale, softmax, dropout, or bias work on the vector side.
+- The same mask tensor is recomputed inside a hot loop even though it depends only on host-known metadata.
+- The forward path stores log-sum-exp state in base-2 form solely because it uses `exp2`.
+
+### Profile
+
+- Profiling suggests Cube and Vector work are close enough that vector-side instruction pressure is limiting overlap.
+- The kernel is structurally sound, but the post-dot vector path still appears to dominate latency.
 
 ## Repairs
 
@@ -52,7 +73,7 @@ Some compile parameters are only appropriate for A5 targets. Gate them on the ac
 - `exp` versus `exp2` must be consistent across saved state and backward code.
 - A5 compile flags are target-specific and must not become unconditional defaults.
 
-## Verification Checklist
+## What To Verify After Applying
 
 - Run correctness with mask-heavy, boundary, and varlen cases when available.
 - Compare both latency and profiler balance; a vector-instruction reduction should show up in the evidence.

@@ -1,5 +1,14 @@
 # i64/i32 Comparison Optimization Pattern
 
+## Summary
+
+Rewrite explicit integer compare-heavy logic into a form that is more vector-friendly on Ascend NPU, especially when scalarized compares are blocking fast masking or selection.
+
+## Use When
+
+- Explicit `i64` or `i32` comparisons appear on the hot path outside the compiler's normal fast load/store mask cases.
+- Comparison-heavy control flow or masking looks like a real vectorization blocker rather than just minor boundary handling.
+
 ## Problem Description
 
 On Huawei Ascend NPU devices, integer comparison operations (`i64` and `i32`) cannot utilize vector processing units and degrade to scalar computation, significantly reducing performance.
@@ -98,7 +107,7 @@ mask_fp32 = offset_fp32 < n_elements_fp32
 x = tl.load(x_ptr + offsets, mask=mask_fp32)
 ```
 
-## When NOT to Apply
+## Avoid When
 
 1. **Comparisons in `tl.load`/`tl.store` masks** - already auto-optimized:
    ```python

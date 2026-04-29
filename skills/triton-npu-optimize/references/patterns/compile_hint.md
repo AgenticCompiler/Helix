@@ -7,6 +7,11 @@ Try the following compile hints:
   - Use `tl.multiple_of` (resp. `tl.max_contiguous`) to specify tensor slices that are known to be
     aligned (resp. contiguous).
 
+## Use When
+
+- The kernel structure already looks close to good, but the compiler still lacks explicit alignment or contiguity information.
+- `tl.dot` tiles, slices, or pointer math are known to satisfy stronger layout assumptions than the code currently expresses.
+
 ## Detail
 
 ### dot_pad_only_k

@@ -1,5 +1,14 @@
 # Hierarchical Tiling Optimization Pattern (UB Overflow Prevention)
 
+## Summary
+
+Reduce per-program working-set size through hierarchical or sub-block tiling so large tiles, intermediates, or multi-tensor loads fit UB safely without collapsing overall task structure.
+
+## Use When
+
+- Block sizes, live intermediates, or multi-tensor loads risk UB overflow or poor locality.
+- The main problem is working-set size and memory footprint, not the need for a completely different kernel structure.
+
 ## Problem Description
 
 **Root Cause:**
@@ -161,7 +170,7 @@ def masked_fill(inp, mask, value):
    - 32-byte alignment requirement
    - Vector width considerations (typically 128/256 elements)
 
-## When NOT to Apply
+## Avoid When
 
 1. **Small BLOCK_SIZE** No significant memory pressure
 2. **Simple operations** with single tensor - UB usage is minimal

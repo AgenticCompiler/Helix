@@ -4,6 +4,11 @@ Make use of autotune in Triton to optimize parameters automatically. Some analys
 still needed to set the possible values of parameters to try (limit the number of combinations
 to try to at most 20).
 
+## Use When
+
+- The kernel already has several plausible tile or launch parameter choices, and the main structure looks reasonable.
+- Manual parameter picking is likely leaving performance on the table, but the search space can still be kept small and bounded.
+
 ## Detail
 
 Some examples of using autotune:

@@ -2,6 +2,11 @@
 
 Use `tl.parallel` to run tasks in the two vector cores of an aicore at the same time.
 
+## Use When
+
+- Two independent vector-side computations happen in sequence and can be split across vector cores.
+- The bottleneck is not primarily memory movement, so exposing more vector-core concurrency is more promising than reworking loads.
+
 ## Detail
 
 ### Principle

@@ -1,5 +1,14 @@
 # Software Pipelining and Block Pointer Optimization Pattern
 
+## Summary
+
+Improve overlap between memory movement and compute in a hot loop that is already structurally tiled, typically by combining block pointers, prefetching, and pipelined loop structure.
+
+## Use When
+
+- The hot loop already has a real tiled structure, but loads and computation still happen too serially.
+- Profiling suggests wait-heavy or overlap-poor behavior, and the next question is pipeline quality rather than basic kernel structure.
+
 ## Problem Description
 
 Huawei Ascend NPUs (DaVinci architecture) use a **Decoupled Access-Compute (DAC)** design. This means memory movement (MTE engines) and computation (Cube/Vector cores) happen on different hardware units.
@@ -92,7 +101,7 @@ def matmul_kernel(a_ptr, b_ptr, c_ptr, K, BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE
         b_tile = tl.load(b_block_ptr)
 ```
 
-## When NOT to Apply
+## Avoid When
 
 1.  **Tiny Inner Loops**: If the loop only runs 1 or 2 times, the pre-fetch overhead might exceed the savings.
 2.  **Extreme Memory Pressure**: If the tile size is so large that the Unified Buffer cannot hold two sets of tiles (current and next).
