@@ -176,6 +176,34 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("sufficiently large `M`: tiled matmul path", reference)
         self.assertIn("small shapes: baseline-style reduction path", reference)
 
+    def test_optimize_pattern_library_fuses_latency_optimizer_guidance(self) -> None:
+        index = _read("skills/triton-npu-optimize/references/patterns/index.md")
+        scalar = _read("skills/triton-npu-optimize/references/patterns/scalar-latency-traps.md")
+        layout = _read("skills/triton-npu-optimize/references/patterns/layout-store-and-block-pointers.md")
+        grid = _read("skills/triton-npu-optimize/references/patterns/grid-flatten-and-ub-buffering.md")
+        attention = _read("skills/triton-npu-optimize/references/patterns/attention-cv-pipeline.md")
+
+        self.assertIn("scalar-latency-traps", index)
+        self.assertIn("layout-store-and-block-pointers", index)
+        self.assertIn("grid-flatten-and-ub-buffering", index)
+        self.assertIn("attention-cv-pipeline", index)
+        self.assertIn("modulo addressing", index)
+        self.assertIn("physical-core load balance", index)
+
+        self.assertIn("tl.constexpr", scalar)
+        self.assertIn("Loop pointer recurrences", scalar)
+        self.assertIn("Modulo removal", scalar)
+        self.assertIn("Cumsum axis splitting", scalar)
+        self.assertIn("store transpose degradation", layout)
+        self.assertIn("Raise block-pointer dimensionality", layout)
+        self.assertIn("tl.trans(x).to(dtype)", layout)
+        self.assertIn("physical cores", grid)
+        self.assertIn("UB aggregate writes", grid)
+        self.assertIn("UB bulk reads", grid)
+        self.assertIn("Precompute repeated masks", attention)
+        self.assertIn("scale and mask", attention)
+        self.assertIn("A5", attention)
+
     def test_optimize_artifacts_reference_documents_state_declared_paths(self) -> None:
         artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
         self.assertIn("Treat these state fields as the authoritative artifact references for baseline validation:", artifacts)

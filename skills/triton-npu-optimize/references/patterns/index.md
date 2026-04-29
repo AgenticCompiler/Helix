@@ -109,6 +109,24 @@ Read this index first. Then read only the one or two most relevant detailed patt
 - Read next:
   - [autotune.md](autotune.md)
 
+### `scalar-latency-traps`
+
+- Use when:
+  - code inspection shows avoidable scalarizing constructs before a larger rewrite is justified
+  - tail handling, loop address updates, or static parameters look suspicious
+- Signals:
+  - `%` appears in hot address expressions where a mask could preserve contiguous access
+  - pointer variables use `+=` inside a loop
+  - fixed sizes, strides, booleans, or modes are not `tl.constexpr`
+  - single-position `tl.where`, long-axis `tl.cumsum`, or safe int32 vector arithmetic opportunities appear
+- Expected benefit:
+  - less scalar/control overhead
+  - better vectorization and compiler simplification
+- Main risk:
+  - these are semantic repairs when they change wraparound, dtype range, specialization, or prefix-order behavior
+- Read next:
+  - [scalar-latency-traps.md](scalar-latency-traps.md)
+
 ### `cache-use`
 
 - Use when:
@@ -138,6 +156,26 @@ Read this index first. Then read only the one or two most relevant detailed patt
   - incorrect assumptions about alignment or contiguity
 - Read next:
   - [compile_hint.md](compile_hint.md)
+
+### `layout-store-and-block-pointers`
+
+- Use when:
+  - the hot path is limited by transfer shape, store layout, or block-pointer dimensionality
+  - many small stores or a store-time transpose appear in the code
+  - high-dimensional contiguous tensors are accessed through flattened or strided one-dimensional offsets
+- Signals:
+  - several `tl.store` calls write adjacent addresses
+  - accumulator layout is transposed just before store
+  - inner dimensions are looped or decoded from `program_id` but could be represented in `block_shape`
+  - `tl.dot` consumes `tl.trans(x).to(dtype)` instead of converting before transposition
+- Expected benefit:
+  - fewer scalarized stores
+  - more continuous loads and stores
+  - less vector-side transpose or broadcast overhead around Cube work
+- Main risk:
+  - axis, stride, mask, and reduction-shape mistakes
+- Read next:
+  - [layout-store-and-block-pointers.md](layout-store-and-block-pointers.md)
 
 ### `remove-implicit-transpose`
 
@@ -186,6 +224,26 @@ Read this index first. Then read only the one or two most relevant detailed patt
   - more complex task mapping and harder correctness debugging
 - Read next:
   - [diagonal.md](diagonal.md)
+
+### `grid-flatten-and-ub-buffering`
+
+- Use when:
+  - the logical grid greatly exceeds physical core count
+  - batch or sequence partitioning causes per-core imbalance
+  - after physical-core mapping, each program still performs many tiny row loads or stores
+- Signals:
+  - grid dimensions are logical task counts rather than physical-core bounded counts
+  - per-program work is bucketed by batch or sequence length
+  - gather-like code has continuous destination rows but emits row-by-row stores
+  - scatter-gradient-like code loads consecutive rows one at a time
+- Expected benefit:
+  - better load balance
+  - lower scheduling overhead
+  - wider UB-staged memory transfers
+- Main risk:
+  - added inner loops or UB staging can hurt small shapes or exceed UB capacity
+- Read next:
+  - [grid-flatten-and-ub-buffering.md](grid-flatten-and-ub-buffering.md)
 
 ### `gather-load`
 
@@ -273,6 +331,26 @@ Read this index first. Then read only the one or two most relevant detailed patt
 - Read next:
   - [vec-cmp.md](vec-cmp.md)
 
+### `attention-cv-pipeline`
+
+- Use when:
+  - a Cube+Vector fused attention-like kernel is structurally sound but vector epilogue work limits latency
+  - scale, mask, softmax, bias, or saved log-sum-exp state dominates the post-dot path
+- Signals:
+  - repeated mask computation inside a hot loop
+  - separate scale and mask operations before softmax
+  - `exp2(x * log2e)` exists only to represent `exp(x)`
+  - profiler evidence suggests Cube/Vector overlap or vector instruction pressure is the next bottleneck
+  - target-specific A5 compile options are being considered
+- Expected benefit:
+  - fewer vector instructions
+  - cheaper mask handling
+  - better Cube/Vector overlap when architecture and numerics fit
+- Main risk:
+  - subtle boundary, softmax-state, backward-consistency, or architecture-gating errors
+- Read next:
+  - [attention-cv-pipeline.md](attention-cv-pipeline.md)
+
 ### `program-multiple-rows`
 
 - Use when:
@@ -293,6 +371,8 @@ Read this index first. Then read only the one or two most relevant detailed patt
 
 - If the bottleneck looks memory-bandwidth or latency bound, start with:
   - `reorder-load`
+  - `scalar-latency-traps`
+  - `layout-store-and-block-pointers`
   - `software-pipeline`
   - `cache-use`
   - `tiling`
@@ -303,6 +383,7 @@ Read this index first. Then read only the one or two most relevant detailed patt
   - `gather-load`
   - `discrete-memory-access`
   - `slice-coalesce`
+  - `grid-flatten-and-ub-buffering`
 - If the bottleneck looks launch-parameter or tile-parameter sensitive, start with:
   - `autotune`
 - If the bottleneck looks compiler-assumption sensitive, start with:
@@ -311,6 +392,8 @@ Read this index first. Then read only the one or two most relevant detailed patt
   - `diagonal`
 - If the bottleneck looks vector-core underutilized, start with:
   - `parallel`
+- If the bottleneck is Cube+Vector fused attention-style epilogue work, start with:
+  - `attention-cv-pipeline`
 - If the bottleneck looks UB-limited because of intermediates, start with:
   - `slice-intermediate`
 
@@ -319,6 +402,10 @@ Read this index first. Then read only the one or two most relevant detailed patt
 - Use `classic-matmul` when the kernel should first become a standard tiled `tl.dot` loop.
 - Use `software-pipeline` when that tiled loop already exists and the next issue is overlap.
 - Use `tiling` when the main issue is UB footprint, block size, or live intermediate size.
+- Use `scalar-latency-traps` before larger rewrites when the current code has clear scalarizing hazards such as modulo addressing, loop pointer recurrence, or missing constexpr parameters.
+- Use `layout-store-and-block-pointers` when the core problem is transfer layout, store transposition, or block-pointer dimensionality rather than tile size.
+- Use `grid-flatten-and-ub-buffering` after the access semantics are clear and the next issue is physical-core load balance or row-wise UB staging.
+- Use `attention-cv-pipeline` only for Cube+Vector fused attention-like kernels where numerics and target architecture are explicitly checked.
 - When compare-helper calls such as `tl.maximum()` or `tl.minimum()` appear in the optimized kernel, inspect all similar call sites for omitted `propagate_nan`. Add `propagate_nan=tl.PropagateNan.ALL` when the round intentionally wants explicit, consistent NaN propagation, and record that this can change NaN-input behavior.
 - If tiled matmul is only good for part of the operating envelope, prefer validated dtype/shape dispatch over forcing a single implementation everywhere.
 - Do not choose `software-pipeline` as a substitute for a missing structural rewrite.
