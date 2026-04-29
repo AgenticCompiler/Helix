@@ -218,6 +218,41 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("generated `references/patterns/index.md`", optimize)
         self.assertIn("extract_code_facts.py", optimize)
 
+    def test_optimize_pattern_cards_promote_existing_information_into_structured_sections(
+        self,
+    ) -> None:
+        program_rows = _read(
+            "skills/triton-npu-optimize/references/patterns/program-multiple-rows.md"
+        )
+        software_pipeline = _read(
+            "skills/triton-npu-optimize/references/patterns/software-pipeline.md"
+        )
+        tiling = _read("skills/triton-npu-optimize/references/patterns/tiling.md")
+        vec_cmp = _read("skills/triton-npu-optimize/references/patterns/vec-cmp.md")
+        gather_load = _read(
+            "skills/triton-npu-optimize/references/patterns/gather-load.md"
+        )
+        reorder_load = _read(
+            "skills/triton-npu-optimize/references/patterns/reorder-load.md"
+        )
+
+        self.assertIn("## Signals", program_rows)
+        self.assertIn("## Avoid When", program_rows)
+        self.assertIn("## What To Verify After Applying", program_rows)
+        self.assertIn("## Related Patterns", program_rows)
+        self.assertNotIn("## Symptoms (code + profiler)", program_rows)
+        self.assertNotIn("## What not to do (common pitfalls)", program_rows)
+        self.assertNotIn("## Verification checklist", program_rows)
+        self.assertNotIn("## Relation to other patterns", program_rows)
+
+        for content in (software_pipeline, tiling, vec_cmp, gather_load, reorder_load):
+            with self.subTest(card_preview=content.splitlines()[0]):
+                self.assertIn("## Signals", content)
+                self.assertIn("## What To Verify After Applying", content)
+
+        self.assertIn("## Related Patterns", software_pipeline)
+        self.assertIn("## Related Patterns", tiling)
+
     def test_optimize_artifacts_reference_documents_state_declared_paths(self) -> None:
         artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
         self.assertIn("Treat these state fields as the authoritative artifact references for baseline validation:", artifacts)
@@ -547,6 +582,13 @@ class GenerationContractTests(unittest.TestCase):
         self.assertNotIn("--api-name <api-name>", msprof)
         self.assertIn("If `--bench N` is provided, then `--operator-file` is required.", msprof)
         self.assertIn("torch-function", msprof)
+        self.assertIn("must be **<= 20**", msprof)
+        self.assertIn("prefer **8-20 representative cases**", msprof)
+        self.assertIn("cover small, medium, and large representative shapes", msprof)
+        self.assertIn("**Warmup:** run the kernel **5 times**", msprof)
+        self.assertIn("**Repeat:** after warmup, run the kernel **50 times**", msprof)
+        self.assertIn("MSPROF_REPEAT_ITERS = 50", msprof)
+        self.assertIn("for _ in range(MSPROF_REPEAT_ITERS):", msprof)
 
     def test_contracts_do_not_depend_on_workspace_placeholder_examples(self) -> None:
         test_spec = _read("skills/triton-npu-gen-test/references/test-standalone-spec.md")
