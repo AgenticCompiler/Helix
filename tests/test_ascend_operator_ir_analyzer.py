@@ -165,7 +165,7 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
         )
         self.assertEqual(manifest["remote"], "alice@example.com:2200")
         self.assertEqual(manifest["dumped_ir_dir"], "/tmp/triton-dump")
-        self.assertEqual(manifest["archived_input"], str(archive_dir / "triton_dump" / "kernel.ttadapter.mlir"))
+        self.assertEqual(manifest["archived_input"], (archive_dir / "triton_dump" / "kernel.ttadapter.mlir").as_posix())
         self.assertEqual(manifest["replay_compile_command"], ["/opt/bin/bishengir-compile", "/archive/kernel.ttadapter.mlir"])
 
     def test_capture_remote_archive_keeps_workspace_when_requested(self) -> None:

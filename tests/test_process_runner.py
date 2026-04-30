@@ -86,6 +86,7 @@ class BufferedProcessRunnerTests(unittest.TestCase):
             )
         self.assertEqual(result.return_code, 1)
 
+    @unittest.skipIf(not hasattr(__import__("os"), "killpg"), "requires POSIX process groups")
     def test_keyboard_interrupt_sends_two_sigints_then_force_kills(self) -> None:
         process = _BufferedFakeProcess(
             stdout_lines=[],
@@ -125,6 +126,7 @@ class BufferedProcessRunnerTests(unittest.TestCase):
         )
 
 
+@unittest.skipIf(sys.platform == "win32", "PTY streaming tests require a POSIX pty")
 class StreamingProcessRunnerTests(unittest.TestCase):
     def test_streams_chunks_and_collects_stdout(self) -> None:
         stdout = StringIO()

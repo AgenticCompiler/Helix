@@ -1,4 +1,5 @@
 import subprocess
+import shutil
 import sys
 import tempfile
 import unittest
@@ -7,6 +8,7 @@ from io import StringIO
 from pathlib import Path
 
 class SkillCommandScriptTests(unittest.TestCase):
+    @unittest.skipIf(shutil.which("bash") is None, "requires bash")
     def test_skill_script_pyright_wrapper_requires_exactly_one_target(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
@@ -23,6 +25,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertIn("<skill-script.py>", completed.stderr)
         self.assertNotIn("[<skill-script.py> ...]", completed.stderr)
 
+    @unittest.skipIf(shutil.which("bash") is None, "requires bash")
     def test_skill_script_pyright_wrapper_rejects_multiple_targets(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
@@ -113,7 +116,10 @@ class SkillCommandScriptTests(unittest.TestCase):
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
             symlinked_skills = workspace / "skills"
-            symlinked_skills.symlink_to(source_skills, target_is_directory=True)
+            try:
+                symlinked_skills.symlink_to(source_skills, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory symlinks are unavailable: {exc}")
             symlinked_script = symlinked_skills / "triton-npu-run-eval" / "scripts" / "run-command.py"
 
             completed = subprocess.run(

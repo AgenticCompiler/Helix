@@ -1335,10 +1335,13 @@ class OptimizeRuntimeTests(unittest.TestCase):
 
             (workdir / "opt-note.md").write_text("note\n", encoding="utf-8")
             (workdir / "learned_lessons.md").write_text("lesson\n", encoding="utf-8")
-            (workdir / "baseline").symlink_to(outside / "baseline-real", target_is_directory=True)
-            (workdir / ".triton-agent").symlink_to(outside / "runtime-real", target_is_directory=True)
-            (workdir / "optimize-logs").symlink_to(outside / "logs-real", target_is_directory=True)
-            (workdir / "opt-round-1").symlink_to(outside / "round-real", target_is_directory=True)
+            try:
+                (workdir / "baseline").symlink_to(outside / "baseline-real", target_is_directory=True)
+                (workdir / ".triton-agent").symlink_to(outside / "runtime-real", target_is_directory=True)
+                (workdir / "optimize-logs").symlink_to(outside / "logs-real", target_is_directory=True)
+                (workdir / "opt-round-1").symlink_to(outside / "round-real", target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory symlinks are unavailable: {exc}")
             optimized = workdir / "opt_kernel.py"
             optimized.write_text("print('opt')\n", encoding="utf-8")
 

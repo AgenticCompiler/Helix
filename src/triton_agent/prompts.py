@@ -34,6 +34,12 @@ PROMPT_INTROS = {
 }
 
 
+def _display_path(path: Path | None) -> str:
+    if path is None:
+        return ""
+    return path.as_posix()
+
+
 def append_additional_user_instructions(prompt: str, user_prompt: str | None) -> str:
     if user_prompt is None:
         return prompt
@@ -75,24 +81,24 @@ def build_prompt(
             ]
         )
     if command_kind == CommandKind.RUN_TEST:
-        lines.append(f"Operator file: {operator_path}")
-        lines.append(f"Test file: {input_path}")
+        lines.append(f"Operator file: {_display_path(operator_path)}")
+        lines.append(f"Test file: {_display_path(input_path)}")
     elif command_kind == CommandKind.RUN_BENCH:
-        lines.append(f"Operator file: {operator_path}")
-        lines.append(f"Benchmark file: {input_path}")
+        lines.append(f"Operator file: {_display_path(operator_path)}")
+        lines.append(f"Benchmark file: {_display_path(input_path)}")
     else:
-        lines.append(f"Operator input: {input_path}")
+        lines.append(f"Operator input: {_display_path(input_path)}")
     if command_kind == CommandKind.GEN_EVAL:
         test_output = default_generated_output_path(CommandKind.GEN_TEST, input_path, test_mode=test_mode)
         bench_output = default_generated_output_path(CommandKind.GEN_BENCH, input_path)
         lines.extend(
             [
-                f"Requested test output: {test_output}",
-                f"Requested benchmark output: {bench_output}",
+                f"Requested test output: {_display_path(test_output)}",
+                f"Requested benchmark output: {_display_path(bench_output)}",
             ]
         )
     if output_path is not None and command_kind != CommandKind.GEN_EVAL:
-        lines.append(f"Requested output: {output_path}")
+        lines.append(f"Requested output: {_display_path(output_path)}")
     if test_mode is not None:
         lines.append(f"Requested test mode: {test_mode}")
     if bench_mode is not None:

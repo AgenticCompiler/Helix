@@ -423,7 +423,8 @@ class LocalBenchRunnerTests(unittest.TestCase):
             if perf_path is None:
                 self.fail("expected msprof perf path")
             self.assertTrue(created_output_dirs)
-            self.assertEqual(created_output_dirs[0].stat().st_mode & 0o777, 0o700)
+            if os.name != "nt":
+                self.assertEqual(created_output_dirs[0].stat().st_mode & 0o777, 0o700)
 
     def test_run_local_bench_msprof_persists_statistic_csv_error_in_perf_file(self) -> None:
         module = load_bench_runner_module()
