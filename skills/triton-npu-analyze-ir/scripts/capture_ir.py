@@ -13,6 +13,7 @@ import sys
 from pathlib import Path, PurePosixPath
 from typing import Any
 from typing import NamedTuple
+from typing import TextIO
 
 
 class CaptureDetails(NamedTuple):
@@ -85,7 +86,7 @@ def rewrite_compile_command(
             index += 1
             continue
         if not input_replaced and _looks_like_ttadapter_input(token):
-            rewritten.append(str(archived_input))
+            rewritten.append(archived_input.as_posix())
             input_replaced = True
             index += 1
             continue
@@ -93,10 +94,10 @@ def rewrite_compile_command(
         index += 1
 
     if not input_replaced:
-        rewritten.insert(1, str(archived_input))
+        rewritten.insert(1, archived_input.as_posix())
 
     rewritten.append("--mlir-print-ir-after-all")
-    rewritten.append(f"--mlir-print-ir-tree-dir={stage_dir}")
+    rewritten.append(f"--mlir-print-ir-tree-dir={stage_dir.as_posix()}")
     return rewritten
 
 
@@ -114,14 +115,14 @@ def write_manifest(
 ) -> Path:
     manifest_path = archive_dir / "capture-manifest.json"
     payload = {
-        "bench_file": str(bench_file),
-        "operator_file": str(operator_file),
+        "bench_file": bench_file.as_posix(),
+        "operator_file": operator_file.as_posix(),
         "rendered_command": rendered_command,
         "remote": remote,
         "dumped_ir_dir": dumped_ir_dir,
         "original_compile_command": original_compile_command,
         "replay_compile_command": replay_compile_command,
-        "archived_input": str(archived_input),
+        "archived_input": archived_input.as_posix(),
     }
     manifest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return manifest_path
@@ -136,7 +137,7 @@ def capture_local_archive(
     _prepare_empty_archive_dir(archive_dir)
     command = build_execution_command(bench_file=bench_file, operator_file=operator_file)
     result = _run_local_command(command, cwd=bench_file.parent)
-    if int(result["return_code"]) != 0:
+    if int(str(result["return_code"])) != 0:
         raise RuntimeError(str(result["stderr"]) or str(result["stdout"]) or "Command failed.")
 
     details = extract_capture_details(str(result["stdout"]))
@@ -171,7 +172,7 @@ def capture_remote_archive(
     remote_workdir: str | None,
     keep_remote_workdir: bool,
     verbose: bool = False,
-    stderr=None,
+    stderr: TextIO | None = None,
 ) -> tuple[Path, str]:
     _prepare_archive_destination(archive_dir)
     spec, remote_root = create_remote_workspace(remote, remote_workdir, verbose=verbose, stderr=stderr)
@@ -207,7 +208,7 @@ def capture_remote_archive(
             verbose=verbose,
             stderr=stderr,
         )
-        if int(run_result["return_code"]) != 0:
+        if int(str(run_result["return_code"])) != 0:
             raise RuntimeError(str(run_result["stderr"]) or str(run_result["stdout"]) or "Remote command failed.")
 
         details = extract_capture_details(str(run_result["stdout"]))
@@ -441,7 +442,7 @@ def _stage_required_files(
     operator_file: Path,
     remote_source_dir: str,
     verbose: bool = False,
-    stderr=None,
+    stderr: TextIO | None = None,
 ) -> None:
     if bench_file.name == operator_file.name and bench_file.resolve() != operator_file.resolve():
         raise RuntimeError(
@@ -469,7 +470,7 @@ def _run_remote_debug_command(
     command: list[str],
     *,
     verbose: bool = False,
-    stderr=None,
+    stderr: TextIO | None = None,
 ) -> dict[str, object]:
     remote_command = "export TRITON_DEBUG=1 TRITON_ALWAYS_COMPILE=1 && " + _shell_join_command(command)
     return run_remote_command_buffered(
