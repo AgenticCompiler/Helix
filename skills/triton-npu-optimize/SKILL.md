@@ -165,3 +165,7 @@ Put round-local narrative, temporary troubleshooting notes, command failures, an
 - Do not replace the core computation with pure PyTorch just to improve benchmark numbers.
 - Do not claim success for a round without both correctness evidence and benchmark evidence.
 - Do not begin with blind tiling, autotune, or launch-parameter search when the available evidence does not justify that direction.
+- When launch or tile/block configuration tuning is justified, prefer `autotune` over burning multiple optimization rounds on hand-tuned parameter sweeps.
+- Do not finish a round by restoring the parent snapshot alone; if edits are discarded, restart from the last validated parent as a new attempt or round instead of claiming rollback as the delivered optimization.
+- Do not spend optimization rounds tuning `num_warps` for Ascend NPU targets; it is CUDA-oriented and is not a meaningful Ascend launch knob.
+- When an operator file defines multiple Triton kernels on a relevant hot path, fuse them into a single kernel first, then optimize that fused kernel rather than tuning separate kernels in isolation.
