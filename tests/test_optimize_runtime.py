@@ -24,6 +24,7 @@ from triton_agent.optimize.execution import (
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
 from triton_agent.optimize.archive import ArchiveState
 from triton_agent.optimize.memory_file import MemoryFileState
+from triton_agent.optimize.resume import reset_optimize_workspace
 from triton_agent.optimize.runtime_handoff import RuntimeHandoffState
 from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsState
 
@@ -1318,6 +1319,43 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertTrue((root / "optimize-batch-status.json").exists())
             status = json.loads((root / "optimize-batch-status.json").read_text(encoding="utf-8"))
             self.assertEqual(status["workspaces"]["alpha"]["status"], "completed")
+
+    def test_reset_optimize_workspace_unlinks_symlinked_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            outside = workdir / "outside"
+            outside.mkdir()
+            for name in ("baseline-real", "runtime-real", "logs-real", "round-real"):
+                target = outside / name
+                target.mkdir()
+                (target / "marker.txt").write_text(name, encoding="utf-8")
+
+            (workdir / "opt-note.md").write_text("note\n", encoding="utf-8")
+            (workdir / "learned_lessons.md").write_text("lesson\n", encoding="utf-8")
+            (workdir / "baseline").symlink_to(outside / "baseline-real", target_is_directory=True)
+            (workdir / ".triton-agent").symlink_to(outside / "runtime-real", target_is_directory=True)
+            (workdir / "optimize-logs").symlink_to(outside / "logs-real", target_is_directory=True)
+            (workdir / "opt-round-1").symlink_to(outside / "round-real", target_is_directory=True)
+            optimized = workdir / "opt_kernel.py"
+            optimized.write_text("print('opt')\n", encoding="utf-8")
+
+            reset_optimize_workspace(operator, workdir)
+
+            self.assertFalse((workdir / "opt-note.md").exists())
+            self.assertFalse((workdir / "learned_lessons.md").exists())
+            self.assertFalse((workdir / "baseline").exists())
+            self.assertFalse((workdir / ".triton-agent").exists())
+            self.assertFalse((workdir / "optimize-logs").exists())
+            self.assertFalse((workdir / "opt-round-1").exists())
+            self.assertFalse(optimized.exists())
+
+            self.assertTrue((outside / "baseline-real").exists())
+            self.assertTrue((outside / "runtime-real").exists())
+            self.assertTrue((outside / "logs-real").exists())
+            self.assertTrue((outside / "round-real").exists())
 
     def test_run_optimize_request_keeps_interactive_only_for_worker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
