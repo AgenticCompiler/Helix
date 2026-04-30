@@ -5,6 +5,10 @@ from pathlib import Path
 from triton_agent.optimize.contract import baseline_state_contract_lines
 
 
+def _display_path(path: Path) -> str:
+    return path.as_posix()
+
+
 def strict_learned_lessons_lines() -> list[str]:
     return [
         "`learned_lessons.md` is only for reusable, evidence-backed optimization or profiling rules that can transfer to related Triton Ascend NPU operators.",
@@ -38,7 +42,7 @@ def compiler_source_analysis_lines(
         return []
     return [
         "Compiler source analysis is enabled for this optimize run.",
-        f"Compiler source path: {compiler_source_path}",
+        f"Compiler source path: {_display_path(compiler_source_path)}",
         f"Compiler source commit: {compiler_source_commit}.",
         "Treat the compiler source checkout as read-only.",
         "Do not run git clone, git fetch, git pull, or modify files in the compiler source checkout.",
@@ -206,10 +210,10 @@ def build_optimize_supervisor_prompt(
     lines = [
         "This invocation is the optimize supervisor role.",
         "This invocation is an audit and handoff pass, not a new optimization round.",
-        f"Read `{workdir / 'opt-note.md'}` before acting.",
+        f"Read `{_display_path(workdir / 'opt-note.md')}` before acting.",
     ]
     if latest_round_dir is not None:
-        lines.append(f"Read `{latest_round_dir}` before acting.")
+        lines.append(f"Read `{_display_path(latest_round_dir)}` before acting.")
         lines.extend(
             [
                 "Apply only metadata repairs derived from existing facts.",
