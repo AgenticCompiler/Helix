@@ -365,18 +365,6 @@ def build_parser() -> argparse.ArgumentParser:
                 default="check_result_v2_summary.txt",
                 help="Root-relative batch log check summary file name.",
             )
-        if command_kind in {CommandKind.LOG_CHECK, CommandKind.LOG_CHECK_BATCH}:
-            subparser.add_argument(
-                "--check-result-file",
-                default="check_result_v2.txt",
-                help="Workspace-relative log check result file name.",
-            )
-        if command_kind == CommandKind.LOG_CHECK_BATCH:
-            subparser.add_argument(
-                "--summary-file",
-                default="check_result_v2_summary.txt",
-                help="Root-relative batch log check summary file name.",
-            )
         if spec.max_concurrency_default is not None:
             subparser.add_argument("--max-concurrency", type=int, default=spec.max_concurrency_default)
         if spec.has_force_overwrite:
