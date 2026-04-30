@@ -253,6 +253,12 @@ Example:
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py
 ```
 
+For `standalone` benchmarks:
+
+- the benchmark file is import-only and exports `build_operator_api(operator_module)` plus `build_standalone_bench_cases(operator_api)`
+- `run-bench` profiles each declared case with `torch_npu.profiler`
+- `profile-bench` requires `--case-id <id>` for standalone profiling
+
 For `msprof` benchmarks:
 
 - `run-bench` aggregates the stable-order union of benchmark metadata kernels and `@triton.jit` kernels discovered from the runtime operator file.

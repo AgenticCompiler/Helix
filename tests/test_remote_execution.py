@@ -266,7 +266,7 @@ class RemoteExecutionTests(unittest.TestCase):
             ],
         )
 
-    def test_run_remote_bench_cleans_workspace_by_default(self) -> None:
+    def test_run_remote_bench_standalone_uses_runtime_helper_and_copies_perf_back(self) -> None:
         module = load_bench_runner_module()
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -275,16 +275,25 @@ class RemoteExecutionTests(unittest.TestCase):
             operator_file = root / "kernel.py"
             bench_file.write_text("# bench-mode: standalone\n# kernel: k\n", encoding="utf-8")
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
+            local_perf_path = root / "kernel_perf.txt"
 
             with patch.object(
                 module,
                 "create_remote_workspace",
                 return_value=("spec", "/tmp/remote-clean"),
-            ), patch.object(module, "copy_file_to_remote"), patch.object(
+            ), patch.object(module, "copy_file_to_remote") as copy_to_remote, patch.object(
                 module,
                 "run_remote_command_streaming",
-                return_value=make_skill_result(0, "latency-a: 1.0\n", ""),
-            ), patch.object(module, "cleanup_remote_workspace") as cleanup:
+                return_value=make_skill_result(0, "bench stdout\n", ""),
+            ) as remote_run, patch.object(
+                module,
+                "copy_file_from_remote",
+                create=True,
+                side_effect=lambda _spec, _remote_path, local_path, **_kwargs: local_path.write_text(
+                    "latency-case-a: 1.0\n",
+                    encoding="utf-8",
+                ),
+            ) as copy_back, patch.object(module, "cleanup_remote_workspace") as cleanup:
                 result, perf_path, remote_workspace = module.run_remote_bench(
                     bench_file,
                     operator_file,
@@ -294,8 +303,31 @@ class RemoteExecutionTests(unittest.TestCase):
                 )
 
         self.assertEqual(result["return_code"], 0)
-        self.assertIsNotNone(perf_path)
+        self.assertEqual(perf_path, local_perf_path)
         self.assertEqual(remote_workspace, "/tmp/remote-clean")
+        copy_targets = [call.args[2].rsplit("/", 1)[-1] for call in copy_to_remote.call_args_list]
+        self.assertIn("standalone_bench_runtime.py", copy_targets)
+        self.assertEqual(
+            remote_run.call_args.args[2],
+            [
+                "python3",
+                "standalone_bench_runtime.py",
+                "run-all",
+                "--bench-file",
+                "bench_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--perf-file",
+                "kernel_perf.txt",
+            ],
+        )
+        copy_back.assert_called_once_with(
+            "spec",
+            "/tmp/remote-clean/kernel_perf.txt",
+            local_perf_path,
+            verbose=False,
+            stderr=None,
+        )
         cleanup.assert_called_once_with("spec", "/tmp/remote-clean", verbose=False, stderr=None)
 
     def test_run_remote_bench_msprof_sums_avg_time_from_remote_csv_and_cleans_profiler_tmpdirs(self) -> None:
@@ -634,8 +666,16 @@ class RemoteExecutionTests(unittest.TestCase):
             ), patch.object(module, "copy_file_to_remote"), patch.object(
                 module,
                 "run_remote_command_streaming",
-                return_value=make_skill_result(0, "latency-a: 1.0\n", ""),
-            ) as remote_run, patch.object(module, "cleanup_remote_workspace"):
+                return_value=make_skill_result(0, "bench stdout\n", ""),
+            ) as remote_run, patch.object(
+                module,
+                "copy_file_from_remote",
+                create=True,
+                side_effect=lambda _spec, _remote_path, local_path, **_kwargs: local_path.write_text(
+                    "latency-case-a: 1.0\n",
+                    encoding="utf-8",
+                ),
+            ), patch.object(module, "cleanup_remote_workspace"):
                 module.run_remote_bench(
                     bench_file,
                     operator_file,
@@ -646,7 +686,17 @@ class RemoteExecutionTests(unittest.TestCase):
 
         self.assertEqual(
             remote_run.call_args.args[2],
-            ["python3", "bench kernel.py", "--operator-file", "kernel op.py"],
+            [
+                "python3",
+                "standalone_bench_runtime.py",
+                "run-all",
+                "--bench-file",
+                "bench kernel.py",
+                "--operator-file",
+                "kernel op.py",
+                "--perf-file",
+                "kernel op_perf.txt",
+            ],
         )
 
 

@@ -39,17 +39,37 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
         self.assertEqual(args.bench_file, "bench.py")
         self.assertEqual(args.operator_file, "kernel.py")
 
-    def test_build_execution_command_uses_bench_and_operator_names(self) -> None:
+    def test_build_execution_command_uses_runtime_helper_for_standalone_benches(self) -> None:
         module = _load_capture_ir_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_matmul.py"
+            operator_file = root / "matmul.py"
+            bench_file.write_text("# bench-mode: standalone\n", encoding="utf-8")
+            operator_file.write_text("def matmul():\n    pass\n", encoding="utf-8")
 
-        command = module.build_execution_command(
-            bench_file=Path("/tmp/work/bench_matmul.py"),
-            operator_file=Path("/tmp/work/matmul.py"),
-        )
+            command = module.build_execution_command(
+                bench_file=bench_file,
+                operator_file=operator_file,
+            )
 
         self.assertEqual(
             command,
-            [sys.executable, "bench_matmul.py", "--operator-file", "matmul.py"],
+            [
+                sys.executable,
+                str(
+                    REPO_ROOT
+                    / "skills"
+                    / "triton-npu-run-eval"
+                    / "scripts"
+                    / "standalone_bench_runtime.py"
+                ),
+                "run-one",
+                "--bench-file",
+                "bench_matmul.py",
+                "--operator-file",
+                "matmul.py",
+            ],
         )
 
     def test_extract_capture_details_reads_dump_path_and_compile_command(self) -> None:
@@ -244,9 +264,9 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
             stderr=None,
         )
         copied_names = [call.args[2].rsplit("/", 1)[-1] for call in copy_file.call_args_list]
-        self.assertEqual(copied_names, ["bench.py", "kernel.py"])
+        self.assertEqual(copied_names, ["bench.py", "kernel.py", "standalone_bench_runtime.py"])
         self.assertIn(
-            "python3 bench.py --operator-file kernel.py",
+            "python3 standalone_bench_runtime.py run-one --bench-file bench.py --operator-file kernel.py",
             remote_run.call_args_list[1].args[2],
         )
         cleanup.assert_not_called()

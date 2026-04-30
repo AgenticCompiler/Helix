@@ -13,11 +13,21 @@ import sys
 from pathlib import Path, PurePosixPath
 from typing import Any
 from typing import NamedTuple
+from typing import TextIO
+from typing import TypedDict
 
 
 class CaptureDetails(NamedTuple):
     dumped_ir_dir: str
     compile_command: list[str]
+
+
+class ResultPayload(TypedDict):
+    return_code: int
+    stdout: str
+    stderr: str
+    stalled: bool
+    session_id: str | None
 
 
 def make_result(
@@ -27,7 +37,7 @@ def make_result(
     stderr: str,
     stalled: bool = False,
     session_id: str | None = None,
-) -> dict[str, object]:
+) -> ResultPayload:
     return {
         "return_code": return_code,
         "stdout": stdout,
@@ -134,7 +144,12 @@ def capture_local_archive(
     archive_dir: Path,
 ) -> Path:
     _prepare_empty_archive_dir(archive_dir)
-    command = build_execution_command(bench_file=bench_file, operator_file=operator_file)
+    bench_mode = _resolve_bench_mode(bench_file)
+    command = build_execution_command(
+        bench_file=bench_file,
+        operator_file=operator_file,
+        bench_mode=bench_mode,
+    )
     result = _run_local_command(command, cwd=bench_file.parent)
     if int(result["return_code"]) != 0:
         raise RuntimeError(str(result["stderr"]) or str(result["stdout"]) or "Command failed.")
@@ -171,7 +186,7 @@ def capture_remote_archive(
     remote_workdir: str | None,
     keep_remote_workdir: bool,
     verbose: bool = False,
-    stderr=None,
+    stderr: TextIO | None = None,
 ) -> tuple[Path, str]:
     _prepare_archive_destination(archive_dir)
     spec, remote_root = create_remote_workspace(remote, remote_workdir, verbose=verbose, stderr=stderr)
@@ -179,10 +194,12 @@ def capture_remote_archive(
     remote_archive_dir = f"{remote_root}/archive"
     remote_bench_file = Path(bench_file.name)
     remote_operator_file = Path(operator_file.name)
+    bench_mode = _resolve_bench_mode(bench_file)
     command = build_execution_command(
         bench_file=remote_bench_file,
         operator_file=remote_operator_file,
         python_executable="python3",
+        bench_mode=bench_mode,
     )
     try:
         run_remote_command_buffered(
@@ -344,7 +361,7 @@ def _resolve_existing_path(raw_path: str, label: str) -> Path:
     return path
 
 
-def _run_local_command(command: list[str], *, cwd: Path) -> dict[str, object]:
+def _run_local_command(command: list[str], *, cwd: Path) -> ResultPayload:
     env = dict(os.environ)
     env["TRITON_DEBUG"] = "1"
     env["TRITON_ALWAYS_COMPILE"] = "1"
@@ -412,11 +429,26 @@ def build_execution_command(
     bench_file: Path,
     operator_file: Path,
     python_executable: str | None = None,
+    bench_mode: str | None = None,
 ) -> list[str]:
     operator_arg = operator_file.name
     if bench_file.parent != operator_file.parent:
         operator_arg = os.path.relpath(operator_file, bench_file.parent)
     interpreter = sys.executable if python_executable is None else python_executable
+    resolved_bench_mode = bench_mode or _resolve_bench_mode(bench_file)
+    if resolved_bench_mode == "standalone":
+        helper_script = (
+            _standalone_runtime_script_path() if python_executable is None else Path("standalone_bench_runtime.py")
+        )
+        return [
+            interpreter,
+            str(helper_script),
+            "run-one",
+            "--bench-file",
+            bench_file.name,
+            "--operator-file",
+            operator_arg,
+        ]
     return [
         interpreter,
         bench_file.name,
@@ -441,7 +473,7 @@ def _stage_required_files(
     operator_file: Path,
     remote_source_dir: str,
     verbose: bool = False,
-    stderr=None,
+    stderr: TextIO | None = None,
 ) -> None:
     if bench_file.name == operator_file.name and bench_file.resolve() != operator_file.resolve():
         raise RuntimeError(
@@ -461,6 +493,37 @@ def _stage_required_files(
         verbose=verbose,
         stderr=stderr,
     )
+    if _resolve_bench_mode(bench_file) == "standalone":
+        helper_path = _standalone_runtime_script_path()
+        copy_file_to_remote(
+            spec,
+            helper_path,
+            f"{remote_source_dir}/{helper_path.name}",
+            verbose=verbose,
+            stderr=stderr,
+        )
+
+
+def _resolve_bench_mode(bench_file: Path) -> str:
+    for line in bench_file.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if not stripped.startswith("#"):
+            break
+        body = stripped[1:].strip()
+        if body.startswith("bench-mode:"):
+            return body.split(":", 1)[1].strip()
+    return "standalone"
+
+
+def _standalone_runtime_script_path() -> Path:
+    return (
+        Path(__file__).resolve().parents[2]
+        / "triton-npu-run-eval"
+        / "scripts"
+        / "standalone_bench_runtime.py"
+    )
 
 
 def _run_remote_debug_command(
@@ -469,8 +532,8 @@ def _run_remote_debug_command(
     command: list[str],
     *,
     verbose: bool = False,
-    stderr=None,
-) -> dict[str, object]:
+    stderr: TextIO | None = None,
+) -> ResultPayload:
     remote_command = "export TRITON_DEBUG=1 TRITON_ALWAYS_COMPILE=1 && " + _shell_join_command(command)
     return run_remote_command_buffered(
         spec,

@@ -1,128 +1,115 @@
 ## Benchmark file specification for Triton Ascend NPU operators
 
-This document describes the specification for benchmark files (e.g. `bench_abs.py`) for Triton operators. The goal of the benchmark is **benchmarking and profiling only**—no correctness checking.
+This document defines the **standalone** benchmark contract for generated `bench_<op>.py` files.
 
-An operator may contain:
-- kernel functions
-- a public entrypoint implemented as a Triton wrapper function
-- a public entrypoint implemented as a PyTorch function
-- a public entrypoint implemented as a `torch.nn.Module` class
+The goal of a standalone benchmark file is to declare benchmark cases for one resolved public operator entrypoint. The benchmark runner owns execution, profiling, and perf artifact generation. The benchmark file itself is **import-only** and is **not** a directly runnable CLI script.
 
-The benchmark must call the resolved public entrypoint to run the operator. Raw `@triton.jit` kernels are not valid direct harness APIs.
+An operator may expose its public entrypoint as:
+
+- a Triton wrapper function
+- a PyTorch-facing function
+- a `torch.nn.Module` class
+
+The generated benchmark must target the resolved public entrypoint rather than raw `@triton.jit` kernels.
 
 ### 1. File naming and location
 
-- For an operator implemented in `<op>.py` (e.g. `abs.py`), the benchmark file **must** be named **`bench_<op>.py`** in the **same directory** as `<op>.py`.
-- Example: `dataset/Flaggems/abs/abs.py` → `dataset/Flaggems/abs/bench_abs.py`.
+- For an operator implemented in `<op>.py`, the benchmark file must be named `bench_<op>.py`.
+- The benchmark file must live beside the operator file it was generated for.
 
-### 2. Command-line interface and main flow
+### 2. Required metadata header
 
-The benchmark file must include this metadata header near the top of the file:
+The file must begin with a short metadata header:
 
 ```python
 # bench-mode: standalone
-# api-name: <name>
+# api-name: <resolved_entrypoint>
 # api-kind: <triton-wrapper|torch-function|torch-module>
-# kernels: <name>
+# kernels: <resolved_kernel_names>
 ```
 
-The benchmark file must accept the following arguments when run as `python bench_<op>.py`:
+Notes:
 
-| Argument | Required | Behavior |
-|----------|----------|----------|
-| `--operator-file <path>` | yes | Path to the operator source file to benchmark (e.g. `abs.py` or `opt_abs.py`). |
+- `# api-name:` records the resolved public entrypoint.
+- `# api-kind:` records how that entrypoint should be interpreted.
+- `# kernels:` records one or more Triton kernel names that the runner should aggregate from profiler output.
 
-Example invocations:
+### 3. Standalone export contract
 
-```bash
-# Benchmark the original operator
-python3 bench_abs.py --operator-file abs.py
-
-# Benchmark an optimized variant with the same bench file
-python3 bench_abs.py --operator-file opt_abs.py
-```
-
-The benchmark file **must** contain a `main()` entry point that:
-- parses `--operator-file`
-- loads the operator entrypoint from the runtime operator file
-- runs all benchmark cases
-
-### 3. Operator API loading
-
-- The benchmark file **must not** hard-code an import of the operator module. Instead it must **load the operator module by file path** specified by `--operator-file`.
-- Use `importlib.util.spec_from_file_location` and `exec_module` to load the module.
-- `# api-name:` identifies the symbol to load, and `# api-kind:` identifies which loading pattern this generated harness follows.
-- If that named API does not exist in the runtime operator file, fail explicitly instead of guessing.
-
-#### 3.1 `triton-wrapper`
-
-Use this kind when the public API is a Python wrapper function around Triton kernels.
+The module must export exactly two standalone hooks:
 
 ```python
-def load_operator_api(operator_file: str, api_name: str):
-    spec = importlib.util.spec_from_file_location("operator_module", operator_file)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return getattr(module, api_name)
+def build_operator_api(operator_module):
+    ...
+
+def build_standalone_bench_cases(operator_api):
+    ...
 ```
 
-#### 3.2 `torch-function`
+Rules:
 
-Use this kind when the public API is a plain PyTorch-facing function or operator entrypoint that may internally call Triton kernels.
+- `build_operator_api(operator_module)` is required.
+- `build_standalone_bench_cases(operator_api)` is required.
+- The module must be **import-only**. Do not generate `main()`, `argparse`, or direct runtime CLI handling for standalone benchmarks.
+- Do not require the runner to pass `--operator-file` into the benchmark module itself.
 
-```python
-def load_operator_api(operator_file: str, api_name: str):
-    spec = importlib.util.spec_from_file_location("operator_module", operator_file)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return getattr(module, api_name)
-```
+### 4. `build_operator_api(operator_module)`
 
-#### 3.3 `torch-module`
+This hook constructs the final runtime object that standalone cases will close over.
 
-Use this kind when the public API is a `torch.nn.Module` class that can be instantiated without constructor arguments.
+Requirements:
 
-```python
-def load_operator_api(operator_file: str, api_name: str):
-    spec = importlib.util.spec_from_file_location("operator_module", operator_file)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    entrypoint_cls = getattr(module, api_name)
-    try:
-        return entrypoint_cls()
-    except TypeError as exc:
-        raise RuntimeError(
-            "torch-module entrypoints must support no-argument construction; "
-            "constructor arguments are not supported in generated harnesses"
-        ) from exc
-```
+- The hook receives the dynamically loaded runtime operator module.
+- Return the final object that benchmark cases should use.
+- For `triton-wrapper`, this is usually the resolved wrapper function.
+- For `torch-function`, this is usually the resolved function entrypoint.
+- For `torch-module`, this should usually construct and return the final callable module object.
 
-If a `torch-module` entrypoint requires constructor arguments, fail explicitly with an actionable error about unsupported constructor arguments.
+`torch-module` notes:
 
-### 4. Core benchmark logic (`run_bench`)
+- Prefer the resolved `torch.nn.Module` class when it is the real public entrypoint.
+- If constructor arguments are required and cannot be resolved safely, fail explicitly instead of guessing constructor arguments.
+- Generated standalone benchmarks must still mention `torch-module` behavior clearly when relevant.
 
-- **Execution device:** The harness **must** exercise the operator on **Ascend NPU only**. Do **not** generate benchmarks intended to run primarily on CUDA, CPU, or other accelerators, or that branch to a non-NPU device for the code under test.
-- Create the required tensor(s) for the operator with the case's dtype and shape(s), and call the resolved public entrypoint loaded via `--operator-file` and the embedded metadata.
-- **All tensors must be created on device `"npu"`** (not `"cuda"`).
-- **Do not** perform any correctness check (no comparison to reference implementation).
-- **Do not** call `torch.npu.synchronize()` (or any device synchronize) in the benchmark code.
-- Iterate over all benchmark cases in the file and measure each one.
-- Assign each benchmark case a stable case id and print results using that id so downstream comparisons do not depend on stdout order alone.
-- Use `triton.backends.ascend.testing.do_bench_npu` to measure performance.
-- Print each case result using: `print(f"latency-<id>: {latency}")`
+### 5. `build_standalone_bench_cases(operator_api)`
 
-### 5. Warmup and active policy
+This hook returns the declared benchmark cases after `operator_api` has been built.
 
-- Estimate the runtime of the benchmarked callable.
-- If estimated runtime is less than 10ms:
-  - `warmup=1000`, `active=10000`
-- Otherwise:
-  - `warmup=100`, `active=1000`
-- The parameter meanings are:
-  - `warmup`: number of warmup runs
-  - `active`: number of repeated measurement runs
+Each case must be a mapping with:
 
-### 6. Example
+- `id`: required stable string case id
+- `fn`: required zero-argument callable that runs one prepared case
+- `warmup`: optional non-negative integer
+- `repeats`: optional positive integer
+
+Important behavior:
+
+- `fn` should close over any prepared tensors, attrs, or module state it needs.
+- `fn` should execute only the benchmarked operator body.
+- Input preparation should happen outside the returned `fn` whenever practical so the profiler focuses on operator execution.
+- The case id should be descriptive and stable because downstream perf artifacts use `latency-<case-id>`.
+
+### 6. Device and benchmark assumptions
+
+- The benchmarked operator must run on **Ascend NPU**.
+- All generated benchmark inputs should target device `"npu"` for the code under test.
+- Do not generate correctness checks in standalone benchmark files.
+- Do not put profiler logic, perf text rendering, or timing fallback logic inside the benchmark file.
+- Do not directly print latency lines from the benchmark file. The runner owns artifact generation.
+
+### 7. Runner-owned execution model
+
+The standalone benchmark file is consumed by `triton-npu-run-eval`:
+
+- `run-bench` imports the benchmark file and operator file
+- the runner calls `build_operator_api(operator_module)`
+- the runner calls `build_standalone_bench_cases(operator_api)`
+- the runner profiles each case with `torch_npu.profiler`
+- the runner writes the perf artifact in the shared `msprof`-aligned text format
+
+The standalone file therefore must not assume it will be executed as `python3 bench_<op>.py ...`.
+
+### 8. Example shape
 
 ```python
 # bench-mode: standalone
@@ -130,34 +117,28 @@ If a `torch-module` entrypoint requires constructor arguments, fail explicitly w
 # api-kind: <resolved_api_kind>
 # kernels: <resolved_kernel_names>
 
-import argparse
-import importlib.util
-import triton
+import torch
 
-API_NAME = "<resolved_entrypoint>"
-CASES = [("case-1", ...), ("case-2", ...)]
 
-def make_inputs(case):
-    ...
+def build_operator_api(operator_module):
+    if "<resolved_api_kind>" == "torch-module":
+        return operator_module.<resolved_entrypoint>().npu().eval()
+    return getattr(operator_module, "<resolved_entrypoint>")
 
-def run_bench(operator_api):
-    for case_id, case in CASES:
-        def bench_fn():
-            return operator_api(*make_inputs(case))
 
-        warmup, active = select_bench_config(bench_fn)
-        latency = triton.backends.ascend.testing.do_bench_npu(
-            bench_fn, warmup=warmup, active=active
-        )
-        print(f"latency-{case_id}: {latency}")
+def build_standalone_bench_cases(operator_api):
+    lhs = torch.randn((1024, 1024), dtype=torch.float16, device="npu")
+    rhs = torch.randn((1024, 1024), dtype=torch.float16, device="npu")
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--operator-file", required=True)
-    args = parser.parse_args()
-    operator_api = load_operator_api(args.operator_file, API_NAME)
-    run_bench(operator_api)
+    def case_fp16_1024():
+        operator_api(lhs, rhs)
 
-if __name__ == "__main__":
-    main()
+    return [
+        {
+            "id": "fp16_1024",
+            "fn": case_fp16_1024,
+            "warmup": 5,
+            "repeats": 50,
+        }
+    ]
 ```

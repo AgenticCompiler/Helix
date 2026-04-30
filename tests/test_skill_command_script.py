@@ -165,6 +165,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0)
         self.assertIn("--bench-file", completed.stdout)
         self.assertIn("--operator-file", completed.stdout)
+        self.assertIn("--case-id", completed.stdout)
         self.assertIn("--bench", completed.stdout)
         self.assertIn("--kernel-name", completed.stdout)
         self.assertIn("--target-op", completed.stdout)
