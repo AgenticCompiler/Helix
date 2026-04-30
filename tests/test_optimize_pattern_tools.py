@@ -68,16 +68,20 @@ Extra prose that should stay in the source file but not become a first-line inde
 
     def test_checked_in_pattern_index_matches_generator(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         patterns_dir = (
-            REPO_ROOT / "skills" / "triton-npu-optimize" / "references" / "patterns"
+            REPO_ROOT
+            / "skills"
+            / "triton-npu-optimize-knowledge"
+            / "references"
+            / "patterns"
         )
         generated = module.build_index_text(patterns_dir)
         checked_in = (
             REPO_ROOT
             / "skills"
-            / "triton-npu-optimize"
+            / "triton-npu-optimize-knowledge"
             / "references"
             / "pattern_index.md"
         ).read_text(encoding="utf-8")
@@ -85,7 +89,7 @@ Extra prose that should stay in the source file but not become a first-line inde
 
     def test_generated_index_links_to_pattern_subdirectory(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)

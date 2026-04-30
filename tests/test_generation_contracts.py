@@ -171,6 +171,19 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("classic tiled matmul pattern reference", optimize)
         self.assertIn("`opt-round-N/perf-analysis.md`", optimize)
 
+    def test_optimize_knowledge_skill_owns_generic_pattern_references(self) -> None:
+        knowledge = _read("skills/triton-npu-optimize-knowledge/SKILL.md")
+        index = _read("skills/triton-npu-optimize-knowledge/references/pattern_index.md")
+        reference = _read(
+            "skills/triton-npu-optimize-knowledge/references/patterns/classic-matmul.md"
+        )
+
+        self.assertIn("reference-only", knowledge)
+        self.assertIn("does not define optimize workflow", knowledge)
+        self.assertIn("pattern_index.md", knowledge)
+        self.assertIn("classic-matmul", index)
+        self.assertIn("matmul-like", reference)
+
     def test_optimize_pattern_library_includes_classic_tiled_matmul(self) -> None:
         index = _read("skills/triton-npu-optimize/references/pattern_index.md")
         reference = _read("skills/triton-npu-optimize/references/patterns/classic-matmul.md")
