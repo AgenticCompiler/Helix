@@ -5,13 +5,17 @@ import importlib
 import importlib.util
 import sys
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol, TypedDict, cast
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
 
-from run_runtime import ResultPayload
+
+class ResultPayload(TypedDict):
+    return_code: int
+    stdout: str
+    stderr: str
+    stalled: bool
+    session_id: str | None
 
 
 class ParseMetadataFn(Protocol):

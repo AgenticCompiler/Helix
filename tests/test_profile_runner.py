@@ -243,14 +243,6 @@ class ProfileRunnerTests(unittest.TestCase):
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
 
             copied_profile_dir = root / "PROF_remote"
-            helper_script = (
-                Path(__file__).resolve().parents[1]
-                / "skills"
-                / "triton-npu-run-eval"
-                / "scripts"
-                / "standalone_bench_runtime.py"
-            )
-
             def _fake_copy(_spec, _remote_path, local_path, **_kwargs):
                 output_dir = local_path / "mindstudio_profiler_output"
                 output_dir.mkdir(parents=True)
