@@ -43,7 +43,9 @@ def reset_optimize_workspace(input_path: Path, workdir: Path) -> None:
         if path.is_dir()
     ]
     for path in [*artifact_paths, *round_dirs]:
-        if path.is_dir():
+        if path.is_symlink():
+            path.unlink()
+        elif path.is_dir():
             shutil.rmtree(path)
         elif path.exists():
             path.unlink()
