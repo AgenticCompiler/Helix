@@ -168,12 +168,42 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("triton-npu-prepare-optimize-baseline", readme)
         self.assertIn("triton-npu-profile-operator", optimize)
         self.assertIn("triton-npu-analyze-round-performance", optimize)
-        self.assertIn("classic tiled matmul pattern reference", optimize)
+        self.assertIn("triton-npu-optimize-knowledge", optimize)
+        self.assertIn("classic-matmul.md", optimize)
         self.assertIn("`opt-round-N/perf-analysis.md`", optimize)
 
+    def test_optimize_knowledge_skill_owns_generic_pattern_references(self) -> None:
+        knowledge = _read("skills/triton-npu-optimize-knowledge/SKILL.md")
+        index = _read("skills/triton-npu-optimize-knowledge/references/pattern_index.md")
+        reference = _read(
+            "skills/triton-npu-optimize-knowledge/references/patterns/classic-matmul.md"
+        )
+
+        self.assertIn("reference-only", knowledge)
+        self.assertIn("does not define optimize workflow", knowledge)
+        self.assertIn("pattern_index.md", knowledge)
+        self.assertIn("classic-matmul", index)
+        self.assertIn("matmul-like", reference)
+
+    def test_optimize_knowledge_skill_owns_generic_symptom_references(self) -> None:
+        knowledge = _read("skills/triton-npu-optimize-knowledge/SKILL.md")
+        symptom_index = _read(
+            "skills/triton-npu-optimize-knowledge/references/symptom_index.md"
+        )
+        symptom = _read(
+            "skills/triton-npu-optimize-knowledge/references/symptoms/weak-pipeline-overlap.md"
+        )
+
+        self.assertIn("symptom_index.md", knowledge)
+        self.assertIn("weak-pipeline-overlap", symptom_index)
+        self.assertIn("## Evidence To Confirm", symptom)
+        self.assertIn("## Candidate Pattern Directions", symptom)
+
     def test_optimize_pattern_library_includes_classic_tiled_matmul(self) -> None:
-        index = _read("skills/triton-npu-optimize/references/pattern_index.md")
-        reference = _read("skills/triton-npu-optimize/references/patterns/classic-matmul.md")
+        index = _read("skills/triton-npu-optimize-knowledge/references/pattern_index.md")
+        reference = _read(
+            "skills/triton-npu-optimize-knowledge/references/patterns/classic-matmul.md"
+        )
         self.assertIn("classic-matmul", index)
         self.assertIn("manual matmul or K-reduction", index)
         self.assertIn("dtype-specialized or shape-specialized paths", index)
@@ -192,11 +222,19 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("small shapes: baseline-style reduction path", reference)
 
     def test_optimize_pattern_library_fuses_latency_optimizer_guidance(self) -> None:
-        index = _read("skills/triton-npu-optimize/references/pattern_index.md")
-        scalar = _read("skills/triton-npu-optimize/references/patterns/scalar-latency-traps.md")
-        layout = _read("skills/triton-npu-optimize/references/patterns/layout-store-and-block-pointers.md")
-        grid = _read("skills/triton-npu-optimize/references/patterns/grid-flatten-and-ub-buffering.md")
-        attention = _read("skills/triton-npu-optimize/references/patterns/attention-cv-pipeline.md")
+        index = _read("skills/triton-npu-optimize-knowledge/references/pattern_index.md")
+        scalar = _read(
+            "skills/triton-npu-optimize-knowledge/references/patterns/scalar-latency-traps.md"
+        )
+        layout = _read(
+            "skills/triton-npu-optimize-knowledge/references/patterns/layout-store-and-block-pointers.md"
+        )
+        grid = _read(
+            "skills/triton-npu-optimize-knowledge/references/patterns/grid-flatten-and-ub-buffering.md"
+        )
+        attention = _read(
+            "skills/triton-npu-optimize-knowledge/references/patterns/attention-cv-pipeline.md"
+        )
 
         self.assertIn("scalar-latency-traps", index)
         self.assertIn("layout-store-and-block-pointers", index)
@@ -220,7 +258,13 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("A5", attention)
 
     def test_optimize_pattern_cards_use_required_sections_and_generated_index(self) -> None:
-        patterns_dir = REPO_ROOT / "skills" / "triton-npu-optimize" / "references" / "patterns"
+        patterns_dir = (
+            REPO_ROOT
+            / "skills"
+            / "triton-npu-optimize-knowledge"
+            / "references"
+            / "patterns"
+        )
         for path in sorted(patterns_dir.glob("*.md")):
             if path.name == "index.md":
                 continue
@@ -231,25 +275,29 @@ class GenerationContractTests(unittest.TestCase):
                 self.assertIn("## Use When", content)
 
         optimize = _read("skills/triton-npu-optimize/SKILL.md")
-        self.assertIn("generated `references/pattern_index.md`", optimize)
+        self.assertIn("triton-npu-optimize-knowledge", optimize)
+        self.assertIn(
+            "../triton-npu-optimize-knowledge/references/pattern_index.md",
+            optimize,
+        )
         self.assertIn("extract_code_facts.py", optimize)
 
     def test_optimize_pattern_cards_promote_existing_information_into_structured_sections(
         self,
     ) -> None:
         program_rows = _read(
-            "skills/triton-npu-optimize/references/patterns/program-multiple-rows.md"
+            "skills/triton-npu-optimize-knowledge/references/patterns/program-multiple-rows.md"
         )
         software_pipeline = _read(
-            "skills/triton-npu-optimize/references/patterns/software-pipeline.md"
+            "skills/triton-npu-optimize-knowledge/references/patterns/software-pipeline.md"
         )
-        tiling = _read("skills/triton-npu-optimize/references/patterns/tiling.md")
-        vec_cmp = _read("skills/triton-npu-optimize/references/patterns/vec-cmp.md")
+        tiling = _read("skills/triton-npu-optimize-knowledge/references/patterns/tiling.md")
+        vec_cmp = _read("skills/triton-npu-optimize-knowledge/references/patterns/vec-cmp.md")
         gather_load = _read(
-            "skills/triton-npu-optimize/references/patterns/gather-load.md"
+            "skills/triton-npu-optimize-knowledge/references/patterns/gather-load.md"
         )
         reorder_load = _read(
-            "skills/triton-npu-optimize/references/patterns/reorder-load.md"
+            "skills/triton-npu-optimize-knowledge/references/patterns/reorder-load.md"
         )
 
         self.assertIn("## Signals", program_rows)
@@ -268,6 +316,8 @@ class GenerationContractTests(unittest.TestCase):
 
         self.assertIn("## Related Patterns", software_pipeline)
         self.assertIn("## Related Patterns", tiling)
+        self.assertIn("propagate_nan=tl.PropagateNan.ALL", vec_cmp)
+        self.assertIn("NaN-input behavior", vec_cmp)
 
     def test_optimize_artifacts_reference_documents_state_declared_paths(self) -> None:
         artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
@@ -323,15 +373,54 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("A5", architecture_ref)
         self.assertIn("L0C", architecture_ref)
 
-    def test_round_performance_skill_points_to_symptom_routing_references(self) -> None:
+    def test_round_performance_skill_points_to_knowledge_symptom_routing_references(
+        self,
+    ) -> None:
         skill = _read("skills/triton-npu-analyze-round-performance/SKILL.md")
         symptom_index = _read(
-            "skills/triton-npu-analyze-round-performance/references/symptom_index.md"
+            "skills/triton-npu-optimize-knowledge/references/symptom_index.md"
         )
         self.assertIn("symptom cards", skill)
-        self.assertIn("references/symptom_index.md", skill)
+        self.assertIn("triton-npu-optimize-knowledge", skill)
+        self.assertIn(
+            "../triton-npu-optimize-knowledge/references/symptom_index.md",
+            skill,
+        )
         self.assertIn("weak-pipeline-overlap", symptom_index)
         self.assertIn("high-transfer-pressure", symptom_index)
+
+    def test_agents_declares_knowledge_skill_as_generic_pattern_and_symptom_source(
+        self,
+    ) -> None:
+        agents = _read("AGENTS.md")
+        self.assertIn(
+            "skills/triton-npu-optimize-knowledge/references/patterns/*.md",
+            agents,
+        )
+        self.assertIn(
+            "skills/triton-npu-optimize-knowledge/references/symptoms/*.md",
+            agents,
+        )
+        self.assertIn("## Evidence To Confirm", agents)
+        self.assertIn("## Candidate Pattern Directions", agents)
+
+    def test_pattern_and_symptom_authoring_notes_point_to_knowledge_skill(self) -> None:
+        pattern_note = _read("docs/notes/2026-04-29-optimize-pattern-card-authoring.md")
+        symptom_note = _read("docs/notes/2026-04-30-optimize-symptom-card-authoring.md")
+
+        self.assertIn(
+            "skills/triton-npu-optimize-knowledge/references/patterns/",
+            pattern_note,
+        )
+        self.assertIn(
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py",
+            pattern_note,
+        )
+        self.assertIn(
+            "skills/triton-npu-optimize-knowledge/references/symptoms/",
+            symptom_note,
+        )
+        self.assertIn("build_symptom_index.py", symptom_note)
 
     def test_compiler_source_analysis_skill_focuses_on_performance_navigation_and_next_action(
         self,

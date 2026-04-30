@@ -3,4 +3,5 @@ __pycache__/
 .DS_Store
 *.egg-info/
 workspace/
+.worktrees/
 .vscode/

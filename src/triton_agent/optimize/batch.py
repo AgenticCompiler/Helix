@@ -31,6 +31,17 @@ from triton_agent.optimize.orchestration import build_optimize_request, run_opti
 _BATCH_STATUS_FILENAME = "optimize-batch-status.json"
 _BATCH_STATUS_VERSION = 1
 
+__all__ = [
+    "is_batch_optimize_operator_candidate",
+    "resolve_batch_optimize_operator_file",
+    "run_optimize_batch",
+    "summarize_batch_optimize_failure",
+    "optimize_batch_status_file",
+    "load_optimize_batch_status",
+    "update_optimize_batch_workspace_status",
+    "clear_optimize_batch_status_file",
+]
+
 
 def run_optimize_batch(
     root: Path,

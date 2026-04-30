@@ -24,7 +24,7 @@ def _load_skill_script(relative_path: str):
 class PatternRoutingToolTests(unittest.TestCase):
     def test_build_index_requires_summary_and_use_when(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -37,7 +37,7 @@ class PatternRoutingToolTests(unittest.TestCase):
 
     def test_build_index_keeps_free_sections_but_ignores_them_for_summary(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -68,16 +68,20 @@ Extra prose that should stay in the source file but not become a first-line inde
 
     def test_checked_in_pattern_index_matches_generator(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         patterns_dir = (
-            REPO_ROOT / "skills" / "triton-npu-optimize" / "references" / "patterns"
+            REPO_ROOT
+            / "skills"
+            / "triton-npu-optimize-knowledge"
+            / "references"
+            / "patterns"
         )
         generated = module.build_index_text(patterns_dir)
         checked_in = (
             REPO_ROOT
             / "skills"
-            / "triton-npu-optimize"
+            / "triton-npu-optimize-knowledge"
             / "references"
             / "pattern_index.md"
         ).read_text(encoding="utf-8")
@@ -85,7 +89,7 @@ Extra prose that should stay in the source file but not become a first-line inde
 
     def test_generated_index_links_to_pattern_subdirectory(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -98,7 +102,7 @@ Extra prose that should stay in the source file but not become a first-line inde
 
     def test_generated_index_omits_post_apply_verification_section(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -125,7 +129,7 @@ Short summary.
 
     def test_generated_index_omits_related_patterns_section(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -152,7 +156,7 @@ Short summary.
 
     def test_build_index_ignores_pattern_directory_readme(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -169,6 +173,42 @@ Short summary.
 
             self.assertIn("Short summary.", rendered)
             self.assertNotIn("Pattern Docs", rendered)
+
+    def test_build_symptom_index_requires_summary_evidence_and_candidates(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge/scripts/build_symptom_index.py"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            symptoms_dir = Path(tmp)
+            (symptoms_dir / "broken.md").write_text(
+                "# broken\n\n## Summary\n\nMissing evidence and pattern directions.\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                ValueError, "Evidence To Confirm, Candidate Pattern Directions"
+            ):
+                module.build_index_text(symptoms_dir)
+
+    def test_checked_in_symptom_index_matches_generator(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge/scripts/build_symptom_index.py"
+        )
+        symptoms_dir = (
+            REPO_ROOT
+            / "skills"
+            / "triton-npu-optimize-knowledge"
+            / "references"
+            / "symptoms"
+        )
+        generated = module.build_index_text(symptoms_dir)
+        checked_in = (
+            REPO_ROOT
+            / "skills"
+            / "triton-npu-optimize-knowledge"
+            / "references"
+            / "symptom_index.md"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(generated, checked_in)
 
     def test_extract_code_facts_reports_manual_reduction_and_index_load(self) -> None:
         module = _load_skill_script(

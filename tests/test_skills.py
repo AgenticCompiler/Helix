@@ -22,10 +22,17 @@ class SkillLinkManagerTests(unittest.TestCase):
     def test_optimize_propagate_nan_guidance_is_workflow_visible(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         optimize_skill = repo_root / "skills" / "triton-npu-optimize" / "SKILL.md"
-        pattern_index = repo_root / "skills" / "triton-npu-optimize" / "references" / "patterns" / "index.md"
+        vec_cmp = (
+            repo_root
+            / "skills"
+            / "triton-npu-optimize-knowledge"
+            / "references"
+            / "patterns"
+            / "vec-cmp.md"
+        )
 
         skill_text = optimize_skill.read_text(encoding="utf-8")
-        index_text = pattern_index.read_text(encoding="utf-8")
+        vec_cmp_text = vec_cmp.read_text(encoding="utf-8")
         semantic_repairs = skill_text.split("## Kernel Semantic Repairs", maxsplit=1)[1].split(
             "## Stage 3",
             maxsplit=1,
@@ -35,7 +42,8 @@ class SkillLinkManagerTests(unittest.TestCase):
         self.assertIn("tl.maximum()", semantic_repairs)
         self.assertIn("tl.minimum()", semantic_repairs)
         self.assertIn("semantic choice", semantic_repairs)
-        self.assertIn("propagate_nan=tl.PropagateNan.ALL", index_text)
+        self.assertIn("propagate_nan=tl.PropagateNan.ALL", vec_cmp_text)
+        self.assertIn("NaN-input behavior", vec_cmp_text)
 
     def test_repo_skills_stage_optimize_baseline_and_optimize_check_for_codex(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

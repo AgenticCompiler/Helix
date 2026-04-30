@@ -8,6 +8,7 @@ from io import StringIO
 from pathlib import Path
 from contextlib import redirect_stderr
 from contextlib import redirect_stdout
+from typing import Optional
 from unittest.mock import patch
 from types import SimpleNamespace
 
@@ -1711,7 +1712,7 @@ class PathResolutionTests(unittest.TestCase):
                 "# bench-mode: standalone\n# kernel: k\nprint('bench')\n", encoding="utf-8"
             )
 
-            captured_modes: dict[str, str | None] = {}
+            captured_modes: dict[str, Optional[str]] = {}
 
             def _fake_run(request):
                 captured_modes[request.workdir.name] = request.bench_mode
@@ -3986,7 +3987,11 @@ class PromptTests(unittest.TestCase):
             prompt,
         )
         self.assertIn(
-            "Read the generated `references/pattern_index.md` before detailed pattern references.",
+            "Use the staged `triton-npu-optimize-knowledge` skill for generic pattern and symptom references.",
+            prompt,
+        )
+        self.assertIn(
+            "Read the staged `triton-npu-optimize-knowledge` skill's generated `references/pattern_index.md` before detailed pattern references.",
             prompt,
         )
         self.assertIn(
@@ -3994,7 +3999,7 @@ class PromptTests(unittest.TestCase):
             prompt,
         )
         self.assertIn(
-            "Use symptom cards to narrow pattern candidates after structured profiler or IR evidence exists.",
+            "Use the staged `triton-npu-optimize-knowledge` skill's symptom cards to narrow pattern candidates after structured profiler or IR evidence exists.",
             prompt,
         )
         self.assertIn("Do not begin with blind tiling or launch-parameter search", prompt)
