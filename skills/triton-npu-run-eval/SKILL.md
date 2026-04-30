@@ -91,6 +91,8 @@ Notes:
 - Always pass both `--bench-file` and `--operator-file`.
 - If `--bench-mode` is omitted, the command reads `# bench-mode: ...` from the benchmark file.
 - Use `--bench-mode standalone` or `--bench-mode msprof` only when you need to override the embedded metadata.
+- In `standalone` mode, the benchmark file is import-only. `run-bench` imports the module, calls `build_operator_api(operator_module)`, then calls `build_standalone_bench_cases(operator_api)`.
+- In `standalone` mode, the runner profiles each declared case with `torch_npu.profiler` and writes `latency-<case-id>` perf entries.
 - In `msprof` mode, `run-bench` aggregates the stable-order union of benchmark metadata kernels and `@triton.jit` kernels discovered from the runtime `--operator-file`.
 - In `msprof` mode, a failed benchmark case does not stop later cases from running; the generated perf file keeps successful cases and records `# latency-error-case-*` comments for failed ones.
 - In `msprof` mode, kernel-miss cases still write `latency-case-*: NA`, but also include raw op statistics plus a `# latency-error-case-*` explanation.
@@ -121,13 +123,13 @@ python3 ./scripts/run-command.py profile-bench --bench-file bench_<operator>.py 
 Notes:
 - Always pass both `--bench-file` and `--operator-file`.
 - If `--bench-mode` is omitted, the command reads `# bench-mode: ...` from the benchmark file.
-- In `standalone` mode, do not pass `--bench`; the helper profiles the plain `--operator-file` benchmark run.
+- In `standalone` mode, pass `--case-id <id>` and do not pass `--bench`; the helper profiles one declared standalone case through the standalone runtime helper.
 - In `msprof` mode, the helper first queries `--num-bench`, then profiles one selected `--bench <N>` case, defaulting to case `1` when you omit `--bench`.
 - In `msprof` mode, pass `--kernel-name <name>` when benchmark metadata declares multiple kernels. If the metadata resolves to exactly one kernel, the helper may choose it automatically.
 
 Remote examples:
 
 ```bash
-python3 ./scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py --remote user@host:2222
+python3 ./scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py --case-id <id> --remote user@host:2222
 python3 ./scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench 2 --remote user@host:2222 --remote-workdir /tmp/triton-agent --keep-remote-workdir
 ```

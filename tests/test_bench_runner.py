@@ -23,41 +23,52 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(metadata["kernel"], "abs_kernel")
             self.assertEqual(metadata["api-name"], "abs_")
 
-    def test_run_local_bench_standalone_saves_operator_filename_perf_file(self) -> None:
+    def test_run_local_bench_standalone_delegates_to_hook_runtime(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
-            bench_file.write_text("# kernel: abs_kernel\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: standalone\n# kernel: abs_kernel\n", encoding="utf-8")
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
-            fake_result = make_skill_result(0, "latency-a: 1.0\nlatency-b: 2.0\n", "")
-            with patch.object(module, "run_streaming_process", return_value=fake_result) as mocked:
-                result, perf_path = module.run_local_bench(
+            fake_result = make_skill_result(0, "bench stdout\n", "")
+            perf_file = root / "abs_perf.txt"
+            perf_file.write_text("latency-case-a: 1.0\n", encoding="utf-8")
+            with patch.object(
+                module,
+                "run_local_standalone_bench",
+                create=True,
+                return_value=(fake_result, perf_file),
+            ) as helper, patch.object(module, "run_streaming_process") as streaming:
+                result, resolved_perf = module.run_local_bench(
                     bench_file,
                     operator_file,
                     "standalone",
                 )
 
             self.assertEqual(result["return_code"], 0)
-            if perf_path is None:
-                self.fail("expected standalone perf path")
-            self.assertEqual(perf_path, root / "abs_perf.txt")
-            self.assertEqual(perf_path.read_text(encoding="utf-8"), "latency-a: 1.0\nlatency-b: 2.0\n")
-            mocked.assert_called_once()
+            self.assertEqual(resolved_perf, perf_file)
+            helper.assert_called_once_with(bench_file, operator_file)
+            streaming.assert_not_called()
 
-    def test_run_local_bench_standalone_uses_operator_filename_for_any_operator(self) -> None:
+    def test_run_local_bench_standalone_preserves_helper_perf_path(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "opt_abs.py"
-            bench_file.write_text("# kernel: abs_kernel\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: standalone\n# kernel: abs_kernel\n", encoding="utf-8")
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
-            fake_result = make_skill_result(0, "latency-a: 1.0\n", "")
-            with patch.object(module, "run_streaming_process", return_value=fake_result):
+            fake_result = make_skill_result(0, "bench stdout\n", "")
+            perf_file = root / "opt_abs_perf.txt"
+            with patch.object(
+                module,
+                "run_local_standalone_bench",
+                create=True,
+                return_value=(fake_result, perf_file),
+            ):
                 _, perf_path = module.run_local_bench(
                     bench_file,
                     operator_file,

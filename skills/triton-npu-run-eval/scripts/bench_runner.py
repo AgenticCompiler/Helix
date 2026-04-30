@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import csv
+import importlib.util
 import json
 import math
 import os
@@ -15,6 +16,7 @@ from run_runtime import (
     RemoteSpec,
     ResultPayload,
     cleanup_remote_workspace,
+    copy_file_from_remote,
     copy_file_to_remote,
     create_remote_workspace,
     make_result,
@@ -211,15 +213,7 @@ def _run_local_bench_standalone(
     bench_file: Path,
     operator_file: Path,
 ) -> tuple[ResultPayload, Path | None]:
-    command = [sys.executable, str(bench_file), "--operator-file", str(operator_file)]
-    result = run_streaming_process(command, str(bench_file.parent), stall_timeout_seconds=900)
-    if not result_succeeded(result):
-        return result, None
-    perf_path = _write_perf_lines(
-        _perf_output_path(bench_file, operator_file),
-        _extract_latency_lines(f"{result['stdout']}\n{result['stderr']}"),
-    )
-    return result, perf_path
+    return run_local_standalone_bench(bench_file, operator_file)
 
 
 def _run_remote_bench_standalone(
@@ -230,20 +224,73 @@ def _run_remote_bench_standalone(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
-    result = run_remote_command_streaming(
+    helper_script = _standalone_runtime_script_path()
+    copy_file_to_remote(
         spec,
-        remote_workspace,
-        ["python3", bench_file.name, "--operator-file", operator_file.name],
+        helper_script,
+        f"{remote_workspace}/{helper_script.name}",
         verbose=verbose,
         stderr=stderr,
     )
-    if not result_succeeded(result):
-        return result, None, remote_workspace
-    perf_path = _write_perf_lines(
-        _perf_output_path(bench_file, operator_file),
-        _extract_latency_lines(f"{result['stdout']}\n{result['stderr']}"),
+    perf_path = _perf_output_path(bench_file, operator_file)
+    result = run_remote_command_streaming(
+        spec,
+        remote_workspace,
+        [
+            "python3",
+            helper_script.name,
+            "run-all",
+            "--bench-file",
+            bench_file.name,
+            "--operator-file",
+            operator_file.name,
+            "--perf-file",
+            perf_path.name,
+        ],
+        verbose=verbose,
+        stderr=stderr,
     )
-    return result, perf_path, remote_workspace
+    copied_perf_path: Path | None = None
+    try:
+        copy_file_from_remote(
+            spec,
+            f"{remote_workspace}/{perf_path.name}",
+            perf_path,
+            verbose=verbose,
+            stderr=stderr,
+        )
+        copied_perf_path = perf_path
+    except RuntimeError:
+        if result_succeeded(result):
+            raise
+    return result, copied_perf_path, remote_workspace
+
+
+def run_local_standalone_bench(
+    bench_file: Path,
+    operator_file: Path,
+) -> tuple[ResultPayload, Path]:
+    runtime = _load_standalone_runtime_module()
+    return runtime.run_local_standalone_bench(bench_file, operator_file)
+
+
+def _standalone_runtime_script_path() -> Path:
+    return Path(__file__).resolve().with_name("standalone_bench_runtime.py")
+
+
+def _load_standalone_runtime_module():
+    script_path = _standalone_runtime_script_path()
+    module_name = f"triton_agent_standalone_bench_runtime_{script_path.stem}"
+    spec = importlib.util.spec_from_file_location(module_name, script_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load standalone runtime helper: {script_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(module_name, None)
+    return module
 
 
 def _run_local_bench_msprof(
@@ -467,13 +514,6 @@ def _run_remote_bench_msprof(
 
 def _perf_output_path(bench_file: Path, operator_file: Path) -> Path:
     return operator_file.parent / f"{operator_file.stem}_perf.txt"
-
-
-def _extract_latency_lines(output: str) -> list[str]:
-    lines = [line.strip() for line in output.splitlines() if line.strip().startswith("latency-")]
-    if not lines:
-        raise FileNotFoundError("Benchmark output did not contain any latency-<id> lines.")
-    return lines
 
 
 def _write_perf_lines(path: Path, lines: list[str]) -> Path:

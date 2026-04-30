@@ -49,7 +49,14 @@ The generated benchmark file must include a short metadata header near the top o
 - `# api-kind: <triton-wrapper|torch-function|torch-module>`
 - `# kernels: <resolved_kernel_names>`
 
-The generated benchmark file must accept only `--operator-file` at runtime for standalone mode, use `importlib` dynamic loading, and load the runtime callable according to the embedded `api-name` and `api-kind` metadata. Msprof mode additionally requires `--bench <N>` and `--num-bench`.
+For `standalone` mode, the generated file must be an **import-only** module that exports:
+
+- `build_operator_api(operator_module)`
+- `build_standalone_bench_cases(operator_api)`
+
+For `standalone` mode, do **not** generate `main()`, `argparse`, or direct runtime CLI handling in the benchmark file.
+
+For `msprof` mode, keep the executable benchmark CLI shape with `--operator-file`, optional `--bench <N>`, and `--num-bench`.
 
 ## Validation Commands
 
@@ -71,6 +78,7 @@ If the outer task is marked for remote execution, carry the same remote flags in
 2. If the public entrypoint is missing, ambiguous, or unsafe to use, stop and report the problem instead of guessing.
 3. Select the requested benchmark mode and read the corresponding spec before generating code.
 4. Generate a benchmark harness that follows the selected spec, keeps setup separate from measurement when practical, and writes the required metadata header.
+   - For `standalone`, implement `build_operator_api(operator_module)` and `build_standalone_bench_cases(operator_api)` instead of a directly executable timing script.
 5. If auto-fix is active, validate the generated benchmark with `run-bench` using one of the command patterns above instead of doing a separate syntax-only check.
 6. If validation fails, repair only the benchmark file according to the self-repair rules below, retry, and then return a runnable script plus a short assumptions summary.
 
@@ -80,7 +88,7 @@ If the outer task is marked for remote execution, carry the same remote flags in
 - Measure the operator body, not one-time setup.
 - Prefer stable repeated timing over a single run.
 - Keep generated code easy to edit by hand.
-- In `standalone` mode, use `triton.backends.ascend.testing.do_bench_npu` for the timing measurement helper.
+- In `standalone` mode, do not embed timing or profiler logic in the benchmark file. The runner owns `torch_npu.profiler` execution and perf artifact generation.
 - Do not violate CLI, naming, warmup, artifact, or output rules from the selected spec.
 - Do not spend a separate step on syntax-only checking; rely on `run-bench` as the validation path.
 - When auto-fix mode is active, only repair the generated benchmark file; do not modify the operator file.
@@ -99,6 +107,6 @@ When auto-fix mode is active and the generated benchmark fails, repair the bench
 | **General error** (CLI, shape mismatch, runtime, etc.) | Apply a minimal targeted fix — preserve the overall benchmark structure |
 | **ModuleNotFoundError** or environment issue | Report that the benchmark cannot be fixed from inside the benchmark file alone |
 
-After any repair, always preserve the metadata header, the runtime `--operator-file` interface, and the `main()` entry point pattern.
+After any repair, always preserve the metadata header. For `standalone`, preserve the hook export pattern. For `msprof`, preserve the runtime `--operator-file` interface and `main()` entry point pattern.
 
 Always enforce the mode-specific spec file first.

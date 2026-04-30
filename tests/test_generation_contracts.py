@@ -59,7 +59,10 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("# api-name:", content)
         self.assertIn("# api-kind:", content)
         self.assertIn("# kernels:", content)
-        self.assertIn("accept only `--operator-file` at runtime for standalone mode", content)
+        self.assertIn("build_operator_api(operator_module)", content)
+        self.assertIn("build_standalone_bench_cases(operator_api)", content)
+        self.assertIn("import-only", content)
+        self.assertNotIn("accept only `--operator-file` at runtime for standalone mode", content)
         self.assertNotIn("must accept `--operator-file` and `--api-name`", content)
 
     def test_generation_skills_support_entrypoint_kinds(self) -> None:
@@ -633,14 +636,17 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("use the `triton-npu-run-eval` skill to run `compare-perf`", optimize)
         self.assertIn("the `triton-npu-run-eval` skill's `compare-perf` flow", optimize)
 
-    def test_profiler_skill_documents_profile_bench_mode_contracts(self) -> None:
+    def test_profiler_skill_documents_standalone_case_id_contract(self) -> None:
         profiler = _read("skills/triton-npu-profile-operator/SKILL.md")
         self.assertIn("../triton-npu-run-eval/scripts/run-command.py profile-bench", profiler)
         self.assertIn("standalone", profiler)
         self.assertIn("msprof", profiler)
+        self.assertIn("--case-id <id>", profiler)
+        self.assertIn("profile one selected `--case-id <id>` case", profiler)
         self.assertIn("must not receive `--bench` or `--num-bench`", profiler)
         self.assertIn("first query `--num-bench`", profiler)
-        self.assertIn("profile one selected `--bench <N>` case", profiler)
+        self.assertNotIn("profile one selected `--bench <N>` case", profiler)
+        self.assertNotIn("msprof python3 bench_<op>.py --operator-file <operator-file>", profiler)
 
     def test_test_generation_specs_use_only_operator_file_cli(self) -> None:
         standalone = _read("skills/triton-npu-gen-test/references/test-standalone-spec.md")
@@ -660,7 +666,7 @@ class GenerationContractTests(unittest.TestCase):
                 self.assertIn("torch-function", content)
                 self.assertIn("torch-module", content)
 
-    def test_benchmark_generation_specs_use_header_metadata_and_no_runtime_api_flag(self) -> None:
+    def test_benchmark_generation_specs_use_hooked_standalone_contract(self) -> None:
         standalone = _read("skills/triton-npu-gen-bench/references/bench-standalone-spec.md")
         msprof = _read("skills/triton-npu-gen-bench/references/bench-msprof-spec.md")
 
@@ -669,14 +675,12 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("# api-kind: <resolved_api_kind>", standalone)
         self.assertIn("# kernels: <resolved_kernel_names>", standalone)
         self.assertNotIn("| `--api-name <name>` | yes |", standalone)
-        self.assertIn("parses `--operator-file`", standalone.lower())
-        self.assertIn("#### 3.1 `triton-wrapper`", standalone)
-        self.assertIn("#### 3.2 `torch-function`", standalone)
-        self.assertIn("#### 3.3 `torch-module`", standalone)
-        self.assertIn("def load_operator_api(operator_file: str, api_name: str):", standalone)
-        self.assertIn("def run_bench(operator_api):", standalone)
-        self.assertIn("triton.backends.ascend.testing.do_bench_npu", standalone)
-        self.assertIn('print(f"latency-{case_id}: {latency}")', standalone)
+        self.assertIn("build_operator_api(operator_module)", standalone)
+        self.assertIn("build_standalone_bench_cases(operator_api)", standalone)
+        self.assertIn("import-only", standalone)
+        self.assertNotIn('parser.add_argument("--operator-file"', standalone)
+        self.assertNotIn("def run_bench(operator_api):", standalone)
+        self.assertNotIn('print(f"latency-{case_id}: {latency}")', standalone)
         self.assertIn("torch-module", standalone)
         self.assertIn("constructor arguments", standalone)
 
@@ -710,10 +714,11 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("# api-name:", bench_spec)
         self.assertIn("# api-kind:", bench_spec)
         self.assertIn("# kernels:", bench_spec)
-        self.assertIn('parser.add_argument("--operator-file"', bench_spec)
+        self.assertIn("build_operator_api(operator_module)", bench_spec)
+        self.assertIn("build_standalone_bench_cases(operator_api)", bench_spec)
+        self.assertNotIn('parser.add_argument("--operator-file"', bench_spec)
         self.assertNotIn('parser.add_argument("--api-name"', bench_spec)
-        self.assertIn("triton.backends.ascend.testing.do_bench_npu", bench_spec)
-        self.assertIn('print(f"latency-', bench_spec)
+        self.assertNotIn('print(f"latency-', bench_spec)
 
 
 if __name__ == "__main__":
