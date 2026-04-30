@@ -1,5 +1,22 @@
 # Hierarchical Tiling Optimization Pattern (UB Overflow Prevention)
 
+## Summary
+
+Reduce per-program working-set size through hierarchical or sub-block tiling so large tiles, intermediates, or multi-tensor loads fit UB safely without collapsing overall task structure.
+
+## Use When
+
+- Block sizes, live intermediates, or multi-tensor loads risk UB overflow or poor locality.
+- The main problem is working-set size and memory footprint, not the need for a completely different kernel structure.
+
+## Signals
+
+### Code
+
+- Large `BLOCK_SIZE` values, multiple tensor loads, or heavy intermediates keep too much data live per program.
+- The kernel already has a reasonable overall structure, but it still needs smaller sub-blocks to control UB usage.
+- Runtime failures or memory access violations appear when block sizes increase on NPU.
+
 ## Problem Description
 
 **Root Cause:**
@@ -161,21 +178,18 @@ def masked_fill(inp, mask, value):
    - 32-byte alignment requirement
    - Vector width considerations (typically 128/256 elements)
 
-## When NOT to Apply
+## Avoid When
 
 1. **Small BLOCK_SIZE** No significant memory pressure
 2. **Simple operations** with single tensor - UB usage is minimal
 3. **Already optimized** with sub-blocking present
 4. **Structure is the real problem** - if the current kernel is really a manual matmul or reduction that should first become a regular tiled `tl.dot` loop
 
-## Implementation Checklist
+## What To Verify After Applying
 
-- [ ] Identify kernels with large BLOCK_SIZE values
-- [ ] Check for multiple tensor loads or complex operations
-- [ ] Calculate appropriate SUB_BLOCK_SIZE based on operation type
-- [ ] Add inner loop to process sub-blocks
-- [ ] Update function signature to include BLOCK_SIZE_SUB parameter
-- [ ] Update host code to pass both block sizes
+- Verify the chosen `BLOCK_SIZE_SUB` fits the operation type and keeps the working set UB-safe.
+- Verify the inner sub-block loop actually reduced peak live data instead of only adding loop overhead.
+- Verify both kernel signature and host launch code pass the new block-size parameters consistently.
 
 ## Expected Performance Impact
 
@@ -193,26 +207,10 @@ def masked_fill(inp, mask, value):
 - Performance impact: -5% to +10% depending on operation complexity
 - Enables larger batch sizes and more efficient task scheduling
 
-## Boundary With Nearby Patterns
+## Related Patterns
 
-### vs `classic-matmul`
-
-- `tiling` reduces memory footprint inside the chosen kernel structure
-- `classic-matmul` changes a manual reduction structure into a tiled matmul structure
-
-Use `classic-matmul` when the kernel is logically a matmul but is still coded as row-wise multiply-plus-sum.
-Use `tiling` when the structure is acceptable but block sizes or intermediates are too large.
-
-### vs `software-pipeline`
-
-- `tiling` reduces live memory footprint
-- `software-pipeline` deliberately keeps multiple tiles live to overlap transfer and compute
-
-These can compose, but the order matters:
-
-1. make the structure reasonable
-2. make the footprint fit UB
-3. then add overlap if profiling still justifies it
+- `classic-matmul`: use it first when the real problem is that a manual reduction should become a tiled matmul structure at all.
+- `software-pipeline`: combine it only after the footprint already fits UB, because pipelining deliberately keeps multiple tiles live.
 
 ## Code Transformation Pattern
 

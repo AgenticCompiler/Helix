@@ -100,7 +100,7 @@ Expected: PASS
 **Files:**
 - Modify: `skills/triton-npu-optimize/SKILL.md`
 - Modify: `skills/triton-npu-optimize/references/workflow.md`
-- Modify: `skills/triton-npu-optimize/references/patterns/index.md`
+- Modify: `skills/triton-npu-optimize/references/pattern_index.md`
 - Modify: `skills/triton-npu-optimize/references/artifacts.md`
 - Modify: `skills/triton-npu-optimize/references/opt-note-format.md`
 

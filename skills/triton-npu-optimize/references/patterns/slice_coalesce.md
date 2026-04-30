@@ -1,9 +1,16 @@
+# Slice Coalescing Pattern
+
 ## Summary
 
 When the kernel performs scatter/gather operations with non-contiguous memory access
 patterns, such as token rearrangement in MOE layers, sparse data processing, or any operation involving
 index-based data movement, use `extract_slice` or `insert_slice` to data reuse while minimizing expensive
 global memory transactions.
+
+## Use When
+
+- Scatter or gather style data movement dominates, and batching work in UB could replace many random global accesses with fewer contiguous transfers.
+- The kernel resembles token rearrangement, sparse reordering, or other index-based movement where access direction determines whether reads or writes should be coalesced.
 
 ## Detail
 

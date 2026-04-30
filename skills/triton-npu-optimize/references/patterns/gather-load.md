@@ -1,5 +1,9 @@
 # NPU Gather Operation Optimization Pattern
 
+## Summary
+
+Stage gather-like input through contiguous loads before selecting indexed values so the kernel reduces expensive discrete global-memory reads on Ascend NPU.
+
 ## Problem Description
 
 On Huawei Ascend NPU devices, direct discrete memory access patterns (gather operations) suffer from poor performance when accessing global memory. The NPU architecture favors contiguous memory access and has significantly higher bandwidth in shared memory compared to global memory for discrete access patterns.
@@ -82,25 +86,29 @@ def pick_kernel(
     tl.store(y_ptr + rn * stride_y, val, mask=mask)
 ```
 
-## When to Apply
+## Use When
 
 1. **Discrete access patterns**: When using index arrays to access non-contiguous memory
 2. **Small to medium source arrays**: When the source array can fit in shared memory
 3. **Performance-critical sections**: Where gather operations are bottleneck
 
-## When NOT to Apply
+## Signals
+
+### Code
+
+- Code uses index arrays to access non-contiguous memory locations on the hot path.
+- The gather source array is small or medium enough that contiguous staging in shared memory is plausible.
+- Direct global-memory gather reads dominate more than the surrounding arithmetic.
+
+## Avoid When
 
 1. **Large source arrays**: When M is too large for shared memory capacity
 2. **Already contiguous access**: When memory access patterns are already sequential
 3. **GPU targets**: This optimization is NPU-specific and may not benefit GPU architectures
 4. **Single-element access**: When only accessing a few discrete elements
 
-## Implementation Checklist
+## What To Verify After Applying
 
-- [ ] Identify discrete memory access patterns using index arrays
-- [ ] Ensure source array size M is reasonable for shared memory
-- [ ] Create full range for source array using `tl.arange(0, M)`
-- [ ] Load entire source array contiguously to shared memory
-- [ ] Use `tl.gather` on shared memory instead of direct memory access
-- [ ] Maintain proper masking for boundary conditions
-- [ ] Verify semantic equivalence with original implementation
+- Verify the source array size `M` is still reasonable for shared memory after the rewrite.
+- Verify the kernel stages the source array contiguously before calling `tl.gather`.
+- Verify boundary masking and semantic equivalence with the original gather behavior.

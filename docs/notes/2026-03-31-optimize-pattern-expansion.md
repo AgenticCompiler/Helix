@@ -4,7 +4,7 @@
 
 ## User-Visible Behavior
 
-- The optimize skill should expose all current pattern references through `references/patterns/index.md`.
+- The optimize skill should expose all current pattern references through `references/pattern_index.md`.
 - The detailed pattern list in `skills/triton-npu-optimize/SKILL.md` should match the actual files present under `references/patterns/`.
 
 ## Implementation Notes

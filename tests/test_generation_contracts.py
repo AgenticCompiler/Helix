@@ -29,6 +29,21 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("uv run pyright", wrapper)
         self.assertIn('typeCheckingMode = "strict"', wrapper)
 
+    def test_gitcode_pr_skill_uses_official_api_script(self) -> None:
+        skill = _read(".codex/skills/managing-gitcode-prs/SKILL.md")
+        reference = _read(".codex/skills/managing-gitcode-prs/references/pr-command-reference.md")
+        script = _read(".codex/skills/managing-gitcode-prs/scripts/gitcode_pr_api.py")
+
+        self.assertIn("scripts/gitcode_pr_api.py", skill)
+        self.assertIn("midwinter1993/triton-agent", skill)
+        self.assertIn("scripts/gitcode_pr_api.py", reference)
+        self.assertIn("Authorization", script)
+        self.assertIn("Bearer", script)
+        self.assertIn("GC_TOKEN", script)
+        self.assertIn("https://gitcode.com/api/v5/repos", script)
+        self.assertNotIn("run-gc-pr.sh", skill)
+        self.assertNotIn("uv tool run --from", reference)
+
     def test_test_gen_skill_requires_header_metadata_and_no_runtime_api_flag(self) -> None:
         content = _read("skills/triton-npu-gen-test/SKILL.md")
         self.assertIn("# test-mode:", content)
@@ -157,7 +172,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("`opt-round-N/perf-analysis.md`", optimize)
 
     def test_optimize_pattern_library_includes_classic_tiled_matmul(self) -> None:
-        index = _read("skills/triton-npu-optimize/references/patterns/index.md")
+        index = _read("skills/triton-npu-optimize/references/pattern_index.md")
         reference = _read("skills/triton-npu-optimize/references/patterns/classic-matmul.md")
         self.assertIn("classic-matmul", index)
         self.assertIn("manual matmul or K-reduction", index)
@@ -177,7 +192,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("small shapes: baseline-style reduction path", reference)
 
     def test_optimize_pattern_library_fuses_latency_optimizer_guidance(self) -> None:
-        index = _read("skills/triton-npu-optimize/references/patterns/index.md")
+        index = _read("skills/triton-npu-optimize/references/pattern_index.md")
         scalar = _read("skills/triton-npu-optimize/references/patterns/scalar-latency-traps.md")
         layout = _read("skills/triton-npu-optimize/references/patterns/layout-store-and-block-pointers.md")
         grid = _read("skills/triton-npu-optimize/references/patterns/grid-flatten-and-ub-buffering.md")
@@ -203,6 +218,56 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("Precompute repeated masks", attention)
         self.assertIn("scale and mask", attention)
         self.assertIn("A5", attention)
+
+    def test_optimize_pattern_cards_use_required_sections_and_generated_index(self) -> None:
+        patterns_dir = REPO_ROOT / "skills" / "triton-npu-optimize" / "references" / "patterns"
+        for path in sorted(patterns_dir.glob("*.md")):
+            if path.name == "index.md":
+                continue
+            content = path.read_text(encoding="utf-8")
+            with self.subTest(path=path.name):
+                self.assertTrue(content.startswith("# "))
+                self.assertIn("## Summary", content)
+                self.assertIn("## Use When", content)
+
+        optimize = _read("skills/triton-npu-optimize/SKILL.md")
+        self.assertIn("generated `references/pattern_index.md`", optimize)
+        self.assertIn("extract_code_facts.py", optimize)
+
+    def test_optimize_pattern_cards_promote_existing_information_into_structured_sections(
+        self,
+    ) -> None:
+        program_rows = _read(
+            "skills/triton-npu-optimize/references/patterns/program-multiple-rows.md"
+        )
+        software_pipeline = _read(
+            "skills/triton-npu-optimize/references/patterns/software-pipeline.md"
+        )
+        tiling = _read("skills/triton-npu-optimize/references/patterns/tiling.md")
+        vec_cmp = _read("skills/triton-npu-optimize/references/patterns/vec-cmp.md")
+        gather_load = _read(
+            "skills/triton-npu-optimize/references/patterns/gather-load.md"
+        )
+        reorder_load = _read(
+            "skills/triton-npu-optimize/references/patterns/reorder-load.md"
+        )
+
+        self.assertIn("## Signals", program_rows)
+        self.assertIn("## Avoid When", program_rows)
+        self.assertIn("## What To Verify After Applying", program_rows)
+        self.assertIn("## Related Patterns", program_rows)
+        self.assertNotIn("## Symptoms (code + profiler)", program_rows)
+        self.assertNotIn("## What not to do (common pitfalls)", program_rows)
+        self.assertNotIn("## Verification checklist", program_rows)
+        self.assertNotIn("## Relation to other patterns", program_rows)
+
+        for content in (software_pipeline, tiling, vec_cmp, gather_load, reorder_load):
+            with self.subTest(card_preview=content.splitlines()[0]):
+                self.assertIn("## Signals", content)
+                self.assertIn("## What To Verify After Applying", content)
+
+        self.assertIn("## Related Patterns", software_pipeline)
+        self.assertIn("## Related Patterns", tiling)
 
     def test_optimize_artifacts_reference_documents_state_declared_paths(self) -> None:
         artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
@@ -257,6 +322,16 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("A3", architecture_ref)
         self.assertIn("A5", architecture_ref)
         self.assertIn("L0C", architecture_ref)
+
+    def test_round_performance_skill_points_to_symptom_routing_references(self) -> None:
+        skill = _read("skills/triton-npu-analyze-round-performance/SKILL.md")
+        symptom_index = _read(
+            "skills/triton-npu-analyze-round-performance/references/symptom_index.md"
+        )
+        self.assertIn("symptom cards", skill)
+        self.assertIn("references/symptom_index.md", skill)
+        self.assertIn("weak-pipeline-overlap", symptom_index)
+        self.assertIn("high-transfer-pressure", symptom_index)
 
     def test_compiler_source_analysis_skill_focuses_on_performance_navigation_and_next_action(
         self,
@@ -523,6 +598,13 @@ class GenerationContractTests(unittest.TestCase):
         self.assertNotIn("--api-name <api-name>", msprof)
         self.assertIn("If `--bench N` is provided, then `--operator-file` is required.", msprof)
         self.assertIn("torch-function", msprof)
+        self.assertIn("must be **<= 20**", msprof)
+        self.assertIn("prefer **8-20 representative cases**", msprof)
+        self.assertIn("cover small, medium, and large representative shapes", msprof)
+        self.assertIn("**Warmup:** run the kernel **5 times**", msprof)
+        self.assertIn("**Repeat:** after warmup, run the kernel **50 times**", msprof)
+        self.assertIn("MSPROF_REPEAT_ITERS = 50", msprof)
+        self.assertIn("for _ in range(MSPROF_REPEAT_ITERS):", msprof)
 
     def test_contracts_do_not_depend_on_workspace_placeholder_examples(self) -> None:
         test_spec = _read("skills/triton-npu-gen-test/references/test-standalone-spec.md")

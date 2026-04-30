@@ -150,7 +150,7 @@ Optimize one Triton Ascend NPU operator through validated rounds anchored to a c
 ### pattern triage
 
 - Inspect current code structure and benchmark behavior.
-- Read `references/patterns/index.md`.
+- Read `references/pattern_index.md`.
 - Read a detailed pattern reference only when the index suggests a real match.
 - Do not treat pattern triage as permission for blind pattern search.
 

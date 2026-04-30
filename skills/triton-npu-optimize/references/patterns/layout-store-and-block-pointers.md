@@ -1,10 +1,12 @@
+# Layout, Store, And Block Pointer Pattern
+
 ## Summary
 
 Improve latency by reshaping memory layout, block-pointer dimensionality, and store granularity so the NPU sees continuous vector-friendly transfers instead of scalarized transpose or many tiny operations.
 
 Use this when profiling or code inspection points to memory layout and transfer shape, not just tile size.
 
-## When To Use
+## Use When
 
 - Multiple stores target adjacent addresses but are emitted as separate small `tl.store` operations.
 - `tl.store` writes a transposed logical tensor and appears to degrade into scalar element stores.
@@ -12,6 +14,15 @@ Use this when profiling or code inspection points to memory layout and transfer 
 - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
 - A `tl.dot` operand uses `tl.trans(x).to(dtype)` before entering Cube work.
 - A matmul epilogue adds bias after `tl.dot` in a way that creates unnecessary broadcast or load ordering overhead.
+
+## Signals
+
+### Code
+
+- Multiple stores target adjacent addresses but are emitted as separate small `tl.store` operations.
+- A store writes a transposed logical tensor and appears to degrade into scalar element stores.
+- A high-dimensional contiguous tensor is accessed through flattened one-dimensional offsets that stride through an inner dimension.
+- An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
 
 ## Repairs
 
@@ -84,7 +95,7 @@ When a matmul always adds bias, load bias with explicit output-column offsets an
 - High-dimensional block pointers need correct `shape`, `strides`, `offsets`, `block_shape`, and `order`; one wrong field can silently benchmark a different access pattern or fail correctness.
 - Vec-to-Cube transpose ordering is only a valid optimization when the final consumer is `tl.dot`.
 
-## Verification Checklist
+## What To Verify After Applying
 
 - Confirm every changed tensor shape and reduction axis in `attempts.md`.
 - Run correctness on tail shapes and non-contiguous stride cases when supported.

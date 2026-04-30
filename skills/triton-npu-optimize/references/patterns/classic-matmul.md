@@ -2,14 +2,19 @@
 
 Use this reference when a Triton Ascend NPU kernel is logically matmul-like but the current hot loop is written as manual reduction code, row-wise multiply-plus-sum code, or scalar-heavy pointer math around the `K` axis.
 
-## When To Use
+## Summary
+
+Rewrite a manual matmul or K-reduction hot loop into a regular tiled `tl.dot`-based matmul so the kernel structure matches what Ascend Triton lowers well.
+
+## Use When
 
 - the kernel computes an `M x N` output tile with a regular reduction over `K`
 - the current implementation is effectively `sum_k A[..., k] * B[..., k]`
 - profiling or IR suggests the hot loop is spending too much effort on scalar address generation or repeated reduction structure
 - a block-pointer rewrite reduced one scalar chain but the full loop is still not a regular matmul
+- dtype-specialized or shape-specialized paths are acceptable when one tiled regime is clearly better but a unified rewrite would change numerics too much
 
-Do not use this pattern for:
+## Avoid When
 
 - purely elementwise kernels
 - gather/scatter dominated kernels
@@ -162,25 +167,12 @@ The exact threshold should come from benchmark evidence, not from a fixed guess.
 - larger tiles can increase register or UB pressure
 - forcing `fp16` dot inputs can change `fp32` input semantics
 
-## Boundary With Nearby Patterns
+## Related Patterns
 
-### vs `software-pipeline`
+- `software-pipeline`: use it after `classic-matmul` when the tiled structure already exists but profiling still shows load-then-compute stalls.
+- `tiling`: use it when the kernel already has the right tiled structure, but block size or intermediate footprint is still too large for UB.
 
-- `classic-matmul` changes the loop into a standard tiled load-plus-dot structure
-- `software-pipeline` assumes that tiled structure already exists and then overlaps current-tile compute with next-tile load
-
-Use `classic-matmul` first when the current hot loop is still written as manual reduction code.
-Use `software-pipeline` after that only if profiling still shows load-then-compute stalls.
-
-### vs `tiling`
-
-- `classic-matmul` is about choosing a matmul-shaped kernel structure
-- `tiling` is about reducing UB pressure or overlarge block working sets
-
-If your evidence says the kernel is structurally matmul-like but scalar-heavy, prefer `classic-matmul`.
-If your evidence says the kernel already has the right structure but block size or intermediate footprint is too large, prefer `tiling`.
-
-## Validation Checklist
+## What To Verify After Applying
 
 - confirm logical `A`, `B`, and `C` shapes
 - confirm the second operand really arrives as `[BK, BN]`

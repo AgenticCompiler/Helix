@@ -1,9 +1,24 @@
+# Diagonal Block Traversal Pattern
+
 ## Summary
 
 While it is good to access data from L2 cache as much as possible, having multiple
 kernels accessing the *same* data from the L2 cache may cause bank conflicts that slow down operations.
 One can use the diagonal access pattern to replace the usual swizzle pattern to alleviate this problem.
 The example applies this technique to matrix multiplication, but it may be applicable in other contexts.
+
+## Use When
+
+- Large tiled matrix-style work shows poor locality or bank-conflict-like behavior even though the basic tiling is already reasonable.
+- Many programs touch the same cache regions at the same time, so changing block traversal order may improve effective L2 use.
+
+## Signals
+
+### Code
+
+- Traditional row-major or horizontal block assignment makes many cores touch the same left-matrix cache region at once.
+- The matrix already spans many blocks along both `M` and `N`, so traversal order is a plausible performance lever rather than a cosmetic rewrite.
+- The right-hand matrix is large enough that ordinary block traversal can churn L2 and lower reuse.
 
 ## Detail
 
@@ -35,7 +50,7 @@ def matmul_kernel(
     task_n_idx = 0
 
     '''
-    水平分核方式每个任务块编号如下
+    With ordinary horizontal work partitioning, the task-block numbering is:
     [0,  1,  2,  3,  4,  5,  6,  7]
     [8,  9,  10, 11, 12, 13, 14, 15]
     [16, 17, 18, 19, 20, 21, 22, 23]
@@ -44,21 +59,24 @@ def matmul_kernel(
     [40, 41, 42, 43, 44, 45, 46, 47]
     [48, 49, 50, 51, 52, 53, 54, 55]
     [56, 57, 58, 59, 60, 61, 62, 63]
-    0核处理 0 20 40 60 4块任务
-    1核处理 1 21 41 61 4块任务
-    2核处理 2 22 42 62 4块任务
+    Core 0 handles tasks 0, 20, 40, and 60 (4 blocks).
+    Core 1 handles tasks 1, 21, 41, and 61 (4 blocks).
+    Core 2 handles tasks 2, 22, 42, and 62 (4 blocks).
     ...
-    19核处理 19 39 59 3块任务
+    Core 19 handles tasks 19, 39, and 59 (3 blocks).
     
-    大shape下如果使用传统水平分核方式,会有如下问题
-    1:同一时间大量核心需要访问同一块左矩阵内存,产生Bank冲突,导致硬件访问效率降低
-    2:当完成一整行mat_c运算时,已经将所有右矩阵数据全部使用上,右矩阵较大时会超过L2Cache的容量上限,
-      从而导致L2Cache的搬入及换出,此后每行运算都会或多或少产生CacheMiss,导致L2Cche命中率较低,影响
-      算子执行效率
-    此处使用8 * 8对角线分核方式可以按8 * 8的方块沿对角线方向分核计算,可以很大程度优化上面两点。
+    For large shapes, the traditional horizontal partitioning above causes two problems:
+    1. Many cores access the same left-matrix cache region at the same time, creating bank conflicts
+       and lowering hardware efficiency.
+    2. By the time one full row of mat_c is complete, all right-matrix data for that row has already
+       been consumed. When the right matrix is large, it can exceed L2-cache capacity, triggering
+       cache eviction and reload traffic. Later rows then see more cache misses, which lowers L2 hit
+       rate and hurts kernel performance.
+    Using 8 x 8 diagonal partitioning lets each 8 x 8 block region progress along the diagonal, which
+    significantly improves both problems above.
 
-    此处以8*8对角线分核为例,实际以BLOCK_TRESHHOLD为tune参数选择最优的阈值
-    8 * 8 对角线分核方式中,每8 * 8分格内任务块编号如下
+    The example below uses 8 x 8 diagonal partitioning. In practice, `BLOCK_TRESHHOLD` is tuned to
+    choose the best threshold. Under 8 x 8 diagonal partitioning, each 8 x 8 region is numbered like this:
     [0,  8,  16, 24, 32, 40, 48, 56]
     [57, 1,  9,  17, 25, 33, 41, 49]
     [50, 58, 2,  10, 18, 26, 34, 42]
@@ -68,25 +86,26 @@ def matmul_kernel(
     [22, 30, 38, 46, 54, 62, 6,  14]
     [15, 23, 31, 39, 47, 55, 63, 7]
     
-    M轴方向超过8个基本块时,使用对角线分核可以明显减小Bank冲突 
-    当右矩阵大小超过L2Cache大小时,采取对角线分核可以提升L2Cache利用率
-    所以当矩阵在M和N方向均超过8块时使能对角线分核即可有优化,当右矩阵大小超过L2Cache大小时优化效果尤为明显
+    When the M dimension spans more than 8 base blocks, diagonal partitioning can significantly reduce
+    bank conflicts. When the right matrix exceeds L2-cache capacity, diagonal partitioning can also
+    improve L2 reuse. So when both M and N exceed 8 blocks, enabling diagonal partitioning is often
+    beneficial, especially when the right matrix is larger than L2.
     '''
     NUM_BLOCKS_M = triton.cdiv(M, BLOCK_M)
     NUM_BLOCKS_N = triton.cdiv(N, BLOCK_N)
     NUM_BLOCKS = NUM_BLOCKS_M * NUM_BLOCKS_N
-    #当任务量较多时，可以使能对角线分核策略进行优化
+    # Enable diagonal partitioning when the task count is large enough to benefit from it.
     if NUM_BLOCKS_M >= BLOCK_TRESHHOLD and NUM_BLOCKS_N >= BLOCK_TRESHHOLD:
         for block_idx in range (
             pid, NUM_BLOCKS, num_cores
         ):
-            #8 * 8 对角线分核代码实现 
+            # 8 x 8 diagonal partitioning implementation
             curThresholdM = BLOCK_TRESHHOLD if block_idx < (NUM_BLOCKS_M // BLOCK_TRESHHOLD * BLOCK_TRESHHOLD) * NUM_BLOCKS_N else NUM_BLOCKS_M % BLOCK_TRESHHOLD
             curThresholdM_thresholdN = curThresholdM * BLOCK_TRESHHOLD
             curThresholdN = BLOCK_TRESHHOLD if block_idx % (NUM_BLOCKS_N * BLOCK_TRESHHOLD) < (curThresholdM * NUM_BLOCKS_N) // curThresholdM_thresholdN * curThresholdM_thresholdN else NUM_BLOCKS_N % BLOCK_TRESHHOLD
             localRelativeBlock = block_idx % (BLOCK_TRESHHOLD * NUM_BLOCKS_N) % (BLOCK_TRESHHOLD * curThresholdM)
             task_m_idx = localRelativeBlock % curThresholdM + block_idx // (BLOCK_TRESHHOLD * NUM_BLOCKS_N) * BLOCK_TRESHHOLD
-            #求最小公倍数，方便求基本块的坐标
+            # Compute the least common multiple to make the block-coordinate mapping easier.
             x, y = curThresholdM, curThresholdN if curThresholdM > curThresholdN else curThresholdN, curThresholdM
             while y != 0:
                 x, y = y, x % y
@@ -123,7 +142,7 @@ def matmul_kernel(
             )[None, :]
             tl.store(mat_c + mat_c_offset, mat_c_block.to(tl.bfloat16), mask = mat_c_mask)
     else:
-        #传统顺序分核
+        # Traditional sequential partitioning
         for block_idx in range (
             pid, NUM_BLOCKS, num_cores
         ):

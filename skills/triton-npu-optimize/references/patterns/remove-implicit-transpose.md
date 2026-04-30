@@ -1,23 +1,25 @@
+# Remove Implicit Transpose Pattern
+
 ## Summary
 
 Eliminate **implicit transpose-style access** on Ascend NPU by **materializing the transposed operand on the host** (or by storing it in the preferred physical layout), instead of relying on stride tricks inside the kernel.
 
 This pattern targets cases where the compiler inserts extra **layout transforms** (often visible as `nd2nz` + additional transpose/reorder control) and where IR shows marks like **`MayImplicitTransposeWithLastAxis`**.
 
-## When to use
+## Use When
 
 - You implement GEMM / Linear-like kernels where one operand is stored as `[N, K]` but the math needs `[K, N]` (e.g. `y = x @ w.T`).
 - Kernel code accesses the operand with **transpose-like strides** (treats `[N, K]` as `[K, N]`).
 - Profiling shows high **scalar/control** and/or large **WAIT_FLAG** time around the matmul path.
 
-## Symptoms (code + profiler + IR)
+## Signals
 
-### Code inspection
+### Code
 
 - Weight is stored as `weight: [N, K]` (PyTorch `nn.Linear` default).
 - Kernel computes `b_ptrs` like `b_ptr + k * stride_bk + n * stride_bn` and relies on strides to emulate `[K, N]`.
 
-### IR evidence
+### IR
 
 Look for patterns like:
 
@@ -26,7 +28,7 @@ Look for patterns like:
 
 These marks strongly correlate with extra transform work in the backend lowering.
 
-### OPPROF / msprof signals
+### Profile
 
 - `WAIT_FLAG_DEVI` dominates the CUBE timeline around matmul.
 - `MOV_OUT_TO_L1_MULTI_ND2NZ` / `nd2nz` and related fixpipe steps appear frequently.
@@ -78,16 +80,15 @@ b_ptrs = b_kn_ptr + (k_offs[:, None] * stride_bk + offs_n[None, :] * stride_bn)
 - **Memory overhead**: storing both `[N, K]` and `[K, N]` can double weight storage if not managed carefully.
 - **Layout mismatch across kernels**: ensure downstream kernels expect the same layout; keep the original weight too if needed.
 
-## Verification checklist
+## What To Verify After Applying
 
 1. **Correctness**: compare output against reference `relu(x @ w.T + bias)` for multiple shapes.
 2. **IR**: confirm `MayImplicitTransposeWithLastAxis` no longer appears for the matmul operand.
 3. **Profiler**: check `WAIT_FLAG_DEVI` and transform ops (`nd2nz`, `MOV_*_ND2NZ`) reduce or become cheaper.
 4. **Benchmark discipline**: include warmup because first-run includes compilation/tuning overhead.
 
-## Relation to other patterns
+## Related Patterns
 
 - Complements **`software-pipeline`**: this pattern fixes operand layout; pipeline fixes overlap.
 - Complements **`tiling`**: layout fix can enable better tiling outcomes.
 - Often a prerequisite before **`autotune`**: tuning on a structurally suboptimal implicit-transpose layout may mislead.
-

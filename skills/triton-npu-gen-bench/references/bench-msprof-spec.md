@@ -98,9 +98,11 @@ If a `torch-module` entrypoint requires constructor arguments, fail explicitly w
 - The benchmark file **must not** read from external files (e.g. CSV or Excel). Instead, it **must** write all benchmark case data in `bench_<op>.py` as a constant list (or similar in-file structure).
 - Each case is defined by the dimensions/dtypes needed for that op (e.g. for a unary op: one dtype and one shape; for a binary op: dtype and one or more shapes, as appropriate).
 - You may use multiple dtypes, but the total number of benchmark cases (shapes × dtypes)
-  must be **≤ 10**. For example:
-  - If you use 2 dtypes, test at most 5 shapes in total.
-  - If you use 3 dtypes, choose shapes so that `len(shapes) * len(dtypes) <= 10`.
+  must be **<= 20**. For example:
+  - If you use 2 dtypes, test at most 10 shapes in total.
+  - If you use 3 dtypes, choose shapes so that `len(shapes) * len(dtypes) <= 20`.
+- When the operator's shape space is broad enough, prefer **8-20 representative cases** instead of tiny suites.
+- The generated case list should cover small, medium, and large representative shapes unless the operator's valid inputs are genuinely narrow.
 - Example for a unary op: a list of `(dtype, shape)` tuples, where `shape` is a tuple of integers (e.g. `(1073741824,)` or `(64, 64)`).
 - Name the list clearly (e.g. `ABS_BENCH_CASES` for abs). The number of elements is the number of benchmarks; `--num-bench` prints `len(<this_list>)`.
 
@@ -115,7 +117,11 @@ If a `torch-module` entrypoint requires constructor arguments, fail explicitly w
 - **Execution device:** The harness **must** exercise the operator on **Ascend NPU only**. Do **not** generate benchmarks intended to run primarily on CUDA, CPU, or other accelerators, or that branch to a non-NPU device for the code under test.
 - Create the required tensor(s) for the kernel with the case’s dtype and shape(s).
 - **All tensors must be created on device `"npu"`** (not `"cuda"`).
-- **Warmup:** run the kernel **5 times** in a row. No need to add extra logic for msprof; the last run can be used for profiling externally.
+- Declare fixed execution counts near the top of the file:
+  - `MSPROF_WARMUP_ITERS = 5`
+  - `MSPROF_REPEAT_ITERS = 50`
+- **Warmup:** run the kernel **5 times** before measured repetition begins.
+- **Repeat:** after warmup, run the kernel **50 times** so the profiler observes a more stable sample.
 - **Do not** perform any correctness check (no comparison to reference implementation).
 - **Do not** call `torch.npu.synchronize()` (or any device synchronize) in the benchmark code.
 
@@ -132,6 +138,8 @@ import importlib.util
 import torch
 
 API_NAME = "<resolved_entrypoint>"
+MSPROF_WARMUP_ITERS = 5
+MSPROF_REPEAT_ITERS = 50
 CASES = [...]
 
 def make_inputs(case):
@@ -139,7 +147,9 @@ def make_inputs(case):
 
 def run_bench(operator_api, case):
     inputs = make_inputs(case)
-    for _ in range(5):
+    for _ in range(MSPROF_WARMUP_ITERS):
+        operator_api(*inputs)
+    for _ in range(MSPROF_REPEAT_ITERS):
         operator_api(*inputs)
 
 def main():
