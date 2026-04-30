@@ -29,6 +29,19 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("uv run pyright", wrapper)
         self.assertIn('typeCheckingMode = "strict"', wrapper)
 
+    def test_gitcode_pr_skill_uses_repo_local_uv_wrapper(self) -> None:
+        skill = _read(".codex/skills/managing-gitcode-prs/SKILL.md")
+        reference = _read(".codex/skills/managing-gitcode-prs/references/pr-command-reference.md")
+        wrapper = _read(".codex/skills/managing-gitcode-prs/scripts/run-gc-pr.sh")
+
+        self.assertIn("scripts/run-gc-pr.sh", skill)
+        self.assertIn("midwinter1993/triton-agent", skill)
+        self.assertIn("scripts/run-gc-pr.sh", reference)
+        self.assertIn("UV_CACHE_DIR", wrapper)
+        self.assertIn("uv tool run --from", wrapper)
+        self.assertIn("gc pr", wrapper)
+        self.assertIn("GC_TOKEN", wrapper)
+
     def test_test_gen_skill_requires_header_metadata_and_no_runtime_api_flag(self) -> None:
         content = _read("skills/triton-npu-gen-test/SKILL.md")
         self.assertIn("# test-mode:", content)

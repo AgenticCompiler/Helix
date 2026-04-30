@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitCode PRs"
+  short_description: "Create, list, and inspect GitCode PRs"
+  default_prompt: "Use $managing-gitcode-prs to create or inspect a GitCode pull request for this repository."
