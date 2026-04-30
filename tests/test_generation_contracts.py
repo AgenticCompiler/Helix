@@ -316,6 +316,8 @@ class GenerationContractTests(unittest.TestCase):
 
         self.assertIn("## Related Patterns", software_pipeline)
         self.assertIn("## Related Patterns", tiling)
+        self.assertIn("propagate_nan=tl.PropagateNan.ALL", vec_cmp)
+        self.assertIn("NaN-input behavior", vec_cmp)
 
     def test_optimize_artifacts_reference_documents_state_declared_paths(self) -> None:
         artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
