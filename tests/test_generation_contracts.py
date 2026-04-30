@@ -168,7 +168,8 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("triton-npu-prepare-optimize-baseline", readme)
         self.assertIn("triton-npu-profile-operator", optimize)
         self.assertIn("triton-npu-analyze-round-performance", optimize)
-        self.assertIn("classic tiled matmul pattern reference", optimize)
+        self.assertIn("triton-npu-optimize-knowledge", optimize)
+        self.assertIn("classic-matmul.md", optimize)
         self.assertIn("`opt-round-N/perf-analysis.md`", optimize)
 
     def test_optimize_knowledge_skill_owns_generic_pattern_references(self) -> None:
@@ -385,6 +386,39 @@ class GenerationContractTests(unittest.TestCase):
         )
         self.assertIn("weak-pipeline-overlap", symptom_index)
         self.assertIn("high-transfer-pressure", symptom_index)
+
+    def test_agents_declares_knowledge_skill_as_generic_pattern_and_symptom_source(
+        self,
+    ) -> None:
+        agents = _read("AGENTS.md")
+        self.assertIn(
+            "skills/triton-npu-optimize-knowledge/references/patterns/*.md",
+            agents,
+        )
+        self.assertIn(
+            "skills/triton-npu-optimize-knowledge/references/symptoms/*.md",
+            agents,
+        )
+        self.assertIn("## Evidence To Confirm", agents)
+        self.assertIn("## Candidate Pattern Directions", agents)
+
+    def test_pattern_and_symptom_authoring_notes_point_to_knowledge_skill(self) -> None:
+        pattern_note = _read("docs/notes/2026-04-29-optimize-pattern-card-authoring.md")
+        symptom_note = _read("docs/notes/2026-04-30-optimize-symptom-card-authoring.md")
+
+        self.assertIn(
+            "skills/triton-npu-optimize-knowledge/references/patterns/",
+            pattern_note,
+        )
+        self.assertIn(
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py",
+            pattern_note,
+        )
+        self.assertIn(
+            "skills/triton-npu-optimize-knowledge/references/symptoms/",
+            symptom_note,
+        )
+        self.assertIn("build_symptom_index.py", symptom_note)
 
     def test_compiler_source_analysis_skill_focuses_on_performance_navigation_and_next_action(
         self,

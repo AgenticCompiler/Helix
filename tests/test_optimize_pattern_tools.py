@@ -24,7 +24,7 @@ def _load_skill_script(relative_path: str):
 class PatternRoutingToolTests(unittest.TestCase):
     def test_build_index_requires_summary_and_use_when(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -37,7 +37,7 @@ class PatternRoutingToolTests(unittest.TestCase):
 
     def test_build_index_keeps_free_sections_but_ignores_them_for_summary(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -102,7 +102,7 @@ Extra prose that should stay in the source file but not become a first-line inde
 
     def test_generated_index_omits_post_apply_verification_section(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -129,7 +129,7 @@ Short summary.
 
     def test_generated_index_omits_related_patterns_section(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -156,7 +156,7 @@ Short summary.
 
     def test_build_index_ignores_pattern_directory_readme(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
