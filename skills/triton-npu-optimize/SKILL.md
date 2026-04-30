@@ -67,8 +67,9 @@ Optimize analysis is layered.
 ### pattern triage
 
 - Inspect current code structure and benchmark behavior before choosing a direction.
-- Read the generated `references/pattern_index.md` before detailed pattern references.
-- Read only the one or two most relevant detailed pattern files after the generated index has narrowed the candidate set.
+- Use the sibling [`../triton-npu-optimize-knowledge/SKILL.md`](../triton-npu-optimize-knowledge/SKILL.md) as the generic optimize knowledge library.
+- Read [`../triton-npu-optimize-knowledge/references/pattern_index.md`](../triton-npu-optimize-knowledge/references/pattern_index.md) before detailed pattern references.
+- Read only the one or two most relevant detailed pattern files under [`../triton-npu-optimize-knowledge/references/patterns/`](../triton-npu-optimize-knowledge/references/patterns/) after the generated index has narrowed the candidate set.
 - When code structure is still unclear at pattern triage, run `python3 scripts/extract_code_facts.py <operator-file> --format json`.
 - Use `extract_code_facts.py` as a structured code-evidence helper only; it does not diagnose symptoms or choose the pattern for you.
 - Very strongly consider using subagents to read pattern references, scan for potentially useful optimization ideas, and report back which patterns look promising for the current kernel.
@@ -76,7 +77,7 @@ Optimize analysis is layered.
 - Pattern references are helpful guidance, not the only allowed source of ideas.
 - If your own Triton, Ascend NPU, or kernel-optimization knowledge suggests a stronger direction than the current pattern library, you may use that direction directly as long as you still record the hypothesis clearly and validate it with the same correctness and benchmark gates.
 - You do not need an existing pattern file to justify every optimization round.
-- When the kernel is structurally matmul-like, read the classic tiled matmul pattern reference before rewriting the hot loop so the round records the standard tiled-matmul shape, dtype, and masking rules explicitly.
+- When the kernel is structurally matmul-like, read [`../triton-npu-optimize-knowledge/references/patterns/classic-matmul.md`](../triton-npu-optimize-knowledge/references/patterns/classic-matmul.md) before rewriting the hot loop so the round records the standard tiled-matmul shape, dtype, and masking rules explicitly.
 - Do not treat pattern triage as permission for aimless pattern search without tying the candidate patterns back to the kernel structure or observed evidence.
 
 ### profiling diagnosis
@@ -84,7 +85,7 @@ Optimize analysis is layered.
 - Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.
 - Use the sibling `triton-npu-profile-operator` skill when benchmark numbers need operator-level performance evidence, hotspot diagnosis, bottleneck analysis, or profiler-backed comparison across runs.
 - Use the sibling `triton-npu-analyze-round-performance` skill when one round needs a deeper diagnosis that should end in `opt-round-N/perf-analysis.md`, especially for scalar/vector/cube imbalance, transfer-heavy behavior, or suspected pipeline overlap issues.
-- Use symptom cards to narrow pattern candidates after structured profiler or IR evidence exists, rather than rereading the whole pattern library.
+- Use the sibling knowledge skill's symptom cards to narrow pattern candidates after structured profiler or IR evidence exists, rather than rereading the whole pattern library.
 - This deeper diagnosis may end as either `profile-only diagnosis` or `profile-plus-IR diagnosis`.
 - Write `opt-round-N/perf-analysis.md` when the deeper round-analysis flow is used.
 

@@ -3986,7 +3986,11 @@ class PromptTests(unittest.TestCase):
             prompt,
         )
         self.assertIn(
-            "Read the generated `references/pattern_index.md` before detailed pattern references.",
+            "Use the staged `triton-npu-optimize-knowledge` skill for generic pattern and symptom references.",
+            prompt,
+        )
+        self.assertIn(
+            "Read the staged `triton-npu-optimize-knowledge` skill's generated `references/pattern_index.md` before detailed pattern references.",
             prompt,
         )
         self.assertIn(
@@ -3994,7 +3998,7 @@ class PromptTests(unittest.TestCase):
             prompt,
         )
         self.assertIn(
-            "Use symptom cards to narrow pattern candidates after structured profiler or IR evidence exists.",
+            "Use the staged `triton-npu-optimize-knowledge` skill's symptom cards to narrow pattern candidates after structured profiler or IR evidence exists.",
             prompt,
         )
         self.assertIn("Do not begin with blind tiling or launch-parameter search", prompt)

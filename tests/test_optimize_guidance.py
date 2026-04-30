@@ -352,7 +352,11 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 shared_content,
             )
             self.assertIn(
-                "Read the generated `references/pattern_index.md` before detailed pattern references.",
+                "Use the staged `triton-npu-optimize-knowledge` skill for generic pattern and symptom references.",
+                shared_content,
+            )
+            self.assertIn(
+                "Read the staged `triton-npu-optimize-knowledge` skill's generated `references/pattern_index.md` before detailed pattern references.",
                 shared_content,
             )
             self.assertIn(
@@ -360,7 +364,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 shared_content,
             )
             self.assertIn(
-                "Use symptom cards to narrow pattern candidates after structured profiler or IR evidence exists.",
+                "Use the staged `triton-npu-optimize-knowledge` skill's symptom cards to narrow pattern candidates after structured profiler or IR evidence exists.",
                 shared_content,
             )
             self.assertIn("Do not begin with blind tiling or launch-parameter search.", shared_content)
