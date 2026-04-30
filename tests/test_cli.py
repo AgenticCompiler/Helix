@@ -8,6 +8,7 @@ from io import StringIO
 from pathlib import Path
 from contextlib import redirect_stderr
 from contextlib import redirect_stdout
+from typing import Optional
 from unittest.mock import patch
 from types import SimpleNamespace
 
@@ -1711,7 +1712,7 @@ class PathResolutionTests(unittest.TestCase):
                 "# bench-mode: standalone\n# kernel: k\nprint('bench')\n", encoding="utf-8"
             )
 
-            captured_modes: dict[str, str | None] = {}
+            captured_modes: dict[str, Optional[str]] = {}
 
             def _fake_run(request):
                 captured_modes[request.workdir.name] = request.bench_mode
