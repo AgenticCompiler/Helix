@@ -174,6 +174,42 @@ Short summary.
             self.assertIn("Short summary.", rendered)
             self.assertNotIn("Pattern Docs", rendered)
 
+    def test_build_symptom_index_requires_summary_evidence_and_candidates(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge/scripts/build_symptom_index.py"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            symptoms_dir = Path(tmp)
+            (symptoms_dir / "broken.md").write_text(
+                "# broken\n\n## Summary\n\nMissing evidence and pattern directions.\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                ValueError, "Evidence To Confirm, Candidate Pattern Directions"
+            ):
+                module.build_index_text(symptoms_dir)
+
+    def test_checked_in_symptom_index_matches_generator(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge/scripts/build_symptom_index.py"
+        )
+        symptoms_dir = (
+            REPO_ROOT
+            / "skills"
+            / "triton-npu-optimize-knowledge"
+            / "references"
+            / "symptoms"
+        )
+        generated = module.build_index_text(symptoms_dir)
+        checked_in = (
+            REPO_ROOT
+            / "skills"
+            / "triton-npu-optimize-knowledge"
+            / "references"
+            / "symptom_index.md"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(generated, checked_in)
+
     def test_extract_code_facts_reports_manual_reduction_and_index_load(self) -> None:
         module = _load_skill_script(
             "skills/triton-npu-optimize/scripts/extract_code_facts.py"

@@ -184,6 +184,20 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("classic-matmul", index)
         self.assertIn("matmul-like", reference)
 
+    def test_optimize_knowledge_skill_owns_generic_symptom_references(self) -> None:
+        knowledge = _read("skills/triton-npu-optimize-knowledge/SKILL.md")
+        symptom_index = _read(
+            "skills/triton-npu-optimize-knowledge/references/symptom_index.md"
+        )
+        symptom = _read(
+            "skills/triton-npu-optimize-knowledge/references/symptoms/weak-pipeline-overlap.md"
+        )
+
+        self.assertIn("symptom_index.md", knowledge)
+        self.assertIn("weak-pipeline-overlap", symptom_index)
+        self.assertIn("## Evidence To Confirm", symptom)
+        self.assertIn("## Candidate Pattern Directions", symptom)
+
     def test_optimize_pattern_library_includes_classic_tiled_matmul(self) -> None:
         index = _read("skills/triton-npu-optimize/references/pattern_index.md")
         reference = _read("skills/triton-npu-optimize/references/patterns/classic-matmul.md")
