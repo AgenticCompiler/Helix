@@ -75,7 +75,7 @@ Its purpose is:
 
 - inspect the current code structure
 - inspect benchmark behavior already available for the current candidate
-- consult `references/patterns/index.md`
+- consult `references/pattern_index.md`
 - decide whether there is an obvious optimization pattern worth trying first
 
 This stage is intentionally lightweight. It is not permission to blindly try several easy patterns.

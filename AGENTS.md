@@ -20,6 +20,7 @@
 - Prefer feature-local modules and data over top-level shared helpers unless multiple subsystems truly share the behavior.
 - Prefer additive diagnostics, short actionable validation errors, explicit failures, and protected generated artifacts over silent fallback or implicit overwrite.
 - Keep optimize workflows explicit, evidence-driven, and role-separated: resume semantics must be clear, reusable harnesses should be reused, worker and supervisor responsibilities should stay distinct, and each round should record why a change may help.
+- Treat `skills/triton-npu-optimize/references/patterns/*.md` as the authored source of truth for optimize patterns; after changing a pattern card, regenerate and commit the checked-in pattern index instead of hand-editing it.
 
 ## Workspace And Skills
 
@@ -52,6 +53,15 @@
 - Use `AGENTS.md` for stable project rules and workflow expectations.
 - Keep human-facing contract prose in skills or focused references, and keep machine-readable contracts in one loadable source rather than duplicating field lists across prompts, checkers, and runtime code.
 - Use the standard repository verification commands documented in `README.md`.
+- Optimize pattern cards under `skills/triton-npu-optimize/references/patterns/` are authored Markdown sources, while `skills/triton-npu-optimize/references/pattern_index.md` is generated and must be regenerated after editing a pattern card instead of hand-edited.
+
+## Optimization Patterns
+
+- Every optimize pattern card must begin with a top-level `# <Human Title>` heading before its structured sections.
+- Every optimize pattern card defined in `skills/triton-npu-optimize/references/patterns/` must include `## Summary` and `## Use When`; it may additionally use `## Avoid When`, `## Signals`, `## Related Patterns`, and `## What To Verify After Applying`, with optional `### Code`, `### Profile`, and `### IR` under `## Signals`.
+- When existing pattern content already semantically belongs to one of those predefined sections, move it into that section instead of leaving it only in free-form prose.
+- Free-form sections are still allowed for examples, background, or architecture notes, but authors should preserve the predefined section names exactly so the pattern index generator can extract them reliably.
+- For the concrete optimize pattern card authoring note and regeneration workflow, see `docs/notes/2026-04-29-optimize-pattern-card-authoring.md`.
 
 ## Scope Guardrails
 

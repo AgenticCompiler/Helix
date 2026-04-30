@@ -1,5 +1,26 @@
 # Software Pipelining and Block Pointer Optimization Pattern
 
+## Summary
+
+Improve overlap between memory movement and compute in a hot loop that is already structurally tiled, typically by combining block pointers, prefetching, and pipelined loop structure.
+
+## Use When
+
+- The hot loop already has a real tiled structure, but loads and computation still happen too serially.
+- Profiling suggests wait-heavy or overlap-poor behavior, and the next question is pipeline quality rather than basic kernel structure.
+
+## Signals
+
+### Code
+
+- The loop is already tiled, but each iteration still follows a mostly synchronous load-then-compute rhythm.
+- Manual pointer arithmetic dominates the tiled loop, and block-pointer plus prefetch structure is still missing.
+
+### Profile
+
+- `msprof` timelines show Cube or Vector gaps while the MTE engines fetch the next tile.
+- Wait-heavy behavior suggests insufficient memory/compute overlap rather than a missing tiled-kernel rewrite.
+
 ## Problem Description
 
 Huawei Ascend NPUs (DaVinci architecture) use a **Decoupled Access-Compute (DAC)** design. This means memory movement (MTE engines) and computation (Cube/Vector cores) happen on different hardware units.
@@ -92,33 +113,21 @@ def matmul_kernel(a_ptr, b_ptr, c_ptr, K, BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE
         b_tile = tl.load(b_block_ptr)
 ```
 
-## When NOT to Apply
+## Avoid When
 
 1.  **Tiny Inner Loops**: If the loop only runs 1 or 2 times, the pre-fetch overhead might exceed the savings.
 2.  **Extreme Memory Pressure**: If the tile size is so large that the Unified Buffer cannot hold two sets of tiles (current and next).
 3.  **Dependency Chains**: If Tile `i+1` depends on the result of the computation of Tile `i`.
 4.  **Pre-tiling rewrite still needed**: If the loop should first be rewritten into a regular tiled matmul or another clearer tile-based structure.
 
-## Implementation Checklist
+## What To Verify After Applying
 
-- [ ] Replace raw pointer arithmetic with `tl.make_block_ptr`.
-- [ ] Pull the first `tl.load` outside the loop to initialize the pipeline.
-- [ ] Inside the loop, use `tl.advance` to update pointers.
-- [ ] Ensure the final `tl.dot` or math operation uses the previously loaded tile.
-- [ ] Verify that the total memory used by all active tiles (current + next) does not exceed NPU UB capacity.
+- Verify `tl.make_block_ptr` and `tl.advance` really replaced the raw pointer arithmetic on the hot path.
+- Verify the first tile is prefetched before the overlapped loop starts.
+- Verify the loop computes on the previously loaded tile while fetching the next one.
+- Verify the total memory used by all active tiles still fits NPU UB capacity.
 
-## Boundary With Nearby Patterns
+## Related Patterns
 
-### vs `classic-matmul`
-
-- `classic-matmul` answers whether the kernel should be rewritten into a standard tiled `tl.dot` form
-- `software-pipeline` answers whether that tiled form should overlap loads and compute more aggressively
-
-Do not use `software-pipeline` as a substitute for a missing tiled-matmul rewrite.
-
-### vs `tiling`
-
-- `software-pipeline` keeps multiple tiles live to improve overlap
-- `tiling` reduces tile or sub-block footprint to fit UB and control working-set size
-
-If overlap would require more live data than UB can hold, solve the tiling problem before pushing harder on software pipelining.
+- `classic-matmul`: use it first when the hot loop is still manual reduction code rather than a regular tiled `tl.dot` loop.
+- `tiling`: use it first when overlap would require more live data than UB can hold, or when footprint reduction is still the main problem.

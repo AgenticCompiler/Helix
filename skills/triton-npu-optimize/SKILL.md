@@ -67,7 +67,10 @@ Optimize analysis is layered.
 ### pattern triage
 
 - Inspect current code structure and benchmark behavior before choosing a direction.
-- Read `references/patterns/index.md`.
+- Read the generated `references/pattern_index.md` before detailed pattern references.
+- Read only the one or two most relevant detailed pattern files after the generated index has narrowed the candidate set.
+- When code structure is still unclear at pattern triage, run `python3 scripts/extract_code_facts.py <operator-file> --format json`.
+- Use `extract_code_facts.py` as a structured code-evidence helper only; it does not diagnose symptoms or choose the pattern for you.
 - Very strongly consider using subagents to read pattern references, scan for potentially useful optimization ideas, and report back which patterns look promising for the current kernel.
 - When subagents are available, prefer using them to broaden pattern exploration before committing to the round hypothesis.
 - Pattern references are helpful guidance, not the only allowed source of ideas.
@@ -81,6 +84,7 @@ Optimize analysis is layered.
 - Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.
 - Use the sibling `triton-npu-profile-operator` skill when benchmark numbers need operator-level performance evidence, hotspot diagnosis, bottleneck analysis, or profiler-backed comparison across runs.
 - Use the sibling `triton-npu-analyze-round-performance` skill when one round needs a deeper diagnosis that should end in `opt-round-N/perf-analysis.md`, especially for scalar/vector/cube imbalance, transfer-heavy behavior, or suspected pipeline overlap issues.
+- Use symptom cards to narrow pattern candidates after structured profiler or IR evidence exists, rather than rereading the whole pattern library.
 - This deeper diagnosis may end as either `profile-only diagnosis` or `profile-plus-IR diagnosis`.
 - Write `opt-round-N/perf-analysis.md` when the deeper round-analysis flow is used.
 

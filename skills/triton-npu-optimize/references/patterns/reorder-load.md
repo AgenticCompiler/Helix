@@ -1,5 +1,9 @@
 # NPU Load Order Optimization Pattern
 
+## Summary
+
+Reorder independent loads so false sequencing does not block memory-level parallelism or create avoidable wait time in a memory-bound kernel.
+
 ## Problem Description
 
 On Huawei Ascend NPU devices, the compiler preserves the exact execution order of load instructions as specified in the code. When load instructions are blocked by data dependencies from previous operations, independent load instructions cannot be issued in parallel, leading to suboptimal hardware utilization and reduced performance.
@@ -109,23 +113,33 @@ Cycle N+1: load A → load B (parallelizable)
            load A can overlap with store B completion
 ```
 
-## When to Apply
+## Use When
 
 1. **Loop-carried dependencies**: When current iteration depends on previous iteration's store
 2. **Multiple independent loads**: When several load operations have no data dependencies
 3. **Memory-bound kernels**: Where memory latency is the performance bottleneck
 4. **NPU targets**: Particularly beneficial for NPU's memory execution model
 
-## When NOT to Apply
+## Signals
+
+### Code
+
+- Independent load operations are delayed behind unrelated computations or loop-carried dependencies.
+- The hot loop contains several loads with no true dependency between them, but they are still issued serially.
+
+### Profile
+
+- The kernel behaves memory-bound, and reducing avoidable wait between independent loads looks more promising than changing arithmetic.
+
+## Avoid When
 
 1. **Actual data dependencies**: When the load order affects semantic correctness
 2. **Very small kernels**: Where optimization overhead outweighs benefits
 3. **CPU targets**: CPUs typically have out-of-order execution and hardware scheduling
 4. **Complex dependency graphs**: Where reordering might create subtle race conditions
 
-## Implementation Checklist
+## What To Verify After Applying
 
-- [ ] Identify load instructions blocked by preceding operations
-- [ ] Verify that reordered loads have no data dependencies with moved-past operations
-- [ ] Move independent load instructions as early as possible
-- [ ] Ensure loop-carried dependencies are properly handled
+- Verify each reordered load is independent from the operations it moves past.
+- Verify loop-carried dependencies and semantic ordering remain correct after reordering.
+- Verify the intended memory-level parallelism win actually appears in benchmark or profile evidence.

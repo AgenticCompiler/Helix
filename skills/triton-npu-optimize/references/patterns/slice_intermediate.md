@@ -1,9 +1,16 @@
+# Intermediate Slice Processing Pattern
+
 ## Summary
 
 When the kernel computation creates intermediate tensors that, combined with
 inputs and outputs, would exceed the Unified Buffer (UB) capacity (in attention mechanisms, batch
 normalization, etc), divide computation into several steps, and use `extract_slice` and `insert_slice`
 to read/write into UB.
+
+## Use When
+
+- Intermediate tensors, rather than just inputs or outputs, are the main source of UB pressure.
+- The overall algorithm is still reasonable, but staged slice processing is needed to keep temporary values within on-chip memory limits.
 
 ## Detail
 

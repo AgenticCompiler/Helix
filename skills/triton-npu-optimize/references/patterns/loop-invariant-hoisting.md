@@ -1,18 +1,20 @@
+# Loop-Invariant Hoisting Pattern
+
 ## Summary
 
 Apply **Loop-Invariant Code Motion (LICM)** to Triton kernels: move computations that do **not** depend on the loop induction variable out of the loop, so each iteration performs only the minimal work that truly varies.
 
 On Ascend NPU, LICM most often reduces **AIV scalar/control** overhead (address generation, compares, index casts) and can indirectly reduce **CUBE starvation** (`WAIT_FLAG_DEVI`) by simplifying the loop body.
 
-## When to use
+## Use When
 
 - The kernel has a hot inner loop (often a K loop in GEMM-like kernels).
 - Each loop iteration repeats substantial pointer math, mask construction, type casts, or shape bookkeeping.
 - Profiling shows scalar/control work is disproportionately high relative to useful compute.
 
-## Symptoms (code + profiler + IR)
+## Signals
 
-### Code inspection
+### Code
 
 - Inner loop recomputes expressions of the form:
   - `base(pid, offs) + delta(loop_var)`
@@ -20,12 +22,12 @@ On Ascend NPU, LICM most often reduces **AIV scalar/control** overhead (address 
 - Masks are rebuilt each iteration even when parts are invariant:
   - e.g. `a_mask_m = offs_m < M` is invariant, but recomputed into `a_mask` each iter.
 
-### IR evidence
+### IR
 
 - Repeated arithmetic chains (`muli/addi/index_cast`) inside `scf.while` / `scf.for` bodies.
 - Loop bodies contain repeated `subi/minsi/maxsi` patterns for bounds handling.
 
-### OPPROF / msprof signals
+### Profile
 
 - AIV scalar dominated by `LD_XD_XN_IMM`, `ST_XD_XN_IMM`, `ADD(_IMM)`, `CMP_IMM`.
 - Timeline shows CUBE waiting on flags around the loop, while AIV performs control-heavy work.
@@ -120,15 +122,14 @@ while k < K:
 - **Over-hoisting**: do not hoist expressions that depend on `k_offs` or other loop-varying values.
 - LICM does not eliminate transform costs (e.g. ND2NZ) by itself; treat layout issues as separate patterns.
 
-## Verification checklist
+## What To Verify After Applying
 
 1. **Correctness**: compare against reference across boundary shapes (non-multiples of block sizes).
 2. **Profiler**: reduced scalar instruction mix (`LD/ST/ADD/CMP`) and improved wall time.
 3. **IR sanity**: fewer repeated arithmetic ops inside loop bodies (qualitative evidence).
 
-## Relation to other patterns
+## Related Patterns
 
 - Complements **`compile-hint`**: after LICM, add alignment/contiguity hints.
 - Complements **`software-pipeline`**: LICM simplifies loop bodies; pipeline overlaps remaining transfer/compute.
 - Complements **`remove-implicit-transpose`**: layout fixes reduce transform work; LICM reduces residual loop control cost.
-

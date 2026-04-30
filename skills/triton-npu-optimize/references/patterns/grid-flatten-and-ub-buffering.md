@@ -1,16 +1,30 @@
+# Grid Flattening And UB Buffering Pattern
+
 ## Summary
 
-Change work distribution and UB staging when latency is dominated by too many logical tasks, uneven per-core work, or tiny row-wise memory transfers after a gather/scatter style rewrite.
+Change work distribution and UB staging when latency is dominated by too many logical tasks, uneven per-core work, physical-core load balance problems, or tiny row-wise memory transfers after a gather/scatter style rewrite.
 
 This pattern complements `program-multiple-rows`: that pattern widens row-wise work inside a program, while this one focuses on flattening logical work onto physical cores and then batching memory movement inside each core.
 
-## When To Use
+## Use When
 
 - The logical grid is much larger than the physical AICore or VectorCore count.
 - Work is partitioned by batch or sequence buckets with visible load imbalance.
 - Each program processes many tiny rows after grid-to-physical-core mapping.
 - Gather-like code has continuous destination rows but still stores one row at a time.
 - Scatter-weight-gradient-like code has repeated row loads that can be batched from continuous source rows.
+
+## Signals
+
+### Code
+
+- The logical grid is much larger than the physical AICore or VectorCore count.
+- Work is partitioned by batch or sequence buckets that create visible load imbalance.
+- Each physical program still processes many tiny rows or row-at-a-time transfers after grid mapping.
+
+### Profile
+
+- Latency is dominated by too many logical tasks, uneven per-core work, or tiny row-wise memory transfers after a gather or scatter style rewrite.
 
 ## Repairs
 
@@ -56,9 +70,14 @@ For row-wise reductions or gradient accumulation where several consecutive sourc
 - UB staging can exceed UB capacity or reduce occupancy.
 - Gather and scatter have different address-continuity requirements; do not reuse aggregate-write logic for scattered stores.
 
-## Verification Checklist
+## What To Verify After Applying
 
 - Record the physical core assumption and how it is discovered or passed.
 - Validate edge cases where `TOTAL_TASKS` is not divisible by `NUM_CORES`.
 - Benchmark small and large shapes if the operator supports both.
 - If the win depends on row continuity, add that condition to the round summary.
+
+## Related Patterns
+
+- Complements `program-multiple-rows`: that pattern widens row-wise work inside a program, while this pattern flattens logical work onto physical cores and batches memory movement inside each core.
+- Combine with `autotune` only after the structural rewrite is correct; tune `TASKS_PER_CORE`, `BLOCK`, and `SUB_BLOCK_SIZE` with enough separation to explain the result.
