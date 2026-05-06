@@ -21,6 +21,10 @@ def load_profile_runner_module():
     return load_operator_eval_script_module("profile_runner")
 
 
+def load_standalone_bench_runtime_module():
+    return load_operator_eval_script_module("standalone_bench_runtime")
+
+
 def make_skill_result(
     return_code: int,
     stdout: str,
