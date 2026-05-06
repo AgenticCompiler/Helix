@@ -73,6 +73,31 @@ class CliParserTests(unittest.TestCase):
         self.assertFalse(hasattr(args, "interact"))
         self.assertFalse(hasattr(args, "output"))
 
+    def test_log_check_batch_accepts_result_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "log-check-batch",
+                "-i",
+                "kernels",
+                "--check-result-file",
+                "custom_check.txt",
+                "--summary-file",
+                "custom_summary.txt",
+                "--max-concurrency",
+                "4",
+                "--verbose",
+                "--show-output",
+            ]
+        )
+        self.assertEqual(args.command, "log-check-batch")
+        self.assertEqual(args.command_kind, CommandKind.LOG_CHECK_BATCH)
+        self.assertEqual(args.check_result_file, "custom_check.txt")
+        self.assertEqual(args.summary_file, "custom_summary.txt")
+        self.assertEqual(args.max_concurrency, 4)
+        self.assertTrue(args.verbose)
+        self.assertTrue(args.show_output)
+
     def test_gen_eval_maps_to_command_kind(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["gen-eval", "-i", "kernel.py"])

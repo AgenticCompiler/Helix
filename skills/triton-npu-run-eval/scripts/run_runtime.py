@@ -9,7 +9,7 @@ import threading
 import time
 from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
-from typing import Optional, TextIO, TypedDict
+from typing import Any, Optional, TextIO, TypedDict, cast
 
 _IS_WINDOWS = sys.platform == "win32"
 
@@ -159,9 +159,11 @@ def _run_streaming_pty(
     stdout: Optional[TextIO] = None,
     extra_env: dict[str, str] | None = None,
 ) -> ResultPayload:
-    if pty is None or select is None:
+    pty_module = pty
+    select_module = select
+    if pty_module is None or select_module is None:
         raise RuntimeError("PTY streaming is unavailable on this platform")
-    master_fd, slave_fd = pty.openpty()
+    master_fd, slave_fd = cast(Any, pty_module).openpty()
     output_chunks: list[str] = []
     process = subprocess.Popen(
         command,
@@ -178,7 +180,7 @@ def _run_streaming_pty(
 
     try:
         while True:
-            ready, _, _ = select.select([master_fd], [], [], 0.1)
+            ready, _, _ = cast(Any, select_module).select([master_fd], [], [], 0.1)
             if ready:
                 try:
                     chunk = os.read(master_fd, 4096)
@@ -356,7 +358,7 @@ def _scp_to_remote_command(spec: RemoteSpec, local_path: Path, remote_path: str)
     command = ["scp"]
     if spec["port"] is not None:
         command.extend(["-P", str(spec["port"])])
-    command.extend([str(local_path), f"{spec['user_host']}:{remote_path}"])
+    command.extend([local_path.as_posix(), f"{spec['user_host']}:{remote_path}"])
     return command
 
 
@@ -371,7 +373,7 @@ def _scp_from_remote_command(
         command.append("-r")
     if spec["port"] is not None:
         command.extend(["-P", str(spec["port"])])
-    command.extend([f"{spec['user_host']}:{remote_path}", str(local_path)])
+    command.extend([f"{spec['user_host']}:{remote_path}", local_path.as_posix()])
     return command
 
 
