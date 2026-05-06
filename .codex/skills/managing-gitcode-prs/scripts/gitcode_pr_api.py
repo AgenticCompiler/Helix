@@ -315,7 +315,7 @@ def command_create(args: argparse.Namespace) -> int:
             token,
             build_url(owner, repo, str(number)),
             method="PATCH",
-            payload={"prune_source_branch": True},
+            payload={"force_remove_source_branch": True},
         )
         if isinstance(patched, dict):
             pull = cast(JsonDict, patched)

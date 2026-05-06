@@ -1,5 +1,11 @@
+import importlib.util
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Optional
+from unittest.mock import patch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +50,80 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("--prune-source-branch", script)
         self.assertNotIn("run-gc-pr.sh", skill)
         self.assertNotIn("uv tool run --from", reference)
+
+    def test_gitcode_pr_skill_prunes_source_branch_with_official_api_field(self) -> None:
+        script = (
+            REPO_ROOT
+            / ".codex"
+            / "skills"
+            / "managing-gitcode-prs"
+            / "scripts"
+            / "gitcode_pr_api.py"
+        )
+        spec = importlib.util.spec_from_file_location("gitcode_pr_api_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        calls: list[tuple[str, str, Optional[dict[str, object]]]] = []
+
+        def fake_request_json(
+            token: str,
+            url: str,
+            *,
+            method: str = "GET",
+            payload: Optional[dict[str, object]] = None,
+            disable_proxy: bool = False,
+        ) -> dict[str, object]:
+            calls.append((method, url, payload))
+            if method == "POST":
+                return {
+                    "number": 17,
+                    "title": "Feature",
+                    "state": "open",
+                    "source_branch": "feature-branch",
+                    "target_branch": "main",
+                    "created_at": "2026-05-06T00:00:00Z",
+                    "updated_at": "2026-05-06T00:00:00Z",
+                }
+            return {
+                "number": 17,
+                "title": "Feature",
+                "state": "open",
+                "source_branch": "feature-branch",
+                "target_branch": "main",
+                "created_at": "2026-05-06T00:00:00Z",
+                "updated_at": "2026-05-06T00:00:00Z",
+            }
+
+        args = SimpleNamespace(
+            repo="midwinter1993/triton-agent",
+            title="Feature",
+            body=None,
+            head="feature-branch",
+            base="main",
+            fill=False,
+            draft=False,
+            prune_source_branch=True,
+            json=True,
+        )
+
+        with (
+            patch.object(module, "require_token", return_value="token"),
+            patch.object(module, "request_json", side_effect=fake_request_json),
+            redirect_stdout(StringIO()),
+        ):
+            self.assertEqual(module.command_create(args), 0)
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0][0], "POST")
+        self.assertEqual(
+            calls[0][2],
+            {"title": "Feature", "head": "feature-branch", "base": "main"},
+        )
+        self.assertEqual(calls[1][0], "PATCH")
+        self.assertEqual(calls[1][2], {"force_remove_source_branch": True})
 
     def test_test_gen_skill_requires_header_metadata_and_no_runtime_api_flag(self) -> None:
         content = _read("skills/triton-npu-gen-test/SKILL.md")
