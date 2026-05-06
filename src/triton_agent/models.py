@@ -20,6 +20,8 @@ class CommandKind(str, Enum):
     VERIFY = "verify"
     VERIFY_BATCH = "verify-batch"
     STATUS = "status"
+    LOG_CHECK = "log-check"
+    LOG_CHECK_BATCH = "log-check-batch"
     OPTIMIZE = "optimize"
     OPTIMIZE_BATCH = "optimize-batch"
 
@@ -38,6 +40,8 @@ COMMAND_TO_SKILL = {
     CommandKind.VERIFY: "",
     CommandKind.VERIFY_BATCH: "",
     CommandKind.STATUS: "",
+    CommandKind.LOG_CHECK: "",
+    CommandKind.LOG_CHECK_BATCH: "",
     CommandKind.OPTIMIZE: "triton-npu-optimize",
     CommandKind.OPTIMIZE_BATCH: "",
 }

@@ -217,7 +217,10 @@ class SkillLinkManagerTests(unittest.TestCase):
                     source.mkdir()
                     (source / "triton-npu-gen-test").mkdir()
                     target.parent.mkdir(parents=True)
-                    target.symlink_to(source, target_is_directory=True)
+                    try:
+                        target.symlink_to(source, target_is_directory=True)
+                    except OSError as exc:
+                        self.skipTest(f"directory symlinks are unavailable: {exc}")
 
                     manager = SkillLinkManager(source)
 
@@ -236,7 +239,10 @@ class SkillLinkManagerTests(unittest.TestCase):
                     skill_dir = source / "triton-npu-gen-test"
                     skill_dir.mkdir()
                     link_path.parent.mkdir(parents=True)
-                    link_path.symlink_to(skill_dir, target_is_directory=True)
+                    try:
+                        link_path.symlink_to(skill_dir, target_is_directory=True)
+                    except OSError as exc:
+                        self.skipTest(f"directory symlinks are unavailable: {exc}")
 
                     manager = SkillLinkManager(source)
 

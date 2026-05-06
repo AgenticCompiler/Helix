@@ -12,6 +12,7 @@ from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
 from triton_agent.commands.generation import handle_gen_eval
 from triton_agent.commands.generation import handle_gen_eval_batch
 from triton_agent.commands.status import handle_status
+from triton_agent.commands.log_check import handle_log_check, handle_log_check_batch
 from triton_agent.commands.verification import handle_verify, handle_verify_batch
 from triton_agent.commands.optimize import (
     handle_optimize,
@@ -39,6 +40,8 @@ _TOP_LEVEL_EXAMPLES = (
     "triton-agent compare-perf --baseline baseline.txt --compare candidate.txt",
     "triton-agent verify -i .",
     "triton-agent status -i .",
+    "triton-agent log-check -i .",
+    "triton-agent log-check-batch -i kernels",
     "triton-agent optimize -i kernel.py --agent codex",
 )
 
@@ -208,6 +211,25 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_output=False,
         has_format=True,
     ),
+    CommandKind.LOG_CHECK: _CommandSpec(
+        handler=handle_log_check,
+        help_group="Optimization",
+        help_summary="Run Codex log strategy validation for one workspace.",
+        description="Run Codex log strategy validation and write check_result_v2.txt.",
+        has_output=False,
+        has_agent=True,
+        has_show_output=True,
+    ),
+    CommandKind.LOG_CHECK_BATCH: _CommandSpec(
+        handler=handle_log_check_batch,
+        help_group="Optimization",
+        help_summary="Run log strategy validation across multiple workspaces.",
+        description="Run log strategy validation across multiple operator workspaces and write a root summary.",
+        has_output=False,
+        has_agent=True,
+        has_show_output=True,
+        max_concurrency_default=1,
+    ),
     CommandKind.VERIFY: _CommandSpec(
         handler=handle_verify,
         help_group="Verification",
@@ -331,6 +353,18 @@ def build_parser() -> argparse.ArgumentParser:
             )
         if spec.has_prompt:
             subparser.add_argument("--prompt")
+        if command_kind in {CommandKind.LOG_CHECK, CommandKind.LOG_CHECK_BATCH}:
+            subparser.add_argument(
+                "--check-result-file",
+                default="check_result_v2.txt",
+                help="Workspace-relative log check result file name.",
+            )
+        if command_kind == CommandKind.LOG_CHECK_BATCH:
+            subparser.add_argument(
+                "--summary-file",
+                default="check_result_v2_summary.txt",
+                help="Root-relative batch log check summary file name.",
+            )
         if spec.max_concurrency_default is not None:
             subparser.add_argument("--max-concurrency", type=int, default=spec.max_concurrency_default)
         if spec.has_force_overwrite:
@@ -406,6 +440,8 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "compare_perf": "compare-perf",
         "verify_batch": "verify-batch",
         "optimize_batch": "optimize-batch",
+        "log_check": "log-check",
+        "log_check_batch": "log-check-batch",
     }
     normalized = list(argv)
     normalized[0] = aliases.get(normalized[0], normalized[0])
