@@ -1,5 +1,11 @@
+import importlib.util
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Optional
+from unittest.mock import patch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -41,8 +47,83 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("Bearer", script)
         self.assertIn("GC_TOKEN", script)
         self.assertIn("https://gitcode.com/api/v5/repos", script)
+        self.assertIn("--prune-source-branch", script)
         self.assertNotIn("run-gc-pr.sh", skill)
         self.assertNotIn("uv tool run --from", reference)
+
+    def test_gitcode_pr_skill_prunes_source_branch_with_official_api_field(self) -> None:
+        script = (
+            REPO_ROOT
+            / ".codex"
+            / "skills"
+            / "managing-gitcode-prs"
+            / "scripts"
+            / "gitcode_pr_api.py"
+        )
+        spec = importlib.util.spec_from_file_location("gitcode_pr_api_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        calls: list[tuple[str, str, Optional[dict[str, object]]]] = []
+
+        def fake_request_json(
+            token: str,
+            url: str,
+            *,
+            method: str = "GET",
+            payload: Optional[dict[str, object]] = None,
+            disable_proxy: bool = False,
+        ) -> dict[str, object]:
+            calls.append((method, url, payload))
+            if method == "POST":
+                return {
+                    "number": 17,
+                    "title": "Feature",
+                    "state": "open",
+                    "source_branch": "feature-branch",
+                    "target_branch": "main",
+                    "created_at": "2026-05-06T00:00:00Z",
+                    "updated_at": "2026-05-06T00:00:00Z",
+                }
+            return {
+                "number": 17,
+                "title": "Feature",
+                "state": "open",
+                "source_branch": "feature-branch",
+                "target_branch": "main",
+                "created_at": "2026-05-06T00:00:00Z",
+                "updated_at": "2026-05-06T00:00:00Z",
+            }
+
+        args = SimpleNamespace(
+            repo="midwinter1993/triton-agent",
+            title="Feature",
+            body=None,
+            head="feature-branch",
+            base="main",
+            fill=False,
+            draft=False,
+            prune_source_branch=True,
+            json=True,
+        )
+
+        with (
+            patch.object(module, "require_token", return_value="token"),
+            patch.object(module, "request_json", side_effect=fake_request_json),
+            redirect_stdout(StringIO()),
+        ):
+            self.assertEqual(module.command_create(args), 0)
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0][0], "POST")
+        self.assertEqual(
+            calls[0][2],
+            {"title": "Feature", "head": "feature-branch", "base": "main"},
+        )
+        self.assertEqual(calls[1][0], "PATCH")
+        self.assertEqual(calls[1][2], {"force_remove_source_branch": True})
 
     def test_test_gen_skill_requires_header_metadata_and_no_runtime_api_flag(self) -> None:
         content = _read("skills/triton-npu-gen-test/SKILL.md")
@@ -103,6 +184,53 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("## Validation Commands", bench_gen)
         self.assertIn("Use the triton-npu-run-eval skill to execute generated benchmark cases.", bench_gen)
         self.assertIn("python3 ../triton-npu-run-eval/scripts/run-command.py run-bench --bench-file", bench_gen)
+
+    def test_run_eval_skill_routes_to_focused_command_docs(self) -> None:
+        skill = _read("skills/triton-npu-run-eval/SKILL.md")
+        run_test = _read("skills/triton-npu-run-eval/references/run-test.md")
+        run_bench = _read("skills/triton-npu-run-eval/references/run-bench.md")
+        profile_bench = _read("skills/triton-npu-run-eval/references/profile-bench.md")
+        compare_result = _read("skills/triton-npu-run-eval/references/compare-result.md")
+        compare_perf = _read("skills/triton-npu-run-eval/references/compare-perf.md")
+
+        self.assertIn("# Run-Eval Router", skill)
+        self.assertIn("references/run-test.md", skill)
+        self.assertIn("references/run-bench.md", skill)
+        self.assertIn("references/profile-bench.md", skill)
+        self.assertIn("references/compare-result.md", skill)
+        self.assertIn("references/compare-perf.md", skill)
+        self.assertIn("do not read unrelated command guides", skill)
+        self.assertIn("do not reread Python files under `./scripts/`", skill)
+        self.assertNotIn("## Run Test", skill)
+        self.assertNotIn("## Run Bench", skill)
+        self.assertNotIn("## Profile Bench", skill)
+        self.assertNotIn("## Compare Differential Results", skill)
+        self.assertNotIn("## Compare Performance Results", skill)
+        self.assertFalse((REPO_ROOT / "skills" / "triton-npu-run-eval" / "run-test.md").exists())
+        self.assertFalse((REPO_ROOT / "skills" / "triton-npu-run-eval" / "run-bench.md").exists())
+        self.assertFalse((REPO_ROOT / "skills" / "triton-npu-run-eval" / "profile-bench.md").exists())
+        self.assertFalse((REPO_ROOT / "skills" / "triton-npu-run-eval" / "compare-result.md").exists())
+        self.assertFalse((REPO_ROOT / "skills" / "triton-npu-run-eval" / "compare-perf.md").exists())
+
+        self.assertIn("Always pass both `--test-file` and `--operator-file`.", run_test)
+        self.assertIn("--test-mode differential", run_test)
+        self.assertIn("--remote user@host:2222", run_test)
+
+        self.assertIn("Always pass both `--bench-file` and `--operator-file`.", run_bench)
+        self.assertIn("build_operator_api(operator_module)", run_bench)
+        self.assertIn("build_standalone_bench_cases(operator_api)", run_bench)
+        self.assertIn("--bench-mode msprof", run_bench)
+
+        self.assertIn("--case-id <id>", profile_bench)
+        self.assertIn("--kernel-name <name>", profile_bench)
+        self.assertIn("--keep-remote-workdir", profile_bench)
+
+        self.assertIn("compare the archived result payloads after `run-test` succeeds", compare_result)
+        self.assertIn("--compare-level balanced", compare_result)
+
+        self.assertIn("Avg improvement", compare_perf)
+        self.assertIn("Geomean speedup", compare_perf)
+        self.assertIn("authority for claimed benchmark deltas and speedups", compare_perf)
 
     def test_eval_gen_skill_documents_direct_operator_repair_and_remote_validation(self) -> None:
         eval_gen = _read("skills/triton-npu-gen-eval-suite/SKILL.md")

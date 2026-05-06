@@ -49,6 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--base", default="main")
     create.add_argument("--fill", action="store_true")
     create.add_argument("--draft", action="store_true")
+    create.add_argument("--prune-source-branch", action="store_true")
     create.add_argument("--json", action="store_true")
 
     list_parser = subparsers.add_parser("list")
@@ -303,6 +304,18 @@ def command_create(args: argparse.Namespace) -> int:
             build_url(owner, repo, str(number)),
             method="PATCH",
             payload={"draft": True},
+        )
+        if isinstance(patched, dict):
+            pull = cast(JsonDict, patched)
+    if args.prune_source_branch:
+        number = pull.get("number")
+        if not isinstance(number, int):
+            raise GitCodeApiError("Created PR response did not include a numeric PR number.")
+        patched = request_json(
+            token,
+            build_url(owner, repo, str(number)),
+            method="PATCH",
+            payload={"force_remove_source_branch": True},
         )
         if isinstance(patched, dict):
             pull = cast(JsonDict, patched)
