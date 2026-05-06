@@ -128,12 +128,14 @@ Use these subdirectories consistently:
 
 - parent round or parent candidate
 - optimization hypothesis
+- final selected pattern direction when a named pattern guided the round
 - `Primary analysis level`
 - `Supporting evidence`
 - final analysis level
 - why that hypothesis looked plausible
 - what evidence motivated the round
 - which evidence actually decided the round outcome
+- whether the round pivoted away from an earlier pattern choice
 - code changes that mattered
 - correctness validation result
 - benchmark comparison
@@ -149,6 +151,8 @@ The optimization points section is required. This is the part future engineers a
 Record at least:
 
 - the initial round hypothesis
+- candidate patterns considered at the start of the round when pattern triage is used
+- the selected pattern and why it looked plausible when a pattern-backed direction is chosen
 - `Primary analysis level`
 - `Supporting evidence`
 - the current analysis level
@@ -157,6 +161,7 @@ Record at least:
 - why the round stayed at that level or why it escalated deeper
 - why profiling or IR capture was skipped, when those tools were not used
 - any reused deeper evidence path when the round starts below pattern triage
+- pattern pivots, including when deeper profile or IR evidence weakens or overturns the earlier pattern choice
 - each meaningful code change or optimization attempt
 - correctness failures and how they were repaired
 - benchmark outcomes, including regressions or inconclusive results
