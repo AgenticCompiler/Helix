@@ -565,7 +565,7 @@ These options appear on multiple commands:
 
 - `--agent`: choose the agent backend for agent-backed generation and optimization commands.
 - `--interact`: attach to a live agent session instead of a non-interactive run.
-- `--show-output`: stream readable non-interactive agent output in the current terminal.
+- `--show-output`: stream readable non-interactive agent output in the current terminal, and append the same output to `triton-agent-logs/<command>.show-output.log` under the workspace workdir for later debugging.
 - `--verbose`: print additional diagnostics.
 - `--remote`: run execution and comparison commands through SSH, and pass remote context to generation and optimize workflows.
 - `--remote-workdir`: choose the remote working root.

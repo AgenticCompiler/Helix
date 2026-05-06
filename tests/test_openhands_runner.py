@@ -129,6 +129,38 @@ class OpenHandsRunnerTests(unittest.TestCase):
             self.assertIn("assistant final", result.stdout)
             self.assertEqual(result.stderr, "")
 
+    def test_show_output_writes_event_text_to_workspace_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = OpenHandsRunner()
+            (workspace / ".openhands" / "skills").mkdir(parents=True)
+
+            with patch(
+                "triton_agent.backends.openhands._supports_openhands_runtime",
+                return_value=True,
+            ):
+                with patch.dict(
+                    os.environ,
+                    {
+                        "LLM_API_KEY": "secret",
+                        "LLM_MODEL": "gpt-5.4-mini",
+                    },
+                    clear=True,
+                ):
+                    with patch(
+                        "triton_agent.backends.openhands._load_openhands_dependencies",
+                        return_value=_fake_dependencies(),
+                    ):
+                        result = runner.run(self._request(workspace, show_output=True), stdout=io.StringIO())
+
+            self.assertEqual(result.return_code, 0)
+            log_path = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            self.assertTrue(log_path.exists())
+            content = log_path.read_text(encoding="utf-8")
+            self.assertIn("attempt=1", content)
+            self.assertIn("assistant update", content)
+            self.assertIn("assistant final", content)
+
     def test_run_normalizes_chat_completions_base_url(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -303,6 +335,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
         command_kind: CommandKind = CommandKind.GEN_TEST,
         interact: bool = False,
         verbose: bool = False,
+        show_output: bool = False,
         prompt: str = "Prompt body",
     ) -> AgentRequest:
         return AgentRequest(
@@ -314,7 +347,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
             bench_mode=None,
             interact=interact,
             verbose=verbose,
-            show_output=False,
+            show_output=show_output,
             force_overwrite=False,
             agent_name="openhands",
             skill_name="triton-npu-gen-test",
@@ -387,6 +420,8 @@ def _fake_dependencies() -> types.SimpleNamespace:
             self.prompt = prompt
 
         def run(self) -> None:
+            for callback in self.callbacks:
+                callback(FakeEvent("assistant update"))
             for callback in self.callbacks:
                 callback(FakeEvent("assistant final"))
 

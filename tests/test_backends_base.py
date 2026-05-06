@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from os import environ
 from pathlib import Path
+from io import StringIO
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -116,6 +117,61 @@ class SharedRunnerBaseTests(unittest.TestCase):
             self.assertEqual(result.return_code, 0)
             self.assertEqual(mocked_run.call_count, 3)
             self.assertEqual([call.args[0] for call in mocked_sleep.call_args_list], [1.0, 2.0])
+
+    def test_show_output_appends_attempt_markers_and_output_to_workspace_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = _DummyRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=True,
+                force_overwrite=False,
+                agent_name="dummy",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+            )
+
+            with (
+                patch.dict(environ, {"TRITON_AGENT_CODE_AGENT_MAX_RETRIES": "1"}, clear=False),
+                patch(
+                    "triton_agent.backends.base.run_process",
+                    side_effect=[
+                        AgentResult(
+                            return_code=1,
+                            stdout="first streamed output\n",
+                            stderr="ERROR: exceeded retry limit, last status: 429 Too Many Requests",
+                            session_id="session-1",
+                        ),
+                        AgentResult(
+                            return_code=0,
+                            stdout="second streamed output\n",
+                            stderr="",
+                            session_id="session-2",
+                        ),
+                    ],
+                ),
+                patch("time.sleep"),
+            ):
+                result = runner.run(request, stdout=StringIO())
+
+            self.assertEqual(result.return_code, 0)
+            log_path = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            self.assertTrue(log_path.exists())
+            content = log_path.read_text(encoding="utf-8")
+            self.assertIn("attempt=1", content)
+            self.assertIn("attempt=2", content)
+            self.assertIn("first streamed output", content)
+            self.assertIn("second streamed output", content)
+            self.assertIn("session_id=session-1", content)
+            self.assertIn("session_id=session-2", content)
 
     def test_base_runner_honors_zero_retry_env_override(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
