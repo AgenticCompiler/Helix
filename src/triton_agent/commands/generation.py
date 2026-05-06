@@ -4,7 +4,9 @@ import argparse
 import sys
 from pathlib import Path
 
+from triton_agent.commands.input_resolution import resolve_single_operator_input
 from triton_agent.generation.batch import run_gen_eval_batch
+from triton_agent.generation.batch import resolve_batch_gen_eval_operator_file
 from triton_agent.generation.models import GenerationOptions
 from triton_agent.generation.outputs import prepare_generation_targets
 from triton_agent.generation.orchestration import build_generation_request, run_generation_request
@@ -46,19 +48,25 @@ def _handle_generation_command(
     if not input_path.exists():
         parser.error(f"Input path does not exist: {input_path}")
     _validate_agent_options(parser, args)
-    workdir = input_path.parent
+    try:
+        operator_path, workdir = resolve_single_operator_input(
+            input_path,
+            resolve_operator_file=resolve_batch_gen_eval_operator_file,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
     options = generation_options_from_args(args)
     request = build_generation_request(
         command_kind,
-        input_path,
-        input_path,
+        operator_path,
+        operator_path,
         workdir,
         options,
     )
     try:
         file_messages = prepare_generation_targets(
             command_kind,
-            input_path,
+            operator_path,
             request.output_path,
             test_mode=request.test_mode,
             force_overwrite=options.force_overwrite,
