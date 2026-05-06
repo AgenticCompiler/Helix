@@ -9,7 +9,7 @@ from typing import Callable, Optional
 
 @dataclass
 class ArchiveState:
-    """Paths for one optimize run archive under `optimize-logs/triton-agent/`."""
+    """Paths for one optimize run archive under `triton-agent-logs/triton-agent/`."""
 
     archive_root: Path
     run_archive_dir: Path
@@ -25,7 +25,7 @@ class ArchiveManager:
 
     def prepare(self, workdir: Path, *, include_shared_guidance_snapshot: bool = False) -> ArchiveState:
         """Describe where this optimize run will archive logs and metadata."""
-        archive_root = workdir / "optimize-logs" / "triton-agent"
+        archive_root = workdir / "triton-agent-logs" / "triton-agent"
         run_archive_dir = archive_root / self._run_id_factory()
         shared_guidance_snapshot_path = None
         if include_shared_guidance_snapshot:

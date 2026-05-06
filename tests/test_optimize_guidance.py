@@ -52,7 +52,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
 
             state = manager.prepare(workdir, include_shared_guidance_snapshot=True)
 
-            self.assertEqual(state.archive_root, workdir / "optimize-logs" / "triton-agent")
+            self.assertEqual(state.archive_root, workdir / "triton-agent-logs" / "triton-agent")
             self.assertEqual(
                 state.run_archive_dir,
                 state.archive_root / "20260423-123456-000000",
@@ -206,7 +206,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertTrue(state.round_brief_path.exists())
             self.assertTrue(state.supervisor_report_path.exists())
             self.assertTrue(state.history_dir.exists())
-            self.assertEqual(state.archive_root, workdir / "optimize-logs" / "triton-agent")
+            self.assertEqual(state.archive_root, workdir / "triton-agent-logs" / "triton-agent")
             self.assertTrue(state.run_archive_dir.parent == state.archive_root)
             self.assertEqual(state.agent_sessions_path, state.run_archive_dir / "agent-sessions.jsonl")
 

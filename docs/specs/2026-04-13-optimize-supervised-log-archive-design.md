@@ -6,7 +6,7 @@
 
 When `optimize` runs with `--supervise on`, the runtime currently creates a live `.triton-agent/` directory for shared guidance, role briefs, the current round brief, and the current supervisor report. Those files are deleted during cleanup. This keeps later runs clean, but it also discards the supervisor handoff trail that would be useful when reviewing how an optimize session progressed.
 
-This design keeps `.triton-agent/` as an ephemeral runtime directory and adds a persistent archive under `optimize-logs/triton-agent/<run-id>/`. The archive stores immutable snapshots of supervised orchestration artifacts without leaving the live `.triton-agent/` directory behind for future runs to accidentally read.
+This design keeps `.triton-agent/` as an ephemeral runtime directory and adds a persistent archive under `triton-agent-logs/triton-agent/<run-id>/`. The archive stores immutable snapshots of supervised orchestration artifacts without leaving the live `.triton-agent/` directory behind for future runs to accidentally read.
 
 ## Goals
 
@@ -44,7 +44,7 @@ The live `.triton-agent/` directory continues to exist only for the current supe
 
 At the end of a supervised run, the runtime writes a persistent archive under:
 
-`optimize-logs/triton-agent/<run-id>/`
+`triton-agent-logs/triton-agent/<run-id>/`
 
 `<run-id>` should be unique per supervised run. A timestamp-based identifier is sufficient for the first version.
 
@@ -79,7 +79,7 @@ This avoids losing intermediate handoff state when:
 
 ### Final Archive
 
-During supervised cleanup, before removing `.triton-agent/`, the runtime copies the live history and final snapshots into `optimize-logs/triton-agent/<run-id>/`.
+During supervised cleanup, before removing `.triton-agent/`, the runtime copies the live history and final snapshots into `triton-agent-logs/triton-agent/<run-id>/`.
 
 After the archive is written, cleanup proceeds as it does today:
 
@@ -105,7 +105,7 @@ If archive creation itself fails, the runtime should:
 ## Archive Layout Example
 
 ```text
-optimize-logs/
+triton-agent-logs/
   triton-agent/
     20260413-153045/
       shared-guidance.md
@@ -134,7 +134,7 @@ optimize-logs/
 Add coverage for:
 
 - supervised optimize writes immutable `history/` snapshots without overwriting previous rounds
-- supervised cleanup creates `optimize-logs/triton-agent/<run-id>/`
+- supervised cleanup creates `triton-agent-logs/triton-agent/<run-id>/`
 - supervised cleanup removes the live `.triton-agent/` directory after archiving
 - unsupervised optimize does not create supervised archives
 - failure or interruption after at least one supervisor pass still leaves an archive when cleanup runs

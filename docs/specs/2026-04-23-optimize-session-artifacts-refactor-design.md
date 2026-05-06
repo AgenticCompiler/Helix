@@ -7,7 +7,7 @@
 - rendering temporary optimize memory files (`AGENTS.md` / `CLAUDE.md`)
 - backing up, writing, restoring, and deleting those memory files
 - creating and cleaning supervised runtime handoff files under `.triton-agent/`
-- archiving optimize session outputs under `optimize-logs/`
+- archiving optimize session outputs under `triton-agent-logs/`
 - recording agent session ids into `agent-sessions.jsonl`
 
 The implementation still works, but the current shape is hard to reason about because one file and one manager own several artifact domains with different lifecycles.
@@ -41,7 +41,7 @@ Owns:
 Does not own:
 
 - `.triton-agent/` runtime files
-- `optimize-logs/`
+- `triton-agent-logs/`
 - session recording
 
 ### `runtime_handoff`
@@ -63,7 +63,7 @@ Does not own:
 
 Owns:
 
-- `optimize-logs/triton-agent/<run-id>/`
+- `triton-agent-logs/triton-agent/<run-id>/`
 - `shared-guidance.md` snapshots
 - `final/`
 - `history/`

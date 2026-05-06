@@ -2474,7 +2474,7 @@ class PathResolutionTests(unittest.TestCase):
             (root / "learned_lessons.md").write_text("notes\n", encoding="utf-8")
             (root / "opt-round-1").mkdir()
             (root / ".triton-agent").mkdir()
-            (root / "optimize-logs").mkdir()
+            (root / "triton-agent-logs").mkdir()
             baseline_dir = root / "baseline"
             baseline_dir.mkdir()
             (root / "opt_kernel.py").write_text("print('opt')\n", encoding="utf-8")
@@ -2516,7 +2516,7 @@ class PathResolutionTests(unittest.TestCase):
             self.assertFalse((root / "learned_lessons.md").exists())
             self.assertFalse((root / "opt-round-1").exists())
             self.assertFalse((root / ".triton-agent").exists())
-            self.assertFalse((root / "optimize-logs").exists())
+            self.assertFalse((root / "triton-agent-logs").exists())
             self.assertFalse((root / "baseline").exists())
             self.assertFalse((root / "opt_kernel.py").exists())
             self.assertTrue(test_harness.exists())

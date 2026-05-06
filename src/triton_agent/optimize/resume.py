@@ -34,7 +34,7 @@ def reset_optimize_workspace(input_path: Path, workdir: Path) -> None:
         workdir / "learned_lessons.md",
         baseline_dir(workdir),
         workdir / ".triton-agent",
-        workdir / "optimize-logs",
+        workdir / "triton-agent-logs",
         input_path.with_name(f"opt_{input_path.stem}.py"),
     ]
     round_dirs = [
