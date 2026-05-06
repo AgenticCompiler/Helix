@@ -722,6 +722,18 @@ class GenerationContractTests(unittest.TestCase):
             (REPO_ROOT / "skills" / "triton-npu-optimize" / "references" / "workflow.md").exists()
         )
 
+    def test_optimize_docs_record_pattern_choice_in_attempts_and_summary(self) -> None:
+        optimize = _read("skills/triton-npu-optimize/SKILL.md")
+        artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
+
+        self.assertIn("selected pattern candidates and pivots", optimize)
+        self.assertIn("final selected pattern direction", optimize)
+        self.assertIn("candidate patterns considered at the start of the round", artifacts)
+        self.assertIn("the selected pattern and why it looked plausible", artifacts)
+        self.assertIn("pattern pivots", artifacts)
+        self.assertIn("final selected pattern direction", artifacts)
+        self.assertIn("pivoted away from an earlier pattern choice", artifacts)
+
     def test_optimize_skill_declares_layered_analysis_and_deduplicates_compare_perf_and_lessons(self) -> None:
         optimize = _read("skills/triton-npu-optimize/SKILL.md")
 
@@ -809,6 +821,9 @@ class GenerationContractTests(unittest.TestCase):
         self.assertNotIn('parser.add_argument("--operator-file"', standalone)
         self.assertNotIn("def run_bench(operator_api):", standalone)
         self.assertNotIn('print(f"latency-{case_id}: {latency}")', standalone)
+        self.assertIn("must be **<= 20**", standalone)
+        self.assertIn("prefer **8-20 representative cases**", standalone)
+        self.assertIn("cover small, medium, and large representative shapes", standalone)
         self.assertIn("torch-module", standalone)
         self.assertIn("constructor arguments", standalone)
 

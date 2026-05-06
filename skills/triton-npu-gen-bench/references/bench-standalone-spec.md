@@ -88,6 +88,10 @@ Important behavior:
 - `fn` should execute only the benchmarked operator body.
 - Input preparation should happen outside the returned `fn` whenever practical so the profiler focuses on operator execution.
 - The case id should be descriptive and stable because downstream perf artifacts use `latency-<case-id>`.
+- The declared case list should follow the same representative-coverage policy as `msprof`:
+  - the total number of cases must be **<= 20**
+  - when the operator's shape space is broad enough, prefer **8-20 representative cases**
+  - cover small, medium, and large representative shapes unless the operator's valid inputs are genuinely narrow
 
 ### 6. Device and benchmark assumptions
 

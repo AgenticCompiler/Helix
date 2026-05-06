@@ -129,8 +129,8 @@ Optimize analysis is layered.
 
 ## Round Records
 
-- `attempts.md`: chronological round log for the current round, including `Primary analysis level`, `Supporting evidence`, the starting hypothesis, escalation reasons, meaningful code changes, correctness failures, and benchmark outcomes.
-- `summary.md`: round conclusion, optimization points that mattered, the final analysis level, supporting evidence that decided the round, and unresolved questions if deeper analysis may still be needed.
+- `attempts.md`: chronological round log for the current round, including `Primary analysis level`, `Supporting evidence`, the starting hypothesis, selected pattern candidates and pivots when pattern triage is used, escalation reasons, meaningful code changes, correctness failures, and benchmark outcomes.
+- `summary.md`: round conclusion, optimization points that mattered, the final selected pattern direction when one guided the round, the final analysis level, supporting evidence that decided the round, and unresolved questions if deeper analysis may still be needed.
 - `opt-note.md`: top-level round ledger plus final `## Overall Summary`.
 
 ## Learned Lessons

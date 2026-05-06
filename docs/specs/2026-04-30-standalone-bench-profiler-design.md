@@ -68,6 +68,10 @@ Redesign `standalone` benchmark execution so the benchmark file becomes an impor
   - deterministic case-specific setup
 - The measured `fn` should contain only the operator execution body so profiling excludes one-time setup work.
 - The runner must not scan module globals or function names to discover cases. It only uses the list returned by `build_standalone_bench_cases(...)`.
+- Standalone benchmark cases should follow the same representative-coverage policy as `msprof`:
+  - the total case count must be `<= 20`
+  - when the operator's shape space is broad enough, prefer `8-20 representative cases`
+  - cover small, medium, and large representative shapes unless the valid input space is genuinely narrow
 
 ### `run-bench --bench-mode standalone`
 
