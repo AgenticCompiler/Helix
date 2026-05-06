@@ -91,6 +91,12 @@ Draft:
 python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/triton-agent --title "WIP: Feature" --draft
 ```
 
+Draft and prune source branch after merge:
+
+```bash
+python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/triton-agent --title "WIP: Feature" --draft --prune-source-branch
+```
+
 Fill from latest commit:
 
 ```bash
@@ -108,6 +114,7 @@ Notes:
 - `--head` is optional when the current branch can be detected from the current Git repository.
 - `--fill` uses the latest Git commit title and body to supply missing PR text.
 - `--draft` creates the PR first, then patches it into draft state through the official API.
+- `--prune-source-branch` patches the created PR with `force_remove_source_branch` so GitCode can delete the source branch after merge.
 - Current branch resolution depends on being in a valid Git repo with a recognizable branch. When that fails, use explicit `--head`.
 
 ## `list`
