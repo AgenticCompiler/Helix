@@ -39,6 +39,7 @@ Read [references/pr-command-reference.md](./references/pr-command-reference.md) 
 - Add `--base <branch>` only when the user wants a non-default target branch.
 - Use `--fill` when the user wants to reuse the latest commit title/body and did not provide better PR text explicitly.
 - Use `--draft` when the user wants the created PR immediately marked as draft.
+- Use `--prune-source-branch` when the user wants GitCode to delete the source branch after merge.
 - Use `--json` when a downstream step needs the raw API response.
 
 After creation, summarize the returned PR number, title, state, and URL for the user.
