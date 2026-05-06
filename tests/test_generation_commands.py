@@ -9,7 +9,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.cli import build_parser
-from triton_agent.commands.generation import handle_gen_eval, handle_gen_test
+from triton_agent.commands.generation import handle_gen_bench, handle_gen_eval, handle_gen_test
 from triton_agent.generation.models import GenerationOptions
 from triton_agent.generation.outputs import (
     prepare_generation_targets,
@@ -293,6 +293,56 @@ class GenerationCommandHandlerTests(unittest.TestCase):
                 (Path(tmp) / "differential_test_kernel.py").resolve(),
             )
 
+    def test_handle_gen_test_directory_input_uses_workspace_as_workdir(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            args = parser.parse_args(["gen-test", "-i", str(workspace)])
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            captured: dict[str, Optional[Path]] = {}
+
+            def _fake_run(request):
+                captured["input_path"] = request.input_path
+                captured["workdir"] = request.workdir
+                captured["output_path"] = request.output_path
+                return fake_result
+
+            with patch("triton_agent.commands.generation.run_generation_request", side_effect=_fake_run):
+                exit_code = handle_gen_test(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["input_path"], operator.resolve())
+            self.assertEqual(captured["workdir"], workspace.resolve())
+            self.assertEqual(captured["output_path"], (workspace / "test_kernel.py").resolve())
+
+    def test_handle_gen_bench_directory_input_uses_workspace_as_workdir(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            args = parser.parse_args(["gen-bench", "-i", str(workspace)])
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            captured: dict[str, Optional[Path]] = {}
+
+            def _fake_run(request):
+                captured["input_path"] = request.input_path
+                captured["workdir"] = request.workdir
+                captured["output_path"] = request.output_path
+                return fake_result
+
+            with patch("triton_agent.commands.generation.run_generation_request", side_effect=_fake_run):
+                exit_code = handle_gen_bench(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["input_path"], operator.resolve())
+            self.assertEqual(captured["workdir"], workspace.resolve())
+            self.assertEqual(captured["output_path"], (workspace / "bench_kernel.py").resolve())
+
     def test_handle_gen_eval_builds_request_with_restricted_skills(self) -> None:
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
@@ -334,6 +384,29 @@ class GenerationCommandHandlerTests(unittest.TestCase):
             )
             self.assertEqual(captured["test_mode"], "differential")
             self.assertEqual(captured["bench_mode"], "standalone")
+
+    def test_handle_gen_eval_directory_input_uses_workspace_as_workdir(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            args = parser.parse_args(["gen-eval", "-i", str(workspace)])
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            captured: dict[str, Optional[Path]] = {}
+
+            def _fake_run(request):
+                captured["input_path"] = request.input_path
+                captured["workdir"] = request.workdir
+                return fake_result
+
+            with patch("triton_agent.commands.generation.run_generation_request", side_effect=_fake_run):
+                exit_code = handle_gen_eval(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["input_path"], operator.resolve())
+            self.assertEqual(captured["workdir"], workspace.resolve())
 
     def test_handle_gen_eval_rejects_existing_generated_artifacts_without_overwrite(self) -> None:
         parser = build_parser()

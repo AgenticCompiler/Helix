@@ -96,6 +96,8 @@ Use `gen-test` when you need a correctness harness for one operator.
 uv run triton-agent gen-test --input a.py
 ```
 
+You may also point `--input` at a single operator workspace directory when that directory contains exactly one candidate operator file, for example `uv run triton-agent gen-test --input .`.
+
 Common options:
 
 - `--output test_a.py`: write to a specific path.
@@ -142,6 +144,8 @@ Use `gen-eval` when you want both correctness and benchmark assets in one step.
 ```bash
 uv run triton-agent gen-eval --input a.py
 ```
+
+You may also point `--input` at a single operator workspace directory when that directory contains exactly one candidate operator file, for example `uv run triton-agent gen-eval --input .`.
 
 What it is for:
 
@@ -213,6 +217,8 @@ Use `gen-bench` when you only need a benchmark harness.
 ```bash
 uv run triton-agent gen-bench --input a.py
 ```
+
+You may also point `--input` at a single operator workspace directory when that directory contains exactly one candidate operator file, for example `uv run triton-agent gen-bench --input .`.
 
 Common options:
 
