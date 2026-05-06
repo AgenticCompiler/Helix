@@ -10,6 +10,11 @@ from typing import Callable
 from triton_agent.models import AgentRequest, AgentResult
 from triton_agent.process_runner import InterruptPolicy, OutputFilter, run_process
 from triton_agent.optimize.prompts import build_optimize_resume_prompt
+from triton_agent.show_output_log import (
+    open_show_output_log,
+    write_show_output_attempt_result,
+    write_show_output_attempt_start,
+)
 from triton_agent.verbose import emit_verbose_lines, format_command_messages
 
 
@@ -78,17 +83,24 @@ class AgentRunner(ABC):
         *,
         stdout: Optional[TextIO] = None,
     ) -> AgentResult:
-        result = self._run_once(command, request, stdout=stdout)
-        if request.interact:
-            return result
-
-        max_retries = _code_agent_max_retries()
-        attempt = 0
-        while _is_transient_agent_failure(result) and attempt < max_retries:
-            attempt += 1
-            time.sleep(_retry_delay_seconds(attempt))
+        with open_show_output_log(request) as log_stream:
+            attempt_number = 1
+            write_show_output_attempt_start(log_stream, request=request, attempt_number=attempt_number)
             result = self._run_once(command, request, stdout=stdout)
-        return result
+            write_show_output_attempt_result(log_stream, result=result)
+            if request.interact:
+                return result
+
+            max_retries = _code_agent_max_retries()
+            attempt = 0
+            while _is_transient_agent_failure(result) and attempt < max_retries:
+                attempt += 1
+                time.sleep(_retry_delay_seconds(attempt))
+                attempt_number += 1
+                write_show_output_attempt_start(log_stream, request=request, attempt_number=attempt_number)
+                result = self._run_once(command, request, stdout=stdout)
+                write_show_output_attempt_result(log_stream, result=result)
+            return result
 
     def _run_once(
         self,

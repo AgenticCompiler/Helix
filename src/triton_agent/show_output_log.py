@@ -1,0 +1,64 @@
+from __future__ import annotations
+
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Iterator, TextIO
+
+from triton_agent.models import AgentRequest, AgentResult
+
+
+def show_output_log_path(request: AgentRequest) -> Path:
+    return request.workdir / "triton-agent-logs" / f"{request.command_kind.value}.show-output.log"
+
+
+@contextmanager
+def open_show_output_log(request: AgentRequest) -> Iterator[TextIO | None]:
+    if request.interact or not request.show_output:
+        yield None
+        return
+    path = show_output_log_path(request)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as stream:
+        yield stream
+
+
+def write_show_output_attempt_start(
+    stream: TextIO | None,
+    *,
+    request: AgentRequest,
+    attempt_number: int,
+) -> None:
+    if stream is None:
+        return
+    timestamp = _timestamp()
+    stream.write(
+        f"\n===== triton-agent show-output start "
+        f"time={timestamp} command={request.command_kind.value} agent={request.agent_name} attempt={attempt_number} =====\n"
+    )
+    stream.flush()
+
+
+def write_show_output_attempt_result(
+    stream: TextIO | None,
+    *,
+    result: AgentResult,
+) -> None:
+    if stream is None:
+        return
+    if result.stdout:
+        stream.write(result.stdout)
+        if not result.stdout.endswith("\n"):
+            stream.write("\n")
+    timestamp = _timestamp()
+    stream.write(
+        f"===== triton-agent show-output end "
+        f"time={timestamp} return_code={result.return_code} stalled={result.stalled} "
+        f"session_id={result.session_id or 'unknown'} =====\n"
+    )
+    stream.flush()
+
+
+def _timestamp() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
