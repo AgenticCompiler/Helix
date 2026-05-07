@@ -27,7 +27,7 @@ from run_runtime import (
     run_streaming_process,
 )
 
-_LOCAL_MSPROF_OUTPUT_DIR_ENV = "TRITON_AGENT_MSPROF_OUTPUT_DIR"
+_LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR"
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched op_statistic csv"
 
 
@@ -688,13 +688,13 @@ def _read_local_msprof_metrics(output_dir: Path, kernel_names: list[str]) -> Msp
 
 
 def _create_local_msprof_preserved_run_dir() -> Path | None:
-    configured_root = os.environ.get(_LOCAL_MSPROF_OUTPUT_DIR_ENV)
+    configured_root, configured_env = _resolve_local_bench_profile_output_root()
     if not configured_root:
         return None
     root = Path(configured_root).expanduser()
     if root.exists() and not root.is_dir():
         raise ValueError(
-            f"{_LOCAL_MSPROF_OUTPUT_DIR_ENV} must point to a directory: {root}"
+            f"{configured_env} must point to a directory: {root}"
         )
     if not root.exists():
         root.mkdir(parents=True, exist_ok=True)
@@ -702,6 +702,13 @@ def _create_local_msprof_preserved_run_dir() -> Path | None:
     run_dir = Path(tempfile.mkdtemp(prefix="triton-agent-msprof-", dir=str(root)))
     _set_directory_owner_only(run_dir)
     return run_dir
+
+
+def _resolve_local_bench_profile_output_root() -> tuple[str | None, str]:
+    configured_root = os.environ.get(_LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV)
+    if configured_root:
+        return configured_root, _LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV
+    return None, _LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV
 
 
 def _create_local_msprof_output_dir(

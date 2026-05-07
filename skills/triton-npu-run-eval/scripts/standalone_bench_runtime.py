@@ -21,6 +21,7 @@ from typing import Any, TypedDict, cast
 WARMUP_DEFAULT = 5
 REPEATS_DEFAULT = 50
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched profiler operator details"
+_LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR"
 
 
 class ResultPayload(TypedDict):
@@ -142,17 +143,19 @@ def run_local_standalone_bench(
     case_records: list[StandaloneCaseRecord] = []
     had_failures = False
     stderr_chunks: list[str] = []
+    preserved_run_dir = _create_local_preserved_profile_run_dir(prefix="triton-agent-standalone-bench-")
 
     for case in cases:
-        with tempfile.TemporaryDirectory(
-            prefix=f"triton-agent-standalone-bench-{_sanitize_case_id(case.case_id)}-",
-            dir=str(bench_file.parent),
-        ) as temp_dir:
+        profile_root, temp_dir = _create_local_standalone_profile_dir(case.case_id, preserved_run_dir)
+        try:
             metrics, error_message = _profile_case_with_profiler(
                 case,
                 resolution,
-                Path(temp_dir),
+                profile_root,
             )
+        finally:
+            if temp_dir is not None:
+                temp_dir.cleanup()
         if error_message is not None:
             had_failures = True
             stderr_chunks.append(f"{case.case_id}: {error_message}")
@@ -590,6 +593,45 @@ def _materialize_msprof_view(profile_root: Path, metrics: ProfilerMetrics) -> No
 
 def _profile_output_root(parent: Path, case_id: str) -> Path:
     return parent / f"PROF_{_sanitize_case_id(case_id)}_{int(time.time() * 1000)}"
+
+
+def _resolve_local_bench_profile_output_root() -> tuple[str | None, str]:
+    configured_root = os.environ.get(_LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV)
+    if configured_root:
+        return configured_root, _LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV
+    return None, _LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV
+
+
+def _create_local_preserved_profile_run_dir(prefix: str) -> Path | None:
+    configured_root, configured_env = _resolve_local_bench_profile_output_root()
+    if not configured_root:
+        return None
+    root = Path(configured_root).expanduser()
+    if root.exists() and not root.is_dir():
+        raise ValueError(f"{configured_env} must point to a directory: {root}")
+    if not root.exists():
+        root.mkdir(parents=True, exist_ok=True)
+        _set_directory_owner_only(root)
+    run_dir = Path(tempfile.mkdtemp(prefix=prefix, dir=str(root)))
+    _set_directory_owner_only(run_dir)
+    return run_dir
+
+
+def _create_local_standalone_profile_dir(
+    case_id: str,
+    preserved_run_dir: Path | None,
+) -> tuple[Path, tempfile.TemporaryDirectory[str] | None]:
+    if preserved_run_dir is None:
+        temp_dir = tempfile.TemporaryDirectory(prefix=f"triton-agent-standalone-bench-{_sanitize_case_id(case_id)}-")
+        return Path(temp_dir.name), temp_dir
+    profile_root = preserved_run_dir / f"case-{_sanitize_case_id(case_id)}"
+    profile_root.mkdir(parents=True, exist_ok=False)
+    _set_directory_owner_only(profile_root)
+    return profile_root, None
+
+
+def _set_directory_owner_only(path: Path) -> None:
+    path.chmod(0o700)
 
 
 def _sanitize_case_id(case_id: str) -> str:

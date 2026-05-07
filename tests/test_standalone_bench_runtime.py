@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -133,6 +134,73 @@ def build_standalone_bench_cases(operator_api):
                 '# kernel-source-case-a: metadata\n'
             ),
         )
+
+    def test_run_local_standalone_bench_keeps_profiler_artifacts_under_configured_output_root(self) -> None:
+        module = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            keep_root = root / "kept-profile"
+            bench_file.write_text(
+                """# bench-mode: standalone
+# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_standalone_bench_cases(operator_api):
+    def run_case_a():
+        operator_api("case-a")
+    def run_case_b():
+        operator_api("case-b")
+    return [{"id": "case-a", "fn": run_case_a}, {"id": "case-b", "fn": run_case_b}]
+""",
+                encoding="utf-8",
+            )
+            operator_file.write_text(
+                """def build_api():
+    return lambda *_args, **_kwargs: None
+""",
+                encoding="utf-8",
+            )
+
+            created_output_dirs: list[Path] = []
+
+            def _fake_profile_case(case, resolution, profile_root):
+                del resolution
+                created_output_dirs.append(profile_root)
+                profile_root.mkdir(parents=True, exist_ok=True)
+                (profile_root / f"{case.case_id}.txt").write_text("kept\n", encoding="utf-8")
+                return (
+                    {
+                        "kernel_avg_time_us": 7.5,
+                        "ops": [{"op_type": "KernelA", "avg_time_us": 7.5}],
+                    },
+                    None,
+                )
+
+            with patch.dict(
+                os.environ,
+                {"TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR": str(keep_root)},
+                clear=False,
+            ), patch.object(
+                module,
+                "_profile_case_with_profiler",
+                side_effect=_fake_profile_case,
+            ):
+                result, perf_path = module.run_local_standalone_bench(bench_file, operator_file)
+            self.assertEqual(result, make_skill_result(0, "", ""))
+            self.assertEqual(perf_path, root / "operator_case_perf.txt")
+            self.assertTrue(keep_root.exists())
+            self.assertEqual(len(created_output_dirs), 2)
+            self.assertTrue(all(path.exists() for path in created_output_dirs))
+            self.assertTrue(all(keep_root in path.parents for path in created_output_dirs))
+            self.assertTrue((created_output_dirs[0] / "case-a.txt").exists())
+            self.assertTrue((created_output_dirs[1] / "case-b.txt").exists())
+            self.assertEqual(sorted(path.name for path in created_output_dirs), ["case-case-a", "case-case-b"])
 
 
 if __name__ == "__main__":

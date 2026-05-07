@@ -289,7 +289,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 )
                 return make_skill_result(0, "", "")
 
-            with patch.dict(os.environ, {"TRITON_AGENT_MSPROF_OUTPUT_DIR": str(keep_root)}, clear=False), patch.object(
+            with patch.dict(os.environ, {"TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR": str(keep_root)}, clear=False), patch.object(
                 module,
                 "run_buffered_process",
                 return_value=make_skill_result(0, "1\n", ""),
@@ -413,7 +413,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             original_umask = os.umask(0o002)
             try:
-                with patch.dict(os.environ, {"TRITON_AGENT_MSPROF_OUTPUT_DIR": str(keep_root)}, clear=False), patch.object(
+                with patch.dict(os.environ, {"TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR": str(keep_root)}, clear=False), patch.object(
                     module,
                     "run_buffered_process",
                     return_value=make_skill_result(0, "1\n", ""),
