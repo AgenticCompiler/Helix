@@ -13,7 +13,8 @@ Before running GitCode PR API requests:
 
 1. Confirm `GC_TOKEN` is present in the environment.
 2. Confirm the target repository is known as `owner/repo`. For this workspace, prefer `midwinter1993/triton-agent` unless the user explicitly targets another repository.
-3. For PR creation, confirm the head branch is known. Prefer current-branch auto-detection, but fall back to explicit `--head` when the current directory is not a Git repository or the branch cannot be resolved.
+3. For PR creation, create a fresh topic branch for the change and use that branch as the PR head. Do not reuse an existing branch for a new PR.
+4. For PR creation, confirm the head branch is known. Prefer current-branch auto-detection after switching to the fresh topic branch, but fall back to explicit `--head` when the current directory is not a Git repository or the branch cannot be resolved.
 
 If `GC_TOKEN` is missing, stop and tell the user they need to set `GC_TOKEN="..."` before GitCode PR API requests can authenticate.
 
@@ -34,8 +35,9 @@ Read [references/pr-command-reference.md](./references/pr-command-reference.md) 
 
 - Prefer `python3 <skill-path>/scripts/gitcode_pr_api.py create -R midwinter1993/triton-agent ...` for this workspace unless the user explicitly names another repo.
 - Use explicit `--title` and `--body` when the user already knows the PR text.
-- Omit `--head` when the current Git branch is available and should become the PR head.
-- Add `--head <branch>` when branch auto-detection is unavailable or when the user names a different head branch.
+- Create a fresh topic branch for the PR first, then use that branch as the PR head.
+- Omit `--head` only when the current Git branch is the fresh topic branch and should become the PR head.
+- Add `--head <branch>` when branch auto-detection is unavailable or when you want to make the fresh topic branch explicit.
 - Add `--base <branch>` only when the user wants a non-default target branch.
 - Use `--fill` when the user wants to reuse the latest commit title/body and did not provide better PR text explicitly.
 - Use `--draft` when the user wants the created PR immediately marked as draft.
