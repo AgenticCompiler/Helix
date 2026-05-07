@@ -8,7 +8,7 @@
 - Continue to require a round-local performance artifact such as `perf.txt` so benchmark claims remain easy to compare.
 - Formalize `profile/` as the preferred round-local directory for profiler evidence captured during that round.
 - Formalize `ir/` as the preferred round-local directory for archived Triton or Bisheng IR captured during that round.
-- Keep `logs/` as a fallback for small auxiliary logs instead of using it as the primary home for profiler or IR archives.
+- Keep `triton-agent-logs/` as the shared workspace log root instead of splitting optimize archives into a separate top-level directory.
 
 ## Implementation Notes
 

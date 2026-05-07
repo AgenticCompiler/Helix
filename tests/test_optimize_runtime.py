@@ -52,7 +52,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
         supervisor_report_path = runtime_root / "supervisor-report.md"
         round_brief_path.write_text("brief\n", encoding="utf-8")
         supervisor_report_path.write_text("report\n", encoding="utf-8")
-        archive_root = workdir / "optimize-logs" / "triton-agent"
+        archive_root = workdir / "triton-agent-logs" / "triton-agent"
         run_archive_dir = archive_root / "run-001"
         shared_guidance_snapshot_path = run_archive_dir / "shared-guidance.md"
         return OptimizeSessionArtifactsState(
@@ -496,7 +496,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 worker_request.supervisor_report_path,
             )
             self.assertFalse((workdir / ".triton-agent").exists())
-            archive_root = workdir / "optimize-logs" / "triton-agent"
+            archive_root = workdir / "triton-agent-logs" / "triton-agent"
             self.assertTrue(archive_root.exists())
             run_archives = [path for path in archive_root.iterdir() if path.is_dir()]
             self.assertEqual(len(run_archives), 1)
@@ -692,7 +692,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIsNone(runner.calls[0].supervisor_report_path)
             self.assertFalse((workdir / "AGENTS.md").exists())
             self.assertFalse((workdir / ".triton-agent").exists())
-            archive_root = workdir / "optimize-logs" / "triton-agent"
+            archive_root = workdir / "triton-agent-logs" / "triton-agent"
             run_archives = [path for path in archive_root.iterdir() if path.is_dir()]
             self.assertEqual(len(run_archives), 1)
             session_lines = (run_archives[0] / "agent-sessions.jsonl").read_text(encoding="utf-8").splitlines()
@@ -1338,7 +1338,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             try:
                 (workdir / "baseline").symlink_to(outside / "baseline-real", target_is_directory=True)
                 (workdir / ".triton-agent").symlink_to(outside / "runtime-real", target_is_directory=True)
-                (workdir / "optimize-logs").symlink_to(outside / "logs-real", target_is_directory=True)
+                (workdir / "triton-agent-logs").symlink_to(outside / "logs-real", target_is_directory=True)
                 (workdir / "opt-round-1").symlink_to(outside / "round-real", target_is_directory=True)
             except OSError as exc:
                 self.skipTest(f"directory symlinks are unavailable: {exc}")
@@ -1351,7 +1351,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertFalse((workdir / "learned_lessons.md").exists())
             self.assertFalse((workdir / "baseline").exists())
             self.assertFalse((workdir / ".triton-agent").exists())
-            self.assertFalse((workdir / "optimize-logs").exists())
+            self.assertFalse((workdir / "triton-agent-logs").exists())
             self.assertFalse((workdir / "opt-round-1").exists())
             self.assertFalse(optimized.exists())
 

@@ -15,7 +15,7 @@ When `--show-output` is enabled for a non-interactive code-agent run, keep strea
 
 - Do not add a new CLI flag or log-path option in this change.
 - Do not change interactive mode behavior.
-- Do not redesign optimize session archives or replace existing `optimize-logs/` artifacts.
+- Do not redesign optimize session archives beyond keeping them under the shared `triton-agent-logs/` root.
 
 ## Storage
 

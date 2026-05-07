@@ -16,7 +16,7 @@
   - `baseline/`
   - `opt-round-*`
   - `.triton-agent/`
-  - `optimize-logs/`
+  - `triton-agent-logs/triton-agent/`
   - default `opt_<operator>.py`
 - `--reset-optimize` does not delete reusable validation harnesses:
   - `test_<operator>.py`
