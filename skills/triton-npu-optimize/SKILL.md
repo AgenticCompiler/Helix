@@ -70,8 +70,7 @@ Optimize analysis is layered.
 - Use the sibling [`../triton-npu-optimize-knowledge/SKILL.md`](../triton-npu-optimize-knowledge/SKILL.md) as the generic optimize knowledge library.
 - Read [`../triton-npu-optimize-knowledge/references/pattern_index.md`](../triton-npu-optimize-knowledge/references/pattern_index.md) before detailed pattern references.
 - Read only the one or two most relevant detailed pattern files under [`../triton-npu-optimize-knowledge/references/patterns/`](../triton-npu-optimize-knowledge/references/patterns/) after the generated index has narrowed the candidate set.
-- When code structure is still unclear at pattern triage, run `python3 scripts/extract_code_facts.py <operator-file> --format json`.
-- Use `extract_code_facts.py` as a structured code-evidence helper only; it does not diagnose symptoms or choose the pattern for you.
+- When code structure is still unclear at pattern triage, inspect the operator file directly and narrow candidates with the generated pattern index.
 - Very strongly consider using subagents to read pattern references, scan for potentially useful optimization ideas, and report back which patterns look promising for the current kernel.
 - When subagents are available, prefer using them to broaden pattern exploration before committing to the round hypothesis.
 - Pattern references are helpful guidance, not the only allowed source of ideas.

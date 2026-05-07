@@ -411,7 +411,7 @@ class GenerationContractTests(unittest.TestCase):
             "../triton-npu-optimize-knowledge/references/pattern_index.md",
             optimize,
         )
-        self.assertIn("extract_code_facts.py", optimize)
+        self.assertNotIn("extract_code_facts.py", optimize)
 
     def test_optimize_pattern_cards_promote_existing_information_into_structured_sections(
         self,
