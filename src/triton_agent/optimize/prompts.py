@@ -24,7 +24,7 @@ def layered_analysis_lines(*, round_scope: str) -> list[str]:
         "Use pattern triage only to decide whether a strong pattern-backed hypothesis already exists.",
         "Use the staged `triton-npu-optimize-knowledge` skill for generic pattern and symptom references.",
         "Read the staged `triton-npu-optimize-knowledge` skill's generated `references/pattern_index.md` before detailed pattern references.",
-        "Use the staged code-fact extractor when code structure is still unclear at pattern triage.",
+        "Inspect the operator file directly when code structure is still unclear at pattern triage.",
         "Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.",
         "Use the staged `triton-npu-optimize-knowledge` skill's symptom cards to narrow pattern candidates after structured profiler or IR evidence exists.",
         "Use IR attribution only after profiler-backed symptoms need explanation.",

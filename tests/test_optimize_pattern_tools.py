@@ -210,30 +210,5 @@ Short summary.
         ).read_text(encoding="utf-8")
         self.assertEqual(generated, checked_in)
 
-    def test_extract_code_facts_reports_manual_reduction_and_index_load(self) -> None:
-        module = _load_skill_script(
-            "skills/triton-npu-optimize/scripts/extract_code_facts.py"
-        )
-        with tempfile.TemporaryDirectory() as tmp:
-            operator = Path(tmp) / "kernel.py"
-            operator.write_text(
-                """
-import triton.language as tl
-
-def kernel(x_ptr, idx_ptr):
-    acc = 0
-    for k in range(0, 128, 32):
-        idx = tl.load(idx_ptr + k)
-        val = tl.load(x_ptr + idx)
-        acc += val
-""",
-                encoding="utf-8",
-            )
-            payload = module.extract_code_facts(operator)
-            self.assertIn("manual_k_reduction", payload["facts"])
-            self.assertIn("index_based_load", payload["facts"])
-            self.assertNotIn("weak_pipeline_overlap", payload["facts"])
-
-
 if __name__ == "__main__":
     unittest.main()

@@ -4024,7 +4024,7 @@ class PromptTests(unittest.TestCase):
             prompt,
         )
         self.assertIn(
-            "Use the staged code-fact extractor when code structure is still unclear at pattern triage.",
+            "Inspect the operator file directly when code structure is still unclear at pattern triage.",
             prompt,
         )
         self.assertIn(
