@@ -180,10 +180,19 @@ def run_remote_bench(
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
     )
+    local_bench_cases = bench_file.with_suffix(".json")
     try:
         copy_file_to_remote(
             spec, bench_file, f"{remote_workspace}/{bench_file.name}", verbose=verbose, stderr=stderr
         )
+        if local_bench_cases.exists():
+            copy_file_to_remote(
+                spec,
+                local_bench_cases,
+                f"{remote_workspace}/{local_bench_cases.name}",
+                verbose=verbose,
+                stderr=stderr,
+            )
         copy_file_to_remote(
             spec,
             operator_file,
