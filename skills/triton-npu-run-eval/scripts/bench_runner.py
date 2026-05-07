@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import ast
+import contextlib
 import csv
 import importlib.util
 import json
 import math
 import os
+import shutil
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -158,9 +160,13 @@ def run_local_bench(
     operator_file: Path,
     bench_mode: str,
 ) -> tuple[ResultPayload, Path | None]:
-    if bench_mode == "msprof":
-        return _run_local_bench_msprof(bench_file, operator_file)
-    return _run_local_bench_standalone(bench_file, operator_file)
+    with _local_bench_workdir(bench_file.parent):
+        try:
+            if bench_mode == "msprof":
+                return _run_local_bench_msprof(bench_file, operator_file)
+            return _run_local_bench_standalone(bench_file, operator_file)
+        finally:
+            _cleanup_local_bench_extra_info(bench_file.parent)
 
 
 def run_remote_bench(
@@ -214,6 +220,23 @@ def _run_local_bench_standalone(
     operator_file: Path,
 ) -> tuple[ResultPayload, Path | None]:
     return run_local_standalone_bench(bench_file, operator_file)
+
+
+@contextlib.contextmanager
+def _local_bench_workdir(workdir: Path):
+    original_cwd = Path.cwd()
+    os.chdir(workdir)
+    try:
+        yield
+    finally:
+        os.chdir(original_cwd)
+
+
+def _cleanup_local_bench_extra_info(workdir: Path) -> None:
+    extra_info_dir = workdir / "extra-info"
+    if not extra_info_dir.is_dir():
+        return
+    shutil.rmtree(extra_info_dir)
 
 
 def _run_remote_bench_standalone(

@@ -79,6 +79,45 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             self.assertEqual(perf_path, root / "opt_abs_perf.txt")
 
+    def test_run_local_bench_standalone_runs_in_bench_workdir_and_cleans_extra_info(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_dir = root / "generated"
+            bench_dir.mkdir()
+            bench_file = bench_dir / "bench_abs.py"
+            operator_file = root / "abs.py"
+            extra_info = bench_dir / "extra-info"
+            extra_info.mkdir()
+            bench_file.write_text("# bench-mode: standalone\n# kernel: abs_kernel\n", encoding="utf-8")
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+
+            observed_cwds: list[Path] = []
+            fake_result = make_skill_result(0, "", "")
+            perf_file = root / "abs_perf.txt"
+
+            def _fake_helper(passed_bench: Path, passed_operator: Path):
+                del passed_bench, passed_operator
+                observed_cwds.append(Path.cwd())
+                return fake_result, perf_file
+
+            with patch.object(
+                module,
+                "run_local_standalone_bench",
+                create=True,
+                side_effect=_fake_helper,
+            ):
+                result, resolved_perf = module.run_local_bench(
+                    bench_file,
+                    operator_file,
+                    "standalone",
+                )
+
+            self.assertEqual(result["return_code"], 0)
+            self.assertEqual(resolved_perf, perf_file)
+            self.assertEqual(observed_cwds, [bench_dir.resolve()])
+            self.assertFalse(extra_info.exists())
+
     def test_run_local_bench_msprof_queries_case_count_and_runs_each_case(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -151,6 +190,95 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertIn("--bench", case_command)
             self.assertTrue(created_output_dirs)
             self.assertTrue(all(not path.exists() for path in created_output_dirs))
+
+    def test_run_local_bench_msprof_cleans_extra_info_in_bench_workdir(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            extra_info = root / "extra-info"
+            extra_info.mkdir()
+            bench_file.write_text(
+                "# bench-mode: msprof\n# api-name: abs_\n# kernel: OpB\n",
+                encoding="utf-8",
+            )
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+
+            def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
+                del stall_timeout_seconds, stdout, kwargs
+                self.assertEqual(workdir, str(root))
+                output_dir = Path(command[1].split("=", 1)[1])
+                (output_dir / "op_statistic_1.csv").write_text(
+                    "\n".join(
+                        [
+                            "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                            "0,OpB,AI_CORE,1,20,2,5.0,7,100",
+                        ]
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return make_skill_result(0, "", "")
+
+            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+                module,
+                "run_streaming_process",
+                side_effect=_fake_streaming,
+            ):
+                result, perf_path = module.run_local_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                )
+
+            self.assertEqual(result["return_code"], 0)
+            self.assertIsNotNone(perf_path)
+            self.assertFalse(extra_info.exists())
+
+    def test_run_local_bench_preserves_non_directory_extra_info_entry(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            extra_info = root / "extra-info"
+            extra_info.write_text("keep me\n", encoding="utf-8")
+            bench_file.write_text(
+                "# bench-mode: msprof\n# api-name: abs_\n# kernel: OpB\n",
+                encoding="utf-8",
+            )
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+
+            def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
+                del workdir, stall_timeout_seconds, stdout, kwargs
+                output_dir = Path(command[1].split("=", 1)[1])
+                (output_dir / "op_statistic_1.csv").write_text(
+                    "\n".join(
+                        [
+                            "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                            "0,OpB,AI_CORE,1,20,2,5.0,7,100",
+                        ]
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return make_skill_result(0, "", "")
+
+            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+                module,
+                "run_streaming_process",
+                side_effect=_fake_streaming,
+            ):
+                result, perf_path = module.run_local_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                )
+
+            self.assertEqual(result["return_code"], 0)
+            self.assertIsNotNone(perf_path)
+            self.assertTrue(extra_info.is_file())
 
     def test_run_local_bench_msprof_suppresses_live_stream_output(self) -> None:
         module = load_bench_runner_module()
