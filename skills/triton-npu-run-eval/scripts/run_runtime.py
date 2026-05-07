@@ -314,6 +314,7 @@ def run_remote_command_streaming(
     spec: RemoteSpec,
     remote_workspace: str,
     remote_command: str | Sequence[str],
+    stdout: TextIO | None = None,
     verbose: bool = False,
     stderr: TextIO | None = None,
     extra_env: dict[str, str] | None = None,
@@ -325,7 +326,7 @@ def run_remote_command_streaming(
         f"cd {shlex.quote(remote_workspace)} && {env_prefix + ' ' if env_prefix else ''}{command_text}",
     )
     _maybe_emit_remote_command(command, verbose, stderr)
-    return run_streaming_process(command, ".", stall_timeout_seconds=900)
+    return run_streaming_process(command, ".", stall_timeout_seconds=900, stdout=stdout)
 
 
 def run_remote_command_buffered(

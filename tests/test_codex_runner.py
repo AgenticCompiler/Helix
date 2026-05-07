@@ -298,6 +298,64 @@ class CodexRunnerTests(unittest.TestCase):
                 runner.run(request)
             mocked.assert_called_once()
 
+    def test_show_output_filters_bare_hunk_fragments_from_terminal_and_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = CodexRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=True,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+            )
+            helper = workspace / "emit_sample.py"
+            helper.write_text(
+                "import sys\n"
+                "chunks = [\n"
+                "    'baseline/perf.txt 368.0119\\n',\n"
+                "    'opt-round-1/opt_triton_10_SwigluQuant_perf.txt 299.39092500000004\\n\\n',\n"
+                "    '     tl.store(scale_ptr + row, inv_scale)\\n\\n',\n"
+                "    '@@ -10,0 +11,3 @@\\n',\n"
+                "    '+@triton.jit\\n',\n"
+                "    '+def _round_half_to_even_tl(values):\\n',\n"
+                "    '+    abs_values = tl.abs(values)\\n',\n"
+                "    'done\\n',\n"
+                "]\n"
+                "for chunk in chunks:\n"
+                "    sys.stdout.write(chunk)\n"
+                "    sys.stdout.flush()\n",
+                encoding="utf-8",
+            )
+            terminal_output = StringIO()
+
+            with patch.object(runner, "build_command", return_value=[sys.executable, str(helper)]):
+                result = runner.run(request, stdout=terminal_output)
+
+            self.assertEqual(result.return_code, 0)
+            terminal_text = _normalize_newlines(terminal_output.getvalue())
+            result_text = _normalize_newlines(result.stdout)
+            log_path = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_text = _normalize_newlines(log_path.read_text(encoding="utf-8"))
+
+            for text in (terminal_text, result_text, log_text):
+                self.assertIn("baseline/perf.txt 368.0119", text)
+                self.assertIn("opt-round-1/opt_triton_10_SwigluQuant_perf.txt 299.39092500000004", text)
+                self.assertIn("     tl.store(scale_ptr + row, inv_scale)", text)
+                self.assertIn("done", text)
+                self.assertNotIn("@@ -10,0 +11,3 @@", text)
+                self.assertNotIn("+@triton.jit", text)
+                self.assertNotIn("+def _round_half_to_even_tl(values):", text)
+
     def test_buffered_mode_uses_buffered_process_runner(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -379,6 +437,10 @@ class CodexRunnerTests(unittest.TestCase):
 
 def _ok_result() -> AgentResult:
     return AgentResult(return_code=0, stdout="", stderr="")
+
+
+def _normalize_newlines(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 if __name__ == "__main__":

@@ -3235,11 +3235,15 @@ class PathResolutionTests(unittest.TestCase):
                 operator.resolve(),
                 "standalone",
             )
-            self.assertIn("Return code: 0", stdout.getvalue())
-            self.assertIn(f"Perf file: {perf_file}", stdout.getvalue())
-            self.assertIn(f"Saved perf file to: {perf_file}", stdout.getvalue())
+            self.assertEqual(
+                stdout.getvalue(),
+                (
+                    f"Perf file: {perf_file}\n"
+                    "Hint: use `compare-perf` to inspect this perf artifact instead of reading it directly.\n"
+                ),
+            )
             self.assertNotIn("latency-a", stdout.getvalue())
-            self.assertIn("bench stderr", stderr.getvalue())
+            self.assertEqual(stderr.getvalue(), "")
 
     def test_main_run_bench_reads_mode_from_metadata_when_flag_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

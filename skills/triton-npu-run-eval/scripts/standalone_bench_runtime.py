@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import ast
 import csv
+from contextlib import redirect_stderr, redirect_stdout
 import importlib
 import importlib.util
 import json
@@ -432,39 +433,42 @@ def _profile_case_with_profiler(
             data_simplification=False,
         )
 
-        case.fn()
-        _synchronize(torch)
-
-        def _run_once() -> None:
+        with open(os.devnull, "w", encoding="utf-8") as quiet_output, redirect_stdout(
+            quiet_output
+        ), redirect_stderr(quiet_output):
             case.fn()
             _synchronize(torch)
 
-        skip_first = 1 + case.warmup
-        total_steps = skip_first + case.repeats
+            def _run_once() -> None:
+                case.fn()
+                _synchronize(torch)
 
-        with profiler_api.profile(
-            activities=[
-                profiler_api.ProfilerActivity.NPU,
-                profiler_api.ProfilerActivity.CPU,
-            ],
-            schedule=profiler_api.schedule(
-                wait=0,
-                warmup=case.warmup,
-                active=case.repeats,
-                repeat=1,
-                skip_first=skip_first,
-            ),
-            on_trace_ready=profiler_api.tensorboard_trace_handler(str(profile_root)),
-            record_shapes=False,
-            profile_memory=False,
-            with_stack=False,
-            with_flops=False,
-            with_modules=False,
-            experimental_config=experimental_config,
-        ) as profiler:
-            for _ in range(total_steps):
-                _run_once()
-                profiler.step()
+            skip_first = 1 + case.warmup
+            total_steps = skip_first + case.repeats
+
+            with profiler_api.profile(
+                activities=[
+                    profiler_api.ProfilerActivity.NPU,
+                    profiler_api.ProfilerActivity.CPU,
+                ],
+                schedule=profiler_api.schedule(
+                    wait=0,
+                    warmup=case.warmup,
+                    active=case.repeats,
+                    repeat=1,
+                    skip_first=skip_first,
+                ),
+                on_trace_ready=profiler_api.tensorboard_trace_handler(str(profile_root)),
+                record_shapes=False,
+                profile_memory=False,
+                with_stack=False,
+                with_flops=False,
+                with_modules=False,
+                experimental_config=experimental_config,
+            ) as profiler:
+                for _ in range(total_steps):
+                    _run_once()
+                    profiler.step()
 
         return _read_profiler_metrics(profile_root, case.repeats, resolution.kernel_names), None
     except Exception as exc:
