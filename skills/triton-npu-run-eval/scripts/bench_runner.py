@@ -161,12 +161,9 @@ def run_local_bench(
     bench_mode: str,
 ) -> tuple[ResultPayload, Path | None]:
     with _local_bench_workdir(bench_file.parent):
-        try:
-            if bench_mode == "msprof":
-                return _run_local_bench_msprof(bench_file, operator_file)
-            return _run_local_bench_standalone(bench_file, operator_file)
-        finally:
-            _cleanup_local_bench_extra_info(bench_file.parent)
+        if bench_mode == "msprof":
+            return _run_local_bench_msprof(bench_file, operator_file)
+        return _run_local_bench_standalone(bench_file, operator_file)
 
 
 def run_remote_bench(
@@ -403,6 +400,7 @@ def _run_local_bench_msprof(
         finally:
             if temp_dir is not None:
                 temp_dir.cleanup()
+            _cleanup_local_bench_extra_info(bench_file.parent)
 
     perf_path = _write_perf_lines(
         _perf_output_path(bench_file, operator_file),
