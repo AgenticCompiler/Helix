@@ -34,6 +34,15 @@ class RemoteSpec(TypedDict):
     port: int | None
 
 
+def local_python_executable() -> str:
+    configured = os.environ.get("TRITON_AGENT_PYTHON", "").strip()
+    if configured:
+        return configured
+    if getattr(sys, "frozen", False):
+        return "python"
+    return sys.executable
+
+
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 

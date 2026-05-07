@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+# pyright: reportPrivateUsage=false
+
 import shutil
-import sys
 from pathlib import Path
+from typing import TextIO
 
 import compare_result_payloads as result_payload_compare
 from run_runtime import (
+    RemoteSpec,
     ResultPayload,
     cleanup_remote_workspace,
     copy_file_from_remote,
     copy_file_to_remote,
     create_remote_workspace,
+    local_python_executable,
     result_succeeded,
     run_streaming_process,
     run_remote_command_buffered,
@@ -30,7 +34,7 @@ def run_local_test(
     operator_file: Path,
     test_mode: str,
 ) -> tuple[ResultPayload, Path | None]:
-    command = [sys.executable, str(test_file), "--operator-file", str(operator_file)]
+    command = [local_python_executable(), str(test_file), "--operator-file", str(operator_file)]
     result = run_streaming_process(command, str(test_file.parent), stall_timeout_seconds=900)
     archived_result = None
     if test_mode == "differential" and result_succeeded(result):
@@ -64,7 +68,7 @@ def run_remote_test(
     remote_workdir: str | None,
     keep_remote_workdir: bool = False,
     verbose: bool = False,
-    stderr=None,
+    stderr: TextIO | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
@@ -130,7 +134,7 @@ def compare_remote_result_files(
     remote: str,
     remote_workdir: str | None,
     verbose: bool = False,
-    stderr=None,
+    stderr: TextIO | None = None,
 ) -> int:
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
@@ -200,12 +204,12 @@ def _compare_result_files_impl(oracle_result: Path, new_result: Path, compare_le
 
 
 def _copy_remote_differential_result(
-    spec,
+    spec: RemoteSpec,
     remote_workspace: str,
     test_file: Path,
     operator_file: Path,
     verbose: bool = False,
-    stderr=None,
+    stderr: TextIO | None = None,
 ) -> Path:
     result = run_remote_command_buffered(
         spec,
