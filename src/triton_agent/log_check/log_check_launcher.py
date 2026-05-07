@@ -7,11 +7,12 @@ from pathlib import Path
 
 from triton_agent.backends.factory import create_runner
 from triton_agent.models import AgentRequest, CommandKind
+from triton_agent.resources import application_root, skills_root
 
 
 def _patterns_relative_path_from_script() -> str:
     script_dir = Path(__file__).resolve().parent
-    patterns_dir = Path(__file__).resolve().parents[3] / "skills" / "triton-npu-optimize" / "references" / "patterns"
+    patterns_dir = skills_root() / "triton-npu-optimize" / "references" / "patterns"
     return Path(os.path.relpath(patterns_dir, start=script_dir)).as_posix()
 
 
@@ -167,7 +168,7 @@ def run_log_check(
         )
         return 2
 
-    repo_root = Path(__file__).resolve().parents[3]
+    repo_root = application_root()
     request = build_log_check_request(
         target_path=normalized_target,
         workdir=repo_root,

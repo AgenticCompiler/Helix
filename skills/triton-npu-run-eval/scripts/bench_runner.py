@@ -21,6 +21,7 @@ from run_runtime import (
     copy_file_from_remote,
     copy_file_to_remote,
     create_remote_workspace,
+    local_python_executable,
     make_result,
     result_succeeded,
     run_buffered_process,
@@ -321,7 +322,7 @@ def _run_local_bench_msprof(
 ) -> tuple[ResultPayload, Path | None]:
     resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
     count_result = run_buffered_process(
-        [sys.executable, bench_file.name, "--num-bench"],
+        [local_python_executable(), bench_file.name, "--num-bench"],
         str(bench_file.parent),
         stall_timeout_seconds=900,
     )
@@ -344,7 +345,7 @@ def _run_local_bench_msprof(
             command = [
                 "msprof",
                 f"--output={output_dir}",
-                sys.executable,
+                local_python_executable(),
                 bench_file.name,
                 "--operator-file",
                 operator_arg,

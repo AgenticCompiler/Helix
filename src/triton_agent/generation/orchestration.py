@@ -9,6 +9,7 @@ from triton_agent.generation.models import GenerationOptions
 from triton_agent.generation.outputs import resolve_generation_output_path
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
+from triton_agent.resources import skills_root
 from triton_agent.skills import SkillLinkManager
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
@@ -80,8 +81,7 @@ def run_generation_request(
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
 ) -> AgentResult:
-    repo_root = Path(__file__).resolve().parents[3]
-    manager = SkillLinkManager(repo_root / "skills")
+    manager = SkillLinkManager(skills_root())
     links = manager.prepare_skills(
         request.agent_name,
         request.workdir,
