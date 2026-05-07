@@ -157,6 +157,7 @@ def run_local_standalone_bench(
         finally:
             if temp_dir is not None:
                 temp_dir.cleanup()
+            _cleanup_local_bench_extra_info(bench_file.parent)
         if error_message is not None:
             had_failures = True
             stderr_chunks.append(f"{case.case_id}: {error_message}")
@@ -650,6 +651,13 @@ def _perf_output_path(operator_file: Path) -> Path:
 def _write_perf_lines(path: Path, lines: list[str]) -> Path:
     path.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
     return path
+
+
+def _cleanup_local_bench_extra_info(workdir: Path) -> None:
+    extra_info_dir = workdir / "extra-info"
+    if not extra_info_dir.is_dir():
+        return
+    shutil.rmtree(extra_info_dir)
 
 
 def _render_case_records(records: list[StandaloneCaseRecord]) -> list[str]:

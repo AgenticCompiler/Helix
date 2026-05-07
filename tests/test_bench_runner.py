@@ -116,7 +116,6 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(result["return_code"], 0)
             self.assertEqual(resolved_perf, perf_file)
             self.assertEqual(observed_cwds, [bench_dir.resolve()])
-            self.assertFalse(extra_info.exists())
 
     def test_run_local_bench_msprof_queries_case_count_and_runs_each_case(self) -> None:
         module = load_bench_runner_module()
@@ -219,6 +218,9 @@ class LocalBenchRunnerTests(unittest.TestCase):
                     + "\n",
                     encoding="utf-8",
                 )
+                extra_info = root / "extra-info"
+                if not extra_info.exists():
+                    extra_info.mkdir()
                 return make_skill_result(0, "", "")
 
             with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(

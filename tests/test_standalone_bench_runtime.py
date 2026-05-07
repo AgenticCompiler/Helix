@@ -207,6 +207,67 @@ def build_standalone_bench_cases(operator_api):
             self.assertTrue((created_output_dirs[1] / "case-b.txt").exists())
             self.assertEqual(sorted(path.name for path in created_output_dirs), ["case-case-a", "case-case-b"])
 
+    def test_run_local_standalone_bench_cleans_extra_info_after_each_case(self) -> None:
+        module = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            extra_info = root / "extra-info"
+            extra_info.mkdir()
+            bench_file.write_text(
+                """# bench-mode: standalone
+# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_standalone_bench_cases(operator_api):
+    def run_case_a():
+        operator_api("case-a")
+    def run_case_b():
+        operator_api("case-b")
+    return [{"id": "case-a", "fn": run_case_a}, {"id": "case-b", "fn": run_case_b}]
+""",
+                encoding="utf-8",
+            )
+            operator_file.write_text(
+                """def build_api():
+    return lambda *_args, **_kwargs: None
+""",
+                encoding="utf-8",
+            )
+
+            seen_after_cleanup: list[bool] = []
+
+            def _fake_profile_case(case, resolution, profile_root):
+                del resolution, profile_root
+                seen_after_cleanup.append(extra_info.exists())
+                if case.case_id == "case-a":
+                    if not extra_info.exists():
+                        extra_info.mkdir()
+                return (
+                    {
+                        "kernel_avg_time_us": 7.5,
+                        "ops": [{"op_type": "KernelA", "avg_time_us": 7.5}],
+                    },
+                    None,
+                )
+
+            with patch.object(
+                module,
+                "_profile_case_with_profiler",
+                side_effect=_fake_profile_case,
+            ):
+                result, perf_path = module.run_local_standalone_bench(bench_file, operator_file)
+
+            self.assertEqual(result, make_skill_result(0, "", ""))
+            self.assertEqual(perf_path, root / "operator_case_perf.txt")
+            self.assertEqual(seen_after_cleanup, [True, False])
+            self.assertFalse(extra_info.exists())
+
     def test_profile_case_with_profiler_suppresses_profiler_output(self) -> None:
         module = load_standalone_bench_runtime_module()
 
