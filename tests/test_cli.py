@@ -2353,6 +2353,81 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(captured["bench_mode"], "standalone")
             self.assertFalse(captured["resume_existing_session"])
 
+    def test_main_optimize_resume_auto_allows_baseline_without_opt_note(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            baseline_dir = root / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                "\n".join(
+                    [
+                        "{",
+                        '  "baseline_kind": "prepared",',
+                        '  "source_operator": "kernel.py",',
+                        '  "baseline_operator": "baseline/kernel.py",',
+                        '  "test_file": "differential_test_kernel.py",',
+                        '  "test_mode": "differential",',
+                        '  "bench_file": "bench_kernel.py",',
+                        '  "bench_mode": "standalone",',
+                        '  "perf_artifact": "baseline/perf.txt",',
+                        '  "correctness_status": "passed",',
+                        '  "benchmark_status": "passed",',
+                        '  "baseline_established": true',
+                        "}",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+
+            captured = {}
+
+            def _fake_build_prompt(
+                command_kind,
+                input_path,
+                operator_path,
+                output_path,
+                test_mode,
+                bench_mode,
+                force_overwrite,
+                remote,
+                remote_workdir,
+                min_rounds,
+                resume_existing_session,
+                supervise="off",
+                target_chip=None,
+            ):
+                captured["test_mode"] = test_mode
+                captured["bench_mode"] = bench_mode
+                captured["resume_existing_session"] = resume_existing_session
+                return "Prompt body"
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
+                with patch(
+                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
+                    return_value=fake_result,
+                ):
+                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                        with patch(
+                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                            return_value=[],
+                        ):
+                            with patch(
+                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
+                                return_value=[],
+                            ):
+                                exit_code = main(["optimize", "-i", str(operator), "--resume", "auto"])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["test_mode"], "differential")
+            self.assertEqual(captured["bench_mode"], "standalone")
+            self.assertFalse(captured["resume_existing_session"])
+
     def test_main_optimize_resume_auto_rejects_partial_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -65,8 +65,12 @@ def _classify_optimize_workspace(
     has_bench = bench_harness.exists()
     has_baseline_dir = baseline_dir(workdir).exists()
 
-    has_session_artifacts = has_opt_note or has_rounds or has_baseline_dir
-    if not has_session_artifacts:
+    has_optimize_session_markers = has_opt_note or has_rounds
+    if not has_optimize_session_markers:
+        if has_baseline_dir:
+            baseline_issue = _baseline_issue(workdir)
+            if baseline_issue is not None:
+                return WorkspaceInspection("partial-session", baseline_issue, None, None)
         return WorkspaceInspection(
             state="no-session",
             detail=None,
