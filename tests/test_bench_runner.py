@@ -2,6 +2,8 @@ import os
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -91,7 +93,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             created_output_dirs: list[Path] = []
 
-            def _fake_streaming(command, workdir, stall_timeout_seconds):
+            def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
                 self.assertEqual(workdir, str(root))
                 self.assertEqual(stall_timeout_seconds, 900)
                 self.assertEqual(command[0], "msprof")
@@ -150,6 +152,50 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertTrue(created_output_dirs)
             self.assertTrue(all(not path.exists() for path in created_output_dirs))
 
+    def test_run_local_bench_msprof_suppresses_live_stream_output(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            bench_file.write_text(
+                "# bench-mode: msprof\n# api-name: abs_\n# kernel: OpB\n",
+                encoding="utf-8",
+            )
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+
+            def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
+                del workdir, stall_timeout_seconds, kwargs
+                print("noisy live output", file=stdout or sys.stdout, end="")
+                output_dir = Path(command[1].split("=", 1)[1])
+                (output_dir / "op_statistic_1.csv").write_text(
+                    "\n".join(
+                        [
+                            "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                            "0,OpB,AI_CORE,1,20,2,5.0,7,100",
+                        ]
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return make_skill_result(0, "profile stdout\n", "")
+
+            stdout = StringIO()
+            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+                module,
+                "run_streaming_process",
+                side_effect=_fake_streaming,
+            ), redirect_stdout(stdout):
+                result, perf_path = module.run_local_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                )
+
+            self.assertEqual(result["return_code"], 0)
+            self.assertIsNotNone(perf_path)
+            self.assertEqual(stdout.getvalue(), "")
+
     def test_run_local_bench_msprof_sums_multiple_declared_kernels(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -162,7 +208,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
-            def _fake_streaming(command, workdir, stall_timeout_seconds):
+            def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
                 self.assertEqual(workdir, str(root))
                 self.assertEqual(stall_timeout_seconds, 900)
                 self.assertEqual(command[0], "msprof")
@@ -217,7 +263,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
-            def _fake_streaming(command, workdir, stall_timeout_seconds):
+            def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
                 self.assertEqual(command[0], "msprof")
                 self.assertTrue(command[1].startswith("--output="))
                 output_dir = Path(command[1].split("=", 1)[1])
@@ -272,7 +318,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             created_output_dirs: list[Path] = []
 
-            def _fake_streaming(command, workdir, stall_timeout_seconds):
+            def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
                 self.assertEqual(command[0], "msprof")
                 self.assertTrue(command[1].startswith("--output="))
                 output_dir = Path(command[1].split("=", 1)[1])
@@ -334,7 +380,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
-            def _fake_streaming(command, workdir, stall_timeout_seconds):
+            def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
                 self.assertEqual(workdir, str(root))
                 self.assertEqual(stall_timeout_seconds, 900)
                 case_idx = int(command[-1])
@@ -396,7 +442,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             created_output_dirs: list[Path] = []
 
-            def _fake_streaming(command, workdir, stall_timeout_seconds):
+            def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
                 output_dir = Path(command[1].split("=", 1)[1])
                 created_output_dirs.append(output_dir)
                 (output_dir / "op_statistic_1.csv").write_text(
@@ -475,7 +521,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             bench_file.write_text("# bench-mode: msprof\n# kernel: MissingKernel\n", encoding="utf-8")
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
-            def _fake_streaming(command, workdir, stall_timeout_seconds):
+            def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
                 output_dir = Path(command[1].split("=", 1)[1])
                 (output_dir / "op_statistic_1.csv").write_text(
                     "\n".join(

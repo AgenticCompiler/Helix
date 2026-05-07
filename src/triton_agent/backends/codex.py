@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from collections.abc import Mapping
 from typing import Callable, Optional, cast
@@ -44,6 +45,10 @@ class CodexRunner(AgentRunner):
 
 
 class _UnifiedDiffFilter:
+    _HUNK_HEADER_RE = re.compile(
+        r"^@@ -(?P<old_start>\d+)(?:,(?P<old_count>\d+))? "
+        r"\+(?P<new_start>\d+)(?:,(?P<new_count>\d+))? @@(?: .*)?$"
+    )
     _DIFF_METADATA_PREFIXES = (
         "diff --git ",
         "index ",
@@ -64,6 +69,9 @@ class _UnifiedDiffFilter:
         self._buffer = ""
         self._in_diff = False
         self._in_hunk = False
+        self._old_hunk_lines_remaining = 0
+        self._new_hunk_lines_remaining = 0
+        self._last_line_was_hunk_content = False
 
     def feed(self, text: str, *, flush: bool = False) -> str:
         self._buffer += text
@@ -88,39 +96,93 @@ class _UnifiedDiffFilter:
         return "".join(emitted)
 
     def _process_line(self, line: str) -> str:
-        bare = line.rstrip("\n")
+        bare = line.rstrip("\r\n")
         if not self._in_diff:
             if bare.startswith("diff --git "):
-                self._in_diff = True
-                self._in_hunk = False
+                self._start_diff()
+                return ""
+            if self._start_hunk(bare):
                 return ""
             return line
 
-        if bare.startswith("@@ "):
-            self._in_hunk = True
+        if self._in_hunk:
+            consumed = self._consume_hunk_line(bare)
+            if consumed is not None:
+                return consumed
+            self._reset_diff_state()
+            return self._process_line(line)
+
+        if bare == "\\ No newline at end of file" and self._last_line_was_hunk_content:
+            self._last_line_was_hunk_content = False
+            return ""
+
+        if bare.startswith("diff --git "):
+            self._start_diff()
+            return ""
+        if self._start_hunk(bare):
             return ""
         if bare.startswith(self._DIFF_METADATA_PREFIXES):
-            self._in_hunk = False
-            return ""
-        if self._in_hunk and self._is_hunk_line(bare):
+            self._last_line_was_hunk_content = False
             return ""
 
-        self._in_diff = False
-        self._in_hunk = False
-        if bare.startswith("diff --git "):
-            self._in_diff = True
-            self._in_hunk = False
-            return ""
+        self._reset_diff_state()
         return line
 
-    def _is_hunk_line(self, line: str) -> bool:
-        if line.startswith(("+", "-")):
-            return True
+    def _start_diff(self) -> None:
+        self._in_diff = True
+        self._in_hunk = False
+        self._old_hunk_lines_remaining = 0
+        self._new_hunk_lines_remaining = 0
+        self._last_line_was_hunk_content = False
+
+    def _reset_diff_state(self) -> None:
+        self._in_diff = False
+        self._in_hunk = False
+        self._old_hunk_lines_remaining = 0
+        self._new_hunk_lines_remaining = 0
+        self._last_line_was_hunk_content = False
+
+    def _start_hunk(self, line: str) -> bool:
+        match = self._HUNK_HEADER_RE.match(line)
+        if match is None:
+            return False
+        self._start_diff()
+        self._in_hunk = True
+        self._old_hunk_lines_remaining = _parse_hunk_count(match.group("old_count"))
+        self._new_hunk_lines_remaining = _parse_hunk_count(match.group("new_count"))
+        return True
+
+    def _consume_hunk_line(self, line: str) -> str | None:
         if line == "\\ No newline at end of file":
-            return True
+            self._last_line_was_hunk_content = False
+            return ""
+
         if line.startswith(" "):
-            return len(line) == 1 or not line.startswith("  ")
-        return False
+            if self._old_hunk_lines_remaining <= 0 or self._new_hunk_lines_remaining <= 0:
+                return None
+            self._old_hunk_lines_remaining -= 1
+            self._new_hunk_lines_remaining -= 1
+        elif line.startswith("-"):
+            if self._old_hunk_lines_remaining <= 0:
+                return None
+            self._old_hunk_lines_remaining -= 1
+        elif line.startswith("+"):
+            if self._new_hunk_lines_remaining <= 0:
+                return None
+            self._new_hunk_lines_remaining -= 1
+        else:
+            return None
+
+        self._last_line_was_hunk_content = True
+        if self._old_hunk_lines_remaining == 0 and self._new_hunk_lines_remaining == 0:
+            self._in_hunk = False
+        return ""
+
+
+def _parse_hunk_count(raw_count: str | None) -> int:
+    if raw_count is None:
+        return 1
+    return int(raw_count)
 
 
 def _extract_session_id(line: str) -> Optional[str]:

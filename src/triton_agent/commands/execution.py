@@ -14,6 +14,8 @@ from triton_agent.execution import (
 )
 from triton_agent.output import render_result
 
+_RUN_BENCH_HINT = "Hint: use `compare-perf` to inspect this perf artifact instead of reading it directly."
+
 
 def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     test_file, operator_file = resolve_run_test_paths(parser, args)
@@ -74,13 +76,13 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    render_result(result, show_output=True)
-    print(f"Return code: {result.return_code}")
-    if perf_path is not None:
-        print(f"Perf file: {perf_path}")
-        print(f"Saved perf file to: {perf_path}")
+    if result.return_code != 0:
+        render_result(result, show_output=False)
     if args.remote and args.keep_remote_workdir and remote_workspace is not None:
         print(f"Remote workspace: {remote_workspace}")
+    if perf_path is not None:
+        print(f"Perf file: {perf_path}")
+        print(_RUN_BENCH_HINT)
     return result.return_code
 
 

@@ -233,23 +233,25 @@ def _run_remote_bench_standalone(
         stderr=stderr,
     )
     perf_path = _perf_output_path(bench_file, operator_file)
-    result = run_remote_command_streaming(
-        spec,
-        remote_workspace,
-        [
-            "python3",
-            helper_script.name,
-            "run-all",
-            "--bench-file",
-            bench_file.name,
-            "--operator-file",
-            operator_file.name,
-            "--perf-file",
-            perf_path.name,
-        ],
-        verbose=verbose,
-        stderr=stderr,
-    )
+    with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
+        result = run_remote_command_streaming(
+            spec,
+            remote_workspace,
+            [
+                "python3",
+                helper_script.name,
+                "run-all",
+                "--bench-file",
+                bench_file.name,
+                "--operator-file",
+                operator_file.name,
+                "--perf-file",
+                perf_path.name,
+            ],
+            stdout=quiet_stdout,
+            verbose=verbose,
+            stderr=stderr,
+        )
     copied_perf_path: Path | None = None
     try:
         copy_file_from_remote(
@@ -329,7 +331,13 @@ def _run_local_bench_msprof(
                 "--bench",
                 str(case_idx),
             ]
-            result = run_streaming_process(command, str(bench_file.parent), stall_timeout_seconds=900)
+            with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
+                result = run_streaming_process(
+                    command,
+                    str(bench_file.parent),
+                    stall_timeout_seconds=900,
+                    stdout=quiet_stdout,
+                )
             stdout_chunks.append(str(result["stdout"]))
             stderr_chunks.append(str(result["stderr"]))
             had_stalls = had_stalls or bool(result["stalled"])

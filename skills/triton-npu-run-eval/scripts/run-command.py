@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Protocol, TypedDict, cast
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+_RUN_BENCH_HINT = "Hint: use `compare-perf` to inspect this perf artifact instead of reading it directly."
 
 
 class ResultPayload(TypedDict):
@@ -302,13 +303,13 @@ def main(argv: list[str] | None = None) -> int:
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    _render_result(result, show_output=True)
-    print(f"Return code: {result['return_code']}")
-    if perf_path is not None:
-        print(f"Perf file: {perf_path}")
-        print(f"Saved perf file to: {perf_path}")
+    if result["return_code"] != 0:
+        _render_result(result, show_output=False)
     if args.remote and args.keep_remote_workdir and remote_workspace is not None:
         print(f"Remote workspace: {remote_workspace}")
+    if perf_path is not None:
+        print(f"Perf file: {perf_path}")
+        print(_RUN_BENCH_HINT)
     return int(result["return_code"])
 
 

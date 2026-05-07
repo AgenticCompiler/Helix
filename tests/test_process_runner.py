@@ -75,6 +75,49 @@ class BufferedProcessRunnerTests(unittest.TestCase):
             )
         self.assertEqual(result.stdout, "before\nafter\n")
 
+    def test_buffered_filter_can_remove_bare_hunk_fragments(self) -> None:
+        from triton_agent.backends.codex import _UnifiedDiffFilter
+
+        process = _BufferedFakeProcess(
+            stdout_lines=[
+                "baseline/perf.txt 368.0119\n",
+                "opt-round-1/opt_triton_10_SwigluQuant_perf.txt 299.39092500000004\n",
+                "\n",
+                "     tl.store(scale_ptr + row, inv_scale)\n",
+                "\n",
+                "@@ -10,0 +11,11 @@\n",
+                "+@triton.jit\n",
+                "+def _round_half_to_even_tl(values):\n",
+                "+    abs_values = tl.abs(values)\n",
+                "+    base = tl.floor(abs_values)\n",
+                "+    frac = abs_values - base\n",
+                "+    base_i = base.to(tl.int32)\n",
+                "+    is_odd = (base_i & 1) != 0\n",
+                "+    rounded_abs = base + ((frac > 0.5) | ((frac == 0.5) & is_odd)).to(tl.float32)\n",
+                "+    return tl.where(values < 0, -rounded_abs, rounded_abs)\n",
+                "done\n",
+            ],
+            stderr_text="",
+            returncode=0,
+        )
+        with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+            result = run_buffered_process(
+                ["codex", "exec"],
+                "/tmp",
+                stall_timeout_seconds=10,
+                session_id_extractor=lambda _line: None,
+                output_filter=_UnifiedDiffFilter(),
+            )
+        self.assertEqual(
+            result.stdout,
+            "baseline/perf.txt 368.0119\n"
+            "opt-round-1/opt_triton_10_SwigluQuant_perf.txt 299.39092500000004\n"
+            "\n"
+            "     tl.store(scale_ptr + row, inv_scale)\n"
+            "\n"
+            "done\n",
+        )
+
     def test_buffered_none_returncode_defaults_to_failure(self) -> None:
         process = _BufferedFakeProcess(stdout_lines=[], stderr_text="", returncode=None)
         with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
@@ -221,6 +264,50 @@ class StreamingProcessRunnerTests(unittest.TestCase):
                             )
         self.assertEqual(stdout.getvalue(), "before\n  indented note\nafter\n")
         self.assertEqual(result.stdout, "before\n  indented note\nafter\n")
+
+    def test_streaming_filter_can_remove_bare_hunk_fragments(self) -> None:
+        from triton_agent.backends.codex import _UnifiedDiffFilter
+
+        stdout = StringIO()
+        process = _StreamingFakeProcess(wait_code=0, poll_values=[None, 0])
+        chunks = [
+            b"baseline/perf.txt 368.0119\n",
+            b"opt-round-1/opt_triton_10_SwigluQuant_perf.txt 299.39092500000004\n\n",
+            b"     tl.store(scale_ptr + row, inv_scale)\n\n@@ -10,0 +11,3 @@\n",
+            b"+@triton.jit\n+def _round_half_to_even_tl(values):\n+    abs_values = tl.abs(values)\n",
+            b"done\n",
+        ]
+        with patch("triton_agent.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+                with patch(
+                    "triton_agent.process_runner.select.select",
+                    side_effect=[
+                        ([11], [], []),
+                        ([11], [], []),
+                        ([11], [], []),
+                        ([11], [], []),
+                        ([11], [], []),
+                        ([], [], []),
+                        ([], [], []),
+                    ],
+                ):
+                    with patch("triton_agent.process_runner.os.read", side_effect=chunks):
+                        with patch("triton_agent.process_runner.os.close"):
+                            result = run_streaming_process(
+                                ["codex", "exec"],
+                                "/tmp",
+                                stall_timeout_seconds=10,
+                                stdout=stdout,
+                                output_filter=_UnifiedDiffFilter(),
+                            )
+        expected = (
+            "baseline/perf.txt 368.0119\n"
+            "opt-round-1/opt_triton_10_SwigluQuant_perf.txt 299.39092500000004\n\n"
+            "     tl.store(scale_ptr + row, inv_scale)\n\n"
+            "done\n"
+        )
+        self.assertEqual(stdout.getvalue(), expected)
+        self.assertEqual(result.stdout, expected)
 
     def test_treats_eio_after_child_exit_as_clean_eof(self) -> None:
         stdout = StringIO()

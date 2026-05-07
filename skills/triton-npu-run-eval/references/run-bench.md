@@ -12,6 +12,8 @@ Rules:
 - Always pass both `--bench-file` and `--operator-file`.
 - If `--bench-mode` is omitted, the command reads `# bench-mode: ...` from the benchmark file.
 - Use `--bench-mode standalone` or `--bench-mode msprof` only when you need to override the embedded metadata.
+- On success, `run-bench` prints `Perf file: <path>` and a short hint to use `compare-perf` instead of reading perf files directly.
+- On failure, `run-bench` prints the captured benchmark output so the error remains diagnosable.
 
 Mode notes:
 

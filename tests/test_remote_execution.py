@@ -305,6 +305,7 @@ class RemoteExecutionTests(unittest.TestCase):
         self.assertEqual(result["return_code"], 0)
         self.assertEqual(perf_path, local_perf_path)
         self.assertEqual(remote_workspace, "/tmp/remote-clean")
+        self.assertIsNotNone(remote_run.call_args.kwargs.get("stdout"))
         copy_targets = [call.args[2].rsplit("/", 1)[-1] for call in copy_to_remote.call_args_list]
         self.assertIn("standalone_bench_runtime.py", copy_targets)
         self.assertEqual(

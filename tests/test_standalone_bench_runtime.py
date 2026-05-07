@@ -1,7 +1,12 @@
 import os
+import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Optional
 from unittest.mock import patch
 
 from tests.run_skill_test_utils import (
@@ -201,6 +206,105 @@ def build_standalone_bench_cases(operator_api):
             self.assertTrue((created_output_dirs[0] / "case-a.txt").exists())
             self.assertTrue((created_output_dirs[1] / "case-b.txt").exists())
             self.assertEqual(sorted(path.name for path in created_output_dirs), ["case-case-a", "case-case-b"])
+
+    def test_profile_case_with_profiler_suppresses_profiler_output(self) -> None:
+        module = load_standalone_bench_runtime_module()
+
+        class _FakeProfilerContext:
+            def __init__(self, profile_root: Path, on_trace_ready):
+                self.profile_root = profile_root
+                self.on_trace_ready = on_trace_ready
+
+            def __enter__(self):
+                print("profile enter stdout")
+                print("profile enter stderr", file=sys.stderr)
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                del exc_type, exc, tb
+                self.profile_root.mkdir(parents=True, exist_ok=True)
+                csv_path = self.profile_root / "operator_details.csv"
+                csv_path.write_text(
+                    "\n".join(
+                        [
+                            "Name,Device Self Duration(us),Count",
+                            "KernelA,4.0,1",
+                        ]
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                if callable(self.on_trace_ready):
+                    self.on_trace_ready()
+                print("profile exit stdout")
+                print("profile exit stderr", file=sys.stderr)
+                return False
+
+            def step(self):
+                print("profile step stdout")
+                print("profile step stderr", file=sys.stderr)
+
+        class _FakeProfilerApi:
+            profile_root: Optional[Path] = None
+
+            class _ExperimentalConfig:
+                def __init__(self, **kwargs):
+                    del kwargs
+
+            class ProfilerLevel:
+                Level1 = object()
+
+            class ProfilerActivity:
+                NPU = object()
+                CPU = object()
+
+            @staticmethod
+            def schedule(**kwargs):
+                return kwargs
+
+            @staticmethod
+            def tensorboard_trace_handler(profile_root: str):
+                _FakeProfilerApi.profile_root = Path(profile_root)
+
+                def _handler():
+                    Path(profile_root).mkdir(parents=True, exist_ok=True)
+
+                return _handler
+
+            @staticmethod
+            def profile(**kwargs):
+                profile_root = _FakeProfilerApi.profile_root
+                if profile_root is None:
+                    raise AssertionError("expected tensorboard_trace_handler to set profile_root")
+                return _FakeProfilerContext(profile_root, kwargs["on_trace_ready"])
+
+        fake_torch = SimpleNamespace(npu=SimpleNamespace(synchronize=lambda: None))
+        fake_torch_npu = SimpleNamespace(profiler=_FakeProfilerApi())
+        case = module.StandaloneBenchCase(
+            case_id="case-a",
+            fn=lambda: (print("case stdout"), print("case stderr", file=sys.stderr)),
+            warmup=0,
+            repeats=1,
+        )
+        resolution = module.KernelResolution(kernel_names=["KernelA"], kernel_source="metadata")
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch.dict(
+            "sys.modules",
+            {"torch": fake_torch, "torch_npu": fake_torch_npu},
+            clear=False,
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            metrics, error_message = module._profile_case_with_profiler(
+                case,
+                resolution,
+                Path(tempfile.mkdtemp()) / "profile",
+            )
+
+        self.assertIsNotNone(metrics)
+        self.assertIsNone(error_message)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(stderr.getvalue(), "")
 
 
 if __name__ == "__main__":
