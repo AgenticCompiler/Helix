@@ -110,9 +110,21 @@ When the task is to fold bench history into durable optimize knowledge:
   - preserve existing code samples and add new concise samples when needed so each pattern remains directly actionable.
 - **At final synthesis for each card, remove the entire temporary `NPUKernelBench field inventory` section** so committed content remains durable pattern guidance.
 
-### 5) Finalize artifacts
+### 5) Rewrite `pattern_index.md` manually after full synthesis
 
-- Regenerate `skills/triton-npu-optimize-v2/references/pattern_index.md` with `skills/triton-npu-optimize/scripts/build_pattern_index.py` after pattern edits.
+- After synthesis is complete for all targeted pattern cards, rewrite `skills/triton-npu-optimize-v2/references/pattern_index.md` as a human-authored quick-match index.
+- Format requirements:
+  - one **second-level markdown header** (`##`) per pattern slug,
+  - inside each pattern section, write a short **4-5 line** summary of key points, with strongest emphasis on **when the pattern should be used**,
+  - keep wording optimized for **locatability** so an LLM agent can quickly match current kernel symptoms to the right pattern,
+  - length per pattern can vary, but compact scanability is mandatory.
+- Authoring requirements:
+  - read each source pattern card and write your own concise summary,
+  - do not mechanically copy sentences from the pattern card into the index.
+- **Do not use Python scripts (or other automatic generation) for `pattern_index.md`; maintain this file by direct manual editing.**
+
+### 6) Finalize tracking artifacts
+
 - Track operator-level progress in `workspace/NPUKernelBench_level_1_2_triton/PATTERN_AND_LOG_SYNC_PROGRESS.md` (`n/a` for kernels without records; `todo` -> `done` for completed passes).
 
 ## Related skills
