@@ -8,11 +8,12 @@ The round spends too much time on per-program fixed work, scalar control flow, o
 
 - Many tiny launches or very small per-program work dominate the profile.
 - Timeline or summary views suggest under-filled vector execution.
-- Code inspection shows one-row-per-program structure, heavy scalar masking, or explicit compare-heavy control logic.
+- Code inspection shows one-row-per-program structure, heavy scalar masking, explicit compare-heavy control logic, or a **flat 1D** pad/copy kernel with expensive coordinate decode on the last axis.
 
 ## Candidate Pattern Directions
 
 - `program-multiple-rows`
+- `padded_row_col_copy`
 - `vec-cmp`
 - `classic-matmul`
 
