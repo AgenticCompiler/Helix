@@ -213,3 +213,25 @@ Other batch-4 operators either do not foreground **reuse / fewer global phases**
 ### Cross-card note
 
 Other batch-5 operators (`25_NLLLoss`, `26_*`, `27_*`, `28_Interpolate`, `29_*`) emphasize **tiling**, **dispatch**, **PMR**, or **autotune** in their cited `opt-note.md` arcs rather than **extra global phases** alone.
+
+## Gap-fill addendum (inventory alignment, 2026-05-08)
+
+### `11_GroupNorm`
+
+**`opt-round-13` (parent chain in `opt-note.md`)** — `11_GroupNorm/opt-round-13/attempts.md`
+
+- **Kernel / round / parent:** `11_GroupNorm` / `opt-round-13` / parent per `opt-note.md`.
+- **Pre-change scenario:** Prior rounds had already reduced scalar/control work; remaining hotspot behavior was dominated by movement/reuse on the normalization path.
+- **Change:** Cache/UB-aware reuse adjustments on the hot fused path (per pattern citation in attempts).
+- **Evidence:** Correctness passed; branch retained as a validated optimization step in the session arc (`opt-note.md` + attempts).
+- **Interpretation:** GroupNorm keeps paying for hierarchy behavior after scalar cleanup; reuse-oriented tuning is a justified follow-up lever.
+
+### `16_Repeat`
+
+**`opt-round-6` (parent chain in `opt-note.md`)** — `16_Repeat/opt-round-6/attempts.md`
+
+- **Kernel / round / parent:** `16_Repeat` / `opt-round-6` / parent per `opt-note.md`.
+- **Pre-change scenario:** Initial row/fulltile restructuring left dominant repeat paths sensitive to data movement and staging behavior.
+- **Change:** Cache-use-oriented path tuning cited in attempts before later PMR/tiling ladder rounds.
+- **Evidence:** Correctness passed and the branch contributed to the promoted trajectory later refined by rounds 9 and 15 (`opt-note.md`).
+- **Interpretation:** Repeat is not only a launch-shape problem; staging and reuse choices remain visible in the measured path.

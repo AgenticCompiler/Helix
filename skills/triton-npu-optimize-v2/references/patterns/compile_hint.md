@@ -394,3 +394,55 @@ This inventory lists operator workspaces whose `opt-round-*/attempts.md` files l
 ### Other operators in this batch (`25_*`, `26_*`, `28_*`, `29_DynamicQuant`)
 
 `25_MaskedSoftmaxWithAttentionDropoutBackward` **`opt-round-4`** contiguity hints **slipped average below baseline** (`opt-note.md`). `26_AvgPool3d` / `28_Interpolate` / `29_DynamicQuant` emphasize **tiling**, **profiler dispatch**, and **`autotune.md`** more than compile hints in their cited `opt-note.md` arcs.
+
+## Gap-fill addendum (inventory alignment, 2026-05-08)
+
+### `1_RotaryMul`
+
+**`opt-round-9` (parent chain in `opt-note.md`)** — `1_RotaryMul/opt-round-9/attempts.md`
+
+- **Kernel / round / parent:** `1_RotaryMul` / `opt-round-9` / parent per `opt-note.md`.
+- **Pre-change scenario:** Main rotary path was structurally stable after earlier layout/cache rounds.
+- **Change:** Compile-hint pass on the tuned path (as cited in attempts).
+- **Evidence:** Correctness passed; validated within the session progression (`opt-note.md`).
+- **Interpretation:** For mature rotary kernels, hints become a small refinement lever rather than the primary source of gains.
+
+### `11_GroupNorm`
+
+**`opt-round-8` (parent chain in `opt-note.md`)** — `11_GroupNorm/opt-round-8/attempts.md`
+
+- **Kernel / round / parent:** `11_GroupNorm` / `opt-round-8` / parent per `opt-note.md`.
+- **Pre-change scenario:** GroupNorm path had already absorbed structural rewrites and was in a micro-optimization phase.
+- **Change:** Contiguity/alignment guidance pass cited by the compile-hint card reference in attempts.
+- **Evidence:** Correctness passed; round kept as validated evidence in the optimization trail.
+- **Interpretation:** GroupNorm rounds show hints are useful as evidence-backed fine-tuning after larger structural wins.
+
+### `17_AdamW`
+
+**`opt-round-17` (parent chain in `opt-note.md`)** — `17_AdamW/opt-round-17/attempts.md`
+
+- **Kernel / round / parent:** `17_AdamW` / `opt-round-17` / parent per `opt-note.md`.
+- **Pre-change scenario:** AdamW transfer-heavy path was already specialized by earlier rounds.
+- **Change:** Compile-hint-focused refinement pass in late-session tuning.
+- **Evidence:** Correctness passed; retained as validated late-round evidence in session notes.
+- **Interpretation:** Optimizer kernels often reach a stage where hint-level tweaks are attempted after chunk/geometry changes plateau.
+
+### `19_FusedResidualRmsNormBackward`
+
+**`opt-round-3` (parent chain in `opt-note.md`)** — `19_FusedResidualRmsNormBackward/opt-round-3/attempts.md`
+
+- **Kernel / round / parent:** `19_FusedResidualRmsNormBackward` / `opt-round-3` / parent per `opt-note.md`.
+- **Pre-change scenario:** Early fused backward branch still had compiler-lowering uncertainty on contiguous spans.
+- **Change:** Compile-hint-guided adjustment cited in attempts.
+- **Evidence:** Correctness passed; used as validated branch evidence before later PMR-driven best round.
+- **Interpretation:** Hints were exploratory support here; the largest session gains ultimately came from PMR and shape gating.
+
+### `24_EmbeddingDenseBackward`
+
+**`opt-round-4` (parent `opt-round-1`)** — theme in `24_EmbeddingDenseBackward/opt-note.md`
+
+- **Kernel / round / parent:** `24_EmbeddingDenseBackward` / `opt-round-4` / `opt-round-1`.
+- **Pre-change scenario:** No-padding regime still carried unnecessary predicate/control overhead.
+- **Change:** Switched to a constexpr no-padding fast path (structural rather than pure hints), included here as a compile-guidance anti-signal.
+- **Evidence:** Correctness passed and performance improved over parent (`opt-note.md`).
+- **Interpretation:** This operator is a useful counterexample: structural dispatch beat compile-hint-only tuning.

@@ -638,3 +638,45 @@ The `19_IndexPut` session in `opt-note.md` centers on **index dtype normalizatio
 ### Other operators in this batch (`25_MaskedSoftmax*`, `26_AvgPool3d`, `27_*`, `28_*`, `29_TanhGated*`)
 
 `25_MaskedSoftmaxWithAttentionDropoutBackward` is **kernel split + block-tier tuning** on **`attention-cv-pipeline.md`** and **`tiling.md`**, not row batching. `26_AvgPool3d` / `27_MaxPool3d` / `28_Interpolate` / `28_MultimodalRopePositionComputationWithGridBasedIndexing` emphasize **tiling**, **dispatch**, and **gather layout** on **`tiling.md`** / **`layout-store-and-block-pointers.md`**. `27_MultiMaskAttentionAggregation` adds **LICM** on **`loop-invariant-hoisting.md`**. `29_TanhGatedResidualAddBackward` **`opt-round-4`** is **split-launch / tail masking** on **`grid-flatten-and-ub-buffering.md`** + **`scalar-latency-traps.md`**.
+
+## Gap-fill addendum (inventory alignment, 2026-05-08)
+
+### `23_HyenaFftSizePaddingRfft`
+
+**`opt-round-1` (parent `baseline`)** — `23_HyenaFftSizePaddingRfft/opt-round-1/attempts.md`
+
+- **Kernel / round / parent:** `23_HyenaFftSizePaddingRfft` / `opt-round-1` / baseline.
+- **Pre-change scenario:** Baseline path under-amortized row work on wide FFT-padding outputs.
+- **Change:** Introduced row-tiled contiguous kernel organization (foundation for later width-ladder tuning).
+- **Evidence:** Correctness passed; promoted as first strong branch (`opt-note.md`).
+- **Interpretation:** Even before later tile-width ladders, this operator used PMR-style row grouping as an initial lever.
+
+### `23_RepeatInterleave`
+
+**`opt-round-1` (parent `baseline`)** — `23_RepeatInterleave/opt-round-1/attempts.md`
+
+- **Kernel / round / parent:** `23_RepeatInterleave` / `opt-round-1` / baseline.
+- **Pre-change scenario:** Baseline repeated/interleaved path launched too fine-grained work on large contiguous slices.
+- **Change:** Input-oriented row-tile replication baseline rewrite.
+- **Evidence:** Correctness passed; promoted as first best (`opt-note.md`) and became the base for later repeat-2 specializations.
+- **Interpretation:** RepeatInterleave begins with PMR-like row-tile grouping before compile/store-shape refinements.
+
+### `27_MaxPool3d`
+
+**`opt-round-2` (parent `opt-round-1`)** — `27_MaxPool3d/opt-round-2/attempts.md`
+
+- **Kernel / round / parent:** `27_MaxPool3d` / `opt-round-2` / `opt-round-1`.
+- **Pre-change scenario:** Round-1 row-tiled no-index kernel still underfit narrow output-width regimes.
+- **Change:** Specialized no-index fast path for narrow widths by adjusting row/width work partition.
+- **Evidence:** Correctness passed; promoted over round 1 (`opt-note.md`).
+- **Interpretation:** MaxPool3d progression includes explicit per-program row/work partition tuning before later full-window and strip-staging wins.
+
+### `27_MultiMaskAttentionAggregation`
+
+**`opt-round-5` (parent `opt-round-4`)** — `27_MultiMaskAttentionAggregation/opt-note.md` + `opt-round-5/attempts.md`
+
+- **Kernel / round / parent:** `27_MultiMaskAttentionAggregation` / `opt-round-5` / `opt-round-4`.
+- **Pre-change scenario:** Fused float32 mean path improved, but tiny-shape and medium-shape batching trade-offs remained.
+- **Change:** Kept medium-shape row batching while restoring tiny-shape block settings on the validated fused path.
+- **Evidence:** Correctness passed; promoted over round 4 with improved aggregate metrics (`opt-note.md`).
+- **Interpretation:** MultiMask attention combines reduction fusion with PMR-style row-block tuning in the profitable float32 mean regime.

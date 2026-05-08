@@ -82,6 +82,11 @@ For each operator workspace `NN_OperatorName/` that has `opt-note.md` and `opt-r
 
    **New cards:** triage text in `attempts.md` only references a small set of legacy pattern paths. Still perform semantic mapping against the full `pattern_index.md`. Create a new v2 card when the mechanism is not covered; omit new cards when all rounds map to existing summaries.
 
+   **Inventory setup requirement (start of card work):**
+   - Ensure each touched card has `## NPUKernelBench field inventory`.
+   - Ensure it contains `**Operator workspaces (deduped):**` with deduped operator bullets.
+   - Treat this inventory as the authoritative checklist for later gap-filling.
+
 6. **Pattern card updates and new pattern creation**
 
    - If the round fits an existing card under `skills/triton-npu-optimize-v2/references/patterns/`, update that card with the narrative and any refined guidance.
@@ -94,7 +99,25 @@ For each operator workspace `NN_OperatorName/` that has `opt-note.md` and `opt-r
        --output skills/triton-npu-optimize-v2/references/pattern_index.md
      ```
 
-7. **Per-pattern synthesis (default, after round narratives)**
+7. **Gap-filling audit pass (required before synthesis)**
+
+   After completing one full kernel pass and before synthesis:
+
+   - For every touched pattern card, check that each operator listed in `Operator workspaces (deduped)` is represented in the card narratives.
+   - Prioritize cards with fewer inventory items first; they are easiest to fully close.
+   - Add missing narratives grounded in real rounds (success, failure, or anti-signal); do not leave inventory-only operators.
+
+   Then run a strict second check:
+
+   - Every inventory operator must have at least one explicit five-field entry with:
+     - `Kernel / round / parent`
+     - `Pre-change scenario`
+     - `Change`
+     - `Evidence`
+     - `Interpretation`
+   - Inventory bullets, cross-card references, or generic notes do not satisfy this requirement.
+
+8. **Per-pattern synthesis (default, after round narratives and gap-filling)**
 
    Unless the task explicitly skips synthesis, for each pattern touched in the batch add a synthesis section that combines narratives across kernels:
 
@@ -103,9 +126,9 @@ For each operator workspace `NN_OperatorName/` that has `opt-note.md` and `opt-r
    - Whether the pattern should be tried early, late, or only after profiling.
    - Practical "try / avoid" verdict that refines `## Use When` and `## Avoid When`.
 
-   When the user requests **round narratives only**, stop after step 6 and leave synthesis for a later pass.
+  When the user requests **round narratives only**, stop after step 7 and leave synthesis for a later pass.
 
-8. **Mark progress**
+9. **Mark progress**
 
    - Set that kernel’s **Kernel log review** and **Pattern card follow-up** columns to `done` in `PATTERN_AND_LOG_SYNC_PROGRESS.md` when the narrative summary is written and cards are updated.
 

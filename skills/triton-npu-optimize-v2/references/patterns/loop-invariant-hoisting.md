@@ -298,3 +298,23 @@ Archived `attempts.md` headers for `10_SwigluQuant`, `10_LayerNorm`, `1_GELU`, `
 - **Change:** Added `_max_pool3d_full_window_value_kernel` specialization for fully valid windows, seeding max from the first guaranteed-valid sample and removing inner-loop boundary bookkeeping from the hot path.
 - **Evidence:** Correctness passed; `compare-perf` vs baseline in `attempts.md` reported **Avg +45.2%**, **Geomean 1.94x**, **Total 1.37x**, with strong wins on full-window cases; promoted as best.
 - **Interpretation:** For pool kernels, hoisting/eliminating invariant boundary predicates is effectively LICM at the loop-structure level and can dominate over later micro-tiling.
+
+### `20_FusedRopeWithQkNormAndKvCacheUpdate`
+
+**`opt-round-1` (parent `baseline`)** — `20_FusedRopeWithQkNormAndKvCacheUpdate/opt-round-1/attempts.md`
+
+- **Kernel / round / parent:** `20_FusedRopeWithQkNormAndKvCacheUpdate` / `opt-round-1` / baseline.
+- **Pre-change scenario:** Baseline path loaded full-row intermediates and carried redundant setup work in the rope/qk-norm fused flow.
+- **Change:** First-round load/simplification pass targeting invariant work and redundant movement.
+- **Evidence:** Correctness passed but performance regressed (`opt-note.md`); not promoted.
+- **Interpretation:** Useful LICM anti-signal: trimming obvious invariants was insufficient until later PMR and fixed-shape specialization rounds.
+
+### `20_Gather`
+
+**`opt-round-10` (parent `opt-round-9`)** — `20_Gather/opt-round-10/attempts.md`
+
+- **Kernel / round / parent:** `20_Gather` / `opt-round-10` / `opt-round-9`.
+- **Pre-change scenario:** Guarded dispatch path was stable but still had residual flat generic overhead on inner-size-1 fallback regimes.
+- **Change:** Added flat generic fast path for inner-size-1 gathers (a control/overhead simplification pass).
+- **Evidence:** Correctness passed and improved round 9 slightly on targeted fallback cases, but did not beat round 5 overall (`opt-note.md`).
+- **Interpretation:** Late-round gather control simplifications can help tails, but primary wins still came from earlier rank/dim specialization and layout cleanup.

@@ -442,3 +442,75 @@ Later `10_LayerNorm` and `11_DequantSwigluQuant` rounds in this archive are domi
 ### Other operators in this batch (`25_*`, `26_*`, `27_*`, `28_Interpolate`, `29_*`)
 
 `28_Interpolate` uses **2D tile kernels** and **exact-scale specials**—see **`tiling.md`**. `27_MaxPool3d` strip staging is **`tiling.md`**. `29_DynamicQuant` / `29_TanhGatedResidualAddBackward` do not foreground **block-pointer stores** in cited attempts.
+
+## Gap-fill addendum (inventory alignment, 2026-05-08)
+
+### `10_LayerNorm`
+
+**`opt-round-13` (parent chain in `opt-note.md`)** — `10_LayerNorm/opt-round-13/attempts.md`
+
+- **Kernel / round / parent:** `10_LayerNorm` / `opt-round-13` / parent per `opt-note.md`.
+- **Pre-change scenario:** LayerNorm path had moved beyond first-order algorithm changes and focused on memory-layout regularity.
+- **Change:** Layout/store-oriented refinement step cited in attempts.
+- **Evidence:** Correctness passed; retained as validated late-round evidence.
+- **Interpretation:** LayerNorm often needs storage-layout cleanup after earlier reduction/tiling milestones.
+
+### `22_Nonzero`
+
+**`opt-round-1` (parent `baseline`)** — `22_Nonzero/opt-round-1/attempts.md`
+
+- **Kernel / round / parent:** `22_Nonzero` / `opt-round-1` / baseline.
+- **Pre-change scenario:** Baseline compaction path was expensive on large inputs.
+- **Change:** Replaced full elementwise mask-prefix materialization with tile-count prefix flow.
+- **Evidence:** Correctness passed but performance regressed (`opt-note.md`); not promoted.
+- **Interpretation:** Serves as anti-signal: layout/prefix rewrites need density-aware routing to pay off.
+
+### `23_HyenaFftSizePaddingRfft`
+
+**`opt-round-1` (parent `baseline`)** — `23_HyenaFftSizePaddingRfft/opt-round-1/attempts.md`
+
+- **Kernel / round / parent:** `23_HyenaFftSizePaddingRfft` / `opt-round-1` / baseline.
+- **Pre-change scenario:** Baseline padding path used less regular row/width traversal.
+- **Change:** Row-tiled contiguous padding kernel shape.
+- **Evidence:** Correctness passed; strong baseline-relative win (`opt-note.md`); promoted.
+- **Interpretation:** FFT-padding setup is highly layout-sensitive from the first round.
+
+### `23_RepeatInterleave`
+
+**`opt-round-9` (parent `opt-round-7`)** — `23_RepeatInterleave/opt-round-9/attempts.md`
+
+- **Kernel / round / parent:** `23_RepeatInterleave` / `opt-round-9` / `opt-round-7`.
+- **Pre-change scenario:** Very-large repeat-2 path remained dominated by store-shape movement.
+- **Change:** Profile-backed store-shape retuning for the float32 very-large branch.
+- **Evidence:** Correctness passed; promoted before final round 10 refinement (`opt-note.md`).
+- **Interpretation:** RepeatInterleave improvements remained tightly coupled to store-layout decisions.
+
+### `24_KvCacheUpdateWithRopeBackward`
+
+**`opt-round-2` (parent `opt-round-1`)** — `24_KvCacheUpdateWithRopeBackward/opt-note.md` + `opt-round-2/attempts.md`
+
+- **Kernel / round / parent:** `24_KvCacheUpdateWithRopeBackward` / `opt-round-2` / `opt-round-1`.
+- **Pre-change scenario:** Round-1 PMR baseline was strong; round-2 tested block-pointer store plus small-head tile tweak.
+- **Change:** Block-pointer store rewrite on top of row-batched kernel.
+- **Evidence:** Correctness passed but regressed versus round 1 (`opt-note.md`); not promoted.
+- **Interpretation:** Important anti-signal: pointer-form changes can hurt without matching launch/PMR regime.
+
+### `28_Interpolate`
+
+**`opt-round-7` (parent `opt-round-5`)** — `28_Interpolate/opt-note.md` + `opt-round-7/attempts.md`
+
+- **Kernel / round / parent:** `28_Interpolate` / `opt-round-7` / `opt-round-5`.
+- **Pre-change scenario:** Exact 2x downsample wins were in place, but upsample path still needed dedicated shape handling.
+- **Change:** Added exact 2x bilinear upsample Triton kernel with layout-regular output traversal.
+- **Evidence:** Correctness passed; promoted with strong baseline-relative improvement (`opt-note.md`).
+- **Interpretation:** Interpolate performance depends on exact-scale layout-specialized kernels, not only generic formula reuse.
+
+### `25_NLLLoss`
+
+**`opt-round-1` (parent `baseline`)** — `25_NLLLoss/opt-round-1/attempts.md`
+
+- **Kernel / round / parent:** `25_NLLLoss` / `opt-round-1` / baseline.
+- **Pre-change scenario:** Baseline unweighted-mean path carried more generic reduction/materialization overhead.
+- **Change:** Partial-reduction layout rewrite for the unweighted mean path.
+- **Evidence:** Correctness passed; validated branch with modest geomean win but near-flat total speed (`opt-note.md`).
+- **Interpretation:** NLLLoss required layout reshaping first, then explicit batch/spatial mapping in round 2 for the clear promotion.

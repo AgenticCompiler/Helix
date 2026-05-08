@@ -364,3 +364,45 @@ This inventory lists operator workspaces whose `opt-round-*/attempts.md` files l
 ### Other operators in this batch (`25_*`, `27_MaxPool3d`, `28_*`, `29_DynamicQuant`)
 
 `25_NLLLoss` **`opt-round-2`** removes **div/mod decode** (see **`program-multiple-rows.md`**). `27_MaxPool3d` interior rewrite targets **MTE/strided loads** more than lane decode (**`tiling.md`**). `28_Interpolate` / `28_MultimodalRopePositionComputationWithGridBasedIndexing` / `29_DynamicQuant` emphasize **tiling / gather / chunking** on other cards.
+
+## Gap-fill addendum (inventory alignment, 2026-05-08)
+
+### `22_Nonzero`
+
+**`opt-round-10` (parent `opt-round-9`)** — `22_Nonzero/opt-round-10/attempts.md`
+
+- **Kernel / round / parent:** `22_Nonzero` / `opt-round-10` / `opt-round-9`.
+- **Pre-change scenario:** After probe/count routing wins, compact path still had residual scalar bookkeeping in valid-count handling.
+- **Change:** Compact-kernel valid-count simplification (after rejecting unsupported row-split prefix variant).
+- **Evidence:** Correctness passed; small direct improvement over r9 and promoted as final best (`opt-note.md`).
+- **Interpretation:** Late-stage nonzero tuning still surfaces scalar bookkeeping traps even after larger routing fixes.
+
+### `25_NLLLoss`
+
+**`opt-round-2` (parent `opt-round-1`)** — `25_NLLLoss/opt-round-2/attempts.md`
+
+- **Kernel / round / parent:** `25_NLLLoss` / `opt-round-2` / `opt-round-1`.
+- **Pre-change scenario:** Mean kernel still paid flattened decode (`// spatial_size`, `% spatial_size`) on the hot unweighted path.
+- **Change:** Explicit `batch x spatial-block` mapping removed per-lane decode from the hot reduction.
+- **Evidence:** Correctness passed; promoted as final best (`opt-note.md`) with clear baseline-relative win.
+- **Interpretation:** Div/mod decode removal is the key scalar-trap fix for this operator's representative workload.
+
+### `27_MultiMaskAttentionAggregation`
+
+**`opt-round-3` (parent `opt-round-2`)** — `27_MultiMaskAttentionAggregation/opt-round-3/attempts.md`
+
+- **Kernel / round / parent:** `27_MultiMaskAttentionAggregation` / `opt-round-3` / `opt-round-2`.
+- **Pre-change scenario:** Expanding low-precision fused reduction across branches triggered differential sensitivity from reduction-order/scalarized behavior.
+- **Change:** Kept only validated path portions and reverted unstable low-precision expansion.
+- **Evidence:** Correctness passed but branch regressed versus round 2 (`opt-note.md`); kept as validated branch.
+- **Interpretation:** Scalar-latency/card evidence includes correctness-driven anti-signals where scalar/reduction ordering dominates outcome.
+
+### `28_Interpolate`
+
+**`opt-round-6` (parent `opt-round-5`)** — `28_Interpolate/opt-round-6/attempts.md`
+
+- **Kernel / round / parent:** `28_Interpolate` / `opt-round-6` / `opt-round-5`.
+- **Pre-change scenario:** Tried moving low-precision exact-half bilinear path from built-in op to Triton 2x2 kernel.
+- **Change:** Low-precision exact-half bilinear dispatch experiment.
+- **Evidence:** Correctness passed but severe regression in representative case 5; not promoted (`opt-note.md`).
+- **Interpretation:** Scalar/control simplifications must respect backend implementation quality; replacing a tuned built-in path can backfire.

@@ -225,6 +225,28 @@ No `opt-round-*/attempts.md` in this pilot eight cites **`grid-flatten-and-ub-bu
 
 `20_Gather` launch shaping is tied to **scalar-dominant dim=0** specialization (`scalar-latency-traps.md`). `22_Nonzero` **`opt-round-9`** removes duplicate **count** launches when probe covers all tiles—see **`cache_use.md`**. `23_*` FFT/repeat sessions are **`tiling.md`**-first.
 
+## Gap-fill addendum (inventory alignment, 2026-05-08)
+
+### `16_Repeat`
+
+**`opt-round-5` (parent chain in `opt-note.md`)** — `16_Repeat/opt-round-5/attempts.md`
+
+- **Kernel / round / parent:** `16_Repeat` / `opt-round-5` / parent per `opt-note.md`.
+- **Pre-change scenario:** Early repeat rewrites still had launch-shape inefficiency on wide representative paths.
+- **Change:** Grid/launch-shape restructuring step cited against this card in attempts.
+- **Evidence:** Correctness passed; contributed to the validated progression that later reached final best in round 15 (`opt-note.md`).
+- **Interpretation:** Repeat optimization included explicit launch-geometry tuning before mature fulltile/PMR composition.
+
+### `22_Nonzero`
+
+**`opt-round-1` (parent `baseline`)** — `22_Nonzero/opt-round-1/attempts.md`
+
+- **Kernel / round / parent:** `22_Nonzero` / `opt-round-1` / baseline.
+- **Pre-change scenario:** Baseline was dominated by large nonzero indexing work and launch-heavy compaction flow.
+- **Change:** Tile-count prefix rewrite to reshape work decomposition and reduce full elementwise prefix materialization.
+- **Evidence:** Correctness passed but benchmark regressed versus baseline (`opt-note.md`); round not promoted.
+- **Interpretation:** Useful anti-signal for this card: flatten/prefix restructuring alone was insufficient until later dense-routing and launch-reuse refinements.
+
 ## NPUKernelBench round narratives (pilot: ten kernels `25_*`–`29_*`, batch 5 final, 2026-05-08, log-backed)
 
 *Operators in this excerpt: **`29_DynamicQuant`**, **`29_TanhGatedResidualAddBackward`**. Tree: `workspace/NPUKernelBench_level_1_2_triton/`. Five-field template per `skills/triton-npu-kernel-bench-logs/SKILL.md`.*

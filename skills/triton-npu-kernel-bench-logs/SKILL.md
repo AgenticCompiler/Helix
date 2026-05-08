@@ -63,6 +63,10 @@ When the task is to fold bench history into durable optimize knowledge:
 - Main objective: learn more precisely when and how each pattern should or should not be tried, and discover new patterns when existing cards do not fit.
 - Follow [references/optimization-lessons-workflow.md](references/optimization-lessons-workflow.md): per kernel with a record, read PyTorch + initial Triton, walk rounds using `opt-note.md`, and map every round to patterns by semantic comparison against `skills/triton-npu-optimize-v2/references/pattern_index.md` (not keyword matching).
 - For each round, append an **expanded narrative** to the matched pattern card(s) in `skills/triton-npu-optimize-v2/references/patterns/`.
+- At the start of each touched pattern card, ensure a canonical inventory section exists:
+  - `## NPUKernelBench field inventory`
+  - `**Operator workspaces (deduped):**`
+  - one bullet per operator workspace (deduped).
 - **Mandatory five-field template (every narrated round):** do not substitute one-line summaries, merged multi-round blurbs, or italic disclaimers for real round entries. Each round you document on a pattern card must use this exact bullet list (all five labels present, in this order, even when a field is short):
   - **`Kernel / round / parent`**
   - **`Pre-change scenario`**
@@ -74,6 +78,17 @@ When the task is to fold bench history into durable optimize knowledge:
 - Include code context, concrete kernel change, profile/perf evidence, and why the attempt worked or failed relative to the existing card guidance.
 - **New pattern cards vs log citations:** `opt-round-*/attempts.md` files in this repo’s bench export link only a **fixed set** of legacy `patterns/*.md` paths (for example `autotune.md`, `program-multiple-rows.md`, …). Those filenames map onto existing `triton-npu-optimize-v2` cards. **Absence of a new filename in logs does not prove there is no new mechanism**—agents must still semantically map each round to `pattern_index.md` and **add a new card** when no existing `## Summary` / `## Use When` fits, even if the round’s `attempts.md` never cited that slug. Conversely, **if every round maps cleanly to existing cards, do not invent new pattern files** just to satisfy a quota; cite the inventory (use `grep`/`find` under `workspace/…` as in **Locating bench trees**) when explaining why no new slug was added.
 - If no existing pattern matches a round's optimization mechanism, create a new pattern card in `skills/triton-npu-optimize-v2/references/patterns/`.
+- After one full kernel-to-pattern mapping pass and before per-pattern synthesis, run an explicit **gap-filling audit**:
+  - Verify every operator listed under `Operator workspaces (deduped)` appears in at least one narrative section on that card.
+  - Prioritize cards with fewer inventory items first (small-card audit first).
+  - Add missing narratives or explicit negative/anti-signal narratives using real round evidence; do not leave inventory-only operators.
+- Then run a second strict audit to ensure every inventory operator has at least one explicit **five-field** round block containing:
+  - `Kernel / round / parent`
+  - `Pre-change scenario`
+  - `Change`
+  - `Evidence`
+  - `Interpretation`
+  Inventory mentions or cross-card notes do not satisfy this requirement.
 - After all targeted rounds are mapped, run a per-pattern synthesis pass to update each touched card with clearer "use when / avoid when / expected signals" verdicts derived from all narratives.
 - Regenerate `skills/triton-npu-optimize-v2/references/pattern_index.md` with `skills/triton-npu-optimize/scripts/build_pattern_index.py` after pattern edits.
 - Track operator-level status in `workspace/NPUKernelBench_level_1_2_triton/PATTERN_AND_LOG_SYNC_PROGRESS.md` (kernels without `opt-note.md` / rounds stay `n/a`; kernels with history start as `todo` until the pass completes).
