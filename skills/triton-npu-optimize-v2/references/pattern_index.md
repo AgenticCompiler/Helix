@@ -8,42 +8,58 @@ Read this generated index first. Then read only the one or two most relevant det
 
 ### `attention-cv-pipeline`
 
-- Summary: Reduce latency in Cube+Vector fused attention-like kernels by cutting vector-side instruction pressure, making mask/scale work cheaper, and using architecture-gated compile options only when the target device supports them.
+- Summary: Use this pattern for fused attention-style kernels that have two stages:
 - Source: [attention-cv-pipeline.md](patterns/attention-cv-pipeline.md)
 - Use When:
-  - A `tl.dot` loop is followed by substantial vector epilogue work such as scale, mask, softmax, dropout, or bias.
-  - Profiling suggests Cube and Vector work are close enough that vector-side overhead limits overlap.
-  - A loop repeatedly recomputes the same mask tensor from sequence lengths or causal indices.
-  - Scale and mask are separate operations before softmax.
-  - The code stores log-sum-exp state in a base-2 representation solely because the forward path uses `exp2`.
-  - The target is known to be an A5 device such as `ascend950PR` or `ascend950DT`.
+  - A regular matrix score path already exists, but post-processing dominates total latency.
+  - Mask conditions are recomputed repeatedly inside hot loops even though they depend only on host-known metadata (lengths, windows, causal mode).
+  - Scale and mask are applied as two separate passes over the same score tile.
+  - A simpler branch (optional feature disabled) is forced through the same heavy path as the feature-enabled branch.
+  - The code keeps extra state format conversions only to match a particular exponential implementation choice.
+  - Profile evidence shows the matrix stage is not the main limit; post-processing instruction count is.
 - Avoid When:
-  - The kernel is pure Vector work rather than Cube-plus-Vector fused work.
-  - Profiling shows memory transfer, not vector epilogue work, is the dominant bottleneck.
-  - Architecture-specific compile settings cannot be gated on verified target information.
+  - The kernel is pure elementwise work with no meaningful matrix/post-processing split.
+  - The dominant bottleneck is launch or transfer overhead outside this stage.
+  - Correctness tolerance is extremely tight and cannot tolerate operation reordering or branch refactoring.
 - Signals / Code:
-  - A `tl.dot` loop is followed by repeated mask, scale, softmax, dropout, or bias work on the vector side.
-  - The same mask tensor is recomputed inside a hot loop even though it depends only on host-known metadata.
-  - The forward path stores log-sum-exp state in base-2 form solely because it uses `exp2`.
+  - Repeated mask index arithmetic appears inside the normalization loop.
+  - Separate scale and mask passes both read/write the same score tensor.
+  - Simpler semantic branches still route through generic fallback code.
+  - Forward state uses one exponential-base convention while backward expects another.
 - Signals / Profile:
-  - Profiling suggests Cube and Vector work are close enough that vector-side instruction pressure is limiting overlap.
-  - The kernel is structurally sound, but the post-dot vector path still appears to dominate latency.
+  - Post-processing instruction count remains high after basic launch cleanup.
+  - The same post-processing kernels dominate across many shape regimes.
+  - Simpler branches still spend visible time in broadcast/cast preparation outside kernels.
 
 ### `autotune`
 
-- Summary: Make use of autotune in Triton to optimize parameters automatically. Some analysis is still needed to set the possible values of parameters to try (limit the number of combinations to try to at most 20).
+- Summary: **Autotune** here means Triton’s `@triton.autotune` decorator: the runtime tries a **small, bounded** list of launch configurations (tile sizes, warp counts, pipeline stages, and other meta-parameters) and picks one that performs best on measured micro-benchmarks of the kernel.
 - Source: [autotune.md](patterns/autotune.md)
 - Use When:
-  - The kernel already has several plausible tile or launch parameter choices, and the main structure looks reasonable.
-  - Manual parameter picking is likely leaving performance on the table, but the search space can still be kept small and bounded.
+  - The kernel body is **stable** (correctness and rough structure are settled).
+  - There are **several plausible** `(tile M, tile N, …)` or `(warp count, pipeline stages)` combinations, and no single choice wins on all benchmark shapes.
+  - You can keep the **total number of combinations small** (a practical upper bound is on the order of **20**; exceeding that often explodes compile time or search noise).
+  - You can define **`key=`** fields so unrelated shapes do not share a cached wrong winner.
+  - You can run a **parent comparison**: autotune must beat the **previous best hand-tuned** version on the same harness, not only beat an old baseline.
+- Avoid When:
+  - The bottleneck is still **wrong algorithm or layout** (autotune will only reshuffle a bad approach).
+  - Compile or search time dominates (large search spaces or very heavy kernels).
+  - Correctness depends on **accumulation order** or **shared output buffers** unless you add explicit reset or isolation for each config trial.
+  - Launch metadata is **duplicated** between the decorator `Config` and the launch site (this causes hard failures or silent wrong configs).
 
 ### `cache_use`
 
-- Summary: Analyze memory access patterns, try to make use of cache and UB as much as possible. Make note of L2 cache (96MB, shared by all cores) and size of L1 and UB (512KB, 256KB, respectively).
+- Summary: Use this pattern when the kernel is memory-hierarchy bound: reduce avoidable global-memory movement, keep read-mostly data resident through adjacent phases, and remove wrapper-level full-tensor copies that hide kernel improvements.
 - Source: [cache_use.md](patterns/cache_use.md)
 - Use When:
-  - The bottleneck looks memory-hierarchy bound rather than purely compute bound.
-  - Repeated reloads, weak reuse, or poor locality suggest that L2, L1, or UB usage can be improved through better data placement or tile sizing.
+  - Profiling shows high transfer pressure (for example MTE-heavy time, many full passes over the same tensor, or obvious reloads between adjacent phases).
+  - The algorithm already has a stable structure, but hot tensors are still moved through extra intermediate buffers or thin wrapper kernels.
+  - Read-mostly tables or coefficients are consumed repeatedly (for example broadcast tables, mask tables, rope-style coefficients) and can be staged/reused.
+  - Wrapper code performs avoidable materialization (`clone`, `copy`, `expand + cast`, or duplicate count/probe launches) around an otherwise fast kernel.
+- Avoid When:
+  - The real bottleneck is scalar control, poor launch geometry, or missing specialization; use `scalar-latency-traps`, `program-multiple-rows`, or `tiling` first.
+  - Reuse expansion significantly increases register live ranges or reduces occupancy.
+  - A wider transfer tile exceeds the practical memory/issue sweet spot for the workload; bigger is not always faster.
 
 ### `classic-matmul`
 
@@ -63,144 +79,171 @@ Read this generated index first. Then read only the one or two most relevant det
 
 ### `compile_hint`
 
-- Summary: Try the following compile hints:
+- Summary: Use compile hints to communicate layout facts the compiler cannot safely infer from pointer math alone:
 - Source: [compile_hint.md](patterns/compile_hint.md)
 - Use When:
-  - The kernel structure already looks close to good, but the compiler still lacks explicit alignment or contiguity information.
-  - `tl.dot` tiles, slices, or pointer math are known to satisfy stronger layout assumptions than the code currently expresses.
+  - The hot kernel is already structurally good, but profiling still shows conservative lowering or extra movement/scalar overhead.
+  - You can prove stronger alignment/contiguity facts than the code currently expresses.
+  - Dot-style kernels are stable and only need targeted lowering guidance.
+  - Parent comparisons show the kernel is close to the frontier and small IR/lowering shifts can matter.
+- Avoid When:
+  - The dominant issue is still structural (wrong tiling, launch geometry, fusion split, or scalarized algorithm shape).
+  - Alignment/contiguity assumptions are shape-conditional and not yet guarded by dispatch.
+  - Hints are being used as a substitute for fixing invalid pointer/index math.
 - Signals / Code:
-  - `tl.dot` inputs are already aligned in `M` and `N`, so only the `K` direction still needs padding hints.
-  - Pointer slices are known contiguous or aligned, but the code does not yet communicate that with `tl.max_contiguous` or `tl.multiple_of`.
+  - Repeated contiguous slice loads/stores with masks that are mostly full tiles.
+  - Dot inputs where one axis (`K`) is the only true padding edge.
+  - Pointer/index expressions whose alignment is known from host-side contracts.
 
 ### `diagonal`
 
-- Summary: While it is good to access data from L2 cache as much as possible, having multiple kernels accessing the *same* data from the L2 cache may cause bank conflicts that slow down operations. One can use the diagonal access pattern to replace the usual swizzle pattern to alleviate this problem. The example applies this technique to matrix multiplication, but it may be applicable in other contexts.
+- Summary: Use this pattern when tiled matrix-style kernels suffer from cache contention caused by traversal order, not by missing tiling.
 - Source: [diagonal.md](patterns/diagonal.md)
 - Use When:
-  - Large tiled matrix-style work shows poor locality or bank-conflict-like behavior even though the basic tiling is already reasonable.
-  - Many programs touch the same cache regions at the same time, so changing block traversal order may improve effective L2 use.
+  - Large matrix-style workloads already use sensible tile shapes but still show locality/conflict issues.
+  - Many programs touch similar source regions concurrently under row-major or simple swizzle traversal.
+  - Both primary axes span enough blocks that traversal order materially affects reuse behavior.
+  - The bottleneck looks like cache/traffic scheduling rather than arithmetic throughput.
+- Avoid When:
+  - Problem size is small enough that traversal order has little impact.
+  - Kernel is still missing first-order tiling/layout fixes.
+  - Overhead of complex traversal mapping outweighs expected locality gains.
+  - The dominant bottleneck is scalar control, UB capacity, or launch geometry unrelated to cache-region contention.
 - Signals / Code:
-  - Traditional row-major or horizontal block assignment makes many cores touch the same left-matrix cache region at once.
-  - The matrix already spans many blocks along both `M` and `N`, so traversal order is a plausible performance lever rather than a cosmetic rewrite.
-  - The right-hand matrix is large enough that ordinary block traversal can churn L2 and lower reuse.
+  - Work assignment is row-major/horizontal and causes repeated synchronized access to the same matrix regions.
+  - Tile math is already stable, but performance remains sensitive to block launch ordering.
+  - One operand has large footprint where eviction/reload behavior is likely under naive traversal.
+- Signals / Profile:
+  - Throughput varies with scheduling order despite similar arithmetic work.
+  - Signs of memory-system contention or reuse loss persist after tile-size tuning.
+  - Performance degrades as matrix block grid grows, even when per-block kernel math is unchanged.
 
 ### `discrete_memory_access`
 
-- Summary: When loading discrete indices, rather than using `tl.load` to load the discrete set directly, use `tl.load` to load a continuous range first, then use `tl.gather` to select the target values.
+- Summary: When the logical operation is index-driven (`out = x[idx]`-style), avoid per-element scattered global loads on the hot path. Stage contiguous source spans first, then select locally (for example with gather/select from staged data).
 - Source: [discrete_memory_access.md](patterns/discrete_memory_access.md)
 - Use When:
-  - The central bottleneck is discrete memory access that semantically looks like `out = x[idx]`.
-  - Index-driven global loads dominate the hot path, and contiguous staging plus local selection is more plausible than direct scattered reads.
+  - The kernel is dominated by index-driven reads from global memory.
+  - Workloads have meaningful contiguous structure (for example large `inner_size` spans) even if the API is gather-like.
+  - Profiling shows scalar-heavy index decode (`//`, `%`, pointer reconstruction) around the data movement loop.
+- Avoid When:
+  - Source ranges are too large to stage efficiently for the active branch.
+  - Accesses are already naturally contiguous and direct loads are not the bottleneck.
+  - The main issue is launch geometry or kernel decomposition rather than index access shape.
 
 ### `gather-load`
 
-- Summary: Stage gather-like input through contiguous loads before selecting indexed values so the kernel reduces expensive discrete global-memory reads on Ascend NPU.
+- Summary: Optimize gather-like kernels by transforming index-heavy scattered reads into load shapes that are closer to contiguous copy work. On Ascend NPU, gather performance usually improves when the hot path reduces per-element index decoding and minimizes high-width index traffic.
 - Source: [gather-load.md](patterns/gather-load.md)
 - Use When:
-  - **Discrete access patterns**: When using index arrays to access non-contiguous memory
-  - **Small to medium source arrays**: When the source array can fit in shared memory
-  - **Performance-critical sections**: Where gather operations are bottleneck
+  - The operation is semantically gather/index-select, and profiling shows gather loads dominate latency.
+  - The dominant cases have contiguous structure on at least one axis, even if API semantics are indexed.
+  - The kernel is scalar-heavy from index decode and address reconstruction.
 - Avoid When:
-  - **Large source arrays**: When M is too large for shared memory capacity
-  - **Already contiguous access**: When memory access patterns are already sequential
-  - **GPU targets**: This optimization is NPU-specific and may not benefit GPU architectures
-  - **Single-element access**: When only accessing a few discrete elements
+  - Access is already contiguous and gather logic is not the bottleneck.
+  - Source/value movement is tiny and launch/setup overhead dominates.
+  - The main issue is dot/reduction structure (use `classic-matmul`) or broad tiling/launch geometry first.
 - Signals / Code:
-  - Code uses index arrays to access non-contiguous memory locations on the hot path.
-  - The gather source array is small or medium enough that contiguous staging in shared memory is plausible.
-  - Direct global-memory gather reads dominate more than the surrounding arithmetic.
+  - Direct global loads using index vectors on the hot path.
+  - Repeated per-lane coordinate decode for rank handling.
+  - High-width index tensors (for example `int64`) used where narrower indices are valid.
+- Signals / Profile:
+  - Gather kernel consumes most time on one representative case.
+  - Scalar ratio remains high after simple address cleanup.
 
 ### `grid-flatten-and-ub-buffering`
 
-- Summary: Change work distribution and UB staging when latency is dominated by too many logical tasks, uneven per-core work, physical-core load balance problems, or tiny row-wise memory transfers after a gather/scatter style rewrite.
+- Summary: Use this pattern when performance is limited by too many logical tasks, uneven per-core work, or tiny per-program transfers after a gather/scatter-style rewrite.
 - Source: [grid-flatten-and-ub-buffering.md](patterns/grid-flatten-and-ub-buffering.md)
 - Use When:
-  - The logical grid is much larger than the physical AICore or VectorCore count.
-  - Work is partitioned by batch or sequence buckets with visible load imbalance.
-  - Each program processes many tiny rows after grid-to-physical-core mapping.
-  - Gather-like code has continuous destination rows but still stores one row at a time.
-  - Scatter-weight-gradient-like code has repeated row loads that can be batched from continuous source rows.
+  - Logical task count is far larger than physical core count.
+  - Work partitioning by batch/sequence causes visible imbalance.
+  - After a first rewrite, programs still move tiny contiguous chunks one row at a time.
+  - Grid/index decode overhead (`div/mod` recovery from flattened IDs) is nontrivial.
+- Avoid When:
+  - Workload is already near core count and flattening adds loop overhead.
+  - Destination/source continuity is weak enough that UB slab batching is not valid.
+  - Main bottleneck is still algorithm shape, scalar traps, or tiling fundamentals.
 - Signals / Code:
-  - The logical grid is much larger than the physical AICore or VectorCore count.
-  - Work is partitioned by batch or sequence buckets that create visible load imbalance.
-  - Each physical program still processes many tiny rows or row-at-a-time transfers after grid mapping.
+  - `TOTAL_TASKS >> NUM_CORES` style mapping.
+  - Program-level loops that process many tiny slices.
+  - Flattened pid decode chains that can be replaced by direct grid mapping.
 - Signals / Profile:
-  - Latency is dominated by too many logical tasks, uneven per-core work, or tiny row-wise memory transfers after a gather or scatter style rewrite.
+  - Launch fragmentation, short bursts, and poor core utilization.
+  - Large Block Dim / too many thin programs despite contiguous transfer opportunities.
 
 ### `layout-store-and-block-pointers`
 
-- Summary: Improve latency by reshaping memory layout, block-pointer dimensionality, and store granularity so the NPU sees continuous vector-friendly transfers instead of scalarized transpose or many tiny operations.
+- Summary: Use this pattern when latency is limited by **memory layout expression** and **store/load shape**, not by arithmetic complexity. The goal is to present memory movement to the NPU as contiguous, vector-friendly tiles instead of flattened scalarized address chains, transposed store paths, or many tiny stores.
 - Source: [layout-store-and-block-pointers.md](patterns/layout-store-and-block-pointers.md)
 - Use When:
-  - Multiple stores target adjacent addresses but are emitted as separate small `tl.store` operations.
-  - `tl.store` writes a transposed logical tensor and appears to degrade into scalar element stores.
-  - A high-dimensional contiguous tensor is accessed through flattened one-dimensional offsets that stride through an inner dimension.
-  - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
-  - A `tl.dot` operand uses `tl.trans(x).to(dtype)` before entering Cube work.
-  - A matmul epilogue adds bias after `tl.dot` in a way that creates unnecessary broadcast or load ordering overhead.
+  - Stores target adjacent addresses but are emitted as multiple small `tl.store` ops.
+  - Store order is effectively transposed relative to destination contiguity.
+  - A contiguous multidimensional tensor is accessed through flattened 1D offsets with heavy decode overhead.
+  - Inner dimensions are looped or pid-decoded even though they can be represented in tile/block shape.
+  - Dot paths use avoidable transpose/cast ordering that hurts load/store shape.
+- Avoid When:
+  - Main bottleneck is still launch geometry, scalar traps, or algorithm structure.
+  - Destination/source continuity assumptions are weak or shape-dependent without dispatch guards.
+  - Block-pointer metadata (`shape/strides/offsets/order`) cannot be made correct and stable.
 - Signals / Code:
-  - Multiple stores target adjacent addresses but are emitted as separate small `tl.store` operations.
-  - A store writes a transposed logical tensor and appears to degrade into scalar element stores.
-  - A high-dimensional contiguous tensor is accessed through flattened one-dimensional offsets that stride through an inner dimension.
-  - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
+  - Repeated scalar address arithmetic (`div/mod`, manual offset chains) around otherwise simple data movement.
+  - Transpose-shaped accumulators only to transpose again at store.
+  - Repeated narrow loads/stores where contiguous vectors are possible.
+- Signals / Profile:
+  - High transfer overhead despite moderate arithmetic.
+  - Improvements from row/tiling passes plateau until layout/store expression changes.
 
 ### `loop-invariant-hoisting`
 
-- Summary: Apply **Loop-Invariant Code Motion (LICM)** to Triton kernels: move computations that do **not** depend on the loop induction variable out of the loop, so each iteration performs only the minimal work that truly varies.
+- Summary: Apply loop-invariant code motion (LICM) in Triton kernels: move work that does not depend on the loop induction variable out of the hot loop so each iteration executes only truly varying computation.
 - Source: [loop-invariant-hoisting.md](patterns/loop-invariant-hoisting.md)
 - Use When:
-  - The kernel has a hot inner loop (often a K loop in GEMM-like kernels).
-  - Each loop iteration repeats substantial pointer math, mask construction, type casts, or shape bookkeeping.
-  - Profiling shows scalar/control work is disproportionately high relative to useful compute.
+  - A hot inner loop repeatedly rebuilds pointer bases, masks, or scalar setup terms.
+  - Profiling suggests scalar/control overhead is disproportionate to useful math.
+  - The kernel structure is already mostly correct, but loop body bookkeeping remains heavy.
+- Avoid When:
+  - Main bottleneck is still layout/store shape, launch geometry, or algorithm choice.
+  - Candidate expressions actually vary with loop index and cannot be safely hoisted.
+  - A rewrite would blur correctness-sensitive numeric paths without clear guardrails.
 - Signals / Code:
-  - Inner loop recomputes expressions of the form:
-  - `base(pid, offs) + delta(loop_var)`
-  - e.g. `a_ptr + offs_m*stride_am + k*stride_ak`
-  - Masks are rebuilt each iteration even when parts are invariant:
-  - e.g. `a_mask_m = offs_m < M` is invariant, but recomputed into `a_mask` each iter.
-- Signals / Profile:
-  - AIV scalar dominated by `LD_XD_XN_IMM`, `ST_XD_XN_IMM`, `ADD(_IMM)`, `CMP_IMM`.
-  - Timeline shows CUBE waiting on flags around the loop, while AIV performs control-heavy work.
-- Signals / IR:
-  - Repeated arithmetic chains (`muli/addi/index_cast`) inside `scf.while` / `scf.for` bodies.
-  - Loop bodies contain repeated `subi/minsi/maxsi` patterns for bounds handling.
+  - Repeated expressions of the form `base(pid, offs) + delta(k)` inside the loop.
+  - Mask parts that are invariant across iterations are rebuilt every iteration.
+  - Repeated per-iteration scalar setup for parameters that are launch-invariant.
 
 ### `parallel`
 
-- Summary: Use `tl.parallel` to run tasks in the two vector cores of an aicore at the same time.
+- Summary: Use `tl.parallel` to run independent vector-side work concurrently across the two vector cores in one AICore. This pattern helps when compute-side branches are independent and substantial enough to amortize parallel-control overhead.
 - Source: [parallel.md](patterns/parallel.md)
 - Use When:
-  - Two independent vector-side computations happen in sequence and can be split across vector cores.
-  - The bottleneck is not primarily memory movement, so exposing more vector-core concurrency is more promising than reworking loads.
+  - Two or more compute-side substeps are independent and currently executed sequentially.
+  - Candidate work is vector compute (type conversion, scaling, elementwise transforms), not shared-bandwidth loading.
+  - Branch work is large enough that `tl.parallel` overhead is small relative to useful work.
 - Avoid When:
-  - The candidate work items still share a real data dependency.
-  - The operation is mostly memory loading, where shared bandwidth is already the limiting factor.
-  - The operation is so small that `tl.parallel` overhead is likely larger than the gain.
+  - Branches share true data dependencies.
+  - Dominant bottleneck is memory movement or load bandwidth.
+  - Candidate kernels are too small/fine-grained to benefit from branch parallelization.
 - Signals / Code:
-  - Independent type conversions, element-wise operations, or scaling steps already exist on the hot path.
-  - The candidate work split is compute-side and independent, rather than shared-bandwidth memory loading.
+  - Sequential, independent compute phases on the same iteration.
+  - Natural split of work into separate tensor operands or independent transforms.
 
 ### `program-multiple-rows`
 
-- Summary: Amortize per-program fixed costs and improve vector-friendly batching for **row-reduction or row-wise fused kernels** by mapping **multiple rows** to one Triton `program_id` via `BLOCK_M > 1`, instead of one row per program.
+- Summary: Map multiple logical rows to one Triton program (`BLOCK_M > 1`) to amortize per-program overhead and improve vector utilization in row-wise kernels.
 - Source: [program-multiple-rows.md](patterns/program-multiple-rows.md)
 - Use When:
-  - The kernel is **naturally row-wise**: each output row depends mainly on one row of input (e.g. row-wise LogSumExp, row norms, row softmax statistics).
-  - Profiling or timeline views suggest **high scalar/control overhead**, **under-filled vector work per program**, or **many tiny programs** relative to problem size `B` (batch / number of rows).
-  - The row-wise math already uses **tile loops along `N`** (`BLOCK_N`); increasing **`BLOCK_M`** does not force an extra full pass over global memory if you keep a **single streaming pass** over `N` per program.
+  - Kernel is row-structured (row reductions, row-wise fused epilogues, row-major transforms).
+  - Current launch maps one row per program and profiling shows many thin programs or scalar-heavy overhead.
+  - Problem size has enough rows to amortize wider per-program row bundles.
+  - Inner dimension streaming over `N` can stay single-pass while widening row count.
 - Avoid When:
-  - **Second full pass** over `x` for the same row (e.g. two-pass LSE) usually **increases global reads**; msprof often shows **more MTE / wait** unless the algorithm truly requires it. Prefer **single-pass streaming LSE** when numerically stable.
-  - **Ping-pong / multibuffer** without evidence of **MTE–vector overlap** can add **sync and UB** cost; treat as a **separate hypothesis** to validate.
-  - Do not conclude from **one** metric (e.g. `BAR` cycles) without **end-to-end** timing and comparable workload.
+  - Row count is tiny; wider row bundles add overhead without amortization.
+  - Increasing `BLOCK_M` forces extra full data passes or unstable numeric behavior.
+  - Gains are dominated by unrelated bottlenecks (layout/store shape, compile hints, or scalar decode elsewhere).
 - Signals / Code:
-  - `program_id(0)` indexes **rows 1:1** (`pid_m` is the row index), and the inner loop only tiles **`N`**.
-  - Scalar helpers (`program_id`, pointer arithmetic per row) run once **per row**; vector units see **narrow** tensors (e.g. `(1, BLOCK_N)` loads).
-- Signals / Profile:
-  - **`aiv_scalar_ratio`** or scalar-related time is **disproportionately high** compared to useful vector math, for workloads where `B` is large enough that vector throughput should dominate.
-  - **`op_statistic`** (per-kernel): **Avg** latency improves when the same logical work uses **fewer launches** (compare with care: **Count** and input shapes must be comparable across runs).
-  - If **`aiv_mte2_ratio`** is **not** the sole dominant bucket, pure “double-buffer the loads” may be the wrong first lever; **program batching** can still help by making each program’s inner loop **wider** along rows.
-  - Frequent **barrier / wait** patterns tied to **many short programs** or **thin** vector blocks.
-  - **Note:** High **`BAR`** cycle counts alone are **not** a success metric; correlate with **wall time**, **op_statistic Avg**, and correctness.
+  - `pid` maps directly to single-row ownership.
+  - Per-row pointer/control setup repeated for each program.
+  - Hot loops already tile inner dimension (`BLOCK_N`) but row axis remains under-batched.
 
 ### `remove-implicit-transpose`
 
@@ -243,87 +286,142 @@ Read this generated index first. Then read only the one or two most relevant det
 
 ### `scalar-latency-traps`
 
-- Summary: Remove scalarizing constructs that make an otherwise vector-friendly Ascend Triton kernel spend time on avoidable scalar control, address arithmetic, or long dependency chains.
+- Summary: Use this pattern to remove scalarized control and index work from otherwise vector-friendly Ascend Triton kernels.
 - Source: [scalar-latency-traps.md](patterns/scalar-latency-traps.md)
 - Use When:
-  - Runtime values that are shape constants are passed as normal arguments instead of `tl.constexpr`.
-  - Pointer variables are updated with `+=` inside a loop, creating loop-carried address dependencies.
-  - Address expressions use modulo addressing (`%`) to wrap tail tiles or index boundaries.
-  - `tl.where` masks all lanes except a single special position, or has exactly one false lane in a vector.
-  - Integer elementwise arithmetic is done as scalar-looking `int64` work even though the value range is safely `int32`.
-  - `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
+  - Hot loops repeatedly do per-lane `//`, `%`, or wide-index arithmetic for coordinate decode.
+  - Runtime values are effectively shape constants but are still passed as normal arguments instead of `tl.constexpr`.
+  - Pointer updates rely on loop-carried `+=` recurrences instead of base-plus-offset addressing.
+  - `tl.where` is used with effectively uniform predicates (all lanes same decision, or only one exceptional lane).
+  - `int64` index/control math dominates even though value ranges are provably `int32`-safe.
+  - Long one-dimensional prefix-style vector flows (for example `tl.cumsum`) show scalar degradation in profile or IR.
+- Avoid When:
+  - The dominant bottleneck is memory traffic, layout/store shape, or launch geometry, not scalar control.
+  - Wraparound via `%` is part of required math semantics, not tail handling.
+  - Index ranges are not proven safe for `int32`.
+  - A replacement path changes reduction/precision behavior without an explicit correctness budget.
+  - A tuned vendor/library path already outperforms the candidate rewrite in representative workloads.
 - Signals / Code:
-  - Runtime values that are shape constants are passed as normal arguments instead of `tl.constexpr`.
-  - Pointer variables are updated with `+=` inside a loop, creating loop-carried address dependencies.
-  - Address expressions use modulo addressing (`%`) to wrap tail tiles or index boundaries.
-  - `tl.where` masks all lanes except a single special position, or has exactly one false lane in a vector.
-  - Integer elementwise arithmetic is done as scalar-looking `int64` work even though the value range is safely `int32`.
-  - `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
+  - Repeated scalar-looking coordinate reconstruction around simple load/store or reduction kernels.
+  - Uniform or near-uniform predicates expressed as vector `tl.where` on every iteration.
+  - Invariant setup terms rebuilt inside inner loops.
+  - Frequent scalar guards in cases where exact-tile or no-padding regimes are common.
+- Signals / Profile:
+  - Scalar/control pipelines dominate while vector work remains underutilized.
+  - Flat or weak gains from tile-only tuning until control/index simplification is applied.
+  - Regressions when replacing backend-optimized paths despite seemingly simpler kernel logic.
+- Signals / IR:
+  - Repeated `index_cast`/arith chains inside loop bodies that do not need per-iteration recomputation.
+  - Long scalar dependence chains tied to address generation.
 
 ### `slice_coalesce`
 
-- Summary: When the kernel performs scatter/gather operations with non-contiguous memory access patterns, such as token rearrangement in MOE layers, sparse data processing, or any operation involving index-based data movement, use `extract_slice` or `insert_slice` to data reuse while minimizing expensive global memory transactions.
+- Summary: Use this pattern when scatter/gather-like kernels are dominated by random global-memory access and poor transfer coalescing.
 - Source: [slice_coalesce.md](patterns/slice_coalesce.md)
 - Use When:
   - Scatter or gather style data movement dominates, and batching work in UB could replace many random global accesses with fewer contiguous transfers.
   - The kernel resembles token rearrangement, sparse reordering, or other index-based movement where access direction determines whether reads or writes should be coalesced.
+  - The operation has a stable block structure where contiguous chunk staging can be repeated predictably.
+  - Profiling suggests data movement shape (not arithmetic complexity) is the primary bottleneck.
+- Avoid When:
+  - Accesses are already mostly contiguous and coalesced; extra slicing would add overhead without reducing random traffic.
+  - UB pressure is already near limit and additional staging would force overly small tiles or expensive synchronization.
+  - Index paths are highly irregular with weak locality, so coalescing opportunities are minimal.
+  - The dominant issue is scalar control, launch geometry, or reduction structure rather than transfer shape.
+- Signals / Code:
+  - Tight loops perform repeated elementwise scattered loads and scattered stores in the same path.
+  - The kernel can naturally batch contiguous rows/chunks but currently handles tokens one by one.
+  - UB-local assembly/disassembly could shift randomness to only one side of the transfer.
+- Signals / Profile:
+  - Transfer-heavy hotspots dominate while compute utilization remains modest.
+  - Performance scales poorly as index randomness increases, even when arithmetic work stays similar.
+  - Improvements appear when contiguous chunk size increases, indicating coalescing sensitivity.
 
 ### `slice_intermediate`
 
-- Summary: When the kernel computation creates intermediate tensors that, combined with inputs and outputs, would exceed the Unified Buffer (UB) capacity (in attention mechanisms, batch normalization, etc), divide computation into several steps, and use `extract_slice` and `insert_slice` to read/write into UB.
+- Summary: Use this pattern when intermediate tensors, not core algorithm shape, are the main reason a kernel exceeds Unified Buffer (UB) capacity.
 - Source: [slice_intermediate.md](patterns/slice_intermediate.md)
 - Use When:
   - Intermediate tensors, rather than just inputs or outputs, are the main source of UB pressure.
   - The overall algorithm is still reasonable, but staged slice processing is needed to keep temporary values within on-chip memory limits.
+  - The kernel repeatedly performs elementwise or fused updates where temporaries have the same shape as the main accumulator.
+  - You can partition one or more axes into independent chunks with predictable boundaries.
+- Avoid When:
+  - UB pressure is low and slicing would only add loop/control overhead.
+  - The operation has strong cross-slice dependencies that would require complex synchronization or change reduction order.
+  - The main bottleneck is transfer layout, launch geometry, or scalar index control rather than temporary footprint.
+  - A simpler structural rewrite (for example better tiling or fusion split) removes UB pressure more directly.
+- Signals / Code:
+  - Full-tensor temporaries (broadcasted scales, masks, updates) stay live alongside inputs/outputs in the hot path.
+  - UB-related failures or near-limit configurations appear when block size grows.
+  - Arithmetic itself is straightforward, but live tensor count per program is too high.
+- Signals / Profile:
+  - Performance is unstable across tile sizes due to memory-pressure cliffs.
+  - Candidate kernels regress sharply when enabling larger blocks that should otherwise help arithmetic efficiency.
 
 ### `software-pipeline`
 
-- Summary: Improve overlap between memory movement and compute in a hot loop that is already structurally tiled, typically by combining block pointers, prefetching, and pipelined loop structure.
+- Summary: Use this pattern to increase overlap between memory movement and compute in an already tiled hot loop.
 - Source: [software-pipeline.md](patterns/software-pipeline.md)
 - Use When:
-  - The hot loop already has a real tiled structure, but loads and computation still happen too serially.
-  - Profiling suggests wait-heavy or overlap-poor behavior, and the next question is pipeline quality rather than basic kernel structure.
+  - The kernel already has a stable tiled loop, but execution still looks like synchronous load-then-compute.
+  - Profiling shows wait-heavy behavior or visible compute gaps while memory engines fetch next tiles.
+  - Block-pointer structure can replace repeated manual pointer arithmetic on the hot path.
+  - UB can hold the active tile set needed for prefetch/pipeline depth.
 - Avoid When:
-  - **Tiny Inner Loops**: If the loop only runs 1 or 2 times, the pre-fetch overhead might exceed the savings.
-  - **Extreme Memory Pressure**: If the tile size is so large that the Unified Buffer cannot hold two sets of tiles (current and next).
-  - **Dependency Chains**: If Tile `i+1` depends on the result of the computation of Tile `i`.
-  - **Pre-tiling rewrite still needed**: If the loop should first be rewritten into a regular tiled matmul or another clearer tile-based structure.
+  - Inner loop trip count is tiny and pipeline setup overhead dominates.
+  - UB headroom is insufficient for multiple live tile sets.
+  - Iteration `i+1` depends on compute results from iteration `i` in a way that prevents overlap.
+  - The kernel still needs first-order structural rewriting (for example manual reduction should become regular tiled `tl.dot` first).
 - Signals / Code:
-  - The loop is already tiled, but each iteration still follows a mostly synchronous load-then-compute rhythm.
-  - Manual pointer arithmetic dominates the tiled loop, and block-pointer plus prefetch structure is still missing.
+  - Tiled loops issue `tl.load` then immediately compute, repeatedly, with little decoupling.
+  - Pointer arithmetic and offset rebuilds dominate loop body setup.
+  - `tl.make_block_ptr` / `tl.advance` are absent despite regular tiled access.
 - Signals / Profile:
-  - `msprof` timelines show Cube or Vector gaps while the MTE engines fetch the next tile.
-  - Wait-heavy behavior suggests insufficient memory/compute overlap rather than a missing tiled-kernel rewrite.
+  - Timeline shows Cube/Vector idle gaps while waiting for memory transfers.
+  - Improvements from pure tiling changes plateau before overlap is improved.
+  - Wait-dominant behavior persists even after basic launch geometry cleanup.
 
 ### `tiling`
 
-- Summary: Reduce per-program working-set size through hierarchical or sub-block tiling so large tiles, intermediates, or multi-tensor loads fit UB safely without collapsing overall task structure.
+- Summary: Use this pattern to reduce per-program working-set size so tiles, intermediates, and multi-tensor live state fit Unified Buffer (UB) safely.
 - Source: [tiling.md](patterns/tiling.md)
 - Use When:
-  - Block sizes, live intermediates, or multi-tensor loads risk UB overflow or poor locality.
-  - The main problem is working-set size and memory footprint, not the need for a completely different kernel structure.
+  - Block sizes, live intermediates, or multi-tensor loads risk UB overflow.
+  - Kernel structure is already mostly correct, but tile footprint is too large for stable execution.
+  - Performance cliffs appear when increasing tile widths that should otherwise help throughput.
+  - A two-level scheme (`BLOCK` for scheduling, `SUB_BLOCK` for memory safety) can be applied without changing semantics.
 - Avoid When:
-  - **Small BLOCK_SIZE** No significant memory pressure
-  - **Simple operations** with single tensor - UB usage is minimal
-  - **Already optimized** with sub-blocking present
-  - **Structure is the real problem** - if the current kernel is really a manual matmul or reduction that should first become a regular tiled `tl.dot` loop
+  - UB pressure is not the bottleneck and sub-block loops would only add control overhead.
+  - The kernel still needs foundational structural rewriting (for example manual reduction should first become regular tiled `tl.dot`).
+  - Main issue is memory/compute overlap after footprint is already safe (use `software-pipeline` next).
+  - Access/layout shape is the primary problem rather than working-set size.
 - Signals / Code:
-  - Large `BLOCK_SIZE` values, multiple tensor loads, or heavy intermediates keep too much data live per program.
-  - The kernel already has a reasonable overall structure, but it still needs smaller sub-blocks to control UB usage.
-  - Runtime failures or memory access violations appear when block sizes increase on NPU.
+  - Large block sizes keep too many tensors live in one iteration.
+  - Temporary tensors have near-output shape and overlap in lifetime.
+  - Runtime failures or unstable behavior occur when tile size is widened.
+- Signals / Profile:
+  - Strong regressions or failures at larger tile configurations due to memory pressure.
+  - Throughput does not scale with bigger tiles because memory footprint dominates.
 
 ### `vec-cmp`
 
-- Summary: Rewrite explicit integer compare-heavy logic into a form that is more vector-friendly on Ascend NPU, especially when scalarized compares are blocking fast masking or selection.
+- Summary: Use this pattern when explicit integer comparison logic becomes a scalar bottleneck on Ascend NPU.
 - Source: [vec-cmp.md](patterns/vec-cmp.md)
 - Use When:
-  - Explicit `i64` or `i32` comparisons appear on the hot path outside the compiler's normal fast load/store mask cases.
-  - Comparison-heavy control flow or masking looks like a real vectorization blocker rather than just minor boundary handling.
+  - Explicit `i64`/`i32` comparisons drive hot-path masks for `tl.where` or similar conditional logic.
+  - Comparison-heavy logic appears outside compiler-optimized load/store mask fast paths.
+  - Profiling indicates scalar/control pressure tied to compare-and-mask sections.
+  - Semantics allow safe conversion to vector-friendly compare dtypes.
 - Avoid When:
-  - **Comparisons in `tl.load`/`tl.store` masks** - already auto-optimized:
-  - **Already using fp32 comparisons** - no optimization needed:
-  - **Non-performance-critical code** - optimization overhead may not be justified
+  - Comparisons are already in compiler-fused `tl.load`/`tl.store` mask expressions and perform well.
+  - Values are outside safe representable range for the chosen comparison cast strategy.
+  - Comparison path is cold and not performance relevant.
+  - Rewriting comparisons would add extra casts/conversions that outweigh benefits.
 - Signals / Code:
-  - Integer comparisons produce explicit boolean masks used in `tl.where`, conditional assignments, or similar hot-path logic.
-  - The comparison is written outside the compiler's normal `tl.load` or `tl.store` mask fast path.
-  - The code still compares integer operands directly even though vector-friendly `fp32` comparison would preserve semantics.
+  - Integer compare masks are constructed explicitly and reused in hot control flow.
+  - Repeated compare/cast/mask scaffolding appears in inner loops.
+  - Integer compare results gate large vector operations through `tl.where`.
+- Signals / Profile:
+  - Scalar instruction share remains high in otherwise vector-friendly kernels.
+  - Throughput improves little from tiling or overlap tuning until compare path is cleaned up.

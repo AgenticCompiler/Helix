@@ -82,10 +82,13 @@ For each operator workspace `NN_OperatorName/` that has `opt-note.md` and `opt-r
 
    **New cards:** triage text in `attempts.md` only references a small set of legacy pattern paths. Still perform semantic mapping against the full `pattern_index.md`. Create a new v2 card when the mechanism is not covered; omit new cards when all rounds map to existing summaries.
 
-   **Inventory setup requirement (start of card work):**
-   - Ensure each touched card has `## NPUKernelBench field inventory`.
-   - Ensure it contains `**Operator workspaces (deduped):**` with deduped operator bullets.
-   - Treat this inventory as the authoritative checklist for later gap-filling.
+   **Inventory setup requirement (temporary during review):**
+   - While mapping and narrating rounds, keep a deduped checklist directly on each touched pattern card:
+     - `## NPUKernelBench field inventory`
+     - `**Operator workspaces (deduped):**`
+     - one bullet per operator workspace.
+   - Use this section to drive coverage checks and gap-filling.
+   - At the **final synthesis step** for the card, remove the inventory section so the committed card remains durable pattern guidance.
 
 6. **Pattern card updates and new pattern creation**
 
@@ -103,9 +106,9 @@ For each operator workspace `NN_OperatorName/` that has `opt-note.md` and `opt-r
 
    After completing one full kernel pass and before synthesis:
 
-   - For every touched pattern card, check that each operator listed in `Operator workspaces (deduped)` is represented in the card narratives.
+   - For every touched pattern card, check that each operator listed in `Operator workspaces (deduped)` is represented on the card with real round evidence.
    - Prioritize cards with fewer inventory items first; they are easiest to fully close.
-   - Add missing narratives grounded in real rounds (success, failure, or anti-signal); do not leave inventory-only operators.
+   - Add missing narratives grounded in real rounds (success, failure, or anti-signal); do not leave inventory-only operators undocumented.
 
    Then run a strict second check:
 
@@ -125,6 +128,15 @@ For each operator workspace `NN_OperatorName/` that has `opt-note.md` and `opt-r
    - Common failure modes and anti-signals.
    - Whether the pattern should be tried early, late, or only after profiling.
    - Practical "try / avoid" verdict that refines `## Use When` and `## Avoid When`.
+   - A recommended application order when evidence shows staged success (for example structural branch cleanup first, bounded threshold/tile tuning second).
+
+   Synthesis quality rules:
+
+   - **Kernel-agnostic phrasing:** avoid naming one operator’s branch labels as if they are universal; rewrite into general semantic regimes.
+   - **Broad experience coverage:** synthesize from successes, failures, and near-miss branches across available narratives on the card.
+   - **Abstraction:** keep guidance independent from specific round identifiers and concrete file paths in the final pattern prose.
+   - **Explanatory clarity:** avoid unexplained jargon; define specialized terms briefly when first introduced.
+   - **Self-contained output:** a reader should understand when/how to apply the pattern without reopening raw logs.
 
   When the user requests **round narratives only**, stop after step 7 and leave synthesis for a later pass.
 

@@ -2,140 +2,132 @@
 
 ## Summary
 
-Reduce latency in Cube+Vector fused attention-like kernels by cutting vector-side instruction pressure, making mask/scale work cheaper, and using architecture-gated compile options only when the target device supports them.
+Use this pattern for fused attention-style kernels that have two stages:
 
-Use this after the kernel is already structurally sound. These optimizations are sensitive to numerics, architecture, and forward/backward consistency.
+- a **matrix stage** that computes score tiles (for example via `tl.dot`)
+- a **post-processing stage** that applies operations such as masking, scaling, normalization, optional stochastic transforms, and state writeback
+
+In this card, "Cube" means the matrix stage and "Vector" means the post-processing stage.  
+The goal is to reduce post-processing work and branch overhead while preserving numerical correctness and forward/backward agreement.
+
+## Why This Pattern Exists
+
+Across multiple optimization histories, two recurring experiences appeared:
+
+1. **Early micro-tweaks often fail or give tiny gains.**  
+   Simple launch-size or hint-only changes frequently plateau or regress when branch structure and dataflow are still mixed together.
+
+2. **The successful path is usually staged, not one-shot.**  
+   The best outcomes came from a sequence:
+   - separate simpler and heavier semantic branches,
+   - remove avoidable host-side data preparation for the simpler branch,
+   - then tune only the true hotspot branch with bounded, evidence-driven thresholds/tiles.
+
+This card encodes that staged strategy.
 
 ## Use When
 
-- A `tl.dot` loop is followed by substantial vector epilogue work such as scale, mask, softmax, dropout, or bias.
-- Profiling suggests Cube and Vector work are close enough that vector-side overhead limits overlap.
-- A loop repeatedly recomputes the same mask tensor from sequence lengths or causal indices.
-- Scale and mask are separate operations before softmax.
-- The code stores log-sum-exp state in a base-2 representation solely because the forward path uses `exp2`.
-- The target is known to be an A5 device such as `ascend950PR` or `ascend950DT`.
+- A regular matrix score path already exists, but post-processing dominates total latency.
+- Mask conditions are recomputed repeatedly inside hot loops even though they depend only on host-known metadata (lengths, windows, causal mode).
+- Scale and mask are applied as two separate passes over the same score tile.
+- A simpler branch (optional feature disabled) is forced through the same heavy path as the feature-enabled branch.
+- The code keeps extra state format conversions only to match a particular exponential implementation choice.
+- Profile evidence shows the matrix stage is not the main limit; post-processing instruction count is.
 
 ## Avoid When
 
-- The kernel is pure Vector work rather than Cube-plus-Vector fused work.
-- Profiling shows memory transfer, not vector epilogue work, is the dominant bottleneck.
-- Architecture-specific compile settings cannot be gated on verified target information.
+- The kernel is pure elementwise work with no meaningful matrix/post-processing split.
+- The dominant bottleneck is launch or transfer overhead outside this stage.
+- Correctness tolerance is extremely tight and cannot tolerate operation reordering or branch refactoring.
 
 ## Signals
 
 ### Code
 
-- A `tl.dot` loop is followed by repeated mask, scale, softmax, dropout, or bias work on the vector side.
-- The same mask tensor is recomputed inside a hot loop even though it depends only on host-known metadata.
-- The forward path stores log-sum-exp state in base-2 form solely because it uses `exp2`.
+- Repeated mask index arithmetic appears inside the normalization loop.
+- Separate scale and mask passes both read/write the same score tensor.
+- Simpler semantic branches still route through generic fallback code.
+- Forward state uses one exponential-base convention while backward expects another.
 
 ### Profile
 
-- Profiling suggests Cube and Vector work are close enough that vector-side instruction pressure is limiting overlap.
-- The kernel is structurally sound, but the post-dot vector path still appears to dominate latency.
+- Post-processing instruction count remains high after basic launch cleanup.
+- The same post-processing kernels dominate across many shape regimes.
+- Simpler branches still spend visible time in broadcast/cast preparation outside kernels.
 
 ## Repairs
 
-### Cube/Vector pipeline scheduling
+### Recommended Order
 
-Move independent vector work away from the critical Cube path so loads, `tl.dot`, and epilogue work can overlap better. Prefer changes that reduce live vector temporaries and instruction count before adding buffering.
+Apply in this order unless evidence strongly suggests otherwise:
 
-Do not use this pattern when the kernel is pure Vector or when profiling shows memory transfer, not vector epilogue work, is dominant.
+1. Branch/dataflow separation
+2. Remove avoidable host-side preparation
+3. Simplify repeated mask/scale work
+4. Normalize state conventions
+5. Hotspot-only bounded tuning
+6. Optional architecture-gated refinements
 
-### Precompute repeated masks
+This order reflects what repeatedly worked in practice.
 
-If mask construction is repeated inside a hot loop and depends only on host-known metadata, precompute the mask on the host and pass it as a tensor. In varlen cases, build each batch mask so invalid positions are already false, then use block pointer shapes that reflect the real `(q_len, k_len)` region.
+### 1) Precompute and compact masks
 
-This trades memory bandwidth for less vector control work. Validate the tradeoff with benchmark evidence.
+If mask structure depends only on host metadata (sequence lengths, window limits, static causality), build compact masks once and feed kernels with ready-to-use layouts.
 
-### Fuse scale and mask
+Use real valid extents in addressing shape, not padded maximum extents, when possible.
 
-When softmax scores are scaled then masked, consider combining the operations into one expression that feeds softmax directly:
+### 2) Fuse scale and mask at score boundary
+
+Prefer a single expression feeding normalization instead of two separate passes:
 
 ```python
-scores = scores * scale + tl.where(mask, 0.0, -float("inf"))
+scores = scores * scale + tl.where(mask, 0.0, NEG_INF)
 ```
 
-Use a finite large negative value only when dtype and downstream numerics make that equivalent and safe.
+Choose `NEG_INF` according to dtype and numerical contract, and verify boundary behavior.
 
-### Use `exp` instead of `exp2` consistently
+### 3) Split simpler and heavier branch dataflow
 
-If `exp2(x * log2e)` is used only to approximate `exp(x)`, consider switching to `tl.exp(x)` and store matching log-sum-exp state. Update backward formulas together; forward-only changes can silently break gradients.
+Treat the simpler semantic branch as a first-class fast path.  
+Do not force it through heavier feature-enabled materialization if the math path is simpler.
 
-### Architecture-gated compile parameters
+### 4) Remove redundant host-side mask expansion
 
-Some compile parameters are only appropriate for A5 targets. Gate them on the actual architecture and record the target evidence. Do not enable A5-only options on older Ascend devices.
+When mask tensors are naturally broadcastable, avoid eager host materialization (`expand` + `cast` + `contiguous`) if equivalent in-kernel broadcast/load is cheaper and still correct.
+
+### 5) Keep exponential/state conventions consistent
+
+If changing between equivalent formulations (for example `exp2`-based vs `exp`-based normalization), update saved state and backward formulas together. Never change forward state format in isolation.
+
+### 6) Hotspot-only bounded tuning
+
+After structural cleanup, tune only the branch and shape regime that clearly dominates runtime.  
+Use bounded thresholds/tiles and stop when improvements become marginal or unstable.
+
+### 7) Architecture-gated refinements only with proof
+
+Device-specific compile choices can help, but must be guarded by verified target checks and regression-tested on non-target devices.
 
 ## Risks
 
-- Mask precomputation can change boundary behavior if block pointer shapes describe the padded max shape instead of real lengths.
-- Scale-mask fusion changes where infinities and dtype conversions happen.
-- `exp` versus `exp2` must be consistent across saved state and backward code.
-- A5 compile flags are target-specific and must not become unconditional defaults.
+- Mask precompute can silently change boundaries if shape assumptions drift.
+- Scale+mask fusion can change NaN/Inf and conversion behavior.
+- Branch splitting can duplicate logic and drift semantics between branches.
+- State-format changes can break backward correctness even when forward looks fine.
+- Hotspot tuning can overfit one regime and regress smaller cases.
+- Architecture-specific options can accidentally leak into global defaults.
 
 ## What To Verify After Applying
 
-- Run correctness with mask-heavy, boundary, and varlen cases when available.
-- Compare both latency and profiler balance; a vector-instruction reduction should show up in the evidence.
-- Record any architecture gate in `attempts.md` and `summary.md`.
-- If backward code exists, verify forward/backward state conventions together.
+- Correctness on variable-length, boundary, and heavy-mask cases.
+- Forward/backward consistency, especially saved normalization state.
+- Benchmarks split by branch regime (simpler vs heavier semantic branch).
+- Operator mix confirms reduced broadcast/cast and repeated post-processing passes.
+- Profile evidence shows lower post-processing instruction pressure on the targeted branch.
+- After threshold/tile tuning, confirm small-shape guardrails still hold.
 
-## NPUKernelBench round narratives (pilot: eight kernels `12_*`–`15_*`, 2026-05-08, log-backed)
+## Related Patterns
 
-*Batch-2 track for **`15_AttentionSoftmaxWithSoftcappingAndDropout`** (vector/Cube epilogue side; `workspace/NPUKernelBench_level_1_2_triton/15_AttentionSoftmaxWithSoftcappingAndDropout/`). Five-field template per `skills/triton-npu-kernel-bench-logs/SKILL.md`.*
-
-### `15_AttentionSoftmaxWithSoftcappingAndDropout`
-
-**`opt-round-7` (parent `opt-round-6`)**
-
-- **Kernel / round / parent:** `15_AttentionSoftmaxWithSoftcappingAndDropout` / `opt-round-7` / `opt-round-6`.
-- **Pre-change scenario:** Causal mask predicates were fused into the inner softmax loop as repeated `tl.where` chains on logits.
-- **Change:** Precomputed a compact mask tensor (or mask band) from host-known `seqlen` / window once per tile, then consumed it in softmax without recomputing indices.
-- **Evidence:** Vector instruction count drop in profiler excerpt; `summary.md` varlen mask-heavy case.
-- **Interpretation:** Matches “mask recomputed inside hot loop” anti-pattern from this card’s signals.
-
-**`opt-round-9` (parent `opt-round-8`)**
-
-- **Kernel / round / parent:** `15_AttentionSoftmaxWithSoftcappingAndDropout` / `opt-round-9` / `opt-round-8`.
-- **Pre-change scenario:** Scale and mask were separate elementwise passes before softmax, doubling bandwidth on logits.
-- **Change:** Fused scale+mask into a single vector op feeding the max-shifted softmax stable path.
-- **Evidence:** `attempts.md` fused expr; `summary.md` dense attention case.
-- **Interpretation:** Demonstrates “scale and mask separate” repair from `## Use When`.
-
-**`opt-round-10` (parent `opt-round-9`)**
-
-- **Kernel / round / parent:** `15_AttentionSoftmaxWithSoftcappingAndDropout` / `opt-round-10` / `opt-round-9`.
-- **Pre-change scenario:** Forward stored log-sum-exp in base-2 only because `exp2` was used in softmax; vector epilogue paid extra conversions.
-- **Change:** Switched to `tl.exp` consistently and aligned saved state representation with backward expectations (documented in round notes).
-- **Evidence:** Numerics checklist in `attempts.md`; paired forward/back tests; `summary.md` softmax path.
-- **Interpretation:** Applies the card’s `exp` vs `exp2` consistency rule—do not change without backward audit.
-
-## NPUKernelBench round narratives (pilot: ten kernels `25_*`–`29_*`, batch 5 final, 2026-05-08, log-backed)
-
-*Operators in this excerpt: **`25_MaskedSoftmaxWithAttentionDropoutBackward`** (others in batch 5 map to **`tiling.md`**, **`program-multiple-rows.md`**, etc.). Tree: `workspace/NPUKernelBench_level_1_2_triton/`. Five-field template per `skills/triton-npu-kernel-bench-logs/SKILL.md`.*
-
-### `25_MaskedSoftmaxWithAttentionDropoutBackward`
-
-**`opt-round-5` (parent `opt-round-3`)** — `25_MaskedSoftmaxWithAttentionDropoutBackward/opt-round-5/summary.md`
-
-- **Kernel / round / parent:** `25_MaskedSoftmaxWithAttentionDropoutBackward` / `opt-round-5` / `opt-round-3`.
-- **Pre-change scenario:** Cases **1–3** (`p_dropout == 0`) still showed **host-only** softmax-backward ops with **no matched Triton kernel** while r3 improved the dropout branch (`summary.md`).
-- **Change:** Added **`_masked_softmax_backward_nodropout_kernel`** + wrapper routing; **preserved** r3 **`_dropout_backward_scale_kernel`** for dropout-on cases.
-- **Evidence:** Correctness passed; `compare-perf` **Avg +23.7%**, **1.38×** geomean, **1.22×** total vs baseline; large wins cases **1–3** and smaller wins **4–5** (`summary.md`).
-- **Interpretation:** Attention-backward sessions must **split branches** by **`p_dropout`**—vector epilogues should not sit entirely in host wrappers.
-
-**`opt-round-6` (parent `opt-round-5`)** — `25_MaskedSoftmaxWithAttentionDropoutBackward/opt-round-6/attempts.md` + `opt-note.md`
-
-- **Kernel / round / parent:** `25_MaskedSoftmaxWithAttentionDropoutBackward` / `opt-round-6` / `opt-round-5`.
-- **Pre-change scenario:** No-dropout path still paid **`BroadcastTo` + `Cast`** from **`expand(...).contiguous().to(int8)`** host mask materialization (`attempts.md`).
-- **Change:** Load **original attention mask in-kernel**; broadcast head dim when **`mask.shape[1] == 1`**; drop expanded **`int8`** buffer on that path.
-- **Evidence:** Correctness passed; further gains on no-dropout cases while dropout cases still improve (`opt-note.md`); **promoted** toward r7–r10 block ladder.
-- **Interpretation:** Same card theme as forward mask work—**avoid redundant mask expansion** on the hot vector path.
-
-**`opt-round-3` (parent `baseline`)** — theme in `25_MaskedSoftmaxWithAttentionDropoutBackward/opt-note.md`
-
-- **Kernel / round / parent:** `25_MaskedSoftmaxWithAttentionDropoutBackward` / `opt-round-3` / baseline.
-- **Pre-change scenario:** Flat launch + heavy dropout mask application on hot path (`opt-note.md`).
-- **Change:** **Simplified dropout mask application** while keeping flat launch structure that r2 had destabilized.
-- **Evidence:** Correctness passed; small **net win** vs baseline; case **4** improved (`opt-note.md`); **promoted** parent for r5 split.
-- **Interpretation:** First stable vector-epilogue cleanup before branch split and width-tier ladder (**`tiling.md`** rounds 7–10).
+- `tiling`: when further gains depend on shape-specific tile ladders.
+- `compile_hint`: for late-stage, low-risk lowering nudges after structural cleanup.
+- `layout-store-and-block-pointers`: when output/store layout expression dominates cost.

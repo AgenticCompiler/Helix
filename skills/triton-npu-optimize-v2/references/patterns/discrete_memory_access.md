@@ -2,99 +2,84 @@
 
 ## Summary
 
-When loading discrete indices, rather than using `tl.load` to load the
-discrete set directly, use `tl.load` to load a continuous range first, then use `tl.gather` to select
-the target values.
+When the logical operation is index-driven (`out = x[idx]`-style), avoid per-element scattered global loads on the hot path. Stage contiguous source spans first, then select locally (for example with gather/select from staged data).
+
+This pattern converts "discrete global memory access" into "contiguous movement + local selection," which often lowers scalar address overhead and improves effective memory behavior.
 
 ## Use When
 
-- The central bottleneck is discrete memory access that semantically looks like `out = x[idx]`.
-- Index-driven global loads dominate the hot path, and contiguous staging plus local selection is more plausible than direct scattered reads.
+- The kernel is dominated by index-driven reads from global memory.
+- Workloads have meaningful contiguous structure (for example large `inner_size` spans) even if the API is gather-like.
+- Profiling shows scalar-heavy index decode (`//`, `%`, pointer reconstruction) around the data movement loop.
 
-## Detail
+## Avoid When
 
-This example shows how to load data efficiently for discrete-memory-access workloads.
+- Source ranges are too large to stage efficiently for the active branch.
+- Accesses are already naturally contiguous and direct loads are not the bottleneck.
+- The main issue is launch geometry or kernel decomposition rather than index access shape.
 
-### Operation
+## Signals
 
-Implement the following Triton-style behavior:
+- Per-element global gather loads with repeated coordinate decode.
+- Hot kernels where integer address math dominates alongside sparse-looking loads.
+- Cases where one program can own a contiguous row/span and loop locally.
+
+## Optimization Strategy
+
+1. **Reframe indexing into contiguous views** (for example flattened `[outer, axis, inner]` style layouts).
+2. **Stage contiguous spans** into local working data.
+3. **Select via local gather/indexing** instead of direct scattered global reads.
+4. **Repair launch geometry** to stay within hardware grid limits after widening per-program work.
+5. **Validate against parent and baseline** with correctness first.
+
+## Common Repairs
+
+### Replace per-lane decode with row/span ownership
+
+Assign one program a contiguous row/span and iterate inner blocks locally instead of decoding full-rank coordinates for every element.
+
+### Add launch-cap-safe looping
+
+If the first contiguous rewrite creates excessive grid width, keep one program per logical row/span and loop over inner chunks inside the kernel.
+
+### Keep fallback for noncontiguous regimes
+
+Use dispatch when only some regimes benefit from staged contiguous access.
+
+### Simplified code sketch
 
 ```python
-out = x[idx]
+# Stage contiguous span first.
+span = tl.load(src_ptr + row_base + tl.arange(0, INNER_BLOCK))
+
+# Convert discrete global gathers into local indexed selection.
+local_idx = tl.load(index_ptr + out_base + tl.arange(0, OUT_BLOCK))
+vals = tl.gather(span, local_idx)
+tl.store(out_ptr + out_base + tl.arange(0, OUT_BLOCK), vals)
 ```
 
-Inputs:
+## Failure Modes And Anti-signals
 
-| Input | Shape |
-|-------|-------|
-| x     | (M,)  |
-| idx   | (N,)  |
+- **Over-wide initial grid** after rewrite violates launch limits and must be repaired.
+- **Over-staging** large ranges can waste on-chip memory and hurt occupancy.
+- **Wrong problem choice**: if bottleneck is elsewhere (tiling/dispatch/scalar traps), staging alone gives weak gains.
 
-Output:
+## Risks
 
-| Input | Shape |
-|-------|-------|
-| out   | (N,)  |
+- More complex pointer/view logic can introduce correctness bugs at boundaries.
+- Extra staging may increase temporary footprint.
+- Benefit may be strongly shape-dependent.
 
-### Key Difference Summary
+## What To Verify After Applying
 
-- GPU-style code reads discrete values directly from global memory.
-- NPU-style code first stages data from global memory into shared memory, then selects the target values from the staged buffer.
+- Correctness across boundary shapes and index extremes.
+- Launch geometry remains within hardware limits.
+- Parent-vs-child and baseline performance on the same harness.
+- Profile confirms reduced scalar index-decode pressure or fewer scattered global reads.
 
-### Detailed Difference
+## Related Patterns
 
-Code diff of NPU and CUDA
-
-```diff
-@triton.jit
-def pick_kernel(
-        x_ptr,
-        idx_ptr,
-        y_ptr,
-        stride_x,
-        stride_idx,
-        stride_y,
-        M: tl.constexpr,
-        N: tl.constexpr
-):
-    pid = tl.program_id(0)
-+   rm = tl.arange(0, M)
-    rn = tl.arange(0, N)
-
-    idx = tl.load(idx_ptr + rn * stride_idx)
-    mask = idx < M
-
--   # GPU path
--   val = tl.load(x_ptr + idx * stride_x, mask=mask)  # Direct discrete global-memory access
-+   # NPU path
-+   x_shared = tl.load(x_ptr + rm * stride_x)  # [M] Stage the full range into shared memory
-+   val = tl.gather(x_shared, idx, 0)  # Select target values from the shared-memory buffer
-
-    tl.store(y_ptr + rn * stride_y, val, mask=mask)
-
-```
-
-## NPUKernelBench field inventory
-
-**Scan date:** 2026-05-08. **Tree:** `workspace/NPUKernelBench_level_1_2_triton`.
-
-This inventory lists operator workspaces whose `opt-round-*/attempts.md` files linked this card under pattern triage supporting evidence. Citation means the round considered the pattern, not that every hypothesis succeeded. For outcomes, read each operator `opt-note.md` and the linked `summary.md` / `attempts.md` for the cited rounds.
-
-**Operator workspaces (deduped):**
-
-- `18_Index`
-
-## NPUKernelBench round narratives (pilot: `18_Index`, 2026-05-08, log-backed)
-
-*Operator: **`18_Index`**. Tree: `workspace/NPUKernelBench_level_1_2_triton/`. Five-field template per `skills/triton-npu-kernel-bench-logs/SKILL.md`.*
-
-### `18_Index`
-
-**`opt-round-1` (parent `baseline`)** — `18_Index/opt-round-1/attempts.md`
-
-- **Kernel / round / parent:** `18_Index` / `opt-round-1` / baseline.
-- **Pre-change scenario:** Baseline `index_select` hot path loaded one index per output element and decoded up to 4D coordinates (`//`, `%`) per lane, while representative workloads are contiguous along `inner_size`.
-- **Change:** Reframed the kernel as contiguous row-copy work from flattened `[outer, axis, inner]` views; initial `(selected_row, inner_block)` launch exceeded Ascend `coreDim`, then repaired to one program per selected row with an inner block loop.
-- **Evidence:** Correctness passed after repair; `compare-perf` vs baseline reported **Avg +74.8%**, **Geomean 11.03x**, **Total 41.17x** in `attempts.md`; promoted as best branch.
-- **Interpretation:** This card's staging pattern applies directly: replace per-lane discrete address reconstruction with contiguous spans plus local selection/looping under launch-cap constraints.
-
+- `gather-load`: complementary card when gather semantics are explicit and layout/store interactions dominate.
+- `layout-store-and-block-pointers`: use to regularize address shape before or after staging rewrite.
+- `scalar-latency-traps`: use when decode arithmetic remains a dominant bottleneck.
+- `program-multiple-rows`: combine when contiguous span ownership benefits from wider per-program batching.

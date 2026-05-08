@@ -2,154 +2,94 @@
 
 ## Summary
 
-Improve overlap between memory movement and compute in a hot loop that is already structurally tiled, typically by combining block pointers, prefetching, and pipelined loop structure.
+Use this pattern to increase overlap between memory movement and compute in an already tiled hot loop.
+
+The focus is not changing algorithm shape, but changing loop scheduling so data for the next iteration is fetched while current tiles are being computed.
 
 ## Use When
 
-- The hot loop already has a real tiled structure, but loads and computation still happen too serially.
-- Profiling suggests wait-heavy or overlap-poor behavior, and the next question is pipeline quality rather than basic kernel structure.
+- The kernel already has a stable tiled loop, but execution still looks like synchronous load-then-compute.
+- Profiling shows wait-heavy behavior or visible compute gaps while memory engines fetch next tiles.
+- Block-pointer structure can replace repeated manual pointer arithmetic on the hot path.
+- UB can hold the active tile set needed for prefetch/pipeline depth.
+
+## Avoid When
+
+- Inner loop trip count is tiny and pipeline setup overhead dominates.
+- UB headroom is insufficient for multiple live tile sets.
+- Iteration `i+1` depends on compute results from iteration `i` in a way that prevents overlap.
+- The kernel still needs first-order structural rewriting (for example manual reduction should become regular tiled `tl.dot` first).
 
 ## Signals
 
 ### Code
 
-- The loop is already tiled, but each iteration still follows a mostly synchronous load-then-compute rhythm.
-- Manual pointer arithmetic dominates the tiled loop, and block-pointer plus prefetch structure is still missing.
+- Tiled loops issue `tl.load` then immediately compute, repeatedly, with little decoupling.
+- Pointer arithmetic and offset rebuilds dominate loop body setup.
+- `tl.make_block_ptr` / `tl.advance` are absent despite regular tiled access.
 
 ### Profile
 
-- `msprof` timelines show Cube or Vector gaps while the MTE engines fetch the next tile.
-- Wait-heavy behavior suggests insufficient memory/compute overlap rather than a missing tiled-kernel rewrite.
+- Timeline shows Cube/Vector idle gaps while waiting for memory transfers.
+- Improvements from pure tiling changes plateau before overlap is improved.
+- Wait-dominant behavior persists even after basic launch geometry cleanup.
 
-## Problem Description
+## Repairs
 
-Huawei Ascend NPUs (DaVinci architecture) use a **Decoupled Access-Compute (DAC)** design. This means memory movement (MTE engines) and computation (Cube/Vector cores) happen on different hardware units.
+### Convert to block-pointer traversal
 
-In standard Triton code, the kernel often executes synchronously: it waits for a data load to finish before starting the calculation. This results in "stalls" or "gaps" in the `msprof` timeline where the expensive Cube/Vector cores sit idle while waiting for the MTE engine to fetch data from Global Memory (HBM).
+Use `tl.make_block_ptr` for tiled operands and `tl.advance` for deterministic pointer movement between iterations.
 
-## Optimization Strategy
+### Prefetch before entering steady-state loop
 
-Implement **Software Pipelining (Double Buffering)** combined with **Block Pointers**. This allows the NPU to fetch the *next* tile of data from memory while simultaneously performing computation on the *current* tile.
+Load the first tile (or first pipeline stage) before the main overlapped loop starts.
 
-Choose this pattern when the main problem is **overlap**, not basic kernel structure. The question it answers is:
+### Overlap compute with next-tile fetch
 
-- can an already tiled loop overlap memory transfer with compute more effectively
+In each iteration, compute on currently staged tiles while issuing loads for the next tiles.
 
-If the hot loop is still fundamentally manual reduction code and has not yet become a regular tiled `tl.dot` loop, prefer `classic-matmul` first.
-If the main issue is UB overflow or an oversized working set rather than pipeline gaps, prefer `tiling`.
+### Tune pipeline depth under UB constraints
 
-### Key Principles
+Increase active-stage depth only when UB capacity and register pressure remain safe.
 
-1.  **Use `tl.make_block_ptr`**: Replaces manual pointer arithmetic. It allows the hardware to utilize specialized 2D DMA controllers, reducing Scalar Unit overhead.
-2.  **Pre-fetching**: Load the first tile (or first few tiles) before entering the main loop.
-3.  **Overlapped Loop**: Inside the loop, load data for iteration `i+1` before (or during) the computation of iteration `i`.
-4.  **Pointer Advancement**: Use `tl.advance` to move pointers forward. This is more efficient for the Scalar unit than recalculating offsets.
-
-### Important Notes
-
--   **UB Size Constraints**: Pipelining requires keeping multiple tiles in the Unified Buffer (UB) simultaneously. Ensure `2 * (Tile_M * Tile_K * dtype_size)` fits within the available UB (usually 192KB-256KB).
--   **Loop Latency**: Pipelining is most effective when the computation time and memory transfer time are roughly balanced.
-
-## Detection Pattern
-
-Look for code patterns where loads and math are interleaved sequentially inside a loop:
+### Simplified code sketch
 
 ```python
-# Problematic: Synchronous "Load-then-Compute"
-for k in range(0, K, BLOCK_SIZE_K):
-    # Scalar unit calculates offsets here
-    a = tl.load(a_ptr + k * stride + offsets)
-    b = tl.load(b_ptr + k * stride + offsets)
-    # Cube core waits for the loads above to complete
-    res = tl.dot(a, b, res)
+a_ptrs = tl.make_block_ptr(base=a_ptr, shape=(M, K), strides=(stride_am, stride_ak),
+                           offsets=(m0, 0), block_shape=(BLOCK_M, BLOCK_K), order=(1, 0))
+b_ptrs = tl.make_block_ptr(base=b_ptr, shape=(K, N), strides=(stride_bk, stride_bn),
+                           offsets=(0, n0), block_shape=(BLOCK_K, BLOCK_N), order=(1, 0))
+
+# Prefetch first tile.
+a_tile = tl.load(a_ptrs)
+b_tile = tl.load(b_ptrs)
+acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+
+for _ in range(0, K, BLOCK_K):
+    a_ptrs = tl.advance(a_ptrs, [0, BLOCK_K])
+    b_ptrs = tl.advance(b_ptrs, [BLOCK_K, 0])
+    acc = tl.dot(a_tile, b_tile, acc)  # compute current tile
+    a_tile = tl.load(a_ptrs)           # fetch next tile
+    b_tile = tl.load(b_ptrs)
 ```
 
-## Optimization Example
+## Synthesized Guidance
 
-### Before Optimization
-
-```python
-@triton.jit
-def matmul_kernel(a_ptr, b_ptr, c_ptr, K, BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr):
-    # ... (program ID and offset logic)
-    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-
-    for k in range(0, K, BLOCK_SIZE_K):
-        # Sequential Load (MTE2)
-        a = tl.load(a_ptr + k_offsets)
-        b = tl.load(b_ptr + k_offsets)
-        # Sequential Compute (Cube) - Waits for MTE2
-        accumulator = tl.dot(a, b, accumulator)
-```
-
-### After Optimization (Pipelined with Block Pointers)
-
-```python
-@triton.jit
-def matmul_kernel(a_ptr, b_ptr, c_ptr, K, BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr):
-    # 1. Initialize Block Pointers (Hardware optimized)
-    a_block_ptr = tl.make_block_ptr(base=a_ptr, shape=(M, K), strides=(K, 1),
-                                   offsets=(0, 0), block_shape=(BLOCK_SIZE_M, BLOCK_SIZE_K), order=(1, 0))
-    b_block_ptr = tl.make_block_ptr(base=b_ptr, shape=(K, N), strides=(N, 1),
-                                   offsets=(0, 0), block_shape=(BLOCK_SIZE_K, BLOCK_SIZE_N), order=(1, 0))
-
-    # 2. Prefetch first tile (Start MTE2 transfer early)
-    a_tile = tl.load(a_block_ptr)
-    b_tile = tl.load(b_block_ptr)
-
-    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-
-    for k in range(0, K, BLOCK_SIZE_K):
-        # 3. Advance pointers for the NEXT iteration
-        a_block_ptr = tl.advance(a_block_ptr, [0, BLOCK_SIZE_K])
-        b_block_ptr = tl.advance(b_block_ptr, [BLOCK_SIZE_K, 0])
-
-        # 4. Compute CURRENT tile while loading NEXT tile
-        # The Triton compiler maps this to overlapped Cube and MTE instructions
-        accumulator = tl.dot(a_tile, b_tile, accumulator)
-
-        # Load next tile (Async)
-        a_tile = tl.load(a_block_ptr)
-        b_tile = tl.load(b_block_ptr)
-```
-
-## Avoid When
-
-1.  **Tiny Inner Loops**: If the loop only runs 1 or 2 times, the pre-fetch overhead might exceed the savings.
-2.  **Extreme Memory Pressure**: If the tile size is so large that the Unified Buffer cannot hold two sets of tiles (current and next).
-3.  **Dependency Chains**: If Tile `i+1` depends on the result of the computation of Tile `i`.
-4.  **Pre-tiling rewrite still needed**: If the loop should first be rewritten into a regular tiled matmul or another clearer tile-based structure.
-
-## What To Verify After Applying
-
-- Verify `tl.make_block_ptr` and `tl.advance` really replaced the raw pointer arithmetic on the hot path.
-- Verify the first tile is prefetched before the overlapped loop starts.
-- Verify the loop computes on the previously loaded tile while fetching the next one.
-- Verify the total memory used by all active tiles still fits NPU UB capacity.
+- Apply software pipelining after tiled structure is already sound; it is an overlap optimization, not a substitute for foundational kernel design.
+- Start with shallow prefetching and validate correctness/perf before adding deeper pipeline stages.
+- Pair block pointers with overlap changes; this usually reduces scalar setup overhead and clarifies pipeline intent.
+- If overlap gains are weak, check whether bottleneck has shifted to layout/store shape or working-set pressure.
 
 ## Related Patterns
 
-- `classic-matmul`: use it first when the hot loop is still manual reduction code rather than a regular tiled `tl.dot` loop.
-- `tiling`: use it first when overlap would require more live data than UB can hold, or when footprint reduction is still the main problem.
+- `classic-matmul`
+- `tiling`
+- `compile_hint`
+- `layout-store-and-block-pointers`
 
-## NPUKernelBench round narratives (pilot: eight kernels `12_*`–`15_*`, 2026-05-08, log-backed)
+## What To Verify After Applying
 
-*Batch-2 track for **`15_AttentionSoftmaxWithSoftcappingAndDropout`** (memory/compute overlap on the tiled QK path; `workspace/NPUKernelBench_level_1_2_triton/15_AttentionSoftmaxWithSoftcappingAndDropout/`). Five-field template per `skills/triton-npu-kernel-bench-logs/SKILL.md`.*
-
-### `15_AttentionSoftmaxWithSoftcappingAndDropout`
-
-**`opt-round-14` (parent `opt-round-13`)**
-
-- **Kernel / round / parent:** `15_AttentionSoftmaxWithSoftcappingAndDropout` / `opt-round-14` / `opt-round-13`.
-- **Pre-change scenario:** After grid flattening (r13), the QK `K` loop still followed load-then-compute on raw pointer tiles with visible MTE gaps.
-- **Change:** Rewrote the hot `K` loop with `tl.make_block_ptr` / `tl.advance`, prefetching the next `K` tile while computing on the current tile.
-- **Evidence:** `msprof`-style gap notes in `attempts.md`; `summary.md` wide `K` case.
-- **Interpretation:** Classic DAC overlap story once `classic-matmul` structure exists.
-
-**`opt-round-15` (parent `opt-round-14`)**
-
-- **Kernel / round / parent:** `15_AttentionSoftmaxWithSoftcappingAndDropout` / `opt-round-15` / `opt-round-14`.
-- **Pre-change scenario:** Single-buffer pipeline still left vector slots idle between score tiles on medium heads.
-- **Change:** Increased software pipeline depth cautiously (two active tiles) after UB check; validated spill-free on target head sizes.
-- **Evidence:** Occupancy + UB estimate in `attempts.md`; `summary.md` regression guard for narrow heads.
-- **Interpretation:** Pipeline depth trades extra live data for overlap—only after UB headroom is proven.
+- Correctness is unchanged across all benchmark regimes and boundary tiles.
+- Hot loop now computes on staged tiles while fetching subsequent tiles.
+- UB/register usage remains within safe limits at the chosen pipeline depth.
+- Parent-vs-child benchmarks confirm net latency improvement, not just timeline cosmetics.

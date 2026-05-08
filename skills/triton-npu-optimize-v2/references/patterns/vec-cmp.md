@@ -1,139 +1,86 @@
-# i64/i32 Comparison Optimization Pattern
+# Comparison Vectorization Pattern
 
 ## Summary
 
-Rewrite explicit integer compare-heavy logic into a form that is more vector-friendly on Ascend NPU, especially when scalarized compares are blocking fast masking or selection.
+Use this pattern when explicit integer comparison logic becomes a scalar bottleneck on Ascend NPU.
+
+The goal is to keep hot-path comparison and masking in vector-friendly form so conditional selection does not collapse into scalar-heavy control.
 
 ## Use When
 
-- Explicit `i64` or `i32` comparisons appear on the hot path outside the compiler's normal fast load/store mask cases.
-- Comparison-heavy control flow or masking looks like a real vectorization blocker rather than just minor boundary handling.
+- Explicit `i64`/`i32` comparisons drive hot-path masks for `tl.where` or similar conditional logic.
+- Comparison-heavy logic appears outside compiler-optimized load/store mask fast paths.
+- Profiling indicates scalar/control pressure tied to compare-and-mask sections.
+- Semantics allow safe conversion to vector-friendly compare dtypes.
+
+## Avoid When
+
+- Comparisons are already in compiler-fused `tl.load`/`tl.store` mask expressions and perform well.
+- Values are outside safe representable range for the chosen comparison cast strategy.
+- Comparison path is cold and not performance relevant.
+- Rewriting comparisons would add extra casts/conversions that outweigh benefits.
 
 ## Signals
 
 ### Code
 
-- Integer comparisons produce explicit boolean masks used in `tl.where`, conditional assignments, or similar hot-path logic.
-- The comparison is written outside the compiler's normal `tl.load` or `tl.store` mask fast path.
-- The code still compares integer operands directly even though vector-friendly `fp32` comparison would preserve semantics.
+- Integer compare masks are constructed explicitly and reused in hot control flow.
+- Repeated compare/cast/mask scaffolding appears in inner loops.
+- Integer compare results gate large vector operations through `tl.where`.
 
-## Problem Description
+### Profile
 
-On Huawei Ascend NPU devices, integer comparison operations (`i64` and `i32`) cannot utilize vector processing units and degrade to scalar computation, significantly reducing performance.
+- Scalar instruction share remains high in otherwise vector-friendly kernels.
+- Throughput improves little from tiling or overlap tuning until compare path is cleaned up.
 
-## Optimization Strategy
+## Repairs
 
-Convert integer comparisons to `fp32` type to leverage `vec_cast` and `vec_cmp` instructions for vectorized operations, achieving better performance through hardware acceleration.
+### Convert compare operands to vector-friendly dtype where safe
 
-### Key Principles
+Cast operands to a compare-friendly dtype before hot comparisons when value range guarantees semantic equivalence.
 
-1. **Identify explicit comparison operations**: Look for code that performs integer comparisons outside of `tl.load`/`tl.store` mask parameters
-2. **Convert to fp32**: Cast integer operands to `fp32` before comparison
-3. **Preserve semantics**: Ensure the logical result of the comparison remains unchanged
-4. **Avoid redundant changes**: Skip comparisons already in `fp32` or auto-vectorized contexts
+### Keep compare path simple and localized
 
-### Important Notes
+Compute mask once per logical region and reuse it, rather than rebuilding equivalent masks repeatedly.
 
-- **`tl.load` and `tl.store` masks**: The compiler automatically optimizes comparison operations in mask parameters. Manual conversion is NOT needed for these cases.
-- **Explicit comparisons**: Only target comparison operations that produce explicit boolean masks used in conditional logic (e.g., `tl.where`, conditional assignments)
-- **Type safety**: When converting types, ensure numerical precision is maintained for downstream operations
+### Preserve fast-path mask usage
 
-## Detection Pattern
+When load/store mask expressions are already optimal, avoid unnecessary external mask rewrites.
 
-Look for code patterns like:
+### Guard precision and range assumptions
 
-```python
-# Problematic: i64 comparison outside tl.load/tl.store
-mask = offsets < n_elements  # i64 comparison
-result = tl.where(mask, x, y)  # Used in conditional logic
+Document or enforce value-range constraints required by the dtype conversion strategy.
 
-# Problematic: i32 comparison
-valid = x_ids > y_ids  # i32 comparison
-output = tl.where(valid, data, 0.0)
-```
-
-## Optimization Example
-
-### Before Optimization
+### Simplified code sketch
 
 ```python
-@triton.jit
-def kernel(x_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+# Before: explicit integer compare in hot path.
+valid = offsets_i64 < limit_i64
+out = tl.where(valid, x, 0.0)
 
-    x = tl.load(x_ptr + offsets)
-
-    # Problem: i64 comparison degrades to scalar on NPU
-    valid_indices = offsets < n_elements
-
-    # Use comparison result in conditional logic
-    output = tl.where(valid_indices, x * 2, 0.0)
-
-    tl.store(output_ptr + offsets, output)
+# After: compare with vector-friendly dtype when range is safe.
+offsets_f32 = tl.cast(offsets_i64, tl.float32)
+limit_f32 = tl.cast(limit_i64, tl.float32)
+valid = offsets_f32 < limit_f32
+out = tl.where(valid, x, 0.0)
 ```
 
-### After Optimization
+## Synthesized Guidance
 
-```python
-@triton.jit
-def kernel(x_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+- Apply this pattern when compare logic, not math throughput, limits performance.
+- Start with the smallest safe compare-path rewrite and validate correctness before broad conversion.
+- Combine with scalar-control cleanup (`scalar-latency-traps`) when compare logic is part of wider control overhead.
+- If compare optimization yields minimal gain, re-evaluate layout/tiling/launch bottlenecks next.
 
-    x = tl.load(x_ptr + offsets)
+## Related Patterns
 
-    # Optimization: Convert to fp32 for vectorized comparison
-    offsets_fp32 = tl.cast(offsets, tl.float32)
-    n_elements_fp32 = tl.cast(n_elements, tl.float32)
-    valid_indices = offsets_fp32 < n_elements_fp32  # Vectorized fp32 comparison
-
-    # Use comparison result in conditional logic
-    output = tl.where(valid_indices, x * 2, 0.0)
-
-    tl.store(output_ptr + offsets, output)
-```
-
-## Another Example
-
-### Before Optimization
-
-```python
-# Problem: i64 comparison in tl.load mask degrades to scalar on NPU
-# Note that though value of the comparison is used as the argument of tl.load, it is outside the tl.load statement
-mask = offsets < n_elements
-x = tl.load(x_ptr + offsets, mask=mask)
-```
-
-### After Optimization
-
-```python
-# Optimization: Convert to fp32 for vectorized comparison
-offset_fp32 = tl.cast(offsets, tl.float32)
-n_elements_fp32 = tl.cast(n_elements, tl.float32)
-mask_fp32 = offset_fp32 < n_elements_fp32
-x = tl.load(x_ptr + offsets, mask=mask_fp32)
-```
-
-## Avoid When
-
-1. **Comparisons in `tl.load`/`tl.store` masks** - already auto-optimized:
-   ```python
-   # No change needed - compiler handles this
-   x = tl.load(x_ptr + offsets, mask=offsets < n_elements)
-   ```
-
-2. **Already using fp32 comparisons** - no optimization needed:
-   ```python
-   # Already optimal
-   offsets_fp32 = tl.cast(offsets, tl.float32)
-   valid = offsets_fp32 < threshold
-   ```
-
-3. **Non-performance-critical code** - optimization overhead may not be justified
+- `scalar-latency-traps`
+- `loop-invariant-hoisting`
+- `tiling`
 
 ## What To Verify After Applying
 
-- Verify the comparison result still feeds the same hot-path conditional logic after the dtype rewrite.
-- Verify both operands are cast in a way that preserves semantic equivalence for the downstream mask usage.
-- Re-check downstream dtype expectations and confirm the comparison is no longer a scalarization bottleneck.
+- Boolean semantics are identical for all representative and boundary cases.
+- Value-range assumptions for converted compare operands are valid.
+- Hot-path scalar pressure is reduced in profile after rewrite.
+- End-to-end benchmark shows net gain after including cast overhead.
