@@ -308,6 +308,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 request.staged_skill_names,
                 (
                     "triton-npu-optimize",
+                    "triton-npu-optimize-knowledge",
                     "triton-npu-prepare-optimize-baseline",
                     "triton-npu-gen-test",
                     "triton-npu-gen-bench",
