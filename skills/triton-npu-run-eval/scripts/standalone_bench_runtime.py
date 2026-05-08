@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import ast
 import csv
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 import importlib
 import importlib.util
 import json
@@ -16,7 +16,7 @@ import traceback
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import Any, Iterator, TypedDict, cast
 
 
 WARMUP_DEFAULT = 5
@@ -434,9 +434,7 @@ def _profile_case_with_profiler(
             data_simplification=False,
         )
 
-        with open(os.devnull, "w", encoding="utf-8") as quiet_output, redirect_stdout(
-            quiet_output
-        ), redirect_stderr(quiet_output):
+        with _suppress_output_streams():
             case.fn()
             _synchronize(torch)
 
@@ -474,6 +472,27 @@ def _profile_case_with_profiler(
         return _read_profiler_metrics(profile_root, case.repeats, resolution.kernel_names), None
     except Exception as exc:
         return None, f"{type(exc).__name__}: {exc}"
+
+
+@contextmanager
+def _suppress_output_streams() -> Iterator[None]:
+    with open(os.devnull, "w", encoding="utf-8") as quiet_output:
+        stdout_fd = os.dup(1)
+        stderr_fd = os.dup(2)
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+            with redirect_stdout(quiet_output), redirect_stderr(quiet_output):
+                os.dup2(quiet_output.fileno(), 1)
+                os.dup2(quiet_output.fileno(), 2)
+                yield
+        finally:
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os.dup2(stdout_fd, 1)
+            os.dup2(stderr_fd, 2)
+            os.close(stdout_fd)
+            os.close(stderr_fd)
 
 
 def _synchronize(torch_module: Any) -> None:

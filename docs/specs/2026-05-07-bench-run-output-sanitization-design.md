@@ -21,7 +21,7 @@
 - If the benchmark fails, print the captured execution output so the failure remains diagnosable.
 - Apply the same output contract to both the main CLI handler and the skill-local `run-command.py` entrypoint.
 - Suppress live streaming output from local and remote benchmark runners by routing it to a quiet sink instead of the terminal.
-- Suppress standalone profiler chatter during successful local profiling runs by redirecting profiler-side stdout/stderr away from the terminal.
+- Suppress standalone profiler chatter during successful local profiling runs by redirecting both Python-level streams and low-level file descriptors away from the terminal.
 
 ## Verification
 
