@@ -26,31 +26,32 @@ triton-agent-macos-x86_64.zip
 triton-agent-macos-aarch64.zip
 ```
 
-The zip should contain the whole PyInstaller onedir bundle. Users must not copy only the executable because bundled Python libraries and `_internal/skills` are required at runtime.
+The zip should contain the platform-tagged output directory with a onefile executable inside it. For example:
+
+```text
+triton-agent-windows-x86_64/
+  triton-agent.exe
+```
+
+The built-in `skills/` tree is embedded into the executable as PyInstaller data. Do not expect a visible `_internal/skills` directory in the release artifact. PyInstaller extracts embedded data to a temporary `_MEI*` directory while the process is running.
 
 ## Minimum Validation
 
-If `packaging/triton-agent.spec` is missing, use the bundled script's default-spec creation path. The generated spec should be committed or reviewed before release because it defines which resources are bundled.
+If `packaging/triton-agent.spec` is missing, use the repository build script's default-spec creation path. The generated spec should be committed or reviewed before release because it defines which resources are bundled.
 
 Run these checks on every target OS after building:
 
 ```bash
-<bundle>/triton-agent --help
+<artifact-dir>/triton-agent --help
 ```
 
 On Windows:
 
 ```powershell
-<bundle>\triton-agent.exe --help
+<artifact-dir>\triton-agent.exe --help
 ```
 
-Confirm bundled skills:
-
-```text
-<bundle>/_internal/skills
-```
-
-Run a pure command that loads bundled skill scripts, for example `compare-perf` with temporary files:
+Confirm bundled skills through behavior instead of by checking a visible `_internal` directory. Run a pure command that loads bundled skill scripts, for example `compare-perf` with temporary files:
 
 ```text
 latency-case-1: 10
@@ -68,6 +69,12 @@ The expected success marker is:
 ```text
 PASS: compared 1 latency entries
 ```
+
+For agent-backed commands, also run with `--verbose` and confirm skills are staged into the selected backend's workspace skill directory.
+
+## Source Exposure Note
+
+Onefile packaging hides `skills/` from the visible release directory, which matches the intended distribution shape when skill sources should not be published as plain files next to the executable. It is not a strong protection mechanism: PyInstaller must extract embedded files to a temporary runtime directory, and determined users can still inspect packaged content.
 
 ## Runtime Dependencies Not Bundled
 

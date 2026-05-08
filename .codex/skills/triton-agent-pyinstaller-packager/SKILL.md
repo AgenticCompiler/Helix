@@ -1,6 +1,6 @@
 ---
 name: triton-agent-pyinstaller-packager
-description: Package the triton-agent repository into PyInstaller onedir executable bundles with the built-in skills tree included. Use when Codex needs to build, repair, validate, or document Windows, Linux, or macOS triton-agent release artifacts; create platform-tagged zip archives; explain PyInstaller's per-OS build requirement; or verify that packaged triton-agent can load bundled skills.
+description: Package the triton-agent repository into PyInstaller onefile executables with the built-in skills tree embedded. Use when Codex needs to build, repair, validate, or document Windows, Linux, or macOS triton-agent release artifacts; create platform-tagged zip archives; explain PyInstaller's per-OS build requirement; or verify that packaged triton-agent can load bundled skills.
 ---
 
 # Triton Agent PyInstaller Packager
@@ -17,7 +17,20 @@ Use this skill for a `triton-agent` repository that has:
 - CLI entrypoint `triton_agent.cli:main`
 - source under `src/triton_agent/`
 - a top-level `skills/` directory that must be bundled as runtime data
-- a PyInstaller spec at `packaging/triton-agent.spec`; if it is missing, the bundled script can create a default one
+- a PyInstaller build script at `scripts/build-pyinstaller.py`
+- a PyInstaller spec at `packaging/triton-agent.spec`; if it is missing, the build script can create a default one
+
+## Packaging Mode
+
+Build onefile executables by default. The release output should expose a single executable in each platform artifact directory, for example:
+
+```text
+dist/pyinstaller/triton-agent-windows-x86_64/triton-agent.exe
+```
+
+The built-in `skills/` tree must still be included as PyInstaller data. In onefile mode, do not expect a visible `_internal/skills` directory in the release output. PyInstaller extracts embedded data to a temporary `_MEI*` directory while the process is running, and `src/triton_agent/resources.py` must resolve frozen resources through `sys._MEIPASS`.
+
+This mode reduces source exposure in the distributed artifact, but it is not encryption or a hard reverse-engineering boundary.
 
 ## Workflow
 
@@ -36,32 +49,35 @@ Use this skill for a `triton-agent` repository that has:
    - If `packaging/triton-agent.spec` is missing, let the build script create its default spec or create an equivalent spec before building.
    - Include `SKILL.md`, `references/`, `scripts/`, `.json`, and other non-cache skill files.
    - Exclude `__pycache__` and `.pyc`.
-5. Build the current OS bundle with the bundled script:
-   - `python <this-skill>/scripts/package_triton_agent.py --repo <repo> --clean`
+   - Build a onefile `EXE` by passing `a.binaries` and `a.datas` into `EXE`; do not create a `COLLECT` onedir bundle for the default release path.
+5. Build the current OS executable with the repository build script:
+   - `uv run python scripts/build-pyinstaller.py --clean`
 6. Validate the artifact:
    - Run packaged `triton-agent --help`.
-   - Confirm bundled `_internal/skills` exists and contains skill directories.
-   - Run one command that loads a bundled skill script, such as `compare-perf` with tiny temp perf files.
+   - Confirm the platform artifact directory contains the onefile executable.
+   - Run one command that loads bundled skill resources, such as `compare-perf` with tiny temp perf files.
    - For agent-backed commands, use `--verbose` to confirm skill staging into `.codex/skills`, `.claude/skills`, or the selected backend directory.
-7. Report produced bundle and zip paths, validation results, and remaining environment limitations.
+7. Report produced executable and zip paths, validation results, and remaining environment limitations.
 
-## Bundled Script
+## Build Script
 
-Use `scripts/package_triton_agent.py` for the normal build path. It:
+Use the repository-owned `scripts/build-pyinstaller.py` for the normal build path. The skill does not keep a second packaging implementation; keeping one script avoids drift between manual packaging, CI packaging, and skill-guided packaging.
+
+The script:
 
 - detects the current OS and CPU architecture
 - creates a default `packaging/triton-agent.spec` when the requested spec is missing
 - invokes `uv run pyinstaller`
 - writes platform-tagged output under `dist/pyinstaller/`
-- validates the expected executable and bundled skills directory
+- validates the expected onefile executable
 - creates a zip archive unless `--no-zip` is used
 
 Examples:
 
 ```bash
-python path/to/skill/scripts/package_triton_agent.py --repo /path/to/triton-agent --clean
-python path/to/skill/scripts/package_triton_agent.py --repo . --clean --no-zip
-python path/to/skill/scripts/package_triton_agent.py --repo . --platform-tag linux-aarch64
+uv run python scripts/build-pyinstaller.py --clean
+uv run python scripts/build-pyinstaller.py --clean --no-zip
+uv run python scripts/build-pyinstaller.py --clean --platform-tag linux-aarch64
 ```
 
 ## Multi-OS Release Procedure
