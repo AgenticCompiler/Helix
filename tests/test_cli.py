@@ -3178,6 +3178,7 @@ class PathResolutionTests(unittest.TestCase):
             mocked.assert_called_once()
             self.assertIn("Return code: 0", stdout.getvalue())
             self.assertNotIn("test stdout", stdout.getvalue())
+            self.assertNotIn("Hint: use `compare-result`", stdout.getvalue())
             self.assertIn("test stderr", stderr.getvalue())
 
     def test_main_run_test_reports_archived_differential_result(self) -> None:
@@ -3207,7 +3208,14 @@ class PathResolutionTests(unittest.TestCase):
                     )
 
             self.assertEqual(exit_code, 0)
-            self.assertIn(f"Archived result: {archive}", stdout.getvalue())
+            self.assertEqual(
+                stdout.getvalue(),
+                (
+                    "Return code: 0\n"
+                    f"Archived result: {archive}\n"
+                    "Hint: use `compare-result` to inspect this archived result instead of reading it directly.\n"
+                ),
+            )
 
     def test_main_run_test_uses_remote_runner_when_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

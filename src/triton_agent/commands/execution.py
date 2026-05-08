@@ -15,6 +15,7 @@ from triton_agent.execution import (
 from triton_agent.output import render_result
 
 _RUN_BENCH_HINT = "Hint: use `compare-perf` to inspect this perf artifact instead of reading it directly."
+_RUN_TEST_HINT = "Hint: use `compare-result` to inspect this archived result instead of reading it directly."
 
 
 def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -46,6 +47,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
     print(f"Return code: {result.return_code}")
     if archived_result is not None:
         print(f"Archived result: {archived_result}")
+        print(_RUN_TEST_HINT)
     if args.remote and args.keep_remote_workdir and remote_workspace is not None:
         print(f"Remote workspace: {remote_workspace}")
     return result.return_code

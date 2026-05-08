@@ -6,6 +6,7 @@ import unittest
 import importlib.util
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 class SkillCommandScriptTests(unittest.TestCase):
     @unittest.skipIf(shutil.which("bash") is None, "requires bash")
@@ -83,6 +84,89 @@ class SkillCommandScriptTests(unittest.TestCase):
 
         self.assertEqual(stdout.getvalue(), "skill stdout\n")
         self.assertEqual(stderr.getvalue(), "skill stderr\n")
+
+    def test_script_run_test_prints_hint_for_differential_result(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            archive = root / "kernel_result.pt"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+
+            def fake_run_local_test(
+                test_path: Path,
+                operator_path: Path,
+                test_mode: str,
+            ) -> tuple[dict[str, object], Path]:
+                self.assertEqual(test_path, test_file.resolve())
+                self.assertEqual(operator_path, operator.resolve())
+                self.assertEqual(test_mode, "differential")
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    archive,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_test_functions",
+                    return_value=(
+                        lambda _path: {"test-mode": "differential"},
+                        fake_run_local_test,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ):
+                    exit_code = module.main(
+                        [
+                            "run-test",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                            "--test-mode",
+                            "differential",
+                        ]
+                    )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            stdout.getvalue(),
+            (
+                "Return code: 0\n"
+                f"Archived result: {archive}\n"
+                "Hint: use `compare-result` to inspect this archived result instead of reading it directly.\n"
+            ),
+        )
+        self.assertEqual(stderr.getvalue(), "")
 
     def test_script_runs_cli_help_without_installed_entrypoint(self) -> None:
         script = (

@@ -12,6 +12,7 @@ Rules:
 - Always pass both `--test-file` and `--operator-file`.
 - If `--test-mode` is omitted, the command reads `# test-mode: ...` from the test file.
 - Use `--test-mode standalone` or `--test-mode differential` only when you need to override the embedded metadata.
+- When a differential run succeeds, the command prints the archived result path and a hint to use `compare-result`.
 
 Examples:
 
