@@ -6,6 +6,27 @@ Read this generated index first. Then read only the one or two most relevant det
 
 ## Generated Pattern Summaries
 
+### `algebraic-optimization`
+
+- Summary: Look for **semantics-preserving** rewrites that reduce **memory passes**, **redundant full scans**, or **live ranges** before micro-tuning loads. The scope includes **floating-point identities** (for example single-pass mean/variance) and **operator-defined** equivalences (for example PyTorch **logical** ops with dtype-specific truthiness and broadcasting). Always validate against the reference; forms that are equivalent on paper can still **regress** after lowering to Ascend Triton (dependency chains, UB pressure, launch overhead).
+- Source: [algebraic-optimization.md](patterns/algebraic-optimization.md)
+- Use When:
+  - The hot path performs **two or more full traversals** of the same data for statistics, normalization, or mergeable closed-form subexpressions.
+  - Profiler or IR suggests **duplicate MTE-heavy** phases that differ only by a scalar statistic of the same tensor.
+  - Elementwise **logical** ops (`logical_or`, `logical_and`, …) use **broadcasting**, and truth tests (`ne`, `!= 0`) run on **fully expanded** numeric tensors.
+  - You want fewer global passes or cheaper elementwise work **before** changing tile sizes, pipelines, or autotune grids.
+- Avoid When:
+  - The bottleneck is clearly **only** bad tile size or UB overflow with **no** redundant algorithmic passes (prefer `tiling` or footprint patterns first).
+  - Custom Triton fusion is attempted before a simpler **host/graph reorder** is proven correct and cheaper end-to-end.
+- Signals / Code:
+  - Two loops or kernels with nearly identical `tl.load(x)` tiling along the same axis.
+  - `broadcast_tensors(x, y)` followed by elementwise truth tests on **wide dtypes** over the full broadcast shape.
+- Signals / Profile:
+  - `NotEqual` / `BroadcastTo` (or equivalent ops) scale with **broadcast-expanded** `numel`, not with `numel(x) + numel(y)`.
+  - Repeated transfer-dense stages that could be merged if math structure were reorganized.
+- Signals / IR:
+  - Repeated load or reduction structure around the same logical axis where a single pass could feed multiple accumulators (case-dependent).
+
 ### `attention-cv-pipeline`
 
 - Summary: Reduce latency in Cube+Vector fused attention-like kernels by cutting vector-side instruction pressure, making mask/scale work cheaper, and using architecture-gated compile options only when the target device supports them.
@@ -164,6 +185,26 @@ Read this generated index first. Then read only the one or two most relevant det
 - Signals / IR:
   - Repeated arithmetic chains (`muli/addi/index_cast`) inside `scf.while` / `scf.for` bodies.
   - Loop bodies contain repeated `subi/minsi/maxsi` patterns for bounds handling.
+
+### `padded_row_col_copy`
+
+- Summary: Optimize **constant pad** and similar **regular bounded copies** by rewriting a **flat 1D** kernel over `numel(out)` into **`out_rows` × `out_dim_last`**: grid over leading logical rows, **column blocks** on the last axis, and a **row-invariant input base** hoisted out of the column loop. Combine **`BLOCK_ROWS > 1`** when the last dim is small, **`NO_COL_PAD`** `constexpr` when the last axis has no pad, **host-side `BLOCK_COLS` refinement**, and optional **`NATIVE_MASKED_LOAD`** split by shape regime.
+- Source: [padded_row_col_copy.md](patterns/padded_row_col_copy.md)
+- Use When:
+  - The operator is **constant pad**, **slice + pad**, or another **per-axis bounds** elementwise map (not gather).
+  - The baseline uses **`pid * BLOCK + arange`** over **`numel(out)`** with **heavy div/mod** for **all** coordinates each iteration.
+  - Profiling shows **high scalar** or **`tl.load` / mask** cost on **last-dim** pad boundaries.
+- Avoid When:
+  - The hot path is **gather/scatter** or **index-driven** discrete access (prefer `gather-load` / `discrete_memory_access`).
+  - **Dynamic `if`/`elif` on tile kind** inside the column loop is required without proof the backend lowers it safely—prefer a **uniform** column loop on Ascend unless validated.
+  - **Interior-only** fast paths that **omit `col_mask`** on `tl.store` without proof for **tail** blocks (`out_dim_last % BLOCK_COLS != 0`).
+- Signals / Code:
+  - Single linear `offsets` and repeated `//` / `%` on **large strides** to recover the **last** coordinate.
+  - One **global `valid`** merging every dimension on each lane of a large flat block.
+  - **Multi-phase** column loops (left / interior / right) with **different** `tl.store` masks.
+- Signals / Profile:
+  - Scalar or control overhead out of proportion to copy bandwidth.
+  - Hot path dominated by **masked load** or **compare** chains for pad bounds.
 
 ### `parallel`
 
