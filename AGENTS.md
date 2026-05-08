@@ -30,6 +30,7 @@
 - Clean up only the copied skill paths created by the current run.
 - Never delete or replace user-owned files or directories during cleanup.
 - Treat the top-level `workspace/` directory as a placeholder area for local experimentation, not as repository-owned source, fixture, or verification input.
+- The repo `.gitignore` excludes `workspace/`; **git-aware** search (default `rg` from repo root, many IDE searches) may show **no files** there even when a bench export exists. To discover or scan under `workspace/`, use **direct path reads**, **`find workspace/…`**, or **`rg --no-ignore … workspace/…`** (see `skills/triton-npu-kernel-bench-logs/SKILL.md`, **Locating bench trees**).
 - When modifying Python files under `skills/*/scripts/`, always run the additional file-scoped `pyright` strict check via `bash scripts/run-skill-script-pyright.sh skills/path/to/script.py` before considering the change complete, even though the repository default keeps those scripts in basic mode.
 
 ## Agent Backends

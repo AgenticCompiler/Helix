@@ -1,5 +1,7 @@
 # NPUKernelBench operator workspace layout
 
+**Git ignore:** In this repository, **`workspace/` is gitignored**. Repository-wide search tools that respect `.gitignore` may **hide** exports under `workspace/NPUKernelBench_level_1_2_triton/`. Use **direct path reads**, **`find workspace/…`**, or **`rg --no-ignore … workspace/…`** to list or search those files; do not infer absence from an empty git-aware search. See `skills/triton-npu-kernel-bench-logs/SKILL.md` (**Locating bench trees**).
+
 Verbatim structure description (authoritative for this skill):
 
 - baseline: initial version of Triton kernel (before optimization)

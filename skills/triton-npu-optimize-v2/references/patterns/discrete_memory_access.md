@@ -73,3 +73,28 @@ def pick_kernel(
     tl.store(y_ptr + rn * stride_y, val, mask=mask)
 
 ```
+
+## NPUKernelBench field inventory
+
+**Scan date:** 2026-05-08. **Tree:** `workspace/NPUKernelBench_level_1_2_triton`.
+
+This inventory lists operator workspaces whose `opt-round-*/attempts.md` files linked this card under pattern triage supporting evidence. Citation means the round considered the pattern, not that every hypothesis succeeded. For outcomes, read each operator `opt-note.md` and the linked `summary.md` / `attempts.md` for the cited rounds.
+
+**Operator workspaces (deduped):**
+
+- `18_Index`
+
+## NPUKernelBench round narratives (pilot: `18_Index`, 2026-05-08, log-backed)
+
+*Operator: **`18_Index`**. Tree: `workspace/NPUKernelBench_level_1_2_triton/`. Five-field template per `skills/triton-npu-kernel-bench-logs/SKILL.md`.*
+
+### `18_Index`
+
+**`opt-round-1` (parent `baseline`)** — `18_Index/opt-round-1/attempts.md`
+
+- **Kernel / round / parent:** `18_Index` / `opt-round-1` / baseline.
+- **Pre-change scenario:** Baseline `index_select` hot path loaded one index per output element and decoded up to 4D coordinates (`//`, `%`) per lane, while representative workloads are contiguous along `inner_size`.
+- **Change:** Reframed the kernel as contiguous row-copy work from flattened `[outer, axis, inner]` views; initial `(selected_row, inner_block)` launch exceeded Ascend `coreDim`, then repaired to one program per selected row with an inner block loop.
+- **Evidence:** Correctness passed after repair; `compare-perf` vs baseline reported **Avg +74.8%**, **Geomean 11.03x**, **Total 41.17x** in `attempts.md`; promoted as best branch.
+- **Interpretation:** This card's staging pattern applies directly: replace per-lane discrete address reconstruction with contiguous spans plus local selection/looping under launch-cap constraints.
+

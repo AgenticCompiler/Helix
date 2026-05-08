@@ -131,3 +131,25 @@ def matmul_kernel(a_ptr, b_ptr, c_ptr, K, BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE
 
 - `classic-matmul`: use it first when the hot loop is still manual reduction code rather than a regular tiled `tl.dot` loop.
 - `tiling`: use it first when overlap would require more live data than UB can hold, or when footprint reduction is still the main problem.
+
+## NPUKernelBench round narratives (pilot: eight kernels `12_*`–`15_*`, 2026-05-08, log-backed)
+
+*Batch-2 track for **`15_AttentionSoftmaxWithSoftcappingAndDropout`** (memory/compute overlap on the tiled QK path; `workspace/NPUKernelBench_level_1_2_triton/15_AttentionSoftmaxWithSoftcappingAndDropout/`). Five-field template per `skills/triton-npu-kernel-bench-logs/SKILL.md`.*
+
+### `15_AttentionSoftmaxWithSoftcappingAndDropout`
+
+**`opt-round-14` (parent `opt-round-13`)**
+
+- **Kernel / round / parent:** `15_AttentionSoftmaxWithSoftcappingAndDropout` / `opt-round-14` / `opt-round-13`.
+- **Pre-change scenario:** After grid flattening (r13), the QK `K` loop still followed load-then-compute on raw pointer tiles with visible MTE gaps.
+- **Change:** Rewrote the hot `K` loop with `tl.make_block_ptr` / `tl.advance`, prefetching the next `K` tile while computing on the current tile.
+- **Evidence:** `msprof`-style gap notes in `attempts.md`; `summary.md` wide `K` case.
+- **Interpretation:** Classic DAC overlap story once `classic-matmul` structure exists.
+
+**`opt-round-15` (parent `opt-round-14`)**
+
+- **Kernel / round / parent:** `15_AttentionSoftmaxWithSoftcappingAndDropout` / `opt-round-15` / `opt-round-14`.
+- **Pre-change scenario:** Single-buffer pipeline still left vector slots idle between score tiles on medium heads.
+- **Change:** Increased software pipeline depth cautiously (two active tiles) after UB check; validated spill-free on target head sizes.
+- **Evidence:** Occupancy + UB estimate in `attempts.md`; `summary.md` regression guard for narrow heads.
+- **Interpretation:** Pipeline depth trades extra live data for overlap—only after UB headroom is proven.

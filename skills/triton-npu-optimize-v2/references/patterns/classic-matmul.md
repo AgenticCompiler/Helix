@@ -181,3 +181,43 @@ The exact threshold should come from benchmark evidence, not from a fixed guess.
 - if you introduce dispatch, validate each dispatched regime explicitly
 - benchmark against the previous implementation
 - record whether the win came from lower scalar pressure, better matmul lowering, or better epilogue amortization
+
+## NPUKernelBench field inventory
+
+**Scan date:** 2026-05-08. **Tree:** `workspace/NPUKernelBench_level_1_2_triton`.
+
+This inventory lists operator workspaces whose `opt-round-*/attempts.md` files linked this card under pattern triage supporting evidence. Citation means the round considered the pattern, not that every hypothesis succeeded. For outcomes, read each operator `opt-note.md` and the linked `summary.md` / `attempts.md` for the cited rounds.
+
+**Operator workspaces (deduped):**
+
+- `15_AttentionSoftmaxWithSoftcappingAndDropout`
+- `27_MultiMaskAttentionAggregation`
+
+## NPUKernelBench round narratives (pilot: eight kernels `12_*`–`15_*`, 2026-05-08, log-backed)
+
+*Batch-2 **`15_AttentionSoftmaxWithSoftcappingAndDropout`** QK score path (`workspace/NPUKernelBench_level_1_2_triton/15_AttentionSoftmaxWithSoftcappingAndDropout/`). Five-field template per `skills/triton-npu-kernel-bench-logs/SKILL.md`.*
+
+### `15_AttentionSoftmaxWithSoftcappingAndDropout`
+
+**`opt-round-4` (parent `opt-round-3`)**
+
+- **Kernel / round / parent:** `15_AttentionSoftmaxWithSoftcappingAndDropout` / `opt-round-4` / `opt-round-3`.
+- **Pre-change scenario:** Attention scores were built from a hand-rolled reduction loop with scalar address arithmetic along `K`, not a regular `tl.dot` tile structure.
+- **Change:** Rewrote QK accumulation as a tiled `tl.dot` loop with explicit `BLOCK_M`, `BLOCK_N`, `BLOCK_K`, masks, and dtype alignment matching Ascend matmul expectations.
+- **Evidence:** `attempts.md` structural diff vs prior loop; `summary.md` large `K` improvement; correctness on causal masking boundaries.
+- **Interpretation:** This card’s primary “manual reduction → tiled matmul” move, applied to attention logits before vector softmax work (`attention-cv-pipeline.md`).
+
+## NPUKernelBench round narratives (pilot: `27_MultiMaskAttentionAggregation`, 2026-05-08, log-backed)
+
+*Operator in this excerpt: **`27_MultiMaskAttentionAggregation`**. Tree: `workspace/NPUKernelBench_level_1_2_triton/`. Five-field template per `skills/triton-npu-kernel-bench-logs/SKILL.md`.*
+
+### `27_MultiMaskAttentionAggregation`
+
+**`opt-round-1` (parent `baseline`)** — `27_MultiMaskAttentionAggregation/opt-round-1/attempts.md`
+
+- **Kernel / round / parent:** `27_MultiMaskAttentionAggregation` / `opt-round-1` / baseline.
+- **Pre-change scenario:** Baseline hot path was effectively class-by-class masked reduction over `ref_seq_len`, with repeated launches and no regular tiled reduction structure.
+- **Change:** Added `_masked_attention_reduce_rows_kernel` to fuse row-by-class reduction for `mode="mean"` + `float32`; rejected broader low-precision/max fusion after differential failures and kept fallback for numerically sensitive branches.
+- **Evidence:** Correctness passed with narrowed dispatch; `compare-perf` vs baseline in `attempts.md` reported **Avg +30.3%**, **Geomean 1.56x**, **Total 1.05x**; promoted as first best.
+- **Interpretation:** This is a textbook classic-matmul-style restructure: replace repeated scalar reduction loops with one tiled class-reduction kernel, then dispatch by dtype/mode to preserve correctness.
+
