@@ -1090,7 +1090,7 @@ def _resolve_required_latency_requirements(
         latency_id: "latency" for latency_id in required_ids
     }
     if isinstance(required_latency_ids, dict):
-        typed_required_latency_ids = cast(dict[str, PerfEntry] | PerfValueMap, required_latency_ids)
+        typed_required_latency_ids = cast(Union[dict[str, PerfEntry], PerfValueMap], required_latency_ids)
         for latency_id in required_ids:
             value = typed_required_latency_ids[latency_id]
             if isinstance(value, PerfEntry):
