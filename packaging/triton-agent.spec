@@ -37,17 +37,11 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    [],
-    exclude_binaries=True,
-    name="triton-agent",
-    console=True,
-)
-
-coll = COLLECT(
-    exe,
     a.binaries,
     a.datas,
+    [],
+    name="triton-agent",
     strip=False,
     upx=False,
-    name="triton-agent",
+    console=True,
 )
