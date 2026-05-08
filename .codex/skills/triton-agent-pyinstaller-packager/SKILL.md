@@ -1,6 +1,6 @@
 ---
 name: triton-agent-pyinstaller-packager
-description: Package the triton-agent repository into PyInstaller onefile executables with the built-in skills tree embedded. Use when Codex needs to build, repair, validate, or document Windows, Linux, or macOS triton-agent release artifacts; create platform-tagged zip archives; explain PyInstaller's per-OS build requirement; or verify that packaged triton-agent can load bundled skills.
+description: Package the triton-agent repository into PyInstaller onefile executables with the built-in skills tree embedded. Use when Codex needs to build, repair, validate, or document Windows, Linux, or macOS triton-agent release artifacts; create platform-tagged release archives; explain PyInstaller's per-OS build requirement; or verify that packaged triton-agent can load bundled skills.
 ---
 
 # Triton Agent PyInstaller Packager
@@ -57,7 +57,7 @@ This mode reduces source exposure in the distributed artifact, but it is not enc
    - Confirm the platform artifact directory contains the onefile executable.
    - Run one command that loads bundled skill resources, such as `compare-perf` with tiny temp perf files.
    - For agent-backed commands, use `--verbose` to confirm skill staging into `.codex/skills`, `.claude/skills`, or the selected backend directory.
-7. Report produced executable and zip paths, validation results, and remaining environment limitations.
+7. Report produced executable and release archive paths, validation results, and remaining environment limitations.
 
 ## Build Script
 
@@ -70,13 +70,14 @@ The script:
 - invokes `uv run pyinstaller`
 - writes platform-tagged output under `dist/pyinstaller/`
 - validates the expected onefile executable
-- creates a zip archive unless `--no-zip` is used
+- creates a release archive unless `--no-archive` is used: `.zip` on Windows, `.tar.gz` on Linux and macOS
+- includes the onefile executable and `README.md` in the release directory and archive
 
 Examples:
 
 ```bash
 uv run python scripts/build-pyinstaller.py --clean
-uv run python scripts/build-pyinstaller.py --clean --no-zip
+uv run python scripts/build-pyinstaller.py --clean --no-archive
 uv run python scripts/build-pyinstaller.py --clean --platform-tag linux-aarch64
 ```
 
@@ -87,7 +88,7 @@ For a release that needs Windows, Linux, and macOS artifacts:
 1. Run the same script on a Windows host.
 2. Run the same script on a Linux host.
 3. Run the same script on a macOS host.
-4. Collect the generated zip files from `dist/pyinstaller/`.
+4. Collect the generated release archives from `dist/pyinstaller/`.
 
 Read `references/platform-builds.md` when explaining this limitation to users or designing CI jobs.
 

@@ -6,6 +6,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 from typing import Sequence
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -100,6 +101,11 @@ def remove_path(path: Path, root: Path) -> None:
     target.unlink()
 
 
+def copy_file(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+
+
 def run_command(command: Sequence[str], cwd: Path) -> None:
     print("+ " + subprocess.list2cmdline(list(command)), flush=True)
     subprocess.run(command, cwd=str(cwd), check=True)
@@ -117,11 +123,60 @@ def ensure_spec_file(spec_path: Path, root: Path) -> Path:
     return spec
 
 
-def zip_executable(executable: Path, archive_path: Path) -> None:
+def archive_name(tag: str) -> str:
+    suffix = ".zip" if tag.startswith("windows-") else ".tar.gz"
+    return f"{PROJECT_NAME}-{tag}{suffix}"
+
+
+def archive_paths(artifact_root: Path, tag: str) -> tuple[Path, Path]:
+    return (
+        artifact_root / f"{PROJECT_NAME}-{tag}.zip",
+        artifact_root / f"{PROJECT_NAME}-{tag}.tar.gz",
+    )
+
+
+def make_release_directory(
+    *,
+    executable: Path,
+    readme: Path,
+    release_dir: Path,
+    root: Path,
+) -> None:
+    remove_path(release_dir, root)
+    release_dir.mkdir(parents=True, exist_ok=True)
+    copy_file(executable, release_dir / executable.name)
+    copy_file(readme, release_dir / readme.name)
+
+
+def create_archive(source_dir: Path, archive_path: Path) -> None:
     if archive_path.exists():
         archive_path.unlink()
+    if archive_path.suffix == ".zip":
+        zip_directory(source_dir, archive_path)
+        return
+    create_tar_gz(source_dir, archive_path)
+
+
+def zip_directory(source_dir: Path, archive_path: Path) -> None:
     with ZipFile(archive_path, "w", compression=ZIP_DEFLATED) as archive:
-        archive.write(executable, executable.relative_to(archive_path.parent))
+        for path in sorted(source_dir.rglob("*")):
+            if path.is_dir():
+                continue
+            archive.write(path, path.relative_to(source_dir.parent))
+
+
+def create_tar_gz(source_dir: Path, archive_path: Path) -> None:
+    with tarfile.open(archive_path, "w:gz") as archive:
+        for path in sorted(source_dir.rglob("*")):
+            arcname = Path(source_dir.name) / path.relative_to(source_dir)
+            info = archive.gettarinfo(str(path), arcname=str(arcname))
+            if path.is_dir():
+                info.mode = 0o755
+                archive.addfile(info)
+                continue
+            info.mode = 0o755 if path.name in (PROJECT_NAME, f"{PROJECT_NAME}.exe") else 0o644
+            with path.open("rb") as file:
+                archive.addfile(info, file)
 
 
 def executable_name() -> str:
@@ -138,12 +193,18 @@ def build(args: argparse.Namespace) -> int:
     dist_path = platform_root
     work_path = ensure_within_repo(root / "build" / "pyinstaller" / tag, root)
     executable = dist_path / executable_name()
-    archive_path = artifact_root / f"{PROJECT_NAME}-{tag}.zip"
+    release_dir = artifact_root / f"{PROJECT_NAME}-{tag}-release"
+    archive_path = artifact_root / archive_name(tag)
+    readme_path = ensure_within_repo(root / args.readme, root)
+    if not readme_path.is_file():
+        raise FileNotFoundError(f"README file was not found: {readme_path}")
 
     if args.clean:
         remove_path(platform_root, root)
         remove_path(work_path, root)
-        remove_path(archive_path, root)
+        for stale_archive_path in archive_paths(artifact_root, tag):
+            remove_path(stale_archive_path, root)
+        remove_path(release_dir, root)
 
     artifact_root.mkdir(parents=True, exist_ok=True)
     command = [
@@ -165,8 +226,16 @@ def build(args: argparse.Namespace) -> int:
     if not executable.is_file():
         raise FileNotFoundError(f"Expected onefile executable was not created: {executable}")
 
-    if not args.no_zip:
-        zip_executable(executable, archive_path)
+    make_release_directory(
+        executable=executable,
+        readme=readme_path,
+        release_dir=release_dir,
+        root=root,
+    )
+    print(f"Created release directory: {release_dir}", flush=True)
+
+    if not args.no_archive:
+        create_archive(release_dir, archive_path)
         print(f"Created archive: {archive_path}", flush=True)
 
     print(f"Created onefile executable: {executable}", flush=True)
@@ -184,7 +253,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--clean",
         action="store_true",
-        help="Remove this platform's previous build, executable artifact, and zip before building.",
+        help="Remove this platform's previous build, release directory, and archives before building.",
     )
     parser.add_argument(
         "--no-pyinstaller-clean",
@@ -194,8 +263,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--no-zip",
+        dest="no_archive",
         action="store_true",
-        help="Build the onefile executable but do not create a zip archive.",
+        help="Deprecated alias for --no-archive.",
+    )
+    parser.add_argument(
+        "--no-archive",
+        action="store_true",
+        help="Build the onefile executable and release directory but do not create an archive.",
     )
     parser.add_argument(
         "--platform-tag",
@@ -204,12 +279,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--artifact-dir",
         default="dist/pyinstaller",
-        help="Directory for platform executable artifacts and zip archives.",
+        help="Directory for platform executable artifacts and release archives.",
     )
     parser.add_argument(
         "--spec",
         default="packaging/triton-agent.spec",
         help="Path to the PyInstaller spec file, relative to the repository root.",
+    )
+    parser.add_argument(
+        "--readme",
+        default="README.md",
+        help="README file to include in the release archive, relative to the repository root.",
     )
     parser.add_argument(
         "--uv",
