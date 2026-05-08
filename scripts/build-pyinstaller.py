@@ -53,19 +53,13 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    [],
-    exclude_binaries=True,
-    name="triton-agent",
-    console=True,
-)
-
-coll = COLLECT(
-    exe,
     a.binaries,
     a.datas,
+    [],
+    name="triton-agent",
     strip=False,
     upx=False,
-    name="triton-agent",
+    console=True,
 )
 '''
 
@@ -123,14 +117,15 @@ def ensure_spec_file(spec_path: Path, root: Path) -> Path:
     return spec
 
 
-def zip_directory(source_dir: Path, archive_path: Path) -> None:
+def zip_executable(executable: Path, archive_path: Path) -> None:
     if archive_path.exists():
         archive_path.unlink()
     with ZipFile(archive_path, "w", compression=ZIP_DEFLATED) as archive:
-        for path in sorted(source_dir.rglob("*")):
-            if path.is_dir():
-                continue
-            archive.write(path, path.relative_to(source_dir.parent))
+        archive.write(executable, executable.relative_to(archive_path.parent))
+
+
+def executable_name() -> str:
+    return f"{PROJECT_NAME}.exe" if os.name == "nt" else PROJECT_NAME
 
 
 def build(args: argparse.Namespace) -> int:
@@ -142,7 +137,7 @@ def build(args: argparse.Namespace) -> int:
     platform_root = artifact_root / f"{PROJECT_NAME}-{tag}"
     dist_path = platform_root
     work_path = ensure_within_repo(root / "build" / "pyinstaller" / tag, root)
-    bundle_dir = dist_path / PROJECT_NAME
+    executable = dist_path / executable_name()
     archive_path = artifact_root / f"{PROJECT_NAME}-{tag}.zip"
 
     if args.clean:
@@ -167,26 +162,21 @@ def build(args: argparse.Namespace) -> int:
 
     run_command(command, root)
 
-    executable = bundle_dir / (f"{PROJECT_NAME}.exe" if os.name == "nt" else PROJECT_NAME)
     if not executable.is_file():
-        raise FileNotFoundError(f"Expected packaged executable was not created: {executable}")
-
-    skills_dir = bundle_dir / "_internal" / "skills"
-    if not skills_dir.is_dir():
-        raise FileNotFoundError(f"Expected bundled skills directory was not created: {skills_dir}")
+        raise FileNotFoundError(f"Expected onefile executable was not created: {executable}")
 
     if not args.no_zip:
-        zip_directory(bundle_dir, archive_path)
+        zip_executable(executable, archive_path)
         print(f"Created archive: {archive_path}", flush=True)
 
-    print(f"Created bundle: {bundle_dir}", flush=True)
+    print(f"Created onefile executable: {executable}", flush=True)
     return 0
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Build the triton-agent PyInstaller bundle for the current OS. "
+            "Build the triton-agent PyInstaller onefile executable for the current OS. "
             "Run this script separately on Windows, Linux, and macOS to produce "
             "platform-specific executables."
         )
@@ -194,7 +184,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--clean",
         action="store_true",
-        help="Remove this platform's previous build, bundle, and zip before building.",
+        help="Remove this platform's previous build, executable artifact, and zip before building.",
     )
     parser.add_argument(
         "--no-pyinstaller-clean",
@@ -205,7 +195,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--no-zip",
         action="store_true",
-        help="Build the onedir bundle but do not create a zip archive.",
+        help="Build the onefile executable but do not create a zip archive.",
     )
     parser.add_argument(
         "--platform-tag",
@@ -214,7 +204,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--artifact-dir",
         default="dist/pyinstaller",
-        help="Directory for platform bundles and zip archives.",
+        help="Directory for platform executable artifacts and zip archives.",
     )
     parser.add_argument(
         "--spec",
