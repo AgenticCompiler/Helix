@@ -367,6 +367,104 @@ def build_standalone_bench_cases(operator_api):
         self.assertEqual(stdout.getvalue(), "")
         self.assertEqual(stderr.getvalue(), "")
 
+    def test_profile_case_with_profiler_suppresses_fd_level_output(self) -> None:
+        module = load_standalone_bench_runtime_module()
+
+        class _FakeProfilerContext:
+            def __init__(self, profile_root: Path):
+                self.profile_root = profile_root
+
+            def __enter__(self):
+                os.write(1, b"fd stdout before\n")
+                os.write(2, b"fd stderr before\n")
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                del exc_type, exc, tb
+                self.profile_root.mkdir(parents=True, exist_ok=True)
+                (self.profile_root / "operator_details.csv").write_text(
+                    "\n".join(
+                        [
+                            "Name,Device Self Duration(us),Count",
+                            "KernelA,4.0,1",
+                        ]
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                os.write(1, b"fd stdout after\n")
+                os.write(2, b"fd stderr after\n")
+                return False
+
+            def step(self):
+                os.write(1, b"fd stdout step\n")
+                os.write(2, b"fd stderr step\n")
+
+        class _FakeProfilerApi:
+            profile_root: Optional[Path] = None
+
+            class _ExperimentalConfig:
+                def __init__(self, **kwargs):
+                    del kwargs
+
+            class ProfilerLevel:
+                Level1 = object()
+
+            class ProfilerActivity:
+                NPU = object()
+                CPU = object()
+
+            @staticmethod
+            def schedule(**kwargs):
+                return kwargs
+
+            @staticmethod
+            def tensorboard_trace_handler(profile_root: str):
+                _FakeProfilerApi.profile_root = Path(profile_root)
+
+                def _handler():
+                    Path(profile_root).mkdir(parents=True, exist_ok=True)
+
+                return _handler
+
+            @staticmethod
+            def profile(**kwargs):
+                profile_root = _FakeProfilerApi.profile_root
+                if profile_root is None:
+                    raise AssertionError("expected tensorboard_trace_handler to set profile_root")
+                return _FakeProfilerContext(profile_root)
+
+        fake_torch = SimpleNamespace(npu=SimpleNamespace(synchronize=lambda: None))
+        fake_torch_npu = SimpleNamespace(profiler=_FakeProfilerApi())
+        case = module.StandaloneBenchCase(
+            case_id="case-a",
+            fn=lambda: (
+                os.write(1, b"case fd stdout\n"),
+                os.write(2, b"case fd stderr\n"),
+            ),
+            warmup=0,
+            repeats=1,
+        )
+        resolution = module.KernelResolution(kernel_names=["KernelA"], kernel_source="metadata")
+
+        stdout = StringIO()
+        stderr = StringIO()
+        with patch.dict(
+            "sys.modules",
+            {"torch": fake_torch, "torch_npu": fake_torch_npu},
+            clear=False,
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            metrics, error_message = module._profile_case_with_profiler(
+                case,
+                resolution,
+                Path(tempfile.mkdtemp()) / "profile",
+            )
+
+        self.assertIsNotNone(metrics)
+        self.assertIsNone(error_message)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(stderr.getvalue(), "")
+
 
 if __name__ == "__main__":
     unittest.main()
