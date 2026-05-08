@@ -20,17 +20,28 @@ Use platform tags that include OS and architecture:
 
 ```text
 triton-agent-windows-x86_64.zip
-triton-agent-linux-x86_64.zip
-triton-agent-linux-aarch64.zip
-triton-agent-macos-x86_64.zip
-triton-agent-macos-aarch64.zip
+triton-agent-linux-x86_64.tar.gz
+triton-agent-linux-aarch64.tar.gz
+triton-agent-macos-x86_64.tar.gz
+triton-agent-macos-aarch64.tar.gz
 ```
 
-The zip should contain the platform-tagged output directory with a onefile executable inside it. For example:
+Use `.zip` for Windows artifacts. Use `.tar.gz` for Linux and macOS artifacts so executable mode bits are preserved when users extract the archive on Unix-like systems.
+
+The release archive should contain the platform-tagged release directory with the onefile executable and README inside it. For example:
 
 ```text
 triton-agent-windows-x86_64/
   triton-agent.exe
+  README.md
+```
+
+On Linux:
+
+```text
+triton-agent-linux-aarch64-release/
+  triton-agent
+  README.md
 ```
 
 The built-in `skills/` tree is embedded into the executable as PyInstaller data. Do not expect a visible `_internal/skills` directory in the release artifact. PyInstaller extracts embedded data to a temporary `_MEI*` directory while the process is running.
