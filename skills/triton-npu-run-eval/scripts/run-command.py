@@ -9,6 +9,7 @@ from typing import Protocol, TypedDict, cast
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 _RUN_BENCH_HINT = "Hint: use `compare-perf` to inspect this perf artifact instead of reading it directly."
+_RUN_TEST_HINT = "Hint: use `compare-result` to inspect this archived result instead of reading it directly."
 
 
 class ResultPayload(TypedDict):
@@ -235,6 +236,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Return code: {result['return_code']}")
         if archived_result is not None:
             print(f"Archived result: {archived_result}")
+            print(_RUN_TEST_HINT)
         if args.remote and args.keep_remote_workdir and remote_workspace is not None:
             print(f"Remote workspace: {remote_workspace}")
         return int(result["return_code"])
