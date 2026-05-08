@@ -19,6 +19,7 @@ from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 _BASE_OPTIMIZE_STAGED_SKILLS = (
     "triton-npu-optimize",
+    "triton-npu-optimize-knowledge",
     "triton-npu-prepare-optimize-baseline",
     "triton-npu-gen-test",
     "triton-npu-gen-bench",
