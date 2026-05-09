@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
-from bench_runner import resolve_bench_kernel_names
+from bench_contract import resolve_bench_kernel_names
 from run_runtime import (
     RemoteSpec,
     ResultPayload,
@@ -163,26 +163,23 @@ def _run_remote_profile_standalone(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> ResultPayload:
-    helper_script = _standalone_runtime_script_path()
-    copy_file_to_remote(
-        spec,
-        helper_script,
-        f"{remote_workspace}/{helper_script.name}",
-        verbose=verbose,
-        stderr=stderr,
-    )
+    for support_path in _standalone_runtime_support_paths():
+        copy_file_to_remote(
+            spec,
+            support_path,
+            f"{remote_workspace}/{support_path.name}",
+            verbose=verbose,
+            stderr=stderr,
+        )
     return run_remote_command_streaming(
         spec,
         remote_workspace,
         [
             "python3",
-            helper_script.name,
-            "profile-one",
-            "--bench-file",
+            "-c",
+            _build_remote_standalone_profile_script(),
             bench_file.name,
-            "--operator-file",
             operator_file.name,
-            "--case-id",
             case_id,
         ],
         verbose=verbose,
@@ -353,6 +350,11 @@ def _standalone_runtime_script_path() -> Path:
     return Path(__file__).resolve().with_name("standalone_bench_runtime.py")
 
 
+def _standalone_runtime_support_paths() -> list[Path]:
+    runtime = _load_standalone_runtime_module()
+    return list(runtime.runtime_support_paths())
+
+
 def _load_standalone_runtime_module():
     script_path = _standalone_runtime_script_path()
     module_name = f"triton_agent_standalone_bench_runtime_{script_path.stem}"
@@ -366,3 +368,15 @@ def _load_standalone_runtime_module():
     finally:
         sys.modules.pop(module_name, None)
     return module
+
+
+def _build_remote_standalone_profile_script() -> str:
+    return (
+        "import pathlib, sys; "
+        "import standalone_bench_runtime as runtime; "
+        "bench_file = pathlib.Path(sys.argv[1]); "
+        "operator_file = pathlib.Path(sys.argv[2]); "
+        "case_id = sys.argv[3]; "
+        "result = runtime.profile_local_standalone_case(bench_file, operator_file, case_id); "
+        "raise SystemExit(int(result['return_code']))"
+    )

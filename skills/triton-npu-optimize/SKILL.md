@@ -45,6 +45,8 @@ Use this skill when the user wants the operator itself improved rather than only
 - Create `opt-round-N/` from a validated parent candidate and keep parent-child traceability explicit.
 - Start `attempts.md` immediately so every meaningful attempt and measurement is recorded.
 - For round 1, record the initial round hypothesis in `opt-round-1/attempts.md` before the first code change.
+- When pattern triage is used, explicitly record the candidate patterns you considered, the selected pattern if one is chosen, and why that pattern looks plausible in `attempts.md`.
+- When a named pattern guides the round, explicitly record the final selected pattern direction in `summary.md`.
 - Record the current analysis level as `Primary analysis level`, and record `Supporting evidence` separately.
 - Record why that level may help and what evidence supports starting there.
 - If the round starts from reused deeper evidence, cite the reused evidence path and explain why the shallower level is already established or insufficient.
@@ -71,6 +73,7 @@ Optimize analysis is layered.
 - Read [`../triton-npu-optimize-knowledge/references/pattern_index.md`](../triton-npu-optimize-knowledge/references/pattern_index.md) before detailed pattern references.
 - Read only the one or two most relevant detailed pattern files under [`../triton-npu-optimize-knowledge/references/patterns/`](../triton-npu-optimize-knowledge/references/patterns/) after the generated index has narrowed the candidate set.
 - When code structure is still unclear at pattern triage, inspect the operator file directly and narrow candidates with the generated pattern index.
+- Do not leave the chosen pattern implicit in free-form prose; write it down explicitly in `attempts.md`, and carry the final named pattern direction into `summary.md` when it guided the round.
 - Very strongly consider using subagents to read pattern references, scan for potentially useful optimization ideas, and report back which patterns look promising for the current kernel.
 - When subagents are available, prefer using them to broaden pattern exploration before committing to the round hypothesis.
 - Pattern references are helpful guidance, not the only allowed source of ideas.

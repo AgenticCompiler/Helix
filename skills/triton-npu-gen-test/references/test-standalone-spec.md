@@ -2,12 +2,6 @@
 
 This document describes standalone correctness test files for Triton Ascend operators. The goal is to produce a self-contained test script that creates deterministic NPU inputs, calls the resolved operator entrypoint, and verifies correctness against a PyTorch reference implementation.
 
-An operator may contain:
-- kernel functions
-- a public entrypoint implemented as a Triton wrapper function
-- a public entrypoint implemented as a PyTorch function
-- a public entrypoint implemented as a `torch.nn.Module` class
-
 The test must call the resolved public entrypoint directly. Raw `@triton.jit` kernels are not valid direct harness APIs.
 
 ### 1. File naming and location

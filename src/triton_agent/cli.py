@@ -44,6 +44,37 @@ _TOP_LEVEL_EXAMPLES = (
     "triton-agent log-check-batch -i kernels",
     "triton-agent optimize -i kernel.py --agent codex",
 )
+_TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
+    (
+        "Batch and runtime",
+        (
+            (
+                "TRITON_AGENT_BATCH_NPU_DEVICES",
+                "Comma-separated Ascend NPU device pool for batch workspaces.",
+            ),
+            (
+                "TRITON_AGENT_CODE_AGENT_MAX_RETRIES",
+                "Retry limit for transient code-agent failures.",
+            ),
+            (
+                "TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR",
+                "Directory used to keep local benchmark profiler output.",
+            ),
+            (
+                "TRITON_AGENT_HOME",
+                "Overrides the triton-agent home directory for cached artifacts.",
+            ),
+        ),
+    ),
+    (
+        "OpenHands backend",
+        (
+            ("LLM_API_KEY", "Required API key for the OpenHands backend."),
+            ("LLM_MODEL", "Required model name for the OpenHands backend."),
+            ("LLM_BASE_URL", "Optional OpenHands API base URL."),
+        ),
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -394,7 +425,18 @@ def _build_top_level_epilog() -> str:
     lines.append("Examples:")
     for example in _TOP_LEVEL_EXAMPLES:
         lines.append(f"  {example}")
+    lines.append("")
+    lines.extend(_build_environment_variables_section())
     return "\n".join(lines)
+
+
+def _build_environment_variables_section() -> list[str]:
+    lines = ["Environment variables:"]
+    for group_name, entries in _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS:
+        lines.append(f"{group_name}:")
+        for name, description in entries:
+            lines.append(f"  {name:<36} {description}")
+    return lines
 
 
 def main(argv: Optional[list[str]] = None) -> int:

@@ -366,7 +366,8 @@ def _load_test_functions() -> tuple[ParseMetadataFn, RunLocalTestFn, RunRemoteTe
 
 def _load_bench_functions() -> tuple[ParseMetadataFn, RunLocalBenchFn, RunRemoteBenchFn]:
     _ensure_script_dir_on_path()
-    from bench_runner import parse_bench_metadata, run_local_bench, run_remote_bench
+    from bench_contract import parse_bench_metadata
+    from bench_runner import run_local_bench, run_remote_bench
 
     return (
         cast(ParseMetadataFn, parse_bench_metadata),
@@ -377,7 +378,7 @@ def _load_bench_functions() -> tuple[ParseMetadataFn, RunLocalBenchFn, RunRemote
 
 def _load_compare_result_functions() -> tuple[CompareResultFn, CompareRemoteResultFn]:
     _ensure_script_dir_on_path()
-    module = importlib.import_module("test_runner")
+    module = importlib.import_module("compare_result")
 
     return (
         cast(CompareResultFn, getattr(module, "compare_result_files")),
@@ -387,7 +388,7 @@ def _load_compare_result_functions() -> tuple[CompareResultFn, CompareRemoteResu
 
 def _load_compare_perf_function() -> ComparePerfFn:
     _ensure_script_dir_on_path()
-    from bench_runner import compare_perf_files
+    from perf_artifacts import compare_perf_files
 
     return cast(ComparePerfFn, compare_perf_files)
 

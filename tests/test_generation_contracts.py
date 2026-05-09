@@ -125,14 +125,19 @@ class GenerationContractTests(unittest.TestCase):
         self.assertEqual(calls[1][0], "PATCH")
         self.assertEqual(calls[1][2], {"force_remove_source_branch": True})
 
-    def test_test_gen_skill_requires_header_metadata_and_no_runtime_api_flag(self) -> None:
+    def test_test_gen_skill_emphasizes_spec_and_shared_contracts(self) -> None:
         content = _read("skills/triton-npu-gen-test/SKILL.md")
         self.assertIn("# test-mode:", content)
         self.assertIn("# api-name:", content)
         self.assertIn("# api-kind:", content)
         self.assertIn("# kernels:", content)
-        self.assertIn("accept only `--operator-file`", content)
-        self.assertNotIn("must accept `--operator-file` and `--api-name`", content)
+        self.assertIn("Always follow the selected spec file exactly.", content)
+        self.assertIn("Keep the shared contract consistent across modes", content)
+        self.assertIn("metadata header", content)
+        self.assertIn("deterministic NPU coverage", content)
+        self.assertNotIn("accept only `--operator-file` at runtime", content)
+        self.assertNotIn("build_operator_api(operator_module)", content)
+        self.assertNotIn("build_differential_test_cases(operator_api)", content)
 
     def test_bench_gen_skill_requires_header_metadata_and_no_runtime_api_flag(self) -> None:
         content = _read("skills/triton-npu-gen-bench/SKILL.md")
@@ -175,10 +180,10 @@ class GenerationContractTests(unittest.TestCase):
     def test_generation_skills_include_explicit_run_command_examples(self) -> None:
         test_gen = _read("skills/triton-npu-gen-test/SKILL.md")
         self.assertIn("## Validation Commands", test_gen)
-        self.assertIn("Use the triton-npu-run-eval skill to execute generated test cases.", test_gen)
-        self.assertIn("python3 ../triton-npu-run-eval/scripts/run-command.py run-test --test-file", test_gen)
-        self.assertIn("Do not run `compare-result` during test generation.", test_gen)
-        self.assertNotIn("run `compare-result` after `run-test` succeeds", test_gen)
+        self.assertIn("Use the `triton-npu-run-eval` skill to validate generated tests.", test_gen)
+        self.assertIn("run `run-test` with `--test-mode standalone`", test_gen)
+        self.assertIn("run `run-test` with `--test-mode differential`", test_gen)
+        self.assertIn("run `compare-result` on the archived payload", test_gen)
 
         bench_gen = _read("skills/triton-npu-gen-bench/SKILL.md")
         self.assertIn("## Validation Commands", bench_gen)
@@ -215,6 +220,9 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("Always pass both `--test-file` and `--operator-file`.", run_test)
         self.assertIn("--test-mode differential", run_test)
         self.assertIn("--remote user@host:2222", run_test)
+        self.assertIn("generated tests are import-only modules", run_test)
+        self.assertIn("build_operator_api(operator_module)", run_test)
+        self.assertIn("build_differential_test_cases(operator_api)", run_test)
 
         self.assertIn("Always pass both `--bench-file` and `--operator-file`.", run_bench)
         self.assertIn("build_operator_api(operator_module)", run_bench)
@@ -788,7 +796,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertNotIn("profile one selected `--bench <N>` case", profiler)
         self.assertNotIn("msprof python3 bench_<op>.py --operator-file <operator-file>", profiler)
 
-    def test_test_generation_specs_use_only_operator_file_cli(self) -> None:
+    def test_test_generation_specs_distinguish_standalone_cli_and_differential_hooks(self) -> None:
         standalone = _read("skills/triton-npu-gen-test/references/test-standalone-spec.md")
         differential = _read("skills/triton-npu-gen-test/references/test-differential-spec.md")
 
@@ -801,10 +809,23 @@ class GenerationContractTests(unittest.TestCase):
                 self.assertIn("# api-kind: <resolved_api_kind>", content)
                 self.assertIn("# kernels: <resolved_kernel_names>", content)
                 self.assertNotIn("| `--api-name <name>` | yes |", content)
-                self.assertIn("Parses `--operator-file`", content)
                 self.assertIn("triton-wrapper", content)
                 self.assertIn("torch-function", content)
                 self.assertIn("torch-module", content)
+
+        self.assertIn("Parses `--operator-file`", standalone)
+        self.assertIn('parser.add_argument("--operator-file", required=True)', standalone)
+
+        self.assertIn("import-only", differential)
+        self.assertIn("build_operator_api(operator_module)", differential)
+        self.assertIn("build_differential_test_cases(operator_api)", differential)
+        self.assertIn("The runner loads the operator module by file path", differential)
+        self.assertIn("<operator>_result.pt", differential)
+        self.assertNotIn("TEST_RESULT.pt", differential)
+        self.assertNotIn("Parses `--operator-file`", differential)
+        self.assertNotIn('parser.add_argument("--operator-file"', differential)
+        self.assertNotIn("def main()", differential)
+        self.assertNotIn("Running the file directly should execute the differential test", differential)
 
     def test_benchmark_generation_specs_use_hooked_standalone_contract(self) -> None:
         standalone = _read("skills/triton-npu-gen-bench/references/bench-standalone-spec.md")
