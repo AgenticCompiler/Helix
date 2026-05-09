@@ -270,7 +270,7 @@ For `msprof` benchmarks:
 - `run-bench` aggregates the stable-order union of benchmark metadata kernels and `@triton.jit` kernels discovered from the runtime operator file.
 - a failed benchmark case does not stop later cases from running
 - the generated perf file is still written and includes `# latency-error-case-*` comments for failed cases
-- `profile-bench` should still be invoked with an explicit `--kernel-name <name>` unless the metadata resolves to exactly one kernel
+- `profile-bench` profiles a selected benchmark case with `--bench <N>` and does not pass kernel filter arguments to `msprof`
 
 ## Optimize One Operator
 

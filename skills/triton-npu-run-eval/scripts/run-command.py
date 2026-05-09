@@ -152,7 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
     profile_bench.add_argument("--bench-mode", choices=["standalone", "msprof"])
     profile_bench.add_argument("--case-id")
     profile_bench.add_argument("--bench", type=int)
-    profile_bench.add_argument("--kernel-name")
+    profile_bench.add_argument("--kernel-name", help=argparse.SUPPRESS)
     profile_bench.add_argument("--target-op")
     profile_bench.add_argument("--remote")
     profile_bench.add_argument("--remote-workdir")
