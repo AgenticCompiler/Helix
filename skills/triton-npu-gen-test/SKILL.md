@@ -1,6 +1,6 @@
 ---
 name: triton-npu-gen-test
-description: Generate correctness test code for a Triton or Triton Ascend operator from source code and task context. Use when Codex needs to author a new operator test file, choose between standalone and differential test styles, infer the callable under test, or honor a requested output location.
+description: Generate correctness test code for a Triton or Triton Ascend operator from source code and task context. Use when you need to author a new operator test file, choose between standalone and differential test styles, infer the callable under test, or honor a requested output location.
 ---
 
 # Test Gen
@@ -43,7 +43,7 @@ Use this skill when the user wants a new correctness test file, wants a specific
 - For `differential` mode, the generated file must follow [test-differential-spec.md](references/test-differential-spec.md).
 - Treat those spec files as normative output requirements, not loose examples.
 
-## Generated File Metadata and CLI Contract
+## Generated File Metadata And Runtime Contract
 
 The generated test file must include a short metadata header near the top of the file:
 
@@ -52,49 +52,33 @@ The generated test file must include a short metadata header near the top of the
 - `# api-kind: <triton-wrapper|torch-function|torch-module>`
 - `# kernels: <resolved_kernel_names>`
 
-The generated test file must accept only `--operator-file` at runtime, use `importlib` dynamic loading, and load the runtime callable according to the embedded `api-name` and `api-kind` metadata.
+- Always follow the selected spec file exactly. The spec is authoritative for the mode-specific runtime shape, hook surface, artifact layout, and validation behavior.
+- Keep the shared contract consistent across modes: use the metadata header, resolve the public entrypoint explicitly, generate deterministic NPU coverage, and avoid inventing extra runtime behavior that the spec does not require.
 
 ## Validation Commands
 
-Use the triton-npu-run-eval skill to execute generated test cases.
-Use `run-test` as the standard execution command for generated tests.
+Use the `triton-npu-run-eval` skill to validate generated tests.
 
-- Standalone example:
-  - `python3 ../triton-npu-run-eval/scripts/run-command.py run-test --test-file test_<operator>.py --operator-file <operator>.py --test-mode standalone`
-- Differential example against the original operator:
-  - `python3 ../triton-npu-run-eval/scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file <operator>.py --test-mode differential`
-- Differential example against an optimized operator:
-  - `python3 ../triton-npu-run-eval/scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode differential`
-Do not run `compare-result` during test generation. The generation task only needs to produce a runnable test harness and validate it with `run-test`; cross-version result comparison belongs to optimize or explicit comparison workflows.
-
-If the outer task is marked for remote execution, carry the same remote flags into these commands.
+- Standalone: run `run-test` with `--test-mode standalone`.
+- Differential: run `run-test` with `--test-mode differential`, then run `compare-result` on the archived payload when you need to compare against an oracle or optimized result.
+- If validation is remote, carry the same remote flags through both commands.
 
 ## Workflow
 
-1. Read the operator code and identify the public entrypoint, entrypoint kind, tensor arguments, scalar arguments, shapes, dtypes, and kernel launch requirements.
-   - When the file has a `Model -> wrapper -> kernel` structure, resolve the module class as the entrypoint if it is a valid no-argument `torch-module`.
-2. Confirm that the file contains a supported public entrypoint that should be tested.
-3. If no supported public entrypoint can be resolved, stop and report the problem instead of guessing.
-4. Read the corresponding spec file before generating the test.
-5. Generate the test file according to the selected spec.
-  -. Generate realistic test data, shape coverage, and edge cases that match the operator signature while staying within the selected spec.
-  -  Prefer deterministic seeds and stable tolerance handling.
-6. Do not add a separate syntax-check or compile-check step. Validate the generated file through the CLI subcommand `run-test` using one of the command patterns above.
-7. If that generated test fails, infer the failure category from the raw `run-test` output and fix it; loop until the test passes.
+1. Read the operator code, resolve the supported public entrypoint, and read the selected spec.
+2. Generate the test file to match the selected spec exactly.
+3. Validate with `run-test`; if the task is differential, follow with `compare-result` when comparison is needed.
+4. If validation fails, repair the test and repeat.
 
 ## Quality Rules
 
-- Generated tests **must run on Ascend NPU** (`torch.npu`). Do **not** generate harnesses whose primary path executes the operator on CUDA, CPU, or other devices. See the selected spec for normative device rules.
-- Keep the test executable as a normal Python script.
-- Use `importlib` dynamic loading only for the operator under test via `--operator-file`. The target callable name and invocation style must come from the generated file's embedded `# api-name:` and `# api-kind:` metadata. All other imports should use standard explicit imports.
-- Include at least one representative happy-path case.
-- Add edge cases only when they are justified by the operator contract.
-- Do not invent unavailable dependencies without saying so.
-- Do not violate naming, entrypoint, artifact, or output rules from the selected spec.
-- Do not spend a separate step on syntax-only checking; rely on `triton-npu-run-eval` skill as the validation path.
-- When auto-fix mode is active, only repair the generated test file; do not modify the operator file.
-- Do not treat raw `@triton.jit` kernel functions as direct harness APIs.
-- Do not guess constructor arguments for `torch-module`; if no-argument construction is not safe, stop with an explicit explanation.
+- Run on Ascend NPU only.
+- Follow the selected spec exactly.
+- Keep the metadata header and resolve the public entrypoint explicitly.
+- Use `importlib` or import-only hooks only when the spec requires them.
+- Keep coverage deterministic and realistic.
+- Do not guess constructor arguments for `torch-module`.
+- Do not treat raw `@triton.jit` kernels as direct harness APIs.
 
 ## Self-Repair on Failure
 
@@ -107,7 +91,7 @@ When the generated test fails, repair the test file directly — never modify th
 | **General error** (assertion, shape mismatch, etc.) | Apply a minimal targeted fix — preserve the overall test structure |
 | **ModuleNotFoundError** or environment issue | Report that the test cannot be fixed from inside the test file alone |
 
-After any repair, always preserve the metadata header, the `--operator-file` runtime CLI, and the `main()` entry point pattern.
+After any repair, always preserve the metadata header and keep the generated file compliant with the selected spec.
 
 ## Failure Handling
 

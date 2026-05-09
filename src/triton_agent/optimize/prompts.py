@@ -23,6 +23,8 @@ def layered_analysis_lines(*, round_scope: str) -> list[str]:
         "Escalate analysis in this order: pattern triage, profiling diagnosis, IR attribution, compiler-source escalation.",
         "Use pattern triage only to decide whether a strong pattern-backed hypothesis already exists.",
         "Use the staged `triton-npu-optimize-knowledge` skill for generic pattern and symptom references.",
+        "When pattern triage is used, record candidate patterns, the selected pattern if one is chosen, and why that pattern looks plausible in `opt-round-N/attempts.md`.",
+        "When a named pattern guides the round, record the final selected pattern direction in `opt-round-N/summary.md`.",
         "Read the staged `triton-npu-optimize-knowledge` skill's generated `references/pattern_index.md` before detailed pattern references.",
         "Inspect the operator file directly when code structure is still unclear at pattern triage.",
         "Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.",

@@ -12,15 +12,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.cli import build_parser
 import triton_agent.commands.comparison as comparison_module
 from triton_agent.commands.comparison import compare_perf_files, handle_compare_perf, handle_compare_result
-from tests.run_skill_test_utils import load_bench_runner_module, load_test_runner_module
+from tests.run_skill_test_utils import load_bench_runner_module, load_compare_result_module
 
 
 class ComparisonCommandHandlerTests(unittest.TestCase):
     def test_package_bridge_module_is_removed(self) -> None:
         self.assertIsNone(importlib.util.find_spec("triton_agent.comparison"))
 
-    def test_load_compare_result_reuses_test_runner_module(self) -> None:
-        self.assertIs(comparison_module._load_compare_result(), load_test_runner_module())
+    def test_load_compare_result_reuses_compare_module(self) -> None:
+        self.assertIs(comparison_module._load_compare_result(), load_compare_result_module())
 
     def test_load_compare_perf_reuses_bench_runner_module(self) -> None:
         self.assertIs(comparison_module._load_compare_perf(), load_bench_runner_module())

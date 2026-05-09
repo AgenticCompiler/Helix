@@ -280,7 +280,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(compare_perf.__name__, "compare_perf_files")
         self.assertEqual(compare_perf.__module__, "bench_runner")
 
-    def test_load_compare_result_functions_reuse_test_runner_implementation(self) -> None:
+    def test_load_compare_result_functions_reuse_compare_payload_implementation(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
@@ -297,9 +297,9 @@ class SkillCommandScriptTests(unittest.TestCase):
         compare_result, compare_remote_result = module._load_compare_result_functions()
 
         self.assertEqual(compare_result.__name__, "compare_result_files")
-        self.assertEqual(compare_result.__module__, "test_runner")
+        self.assertEqual(compare_result.__module__, "compare_result")
         self.assertEqual(compare_remote_result.__name__, "compare_remote_result_files")
-        self.assertEqual(compare_remote_result.__module__, "test_runner")
+        self.assertEqual(compare_remote_result.__module__, "compare_result")
 
     def test_optimize_check_script_help_runs_without_installed_entrypoint(self) -> None:
         script = (

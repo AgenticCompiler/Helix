@@ -117,6 +117,59 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(resolved_perf, perf_file)
             self.assertEqual(observed_cwds, [bench_dir.resolve()])
 
+    def test_run_remote_bench_standalone_uses_module_helper_files(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            perf_file = root / "abs_perf.txt"
+            bench_file.write_text("# bench-mode: standalone\n# kernel: abs_kernel\n", encoding="utf-8")
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+
+            with patch.object(
+                module,
+                "create_remote_workspace",
+                return_value=("spec", "/tmp/remote-bench"),
+            ), patch.object(module, "copy_file_to_remote") as copy_to_remote, patch.object(
+                module,
+                "run_remote_command_streaming",
+                return_value=make_skill_result(0, "", ""),
+            ) as remote_run, patch.object(
+                module,
+                "copy_file_from_remote",
+            ) as copy_back, patch.object(module, "cleanup_remote_workspace") as cleanup:
+                result, resolved_perf, remote_workspace = module.run_remote_bench(
+                    bench_file,
+                    operator_file,
+                    "standalone",
+                    "alice@example.com",
+                    None,
+                    keep_remote_workdir=True,
+                )
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertEqual(resolved_perf, perf_file)
+        self.assertEqual(remote_workspace, "/tmp/remote-bench")
+        copy_targets = [call.args[2].rsplit("/", 1)[-1] for call in copy_to_remote.call_args_list]
+        self.assertIn("bench_abs.py", copy_targets)
+        self.assertIn("abs.py", copy_targets)
+        self.assertIn("standalone_bench_runtime.py", copy_targets)
+        self.assertIn("bench_contract.py", copy_targets)
+        self.assertIn("perf_artifacts.py", copy_targets)
+        remote_command = remote_run.call_args.args[2]
+        self.assertEqual(remote_command[0:2], ["python3", "-c"])
+        self.assertIn("run_local_standalone_bench", remote_command[2])
+        self.assertEqual(remote_command[3:], ["bench_abs.py", "abs.py", "abs_perf.txt"])
+        copy_back.assert_called_once_with(
+            "spec",
+            "/tmp/remote-bench/abs_perf.txt",
+            perf_file,
+            verbose=False,
+            stderr=None,
+        )
+        cleanup.assert_not_called()
+
     def test_run_local_bench_msprof_queries_case_count_and_runs_each_case(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
