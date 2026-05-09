@@ -1,8 +1,3 @@
----
-id: padded_row_col_copy
-title: Padded Last-Dim Row–Column Tiling
----
-
 # Padded Last-Dim Row–Column Tiling
 
 ## Summary

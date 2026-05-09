@@ -37,7 +37,7 @@ def _load_compare_result() -> CompareResultModule:
 
 
 def _load_compare_perf() -> ComparePerfModule:
-    return cast(ComparePerfModule, load_operator_eval_script_module("bench_runner"))
+    return cast(ComparePerfModule, load_operator_eval_script_module("perf_artifacts"))
 
 
 def compare_result_files(oracle_result: Path, new_result: Path, compare_level: str) -> int:
