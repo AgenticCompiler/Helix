@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+
+from triton_agent.resources import skills_root
 
 
 _CONTRACT_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "skills"
+    skills_root()
     / "triton-npu-optimize-check"
     / "references"
     / "contract.json"

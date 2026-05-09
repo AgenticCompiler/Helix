@@ -6,9 +6,11 @@ from functools import lru_cache
 from pathlib import Path
 from types import ModuleType
 
+from triton_agent.resources import application_root
+
 
 def repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    return application_root()
 
 
 def skill_script_root(skill_name: str) -> Path:

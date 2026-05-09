@@ -14,6 +14,7 @@ from run_runtime import (
     copy_directory_from_remote,
     copy_file_to_remote,
     create_remote_workspace,
+    local_python_executable,
     result_succeeded,
     run_buffered_process,
     run_remote_command_buffered,
@@ -142,7 +143,7 @@ def _run_local_profile_msprof(
         [
             "msprof",
             f"--kernel-name={kernel_name}",
-            sys.executable,
+            local_python_executable(),
             bench_file.name,
             "--operator-file",
             operator_arg,
@@ -245,7 +246,7 @@ def _resolve_profile_kernel_name(
 
 def _resolve_bench_case_local(bench_file: Path, bench_case: int | None) -> int:
     count_result = run_buffered_process(
-        [sys.executable, bench_file.name, "--num-bench"],
+        [local_python_executable(), bench_file.name, "--num-bench"],
         str(bench_file.parent),
         stall_timeout_seconds=900,
     )
