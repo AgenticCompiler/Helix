@@ -37,6 +37,7 @@ from run_runtime import (
     copy_file_from_remote,
     copy_file_to_remote,
     create_remote_workspace,
+    local_python_executable,
     make_result,
     result_succeeded,
     run_buffered_process,
@@ -103,10 +104,19 @@ def run_remote_bench(
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
     )
+    local_bench_cases = bench_file.with_suffix(".json")
     try:
         copy_file_to_remote(
             spec, bench_file, f"{remote_workspace}/{bench_file.name}", verbose=verbose, stderr=stderr
         )
+        if local_bench_cases.exists():
+            copy_file_to_remote(
+                spec,
+                local_bench_cases,
+                f"{remote_workspace}/{local_bench_cases.name}",
+                verbose=verbose,
+                stderr=stderr,
+            )
         copy_file_to_remote(
             spec,
             operator_file,
@@ -261,7 +271,7 @@ def _run_local_bench_msprof(
 ) -> tuple[ResultPayload, Path | None]:
     resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
     count_result = run_buffered_process(
-        [sys.executable, bench_file.name, "--num-bench"],
+        [local_python_executable(), bench_file.name, "--num-bench"],
         str(bench_file.parent),
         stall_timeout_seconds=900,
     )
@@ -284,7 +294,7 @@ def _run_local_bench_msprof(
             command = [
                 "msprof",
                 f"--output={output_dir}",
-                sys.executable,
+                local_python_executable(),
                 bench_file.name,
                 "--operator-file",
                 operator_arg,

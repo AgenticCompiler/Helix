@@ -13,6 +13,7 @@ from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.resume import resolve_optimize_resume, reset_optimize_workspace
 from triton_agent.paths import default_generated_output_path
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
+from triton_agent.resources import skills_root
 from triton_agent.skills import SkillLinkManager
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
@@ -193,8 +194,7 @@ def run_optimize_request(
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
 ) -> AgentResult:
-    repo_root = Path(__file__).resolve().parents[3]
-    manager = SkillLinkManager(repo_root / "skills")
+    manager = SkillLinkManager(skills_root())
     links = manager.prepare_skills(
         request.agent_name,
         request.workdir,

@@ -297,8 +297,18 @@ def run_remote_test(
     )
     remote_test = f"{remote_workspace}/{test_file.name}"
     remote_operator = f"{remote_workspace}/{operator_file.name}"
+    local_test_cases = test_file.with_suffix(".json")
+    remote_test_cases = f"{remote_workspace}/{local_test_cases.name}"
     try:
         copy_file_to_remote(spec, test_file, remote_test, verbose=verbose, stderr=stderr)
+        if local_test_cases.exists():
+            copy_file_to_remote(
+                spec,
+                local_test_cases,
+                remote_test_cases,
+                verbose=verbose,
+                stderr=stderr,
+            )
         copy_file_to_remote(spec, operator_file, remote_operator, verbose=verbose, stderr=stderr)
         if test_mode == "differential" and _has_differential_test_contract(test_file):
             archive_path = _differential_archive_path(operator_file)
