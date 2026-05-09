@@ -154,9 +154,7 @@ def profile_local_standalone_case(
     cases, resolution = load_standalone_bench_cases(bench_file, operator_file)
     case = _select_case(cases, case_id)
     profile_root = _profile_output_root(bench_file.parent, case.case_id)
-    metrics, error_message = _profile_case_with_profiler(case, resolution, profile_root)
-    if metrics is not None:
-        _materialize_msprof_view(profile_root, metrics)
+    _metrics, error_message = _profile_case_with_profiler(case, resolution, profile_root)
     if error_message is not None:
         return make_result(return_code=1, stdout="", stderr=error_message)
     return make_result(return_code=0, stdout="", stderr="")
@@ -428,44 +426,6 @@ def _parse_float_field(raw_value: object, field_name: str, csv_path: Path) -> fl
     if not stripped:
         raise ValueError(f"Empty '{field_name}' value in {csv_path}")
     return float(stripped)
-
-
-def _materialize_msprof_view(profile_root: Path, metrics: PerfMetrics) -> None:
-    output_dir = profile_root / "mindstudio_profiler_output"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    csv_path = output_dir / "op_statistic_1.csv"
-    total = sum(op["avg_time_us"] for op in metrics["ops"])
-    with csv_path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(
-            [
-                "Device_id",
-                "OP Type",
-                "Core Type",
-                "Count",
-                "Total Time(us)",
-                "Min Time(us)",
-                "Avg Time(us)",
-                "Max Time(us)",
-                "Ratio(%)",
-            ]
-        )
-        for op in metrics["ops"]:
-            avg_time = op["avg_time_us"]
-            ratio = 0.0 if total == 0.0 else (avg_time / total) * 100.0
-            writer.writerow(
-                [
-                    "0",
-                    op["op_type"],
-                    "UNKNOWN",
-                    "1",
-                    format_latency_value(avg_time),
-                    format_latency_value(avg_time),
-                    format_latency_value(avg_time),
-                    format_latency_value(avg_time),
-                    format_latency_value(ratio),
-                ]
-            )
 
 
 def _profile_output_root(parent: Path, case_id: str) -> Path:

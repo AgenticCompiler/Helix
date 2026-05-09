@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,17 +8,16 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES_ROOT = REPO_ROOT / "tests" / "fixtures" / "ascend_npu_operator_profiler"
+_SKILL_SCRIPTS = (
+    REPO_ROOT / "skills" / "triton-npu-profile-operator" / "scripts"
+)
 
 
-def _load_profile_summary_module():
-    script = (
-        REPO_ROOT
-        / "skills"
-        / "triton-npu-profile-operator"
-        / "scripts"
-        / "profile_summary.py"
-    )
-    spec = importlib.util.spec_from_file_location("profile_summary_test_module", script)
+def _load_reporter_module():
+    script = _SKILL_SCRIPTS / "reporter.py"
+    if str(_SKILL_SCRIPTS) not in sys.path:
+        sys.path.insert(0, str(_SKILL_SCRIPTS))
+    spec = importlib.util.spec_from_file_location("reporter_test_module", script)
     if spec is None or spec.loader is None:
         raise AssertionError(f"Unable to load module spec for {script}")
     module = importlib.util.module_from_spec(spec)
@@ -26,11 +26,11 @@ def _load_profile_summary_module():
 
 
 class AscendNpuOperatorProfilerTests(unittest.TestCase):
-    def test_build_profile_report_handles_realistic_parent_layout_fixture(self) -> None:
-        module = _load_profile_summary_module()
+    def test_build_report_handles_realistic_parent_layout_fixture(self) -> None:
+        module = _load_reporter_module()
 
         profile_dir = FIXTURES_ROOT / "realistic_parent_layout"
-        rendered = module.build_profile_report(profile_dir)
+        rendered = module.build_report(profile_dir)
 
         self.assertIn("Target operator: `matmul_kernel`", rendered)
         self.assertIn("Selection: inferred from the hottest `op_statistic` row", rendered)
@@ -40,8 +40,8 @@ class AscendNpuOperatorProfilerTests(unittest.TestCase):
         self.assertIn("Min task duration: `346.544 us`", rendered)
         self.assertIn("Max task duration: `355.962 us`", rendered)
 
-    def test_build_profile_report_accepts_parent_of_mindstudio_output(self) -> None:
-        module = _load_profile_summary_module()
+    def test_build_report_accepts_parent_of_mindstudio_output(self) -> None:
+        module = _load_reporter_module()
 
         with tempfile.TemporaryDirectory() as tmp:
             profile_dir = Path(tmp)
@@ -71,13 +71,13 @@ class AscendNpuOperatorProfilerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            rendered = module.build_profile_report(profile_dir)
+            rendered = module.build_report(profile_dir)
 
         self.assertIn("Target operator: `MatMul`", rendered)
         self.assertIn("Profile directory:", rendered)
 
-    def test_build_profile_report_summarizes_target_operator(self) -> None:
-        module = _load_profile_summary_module()
+    def test_build_report_summarizes_target_operator(self) -> None:
+        module = _load_reporter_module()
 
         with tempfile.TemporaryDirectory() as tmp:
             profile_dir = Path(tmp) / "PROF_demo"
@@ -108,15 +108,15 @@ class AscendNpuOperatorProfilerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            rendered = module.build_profile_report(profile_dir, target_op="MatMul")
+            rendered = module.build_report(profile_dir, target_op="MatMul")
 
         self.assertIn("Target operator: `MatMul`", rendered)
         self.assertIn("Average time: `100.0 us`", rendered)
         self.assertIn("Matched op_summary rows: `2`", rendered)
         self.assertIn("Top operators by total time", rendered)
 
-    def test_build_profile_report_ignores_blank_op_summary_durations(self) -> None:
-        module = _load_profile_summary_module()
+    def test_build_report_ignores_blank_op_summary_durations(self) -> None:
+        module = _load_reporter_module()
 
         with tempfile.TemporaryDirectory() as tmp:
             profile_dir = Path(tmp) / "PROF_demo"
@@ -146,13 +146,13 @@ class AscendNpuOperatorProfilerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            rendered = module.build_profile_report(profile_dir, target_op="MatMul")
+            rendered = module.build_report(profile_dir, target_op="MatMul")
 
         self.assertIn("Matched op_summary rows: `3`", rendered)
         self.assertIn("Average task duration: `100.0 us`", rendered)
 
-    def test_build_profile_report_includes_core_type_totals_and_transfer_signals(self) -> None:
-        module = _load_profile_summary_module()
+    def test_build_report_includes_core_type_totals_and_transfer_signals(self) -> None:
+        module = _load_reporter_module()
 
         with tempfile.TemporaryDirectory() as tmp:
             profile_dir = Path(tmp) / "PROF_demo"
@@ -178,7 +178,7 @@ class AscendNpuOperatorProfilerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            rendered = module.build_profile_report(profile_dir, target_op="VectorKernel")
+            rendered = module.build_report(profile_dir, target_op="VectorKernel")
 
         self.assertIn("## Core type totals", rendered)
         self.assertIn("scalar", rendered.lower())
@@ -188,8 +188,8 @@ class AscendNpuOperatorProfilerTests(unittest.TestCase):
         self.assertIn("TransData", rendered)
         self.assertIn("MemcpyAsync", rendered)
 
-    def test_build_profile_report_supports_json_output(self) -> None:
-        module = _load_profile_summary_module()
+    def test_build_report_supports_json_output(self) -> None:
+        module = _load_reporter_module()
 
         with tempfile.TemporaryDirectory() as tmp:
             profile_dir = Path(tmp) / "PROF_demo"
@@ -214,7 +214,7 @@ class AscendNpuOperatorProfilerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            rendered = module.build_profile_report(
+            rendered = module.build_report(
                 profile_dir,
                 target_op="VectorKernel",
                 output_format="json",
@@ -230,8 +230,8 @@ class AscendNpuOperatorProfilerTests(unittest.TestCase):
         self.assertIn("top_ops", payload)
         self.assertEqual(payload["top_ops"][0]["op_type"], "VectorKernel")
 
-    def test_build_profile_report_emits_operator_type_bound_and_pipeline_signals(self) -> None:
-        module = _load_profile_summary_module()
+    def test_build_report_emits_operator_type_bound_and_pipeline_signals(self) -> None:
+        module = _load_reporter_module()
 
         with tempfile.TemporaryDirectory() as tmp:
             profile_dir = Path(tmp) / "PROF_demo"
@@ -261,7 +261,7 @@ class AscendNpuOperatorProfilerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            rendered = module.build_profile_report(
+            rendered = module.build_report(
                 profile_dir,
                 target_op="VectorKernel",
                 output_format="json",
@@ -277,8 +277,8 @@ class AscendNpuOperatorProfilerTests(unittest.TestCase):
         self.assertIn("aiv_vec_ratio", payload["pipeline_signals"]["ratios"])
         self.assertIn("cube_utilization_percent", payload["pipeline_signals"])
 
-    def test_build_profile_report_emits_task_time_api_and_msprof_signals(self) -> None:
-        module = _load_profile_summary_module()
+    def test_build_report_emits_task_time_api_and_msprof_signals(self) -> None:
+        module = _load_reporter_module()
 
         with tempfile.TemporaryDirectory() as tmp:
             profile_dir = Path(tmp) / "PROF_demo"
@@ -341,7 +341,7 @@ class AscendNpuOperatorProfilerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            rendered = module.build_profile_report(
+            rendered = module.build_report(
                 profile_dir,
                 target_op="VectorKernel",
                 output_format="json",
