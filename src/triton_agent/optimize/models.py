@@ -38,6 +38,7 @@ class OptimizeRunOptions:
     optimize_knowledge: Literal["v1", "v2"] = "v1"
     compiler_source_analysis: Literal["off", "auto"] = "off"
     enable_cann_ext_api: bool = False
+    enable_agent_hooks: bool = False
 
 
 @dataclass(frozen=True)

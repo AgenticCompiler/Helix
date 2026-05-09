@@ -4,12 +4,13 @@ import os
 import sys
 import time
 from abc import ABC, abstractmethod
-from typing import Optional, TextIO
-from typing import Callable
+from pathlib import Path
+from typing import Callable, Optional, TextIO
 
+from triton_agent.agent_hooks import AgentHookManager
 from triton_agent.models import AgentRequest, AgentResult
-from triton_agent.process_runner import InterruptPolicy, OutputFilter, run_process
 from triton_agent.optimize.prompts import build_optimize_resume_prompt
+from triton_agent.process_runner import InterruptPolicy, OutputFilter, run_process
 from triton_agent.show_output_log import (
     open_show_output_log,
     write_show_output_attempt_result,
@@ -38,7 +39,22 @@ class AgentRunner(ABC):
         command = self.build_command(request)
         if request.verbose:
             self._log_launch_command(command, stderr or sys.stderr)
-        return self._run_with_retry(command, request, stdout=stdout)
+
+        if not request.enable_agent_hooks:
+            return self._run_with_retry(command, request, stdout=stdout)
+
+        hook_manager = self._hook_manager()
+        hook_state = hook_manager.prepare_hooks(request.agent_name, request.workdir)
+        if request.verbose:
+            emit_verbose_lines(stderr or sys.stderr, "hooks", hook_manager.describe_prepare(hook_state))
+        try:
+            return self._run_with_retry(command, request, stdout=stdout)
+        finally:
+            if request.verbose:
+                emit_verbose_lines(stderr or sys.stderr, "hooks", hook_manager.describe_cleanup(hook_state))
+            cleanup_warnings = hook_manager.cleanup(hook_state)
+            if cleanup_warnings:
+                emit_verbose_lines(stderr or sys.stderr, "hooks", cleanup_warnings)
 
     def interrupt_policy(self, request: AgentRequest) -> InterruptPolicy | None:
         if request.interact or request.command_kind != request.command_kind.OPTIMIZE:
@@ -68,6 +84,10 @@ class AgentRunner(ABC):
 
     def _log_launch_command(self, command: list[str], stream: TextIO) -> None:
         emit_verbose_lines(stream, "agent", format_command_messages(command))
+
+    def _hook_manager(self) -> AgentHookManager:
+        repo_root = Path(__file__).resolve().parents[3]
+        return AgentHookManager(repo_root / "hooks")
 
     def _select_mode(self, request: AgentRequest) -> str:
         if request.interact:
