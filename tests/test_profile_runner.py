@@ -39,7 +39,7 @@ class ProfileRunnerTests(unittest.TestCase):
         self.assertEqual(resolved_profile_dir, profile_dir)
         helper.assert_called_once_with(bench_file, operator_file, "case-b")
 
-    def test_run_local_profile_bench_msprof_requires_kernel_metadata_and_selected_case(self) -> None:
+    def test_run_local_profile_bench_msprof_profiles_selected_case_without_kernel_filter(self) -> None:
         module = load_profile_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -76,7 +76,6 @@ class ProfileRunnerTests(unittest.TestCase):
             mocked.call_args.args[0],
             [
                 "msprof",
-                "--kernel-name=kernel_name",
                 sys.executable,
                 "bench_kernel.py",
                 "--operator-file",
@@ -104,7 +103,7 @@ class ProfileRunnerTests(unittest.TestCase):
                         bench_case=2,
                     )
 
-    def test_run_local_profile_bench_msprof_auto_selects_single_declared_kernel(self) -> None:
+    def test_run_local_profile_bench_msprof_defaults_to_first_case_without_kernel_filter(self) -> None:
         module = load_profile_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -136,7 +135,6 @@ class ProfileRunnerTests(unittest.TestCase):
             mocked.call_args.args[0],
             [
                 "msprof",
-                "--kernel-name=kernel_name",
                 sys.executable,
                 "bench_kernel.py",
                 "--operator-file",
@@ -146,7 +144,7 @@ class ProfileRunnerTests(unittest.TestCase):
             ],
         )
 
-    def test_run_local_profile_bench_msprof_uses_explicit_kernel_name(self) -> None:
+    def test_run_local_profile_bench_msprof_ignores_explicit_kernel_name(self) -> None:
         module = load_profile_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -183,7 +181,6 @@ class ProfileRunnerTests(unittest.TestCase):
             mocked.call_args.args[0],
             [
                 "msprof",
-                "--kernel-name=kernel_b",
                 sys.executable,
                 "bench_kernel.py",
                 "--operator-file",
@@ -211,7 +208,51 @@ class ProfileRunnerTests(unittest.TestCase):
                     case_id="case-a",
                 )
 
-    def test_run_local_profile_bench_msprof_rejects_multi_kernel_metadata_without_kernel_name(self) -> None:
+    def test_run_local_profile_bench_msprof_allows_multi_kernel_metadata_without_kernel_name(self) -> None:
+        module = load_profile_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_kernel.py"
+            operator_file = root / "kernel.py"
+            profile_dir = root / "PROF_demo"
+            output_dir = profile_dir / "mindstudio_profiler_output"
+            output_dir.mkdir(parents=True)
+            (output_dir / "op_statistic_1.csv").write_text("header\n", encoding="utf-8")
+            bench_file.write_text(
+                "# bench-mode: msprof\n# kernels: kernel_a, kernel_b\n",
+                encoding="utf-8",
+            )
+            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
+
+            count_result = make_skill_result(0, "1\n", "")
+            profile_result = make_skill_result(0, "profile stdout\n", "")
+            with patch.object(module, "run_buffered_process", return_value=count_result), patch.object(
+                module,
+                "run_streaming_process",
+                return_value=profile_result,
+            ) as mocked:
+                result, resolved_profile_dir = module.run_local_profile_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                )
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertEqual(resolved_profile_dir, profile_dir)
+        self.assertEqual(
+            mocked.call_args.args[0],
+            [
+                "msprof",
+                sys.executable,
+                "bench_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--bench",
+                "1",
+            ],
+        )
+
+    def test_run_remote_profile_bench_msprof_profiles_selected_case_without_kernel_filter(self) -> None:
         module = load_profile_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -223,15 +264,61 @@ class ProfileRunnerTests(unittest.TestCase):
             )
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
 
-            with self.assertRaisesRegex(
-                ValueError,
-                "Multiple benchmark kernels declared; rerun profile-bench with --kernel-name",
-            ):
-                module.run_local_profile_bench(
+            copied_profile_dir = root / "PROF_remote"
+
+            def _fake_copy(_spec, _remote_path, local_path, **_kwargs):
+                output_dir = local_path / "mindstudio_profiler_output"
+                output_dir.mkdir(parents=True)
+                (output_dir / "op_statistic_1.csv").write_text("header\n", encoding="utf-8")
+
+            with patch.object(
+                module,
+                "create_remote_workspace",
+                return_value=("spec", "/tmp/remote-profile"),
+            ), patch.object(module, "copy_file_to_remote"), patch.object(
+                module,
+                "run_remote_command_streaming",
+                return_value=make_skill_result(0, "profile stdout\n", ""),
+            ) as remote_run, patch.object(
+                module,
+                "run_remote_command_buffered",
+                side_effect=[
+                    make_skill_result(0, "3\n", ""),
+                    make_skill_result(0, "PROF_remote\n", ""),
+                ],
+            ), patch.object(
+                module,
+                "copy_directory_from_remote",
+                side_effect=_fake_copy,
+            ), patch.object(module, "cleanup_remote_workspace") as cleanup:
+                result, resolved_profile_dir, remote_workspace = module.run_remote_profile_bench(
                     bench_file,
                     operator_file,
                     "msprof",
+                    "alice@example.com",
+                    None,
+                    bench_case=2,
+                    kernel_name="kernel_b",
+                    keep_remote_workdir=True,
                 )
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertEqual(resolved_profile_dir, copied_profile_dir)
+        self.assertEqual(remote_workspace, "/tmp/remote-profile")
+        self.assertEqual(
+            remote_run.call_args.args[2],
+            [
+                "msprof",
+                "op",
+                "python3",
+                "bench_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--bench",
+                "2",
+            ],
+        )
+        cleanup.assert_not_called()
 
     def test_run_remote_profile_bench_standalone_uses_case_id_runtime_helper(self) -> None:
         module = load_profile_runner_module()

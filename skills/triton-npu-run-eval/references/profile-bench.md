@@ -16,7 +16,7 @@ Mode notes:
 
 - In `standalone` mode, pass `--case-id <id>` and do not pass `--bench`; the helper profiles one declared standalone case through the standalone runtime helper.
 - In `msprof` mode, the helper first queries `--num-bench`, then profiles one selected `--bench <N>` case, defaulting to case `1` when you omit `--bench`.
-- In `msprof` mode, pass `--kernel-name <name>` when benchmark metadata declares multiple kernels. If the metadata resolves to exactly one kernel, the helper may choose it automatically.
+- In `msprof` mode, do not pass kernel filter arguments; `msprof` profiles the selected benchmark case and the report can be filtered later with `--target-op`.
 
 Remote examples:
 

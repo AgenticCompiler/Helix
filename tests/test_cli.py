@@ -913,6 +913,14 @@ class CliParserTests(unittest.TestCase):
 
         self.assertTrue(args.enable_cann_ext_api)
 
+    def test_optimize_accepts_agent_hooks_option(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--enable-agent-hooks"])
+
+        self.assertTrue(args.enable_agent_hooks)
+        options = optimize_run_options_from_args(args)
+        self.assertTrue(options.enable_agent_hooks)
+
     def test_optimize_batch_accepts_compiler_source_analysis_options(self) -> None:
         parser = build_parser()
         args = parser.parse_args(

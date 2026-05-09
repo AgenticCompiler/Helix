@@ -257,11 +257,11 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertIn("--operator-file", completed.stdout)
         self.assertIn("--case-id", completed.stdout)
         self.assertIn("--bench", completed.stdout)
-        self.assertIn("--kernel-name", completed.stdout)
+        self.assertNotIn("--kernel-name", completed.stdout)
         self.assertIn("--target-op", completed.stdout)
         self.assertIn("--keep-remote-workdir", completed.stdout)
 
-    def test_load_compare_perf_function_reuses_bench_runner_implementation(self) -> None:
+    def test_load_compare_perf_function_reuses_perf_artifacts_implementation(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
@@ -278,7 +278,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         compare_perf = module._load_compare_perf_function()
 
         self.assertEqual(compare_perf.__name__, "compare_perf_files")
-        self.assertEqual(compare_perf.__module__, "bench_runner")
+        self.assertEqual(compare_perf.__module__, "perf_artifacts")
 
     def test_load_compare_result_functions_reuse_compare_payload_implementation(self) -> None:
         script = (

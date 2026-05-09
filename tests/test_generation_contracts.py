@@ -230,7 +230,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("--bench-mode msprof", run_bench)
 
         self.assertIn("--case-id <id>", profile_bench)
-        self.assertIn("--kernel-name <name>", profile_bench)
+        self.assertIn("do not pass kernel filter arguments", profile_bench)
         self.assertIn("--keep-remote-workdir", profile_bench)
 
         self.assertIn("compare the archived result payloads after `run-test` succeeds", compare_result)

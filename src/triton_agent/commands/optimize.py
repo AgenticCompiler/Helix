@@ -99,6 +99,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
     )
     compiler_source_enabled = bool(getattr(args, "enable_compiler_source_analysis", False))
     cann_ext_api_enabled = bool(getattr(args, "enable_cann_ext_api", False))
+    agent_hooks_enabled = bool(getattr(args, "enable_agent_hooks", False))
     return OptimizeRunOptions(
         agent_name=args.agent,
         interact=bool(getattr(args, "interact", False)),
@@ -119,6 +120,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         optimize_knowledge=optimize_knowledge,
         compiler_source_analysis="auto" if compiler_source_enabled else "off",
         enable_cann_ext_api=cann_ext_api_enabled,
+        enable_agent_hooks=agent_hooks_enabled,
     )
 
 

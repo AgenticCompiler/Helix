@@ -279,6 +279,61 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIsNone(request.compiler_source_path)
             self.assertIsNone(request.compiler_source_commit)
 
+    def test_build_optimize_request_disables_agent_hooks_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+            )
+
+            request = build_optimize_request(operator, workdir, options)
+
+            self.assertFalse(request.enable_agent_hooks)
+
+    def test_build_optimize_request_enables_agent_hooks_when_requested(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                enable_agent_hooks=True,
+            )
+
+            request = build_optimize_request(operator, workdir, options)
+
+            self.assertTrue(request.enable_agent_hooks)
+
     def test_build_optimize_request_uses_explicit_optimize_skill_allowlist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)

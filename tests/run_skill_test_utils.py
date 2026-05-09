@@ -17,6 +17,10 @@ def load_bench_runner_module():
     return load_operator_eval_script_module("bench_runner")
 
 
+def load_perf_artifacts_module():
+    return load_operator_eval_script_module("perf_artifacts")
+
+
 def load_profile_runner_module():
     return load_operator_eval_script_module("profile_runner")
 

@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
-from bench_contract import resolve_bench_kernel_names
 from run_runtime import (
     RemoteSpec,
     ResultPayload,
@@ -134,15 +133,13 @@ def _run_local_profile_msprof(
     bench_file: Path,
     operator_file: Path,
     bench_case: int | None,
-    requested_kernel_name: str | None,
+    _requested_kernel_name: str | None,
 ) -> ResultPayload:
-    kernel_name = _resolve_profile_kernel_name(bench_file, requested_kernel_name)
     selected_case = _resolve_bench_case_local(bench_file, bench_case)
     operator_arg = os.path.relpath(operator_file, bench_file.parent)
     return run_streaming_process(
         [
             "msprof",
-            f"--kernel-name={kernel_name}",
             local_python_executable(),
             bench_file.name,
             "--operator-file",
@@ -194,11 +191,10 @@ def _run_remote_profile_msprof(
     bench_file: Path,
     operator_file: Path,
     bench_case: int | None,
-    requested_kernel_name: str | None,
+    _requested_kernel_name: str | None,
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> ResultPayload:
-    kernel_name = _resolve_profile_kernel_name(bench_file, requested_kernel_name)
     selected_case = _resolve_bench_case_remote(
         spec,
         remote_workspace,
@@ -213,7 +209,6 @@ def _run_remote_profile_msprof(
         [
             "msprof",
             "op",
-            f"--kernel-name={kernel_name}",
             "python3",
             bench_file.name,
             "--operator-file",
@@ -224,25 +219,6 @@ def _run_remote_profile_msprof(
         verbose=verbose,
         stderr=stderr,
     )
-
-
-def _resolve_profile_kernel_name(
-    bench_file: Path,
-    requested_kernel_name: str | None,
-) -> str:
-    kernel_names = resolve_bench_kernel_names(bench_file)
-    if requested_kernel_name is not None:
-        if requested_kernel_name not in kernel_names:
-            raise ValueError(
-                f"Requested kernel '{requested_kernel_name}' is not declared in benchmark metadata: {kernel_names}"
-            )
-        return requested_kernel_name
-    if len(kernel_names) == 1:
-        return kernel_names[0]
-    raise ValueError(
-        "Multiple benchmark kernels declared; rerun profile-bench with --kernel-name <name>."
-    )
-
 
 def _resolve_bench_case_local(bench_file: Path, bench_case: int | None) -> int:
     count_result = run_buffered_process(
@@ -363,11 +339,18 @@ def _load_standalone_runtime_module():
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load standalone runtime helper: {script_path}")
     module = importlib.util.module_from_spec(spec)
+    script_dir = str(script_path.parent)
+    added = False
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
+        added = True
     sys.modules[module_name] = module
     try:
         spec.loader.exec_module(module)
     finally:
         sys.modules.pop(module_name, None)
+        if added:
+            sys.path.remove(script_dir)
     return module
 
 
