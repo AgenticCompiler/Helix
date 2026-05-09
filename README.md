@@ -270,7 +270,7 @@ For `msprof` benchmarks:
 - `run-bench` aggregates the stable-order union of benchmark metadata kernels and `@triton.jit` kernels discovered from the runtime operator file.
 - a failed benchmark case does not stop later cases from running
 - the generated perf file is still written and includes `# latency-error-case-*` comments for failed cases
-- `profile-bench` should still be invoked with an explicit `--kernel-name <name>` unless the metadata resolves to exactly one kernel
+- `profile-bench` profiles a selected benchmark case with `--bench <N>` and does not pass kernel filter arguments to `msprof`
 
 ## Optimize One Operator
 
@@ -294,6 +294,7 @@ Common options:
 - `--optimize-knowledge v1|v2`: default is `v1`. Select which optimize knowledge library is staged before the agent starts.
 - `--enable-compiler-source-analysis`: allow the optimize agent to use compiler source as an escalation after benchmark, profiler, and IR evidence.
 - `--enable-cann-ext-api`: allow A5-only CANN Triton extension API optimization patterns during optimize runs.
+- `--enable-agent-hooks`: enable the workspace-local Codex hook guard for this optimize run. Agent hooks are disabled by default.
 - `--min-rounds <N>`: require at least N optimization rounds.
 - `--no-agent-session`: disable persistent agent sessions when supported.
 - `--interact`
@@ -309,6 +310,7 @@ uv run triton-agent optimize --input a.py --resume continue
 uv run triton-agent optimize --input a.py --optimize-knowledge v2
 uv run triton-agent optimize --input a.py --enable-compiler-source-analysis
 uv run triton-agent optimize --input a.py --enable-cann-ext-api --target-chip A5
+uv run triton-agent optimize --input a.py --enable-agent-hooks --agent codex
 uv run triton-agent optimize --input a.py --prompt "Prioritize memory-coalescing improvements."
 ```
 
@@ -317,6 +319,12 @@ Optimize knowledge selection is explicit. `--optimize-knowledge v1` keeps the cu
 Compiler source analysis is opt-in. When enabled, the CLI prepares a shallow AscendNPU-IR checkout under `~/.triton-agent/compiler-sources/AscendNPU-IR/` before launching the agent, using the configured Triton Agent home when `TRITON_AGENT_HOME` is set. The launched agent receives only the local path and commit, treats the checkout as read-only, and must not clone, fetch, pull, or modify compiler source. This option enables an escalation path for difficult compiler-side explanations; it does not require compiler-source analysis in every round.
 
 CANN extension API pattern access is also opt-in. When `--enable-cann-ext-api` is set, optimize stages a dedicated skill with specialized CANN Triton extension API guidance, including `sub_vec_id()`-based rewrite patterns. This option is valid only with `--target-chip A5`.
+
+Agent hooks are disabled by default. When `--enable-agent-hooks` is set on an
+optimize run with `--agent codex`, the CLI stages a temporary workspace-local
+Codex hook guard before launching the agent. This is intended for debugging and
+policy experiments where you want the agent to avoid redundant reads of staged
+skill implementation files.
 
 Resume modes:
 
@@ -577,6 +585,28 @@ These options appear on multiple commands:
 - `--remote-workdir`: choose the remote working root.
 - `--keep-remote-workdir`: keep the remote workspace after `run-test` or `run-bench`.
 - `--force-overwrite`: allow generation commands to replace existing generated files.
+
+## Optional Codex Hook Guard
+
+When `optimize --enable-agent-hooks --agent codex` launches, `triton-agent`
+stages a temporary Codex `PreToolUse` hook into the target workspace before the
+agent starts:
+
+- `.codex/hooks.json`
+- `.codex/triton-agent-hooks/pretooluse_guard.py`
+- `.codex/triton-agent-hooks/policy.json`
+
+The policy is rendered for the current workspace. It allows read-oriented shell
+commands to inspect files inside that workspace, blocks reads outside the
+workspace, and blocks reads of staged skill implementation files under
+`.codex/skills/*/scripts/`. A blocked read returns a short denial message to the
+agent telling it to stay within the workspace and use skill instructions or the
+documented command interface instead.
+
+The staged hook files are removed after the agent process exits. If
+`.codex/hooks.json` or `.codex/triton-agent-hooks/` already exists, the run fails
+explicitly instead of merging with or overwriting user-owned hook configuration.
+Without `--enable-agent-hooks`, no Codex hook files are staged.
 
 ## Output Conventions
 

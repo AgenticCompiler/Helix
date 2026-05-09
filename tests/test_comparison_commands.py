@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.cli import build_parser
 import triton_agent.commands.comparison as comparison_module
 from triton_agent.commands.comparison import compare_perf_files, handle_compare_perf, handle_compare_result
-from tests.run_skill_test_utils import load_bench_runner_module, load_compare_result_module
+from tests.run_skill_test_utils import load_compare_result_module, load_perf_artifacts_module
 
 
 class ComparisonCommandHandlerTests(unittest.TestCase):
@@ -22,8 +22,8 @@ class ComparisonCommandHandlerTests(unittest.TestCase):
     def test_load_compare_result_reuses_compare_module(self) -> None:
         self.assertIs(comparison_module._load_compare_result(), load_compare_result_module())
 
-    def test_load_compare_perf_reuses_bench_runner_module(self) -> None:
-        self.assertIs(comparison_module._load_compare_perf(), load_bench_runner_module())
+    def test_load_compare_perf_reuses_perf_artifacts_module(self) -> None:
+        self.assertIs(comparison_module._load_compare_perf(), load_perf_artifacts_module())
 
     def test_compare_perf_files_runs_via_skill_wrapper(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

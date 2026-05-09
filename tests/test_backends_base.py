@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from triton_agent.agent_hooks import AgentHookState
 from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.prompts import build_prompt
@@ -70,6 +71,117 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 runner.run(request)
 
         self.assertEqual(mocked.call_args.kwargs["extra_env"], {"ASCEND_RT_VISIBLE_DEVICES": "2"})
+
+    def test_base_runner_skips_agent_hooks_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = _DummyRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="dummy",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+            )
+
+            with (
+                patch("triton_agent.backends.base.AgentHookManager.prepare_hooks") as mocked_prepare,
+                patch("triton_agent.backends.base.AgentHookManager.cleanup") as mocked_cleanup,
+                patch("triton_agent.backends.base.run_process", return_value=_ok_result()),
+            ):
+                result = runner.run(request)
+
+            self.assertEqual(result.return_code, 0)
+            mocked_prepare.assert_not_called()
+            mocked_cleanup.assert_not_called()
+
+    def test_base_runner_prepares_and_cleans_agent_hooks_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = _DummyRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="dummy",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+                enable_agent_hooks=True,
+            )
+            hook_state = AgentHookState(created_paths=[workspace / ".codex" / "hooks.json"])
+
+            with (
+                patch(
+                    "triton_agent.backends.base.AgentHookManager.prepare_hooks",
+                    return_value=hook_state,
+                ) as mocked_prepare,
+                patch(
+                    "triton_agent.backends.base.AgentHookManager.cleanup",
+                    return_value=[],
+                ) as mocked_cleanup,
+                patch("triton_agent.backends.base.run_process", return_value=_ok_result()),
+            ):
+                result = runner.run(request)
+
+            self.assertEqual(result.return_code, 0)
+            mocked_prepare.assert_called_once_with("dummy", workspace)
+            mocked_cleanup.assert_called_once_with(hook_state)
+
+    def test_base_runner_cleans_agent_hooks_when_run_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = _DummyRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="dummy",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+                enable_agent_hooks=True,
+            )
+            hook_state = AgentHookState(created_paths=[workspace / ".codex" / "hooks.json"])
+
+            with (
+                patch(
+                    "triton_agent.backends.base.AgentHookManager.prepare_hooks",
+                    return_value=hook_state,
+                ),
+                patch(
+                    "triton_agent.backends.base.AgentHookManager.cleanup",
+                    return_value=[],
+                ) as mocked_cleanup,
+                patch("triton_agent.backends.base.run_process", side_effect=RuntimeError("boom")),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "boom"):
+                    runner.run(request)
+
+            mocked_cleanup.assert_called_once_with(hook_state)
 
     def test_base_runner_retries_transient_failures_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

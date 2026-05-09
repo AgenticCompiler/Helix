@@ -315,16 +315,14 @@ class RemoteExecutionTests(unittest.TestCase):
             remote_run.call_args.args[2],
             [
                 "python3",
-                "standalone_bench_runtime.py",
-                "run-all",
-                "--bench-file",
+                "-c",
+                remote_run.call_args.args[2][2],
                 "bench_kernel.py",
-                "--operator-file",
                 "kernel.py",
-                "--perf-file",
                 "kernel_perf.txt",
             ],
         )
+        self.assertIn("run_local_standalone_bench", remote_run.call_args.args[2][2])
         copy_back.assert_called_once_with(
             "spec",
             "/tmp/remote-clean/kernel_perf.txt",
@@ -692,16 +690,14 @@ class RemoteExecutionTests(unittest.TestCase):
             remote_run.call_args.args[2],
             [
                 "python3",
-                "standalone_bench_runtime.py",
-                "run-all",
-                "--bench-file",
+                "-c",
+                remote_run.call_args.args[2][2],
                 "bench kernel.py",
-                "--operator-file",
                 "kernel op.py",
-                "--perf-file",
                 "kernel op_perf.txt",
             ],
         )
+        self.assertIn("run_local_standalone_bench", remote_run.call_args.args[2][2])
 
 
 if __name__ == "__main__":
