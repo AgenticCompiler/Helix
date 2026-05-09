@@ -312,6 +312,18 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("triton-agent verify -i .", help_text)
         self.assertIn("triton-agent status -i .", help_text)
 
+    def test_top_level_help_lists_supported_environment_variables(self) -> None:
+        parser = build_parser()
+        help_text = parser.format_help()
+        self.assertIn("Environment variables:", help_text)
+        self.assertIn("TRITON_AGENT_BATCH_NPU_DEVICES", help_text)
+        self.assertIn("TRITON_AGENT_CODE_AGENT_MAX_RETRIES", help_text)
+        self.assertIn("TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR", help_text)
+        self.assertIn("TRITON_AGENT_HOME", help_text)
+        self.assertIn("LLM_API_KEY", help_text)
+        self.assertIn("LLM_MODEL", help_text)
+        self.assertIn("LLM_BASE_URL", help_text)
+
     def test_subcommand_help_includes_command_description(self) -> None:
         parser = build_parser()
         with self.assertRaises(SystemExit):
@@ -3648,6 +3660,14 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Use the staged `triton-npu-analyze-round-performance` skill", prompt)
         self.assertIn("write `opt-round-n/perf-analysis.md`", prompt.lower())
         self.assertIn(
+            "When pattern triage is used, record candidate patterns, the selected pattern if one is chosen, and why that pattern looks plausible in `opt-round-N/attempts.md`.",
+            prompt,
+        )
+        self.assertIn(
+            "When a named pattern guides the round, record the final selected pattern direction in `opt-round-N/summary.md`.",
+            prompt,
+        )
+        self.assertIn(
             "`learned_lessons.md` is only for reusable, evidence-backed optimization or profiling rules",
             prompt,
         )
@@ -3743,6 +3763,14 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Use the staged `triton-npu-analyze-round-performance` skill", prompt)
         self.assertIn("write `opt-round-n/perf-analysis.md`", prompt.lower())
         self.assertIn(
+            "When pattern triage is used, record candidate patterns, the selected pattern if one is chosen, and why that pattern looks plausible in `opt-round-N/attempts.md`.",
+            prompt,
+        )
+        self.assertIn(
+            "When a named pattern guides the round, record the final selected pattern direction in `opt-round-N/summary.md`.",
+            prompt,
+        )
+        self.assertIn(
             "`learned_lessons.md` is only for reusable, evidence-backed optimization or profiling rules",
             prompt,
         )
@@ -3796,6 +3824,14 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Compiler source path: /tmp/AscendNPU-IR", prompt)
         self.assertIn("Compiler source commit: abc123.", prompt)
         self.assertIn("Round gate passed.", prompt)
+        self.assertIn(
+            "When pattern triage is used, record candidate patterns, the selected pattern if one is chosen, and why that pattern looks plausible in `opt-round-N/attempts.md`.",
+            prompt,
+        )
+        self.assertIn(
+            "When a named pattern guides the round, record the final selected pattern direction in `opt-round-N/summary.md`.",
+            prompt,
+        )
         self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", prompt)
 
     def test_build_optimize_unsupervised_prompt_mentions_min_rounds_when_requested(self) -> None:

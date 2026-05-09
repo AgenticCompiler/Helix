@@ -1,16 +1,24 @@
 from __future__ import annotations
 
+from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import dataclass
+import importlib.util
 import shutil
 import sys
+import traceback
+from io import StringIO
 from pathlib import Path
+from collections.abc import Callable, Iterable, Mapping
+from typing import Any, TextIO, cast
 
-import compare_result_payloads as result_payload_compare
 from run_runtime import (
     ResultPayload,
+    RemoteSpec,
     cleanup_remote_workspace,
     copy_file_from_remote,
     copy_file_to_remote,
     create_remote_workspace,
+    make_result,
     result_succeeded,
     run_streaming_process,
     run_remote_command_buffered,
@@ -18,11 +26,14 @@ from run_runtime import (
 )
 
 
-ORACLE_COMPARE_LEVELS = result_payload_compare.ORACLE_COMPARE_LEVELS
-_compare_values = result_payload_compare._compare_values
-_extract_ordered_results = result_payload_compare._extract_ordered_results
-_load_result_payload = result_payload_compare._load_result_payload
-_resolve_compare_tolerances = result_payload_compare._resolve_compare_tolerances
+@dataclass(frozen=True)
+class DifferentialTestCase:
+    case_id: str
+    fn: Callable[[], object]
+
+
+def _differential_archive_path(operator_file: Path) -> Path:
+    return operator_file.parent / f"{operator_file.stem}_result.pt"
 
 
 def run_local_test(
@@ -30,12 +41,12 @@ def run_local_test(
     operator_file: Path,
     test_mode: str,
 ) -> tuple[ResultPayload, Path | None]:
-    command = [sys.executable, str(test_file), "--operator-file", str(operator_file)]
-    result = run_streaming_process(command, str(test_file.parent), stall_timeout_seconds=900)
-    archived_result = None
-    if test_mode == "differential" and result_succeeded(result):
-        archived_result = archive_differential_result(test_file, operator_file)
-    return result, archived_result
+    if test_mode == "differential" and _has_differential_test_contract(test_file):
+        archive_path = _differential_archive_path(operator_file)
+        result = _run_declarative_differential_test(test_file, operator_file, archive_path)
+        archived_result = archive_path if result_succeeded(result) else None
+        return result, archived_result
+    return _run_legacy_local_test(test_file, operator_file, test_mode)
 
 
 def parse_test_metadata(test_file: Path) -> dict[str, str]:
@@ -56,6 +67,221 @@ def parse_test_metadata(test_file: Path) -> dict[str, str]:
     return metadata
 
 
+def load_differential_test_cases(
+    test_file: Path,
+    operator_file: Path,
+) -> list[DifferentialTestCase]:
+    test_path = test_file.resolve()
+    operator_path = operator_file.resolve()
+    test_module = _load_module(test_path, f"differential_test_{test_path.stem}")
+    build_operator_api = _require_callable(test_module, "build_operator_api", test_path)
+    build_cases = _require_callable(test_module, "build_differential_test_cases", test_path)
+    operator_module = _load_module(operator_path, f"differential_operator_{operator_path.stem}")
+    operator_api = build_operator_api(operator_module)
+    raw_cases = build_cases(operator_api)
+    return _normalize_differential_cases(raw_cases)
+
+
+def _has_differential_test_contract(test_file: Path) -> bool:
+    test_path = test_file.resolve()
+    test_module = _load_module(test_path, f"differential_test_{test_path.stem}")
+    return callable(getattr(test_module, "build_operator_api", None)) and callable(
+        getattr(test_module, "build_differential_test_cases", None)
+    )
+
+
+def _normalize_differential_cases(raw_cases: object) -> list[DifferentialTestCase]:
+    if isinstance(raw_cases, (str, bytes)) or isinstance(raw_cases, Mapping) or not isinstance(raw_cases, Iterable):
+        raise ValueError("Differential test hook 'build_differential_test_cases' must return an iterable of cases")
+    cases: list[DifferentialTestCase] = []
+    seen_case_ids: set[str] = set()
+    for raw_case in cast(Iterable[object], raw_cases):
+        if not isinstance(raw_case, Mapping):
+            raise ValueError("Differential test cases must be mappings")
+        case_map = cast(Mapping[str, object], raw_case)
+        case_id = case_map.get("id")
+        if not isinstance(case_id, str) or not case_id.strip():
+            raise ValueError("Differential test case is missing required string field 'id'")
+        if case_id in seen_case_ids:
+            raise ValueError(f"Duplicate differential test case id: {case_id}")
+        case_fn = case_map.get("fn")
+        if not callable(case_fn):
+            raise ValueError(f"Differential test case '{case_id}' is missing required callable field 'fn'")
+        seen_case_ids.add(case_id)
+        cases.append(DifferentialTestCase(case_id=case_id, fn=cast(Callable[[], object], case_fn)))
+    if not cases:
+        raise ValueError("Differential test hook 'build_differential_test_cases' returned no cases")
+    return cases
+
+
+def _run_declarative_differential_test(
+    test_file: Path,
+    operator_file: Path,
+    archive_path: Path,
+) -> ResultPayload:
+    try:
+        import torch
+    except ImportError as exc:
+        return make_result(
+            return_code=1,
+            stdout="",
+            stderr=f"Missing differential test dependency: {exc}",
+        )
+
+    try:
+        cases = load_differential_test_cases(test_file, operator_file)
+        stdout_buffer = StringIO()
+        stderr_buffer = StringIO()
+        results: list[object] = []
+        with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
+            for case in cases:
+                results.append(case.fn())
+                _synchronize(torch)
+        torch.save({"results": results}, archive_path)
+        return make_result(
+            return_code=0,
+            stdout=stdout_buffer.getvalue(),
+            stderr=stderr_buffer.getvalue(),
+        )
+    except Exception:
+        return make_result(
+            return_code=1,
+            stdout="",
+            stderr=traceback.format_exc(),
+        )
+
+
+def _run_legacy_local_test(
+    test_file: Path,
+    operator_file: Path,
+    test_mode: str,
+) -> tuple[ResultPayload, Path | None]:
+    command = [sys.executable, str(test_file), "--operator-file", str(operator_file)]
+    result = run_streaming_process(command, str(test_file.parent), stall_timeout_seconds=900)
+    archived_result = None
+    if test_mode == "differential" and result_succeeded(result):
+        archived_result = archive_differential_result(test_file, operator_file)
+    return result, archived_result
+
+
+def _run_legacy_remote_test(
+    spec: RemoteSpec,
+    remote_workspace: str,
+    test_file: Path,
+    operator_file: Path,
+    test_mode: str,
+    *,
+    verbose: bool = False,
+    stderr: TextIO | None = None,
+) -> tuple[ResultPayload, Path | None, str]:
+    result = run_remote_command_streaming(
+        spec,
+        remote_workspace,
+        ["python3", test_file.name, "--operator-file", operator_file.name],
+        verbose=verbose,
+        stderr=stderr,
+    )
+    archived_result = None
+    if test_mode == "differential" and result_succeeded(result):
+        archived_result = _copy_remote_differential_result(
+            spec,
+            remote_workspace,
+            test_file,
+            operator_file,
+            verbose=verbose,
+            stderr=stderr,
+        )
+    return result, archived_result, remote_workspace
+
+
+def _build_remote_differential_command(test_name: str, operator_name: str) -> list[str]:
+    remote_script = f"""
+import importlib
+import importlib.util
+import traceback
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
+from pathlib import Path
+
+def _load_module(module_path, module_name):
+    spec = importlib.util.spec_from_file_location(f"{{module_name}}_{{Path(module_path).stem}}", module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load module from {{module_path}}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+def _require_callable(module, name, test_path):
+    candidate = getattr(module, name, None)
+    if not callable(candidate):
+        raise ValueError(f"Differential test module missing required hook '{{name}}': {{test_path}}")
+    return candidate
+
+def _synchronize(torch_module):
+    if hasattr(torch_module, "npu"):
+        torch_module.npu.synchronize()
+
+test_file = Path({test_name!r})
+operator_file = Path({operator_name!r})
+archive_file = operator_file.parent / f"{{operator_file.stem}}_result.pt"
+try:
+    torch = importlib.import_module("torch")
+    test_module = _load_module(test_file, f"differential_test_{{test_file.stem}}")
+    build_operator_api = _require_callable(test_module, "build_operator_api", test_file)
+    build_cases = _require_callable(test_module, "build_differential_test_cases", test_file)
+    operator_module = _load_module(operator_file, f"differential_operator_{{operator_file.stem}}")
+    operator_api = build_operator_api(operator_module)
+    raw_cases = build_cases(operator_api)
+    if isinstance(raw_cases, (str, bytes)) or isinstance(raw_cases, dict) or not hasattr(raw_cases, "__iter__"):
+        raise ValueError("Differential test hook 'build_differential_test_cases' must return an iterable of cases")
+    results = []
+    seen_case_ids = set()
+    stdout_buffer = StringIO()
+    stderr_buffer = StringIO()
+    with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
+        for raw_case in raw_cases:
+            if not isinstance(raw_case, dict):
+                raise ValueError("Differential test cases must be mappings")
+            case_id = raw_case.get("id")
+            if not isinstance(case_id, str) or not case_id.strip():
+                raise ValueError("Differential test case is missing required string field 'id'")
+            if case_id in seen_case_ids:
+                raise ValueError(f"Duplicate differential test case id: {{case_id}}")
+            case_fn = raw_case.get("fn")
+            if not callable(case_fn):
+                raise ValueError(f"Differential test case '{{case_id}}' is missing required callable field 'fn'")
+            seen_case_ids.add(case_id)
+            results.append(case_fn())
+            _synchronize(torch)
+    torch.save({{"results": results}}, archive_file)
+except Exception:
+    traceback.print_exc()
+    raise SystemExit(1)
+"""
+    return ["python3", "-c", remote_script]
+
+
+def _load_module(module_path: Path, module_name: str) -> Any:
+    spec = importlib.util.spec_from_file_location(f"{module_name}_{module_path.stem}", module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load module from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _require_callable(module: object, name: str, test_path: Path) -> Callable[..., Any]:
+    candidate = getattr(module, name, None)
+    if not callable(candidate):
+        raise ValueError(f"Differential test module missing required hook '{name}': {test_path}")
+    return cast(Callable[..., Any], candidate)
+
+
+def _synchronize(torch_module: Any) -> None:
+    if hasattr(torch_module, "npu"):
+        torch_module.npu.synchronize()
+
+
 def run_remote_test(
     test_file: Path,
     operator_file: Path,
@@ -64,7 +290,7 @@ def run_remote_test(
     remote_workdir: str | None,
     keep_remote_workdir: bool = False,
     verbose: bool = False,
-    stderr=None,
+    stderr: TextIO | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
@@ -74,24 +300,34 @@ def run_remote_test(
     try:
         copy_file_to_remote(spec, test_file, remote_test, verbose=verbose, stderr=stderr)
         copy_file_to_remote(spec, operator_file, remote_operator, verbose=verbose, stderr=stderr)
-        result = run_remote_command_streaming(
-            spec,
-            remote_workspace,
-            ["python3", test_file.name, "--operator-file", operator_file.name],
-            verbose=verbose,
-            stderr=stderr,
-        )
-        archived_result = None
-        if test_mode == "differential" and result_succeeded(result):
-            archived_result = _copy_remote_differential_result(
+        if test_mode == "differential" and _has_differential_test_contract(test_file):
+            archive_path = _differential_archive_path(operator_file)
+            result = run_remote_command_streaming(
                 spec,
                 remote_workspace,
-                test_file,
-                operator_file,
+                _build_remote_differential_command(test_file.name, operator_file.name),
                 verbose=verbose,
                 stderr=stderr,
             )
-        return result, archived_result, remote_workspace
+            archived_result = None
+            if result_succeeded(result):
+                archived_result = _copy_remote_differential_archive(
+                    spec,
+                    remote_workspace,
+                    archive_path,
+                    verbose=verbose,
+                    stderr=stderr,
+                )
+            return result, archived_result, remote_workspace
+        return _run_legacy_remote_test(
+            spec,
+            remote_workspace,
+            test_file,
+            operator_file,
+            test_mode,
+            verbose=verbose,
+            stderr=stderr,
+        )
     finally:
         if not keep_remote_workdir:
             cleanup_remote_workspace(spec, remote_workspace, verbose=verbose, stderr=stderr)
@@ -117,95 +353,13 @@ def archive_differential_result(test_file: Path, operator_file: Path) -> Path:
     archive_path = operator_file.parent / archive_name
     shutil.copy2(result_file, archive_path)
     return archive_path
-
-
-def compare_result_files(oracle_result: Path, new_result: Path, compare_level: str) -> int:
-    return _compare_result_files_impl(oracle_result, new_result, compare_level)
-
-
-def compare_remote_result_files(
-    oracle_result: Path,
-    new_result: Path,
-    compare_level: str,
-    remote: str,
-    remote_workdir: str | None,
-    verbose: bool = False,
-    stderr=None,
-) -> int:
-    spec, remote_workspace = create_remote_workspace(
-        remote, remote_workdir, verbose=verbose, stderr=stderr
-    )
-    compare_script = Path(__file__).resolve().with_name("compare_result_payloads.py")
-    remote_script = f"{remote_workspace}/{compare_script.name}"
-    remote_oracle = f"{remote_workspace}/{oracle_result.name}"
-    remote_new = f"{remote_workspace}/{new_result.name}"
-    try:
-        copy_file_to_remote(spec, compare_script, remote_script, verbose=verbose, stderr=stderr)
-        copy_file_to_remote(spec, oracle_result, remote_oracle, verbose=verbose, stderr=stderr)
-        copy_file_to_remote(spec, new_result, remote_new, verbose=verbose, stderr=stderr)
-        result = run_remote_command_streaming(
-            spec,
-            remote_workspace,
-            [
-                "python3",
-                compare_script.name,
-                "--oracle-result",
-                oracle_result.name,
-                "--new-result",
-                new_result.name,
-                "--compare-level",
-                compare_level,
-            ],
-            verbose=verbose,
-            stderr=stderr,
-        )
-        return int(result["return_code"])
-    finally:
-        cleanup_remote_workspace(spec, remote_workspace, verbose=verbose, stderr=stderr)
-
-
-def _compare_result_files_impl(oracle_result: Path, new_result: Path, compare_level: str) -> int:
-    try:
-        rtol, atol = _resolve_compare_tolerances(compare_level)
-    except ValueError:
-        print(
-            f"FAIL: invalid compare level '{compare_level}', "
-            f"expected one of {sorted(ORACLE_COMPARE_LEVELS)}"
-        )
-        return 2
-
-    expected_payload = _load_result_payload(oracle_result)
-    actual_payload = _load_result_payload(new_result)
-
-    expected, expected_error = _extract_ordered_results(expected_payload, "oracle")
-    if expected_error:
-        print(f"FAIL: {expected_error}")
-        return 1
-
-    actual, actual_error = _extract_ordered_results(actual_payload, "compare")
-    if actual_error:
-        print(f"FAIL: {actual_error}")
-        return 1
-
-    mismatch = _compare_values(expected, actual, "output", rtol, atol)
-    if mismatch:
-        print(f"FAIL: {mismatch}")
-        return 1
-
-    print(
-        "PASS: ordered outputs match "
-        f"(level={compare_level.strip().lower()}, rtol={rtol}, atol={atol})"
-    )
-    return 0
-
-
 def _copy_remote_differential_result(
-    spec,
+    spec: RemoteSpec,
     remote_workspace: str,
     test_file: Path,
     operator_file: Path,
     verbose: bool = False,
-    stderr=None,
+    stderr: TextIO | None = None,
 ) -> Path:
     result = run_remote_command_buffered(
         spec,
@@ -232,6 +386,23 @@ def _copy_remote_differential_result(
     copy_file_from_remote(
         spec,
         f"{remote_workspace}/{remote_name}",
+        archive_path,
+        verbose=verbose,
+        stderr=stderr,
+    )
+    return archive_path
+
+
+def _copy_remote_differential_archive(
+    spec: RemoteSpec,
+    remote_workspace: str,
+    archive_path: Path,
+    verbose: bool = False,
+    stderr: TextIO | None = None,
+) -> Path:
+    copy_file_from_remote(
+        spec,
+        f"{remote_workspace}/{archive_path.name}",
         archive_path,
         verbose=verbose,
         stderr=stderr,

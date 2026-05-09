@@ -356,6 +356,14 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 shared_content,
             )
             self.assertIn(
+                "When pattern triage is used, record candidate patterns, the selected pattern if one is chosen, and why that pattern looks plausible in `opt-round-N/attempts.md`.",
+                shared_content,
+            )
+            self.assertIn(
+                "When a named pattern guides the round, record the final selected pattern direction in `opt-round-N/summary.md`.",
+                shared_content,
+            )
+            self.assertIn(
                 "Read the staged `triton-npu-optimize-knowledge` skill's generated `references/pattern_index.md` before detailed pattern references.",
                 shared_content,
             )

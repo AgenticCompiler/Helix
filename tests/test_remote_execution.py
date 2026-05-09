@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.skill_loader import load_operator_eval_script_module
 from tests.run_skill_test_utils import (
+    load_compare_result_module,
     load_bench_runner_module,
     load_test_runner_module,
     make_skill_result,
@@ -217,7 +218,8 @@ class RemoteExecutionTests(unittest.TestCase):
         )
 
     def test_compare_remote_result_files_quotes_filenames_with_spaces(self) -> None:
-        module = load_test_runner_module()
+        module = load_compare_result_module()
+        runtime = load_operator_eval_script_module("run_runtime")
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -226,22 +228,23 @@ class RemoteExecutionTests(unittest.TestCase):
             oracle.write_text("oracle", encoding="utf-8")
             new.write_text("new", encoding="utf-8")
 
-            with patch.object(
-                module,
-                "create_remote_workspace",
-                return_value=("spec", "/tmp/remote-compare"),
-            ), patch.object(module, "copy_file_to_remote") as copy_to_remote, patch.object(
-                module,
-                "run_remote_command_streaming",
-                return_value=make_skill_result(0, "", ""),
-            ) as remote_run, patch.object(module, "cleanup_remote_workspace"):
-                module.compare_remote_result_files(
-                    oracle,
-                    new,
-                    "balanced",
-                    "alice@example.com",
-                    None,
-                )
+            with patch.dict(sys.modules, {"run_runtime": runtime}, clear=False):
+                with patch.object(
+                    runtime,
+                    "create_remote_workspace",
+                    return_value=("spec", "/tmp/remote-compare"),
+                ), patch.object(runtime, "copy_file_to_remote") as copy_to_remote, patch.object(
+                    runtime,
+                    "run_remote_command_streaming",
+                    return_value=make_skill_result(0, "", ""),
+                ) as remote_run, patch.object(runtime, "cleanup_remote_workspace"):
+                    module.compare_remote_result_files(
+                        oracle,
+                        new,
+                        "balanced",
+                        "alice@example.com",
+                        None,
+                    )
 
         compare_script = copy_to_remote.call_args_list[0].args[1]
         self.assertEqual(
@@ -250,13 +253,13 @@ class RemoteExecutionTests(unittest.TestCase):
             / "skills"
             / "triton-npu-run-eval"
             / "scripts"
-            / "compare_result_payloads.py",
+            / "compare_result.py",
         )
         self.assertEqual(
             remote_run.call_args.args[2],
             [
                 "python3",
-                "compare_result_payloads.py",
+                "compare_result.py",
                 "--oracle-result",
                 "oracle result.pt",
                 "--new-result",

@@ -4,7 +4,7 @@ import argparse
 import importlib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO, cast
 
 
 ORACLE_COMPARE_LEVELS = {
@@ -66,6 +66,55 @@ def compare_result_files(
     return 0
 
 
+def compare_remote_result_files(
+    oracle_result: Path,
+    new_result: Path,
+    compare_level: str,
+    remote: str,
+    remote_workdir: str | None,
+    *,
+    verbose: bool = False,
+    stderr: TextIO | None = None,
+) -> int:
+    from run_runtime import (
+        cleanup_remote_workspace,
+        copy_file_to_remote,
+        create_remote_workspace,
+        run_remote_command_streaming,
+    )
+
+    spec, remote_workspace = create_remote_workspace(
+        remote, remote_workdir, verbose=verbose, stderr=stderr
+    )
+    compare_script = Path(__file__).resolve()
+    remote_script = f"{remote_workspace}/{compare_script.name}"
+    remote_oracle = f"{remote_workspace}/{oracle_result.name}"
+    remote_new = f"{remote_workspace}/{new_result.name}"
+    try:
+        copy_file_to_remote(spec, compare_script, remote_script, verbose=verbose, stderr=stderr)
+        copy_file_to_remote(spec, oracle_result, remote_oracle, verbose=verbose, stderr=stderr)
+        copy_file_to_remote(spec, new_result, remote_new, verbose=verbose, stderr=stderr)
+        result = run_remote_command_streaming(
+            spec,
+            remote_workspace,
+            [
+                "python3",
+                compare_script.name,
+                "--oracle-result",
+                oracle_result.name,
+                "--new-result",
+                new_result.name,
+                "--compare-level",
+                compare_level,
+            ],
+            verbose=verbose,
+            stderr=stderr,
+        )
+        return int(result["return_code"])
+    finally:
+        cleanup_remote_workspace(spec, remote_workspace, verbose=verbose, stderr=stderr)
+
+
 def _resolve_compare_tolerances(level: str) -> tuple[float, float]:
     normalized = level.strip().lower()
     if normalized not in ORACLE_COMPARE_LEVELS:
@@ -78,15 +127,16 @@ def _load_result_payload(path: str | Path) -> Any:
     return torch.load(Path(path), map_location="cpu")
 
 
-def _extract_ordered_results(payload: Any, label: str) -> tuple[list[Any] | None, str | None]:
+def _extract_ordered_results(payload: Any, label: str) -> tuple[list[object] | None, str | None]:
     if not isinstance(payload, Mapping):
         return None, f"{label} payload must be a dict with a 'results' entry"
-    if "results" not in payload:
+    payload_dict = cast(Mapping[str, object], payload)
+    if "results" not in payload_dict:
         return None, f"{label} payload is missing required 'results' entry"
-    results = payload["results"]
+    results = payload_dict["results"]
     if not isinstance(results, list):
         return None, f"{label} payload 'results' must be a list"
-    return results, None
+    return cast(list[object], results), None
 
 
 def _compare_values(expected: Any, actual: Any, path: str, rtol: float, atol: float) -> str | None:
@@ -112,10 +162,12 @@ def _compare_values(expected: Any, actual: Any, path: str, rtol: float, atol: fl
     if isinstance(expected, Mapping):
         if not isinstance(actual, Mapping):
             return f"{path} type mismatch: expected mapping, got {type(actual).__name__}"
-        if set(expected.keys()) != set(actual.keys()):
-            return f"{path} key mismatch: expected {sorted(expected.keys())}, got {sorted(actual.keys())}"
-        for key in sorted(expected.keys(), key=str):
-            mismatch = _compare_values(expected[key], actual[key], f"{path}.{key}", rtol, atol)
+        expected_mapping = cast(Mapping[object, object], expected)
+        actual_mapping = cast(Mapping[object, object], actual)
+        if set(expected_mapping.keys()) != set(actual_mapping.keys()):
+            return f"{path} key mismatch: expected {sorted(expected_mapping.keys(), key=str)}, got {sorted(actual_mapping.keys(), key=str)}"
+        for key in sorted(expected_mapping.keys(), key=str):
+            mismatch = _compare_values(expected_mapping[key], actual_mapping[key], f"{path}.{key}", rtol, atol)
             if mismatch:
                 return mismatch
         return None
@@ -123,9 +175,11 @@ def _compare_values(expected: Any, actual: Any, path: str, rtol: float, atol: fl
     if isinstance(expected, Sequence) and not isinstance(expected, (str, bytes, bytearray)):
         if not isinstance(actual, Sequence) or isinstance(actual, (str, bytes, bytearray)):
             return f"{path} type mismatch: expected sequence, got {type(actual).__name__}"
-        if len(expected) != len(actual):
-            return f"{path} length mismatch: expected {len(expected)}, got {len(actual)}"
-        for index, (expected_item, actual_item) in enumerate(zip(expected, actual)):
+        expected_seq = cast(Sequence[object], expected)
+        actual_seq = cast(Sequence[object], actual)
+        if len(expected_seq) != len(actual_seq):
+            return f"{path} length mismatch: expected {len(expected_seq)}, got {len(actual_seq)}"
+        for index, (expected_item, actual_item) in enumerate(zip(expected_seq, actual_seq)):
             mismatch = _compare_values(expected_item, actual_item, f"{path}[{index}]", rtol, atol)
             if mismatch:
                 return mismatch

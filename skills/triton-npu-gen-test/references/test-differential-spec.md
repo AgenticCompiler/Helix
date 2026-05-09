@@ -1,21 +1,15 @@
 ## Differential test file specification for Triton operators
 
-This document describes differential comparison test files for Triton Ascend operators. The goal is to produce a self-contained test script that creates deterministic NPU inputs, calls the resolved operator entrypoint, and saves ordered outputs for downstream comparison.
+This document describes declarative differential comparison test files for Triton Ascend operators. The goal is to produce an import-only module that declares deterministic NPU test cases while the runner executes them and archives the final result as `<operator>_result.pt`.
 
-An operator may contain:
-- kernel functions
-- a public entrypoint implemented as a Triton wrapper function
-- a public entrypoint implemented as a PyTorch function
-- a public entrypoint implemented as a `torch.nn.Module` class
-
-The differential test must call the resolved public entrypoint directly and save outputs for later comparison. Raw `@triton.jit` kernels are not valid direct harness APIs.
+The differential test must not call the resolved public entrypoint directly from a `main()` flow. Raw `@triton.jit` kernels are not valid direct harness APIs.
 
 ### 1. File naming and location
 
 - For an operator implemented in `<op>.py`, the test file **`differential_test_<op>.py`** should be in the **same directory** as `<op>.py`.
 - Example: `dataset/Flaggems/abs/abs.py` → `dataset/Flaggems/abs/differential_test_abs.py`.
 
-### 2. Command-line interface and main flow
+### 2. Module contract and metadata
 
 The test file must include this metadata header near the top of the file:
 
@@ -26,46 +20,38 @@ The test file must include this metadata header near the top of the file:
 # kernels: <name>
 ```
 
-The test file must accept the following arguments when run as `python differential_test_<op>.py`:
+The file must be **import-only**:
+- Do not generate `main()`.
+- Do not parse `--operator-file`.
+- Do not execute the test when the module is imported.
+- Do not introduce pytest or unittest scaffolding.
 
-| Argument | Required | Behavior |
-|----------|----------|----------|
-| `--operator-file <path>` | yes | Path to the operator source file to test (e.g. `abs.py` or `opt_abs.py`). |
+The module must export:
+- `build_operator_api(operator_module)`
+- `build_differential_test_cases(operator_api)`
 
-Example invocations:
+`build_operator_api(operator_module)` should resolve the public entrypoint described by `# api-name:` and `# api-kind:`.
 
-```bash
-# Test the original operator
-python3 differential_test_abs.py --operator-file abs.py
+`build_differential_test_cases(operator_api)` should return an iterable of case mappings. Each case mapping must include:
+- `id`: a non-empty string case identifier
+- `fn`: a callable that executes one deterministic case and returns the operator output
 
-# Test an optimized variant with the same test file
-python3 differential_test_abs.py --operator-file opt_abs.py
-```
-
-The file must define a `main()` function that:
-1. Parses `--operator-file` with `argparse`
-2. Loads the operator API via `importlib`
-3. Calls the test function with the loaded operator API
+The runner owns `--operator-file`, case execution, and archiving.
 
 ### 3. Operator API loading
 
-- The test file **must not** hard-code an import of the operator module. Instead it must **load the operator module by file path** specified by `--operator-file`.
-- Use `importlib.util.spec_from_file_location` and `exec_module` to load the module.
-- `# api-name:` identifies the symbol to load, and `# api-kind:` identifies which loading pattern this generated harness follows.
-- If that named API does not exist in the runtime operator file, fail explicitly instead of guessing.
-- Do not introduce pytest or unittest scaffolding.
-- The test file must remain directly executable with `python differential_test_<op>.py --operator-file <path>`.
+- The test file **must not** hard-code an import of the operator module.
+- The runner loads the operator module by file path and passes the imported module object into `build_operator_api(operator_module)`.
+- If the named API does not exist in the runtime operator module, fail explicitly instead of guessing.
+- For `torch-module`, support no-argument construction only; if constructor arguments are required, fail explicitly with an actionable error.
 
 #### 3.1 `triton-wrapper`
 
 Use this kind when the public API is a Python wrapper function around Triton kernels.
 
 ```python
-def load_operator_api(operator_file: str, api_name: str):
-    spec = importlib.util.spec_from_file_location("operator_module", operator_file)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return getattr(mod, api_name)
+def build_operator_api(operator_module):
+    return getattr(operator_module, API_NAME)
 ```
 
 #### 3.2 `torch-function`
@@ -73,11 +59,8 @@ def load_operator_api(operator_file: str, api_name: str):
 Use this kind when the public API is a plain PyTorch-facing function or operator entrypoint that may internally call Triton kernels.
 
 ```python
-def load_operator_api(operator_file: str, api_name: str):
-    spec = importlib.util.spec_from_file_location("operator_module", operator_file)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return getattr(mod, api_name)
+def build_operator_api(operator_module):
+    return getattr(operator_module, API_NAME)
 ```
 
 #### 3.3 `torch-module`
@@ -85,11 +68,8 @@ def load_operator_api(operator_file: str, api_name: str):
 Use this kind when the public API is a `torch.nn.Module` class that can be instantiated without constructor arguments.
 
 ```python
-def load_operator_api(operator_file: str, api_name: str):
-    spec = importlib.util.spec_from_file_location("operator_module", operator_file)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    entrypoint_cls = getattr(mod, api_name)
+def build_operator_api(operator_module):
+    entrypoint_cls = getattr(operator_module, API_NAME)
     try:
         return entrypoint_cls()
     except TypeError as exc:
@@ -99,13 +79,11 @@ def load_operator_api(operator_file: str, api_name: str):
         ) from exc
 ```
 
-If a `torch-module` entrypoint requires constructor arguments, fail explicitly with an actionable error about unsupported constructor arguments.
-
 ### 4. Test case construction
 
 - **Execution device:** The harness **must** exercise the operator on **Ascend NPU only**. Do **not** generate tests intended to run primarily on CUDA, CPU, or other accelerators, or that branch to a non-NPU device for the code under test.
-- Build **multiple deterministic** test cases with different shapes and dtypes and call the resolved operator entrypoint with each case.
-- Use **at least 3 cases**.
+- Build **multiple deterministic** test cases with different shapes and dtypes.
+- Use **at least 5 cases**.
 - Test cases must cover:
   - different input shapes
   - different dtypes
@@ -115,23 +93,16 @@ If a `torch-module` entrypoint requires constructor arguments, fail explicitly w
 
 ### 5. Differential output behavior
 
-- For each case, call the resolved operator entrypoint with the constructed inputs.
+- The runner calls each case function in execution order and collects outputs into a `results` list.
 - Do **not** perform result assertions in this file.
-- Collect outputs into a `results` list.
 - Each entry in `results` must be the operator output for one case, appended in execution order.
-- Save the final ordered output list in a payload dict to `TEST_RESULT.pt` in the same directory as the test file:
-  - `torch.save({"results": results}, Path(__file__).parent / "TEST_RESULT.pt")`
+- The runner writes the result directly to `<operator>_result.pt`.
 
 ### 6. Test function structure
 
-- Define a single differential test entry function.
-- The function should:
-  - prepare the deterministic cases
-  - run the operator on every case
-  - collect ordered outputs
-  - save the results payload to disk under the `results` key
 - Keep the code concise and practical.
 - The full generated file should stay within roughly **140 lines**.
+- Use small helper functions if needed, but keep the module import-only and hook-driven.
 
 ### 7. Example
 
@@ -141,8 +112,6 @@ If a `torch-module` entrypoint requires constructor arguments, fail explicitly w
 # api-kind: <resolved_api_kind>
 # kernels: <resolved_kernel_names>
 
-import argparse
-import importlib.util
 from pathlib import Path
 
 import torch
@@ -150,27 +119,16 @@ import torch
 API_NAME = "<resolved_entrypoint>"
 CASES = [...]
 
-def make_inputs(case):
-    ...
+def build_operator_api(operator_module):
+    return getattr(operator_module, API_NAME)
 
-def test_xxx(operator_api):
-    results = []
-    for case in CASES:
-        inputs = make_inputs(case)
-        results.append(operator_api(*inputs))
-    torch.save({"results": results}, Path(__file__).parent / "TEST_RESULT.pt")
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--operator-file", required=True)
-    args = parser.parse_args()
-
-    operator_api = load_operator_api(args.operator_file, API_NAME)
-    test_xxx(operator_api)
-
-if __name__ == "__main__":
-    main()
+def build_differential_test_cases(operator_api):
+    return [
+        {"id": "case-1", "fn": lambda: operator_api(...)},
+        {"id": "case-2", "fn": lambda: operator_api(...)},
+        {"id": "case-3", "fn": lambda: operator_api(...)},
+    ]
 ```
 
-- The test function (e.g. `test_xxx`) must accept the operator API callable as its first argument.
-- Running the file directly should execute the differential test and save the payload file.
+- The runner executes `build_differential_test_cases(operator_api)` and writes the result directly to `<operator>_result.pt` after success.
+- Running the file directly is not part of this contract.

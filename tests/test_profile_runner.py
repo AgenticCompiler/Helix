@@ -280,20 +280,12 @@ class ProfileRunnerTests(unittest.TestCase):
         self.assertEqual(remote_workspace, "/tmp/remote-profile")
         copy_targets = [call.args[2].rsplit("/", 1)[-1] for call in copy_to_remote.call_args_list]
         self.assertIn("standalone_bench_runtime.py", copy_targets)
-        self.assertEqual(
-            remote_run.call_args.args[2],
-            [
-                "python3",
-                "standalone_bench_runtime.py",
-                "profile-one",
-                "--bench-file",
-                "bench_kernel.py",
-                "--operator-file",
-                "kernel.py",
-                "--case-id",
-                "case-b",
-            ],
-        )
+        self.assertIn("bench_contract.py", copy_targets)
+        self.assertIn("perf_artifacts.py", copy_targets)
+        remote_command = remote_run.call_args.args[2]
+        self.assertEqual(remote_command[0:2], ["python3", "-c"])
+        self.assertIn("profile_local_standalone_case", remote_command[2])
+        self.assertEqual(remote_command[3:], ["bench_kernel.py", "kernel.py", "case-b"])
         copy_back.assert_called_once_with(
             "spec",
             "/tmp/remote-profile/PROF_remote",

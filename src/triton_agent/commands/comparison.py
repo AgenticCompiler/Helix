@@ -33,7 +33,7 @@ class ComparePerfModule(Protocol):
 
 
 def _load_compare_result() -> CompareResultModule:
-    return cast(CompareResultModule, load_operator_eval_script_module("test_runner"))
+    return cast(CompareResultModule, load_operator_eval_script_module("compare_result"))
 
 
 def _load_compare_perf() -> ComparePerfModule:
