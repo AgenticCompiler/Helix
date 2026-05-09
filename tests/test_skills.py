@@ -124,6 +124,38 @@ class SkillLinkManagerTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Requested skill does not exist"):
                 manager.prepare_skills("codex", workspace, skill_names=("missing-skill",))
 
+    def test_prepare_skills_can_stage_alternate_source_under_stable_target_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            source = Path(tmp) / "skills-source"
+            workspace.mkdir()
+            source.mkdir()
+            (source / "triton-npu-optimize-knowledge-v2").mkdir()
+            (source / "triton-npu-optimize-knowledge-v2" / "SKILL.md").write_text(
+                "v2 knowledge\n",
+                encoding="utf-8",
+            )
+
+            manager = SkillLinkManager(source)
+            links = manager.prepare_skills(
+                "codex",
+                workspace,
+                skill_names=("triton-npu-optimize-knowledge",),
+                skill_sources={
+                    "triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v2",
+                },
+            )
+
+            target = self._skills_target(workspace, "codex")
+            staged_dir = target / "triton-npu-optimize-knowledge"
+            self.assertTrue(staged_dir.is_dir())
+            self.assertEqual(
+                (staged_dir / "SKILL.md").read_text(encoding="utf-8"),
+                "v2 knowledge\n",
+            )
+            self.assertFalse((target / "triton-npu-optimize-knowledge-v2").exists())
+            manager.cleanup(links)
+
     def test_copy_root_skills_directory_when_missing_for_supported_backends(self) -> None:
         for backend in _BACKEND_SKILL_DIRS:
             with self.subTest(backend=backend):

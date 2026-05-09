@@ -940,6 +940,38 @@ class CliParserTests(unittest.TestCase):
 
         self.assertTrue(args.enable_cann_ext_api)
 
+    def test_optimize_command_defaults_optimize_knowledge_to_v1(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py"])
+        self.assertEqual(args.optimize_knowledge, "v1")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.optimize_knowledge, "v1")
+
+    def test_optimize_command_accepts_optimize_knowledge_v2(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["optimize", "-i", "kernel.py", "--optimize-knowledge", "v2"]
+        )
+        self.assertEqual(args.optimize_knowledge, "v2")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.optimize_knowledge, "v2")
+
+    def test_optimize_batch_defaults_optimize_knowledge_to_v1(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-batch", "-i", "kernels"])
+        self.assertEqual(args.optimize_knowledge, "v1")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.optimize_knowledge, "v1")
+
+    def test_optimize_batch_accepts_optimize_knowledge_v2(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["optimize-batch", "-i", "kernels", "--optimize-knowledge", "v2"]
+        )
+        self.assertEqual(args.optimize_knowledge, "v2")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.optimize_knowledge, "v2")
+
     def test_optimize_command_defaults_target_chip_to_a5(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize", "-i", "kernel.py"])

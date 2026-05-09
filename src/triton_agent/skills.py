@@ -45,9 +45,14 @@ class SkillLinkManager:
             if entry.is_dir():
                 yield entry
 
-    def _iter_selected_skill_dirs(self, skill_names: tuple[str, ...] | None) -> Iterable[Path]:
+    def _iter_selected_skill_dirs(
+        self,
+        skill_names: tuple[str, ...] | None,
+        skill_sources: dict[str, str] | None = None,
+    ) -> Iterable[tuple[str, Path]]:
         if skill_names is None:
-            yield from self._iter_skill_dirs()
+            for entry in self._iter_skill_dirs():
+                yield entry.name, entry
             return
 
         seen: set[str] = set()
@@ -55,10 +60,11 @@ class SkillLinkManager:
             if skill_name in seen:
                 continue
             seen.add(skill_name)
-            skill_dir = self.skills_root / skill_name
+            source_name = skill_sources.get(skill_name, skill_name) if skill_sources else skill_name
+            skill_dir = self.skills_root / source_name
             if not skill_dir.exists() or not skill_dir.is_dir():
                 raise RuntimeError(f"Requested skill does not exist: {skill_dir}")
-            yield skill_dir
+            yield skill_name, skill_dir
 
     def _target_path(self, workdir: Path, backend: str) -> Path:
         config = _SKILL_BACKEND_CONFIGS.get(backend)
@@ -79,10 +85,11 @@ class SkillLinkManager:
         self,
         target: Path,
         skill_names: tuple[str, ...] | None,
+        skill_sources: dict[str, str] | None = None,
     ) -> list[Path]:
         created: list[Path] = []
-        for skill_dir in self._iter_selected_skill_dirs(skill_names):
-            staged_path = target / skill_dir.name
+        for staged_name, skill_dir in self._iter_selected_skill_dirs(skill_names, skill_sources):
+            staged_path = target / staged_name
             if staged_path.exists():
                 if staged_path.is_symlink():
                     raise RuntimeError(f"Skill path already exists as a symlink: {staged_path}")
@@ -96,6 +103,7 @@ class SkillLinkManager:
         backend: str,
         workdir: Path,
         skill_names: tuple[str, ...] | None = None,
+        skill_sources: dict[str, str] | None = None,
     ) -> SkillLinkSet:
         config = _SKILL_BACKEND_CONFIGS.get(backend)
         if config is None:
@@ -113,12 +121,12 @@ class SkillLinkManager:
         self._prepare_target_dir(target)
 
         if config.copy_root_when_missing and not any(target.iterdir()) and skill_names is not None:
-            created.extend(self._copy_selected_skill_dirs(target, skill_names))
+            created.extend(self._copy_selected_skill_dirs(target, skill_names, skill_sources))
             if created:
                 return SkillLinkSet([target])
             return SkillLinkSet([])
 
-        created.extend(self._copy_selected_skill_dirs(target, skill_names))
+        created.extend(self._copy_selected_skill_dirs(target, skill_names, skill_sources))
         return SkillLinkSet(created)
 
     def cleanup(self, link_set: SkillLinkSet) -> list[str]:

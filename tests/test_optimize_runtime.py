@@ -330,6 +330,69 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 request.staged_skill_names or (),
             )
 
+    def test_build_optimize_request_defaults_optimize_knowledge_to_v1(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                optimize_knowledge="v1",
+            )
+
+            request = build_optimize_request(operator, workdir, options)
+
+            self.assertIsNone(request.staged_skill_sources)
+
+    def test_build_optimize_request_maps_v2_knowledge_to_stable_staged_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                optimize_knowledge="v2",
+            )
+
+            request = build_optimize_request(operator, workdir, options)
+
+            self.assertIn(
+                "triton-npu-optimize-knowledge",
+                request.staged_skill_names or (),
+            )
+            self.assertEqual(
+                request.staged_skill_sources,
+                {"triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v2"},
+            )
+
     def test_build_optimize_request_stages_cann_ext_api_skill_when_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)

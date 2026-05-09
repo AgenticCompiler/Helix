@@ -33,12 +33,24 @@ _BASE_OPTIMIZE_STAGED_SKILLS = (
 )
 
 _CANN_EXT_API_SKILL = "triton-npu-cann-ext-api-patterns"
+_OPTIMIZE_KNOWLEDGE_STAGED_SKILL = "triton-npu-optimize-knowledge"
+_OPTIMIZE_KNOWLEDGE_SOURCES = {
+    "v1": "triton-npu-optimize-knowledge",
+    "v2": "triton-npu-optimize-knowledge-v2",
+}
 
 
 def _optimize_staged_skills(*, enable_cann_ext_api: bool) -> tuple[str, ...]:
     if not enable_cann_ext_api:
         return _BASE_OPTIMIZE_STAGED_SKILLS
     return (*_BASE_OPTIMIZE_STAGED_SKILLS, _CANN_EXT_API_SKILL)
+
+
+def _optimize_skill_sources(*, optimize_knowledge: str) -> dict[str, str] | None:
+    source_name = _OPTIMIZE_KNOWLEDGE_SOURCES[optimize_knowledge]
+    if source_name == _OPTIMIZE_KNOWLEDGE_STAGED_SKILL:
+        return None
+    return {_OPTIMIZE_KNOWLEDGE_STAGED_SKILL: source_name}
 
 
 def build_optimize_request(
@@ -165,6 +177,9 @@ def build_optimize_request(
         no_agent_session=options.no_agent_session,
         supervise=options.supervise,
         staged_skill_names=_optimize_staged_skills(enable_cann_ext_api=options.enable_cann_ext_api),
+        staged_skill_sources=_optimize_skill_sources(
+            optimize_knowledge=options.optimize_knowledge,
+        ),
         optimize_role="worker" if options.supervise == "on" else None,
         target_chip=options.target_chip,
         compiler_source_analysis=options.compiler_source_analysis,
@@ -184,6 +199,7 @@ def run_optimize_request(
         request.agent_name,
         request.workdir,
         skill_names=request.staged_skill_names,
+        skill_sources=request.staged_skill_sources,
     )
     verbose_stream = stderr or sys.stderr
     if request.verbose:

@@ -69,6 +69,7 @@ class AgentRequest:
     no_agent_session: bool = False
     supervise: Literal["on", "off"] = "off"
     staged_skill_names: tuple[str, ...] | None = None
+    staged_skill_sources: dict[str, str] | None = None
     optimize_role: str | None = None
     round_brief_path: Optional[Path] = None
     supervisor_report_path: Optional[Path] = None

@@ -291,6 +291,7 @@ Common options:
 - `--bench-mode standalone|msprof`: default is `standalone`. Sets the benchmark mode for fresh runs. With `--resume auto`, resumable workspaces keep the benchmark mode recorded in their existing benchmark harness.
 - `--resume auto|continue|fresh`: default is `auto`
 - `--reset-optimize`: only valid with `--resume fresh`; remove known optimize-session artifacts before starting a new run while keeping reusable test and benchmark harnesses.
+- `--optimize-knowledge v1|v2`: default is `v1`. Select which optimize knowledge library is staged before the agent starts.
 - `--enable-compiler-source-analysis`: allow the optimize agent to use compiler source as an escalation after benchmark, profiler, and IR evidence.
 - `--enable-cann-ext-api`: allow A5-only CANN Triton extension API optimization patterns during optimize runs.
 - `--min-rounds <N>`: require at least N optimization rounds.
@@ -305,10 +306,13 @@ Examples:
 ```bash
 uv run triton-agent optimize --input a.py --min-rounds 3
 uv run triton-agent optimize --input a.py --resume continue
+uv run triton-agent optimize --input a.py --optimize-knowledge v2
 uv run triton-agent optimize --input a.py --enable-compiler-source-analysis
 uv run triton-agent optimize --input a.py --enable-cann-ext-api --target-chip A5
 uv run triton-agent optimize --input a.py --prompt "Prioritize memory-coalescing improvements."
 ```
+
+Optimize knowledge selection is explicit. `--optimize-knowledge v1` keeps the current default optimize knowledge library, while `--optimize-knowledge v2` stages the newer optimize pattern and symptom library before launch.
 
 Compiler source analysis is opt-in. When enabled, the CLI prepares a shallow AscendNPU-IR checkout under `~/.triton-agent/compiler-sources/AscendNPU-IR/` before launching the agent, using the configured Triton Agent home when `TRITON_AGENT_HOME` is set. The launched agent receives only the local path and commit, treats the checkout as read-only, and must not clone, fetch, pull, or modify compiler source. This option enables an escalation path for difficult compiler-side explanations; it does not require compiler-source analysis in every round.
 
@@ -500,6 +504,7 @@ Common options:
 - `--bench-mode standalone|msprof`: sets the benchmark mode for fresh workspaces. With `--resume auto`, resumable workspaces keep the benchmark mode recorded in their existing benchmark harness.
 - `--resume auto|continue|fresh`
 - `--reset-optimize`: when used with `--resume fresh`, clear known optimize artifacts for each workspace and reset the batch status file before rerunning
+- `--optimize-knowledge v1|v2`
 - `--enable-compiler-source-analysis`
 - `--enable-cann-ext-api`
 - `--min-rounds <N>`
@@ -513,6 +518,7 @@ Example:
 
 ```bash
 uv run triton-agent optimize-batch --input operators_root --prompt "Avoid changing numerics unless correctness requires it."
+uv run triton-agent optimize-batch --input operators_root --optimize-knowledge v2
 ```
 
 Batch rerun behavior:
