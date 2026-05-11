@@ -247,7 +247,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         handler=handle_log_check,
         help_group="Optimization",
         help_summary="Run Codex log strategy validation for one workspace.",
-        description="Run Codex log strategy validation and write check_result_v2.txt.",
+        description="Run Codex log strategy validation and write log_check_result.md.",
         has_output=False,
         has_agent=True,
         has_show_output=True,
@@ -395,13 +395,13 @@ def build_parser() -> argparse.ArgumentParser:
         if command_kind in {CommandKind.LOG_CHECK, CommandKind.LOG_CHECK_BATCH}:
             subparser.add_argument(
                 "--check-result-file",
-                default="check_result_v2.txt",
+                default="log_check_result.md",
                 help="Workspace-relative log check result file name.",
             )
         if command_kind == CommandKind.LOG_CHECK_BATCH:
             subparser.add_argument(
                 "--summary-file",
-                default="check_result_v2_summary.txt",
+                default="log_check_summary.md",
                 help="Root-relative batch log check summary file name.",
             )
         if spec.max_concurrency_default is not None:

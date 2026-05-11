@@ -15,7 +15,7 @@ def handle_log_check(parser: argparse.ArgumentParser, args: argparse.Namespace) 
         parser.error(f"Input path is not a directory: {target_path}")
     return run_log_check(
         target_path=target_path,
-        output_file=str(getattr(args, "check_result_file", "check_result_v2.txt")),
+        output_file=str(getattr(args, "check_result_file", "log_check_result.md")),
         agent_name=str(getattr(args, "agent", "codex")),
         verbose=bool(getattr(args, "verbose", False)),
         show_output=bool(getattr(args, "show_output", False)),
@@ -30,8 +30,8 @@ def handle_log_check_batch(parser: argparse.ArgumentParser, args: argparse.Names
         parser.error(f"Input path is not a directory: {root}")
     return run_log_check_batch(
         root,
-        output_file=str(getattr(args, "check_result_file", "check_result_v2.txt")),
-        summary_file=str(getattr(args, "summary_file", "check_result_v2_summary.txt")),
+        output_file=str(getattr(args, "check_result_file", "log_check_result.md")),
+        summary_file=str(getattr(args, "summary_file", "log_check_summary.md")),
         agent_name=str(getattr(args, "agent", "codex")),
         verbose=bool(getattr(args, "verbose", False)),
         show_output=bool(getattr(args, "show_output", False)),

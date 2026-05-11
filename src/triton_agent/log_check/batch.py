@@ -17,8 +17,8 @@ from .log_check_launcher import run_log_check
 def run_log_check_batch(
     root: Path,
     *,
-    output_file: str = "check_result_v2.txt",
-    summary_file: str = "check_result_v2_summary.txt",
+    output_file: str = "log_check_result.md",
+    summary_file: str = "log_check_summary.md",
     agent_name: str = "codex",
     verbose: bool = False,
     show_output: bool = False,
