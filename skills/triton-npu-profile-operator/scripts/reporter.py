@@ -568,7 +568,7 @@ class ProfileReporter:
         ])
 
         if profile.task_timeline:
-            lines.append(f"- Avg task wait time: `N/A`")
+            lines.append("- Avg task wait time: `N/A`")
 
         task_matched = profile.task_timeline.matched_rows if profile.task_timeline else 0
         task_max_gap = profile.task_timeline.max_gap_us if profile.task_timeline else 0.0
@@ -600,7 +600,7 @@ class ProfileReporter:
             f"- Max task gap: `{_format_number(task_max_gap)} us`",
             f"- Host launch-related APIs present: `{launch_present}`",
             f"- msprof tracks: `{profile.stream_like_tracks}`",
-            f"- Binary signals available: `False`",
+            "- Binary signals available: `False`",
             "",
             "## Top operators by total time",
             "",
