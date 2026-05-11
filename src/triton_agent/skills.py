@@ -47,6 +47,12 @@ _SKILL_BACKEND_CONFIGS: dict[str, _SkillBackendConfig] = {
 }
 
 
+def staged_skill_dir(backend: str) -> Path:
+    """Return the workspace-relative directory where skills are staged for a given backend."""
+    config = _SKILL_BACKEND_CONFIGS[backend]
+    return Path(config.target_parts[0]) / config.target_parts[1]
+
+
 @dataclass
 class SkillLinkSet:
     created_paths: List[Path]

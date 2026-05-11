@@ -26,9 +26,10 @@ class OpenCodeRunner(AgentRunner):
             "run",
             "--dir",
             str(request.workdir),
+            "--dangerously-skip-permissions",
             "--thinking",
             request.prompt,
         ]
         if not request.enable_agent_hooks:
-            command.insert(4, "--pure")
+            command.insert(5, "--pure")
         return command
