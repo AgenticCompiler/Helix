@@ -7,17 +7,17 @@ from pathlib import Path
 from triton_agent.backends.factory import create_runner
 from triton_agent.models import AgentRequest, CommandKind
 from triton_agent.resources import skills_root
+from triton_agent.skill_staging import resolve_staged_skills
+from triton_agent.skills import SkillLinkManager, staged_skill_dir
+from triton_agent.verbose import emit_verbose_lines
 
 
-_PATTERNS_SUBDIR: tuple[str, ...] = ("triton-npu-optimize-knowledge", "references", "patterns")
-
-
-def build_log_check_prompt(*, target_path: Path, output_file: str = "log_check_result.md") -> str:
+def build_log_check_prompt(*, target_path: Path, output_file: str = "log_check_result.md", agent_name: str = "codex") -> str:
     normalized_target = target_path.resolve()
-    output_path = normalized_target / output_file
-    patterns_dir = skills_root().joinpath(*_PATTERNS_SUBDIR)
+    backend_skills = staged_skill_dir(agent_name)
+    patterns_path = backend_skills / "triton-npu-optimize-knowledge" / "references" / "patterns"
     return f"""\
-Please examine the following directory:
+Please examine your current working directory (this is the operator workspace):
 
   {normalized_target.as_posix()}
 
@@ -29,9 +29,9 @@ Each round directory includes:
   - *.py              : optimized kernel code
   - perf.txt          : performance results after optimization
 
-Also examine the patterns reference directory:
+Also examine the patterns reference directory staged under your workspace:
 
-  {patterns_dir.as_posix()}
+  {patterns_path.as_posix()}
 
 This directory contains the full set of optimization strategies provided to the
 agent. The pattern index file lists all available strategies.
@@ -136,19 +136,19 @@ Each section must contain the check title, result, and detail.
 result must be exactly PASS or FAIL — no other casing or values are allowed.
 Organize detail by section; avoid single-sentence conclusions.
 
-Write the final result directly to: {output_path.as_posix()}"""
+Write the final result directly to: {output_file}"""
 
 
 def build_log_check_request(
     *,
     target_path: Path,
-    workdir: Path,
     agent_name: str = "codex",
     verbose: bool = False,
     show_output: bool = True,
     output_file: str = "log_check_result.md",
+    staged_skill_names: tuple[str, ...] | None = None,
+    staged_skill_sources: dict[str, str] | None = None,
 ) -> AgentRequest:
-    resolved_workdir = workdir.resolve()
     resolved_target = target_path.resolve()
     return AgentRequest(
         command_kind=CommandKind.LOG_CHECK,
@@ -163,9 +163,11 @@ def build_log_check_request(
         force_overwrite=False,
         agent_name=agent_name,
         skill_name="triton-npu-optimize-check",
-        prompt=build_log_check_prompt(target_path=resolved_target, output_file=output_file),
-        workdir=resolved_workdir,
+        prompt=build_log_check_prompt(target_path=resolved_target, output_file=output_file, agent_name=agent_name),
+        workdir=resolved_target,
         no_agent_session=True,
+        staged_skill_names=staged_skill_names,
+        staged_skill_sources=staged_skill_sources,
     )
 
 
@@ -196,13 +198,17 @@ def run_log_check(
     show_output: bool = True,
 ) -> int:
     normalized_target = target_path.expanduser().resolve()
+    staged_skill_names, staged_skill_sources = resolve_staged_skills(
+        CommandKind.LOG_CHECK,
+    )
     request = build_log_check_request(
         target_path=normalized_target,
-        workdir=normalized_target,
         agent_name=agent_name,
         verbose=verbose,
         show_output=show_output,
         output_file=output_file,
+        staged_skill_names=staged_skill_names,
+        staged_skill_sources=staged_skill_sources,
     )
     try:
         runner = create_runner(agent_name)
@@ -210,10 +216,20 @@ def run_log_check(
         print(f"[optimize-check] invalid agent: {exc}", file=sys.stderr, flush=True)
         return 2
 
+    manager = SkillLinkManager(skills_root())
+    links = manager.prepare_skills(
+        agent_name,
+        normalized_target,
+        skill_names=staged_skill_names,
+        skill_sources=staged_skill_sources,
+    )
+    if verbose:
+        emit_verbose_lines(sys.stderr, "skills", manager.describe_prepare(links))
+
     print(
         "[optimize-check] start log check: "
         + (
-            f"path={normalized_target.as_posix()}, workdir={request.workdir.as_posix()}, "
+            f"path={normalized_target.as_posix()}, "
             f"output={output_file}, agent={agent_name}"
         ),
         file=sys.stderr,
@@ -229,6 +245,12 @@ def run_log_check(
             flush=True,
         )
         return 1
+    finally:
+        if verbose:
+            emit_verbose_lines(sys.stderr, "skills", manager.describe_cleanup(links))
+        cleanup_warnings = manager.cleanup(links)
+        if cleanup_warnings:
+            emit_verbose_lines(sys.stderr, "skills", cleanup_warnings)
     if not result.succeeded:
         detail = result.stderr.strip() or result.stdout.strip() or "agent execution failed"
         print(f"[optimize-check] log check failed: {detail}", file=sys.stderr, flush=True)
