@@ -376,6 +376,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     "triton-npu-repair-guide",
                 ),
             )
+            self.assertIsNone(request.staged_skill_sources)
             self.assertNotIn(
                 "triton-npu-convert-pytorch-operator",
                 request.staged_skill_names or (),
@@ -481,6 +482,39 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIn(
                 "CANN Triton extension API pattern access is enabled for this optimize run.",
                 request.prompt,
+            )
+
+    def test_build_optimize_request_maps_v2_knowledge_and_cann_ext_api_together(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                optimize_knowledge="v2",
+                enable_cann_ext_api=True,
+            )
+
+            request = build_optimize_request(operator, workdir, options)
+
+            self.assertIn("triton-npu-cann-ext-api-patterns", request.staged_skill_names or ())
+            self.assertEqual(
+                request.staged_skill_sources,
+                {"triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v2"},
             )
 
     def test_build_optimize_request_provisions_compiler_source_when_enabled(self) -> None:

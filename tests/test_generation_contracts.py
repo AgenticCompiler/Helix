@@ -777,7 +777,20 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("append a short entry to [output.md](output.md)", repair_guide)
         self.assertIn("Append-Only Repair Log", repair_guide)
         self.assertIn("through the `triton-npu-run-eval` skill", repair_guide)
+        self.assertIn("generation-only workflow such as `triton-npu-gen-test`", repair_guide)
         self.assertFalse((REPO_ROOT / "skills" / "triton-npu-log-repair").exists())
+
+    def test_generation_skills_treat_repair_guide_as_diagnostic_only_reference(self) -> None:
+        test_gen = _read("skills/triton-npu-gen-test/SKILL.md")
+        bench_gen = _read("skills/triton-npu-gen-bench/SKILL.md")
+
+        self.assertIn("consult the `triton-npu-repair-guide` skill as a diagnostic reference", test_gen)
+        self.assertIn("Do not treat `triton-npu-repair-guide` as permission to edit the operator file here.", test_gen)
+        self.assertIn("If the failure is clearly operator-side, stop and report it.", test_gen)
+
+        self.assertIn("consult the `triton-npu-repair-guide` skill as a diagnostic reference", bench_gen)
+        self.assertIn("Do not treat `triton-npu-repair-guide` as permission to edit the operator file here.", bench_gen)
+        self.assertIn("If the failure is clearly operator-side, stop and report it.", bench_gen)
 
     def test_cross_skill_subcommands_name_owning_skills(self) -> None:
         optimize = _read("skills/triton-npu-optimize/SKILL.md")

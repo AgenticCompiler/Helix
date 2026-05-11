@@ -10,16 +10,9 @@ from triton_agent.convert.outputs import resolve_convert_output_path
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
 from triton_agent.resources import skills_root
+from triton_agent.skill_staging import resolve_staged_skills
 from triton_agent.skills import SkillLinkManager
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
-
-
-CONVERT_STAGED_SKILLS = (
-    "triton-npu-convert-pytorch-operator",
-    "triton-npu-gen-test",
-    "triton-npu-run-eval",
-    "triton-npu-repair-guide",
-)
 
 
 def build_convert_request(
@@ -29,6 +22,7 @@ def build_convert_request(
     options: ConvertOptions,
 ) -> AgentRequest:
     output_path = resolve_convert_output_path(input_path, explicit_output=options.output)
+    staged_skill_names, staged_skill_sources = resolve_staged_skills(CommandKind.CONVERT)
     prompt = append_additional_user_instructions(
         build_prompt(
             CommandKind.CONVERT,
@@ -63,7 +57,8 @@ def build_convert_request(
         min_rounds=None,
         continue_optimize=False,
         no_agent_session=False,
-        staged_skill_names=CONVERT_STAGED_SKILLS,
+        staged_skill_names=staged_skill_names,
+        staged_skill_sources=staged_skill_sources,
     )
 
 

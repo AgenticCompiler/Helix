@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
 from triton_agent.backends.factory import create_runner
 from triton_agent.models import AgentRequest, CommandKind
-from triton_agent.resources import application_root, skills_root
+from triton_agent.resources import skills_root
 
 
 _PATTERNS_SUBDIR: tuple[str, ...] = ("triton-npu-optimize-knowledge", "references", "patterns")
@@ -17,7 +16,6 @@ def build_log_check_prompt(*, target_path: Path, output_file: str = "log_check_r
     normalized_target = target_path.resolve()
     output_path = normalized_target / output_file
     patterns_dir = skills_root().joinpath(*_PATTERNS_SUBDIR)
-    patterns_relative = Path(os.path.relpath(patterns_dir, start=application_root())).as_posix()
     return f"""\
 Please examine the following directory:
 
@@ -33,7 +31,7 @@ Each round directory includes:
 
 Also examine the patterns reference directory:
 
-  {patterns_relative}
+  {patterns_dir.as_posix()}
 
 This directory contains the full set of optimization strategies provided to the
 agent. The pattern index file lists all available strategies.
@@ -198,10 +196,9 @@ def run_log_check(
     show_output: bool = True,
 ) -> int:
     normalized_target = target_path.expanduser().resolve()
-    repo_root = application_root()
     request = build_log_check_request(
         target_path=normalized_target,
-        workdir=repo_root,
+        workdir=normalized_target,
         agent_name=agent_name,
         verbose=verbose,
         show_output=show_output,
@@ -216,7 +213,7 @@ def run_log_check(
     print(
         "[optimize-check] start log check: "
         + (
-            f"path={normalized_target.as_posix()}, workdir={repo_root.as_posix()}, "
+            f"path={normalized_target.as_posix()}, workdir={request.workdir.as_posix()}, "
             f"output={output_file}, agent={agent_name}"
         ),
         file=sys.stderr,

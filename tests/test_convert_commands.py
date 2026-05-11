@@ -84,6 +84,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 "triton-npu-repair-guide",
             ),
         )
+        self.assertIsNone(request.staged_skill_sources)
         self.assertEqual(request.skill_name, "triton-npu-convert-pytorch-operator")
         self.assertEqual(request.output_path, Path("/tmp/triton_kernel.py"))
 

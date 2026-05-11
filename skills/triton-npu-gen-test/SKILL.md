@@ -69,6 +69,8 @@ Use the `triton-npu-run-eval` skill to validate generated tests.
 2. Generate the test file to match the selected spec exactly.
 3. Validate with `run-test`; if the task is differential, follow with `compare-result` when comparison is needed.
 4. If validation fails, repair the test and repeat.
+   - For Triton Ascend compile, JIT, launch, or kernel-side failures, consult the `triton-npu-repair-guide` skill as a diagnostic reference before deciding on the smallest safe test-side change.
+   - This workflow still owns only the generated test file. Do not treat `triton-npu-repair-guide` as permission to edit the operator file here.
 
 ## Quality Rules
 
@@ -84,10 +86,12 @@ Use the `triton-npu-run-eval` skill to validate generated tests.
 
 When the generated test fails, repair the test file directly — never modify the operator file. Infer the failure type from raw stdout, stderr, and traceback.
 
+For Triton Ascend compile, JIT, launch, or kernel-side failures, you may consult the `triton-npu-repair-guide` skill to classify the symptom first, but any resulting edit in this workflow must stay inside the generated test file. If the failure is clearly operator-side and cannot be resolved from the test alone, stop and report that blocker explicitly.
+
 | Inferred failure | Repair strategy |
 |------------------|-----------------|
 | **Timeout** | Reduce tensor shapes, case count, or workload size so the test finishes faster |
-| **Compiler error** (Triton Ascend toolchain) | Regenerate a fresh test for the same operator and mode rather than patching line by line |
+| **Compiler error** (Triton Ascend toolchain) | Use `triton-npu-repair-guide` to help classify whether the symptom is harness-induced, then regenerate a fresh test for the same operator and mode rather than patching line by line. If the failure is clearly operator-side, stop and report it. |
 | **General error** (assertion, shape mismatch, etc.) | Apply a minimal targeted fix — preserve the overall test structure |
 | **ModuleNotFoundError** or environment issue | Report that the test cannot be fixed from inside the test file alone |
 

@@ -15,6 +15,7 @@ Patterns and code hints live in [references/repair-experience.md](references/rep
 
 - Does **not** replace `triton-npu-gen-test`, `triton-npu-gen-bench`, or normative harness specs.
 - Complements `triton-npu-run-eval` (re-validate after applying a heuristic).
+- When a generation-only workflow such as `triton-npu-gen-test` or `triton-npu-gen-bench` stages this skill, use it as a diagnostic reference for compile, JIT, launch, or kernel-side symptoms only. Those workflows may still forbid editing the operator file directly.
 
 ## How to apply
 

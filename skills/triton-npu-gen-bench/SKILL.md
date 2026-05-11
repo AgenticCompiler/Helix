@@ -81,6 +81,8 @@ If the outer task is marked for remote execution, carry the same remote flags in
    - For `standalone`, implement `build_operator_api(operator_module)` and `build_standalone_bench_cases(operator_api)` instead of a directly executable timing script.
 5. If auto-fix is active, validate the generated benchmark with `run-bench` using one of the command patterns above instead of doing a separate syntax-only check.
 6. If validation fails, repair only the benchmark file according to the self-repair rules below, retry, and then return a runnable script plus a short assumptions summary.
+   - For Triton Ascend compile, JIT, launch, or kernel-side failures, consult the `triton-npu-repair-guide` skill as a diagnostic reference before deciding on the smallest safe benchmark-side change.
+   - This workflow still owns only the generated benchmark file. Do not treat `triton-npu-repair-guide` as permission to edit the operator file here.
 
 ## Quality Rules
 
@@ -100,10 +102,12 @@ If the outer task is marked for remote execution, carry the same remote flags in
 
 When auto-fix mode is active and the generated benchmark fails, repair the benchmark file directly — never modify the operator file. Infer the failure type from raw stdout, stderr, and traceback.
 
+For Triton Ascend compile, JIT, launch, or kernel-side failures, you may consult the `triton-npu-repair-guide` skill to classify the symptom first, but any resulting edit in this workflow must stay inside the generated benchmark file. If the failure is clearly operator-side and cannot be resolved from the benchmark alone, stop and report that blocker explicitly.
+
 | Inferred failure | Repair strategy |
 |------------------|-----------------|
 | **Timeout** | Reduce tensor shapes, case count, or benchmark workload so the script finishes within the execution limit |
-| **Compiler error** (Triton Ascend toolchain) | Regenerate a fresh benchmark for the same operator and mode rather than patching line by line |
+| **Compiler error** (Triton Ascend toolchain) | Use `triton-npu-repair-guide` to help classify whether the symptom is harness-induced, then regenerate a fresh benchmark for the same operator and mode rather than patching line by line. If the failure is clearly operator-side, stop and report it. |
 | **General error** (CLI, shape mismatch, runtime, etc.) | Apply a minimal targeted fix — preserve the overall benchmark structure |
 | **ModuleNotFoundError** or environment issue | Report that the benchmark cannot be fixed from inside the benchmark file alone |
 
