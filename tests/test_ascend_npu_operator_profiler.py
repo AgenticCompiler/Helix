@@ -357,6 +357,54 @@ class AscendNpuOperatorProfilerTests(unittest.TestCase):
         self.assertIn("msprof_timeline_signals", payload)
         self.assertGreaterEqual(payload["msprof_timeline_signals"]["stream_like_tracks"], 2)
 
+    def test_build_report_from_real_msprof_output(self) -> None:
+        module = _load_reporter_module()
+        fixture = FIXTURES_ROOT / "msprof_real_output"
+        rendered = module.build_report(fixture)
+        self.assertIn("Target operator: `matmul_kernel`", rendered)
+        self.assertIn("Selection: inferred from the hottest", rendered)
+        self.assertIn("Core type: `AI_CORE`", rendered)
+        self.assertIn("Operator type guess: `cube`", rendered)
+        self.assertIn("Bound analysis:", rendered)
+        self.assertIn("| matmul_kernel | AI_CORE |", rendered)
+        self.assertIn("| cube | AI_CORE |", rendered)
+
+    def test_build_report_from_real_msprof_json_output(self) -> None:
+        module = _load_reporter_module()
+        fixture = FIXTURES_ROOT / "msprof_real_output"
+        rendered = module.build_report(fixture, output_format="json")
+        payload = json.loads(rendered)
+        self.assertEqual(payload["target_operator"], "matmul_kernel")
+        self.assertTrue(payload["selection"].startswith("inferred"))
+        self.assertIn("pipeline_signals", payload)
+        ratios = payload["pipeline_signals"].get("ratios", {})
+        self.assertIn("aic_mac_ratio", ratios)
+        self.assertIn("aiv_vec_ratio", ratios)
+        self.assertGreater(payload["task_timeline_signals"]["matched_rows"], 0)
+        self.assertTrue(payload["host_api_signals"]["launch_related_present"])
+
+    def test_build_report_from_real_standalone_output(self) -> None:
+        module = _load_reporter_module()
+        fixture = FIXTURES_ROOT / "standalone_real_output"
+        rendered = module.build_report(fixture, target_op="matmul_kernel")
+        self.assertIn("Target operator: `matmul_kernel`", rendered)
+        self.assertIn("op_summary` file: `kernel_details.csv`", rendered)
+        self.assertIn("Core type: `AI_CORE`", rendered)
+        self.assertIn("| matmul_kernel | AI_CORE |", rendered)
+        self.assertIn("cube | AI_CORE", rendered)
+        self.assertIn("Task timeline matched rows: `0`", rendered)
+
+    def test_build_report_from_real_standalone_json_output(self) -> None:
+        module = _load_reporter_module()
+        fixture = FIXTURES_ROOT / "standalone_real_output"
+        rendered = module.build_report(fixture, target_op="matmul_kernel", output_format="json")
+        payload = json.loads(rendered)
+        self.assertEqual(payload["op_summary_file"], "kernel_details.csv")
+        self.assertEqual(payload["target_operator"], "matmul_kernel")
+        self.assertIn("pipeline_signals", payload)
+        self.assertEqual(payload["task_timeline_signals"]["matched_rows"], 0)
+        self.assertEqual(payload["task_time_file"], None)
+
 
 if __name__ == "__main__":
     unittest.main()
