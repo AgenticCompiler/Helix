@@ -10,23 +10,39 @@ from typing import Iterable, List
 class _SkillBackendConfig:
     target_parts: tuple[str, ...]
     copy_root_when_missing: bool
+    backend_root: str
 
 
 _SKILL_BACKEND_CONFIGS: dict[str, _SkillBackendConfig] = {
-    "codex": _SkillBackendConfig(target_parts=(".codex", "skills"), copy_root_when_missing=True),
+    "codex": _SkillBackendConfig(
+        target_parts=(".codex", "skills"),
+        copy_root_when_missing=True,
+        backend_root=".codex",
+    ),
     "opencode": _SkillBackendConfig(
         target_parts=(".opencode", "skills"),
         copy_root_when_missing=False,
+        backend_root=".opencode",
     ),
-    "pi": _SkillBackendConfig(target_parts=(".pi", "skills"), copy_root_when_missing=True),
-    "claude": _SkillBackendConfig(target_parts=(".claude", "skills"), copy_root_when_missing=True),
+    "pi": _SkillBackendConfig(
+        target_parts=(".pi", "skills"),
+        copy_root_when_missing=True,
+        backend_root=".pi",
+    ),
+    "claude": _SkillBackendConfig(
+        target_parts=(".claude", "skills"),
+        copy_root_when_missing=True,
+        backend_root=".claude",
+    ),
     "openhands": _SkillBackendConfig(
         target_parts=(".openhands", "skills"),
         copy_root_when_missing=True,
+        backend_root=".openhands",
     ),
     "traecli": _SkillBackendConfig(
         target_parts=(".traecli", "skills"),
         copy_root_when_missing=True,
+        backend_root=".traecli",
     ),
 }
 
@@ -110,12 +126,16 @@ class SkillLinkManager:
             raise RuntimeError(f"Unsupported skill backend: {backend}")
 
         target = workdir.joinpath(*config.target_parts)
+        backend_root_path = workdir / config.backend_root
+        root_pre_existed = backend_root_path.exists()
         created: list[Path] = []
 
         if config.copy_root_when_missing and not target.exists() and skill_names is None:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(self.skills_root, target, symlinks=False)
             created.append(target)
+            if not root_pre_existed:
+                created.insert(0, backend_root_path)
             return SkillLinkSet(created)
 
         self._prepare_target_dir(target)
@@ -123,10 +143,15 @@ class SkillLinkManager:
         if config.copy_root_when_missing and not any(target.iterdir()) and skill_names is not None:
             created.extend(self._copy_selected_skill_dirs(target, skill_names, skill_sources))
             if created:
-                return SkillLinkSet([target])
+                result = [target]
+                if not root_pre_existed:
+                    result.insert(0, backend_root_path)
+                return SkillLinkSet(result)
             return SkillLinkSet([])
 
         created.extend(self._copy_selected_skill_dirs(target, skill_names, skill_sources))
+        if not root_pre_existed:
+            created.insert(0, backend_root_path)
         return SkillLinkSet(created)
 
     def cleanup(self, link_set: SkillLinkSet) -> list[str]:

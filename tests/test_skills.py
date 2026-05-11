@@ -100,15 +100,17 @@ class SkillLinkManagerTests(unittest.TestCase):
             )
 
             target = self._skills_target(workspace, "traecli")
+            backend_root = workspace / ".traecli"
             self.assertTrue((target / "triton-npu-gen-eval-suite").exists())
             self.assertTrue((target / "triton-npu-gen-test").exists())
             self.assertTrue((target / "triton-npu-gen-bench").exists())
             self.assertTrue((target / "triton-npu-run-eval").exists())
             self.assertFalse((target / "triton-npu-optimize").exists())
             self.assertFalse((target / "triton-npu-analyze-round-performance").exists())
-            self.assertEqual(links.created_paths, [target])
+            self.assertEqual(links.created_paths, [backend_root, target])
             manager.cleanup(links)
             self.assertFalse(target.exists())
+            self.assertFalse(backend_root.exists())
 
     def test_reject_missing_requested_skill_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -191,10 +193,11 @@ class SkillLinkManagerTests(unittest.TestCase):
                     if backend == "opencode":
                         self.assertEqual(
                             {path.name for path in links.created_paths},
-                            {"triton-npu-gen-test", "triton-npu-optimize-check"},
+                            {".opencode", "triton-npu-gen-test", "triton-npu-optimize-check"},
                         )
                     else:
-                        self.assertEqual(links.created_paths, [target])
+                        backend_root = workspace / _BACKEND_SKILL_DIRS[backend][0]
+                        self.assertEqual(links.created_paths, [backend_root, target])
                     self.assertTrue(
                         any("created skill copy" in message for message in manager.describe_prepare(links))
                     )
@@ -202,11 +205,9 @@ class SkillLinkManagerTests(unittest.TestCase):
                         any("removed skill copy" in message for message in manager.describe_cleanup(links))
                     )
                     manager.cleanup(links)
-                    if backend == "opencode":
-                        self.assertTrue(target.exists())
-                        self.assertEqual(list(target.iterdir()), [])
-                    else:
-                        self.assertFalse(target.exists())
+                    backend_root = workspace / _BACKEND_SKILL_DIRS[backend][0]
+                    self.assertFalse(target.exists())
+                    self.assertFalse(backend_root.exists())
 
     def test_copy_missing_per_skill_dirs_when_skills_dir_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
