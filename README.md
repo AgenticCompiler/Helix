@@ -586,27 +586,38 @@ These options appear on multiple commands:
 - `--keep-remote-workdir`: keep the remote workspace after `run-test` or `run-bench`.
 - `--force-overwrite`: allow generation commands to replace existing generated files.
 
-## Optional Codex Hook Guard
+## Optional Agent Hook Guard
 
-When `optimize --enable-agent-hooks --agent codex` launches, `triton-agent`
-stages a temporary Codex `PreToolUse` hook into the target workspace before the
-agent starts:
+When `optimize --enable-agent-hooks` launches with a supported backend,
+`triton-agent` stages temporary workspace-local agent hooks before the agent
+starts. Agent hooks are disabled by default.
+
+For `--agent codex`, the staged files are:
 
 - `.codex/hooks.json`
 - `.codex/triton-agent-hooks/pretooluse_guard.py`
 - `.codex/triton-agent-hooks/policy.json`
 
+For `--agent opencode`, the staged files are:
+
+- `.opencode/plugins/triton-agent-hook-guard.js`
+- `.opencode/triton-agent-hooks/policy.json`
+
 The policy is rendered for the current workspace. It allows read-oriented shell
 commands to inspect files inside that workspace, blocks reads outside the
 workspace, and blocks reads of staged skill implementation files under
-`.codex/skills/*/scripts/`. A blocked read returns a short denial message to the
-agent telling it to stay within the workspace and use skill instructions or the
-documented command interface instead.
+the backend-native staged skill path, such as `.codex/skills/*/scripts/` or
+`.opencode/skills/*/scripts/`. A blocked read returns a short denial message to
+the agent telling it to stay within the workspace and use skill instructions or
+the documented command interface instead.
 
 The staged hook files are removed after the agent process exits. If
-`.codex/hooks.json` or `.codex/triton-agent-hooks/` already exists, the run fails
-explicitly instead of merging with or overwriting user-owned hook configuration.
-Without `--enable-agent-hooks`, no Codex hook files are staged.
+backend-owned hook paths already exist, the run fails explicitly instead of
+merging with or overwriting user-owned hook configuration.
+
+OpenCode hook support uses a project plugin under `.opencode/plugins/`. Because
+OpenCode's `--pure` mode disables external plugins, hook-enabled OpenCode runs
+omit `--pure`; ordinary OpenCode runs keep `--pure` unchanged.
 
 ## Output Conventions
 

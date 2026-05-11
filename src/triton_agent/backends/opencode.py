@@ -10,20 +10,25 @@ class OpenCodeRunner(AgentRunner):
 
     def build_command(self, request: AgentRequest) -> list[str]:
         if request.interact:
-            return [
+            command = [
                 self.executable,
                 str(request.workdir),
-                "--pure",
                 "--thinking",
                 "--prompt",
                 request.prompt,
             ]
-        return [
+            if not request.enable_agent_hooks:
+                command.insert(2, "--pure")
+            return command
+
+        command = [
             self.executable,
             "run",
             "--dir",
             str(request.workdir),
-            "--pure",
             "--thinking",
             request.prompt,
         ]
+        if not request.enable_agent_hooks:
+            command.insert(4, "--pure")
+        return command
