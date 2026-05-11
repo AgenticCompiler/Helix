@@ -121,7 +121,13 @@ class RunRemoteProfileBenchFn(Protocol):
 
 
 class ProfileSummaryModule(Protocol):
-    def build_profile_report(self, profile_dir: Path, target_op: str | None = None) -> str: ...
+    def build_report(
+        self,
+        profile_path: str | Path,
+        target_op: str | None = None,
+        top_count: int = 5,
+        output_format: str = "markdown",
+    ) -> str: ...
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -158,6 +164,12 @@ def build_parser() -> argparse.ArgumentParser:
     profile_bench.add_argument("--remote-workdir")
     profile_bench.add_argument("--keep-remote-workdir", action="store_true")
     profile_bench.add_argument("--verbose", action="store_true")
+
+    profile_report = subparsers.add_parser("profile-report")
+    profile_report.add_argument("--profile-dir", required=True)
+    profile_report.add_argument("--target-op")
+    profile_report.add_argument("--format", choices=["markdown", "json"], default="markdown")
+    profile_report.add_argument("--top", type=int, default=5)
 
     compare_result = subparsers.add_parser("compare-result")
     compare_result.add_argument("--oracle-result", required=True)
@@ -283,6 +295,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Remote workspace: {remote_workspace}")
         return int(result["return_code"])
 
+    if args.command == "profile-report":
+        report = _build_profile_report(
+            _resolve_existing_path(parser, args.profile_dir, "Profile directory"),
+            args.target_op,
+            top_count=args.top,
+            output_format=args.format,
+        )
+        print(report)
+        return 0
+
     bench_file = _resolve_existing_path(parser, args.bench_file, "Bench file")
     operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
     _parse_bench_metadata, run_local_bench, run_remote_bench = _load_bench_functions()
@@ -403,15 +425,28 @@ def _load_profile_functions() -> tuple[RunLocalProfileBenchFn, RunRemoteProfileB
     )
 
 
-def _build_profile_report(profile_dir: Path, target_op: str | None) -> str:
-    script = SCRIPT_DIR.parents[1] / "triton-npu-profile-operator" / "scripts" / "profile_summary.py"
-    spec = importlib.util.spec_from_file_location("profile_summary_runtime", script)
+def _build_profile_report(
+    profile_dir: Path,
+    target_op: str | None = None,
+    top_count: int = 5,
+    output_format: str = "markdown",
+) -> str:
+    script = SCRIPT_DIR.parents[1] / "triton-npu-profile-operator" / "scripts" / "reporter.py"
+    profile_scripts_dir = str(script.parent)
+    if profile_scripts_dir not in sys.path:
+        sys.path.insert(0, profile_scripts_dir)
+    spec = importlib.util.spec_from_file_location("profile_reporter_runtime", script)
     if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load profiler summary script: {script}")
+        raise ImportError(f"Unable to load profile reporter script: {script}")
     loaded_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(loaded_module)
     module = cast(ProfileSummaryModule, loaded_module)
-    return module.build_profile_report(profile_dir, target_op=target_op)
+    return module.build_report(
+        profile_dir,
+        target_op=target_op,
+        top_count=top_count,
+        output_format=output_format,
+    )
 
 
 def _ensure_script_dir_on_path() -> None:

@@ -1,6 +1,6 @@
 ---
 name: triton-npu-run-eval
-description: Execute and evaluate generated operator artifacts. Use when you need to run generated test cases, run generated benchmark cases, profile benchmark harnesses, or compare result and performance artifacts, including during optimization workflows.
+description: Execute and evaluate generated operator artifacts. Use when you need to run generated test cases, run generated benchmark cases, profile benchmark harnesses, summarize profiling data, or compare result and performance artifacts, including during optimization workflows.
 ---
 
 # Run-Eval Router
@@ -18,6 +18,7 @@ Read only the focused guide for the subcommand you are about to run:
 - `run-test`: [references/run-test.md](references/run-test.md)
 - `run-bench`: [references/run-bench.md](references/run-bench.md)
 - `profile-bench`: [references/profile-bench.md](references/profile-bench.md)
+- `profile-report`: [references/profile-report.md](references/profile-report.md)
 - `compare-result`: [references/compare-result.md](references/compare-result.md)
 - `compare-perf`: [references/compare-perf.md](references/compare-perf.md)
 

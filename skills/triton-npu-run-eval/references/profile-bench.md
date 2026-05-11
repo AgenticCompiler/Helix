@@ -24,3 +24,10 @@ Remote examples:
 python3 ./scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py --case-id <id> --remote user@host:2222
 python3 ./scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench 2 --remote user@host:2222 --remote-workdir /tmp/triton-agent --keep-remote-workdir
 ```
+
+Use `profile-report` to re-summarize an existing `PROF_*` directory without re-running the benchmark:
+
+```bash
+python3 ./scripts/run-command.py profile-report --profile-dir PROF_000001_.../ --target-op MatMul
+python3 ./scripts/run-command.py profile-report --profile-dir PROF_000001_.../ --target-op MatMul --format json
+```
