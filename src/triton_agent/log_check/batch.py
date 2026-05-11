@@ -39,6 +39,9 @@ def run_log_check_batch(
     def _run_item(workspace: Path) -> BatchOptimizeResult:
         if not workspace_has_optimize_artifacts(workspace):
             return BatchOptimizeResult(workspace=workspace, status="skipped", message="no optimize artifacts found")
+        output_path = workspace / output_file
+        if output_path.exists():
+            return BatchOptimizeResult(workspace=workspace, status="skipped", message="report already exists")
         rc = log_check_runner(
             target_path=workspace,
             output_file=output_file,
@@ -46,7 +49,6 @@ def run_log_check_batch(
             verbose=verbose,
             show_output=show_output,
         )
-        output_path = workspace / output_file
         if rc != 0:
             return BatchOptimizeResult(workspace=workspace, status="failed", message=f"log check exited with return code {rc}")
         if not output_path.is_file():
