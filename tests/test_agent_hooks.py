@@ -16,6 +16,7 @@ class AgentHookManagerTests(unittest.TestCase):
             workspace.mkdir()
             templates_root = Path(__file__).resolve().parents[1] / "hooks"
             manager = AgentHookManager(templates_root)
+            self.assertFalse((templates_root / "codex" / "policy.json").exists())
 
             state = manager.prepare_hooks("codex", workspace)
 

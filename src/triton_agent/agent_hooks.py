@@ -86,11 +86,8 @@ class AgentHookManager:
             shutil.copy2(template_dir / "hooks.json", hooks_json)
             created_paths.append(hooks_json)
 
-            shutil.copytree(
-                template_dir,
-                hook_dir,
-                ignore=lambda _directory, names: {"hooks.json"} if "hooks.json" in names else set(),
-            )
+            hook_dir.mkdir(parents=True)
+            shutil.copy2(template_dir / "pretooluse_guard.py", hook_dir / "pretooluse_guard.py")
             created_paths.append(hook_dir)
             self._write_codex_policy(hook_dir / "policy.json", policy_workspace)
         except Exception:
