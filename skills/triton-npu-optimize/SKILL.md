@@ -172,3 +172,4 @@ Put round-local narrative, temporary troubleshooting notes, command failures, an
 - Do not finish a round by restoring the parent snapshot alone; if edits are discarded, restart from the last validated parent as a new attempt or round instead of claiming rollback as the delivered optimization.
 - Do not spend optimization rounds tuning `num_warps` for Ascend NPU targets; it is CUDA-oriented and is not a meaningful Ascend launch knob.
 - When an operator file defines multiple Triton kernels on a relevant hot path, fuse them into a single kernel first, then optimize that fused kernel rather than tuning separate kernels in isolation.
+- Do not write forward-looking optimization plans or predict what to try next. After each round, the next optimization direction must be driven by fresh profiling or benchmark evidence from the changed code. Write no more than one round at a time.

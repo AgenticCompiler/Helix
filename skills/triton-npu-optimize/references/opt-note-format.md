@@ -50,7 +50,6 @@ Geomean speedup: <value or unknown>
 Total speedup: <value or unknown>
 Validated branches: <comma-separated round names or none>
 Outcome: <plain-English optimization result>
-Next step: <plain-English follow-up or none>
 ```
 
 ## Example

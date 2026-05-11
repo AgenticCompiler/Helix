@@ -107,7 +107,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
         round_name: str,
         *,
         parent_round: str,
-        next_recommendation: str,
+        round_disposition: str,
         perf_text: str = "case0: 1.0\n",
     ) -> Path:
         round_dir = workdir / round_name
@@ -132,7 +132,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     "perf_summary_source": "compare-perf",
                     "summary_path": "summary.md",
                     "opt_note_updated": True,
-                    "next_recommendation": next_recommendation,
+                    "round_disposition": round_disposition,
                 }
             ),
             encoding="utf-8",
@@ -570,7 +570,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             workdir,
                             "opt-round-1",
                             parent_round="round-0",
-                            next_recommendation="stop",
+                            round_disposition="stop",
                         )
                     else:
                         self.supervisor_calls += 1
@@ -645,7 +645,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 workdir,
                 "opt-round-1",
                 parent_round="round-0",
-                next_recommendation="continue",
+                round_disposition="continue",
             )
 
             guidance_state = self._build_guidance_state(workdir)
@@ -713,7 +713,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 workdir,
                 "opt-round-2",
                 parent_round="opt-round-1",
-                next_recommendation="stop",
+                round_disposition="stop",
                 perf_text="case0: 0.8\n",
             )
 
@@ -1522,7 +1522,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             workdir,
                             "opt-round-1",
                             parent_round="round-0",
-                            next_recommendation="stop",
+                            round_disposition="stop",
                         )
                     else:
                         assert request.round_brief_path is not None
@@ -1603,7 +1603,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             workdir,
                             "opt-round-1",
                             parent_round="round-0",
-                            next_recommendation="stop",
+                            round_disposition="stop",
                         )
                     else:
                         assert request.round_brief_path is not None
@@ -1683,7 +1683,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                                 workdir,
                                 "opt-round-1",
                                 parent_round="round-0",
-                                next_recommendation="continue",
+                                round_disposition="continue",
                             )
                             return AgentResult(return_code=0, stdout="worker ok", stderr="")
                         return AgentResult(return_code=1, stdout="", stderr="worker stopped for test")
@@ -1726,7 +1726,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 workdir,
                 "opt-round-1",
                 parent_round="round-0",
-                next_recommendation="continue",
+                round_disposition="continue",
             )
 
             guidance_state = self._build_guidance_state(workdir)
@@ -1790,7 +1790,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 workdir,
                 "opt-round-1",
                 parent_round="round-0",
-                next_recommendation="continue",
+                round_disposition="continue",
             )
 
             guidance_state = self._build_guidance_state(workdir)
@@ -1852,7 +1852,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 workdir,
                 "opt-round-1",
                 parent_round="round-0",
-                next_recommendation="stop",
+                round_disposition="stop",
             )
 
             guidance_state = self._build_guidance_state(workdir)

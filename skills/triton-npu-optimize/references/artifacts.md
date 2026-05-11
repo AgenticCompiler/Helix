@@ -101,7 +101,7 @@ Each completed round must also include `round-state.json`.
 - `perf_summary_source`
 - `summary_path`
 - `opt_note_updated`
-- `next_recommendation`
+- `round_disposition`: `"continue"` when the round produced a meaningful improvement and the optimization session should continue, or `"stop"` when no further optimization direction is justified by current evidence. Do not use this field to write forward-looking optimization plans or predict what to try next—that must be determined by fresh profiling or benchmark evidence after the code changes.
 
 Treat these round-state fields as the authoritative artifact references for round validation:
 
@@ -140,7 +140,7 @@ Use these subdirectories consistently:
 - correctness validation result
 - benchmark comparison
 - whether this round becomes the current best candidate
-- follow-up ideas
+- open questions
 
 The optimization points section is required. This is the part future engineers are most likely to reuse.
 

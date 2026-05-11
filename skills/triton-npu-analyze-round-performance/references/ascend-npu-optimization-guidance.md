@@ -6,7 +6,7 @@ This document is for guiding the agent, not for preserving historical lessons. T
 
 - what profiling symptom is dominant
 - what IR evidence explains that symptom
-- what optimization point is most likely worth trying next
+- what optimization point the evidence supports
 
 ## Core Method
 
