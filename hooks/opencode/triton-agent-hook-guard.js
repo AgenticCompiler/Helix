@@ -74,7 +74,7 @@ async function evaluateOutput(policy, input, output) {
     return null;
   }
 
-  const cwd = resolveCwd(output.args?.cwd ?? input.cwd, workspaceRoot);
+  const cwd = resolveToolCwd(output.args?.cwd ?? input.cwd, workspaceRoot);
   const allowRoots = allowRootsForPolicy(policy, workspaceRoot);
   const denyGlobs = Array.isArray(policy.deny_read_globs)
     ? policy.deny_read_globs.filter((item) => typeof item === "string")
@@ -89,7 +89,7 @@ async function evaluateOutput(policy, input, output) {
     if (typeof filePath !== "string") {
       return null;
     }
-    return evaluateCandidate(filePath, workspaceRoot, allowRoots, denyGlobs, denyMessage);
+    return evaluateCandidate(filePath, cwd, allowRoots, denyGlobs, denyMessage);
   }
 
   if (input.tool !== "bash") {
@@ -223,6 +223,10 @@ function resolveCwd(value, workspaceRoot) {
     return workspaceRoot;
   }
   return path.resolve(workspaceRoot, value);
+}
+
+function resolveToolCwd(value, workspaceRoot) {
+  return resolveCwd(value, workspaceRoot);
 }
 
 function allowRootsForPolicy(policy, workspaceRoot) {

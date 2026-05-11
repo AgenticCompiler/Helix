@@ -91,6 +91,18 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": True})
 
+    def test_allows_read_tool_relative_path_against_cwd(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            nested = workspace / "subdir" / "nested"
+            readme = nested / "README.md"
+            nested.mkdir(parents=True)
+            readme.write_text("hello\n", encoding="utf-8")
+
+            result = _evaluate_plugin(_policy(workspace), "read", "nested/README.md", workspace / "subdir")
+
+            self.assertEqual(result, {"allowed": True})
+
     def test_malformed_shell_payload_fails_open(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
