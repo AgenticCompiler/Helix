@@ -13,7 +13,6 @@
 ## File Map
 
 - Create: `hooks/codex/hooks.json`
-- Create: `hooks/codex/policy.json`
 - Create: `hooks/codex/pretooluse_guard.py`
 - Create: `src/triton_agent/agent_hooks.py`
 - Create: `tests/test_agent_hooks.py`
@@ -324,7 +323,6 @@ Expected: `ERROR` because `hooks/codex/pretooluse_guard.py` does not exist yet.
 
 **Files:**
 - Create: `hooks/codex/hooks.json`
-- Create: `hooks/codex/policy.json`
 - Create: `hooks/codex/pretooluse_guard.py`
 
 - [ ] **Step 1: Add the Codex hook configuration template**
@@ -349,18 +347,7 @@ Create `hooks/codex/hooks.json`:
 }
 ```
 
-- [ ] **Step 2: Add the workspace policy template**
-
-Create `hooks/codex/policy.json`:
-
-```json
-{
-  "workspace_root": "",
-  "allow_read_roots": [],
-  "deny_read_globs": [],
-  "deny_message": "This read is blocked by triton-agent workspace policy. Stay within the current workspace and do not inspect staged skill implementation files under .codex/skills/*/scripts/. Use the skill instructions and documented command interface instead."
-}
-```
+- [ ] **Step 2: Generate the workspace policy during staging**
 
 - [ ] **Step 3: Add the guard script implementation**
 
@@ -583,15 +570,18 @@ class AgentHookManager:
 
         codex_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(template_dir / "hooks.json", hooks_json)
-        shutil.copytree(template_dir, target_hook_dir, ignore=shutil.ignore_patterns("hooks.json"))
-        self._render_policy(template_dir / "policy.json", target_hook_dir / "policy.json", workspace)
+        target_hook_dir.mkdir(parents=True)
+        shutil.copy2(template_dir / "pretooluse_guard.py", target_hook_dir / "pretooluse_guard.py")
+        self._render_policy(target_hook_dir / "policy.json", workspace)
         return AgentHookState([hooks_json, target_hook_dir])
 
-    def _render_policy(self, template_path: Path, target_path: Path, workspace: Path) -> None:
-        policy = json.loads(template_path.read_text(encoding="utf-8"))
-        policy["workspace_root"] = str(workspace)
-        policy["allow_read_roots"] = [str(workspace)]
-        policy["deny_read_globs"] = [str(workspace / path) for path in _DENY_READ_GLOBS]
+    def _render_policy(self, target_path: Path, workspace: Path) -> None:
+        policy = {
+            "workspace_root": str(workspace),
+            "allow_read_roots": [str(workspace)],
+            "deny_read_globs": [str(workspace / path) for path in _DENY_READ_GLOBS],
+            "deny_message": "This read is blocked by triton-agent workspace policy. Stay within the current workspace and do not inspect staged skill implementation files under .codex/skills/*/scripts/. Use the skill instructions and documented command interface instead.",
+        }
         target_path.write_text(json.dumps(policy, indent=2) + "\n", encoding="utf-8")
 
     def cleanup(self, state: AgentHookState) -> list[str]:

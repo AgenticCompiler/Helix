@@ -1,6 +1,0 @@
-{
-  "workspace_root": "",
-  "allow_read_roots": [],
-  "deny_read_globs": [],
-  "deny_message": "This read is blocked by triton-agent workspace policy. Stay within the current workspace and do not inspect staged skill implementation files under .codex/skills/*/scripts/. Use the skill instructions and documented command interface instead."
-}

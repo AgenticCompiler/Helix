@@ -39,6 +39,32 @@ class OpenCodeRunnerTests(unittest.TestCase):
             self.assertIn("--thinking", command)
             self.assertEqual(command[-1], "Prompt body")
 
+    def test_non_interactive_command_omits_pure_when_hooks_are_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = OpenCodeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="opencode",
+                skill_name="triton-npu-optimize",
+                prompt="Prompt body",
+                workdir=workspace,
+                enable_agent_hooks=True,
+            )
+            command = runner.build_command(request)
+            self.assertEqual(command[:3], ["opencode", "run", "--dir"])
+            self.assertNotIn("--pure", command)
+            self.assertIn("--thinking", command)
+
     def test_interactive_command_uses_project_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -62,7 +88,42 @@ class OpenCodeRunnerTests(unittest.TestCase):
             command = runner.build_command(request)
             self.assertEqual(command[0], "opencode")
             self.assertEqual(command[1], str(workspace))
+            self.assertEqual(command[2], "--pure")
+            self.assertEqual(command[3], "--thinking")
+            self.assertEqual(command[4], "--prompt")
+            self.assertEqual(command[5], "Continue work")
             self.assertIn("--pure", command)
+            self.assertIn("--thinking", command)
+            self.assertIn("--prompt", command)
+
+    def test_interactive_command_omits_pure_when_hooks_are_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = OpenCodeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=True,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="opencode",
+                skill_name="triton-npu-optimize",
+                prompt="Continue work",
+                workdir=workspace,
+                enable_agent_hooks=True,
+            )
+            command = runner.build_command(request)
+            self.assertEqual(command[0], "opencode")
+            self.assertEqual(command[1], str(workspace))
+            self.assertEqual(command[2], "--thinking")
+            self.assertEqual(command[3], "--prompt")
+            self.assertEqual(command[4], "Continue work")
+            self.assertNotIn("--pure", command)
             self.assertIn("--thinking", command)
             self.assertIn("--prompt", command)
 

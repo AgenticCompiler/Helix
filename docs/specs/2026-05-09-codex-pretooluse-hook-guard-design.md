@@ -39,7 +39,6 @@ The directory should contain:
 ```text
 hooks/codex/hooks.json
 hooks/codex/pretooluse_guard.py
-hooks/codex/policy.json
 ```
 
 Keeping these files in `hooks/codex/` makes the hook behavior inspectable and avoids embedding large JSON or script bodies in Python string constants.
@@ -52,7 +51,7 @@ The staged workspace should receive copied hook assets under `.codex/`, using pa
 .codex/triton-agent-hooks/policy.json
 ```
 
-The implementation should render `policy.json` during staging because the policy is workspace-specific. Runtime values should include the resolved workspace root and path rules derived from that root. The policy logic should live in the template script; the generated policy should provide data, not Python code.
+The implementation should render `policy.json` during staging because the policy is workspace-specific. Runtime values should include the resolved workspace root and path rules derived from that root. The policy logic should live in the template script; the generated policy should provide data, not Python code. Unlike the plugin side, Codex does not need a template policy file in the repository.
 
 ### Staging Lifecycle
 
