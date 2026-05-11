@@ -9,40 +9,40 @@ Profile Ascend NPU operators and summarize the resulting timing data.
 
 ## Default workflow
 
+### Profiling + summary (profile-bench)
+
 1. Profile benchmark harnesses through the unified triton-npu-run-eval helper.
 
    ```bash
    python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file matmul.py
    ```
 
-2. Let the helper print or copy back the generated local `PROF_*` directory.
+2. The helper runs the profiler, copies back the generated local `PROF_*` directory, and prints a summary inline.
 
-3. Summarize the profile output with the bundled script.
-
-   ```bash
-   python3 ./scripts/profile_summary.py <path-to-PROF-dir-or-parent> [--target-op <op-name>]
-   ```
-
-   For round-analysis workflows that need structured signals such as core-type totals or transfer-heavy hotspots, prefer JSON mode:
-
-   ```bash
-   python3 ./scripts/profile_summary.py <path-to-PROF-dir-or-parent> [--target-op <op-name>] --format json
-   ```
-
-   The JSON payload is the preferred machine-readable entrypoint for round-level deep analysis. It can include structured signals from:
-
-   - `op_statistic`
-   - `op_summary`
-   - `task_time`
-   - `api_statistic`
-   - `msprof` JSON
-   - optional `.bin` data when present
-
-4. Present the summary in the conversation. Call out:
+3. Review the inline summary in the conversation. Call out:
    - which operator was analyzed
    - whether that operator was explicit or inferred
    - total, average, min, and max time
    - runtime ratio and top hotspots
+
+### Re-reporting without re-profiling (profile-report)
+
+When the profiling data already exists (e.g. from a previous `profile-bench` run), use `profile-report` to generate a new summary without re-running the benchmark:
+
+```bash
+python3 ../triton-npu-run-eval/scripts/run-command.py profile-report --profile-dir PROF_000001_.../ --target-op matmul_kernel
+```
+
+For round-analysis workflows that need structured signals, use JSON mode:
+
+```bash
+python3 ../triton-npu-run-eval/scripts/run-command.py profile-report --profile-dir PROF_000001_.../ --target-op matmul_kernel --format json
+```
+
+This is useful when you want to:
+- Inspect the same `PROF_*` data with different `--target-op` values
+- Re-summarize historical profiling data
+- Emit structured JSON for downstream workflows without re-profiling
 
 ## Working rules
 
@@ -100,9 +100,20 @@ Profile Ascend NPU operators and summarize the resulting timing data.
 
 ## Bundled resources
 
-- `scripts/profile_summary.py`
-  Use this to locate the relevant `PROF_*` directory, read profiler CSV/JSON artifacts, optionally integrate `.bin` signals, and render a concise Markdown report.
-  It can also emit structured JSON for downstream round-analysis workflows.
+- `scripts/reporter.py`
+  Unified profile reporter used by the `profile-report` subcommand. Loads profiles from either mode, runs classification (operator type, bound analysis), and renders Markdown or JSON output.
+
+- `scripts/models.py`
+  Typed data model for parsed profile data (`OperatorStats`, `KernelInvocation`, `PipelineStage`, `ParsedProfile`). Shared by `reporter.py` and all parsers.
+
+- `scripts/parser_base.py`
+  Shared parsing utilities: mode auto-detection, `op_statistic` CSV parser, `api_statistic` CSV parser. Used by both mode-specific parsers.
+
+- `scripts/msprof_parser.py`
+  Parses `PROF_*/mindstudio_profiler_output/` artifacts: `op_statistic`, `op_summary`, `task_time`, `api_statistic`, `msprof` JSON.
+
+- `scripts/standalone_parser.py`
+  Parses `ASCEND_PROFILER_OUTPUT/` artifacts: `op_statistic`, `kernel_details`, `operator_details`, `step_trace_time`, `api_statistic`, `trace_view`.
 
 - `scripts/parse_bin.py`
   Keep this for raw profiler binary inspection when the user provides files such as `visualize_data.bin`.
@@ -138,7 +149,7 @@ Fallback manual profiling when no benchmark harness exists:
 
 ```bash
 msprof python3 bench_matmul.py --operator-file matmul.py
-python3 <skill-path>/scripts/profile_summary.py . --target-op MatMul
+python3 ../triton-npu-run-eval/scripts/run-command.py profile-report --profile-dir . --target-op MatMul
 ```
 
 Inspect a raw profiler binary block:

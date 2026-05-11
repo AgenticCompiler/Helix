@@ -1,0 +1,4 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+0,matmul_kernel,AI_CORE,5,30.144,5.482,6.028,6.56,74.239
+0,Cast,AI_VECTOR_CORE,2,6.24,1.98,3.12,4.26,15.368
+0,DSARandomNormal,DSA_SQE,2,4.22,1.44,2.11,2.78,10.393

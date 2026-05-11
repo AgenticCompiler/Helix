@@ -1,3 +1,4 @@
+import os
 import subprocess
 import shutil
 import sys
@@ -309,11 +310,15 @@ class SkillCommandScriptTests(unittest.TestCase):
             / "scripts"
             / "optimize_check.py"
         )
+        env = os.environ.copy()
+        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
         completed = subprocess.run(
             [sys.executable, str(script), "--help"],
             capture_output=True,
             text=True,
             check=False,
+            env=env,
         )
         self.assertEqual(completed.returncode, 0)
         self.assertIn("optimize_check.py", completed.stdout)

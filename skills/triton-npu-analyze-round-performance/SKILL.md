@@ -49,7 +49,7 @@ Read the references in this order:
 4. Extract profile signals first.
    - Prefer the bundled summary helper in JSON mode:
      ```bash
-     python3 ../triton-npu-profile-operator/scripts/profile_summary.py <profile-dir> --format json
+      python3 ../triton-npu-run-eval/scripts/run-command.py profile-report --profile-dir <profile-dir> --format json
      ```
    - Use this as the default structured entrypoint for profiling evidence.
 5. Interpret profiling evidence through the profiling reference instead of ad hoc guesses.

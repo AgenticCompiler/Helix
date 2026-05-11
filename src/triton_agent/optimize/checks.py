@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, Union, cast
 
 from triton_agent.optimize.models import OptimizeCheckResult
 from triton_agent.skill_loader import load_skill_script_module
@@ -48,7 +48,7 @@ def _normalize_result(raw_result: object) -> OptimizeCheckResult:
 def _normalize_issues(value: object) -> tuple[str, ...]:
     if not isinstance(value, (list, tuple)):
         raise TypeError("Optimize check issues must be a list or tuple of strings")
-    return tuple(str(item) for item in cast(list[object] | tuple[object, ...], value))
+    return tuple(str(item) for item in cast(Union[list[object], tuple[object, ...]], value))
 
 
 def _normalize_kind(value: object) -> Literal["baseline", "round"]:
