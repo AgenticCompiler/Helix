@@ -177,6 +177,14 @@ def _compute_pipeline_averages(invocations: list[KernelInvocation], target_op: s
     return {key: sum(vals) / len(vals) if vals else 0.0 for key, vals in ratio_values.items()}
 
 
+def _count_operators_by_bucket(operators: list[OperatorStats]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for op in operators:
+        bucket = _normalize_core_type(op.core_type)
+        counts[bucket] = counts.get(bucket, 0) + 1
+    return counts
+
+
 def _check_launch_related(host_api: list[HostApiCall]) -> bool:
     launch_keywords = ("launch", "memcpy", "synchronize", "binary", "stream")
     return any(
@@ -224,7 +232,10 @@ class ProfileReporter:
 
         task_timeline = None
         if task_records:
-            target_tasks = [t for t in task_records if t.kernel_name == target.op_type]
+            target_tasks = sorted(
+                [t for t in task_records if t.kernel_name == target.op_type],
+                key=lambda t: t.task_start_us,
+            )
             if target_tasks:
                 total_time = sum(t.task_time_us for t in target_tasks)
                 starts = [t.task_start_us for t in target_tasks]
@@ -303,17 +314,18 @@ class ProfileReporter:
         core_type_totals: dict[str, Any] = {}
         agg = profile.core_type_aggregate
         if agg:
-            for bucket, count_val, total_val, ratio_val, raw_types in [
-                ("cube", 0, agg.cube_total_us, agg.cube_ratio_pct, agg.raw_core_types.get("cube", [])),
-                ("vector", 0, agg.vector_total_us, agg.vector_ratio_pct, agg.raw_core_types.get("vector", [])),
-                ("scalar", 0, agg.scalar_total_us, agg.scalar_ratio_pct, agg.raw_core_types.get("scalar", [])),
-                ("other", 0, agg.other_total_us, agg.other_ratio_pct, agg.raw_core_types.get("other", [])),
+            bucket_counts = _count_operators_by_bucket(profile.operators)
+            for bucket, total_val, ratio_val, raw_types in [
+                ("cube", agg.cube_total_us, agg.cube_ratio_pct, agg.raw_core_types.get("cube", [])),
+                ("vector", agg.vector_total_us, agg.vector_ratio_pct, agg.raw_core_types.get("vector", [])),
+                ("scalar", agg.scalar_total_us, agg.scalar_ratio_pct, agg.raw_core_types.get("scalar", [])),
+                ("other", agg.other_total_us, agg.other_ratio_pct, agg.raw_core_types.get("other", [])),
             ]:
                 if total_val > 0 or raw_types:
                     core_type_totals[bucket] = {
                         "total_time_us": total_val,
                         "ratio_percent": ratio_val,
-                        "count": count_val,
+                        "count": bucket_counts.get(bucket, 0),
                         "raw_core_types": raw_types,
                     }
 
@@ -587,7 +599,7 @@ class ProfileReporter:
             f"- Task timeline matched rows: `{task_matched}`",
             f"- Max task gap: `{_format_number(task_max_gap)} us`",
             f"- Host launch-related APIs present: `{launch_present}`",
-            f"- msprof tracks: `0`",
+            f"- msprof tracks: `{profile.stream_like_tracks}`",
             f"- Binary signals available: `False`",
             "",
             "## Top operators by total time",

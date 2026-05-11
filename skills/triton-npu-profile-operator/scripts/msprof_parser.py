@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from models import HostApiCall, KernelInvocation, OperatorStats, PipelineStage, TaskRecord
 from parser_base import find_newest_csv, parse_api_statistic, parse_op_statistic
 
-_OP_NAME_COLUMNS = ("Op Name", "Name", "OP Type")
+_OP_NAME_COLUMNS = ("OP Type", "Op Name", "Name")
 _DURATION_COLUMNS = ("Task Duration(us)", "Duration(us)")
 _WAIT_COLUMNS = ("Task Wait Time(us)", "Wait Time(us)")
 _BLOCK_DIM_COLUMNS = ("Block Dim", "Mix Block Dim")
