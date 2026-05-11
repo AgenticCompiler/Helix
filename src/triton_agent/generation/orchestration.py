@@ -10,16 +10,9 @@ from triton_agent.generation.outputs import resolve_generation_output_path
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
 from triton_agent.resources import skills_root
+from triton_agent.skill_staging import resolve_staged_skills
 from triton_agent.skills import SkillLinkManager
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
-
-
-GEN_EVAL_STAGED_SKILLS = (
-    "triton-npu-gen-eval-suite",
-    "triton-npu-gen-test",
-    "triton-npu-gen-bench",
-    "triton-npu-run-eval",
-)
 
 
 def build_generation_request(
@@ -29,9 +22,7 @@ def build_generation_request(
     workdir: Path,
     options: GenerationOptions,
 ) -> AgentRequest:
-    staged_skill_names = None
-    if command_kind == CommandKind.GEN_EVAL:
-        staged_skill_names = GEN_EVAL_STAGED_SKILLS
+    staged_skill_names, staged_skill_sources = resolve_staged_skills(command_kind)
     output_path = resolve_generation_output_path(
         command_kind,
         input_path,
@@ -73,6 +64,7 @@ def build_generation_request(
         continue_optimize=options.continue_optimize,
         no_agent_session=False,
         staged_skill_names=staged_skill_names,
+        staged_skill_sources=staged_skill_sources,
     )
 
 

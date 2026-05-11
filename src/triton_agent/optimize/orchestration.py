@@ -14,44 +14,9 @@ from triton_agent.optimize.resume import resolve_optimize_resume, reset_optimize
 from triton_agent.paths import default_generated_output_path
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
 from triton_agent.resources import skills_root
+from triton_agent.skill_staging import resolve_staged_skills
 from triton_agent.skills import SkillLinkManager
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
-
-
-_BASE_OPTIMIZE_STAGED_SKILLS = (
-    "triton-npu-optimize",
-    "triton-npu-optimize-knowledge",
-    "triton-npu-prepare-optimize-baseline",
-    "triton-npu-gen-test",
-    "triton-npu-gen-bench",
-    "triton-npu-run-eval",
-    "triton-npu-optimize-check",
-    "triton-npu-profile-operator",
-    "triton-npu-analyze-round-performance",
-    "triton-npu-analyze-ir",
-    "triton-npu-analyze-compiler-source",
-    "triton-npu-repair-guide",
-)
-
-_CANN_EXT_API_SKILL = "triton-npu-cann-ext-api-patterns"
-_OPTIMIZE_KNOWLEDGE_STAGED_SKILL = "triton-npu-optimize-knowledge"
-_OPTIMIZE_KNOWLEDGE_SOURCES = {
-    "v1": "triton-npu-optimize-knowledge",
-    "v2": "triton-npu-optimize-knowledge-v2",
-}
-
-
-def _optimize_staged_skills(*, enable_cann_ext_api: bool) -> tuple[str, ...]:
-    if not enable_cann_ext_api:
-        return _BASE_OPTIMIZE_STAGED_SKILLS
-    return (*_BASE_OPTIMIZE_STAGED_SKILLS, _CANN_EXT_API_SKILL)
-
-
-def _optimize_skill_sources(*, optimize_knowledge: str) -> dict[str, str] | None:
-    source_name = _OPTIMIZE_KNOWLEDGE_SOURCES[optimize_knowledge]
-    if source_name == _OPTIMIZE_KNOWLEDGE_STAGED_SKILL:
-        return None
-    return {_OPTIMIZE_KNOWLEDGE_STAGED_SKILL: source_name}
 
 
 def build_optimize_request(
@@ -158,6 +123,11 @@ def build_optimize_request(
         built_prompt,
         options.prompt,
     )
+    staged_skill_names, staged_skill_sources = resolve_staged_skills(
+        CommandKind.OPTIMIZE,
+        optimize_knowledge=options.optimize_knowledge,
+        enable_cann_ext_api=options.enable_cann_ext_api,
+    )
     return AgentRequest(
         command_kind=CommandKind.OPTIMIZE,
         input_path=input_path,
@@ -177,10 +147,8 @@ def build_optimize_request(
         continue_optimize=resolution.resume_existing_session,
         no_agent_session=options.no_agent_session,
         supervise=options.supervise,
-        staged_skill_names=_optimize_staged_skills(enable_cann_ext_api=options.enable_cann_ext_api),
-        staged_skill_sources=_optimize_skill_sources(
-            optimize_knowledge=options.optimize_knowledge,
-        ),
+        staged_skill_names=staged_skill_names,
+        staged_skill_sources=staged_skill_sources,
         optimize_role="worker" if options.supervise == "on" else None,
         target_chip=options.target_chip,
         compiler_source_analysis=options.compiler_source_analysis,

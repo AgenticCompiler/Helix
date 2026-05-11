@@ -131,9 +131,44 @@ class GenerationHelpersTests(unittest.TestCase):
                 "triton-npu-gen-test",
                 "triton-npu-gen-bench",
                 "triton-npu-run-eval",
+                "triton-npu-repair-guide",
             ),
         )
+        self.assertIsNone(request.staged_skill_sources)
         self.assertEqual(request.skill_name, "triton-npu-gen-eval-suite")
+
+    def test_build_generation_request_for_gen_test_uses_single_skill_rule(self) -> None:
+        request = build_generation_request(
+            CommandKind.GEN_TEST,
+            Path("/tmp/kernel.py"),
+            Path("/tmp/kernel.py"),
+            Path("/tmp"),
+            GenerationOptions(
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                continue_optimize=False,
+                output=None,
+                test_mode="standalone",
+                bench_mode=None,
+                prompt=None,
+            ),
+        )
+
+        self.assertEqual(
+            request.staged_skill_names,
+            (
+                "triton-npu-gen-test",
+                "triton-npu-run-eval",
+                "triton-npu-repair-guide",
+            ),
+        )
+        self.assertIsNone(request.staged_skill_sources)
 
     def test_build_generation_request_for_gen_eval_omits_single_output_path(self) -> None:
         request = build_generation_request(
@@ -380,6 +415,7 @@ class GenerationCommandHandlerTests(unittest.TestCase):
                     "triton-npu-gen-test",
                     "triton-npu-gen-bench",
                     "triton-npu-run-eval",
+                    "triton-npu-repair-guide",
                 ),
             )
             self.assertEqual(captured["test_mode"], "differential")

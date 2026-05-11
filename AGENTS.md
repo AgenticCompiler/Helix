@@ -26,6 +26,7 @@
 ## Workspace And Skills
 
 - Before launching a code agent, stage this repository's `skills/` directory into the target workspace in the backend-native location.
+- When adding or removing a repository skill, or when adding a new CLI subcommand that stages skills, review and update `src/triton_agent/skill_staging.py` so the centralized staging table stays in sync.
 - Stage skills by copying content into the workspace instead of creating symlinks.
 - If a target skill path already exists as a symlink, fail explicitly instead of reusing it.
 - Clean up only the copied skill paths created by the current run.
