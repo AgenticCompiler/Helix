@@ -74,7 +74,7 @@ class VerifyTests(unittest.TestCase):
                     "perf_summary_source": "compare-perf",
                     "summary_path": "summary.md",
                     "opt_note_updated": True,
-                    "next_recommendation": "stop",
+                    "round_disposition": "stop",
                 }
             ),
             encoding="utf-8",
@@ -154,7 +154,7 @@ class VerifyTests(unittest.TestCase):
                         "perf_summary_source": "compare-perf",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,
-                        "next_recommendation": "stop",
+                        "round_disposition": "stop",
                     }
                 ),
                 encoding="utf-8",

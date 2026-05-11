@@ -83,7 +83,7 @@ class RoundState:
     perf_summary_source: str
     summary_path: str
     opt_note_updated: bool
-    next_recommendation: str
+    round_disposition: str
     analysis_skipped_reason: str | None = None
     profile_dir: str | None = None
     ir_dir: str | None = None
@@ -231,7 +231,7 @@ def load_round_state(round_dir: Path) -> RoundState:
         perf_summary_source=str(data["perf_summary_source"]),
         summary_path=str(data["summary_path"]),
         opt_note_updated=bool(data["opt_note_updated"]),
-        next_recommendation=str(data["next_recommendation"]),
+        round_disposition=str(data["round_disposition"]),
         analysis_skipped_reason=_optional_str(data.get("analysis_skipped_reason")),
         profile_dir=_optional_str(data.get("profile_dir")),
         ir_dir=_optional_str(data.get("ir_dir")),

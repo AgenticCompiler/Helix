@@ -143,7 +143,7 @@ class OptimizeCheckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             self._write_baseline(workdir)
-            round_dir = self._write_round(workdir, "opt-round-1", next_recommendation="continue")
+            round_dir = self._write_round(workdir, "opt-round-1", round_disposition="continue")
 
             result = optimize_checks.check_round(round_dir)
 
@@ -156,7 +156,7 @@ class OptimizeCheckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             self._write_baseline(workdir)
-            round_dir = self._write_round(workdir, "opt-round-1", next_recommendation="continue")
+            round_dir = self._write_round(workdir, "opt-round-1", round_disposition="continue")
 
             result = optimize_checks.check_round(round_dir)
 
@@ -169,7 +169,7 @@ class OptimizeCheckTests(unittest.TestCase):
             round_dir = self._write_round(
                 workdir,
                 "opt-round-1",
-                next_recommendation="continue",
+                round_disposition="continue",
                 perf_analysis_path="perf-analysis.md",
             )
 
@@ -186,7 +186,7 @@ class OptimizeCheckTests(unittest.TestCase):
             round_dir = self._write_round(
                 workdir,
                 "opt-round-1",
-                next_recommendation="continue",
+                round_disposition="continue",
                 operator_source=PURE_TORCH_ROUND_OPERATOR,
             )
 
@@ -207,7 +207,7 @@ class OptimizeCheckTests(unittest.TestCase):
             round_dir = self._write_round(
                 workdir,
                 "opt-round-1",
-                next_recommendation="continue",
+                round_disposition="continue",
                 operator_source=MULTILINE_TRITON_ROUND_OPERATOR,
             )
 
@@ -243,7 +243,7 @@ class OptimizeCheckTests(unittest.TestCase):
                         "perf_summary_source": "compare-perf",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,
-                        "next_recommendation": "continue",
+                        "round_disposition": "continue",
                     }
                 ),
                 encoding="utf-8",
@@ -285,7 +285,7 @@ class OptimizeCheckTests(unittest.TestCase):
         workdir: Path,
         round_name: str,
         *,
-        next_recommendation: str,
+        round_disposition: str,
         perf_analysis_path: Optional[str] = None,
         operator_source: str = TRITON_ROUND_OPERATOR,
     ) -> Path:
@@ -309,7 +309,7 @@ class OptimizeCheckTests(unittest.TestCase):
             "perf_summary_source": "compare-perf",
             "summary_path": "summary.md",
             "opt_note_updated": True,
-            "next_recommendation": next_recommendation,
+            "round_disposition": round_disposition,
         }
         if perf_analysis_path is not None:
             payload["perf_analysis_path"] = perf_analysis_path
