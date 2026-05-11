@@ -64,10 +64,26 @@ def run_optimize_batch(
         BatchOptimizeWorkspace(workspace=workspace, operator_file=operator_file)
         for workspace, operator_file in discovered
     ]
-    results = [
-        BatchOptimizeResult(workspace=workspace, status="failed", message=message)
-        for workspace, message in failures
-    ]
+    results: list[BatchOptimizeResult] = []
+    for workspace, message in failures:
+        ws_key = optimize_batch_workspace_key(root, workspace)
+        record = batch_status.get(ws_key)
+        if record is not None and record.get("status") == "completed":
+            results.append(
+                BatchOptimizeResult(
+                    workspace=workspace,
+                    status="skipped",
+                    message="already completed",
+                )
+            )
+        else:
+            results.append(
+                BatchOptimizeResult(
+                    workspace=workspace,
+                    status="failed",
+                    message=message,
+                )
+            )
     if not runnable and not results:
         print(f"No operator workspaces found under {root}", file=sys.stderr)
         return 1
