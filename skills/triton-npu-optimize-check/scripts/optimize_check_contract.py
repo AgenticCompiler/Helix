@@ -308,6 +308,15 @@ def check_baseline(baseline_dir_path: Path) -> OptimizeCheckResult:
             decision="revise-required",
             issues=issues,
         )
+    workspace = baseline_dir_path.parent
+    cleaned = _cleanup_dir_pt_files(baseline_dir_path)
+    cleaned.extend(_cleanup_dir_pt_files(workspace))
+    if cleaned:
+        return _build_result(
+            kind="baseline",
+            decision="pass",
+            issues=(f"cleaned up {len(cleaned)} unused pt file(s): {', '.join(cleaned)}",),
+        )
     return _build_result(kind="baseline", decision="pass", issues=())
 
 
@@ -385,7 +394,28 @@ def check_round(round_dir: Path) -> OptimizeCheckResult:
             issues=((continuity.reason or "round operator failed Triton continuity check"),),
         )
 
+    cleaned = _cleanup_dir_pt_files(round_dir)
+    if cleaned:
+        return _build_result(
+            kind="round",
+            decision="pass",
+            issues=(f"cleaned up {len(cleaned)} unused pt file(s) in {round_dir.name}: {', '.join(cleaned)}",),
+        )
+
     return _build_result(kind="round", decision="pass", issues=())
+
+
+def _cleanup_dir_pt_files(directory: Path) -> list[str]:
+    cleaned: list[str] = []
+    for pt_file in directory.glob("*_result.pt"):
+        if not pt_file.is_file():
+            continue
+        try:
+            pt_file.unlink()
+            cleaned.append(pt_file.name)
+        except OSError:
+            pass
+    return cleaned
 
 
 def _load_json_object(path: Path, *, display_name: str) -> dict[str, Any]:

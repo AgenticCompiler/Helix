@@ -305,6 +305,12 @@ def execute_supervised_optimize(
         warnings = artifacts_manager.cleanup_supervised_session(artifacts_state)
         for warning in warnings:
             emit_verbose(verbose_stream, "agents", warning)
+        try:
+            cleaned_pt = _cleanup_workspace_pt_files(request.workdir)
+            if request.verbose and cleaned_pt:
+                emit_verbose(verbose_stream, "agents", f"cleaned up {len(cleaned_pt)} unused pt file(s): {', '.join(cleaned_pt)}")
+        except Exception:
+            pass
 
 
 def execute_unsupervised_optimize(
@@ -353,6 +359,12 @@ def execute_unsupervised_optimize(
         warnings = artifacts_manager.cleanup_unsupervised_session(shared_artifacts_state)
         for warning in warnings:
             emit_verbose(verbose_stream, "agents", warning)
+        try:
+            cleaned_pt = _cleanup_workspace_pt_files(request.workdir)
+            if request.verbose and cleaned_pt:
+                emit_verbose(verbose_stream, "agents", f"cleaned up {len(cleaned_pt)} unused pt file(s): {', '.join(cleaned_pt)}")
+        except Exception:
+            pass
 
 
 def _latest_round_dir(workdir: Path) -> Path | None:
@@ -379,3 +391,27 @@ def _iter_numeric_round_dirs(workdir: Path) -> list[Path]:
         for path in workdir.glob("opt-round-*")
         if path.is_dir() and re.match(r"opt-round-\d+$", path.name)
     ]
+
+
+def _cleanup_workspace_pt_files(workdir: Path) -> list[str]:
+    cleaned: list[str] = []
+    for pt_file in workdir.glob("*_result.pt"):
+        if not pt_file.is_file():
+            continue
+        try:
+            pt_file.unlink()
+            cleaned.append(pt_file.name)
+        except OSError:
+            pass
+    for round_dir in sorted(workdir.glob("opt-round-*")):
+        if not round_dir.is_dir():
+            continue
+        for pt_file in round_dir.glob("*_result.pt"):
+            if not pt_file.is_file():
+                continue
+            try:
+                pt_file.unlink()
+                cleaned.append(f"{round_dir.name}/{pt_file.name}")
+            except OSError:
+                pass
+    return cleaned
