@@ -60,7 +60,7 @@ def resolve_round_perf_file(round_dir: Path) -> Path | None:
     if perf_txt.is_file():
         return perf_txt
 
-    perf_files = sorted(round_dir.glob("*_perf.txt"))
+    perf_files = sorted(p for p in round_dir.glob("*_perf.txt") if p.is_file())
     if len(perf_files) == 1:
         return perf_files[0]
     return None
