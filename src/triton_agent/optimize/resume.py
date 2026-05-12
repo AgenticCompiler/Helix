@@ -29,6 +29,11 @@ def classify_optimize_workspace(input_path: Path, workdir: Path) -> WorkspaceIns
 
 
 def reset_optimize_workspace(input_path: Path, workdir: Path) -> None:
+    pt_result_files = [
+        path
+        for path in workdir.glob("*_result.pt")
+        if path.is_file()
+    ]
     artifact_paths = [
         workdir / "opt-note.md",
         workdir / "learned_lessons.md",
@@ -42,7 +47,7 @@ def reset_optimize_workspace(input_path: Path, workdir: Path) -> None:
         for path in workdir.glob("opt-round-*")
         if path.is_dir()
     ]
-    for path in [*artifact_paths, *round_dirs]:
+    for path in [*pt_result_files, *artifact_paths, *round_dirs]:
         if path.is_symlink():
             path.unlink()
         elif path.is_dir():
