@@ -62,6 +62,18 @@ class SkillStagingTests(unittest.TestCase):
             {"triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v2"},
         )
 
+    def test_resolve_staged_skills_for_optimize_v3_maps_knowledge_source(self) -> None:
+        names, sources = resolve_staged_skills(
+            CommandKind.OPTIMIZE,
+            optimize_knowledge="v3",
+        )
+
+        self.assertIn("triton-npu-optimize-knowledge", names or ())
+        self.assertEqual(
+            sources,
+            {"triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v3"},
+        )
+
     def test_resolve_staged_skills_for_optimize_can_include_cann_ext_api(self) -> None:
         names, sources = resolve_staged_skills(
             CommandKind.OPTIMIZE,

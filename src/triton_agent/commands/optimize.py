@@ -94,7 +94,7 @@ def _validate_supervise_mode(args: argparse.Namespace) -> Literal["on", "off"]:
 def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptions:
     target_chip = cast(Literal["A3", "A5"], getattr(args, "target_chip", "A5"))
     optimize_knowledge = cast(
-        Literal["v1", "v2"],
+        Literal["v1", "v2", "v3"],
         getattr(args, "optimize_knowledge", "v1"),
     )
     compiler_source_enabled = bool(getattr(args, "enable_compiler_source_analysis", False))

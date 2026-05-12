@@ -119,6 +119,10 @@ def _resolve_skill_sources(
     optimize_knowledge: str | None = None,
 ) -> dict[str, str] | None:
     if command_kind == CommandKind.OPTIMIZE and staged_skill_names is not None:
-        if optimize_knowledge == "v2" and "triton-npu-optimize-knowledge" in staged_skill_names:
+        if "triton-npu-optimize-knowledge" not in staged_skill_names:
+            return None
+        if optimize_knowledge == "v2":
             return {"triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v2"}
+        if optimize_knowledge == "v3":
+            return {"triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v3"}
     return None
