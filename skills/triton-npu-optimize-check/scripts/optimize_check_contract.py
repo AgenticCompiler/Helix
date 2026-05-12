@@ -12,6 +12,7 @@ from triton_agent.optimize.naming import (
     resolve_round_operator_file,
     resolve_round_perf_file,
 )
+from triton_agent.optimize.pt_cleanup import cleanup_dir_pt_files
 
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "references" / "contract.json"
 CONTRACT_DATA = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
@@ -309,8 +310,8 @@ def check_baseline(baseline_dir_path: Path) -> OptimizeCheckResult:
             issues=issues,
         )
     workspace = baseline_dir_path.parent
-    cleaned = _cleanup_dir_pt_files(baseline_dir_path)
-    cleaned.extend(_cleanup_dir_pt_files(workspace))
+    cleaned = cleanup_dir_pt_files(baseline_dir_path)
+    cleaned.extend(cleanup_dir_pt_files(workspace))
     if cleaned:
         return _build_result(
             kind="baseline",
@@ -394,7 +395,7 @@ def check_round(round_dir: Path) -> OptimizeCheckResult:
             issues=((continuity.reason or "round operator failed Triton continuity check"),),
         )
 
-    cleaned = _cleanup_dir_pt_files(round_dir)
+    cleaned = cleanup_dir_pt_files(round_dir)
     if cleaned:
         return _build_result(
             kind="round",
@@ -403,22 +404,6 @@ def check_round(round_dir: Path) -> OptimizeCheckResult:
         )
 
     return _build_result(kind="round", decision="pass", issues=())
-
-
-def _cleanup_dir_pt_files(directory: Path) -> list[str]:
-    cleaned: list[str] = []
-    for pt_file in sorted(directory.iterdir()):
-        if not pt_file.is_file():
-            continue
-        name_lower = pt_file.name.lower()
-        if not (name_lower == "test_result.pt" or name_lower.endswith("_result.pt")):
-            continue
-        try:
-            pt_file.unlink()
-            cleaned.append(pt_file.name)
-        except OSError:
-            pass
-    return cleaned
 
 
 def _load_json_object(path: Path, *, display_name: str) -> dict[str, Any]:
