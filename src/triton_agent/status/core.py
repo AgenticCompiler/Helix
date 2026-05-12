@@ -102,7 +102,7 @@ def inspect_optimize_status_workspace(
                 perf_path,
                 baseline_values,
             )
-        except ValueError as exc:
+        except (ValueError, OSError) as exc:
             warnings.append(str(exc))
             continue
         if set(baseline_values) != set(round_values):
