@@ -6,6 +6,31 @@ Read this generated index first. Then read only the one or two most relevant det
 
 ## Generated Pattern Summaries
 
+### `a5-force-simt-only-discrete-access`
+
+- Summary: On A5, when profiler evidence shows a discrete-memory-access Triton kernel is dominated by AIV scalar work rather than vector or Cube work, try launching the kernel with `force_simt_only=True`, then retune launch parameters such as `num_warps` and grid decomposition.
+- Source: [a5-force-simt-only-discrete-access.md](patterns/a5-force-simt-only-discrete-access.md)
+- Use When:
+  - Target hardware is confirmed as A5 by user statement, profile metadata, runtime/compile logs, runtime device query, or environment/CANN target settings.
+  - `msprof` profiling has an `op_summary_*.csv` row whose `opName` matches the Triton kernel name.
+  - That row shows `aiv_scalar_ratio` clearly higher than `aiv_vec_ratio` and `cube_utilization`.
+  - The kernel body is primarily discrete/index-driven memory access, gather/scatter-like movement, or scalar-heavy pointer/index computation.
+  - Correctness validation and representative benchmark reruns are available after changing launch parameters.
+- Avoid When:
+  - The kernel is Cube-heavy, matmul-like, or already dominated by vector arithmetic.
+  - Profiling does not identify the target kernel row confidently by `opName`.
+  - The scalar ratio is only slightly higher or the bottleneck is host launch overhead, copy overhead, or another operator.
+  - The shape regime is not representative enough to justify architecture-specific launch-mode changes.
+- Signals / Code:
+  - Index arrays, indirect offsets, gather/scatter addresses, masks, or per-lane pointer reconstruction dominate the hot path.
+  - The computation has little dense arithmetic after each load.
+  - The kernel looks closer to sparse/discrete movement than SIMT-friendly dense vector math.
+- Signals / Profile:
+  - In `op_summary_*.csv`, `opName` equals or clearly contains the target kernel name.
+  - `aiv_scalar_ratio` is much larger than `aiv_vec_ratio`.
+  - `aiv_scalar_ratio` is much larger than `cube_utilization`.
+  - Low Cube utilization is expected from the kernel semantics, not an accidental symptom of a missed `tl.dot` rewrite.
+
 ### `algebraic-optimization`
 
 - Summary: Look for **semantics-preserving** rewrites that reduce **memory passes**, **redundant full scans**, or **live ranges** before micro-tuning loads. The scope includes **floating-point identities** (for example single-pass mean/variance) and **operator-defined** equivalences (for example PyTorch **logical** ops with dtype-specific truthiness and broadcasting). Always validate against the reference; forms that are equivalent on paper can still **regress** after lowering to Ascend Triton (dependency chains, UB pressure, launch overhead).
