@@ -6,10 +6,29 @@ When loading discrete indices, rather than using `tl.load` to load the
 discrete set directly, use `tl.load` to load a continuous range first, then use `tl.gather` to select
 the target values.
 
+For fixed-channel AoS layouts such as `[N, 3]` coordinates, apply the same principle by passing a
+channel-first SoA buffer (`[3, N]`) into the kernel so each channel is loaded with contiguous
+`atom_idx` offsets instead of repeated stride-3 global loads.
+
 ## Use When
 
 - The central bottleneck is discrete memory access that semantically looks like `out = x[idx]`.
 - Index-driven global loads dominate the hot path, and contiguous staging plus local selection is more plausible than direct scattered reads.
+- The hot loop repeatedly reads fixed fields from AoS records with stride-C offsets, such as `[N, 3]` coordinates loaded as `atom_idx * 3 + channel`, and the input is reused enough to amortize wrapper-side SoA materialization.
+
+## Avoid When
+
+- The source range is too large to stage or transpose profitably for the active shape.
+- The fixed field dimension is consumed as a whole and splitting it would require vector extraction.
+- The rewrite would introduce unsupported Ascend tensor indexing such as `vec[0]` on a loaded vector/tile.
+
+## Signals
+
+### Code
+
+- Channel-wise loads use stride-2/3/4 addressing in the hot vector path.
+- Attempts to coalesce fixed fields would require extracting scalar components from a vector.
+- A small fixed set of indexed setup values is used only for scalar frame/basis initialization.
 
 ## Detail
 
@@ -73,3 +92,49 @@ def pick_kernel(
     tl.store(y_ptr + rn * stride_y, val, mask=mask)
 
 ```
+
+## AoS fixed-channel variant
+
+Before:
+
+```python
+atom_idx = base + tl.arange(0, BLOCK_SIZE)
+x0 = tl.load(coordinate_ptr + atom_idx * 3 + 0, mask=mask)
+x1 = tl.load(coordinate_ptr + atom_idx * 3 + 1, mask=mask)
+x2 = tl.load(coordinate_ptr + atom_idx * 3 + 2, mask=mask)
+```
+
+Wrapper-side layout staging:
+
+```python
+coordinate = coordinate.contiguous()
+coordinate_soa = coordinate.t().contiguous()  # [3, N]
+```
+
+Kernel-side contiguous channel loads:
+
+```python
+coord0_ptr = coordinate_soa_ptr
+coord1_ptr = coordinate_soa_ptr + N
+coord2_ptr = coordinate_soa_ptr + N * 2
+
+x0 = tl.load(coord0_ptr + atom_idx, mask=mask)
+x1 = tl.load(coord1_ptr + atom_idx, mask=mask)
+x2 = tl.load(coord2_ptr + atom_idx, mask=mask)
+```
+
+Keep tiny indexed setup loads scalar:
+
+```python
+idx0 = tl.load(frame_idx_ptr + frame_id * 3 + 0).to(tl.int32)
+a0 = tl.load(coord0_ptr + idx0)
+a1 = tl.load(coord1_ptr + idx0)
+a2 = tl.load(coord2_ptr + idx0)
+```
+
+## Ascend vector-extract guardrail
+
+Ascend Triton lowering does not reliably support vector extraction patterns such as `vec[0]` or
+tensor indexing to split a loaded vector/tile. Do not convert three scalar values into a vector only
+to extract components. Prefer separate scalar loads for tiny fixed setup values, and separate
+contiguous channel pointers for hot vector paths.
