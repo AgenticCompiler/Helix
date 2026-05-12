@@ -407,8 +407,11 @@ def check_round(round_dir: Path) -> OptimizeCheckResult:
 
 def _cleanup_dir_pt_files(directory: Path) -> list[str]:
     cleaned: list[str] = []
-    for pt_file in directory.glob("*_result.pt"):
+    for pt_file in sorted(directory.iterdir()):
         if not pt_file.is_file():
+            continue
+        name_lower = pt_file.name.lower()
+        if not (name_lower == "test_result.pt" or name_lower.endswith("_result.pt")):
             continue
         try:
             pt_file.unlink()

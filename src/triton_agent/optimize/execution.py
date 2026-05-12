@@ -395,8 +395,11 @@ def _iter_numeric_round_dirs(workdir: Path) -> list[Path]:
 
 def _cleanup_workspace_pt_files(workdir: Path) -> list[str]:
     cleaned: list[str] = []
-    for pt_file in workdir.glob("*_result.pt"):
+    for pt_file in sorted(workdir.iterdir()):
         if not pt_file.is_file():
+            continue
+        name_lower = pt_file.name.lower()
+        if not (name_lower == "test_result.pt" or name_lower.endswith("_result.pt")):
             continue
         try:
             pt_file.unlink()
@@ -406,8 +409,11 @@ def _cleanup_workspace_pt_files(workdir: Path) -> list[str]:
     for round_dir in sorted(workdir.glob("opt-round-*")):
         if not round_dir.is_dir():
             continue
-        for pt_file in round_dir.glob("*_result.pt"):
+        for pt_file in sorted(round_dir.iterdir()):
             if not pt_file.is_file():
+                continue
+            name_lower = pt_file.name.lower()
+            if not (name_lower == "test_result.pt" or name_lower.endswith("_result.pt")):
                 continue
             try:
                 pt_file.unlink()
