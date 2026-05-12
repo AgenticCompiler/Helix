@@ -112,6 +112,15 @@ Read this generated index first. Then read only the one or two most relevant det
 - Use When:
   - The central bottleneck is discrete memory access that semantically looks like `out = x[idx]`.
   - Index-driven global loads dominate the hot path, and contiguous staging plus local selection is more plausible than direct scattered reads.
+  - The hot loop repeatedly reads fixed fields from AoS records with stride-C offsets, such as `[N, 3]` coordinates loaded as `atom_idx * 3 + channel`, and the input is reused enough to amortize wrapper-side SoA materialization.
+- Avoid When:
+  - The source range is too large to stage or transpose profitably for the active shape.
+  - The fixed field dimension is consumed as a whole and splitting it would require vector extraction.
+  - The rewrite would introduce unsupported Ascend tensor indexing such as `vec[0]` on a loaded vector/tile.
+- Signals / Code:
+  - Channel-wise loads use stride-2/3/4 addressing in the hot vector path.
+  - Attempts to coalesce fixed fields would require extracting scalar components from a vector.
+  - A small fixed set of indexed setup values is used only for scalar frame/basis initialization.
 
 ### `gather-load`
 
