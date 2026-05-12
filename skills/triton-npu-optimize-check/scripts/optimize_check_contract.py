@@ -12,6 +12,7 @@ from triton_agent.optimize.naming import (
     resolve_round_operator_file,
     resolve_round_perf_file,
 )
+from triton_agent.optimize.pt_cleanup import cleanup_dir_pt_files
 
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "references" / "contract.json"
 CONTRACT_DATA = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
@@ -308,6 +309,15 @@ def check_baseline(baseline_dir_path: Path) -> OptimizeCheckResult:
             decision="revise-required",
             issues=issues,
         )
+    workspace = baseline_dir_path.parent
+    cleaned = cleanup_dir_pt_files(baseline_dir_path)
+    cleaned.extend(cleanup_dir_pt_files(workspace))
+    if cleaned:
+        return _build_result(
+            kind="baseline",
+            decision="pass",
+            issues=(f"cleaned up {len(cleaned)} unused pt file(s): {', '.join(cleaned)}",),
+        )
     return _build_result(kind="baseline", decision="pass", issues=())
 
 
@@ -383,6 +393,14 @@ def check_round(round_dir: Path) -> OptimizeCheckResult:
             kind="round",
             decision="revise-required",
             issues=((continuity.reason or "round operator failed Triton continuity check"),),
+        )
+
+    cleaned = cleanup_dir_pt_files(round_dir)
+    if cleaned:
+        return _build_result(
+            kind="round",
+            decision="pass",
+            issues=(f"cleaned up {len(cleaned)} unused pt file(s) in {round_dir.name}: {', '.join(cleaned)}",),
         )
 
     return _build_result(kind="round", decision="pass", issues=())

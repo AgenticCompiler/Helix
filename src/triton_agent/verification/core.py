@@ -15,6 +15,7 @@ from triton_agent.execution import run_local_bench, run_local_test, run_remote_b
 from triton_agent.models import AgentResult
 from triton_agent.optimize.models import OptimizeStatusWorkspace
 from triton_agent.optimize.baseline import load_baseline_state
+from triton_agent.optimize.pt_cleanup import cleanup_dir_pt_files
 from triton_agent.optimize.round_contract import inspect_round_artifacts
 from triton_agent.status.core import inspect_optimize_status_workspace
 from triton_agent.skill_loader import load_operator_eval_script_module
@@ -231,6 +232,7 @@ def run_verify(
         baseline_perf_path=baseline_perf_path,
         best_perf_path=best_perf_path,
     )
+    cleanup_dir_pt_files(target.verify_dir)
     return VerifyResult(
         return_code=return_code,
         verify_dir=target.verify_dir,
