@@ -118,6 +118,32 @@ Read this generated index first. Then read only the one or two most relevant det
   - `tl.dot` inputs are already aligned in `M` and `N`, so only the `K` direction still needs padding hints.
   - Pointer slices are known contiguous or aligned, but the code does not yet communicate that with `tl.max_contiguous` or `tl.multiple_of`.
 
+### `constexpr-tile-discrete-access`
+
+- Summary: On **Ascend NPU**, Triton often lowers **masked “vector”** work into **scalar `scf.for`** loops whose **upper bound equals `tl.constexpr` tile sizes** (`BLOCK_SIZE`, `BLOCK_M`, `BLOCK_N`, …). When the **logical valid span** along that axis—**number of outputs**, **selected index length** (e.g. **index_select** / advanced indexing), **inner slice length**, etc.—is **smaller than the tile**, the lowered loop may still run the **full** trip count; correctness is restored with **masks** and **`arith.select`** against zeros, which is **wasted execution**. Choosing **smaller constexpr tiles on the host** and **recomputing grid / program counts** aligns loop bounds with the real workload. For **2D tiles**, **`min(hardware cap, live row/column extent)`** often removes masked padding along a narrow axis; **rounding up to the next power of two** is **not** universally faster—it can add **extra columns/rows** of masked work, so treat PO2 as a **JIT stability** option and **validate on device**. For **indexed writes** with **multiple launch shapes**, a common pattern is: choose an **inner** tile from **`cdiv(extent, b) * b`**, then if **`cdiv(inner, b) × (outer bundle)`** exceeds a **per-launch program limit**, **increase `b`** (fewer inner blocks) until under the cap or hit a max tile, else fall back to a **flat** kernel whose tile is chosen from the **flattened element count**—**flat** paths dominated by **`atomic_*`** may still see **little** gain from tile alone. MLIR **`{DiscreteMemAccess}`** and **`{ExtractedLoadOrStore}`** mark **per-lane** indexed **`memref.load`/`store`** (e.g. **`sizes [1]`**), not one coalesced DMA vector—**tile reduction cuts iterations**, it does not remove indexed semantics. **Profile the path that actually runs**.
+- Source: [constexpr-tile-discrete-access.md](patterns/constexpr-tile-discrete-access.md)
+- Use When:
+  - Any kernel where **`tl.arange` / 2D tile** size is **`tl.constexpr`** but a **mask** or **valid count** shows the **active outputs or indices** are **much smaller** than that tile (including **index_select**, **gather-like** `tl.load(ptr + f(index))`, **scatter-like** `tl.atomic_add` / indexed stores, and similar **output-sized < loop-sized** patterns).
+  - Simulator or profiler shows **hot loops** or **LD/ST `call_count`** scaling with **full tile area** or **2048-style** constants, not with the **logical `numel`** of the case.
+  - MLIR shows **`scf.for`** upper bound tied to tile constants while **`DiscreteMemAccess`** / **`ExtractedLoadOrStore`** appear on extracted load/store paths.
+- Avoid When:
+  - Dominant cost is **outside** the tiled indexed region (e.g. another op, host overhead).
+  - Shrinking tiles **multiplies programs** past a **launch or sync knee**—re-measure total time.
+  - Bottleneck is **atomic saturation** or **algorithmic random write** patterns where **tile width** does not reduce **atomic count** materially.
+  - You assume **next power-of-two** along a narrow 2D axis is always faster than **`min(cap, exact extent)`** without measuring—narrow shapes often favor **exact** tile width.
+- Signals / Code:
+  - **`BLOCK_SIZE`** or **`BLOCK_M`/`BLOCK_N`** are **large fixed constexprs** while **`mask = offsets < n_valid`** (or equivalent) has **`n_valid` ≪ tile** along that axis.
+  - **Multi-axis tiling**: product **`BLOCK_M * BLOCK_N`** dominates even when **one axis extent** (e.g. columns of the output slice) is smaller.
+  - **Host chooses different constexpr tiles** for **structured** (e.g. row × inner-block) vs **flat** one-dimensional launches when dispatch branches on **program count**.
+  - **Indexed globals**: **`tl.load` / `tl.store` / `tl.atomic_*`** with **dynamic byte offset** per lane, often paired with **per-lane masks**.
+- Signals / Profile:
+  - **`code_exe`**: time in **scalar loop bodies** or **indexed load/store** lines, not only in unrelated ops.
+  - **`instr_exe`**: **`LD_*` / `ST_*`** counts **≈ tile size per program** rather than **≈ valid element count**.
+- Signals / IR:
+  - **`scf.for %i = %c0 to %cN`** with **`N`** equal to a **tile constant** that does **not** shrink when the **logical extent** is smaller.
+  - **`tensor.extract`** / **`memref.load`** with **`DiscreteMemAccess`**, **`reinterpret_cast … sizes [1]`**.
+  - **`arith.select`** between computed values and **zero-filled** tensors along the tile (masked semantics).
+
 ### `diagonal`
 
 - Summary: While it is good to access data from L2 cache as much as possible, having multiple kernels accessing the *same* data from the L2 cache may cause bank conflicts that slow down operations. One can use the diagonal access pattern to replace the usual swizzle pattern to alleviate this problem. The example applies this technique to matrix multiplication, but it may be applicable in other contexts.
