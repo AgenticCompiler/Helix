@@ -33,6 +33,7 @@ from perf_artifacts import (
 from run_runtime import (
     RemoteSpec,
     ResultPayload,
+    env_int,
     cleanup_remote_workspace,
     copy_file_from_remote,
     copy_file_to_remote,
@@ -48,6 +49,10 @@ from run_runtime import (
 
 _LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR"
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched op_statistic csv"
+
+
+def _bench_timeout() -> int:
+    return env_int("TRITON_AGENT_BENCH_TIMEOUT_SECONDS", 900)
 
 
 def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
@@ -202,6 +207,7 @@ def _run_remote_bench_standalone(
             stdout=quiet_stdout,
             verbose=verbose,
             stderr=stderr,
+            stall_timeout_seconds=_bench_timeout(),
         )
     copied_perf_path: Path | None = None
     try:
@@ -273,7 +279,7 @@ def _run_local_bench_msprof(
     count_result = run_buffered_process(
         [local_python_executable(), bench_file.name, "--num-bench"],
         str(bench_file.parent),
-        stall_timeout_seconds=900,
+        stall_timeout_seconds=_bench_timeout(),
     )
     if not result_succeeded(count_result):
         return count_result, None
@@ -305,7 +311,7 @@ def _run_local_bench_msprof(
                 result = run_streaming_process(
                     command,
                     str(bench_file.parent),
-                    stall_timeout_seconds=900,
+                    stall_timeout_seconds=_bench_timeout(),
                     stdout=quiet_stdout,
                 )
             stdout_chunks.append(str(result["stdout"]))
@@ -391,6 +397,7 @@ def _run_remote_bench_msprof(
         ["python3", bench_file.name, "--num-bench"],
         verbose=verbose,
         stderr=stderr,
+        stall_timeout_seconds=_bench_timeout(),
     )
     if not result_succeeded(count_result):
         return count_result, None, remote_workspace
@@ -426,6 +433,7 @@ def _run_remote_bench_msprof(
                 ],
                 verbose=verbose,
                 stderr=stderr,
+                stall_timeout_seconds=_bench_timeout(),
             )
             stdout_chunks.append(str(result["stdout"]))
             stderr_chunks.append(str(result["stderr"]))

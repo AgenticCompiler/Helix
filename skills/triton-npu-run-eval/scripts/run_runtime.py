@@ -47,6 +47,31 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+def env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer, got {raw!r}") from exc
+    if value < 0:
+        raise ValueError(f"{name} must be non-negative, got {raw!r}")
+    return value
+
+
+def _ssh_timeout() -> int:
+    return env_int("TRITON_AGENT_SSH_TIMEOUT_SECONDS", 120)
+
+
+def _scp_timeout() -> int:
+    return env_int("TRITON_AGENT_SCP_TIMEOUT_SECONDS", 300)
+
+
+def _eval_stall_timeout() -> int:
+    return env_int("TRITON_AGENT_EVAL_TIMEOUT_SECONDS", 900)
+
+
 def emit_verbose(stderr: TextIO, category: str, message: str) -> None:
     print(f"[{category}] {message}", file=stderr)
 
@@ -254,7 +279,7 @@ def create_remote_workspace(
         remote_command = "mktemp -d"
     command = _ssh_command(spec, remote_command)
     _maybe_emit_remote_command(command, verbose, stderr)
-    result = run_buffered_process(command, ".", stall_timeout_seconds=120)
+    result = run_buffered_process(command, ".", stall_timeout_seconds=_ssh_timeout())
     if not result_succeeded(result):
         raise RuntimeError(result["stderr"] or result["stdout"] or "Failed to create remote workspace.")
     workspace = result["stdout"].strip().splitlines()[-1].strip()
@@ -271,7 +296,7 @@ def cleanup_remote_workspace(
 ) -> None:
     command = _ssh_command(spec, f"rm -rf {shlex.quote(remote_workspace)}")
     _maybe_emit_remote_command(command, verbose, stderr)
-    run_buffered_process(command, ".", stall_timeout_seconds=120)
+    run_buffered_process(command, ".", stall_timeout_seconds=_ssh_timeout())
 
 
 def copy_file_to_remote(
@@ -283,7 +308,7 @@ def copy_file_to_remote(
 ) -> None:
     command = _scp_to_remote_command(spec, local_path, remote_path)
     _maybe_emit_remote_command(command, verbose, stderr)
-    result = run_buffered_process(command, ".", stall_timeout_seconds=300)
+    result = run_buffered_process(command, ".", stall_timeout_seconds=_scp_timeout())
     if not result_succeeded(result):
         raise RuntimeError(result["stderr"] or result["stdout"] or f"Failed to copy {local_path} to remote.")
 
@@ -297,7 +322,7 @@ def copy_file_from_remote(
 ) -> None:
     command = _scp_from_remote_command(spec, remote_path, local_path)
     _maybe_emit_remote_command(command, verbose, stderr)
-    result = run_buffered_process(command, ".", stall_timeout_seconds=300)
+    result = run_buffered_process(command, ".", stall_timeout_seconds=_scp_timeout())
     if not result_succeeded(result):
         raise RuntimeError(result["stderr"] or result["stdout"] or f"Failed to copy {remote_path} from remote.")
 
@@ -312,7 +337,7 @@ def copy_directory_from_remote(
     local_path.parent.mkdir(parents=True, exist_ok=True)
     command = _scp_from_remote_command(spec, remote_path, local_path, recursive=True)
     _maybe_emit_remote_command(command, verbose, stderr)
-    result = run_buffered_process(command, ".", stall_timeout_seconds=300)
+    result = run_buffered_process(command, ".", stall_timeout_seconds=_scp_timeout())
     if not result_succeeded(result):
         raise RuntimeError(
             result["stderr"] or result["stdout"] or f"Failed to copy directory {remote_path} from remote."
@@ -327,6 +352,7 @@ def run_remote_command_streaming(
     verbose: bool = False,
     stderr: TextIO | None = None,
     extra_env: dict[str, str] | None = None,
+    stall_timeout_seconds: int | None = None,
 ) -> ResultPayload:
     env_prefix = _shell_env_prefix(extra_env)
     command_text = _normalize_remote_command(remote_command)
@@ -335,7 +361,8 @@ def run_remote_command_streaming(
         f"cd {shlex.quote(remote_workspace)} && {env_prefix + ' ' if env_prefix else ''}{command_text}",
     )
     _maybe_emit_remote_command(command, verbose, stderr)
-    return run_streaming_process(command, ".", stall_timeout_seconds=900, stdout=stdout)
+    timeout = stall_timeout_seconds if stall_timeout_seconds is not None else _eval_stall_timeout()
+    return run_streaming_process(command, ".", stall_timeout_seconds=timeout, stdout=stdout)
 
 
 def run_remote_command_buffered(
@@ -345,6 +372,7 @@ def run_remote_command_buffered(
     verbose: bool = False,
     stderr: TextIO | None = None,
     extra_env: dict[str, str] | None = None,
+    stall_timeout_seconds: int | None = None,
 ) -> ResultPayload:
     env_prefix = _shell_env_prefix(extra_env)
     command_text = _normalize_remote_command(remote_command)
@@ -353,7 +381,8 @@ def run_remote_command_buffered(
         f"cd {shlex.quote(remote_workspace)} && {env_prefix + ' ' if env_prefix else ''}{command_text}",
     )
     _maybe_emit_remote_command(command, verbose, stderr)
-    return run_buffered_process(command, ".", stall_timeout_seconds=900)
+    timeout = stall_timeout_seconds if stall_timeout_seconds is not None else _eval_stall_timeout()
+    return run_buffered_process(command, ".", stall_timeout_seconds=timeout)
 
 
 def _ssh_command(spec: RemoteSpec, remote_command: str) -> list[str]:

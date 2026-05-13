@@ -68,6 +68,39 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
         ),
     ),
     (
+        "Timeout control",
+        (
+            (
+                "TRITON_AGENT_STALL_TIMEOUT_SECONDS",
+                "Stall timeout in seconds for agent subprocesses (default: 900).",
+            ),
+            (
+                "TRITON_AGENT_SSH_TIMEOUT_SECONDS",
+                "Stall timeout in seconds for remote SSH operations (default: 120).",
+            ),
+            (
+                "TRITON_AGENT_SCP_TIMEOUT_SECONDS",
+                "Stall timeout in seconds for remote file transfers (default: 300).",
+            ),
+            (
+                "TRITON_AGENT_EVAL_TIMEOUT_SECONDS",
+                "Stall timeout in seconds for remote command execution (default: 900).",
+            ),
+            (
+                "TRITON_AGENT_TEST_TIMEOUT_SECONDS",
+                "Stall timeout in seconds for test execution (default: 900).",
+            ),
+            (
+                "TRITON_AGENT_BENCH_TIMEOUT_SECONDS",
+                "Stall timeout in seconds for benchmark execution (default: 900).",
+            ),
+            (
+                "TRITON_AGENT_PROFILE_TIMEOUT_SECONDS",
+                "Stall timeout in seconds for profile execution (default: 900).",
+            ),
+        ),
+    ),
+    (
         "OpenHands backend",
         (
             ("LLM_API_KEY", "Required API key for the OpenHands backend."),
