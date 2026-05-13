@@ -12,6 +12,7 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import Any, TextIO, cast
 
 from run_runtime import (
+    env_int,
     ResultPayload,
     RemoteSpec,
     cleanup_remote_workspace,
@@ -24,6 +25,10 @@ from run_runtime import (
     run_remote_command_buffered,
     run_remote_command_streaming,
 )
+
+
+def _test_timeout() -> int:
+    return env_int("TRITON_AGENT_TEST_TIMEOUT_SECONDS", 900)
 
 
 @dataclass(frozen=True)
@@ -157,7 +162,7 @@ def _run_legacy_local_test(
     test_mode: str,
 ) -> tuple[ResultPayload, Path | None]:
     command = [sys.executable, str(test_file), "--operator-file", str(operator_file)]
-    result = run_streaming_process(command, str(test_file.parent), stall_timeout_seconds=900)
+    result = run_streaming_process(command, str(test_file.parent), stall_timeout_seconds=_test_timeout())
     archived_result = None
     if test_mode == "differential" and result_succeeded(result):
         archived_result = archive_differential_result(test_file, operator_file)
@@ -178,6 +183,7 @@ def _run_legacy_remote_test(
         spec,
         remote_workspace,
         ["python3", test_file.name, "--operator-file", operator_file.name],
+        stall_timeout_seconds=_test_timeout(),
         verbose=verbose,
         stderr=stderr,
     )
@@ -316,6 +322,7 @@ def run_remote_test(
                 spec,
                 remote_workspace,
                 _build_remote_differential_command(test_file.name, operator_file.name),
+                stall_timeout_seconds=_test_timeout(),
                 verbose=verbose,
                 stderr=stderr,
             )

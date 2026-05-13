@@ -9,6 +9,7 @@ from typing import TextIO
 from run_runtime import (
     RemoteSpec,
     ResultPayload,
+    env_int,
     cleanup_remote_workspace,
     copy_directory_from_remote,
     copy_file_to_remote,
@@ -20,6 +21,10 @@ from run_runtime import (
     run_remote_command_streaming,
     run_streaming_process,
 )
+
+
+def _profile_timeout() -> int:
+    return env_int("TRITON_AGENT_PROFILE_TIMEOUT_SECONDS", 900)
 
 
 def run_local_profile_bench(
@@ -148,7 +153,7 @@ def _run_local_profile_msprof(
             str(selected_case),
         ],
         str(bench_file.parent),
-        stall_timeout_seconds=900,
+        stall_timeout_seconds=_profile_timeout(),
     )
 
 
@@ -180,6 +185,7 @@ def _run_remote_profile_standalone(
             operator_file.name,
             case_id,
         ],
+        stall_timeout_seconds=_profile_timeout(),
         verbose=verbose,
         stderr=stderr,
     )
@@ -216,6 +222,7 @@ def _run_remote_profile_msprof(
             "--bench",
             str(selected_case),
         ],
+        stall_timeout_seconds=_profile_timeout(),
         verbose=verbose,
         stderr=stderr,
     )
@@ -224,7 +231,7 @@ def _resolve_bench_case_local(bench_file: Path, bench_case: int | None) -> int:
     count_result = run_buffered_process(
         [local_python_executable(), bench_file.name, "--num-bench"],
         str(bench_file.parent),
-        stall_timeout_seconds=900,
+        stall_timeout_seconds=_profile_timeout(),
     )
     if not result_succeeded(count_result):
         raise RuntimeError(str(count_result["stderr"]) or str(count_result["stdout"]) or "Unable to query benchmark cases.")
@@ -243,6 +250,7 @@ def _resolve_bench_case_remote(
         spec,
         remote_workspace,
         ["python3", bench_file.name, "--num-bench"],
+        stall_timeout_seconds=_profile_timeout(),
         verbose=verbose,
         stderr=stderr,
     )
