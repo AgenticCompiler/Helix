@@ -118,6 +118,44 @@ detail: If passing, describe per-round what logs and evidence were saved. If fai
 mark which rounds are missing optimization plans, optimized code, msprof summaries,
 compilation fix records, or runtime error records.
 
+check-10: Optimization pattern usage analysis
+
+Analyze which optimization patterns from the staged pattern reference were applied in
+each optimization round. This check is informational — it reports findings without a
+PASS/FAIL result. Write the analysis to a separate file: pattern_analysis.md
+
+For each round, use two-tier evidence in priority order:
+
+Tier 1 — Explicit (read artifacts first):
+  - Search opt-round-N/attempts.md for pattern names, candidate pattern discussions,
+    and pattern triage records. The optimize workflow may record pattern choices here.
+  - Search opt-round-N/summary.md for named pattern direction records.
+  - Also check opt-note.md at the operator root for overall pattern mentions.
+
+Tier 2 — Inferred (only when Tier 1 finds no pattern for a round):
+  - Compare the operator .py file between this round and its immediate predecessor
+    (previous round or baseline/). Examine what was added, removed, or changed.
+  - Read each pattern's ## Signals section from the staged pattern references under
+    {patterns_path.as_posix()}
+  - Match the nature of the code diff against pattern signals. Consider whether the
+    changes are structural (tiling, pipeline), parametric (autotune configs), or
+    algebraic (expression rewrites).
+
+For each detected pattern, label its evidence level:
+  - "explicit": pattern name directly stated in attempts.md, summary.md, or opt-note.md.
+    Cite the source file and round.
+  - "inferred": determined from code diff analysis. Cite the key diff changes and
+    which pattern signals matched.
+
+Output format for pattern_analysis.md:
+  - Per-round breakdown: round, pattern(s) used, evidence level per pattern, source
+  - For inferred entries: describe the key diff changes and matched pattern signals
+  - Summary: all patterns used across the entire optimization, with evidence level
+    distribution (how many explicit vs inferred)
+  - Note any strategies that appear novel (not matching any staged pattern reference)
+
+Write the analysis to: pattern_analysis.md
+
 Output format requirements:
 
 The file must begin with a check overview in the following format:
