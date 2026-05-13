@@ -22,9 +22,13 @@ from triton_agent.verbose import emit_verbose_lines, format_command_messages
 class AgentRunner(ABC):
     _OPTIMIZE_INTERRUPT_POLICY = InterruptPolicy()
 
-    def __init__(self, executable: str, stall_timeout_seconds: int = 900) -> None:
+    def __init__(self, executable: str, stall_timeout_seconds: int | None = None) -> None:
         self.executable = executable
-        self.stall_timeout_seconds = stall_timeout_seconds
+        self.stall_timeout_seconds = (
+            stall_timeout_seconds
+            if stall_timeout_seconds is not None
+            else _resolve_stall_timeout_seconds()
+        )
 
     @abstractmethod
     def build_command(self, request: AgentRequest) -> list[str]:
@@ -149,6 +153,8 @@ _TRANSIENT_AGENT_FAILURE_PATTERNS = (
 )
 _CODE_AGENT_MAX_RETRIES_ENV = "TRITON_AGENT_CODE_AGENT_MAX_RETRIES"
 _DEFAULT_CODE_AGENT_MAX_RETRIES = 2
+_STALL_TIMEOUT_SECONDS_ENV = "TRITON_AGENT_STALL_TIMEOUT_SECONDS"
+_DEFAULT_STALL_TIMEOUT_SECONDS = 900
 
 
 def _is_transient_agent_failure(result: AgentResult) -> bool:
@@ -175,5 +181,22 @@ def _code_agent_max_retries() -> int:
     if value < 0:
         raise ValueError(
             f"{_CODE_AGENT_MAX_RETRIES_ENV} must be a non-negative integer, got {raw_value!r}"
+        )
+    return value
+
+
+def _resolve_stall_timeout_seconds() -> int:
+    raw_value = os.environ.get(_STALL_TIMEOUT_SECONDS_ENV)
+    if raw_value is None:
+        return _DEFAULT_STALL_TIMEOUT_SECONDS
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(
+            f"{_STALL_TIMEOUT_SECONDS_ENV} must be a non-negative integer, got {raw_value!r}"
+        ) from exc
+    if value < 0:
+        raise ValueError(
+            f"{_STALL_TIMEOUT_SECONDS_ENV} must be a non-negative integer, got {raw_value!r}"
         )
     return value
