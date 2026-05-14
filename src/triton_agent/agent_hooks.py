@@ -12,16 +12,19 @@ _OPENCODE_HOOK_DIR = Path(".opencode") / "triton-agent-hooks"
 _OPENCODE_PLUGIN_FILE = Path(".opencode") / "plugins" / "triton-agent-hook-guard.js"
 _CODEX_DENY_MESSAGE = (
     "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
-    "and do not inspect staged skill implementation files under .codex/skills/*/scripts/. "
+    "and do not inspect protected files (staged skill implementation files under "
+    ".codex/skills/*/scripts/ or triton-agent-logs/ output). "
     "Use the skill instructions and documented command interface instead."
 )
 _OPENCODE_DENY_MESSAGE = (
     "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
-    "and do not inspect staged skill implementation files under .opencode/skills/*/scripts/. "
+    "and do not inspect protected files (staged skill implementation files under "
+    ".opencode/skills/*/scripts/ or triton-agent-logs/ output). "
     "Use the skill instructions and documented command interface instead."
 )
-_CODEX_DENY_READ_GLOBS = (Path(".codex") / "skills" / "*" / "scripts" / "**",)
-_OPENCODE_DENY_READ_GLOBS = (Path(".opencode") / "skills" / "*" / "scripts" / "**",)
+_SHARED_DENY_READ_GLOBS = (Path("triton-agent-logs") / "**",)
+_CODEX_DENY_READ_GLOBS = _SHARED_DENY_READ_GLOBS + (Path(".codex") / "skills" / "*" / "scripts" / "**",)
+_OPENCODE_DENY_READ_GLOBS = _SHARED_DENY_READ_GLOBS + (Path(".opencode") / "skills" / "*" / "scripts" / "**",)
 
 
 @dataclass(frozen=True)
