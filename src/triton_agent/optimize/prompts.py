@@ -113,6 +113,8 @@ def _shared_optimize_prompt_lines(
         "Use `baseline/<operator>_perf.txt` for canonical performance comparisons.",
         "Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.",
         "Record exactly one resolved comparison basis in `round-state.json` as `effective_metric_source` using one of: `kernel`, `total-op`, or `mixed`.",
+        "Do not read staged skill implementation files under skills/*/scripts/ unless debugging, patching, or verifying that helper behavior.",
+        "Prefer SKILL.md and references/*.md for workflow guidance.",
         "Use the staged `triton-npu-analyze-round-performance` skill when a round needs deeper diagnosis from profile or IR evidence.",
         "When you use that analysis flow, write `opt-round-N/perf-analysis.md` as the standalone analysis artifact.",
         "Use `triton-npu-analyze-ir` as the IR evidence companion when IR attribution is needed, while `triton-npu-analyze-round-performance` remains the owner of `opt-round-N/perf-analysis.md`.",

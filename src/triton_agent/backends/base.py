@@ -7,9 +7,15 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Callable, Optional, TextIO
 
-from triton_agent.agent_hooks import AgentHookManager
+from triton_agent.agent_hooks import AgentHookManager, AgentHookOptions
 from triton_agent.models import AgentRequest, AgentResult
 from triton_agent.optimize.prompts import build_optimize_resume_prompt
+from triton_agent.otel_trace import (
+    append_trace_event,
+    build_code_agent_event,
+    trace_path_from_request,
+    utc_timestamp,
+)
 from triton_agent.process_runner import InterruptPolicy, OutputFilter, run_process
 from triton_agent.show_output_log import (
     open_show_output_log,
@@ -44,7 +50,7 @@ class AgentRunner(ABC):
         if request.verbose:
             self._log_launch_command(command, stderr or sys.stderr)
 
-        if not request.enable_agent_hooks:
+        if not request.enable_agent_hooks and not request.log_tools:
             return self._run_with_retry(command, request, stdout=stdout)
 
         hook_manager = self._hook_manager()
@@ -54,6 +60,7 @@ class AgentRunner(ABC):
         hook_state = hook_manager.prepare_hooks(
             request.agent_name,
             request.workdir,
+            self._hook_options(request),
             extra_allowed_read_roots=extra_allowed_read_roots,
         )
         if request.verbose:
@@ -101,6 +108,17 @@ class AgentRunner(ABC):
         repo_root = Path(__file__).resolve().parents[3]
         return AgentHookManager(repo_root / "hooks")
 
+    def _hook_options(self, request: AgentRequest) -> AgentHookOptions:
+        trace_path = trace_path_from_request(request)
+        run_id = trace_path.parent.name if trace_path is not None else None
+        return AgentHookOptions(
+            trace_enabled=request.log_tools and trace_path is not None,
+            guard_enabled=request.enable_agent_hooks,
+            trace_path=trace_path,
+            run_id=run_id,
+            role=request.optimize_role or "worker",
+        )
+
     def _select_mode(self, request: AgentRequest) -> str:
         if request.interact:
             return "interactive"
@@ -141,17 +159,54 @@ class AgentRunner(ABC):
         *,
         stdout: Optional[TextIO] = None,
     ) -> AgentResult:
-        return run_process(
-            command,
-            str(request.workdir),
-            mode=self._select_mode(request),
-            stall_timeout_seconds=self.stall_timeout_seconds,
-            session_id_extractor=self.session_id_extractor(),
-            stdout=stdout,
-            output_filter=self.output_filter(request),
-            interrupt_policy=self.interrupt_policy(request),
-            extra_env=request.extra_env,
-        )
+        trace_path = trace_path_from_request(request)
+        start_time = utc_timestamp()
+        start_counter = time.perf_counter()
+        result: AgentResult | None = None
+        try:
+            result = run_process(
+                command,
+                str(request.workdir),
+                mode=self._select_mode(request),
+                stall_timeout_seconds=self.stall_timeout_seconds,
+                session_id_extractor=self.session_id_extractor(),
+                stdout=stdout,
+                output_filter=self.output_filter(request),
+                interrupt_policy=self.interrupt_policy(request),
+                extra_env=request.extra_env,
+            )
+            return result
+        except BaseException as exc:
+            end_time = utc_timestamp()
+            duration_ms = int((time.perf_counter() - start_counter) * 1000)
+            append_trace_event(
+                trace_path,
+                build_code_agent_event(
+                    request=request,
+                    command=command,
+                    start_time=start_time,
+                    end_time=end_time,
+                    duration_ms=duration_ms,
+                    result=None,
+                    exception=exc,
+                ),
+            )
+            raise
+        finally:
+            if result is not None:
+                end_time = utc_timestamp()
+                duration_ms = int((time.perf_counter() - start_counter) * 1000)
+                append_trace_event(
+                    trace_path,
+                    build_code_agent_event(
+                        request=request,
+                        command=command,
+                        start_time=start_time,
+                        end_time=end_time,
+                        duration_ms=duration_ms,
+                        result=result,
+                    ),
+                )
 
 
 _TRANSIENT_AGENT_FAILURE_PATTERNS = (

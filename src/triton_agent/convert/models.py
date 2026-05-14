@@ -15,3 +15,4 @@ class ConvertOptions:
     output: str | None
     test_mode: str | None
     prompt: str | None = None
+    log_tools: bool = False

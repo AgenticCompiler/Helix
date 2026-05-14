@@ -16,7 +16,7 @@ class OpenCodeRunner(AgentRunner):
                 "--prompt",
                 request.prompt,
             ]
-            if not request.enable_agent_hooks:
+            if not request.enable_agent_hooks and not request.log_tools:
                 command.insert(2, "--pure")
             return command
 
@@ -29,6 +29,6 @@ class OpenCodeRunner(AgentRunner):
             "--thinking",
             request.prompt,
         ]
-        if not request.enable_agent_hooks:
+        if not request.enable_agent_hooks and not request.log_tools:
             command.insert(5, "--pure")
         return command

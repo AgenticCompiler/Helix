@@ -156,6 +156,7 @@ class _CommandSpec:
     has_format: bool = False
     has_verify_phase: bool = False
     has_force_verify: bool = False
+    has_log_tools: bool = False
 
 
 _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
@@ -174,6 +175,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         bench_mode_default="standalone",
         has_prompt=True,
         has_force_overwrite=True,
+        has_log_tools=True,
     ),
     CommandKind.GEN_EVAL_BATCH: _CommandSpec(
         handler=handle_gen_eval_batch,
@@ -190,6 +192,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         bench_mode_default="standalone",
         has_prompt=True,
         max_concurrency_default=2,
+        has_log_tools=True,
     ),
     CommandKind.CONVERT: _CommandSpec(
         handler=handle_convert,
@@ -205,6 +208,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         test_mode_choices=("differential",),
         has_prompt=True,
         has_force_overwrite=True,
+        has_log_tools=True,
     ),
     CommandKind.CONVERT_BATCH: _CommandSpec(
         handler=handle_convert_batch,
@@ -220,6 +224,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         test_mode_choices=("differential",),
         has_prompt=True,
         max_concurrency_default=2,
+        has_log_tools=True,
     ),
     CommandKind.GEN_TEST: _CommandSpec(
         handler=handle_gen_test,
@@ -234,6 +239,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         test_mode_default="standalone",
         has_prompt=True,
         has_force_overwrite=True,
+        has_log_tools=True,
     ),
     CommandKind.RUN_TEST: _CommandSpec(
         handler=handle_run_test,
@@ -258,6 +264,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         bench_mode_default="standalone",
         has_prompt=True,
         has_force_overwrite=True,
+        has_log_tools=True,
     ),
     CommandKind.RUN_BENCH: _CommandSpec(
         handler=handle_run_bench,
@@ -304,6 +311,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_output=False,
         has_agent=True,
         has_show_output=True,
+        has_log_tools=True,
     ),
     CommandKind.LOG_CHECK_BATCH: _CommandSpec(
         handler=handle_log_check_batch,
@@ -314,6 +322,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_agent=True,
         has_show_output=True,
         max_concurrency_default=1,
+        has_log_tools=True,
     ),
     CommandKind.VERIFY: _CommandSpec(
         handler=handle_verify,
@@ -350,6 +359,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_bench_mode=True,
         has_optimize_options=True,
         has_prompt=True,
+        has_log_tools=True,
     ),
     CommandKind.OPTIMIZE_BATCH: _CommandSpec(
         handler=handle_optimize_batch,
@@ -365,6 +375,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_optimize_options=True,
         has_prompt=True,
         max_concurrency_default=1,
+        has_log_tools=True,
     ),
     CommandKind.UPLOAD_OPTIMIZE: _CommandSpec(
         handler=handle_upload_optimize,
@@ -422,6 +433,8 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--interact", action="store_true")
         if spec.has_show_output:
             subparser.add_argument("--show-output", action="store_true")
+        if spec.has_log_tools:
+            subparser.add_argument("--log-tools", action="store_true")
         if spec.has_agent:
             subparser.add_argument("--agent", default="codex", choices=_AGENT_CHOICES)
         if spec.has_test_mode:
