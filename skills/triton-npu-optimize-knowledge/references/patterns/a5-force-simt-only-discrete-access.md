@@ -73,12 +73,48 @@ If A5 cannot be confirmed, record this pattern as a candidate only. Do not apply
    - grid decomposition
    - per-program work size
    - block size when it affects scalar/index work
-8. Keep the change only if correctness passes and measured performance improves.
+8. If enabling SIMT-only mode fails with compile error `507035`, follow the compile-failure repair below before abandoning the experiment.
+9. Keep the change only if correctness passes and measured performance improves.
+
+## Compile Failure: 507035
+
+After adding `force_simt_only=True`, compilation may fail with only:
+
+```text
+error code is 507035
+```
+
+or with error code `507035` plus a more detailed message like:
+
+```text
+The Dcache access exceeds the maximum range of the Dcache stack MEM
+```
+
+In both cases, this can indicate that the SIMT stack size configured by the active `torch_npu`/ACL environment is too small for the generated SIMT kernel.
+
+Potential repair:
+
+1. Locate the `acl_default.json` used by the current Python/`torch_npu` environment.
+2. Add or merge this JSON entry:
+
+   ```json
+   {
+     "StackSize": {
+       "simt_stack_size": 65536
+     }
+   }
+   ```
+
+3. Re-run compilation and correctness validation.
+4. If error code `507035` remains, with or without the detailed Dcache stack message, try adjusting `simt_stack_size` further for the environment and shape, then rerun correctness and benchmark checks.
+
+Treat this as an environment-level repair. Record the original error, the `acl_default.json` path, the stack size tried, and whether the repair changed compile, correctness, or performance behavior.
 
 ## What To Verify After Applying
 
 - Correctness/precision remains within the operator's accepted tolerances for all tested dtypes and boundary shapes.
 - The round record cites the A5 evidence source, such as profile metadata, log text, runtime query output, environment setting, or explicit user statement.
+- If compile error `507035` was repaired through `acl_default.json`, record the exact `simt_stack_size` value and rerun correctness before benchmarking.
 - `force_simt_only=True` improves representative benchmark results, not only one isolated shape.
 - `num_warps` and grid choices were rechecked after changing launch mode.
 - A follow-up profile confirms reduced scalar-heavy bottleneck or improved elapsed time for the target kernel row.
@@ -88,3 +124,4 @@ If A5 cannot be confirmed, record this pattern as a candidate only. Do not apply
 - `force_simt_only=True` is architecture- and backend-sensitive; it may regress non-A5 targets or dense vector/Cube kernels.
 - The best `num_warps` or grid under SIMT-only mode may differ from the previous best configuration.
 - A scalar-heavy profile can point to code-structure problems that should be fixed directly instead of hidden by launch mode.
+- Changing `acl_default.json` affects the active runtime environment, so keep the change explicit, reversible, and tied to the measured experiment.
