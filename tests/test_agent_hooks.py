@@ -34,8 +34,12 @@ class AgentHookManagerTests(unittest.TestCase):
             self.assertEqual(policy["allow_read_roots"], [str(workspace.resolve())])
             self.assertEqual(
                 policy["deny_read_globs"],
-                [str(workspace.resolve() / ".codex" / "skills" / "*" / "scripts" / "**")],
+                [
+                    str(workspace.resolve() / "triton-agent-logs" / "**"),
+                    str(workspace.resolve() / ".codex" / "skills" / "*" / "scripts" / "**"),
+                ],
             )
+            self.assertIn("triton-agent-logs", policy["deny_message"])
             self.assertIn("triton-agent workspace policy", policy["deny_message"])
 
             warnings = manager.cleanup(state)
@@ -66,8 +70,12 @@ class AgentHookManagerTests(unittest.TestCase):
             self.assertEqual(policy["allow_read_roots"], [str(workspace.resolve())])
             self.assertEqual(
                 policy["deny_read_globs"],
-                [str(workspace.resolve() / ".opencode" / "skills" / "*" / "scripts" / "**")],
+                [
+                    str(workspace.resolve() / "triton-agent-logs" / "**"),
+                    str(workspace.resolve() / ".opencode" / "skills" / "*" / "scripts" / "**"),
+                ],
             )
+            self.assertIn("triton-agent-logs", policy["deny_message"])
             self.assertIn("triton-agent workspace policy", policy["deny_message"])
             self.assertIn(".opencode/skills/*/scripts/", policy["deny_message"])
 

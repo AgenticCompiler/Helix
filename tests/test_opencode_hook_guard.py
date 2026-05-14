@@ -103,6 +103,39 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": True})
 
+    def test_blocks_triton_agent_logs_bash_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_file.parent.mkdir(parents=True)
+            log_file.write_text("log output\n", encoding="utf-8")
+
+            result = _evaluate_plugin(_policy(workspace), "bash", f"sed -n '1,20p' {log_file}", workspace)
+
+            self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
+
+    def test_blocks_triton_agent_logs_read_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_file.parent.mkdir(parents=True)
+            log_file.write_text("log output\n", encoding="utf-8")
+
+            result = _evaluate_plugin(_policy(workspace), "read", str(log_file), workspace)
+
+            self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
+
+    def test_allows_read_outside_triton_agent_logs_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            readme = workspace / "triton-agent-readme.md"
+            readme.write_text("not a log\n", encoding="utf-8")
+
+            result = _evaluate_plugin(_policy(workspace), "bash", f"cat {readme}", workspace)
+
+            self.assertEqual(result, {"allowed": True})
+
     def test_malformed_shell_payload_fails_open(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -115,7 +148,8 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
 _DENY_MESSAGE = (
     "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
-    "and do not inspect staged skill implementation files under .opencode/skills/*/scripts/. "
+    "and do not inspect protected files (staged skill implementation files under "
+    ".opencode/skills/*/scripts/ or triton-agent-logs/ output). "
     "Use the skill instructions and documented command interface instead."
 )
 
@@ -125,7 +159,10 @@ def _policy(workspace: Path) -> dict[str, object]:
     return {
         "workspace_root": str(root),
         "allow_read_roots": [str(root)],
-        "deny_read_globs": [str(root / ".opencode" / "skills" / "*" / "scripts" / "**")],
+        "deny_read_globs": [
+            str(root / "triton-agent-logs" / "**"),
+            str(root / ".opencode" / "skills" / "*" / "scripts" / "**"),
+        ],
         "deny_message": _DENY_MESSAGE,
     }
 

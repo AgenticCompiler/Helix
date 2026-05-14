@@ -90,6 +90,51 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
+    def test_blocks_triton_agent_logs_bash_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_file.parent.mkdir(parents=True)
+            log_file.write_text("log output\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.evaluate_payload(
+                _policy(workspace),
+                _payload(workspace, f"sed -n '1,20p' {log_file}"),
+            )
+
+            self.assertEqual(reason, _DENY_MESSAGE)
+
+    def test_blocks_triton_agent_los_nested_script_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            script = workspace / "triton-agent-logs" / "triton-agent" / "opt_kernel.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("print('opt')\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.evaluate_payload(
+                _policy(workspace),
+                _payload(workspace, f"python3 -c \"print(open('{script}').read())\""),
+            )
+
+            self.assertEqual(reason, _DENY_MESSAGE)
+
+    def test_allows_read_outside_triton_agent_logs_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            readme = workspace / "triton-agent-readme.md"
+            readme.write_text("not a log\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.evaluate_payload(
+                _policy(workspace),
+                _payload(workspace, f"cat {readme}"),
+            )
+
+            self.assertIsNone(reason)
+
     def test_ignores_non_bash_tool_payloads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -131,7 +176,8 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
 _DENY_MESSAGE = (
     "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
-    "and do not inspect staged skill implementation files under .codex/skills/*/scripts/. "
+    "and do not inspect protected files (staged skill implementation files under "
+    ".codex/skills/*/scripts/ or triton-agent-logs/ output). "
     "Use the skill instructions and documented command interface instead."
 )
 
@@ -141,7 +187,10 @@ def _policy(workspace: Path) -> dict[str, object]:
     return {
         "workspace_root": str(root),
         "allow_read_roots": [str(root)],
-        "deny_read_globs": [str(root / ".codex" / "skills" / "*" / "scripts" / "**")],
+        "deny_read_globs": [
+            str(root / "triton-agent-logs" / "**"),
+            str(root / ".codex" / "skills" / "*" / "scripts" / "**"),
+        ],
         "deny_message": _DENY_MESSAGE,
     }
 
