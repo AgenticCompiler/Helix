@@ -8,9 +8,10 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.agent_hooks import AgentHookState
+from triton_agent.agent_hooks import AgentHookOptions, AgentHookState
 from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
+from triton_agent.otel_trace import TRACE_PATH_ENV, TRACE_ROLE_ENV, TRACE_RUN_ID_ENV
 from triton_agent.prompts import build_prompt
 
 
@@ -141,7 +142,13 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 result = runner.run(request)
 
             self.assertEqual(result.return_code, 0)
-            mocked_prepare.assert_called_once_with("dummy", workspace, extra_allowed_read_roots=())
+            mocked_prepare.assert_called_once()
+            self.assertEqual(mocked_prepare.call_args.args[:2], ("dummy", workspace))
+            options = mocked_prepare.call_args.args[2]
+            self.assertIsInstance(options, AgentHookOptions)
+            self.assertFalse(options.trace_enabled)
+            self.assertTrue(options.guard_enabled)
+            self.assertEqual(mocked_prepare.call_args.kwargs["extra_allowed_read_roots"], ())
             mocked_cleanup.assert_called_once_with(hook_state)
 
     def test_base_runner_passes_compiler_source_path_to_agent_hooks(self) -> None:
@@ -183,11 +190,70 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 result = runner.run(request)
 
             self.assertEqual(result.return_code, 0)
-            mocked_prepare.assert_called_once_with(
-                "dummy",
-                workspace,
-                extra_allowed_read_roots=(compiler_source,),
+            mocked_prepare.assert_called_once()
+            self.assertEqual(mocked_prepare.call_args.args[:2], ("dummy", workspace))
+            options = mocked_prepare.call_args.args[2]
+            self.assertIsInstance(options, AgentHookOptions)
+            self.assertFalse(options.trace_enabled)
+            self.assertTrue(options.guard_enabled)
+            self.assertEqual(
+                mocked_prepare.call_args.kwargs["extra_allowed_read_roots"],
+                (compiler_source,),
             )
+            mocked_cleanup.assert_called_once_with(hook_state)
+
+    def test_base_runner_prepares_passive_trace_hooks_when_log_tools_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            trace_path = workspace / "triton-agent-logs" / "otel" / "run-001" / "trace.jsonl"
+            runner = _DummyRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="dummy",
+                skill_name="triton-npu-optimize",
+                prompt="Prompt body",
+                workdir=workspace,
+                extra_env={
+                    TRACE_PATH_ENV: str(trace_path),
+                    TRACE_RUN_ID_ENV: "run-001",
+                    TRACE_ROLE_ENV: "worker",
+                },
+                log_tools=True,
+            )
+            hook_state = AgentHookState(created_paths=[])
+
+            with (
+                patch(
+                    "triton_agent.backends.base.AgentHookManager.prepare_hooks",
+                    return_value=hook_state,
+                ) as mocked_prepare,
+                patch(
+                    "triton_agent.backends.base.AgentHookManager.cleanup",
+                    return_value=[],
+                ) as mocked_cleanup,
+                patch("triton_agent.backends.base.run_process", return_value=_ok_result()),
+            ):
+                result = runner.run(request)
+
+            self.assertEqual(result.return_code, 0)
+            mocked_prepare.assert_called_once()
+            self.assertEqual(mocked_prepare.call_args.args[:2], ("dummy", workspace))
+            options = mocked_prepare.call_args.args[2]
+            self.assertIsInstance(options, AgentHookOptions)
+            self.assertTrue(options.trace_enabled)
+            self.assertFalse(options.guard_enabled)
+            self.assertEqual(options.trace_path, trace_path)
+            self.assertEqual(options.run_id, "run-001")
+            self.assertEqual(mocked_prepare.call_args.kwargs["extra_allowed_read_roots"], ())
             mocked_cleanup.assert_called_once_with(hook_state)
 
     def test_base_runner_cleans_agent_hooks_when_run_fails(self) -> None:

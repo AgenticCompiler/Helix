@@ -22,6 +22,7 @@ def run_log_check_batch(
     agent_name: str = "codex",
     verbose: bool = False,
     show_output: bool = False,
+    log_tools: bool = False,
     max_concurrency: int = 1,
     stdout: TextIO | None = None,
     run_one: Callable[..., int] | None = None,
@@ -48,6 +49,7 @@ def run_log_check_batch(
             agent_name=agent_name,
             verbose=verbose,
             show_output=show_output,
+            log_tools=log_tools,
         )
         if rc != 0:
             return BatchOptimizeResult(workspace=workspace, status="failed", message=f"log check exited with return code {rc}")
