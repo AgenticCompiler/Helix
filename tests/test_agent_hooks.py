@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.agent_hooks import AgentHookManager
+from triton_agent.agent_hooks import AgentHookManager, AgentHookOptions
 
 
 class AgentHookManagerTests(unittest.TestCase):
@@ -31,11 +31,17 @@ class AgentHookManagerTests(unittest.TestCase):
 
             policy = json.loads(policy_json.read_text(encoding="utf-8"))
             self.assertEqual(policy["workspace_root"], str(workspace.resolve()))
+            self.assertEqual(policy["trace"]["enabled"], False)
+            self.assertEqual(policy["guard"]["enabled"], True)
             self.assertEqual(policy["allow_read_roots"], [str(workspace.resolve())])
             self.assertEqual(
                 policy["deny_read_globs"],
-                [str(workspace.resolve() / ".codex" / "skills" / "*" / "scripts" / "**")],
+                [
+                    str(workspace.resolve() / "triton-agent-logs" / "**"),
+                    str(workspace.resolve() / ".codex" / "skills" / "*" / "scripts" / "**"),
+                ],
             )
+            self.assertIn("triton-agent-logs", policy["deny_message"])
             self.assertIn("triton-agent workspace policy", policy["deny_message"])
 
             warnings = manager.cleanup(state)
@@ -63,11 +69,17 @@ class AgentHookManagerTests(unittest.TestCase):
 
             policy = json.loads(policy_json.read_text(encoding="utf-8"))
             self.assertEqual(policy["workspace_root"], str(workspace.resolve()))
+            self.assertEqual(policy["trace"]["enabled"], False)
+            self.assertEqual(policy["guard"]["enabled"], True)
             self.assertEqual(policy["allow_read_roots"], [str(workspace.resolve())])
             self.assertEqual(
                 policy["deny_read_globs"],
-                [str(workspace.resolve() / ".opencode" / "skills" / "*" / "scripts" / "**")],
+                [
+                    str(workspace.resolve() / "triton-agent-logs" / "**"),
+                    str(workspace.resolve() / ".opencode" / "skills" / "*" / "scripts" / "**"),
+                ],
             )
+            self.assertIn("triton-agent-logs", policy["deny_message"])
             self.assertIn("triton-agent workspace policy", policy["deny_message"])
             self.assertIn(".opencode/skills/*/scripts/", policy["deny_message"])
 
@@ -78,6 +90,35 @@ class AgentHookManagerTests(unittest.TestCase):
             self.assertFalse(hook_dir.exists())
             self.assertTrue((workspace / ".opencode").exists())
             self.assertTrue((workspace / ".opencode" / "plugins").exists())
+
+    def test_prepare_codex_hooks_can_stage_trace_without_guard(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            trace_path = workspace / "triton-agent-logs" / "otel" / "run-001" / "trace.jsonl"
+            manager = AgentHookManager(Path(__file__).resolve().parents[1] / "hooks")
+
+            state = manager.prepare_hooks(
+                "codex",
+                workspace,
+                AgentHookOptions(
+                    trace_enabled=True,
+                    guard_enabled=False,
+                    trace_path=trace_path,
+                    run_id="run-001",
+                    role="worker",
+                ),
+            )
+
+            policy_json = workspace / ".codex" / "triton-agent-hooks" / "policy.json"
+            policy = json.loads(policy_json.read_text(encoding="utf-8"))
+            self.assertEqual(policy["trace"]["enabled"], True)
+            self.assertEqual(policy["trace"]["path"], str(trace_path))
+            self.assertEqual(policy["trace"]["run_id"], "run-001")
+            self.assertEqual(policy["trace"]["role"], "worker")
+            self.assertEqual(policy["guard"]["enabled"], False)
+
+            self.assertEqual(manager.cleanup(state), [])
 
     def test_prepare_codex_hooks_rejects_existing_hooks_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -39,6 +39,7 @@ class OptimizeRunOptions:
     compiler_source_analysis: Literal["off", "auto"] = "off"
     enable_cann_ext_api: bool = False
     enable_agent_hooks: bool = False
+    log_tools: bool = False
 
 
 @dataclass(frozen=True)

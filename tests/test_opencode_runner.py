@@ -65,6 +65,32 @@ class OpenCodeRunnerTests(unittest.TestCase):
             self.assertNotIn("--pure", command)
             self.assertIn("--thinking", command)
 
+    def test_non_interactive_command_omits_pure_when_log_tools_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = OpenCodeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="opencode",
+                skill_name="triton-npu-optimize",
+                prompt="Prompt body",
+                workdir=workspace,
+                log_tools=True,
+            )
+            command = runner.build_command(request)
+            self.assertEqual(command[:3], ["opencode", "run", "--dir"])
+            self.assertNotIn("--pure", command)
+            self.assertIn("--thinking", command)
+
     def test_interactive_command_uses_project_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)

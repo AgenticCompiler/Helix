@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from triton_agent.log_analysis import write_agent_audit
 from triton_agent.optimize.archive import ArchiveManager, ArchiveState
 from triton_agent.optimize.memory_file import MemoryFileManager, MemoryFileState
 from triton_agent.optimize.runtime_handoff import RuntimeHandoffManager, RuntimeHandoffState
@@ -39,6 +40,18 @@ class SharedOptimizeSessionArtifactsState:
     @property
     def agent_sessions_path(self) -> Path:
         return self.archive.agent_sessions_path
+
+    @property
+    def otel_trace_path(self) -> Path:
+        return self.archive.otel_trace_path
+
+    @property
+    def otel_summary_path(self) -> Path:
+        return self.archive.otel_summary_path
+
+    @property
+    def agent_audit_path(self) -> Path:
+        return self.archive.agent_audit_path
 
 
 @dataclass
@@ -158,7 +171,9 @@ class OptimizeSessionArtifactsManager:
         state: SharedOptimizeSessionArtifactsState,
     ) -> list[str]:
         """Remove or restore the temporary top-level memory file for an optimize run."""
-        return self._memory_files.cleanup(state.memory_file)
+        warnings = self._write_agent_audit(state)
+        warnings.extend(self._memory_files.cleanup(state.memory_file))
+        return warnings
 
     def record_agent_session(
         self,
@@ -187,6 +202,10 @@ class OptimizeSessionArtifactsManager:
         warnings.extend(self._runtime_handoffs.cleanup(state.runtime_handoff))
         warnings.extend(self.cleanup_unsupervised_session(state))
         return warnings
+
+    def _write_agent_audit(self, state: SharedOptimizeSessionArtifactsState) -> list[str]:
+        workdir = state.archive.log_root.parent
+        return write_agent_audit(workdir=workdir, archive=state.archive)
 
     def describe_prepare_unsupervised_session(
         self,

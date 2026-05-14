@@ -122,6 +122,17 @@ class CliParserTests(unittest.TestCase):
         self.assertIsInstance(options, GenerationOptions)
         self.assertEqual(options.prompt, "Avoid broad operator rewrites.")
 
+    def test_agent_generation_commands_accept_log_tools_option(self) -> None:
+        from triton_agent.commands.generation import generation_options_from_args
+
+        parser = build_parser()
+        for command in ("gen-eval", "gen-eval-batch", "gen-test", "gen-bench"):
+            with self.subTest(command=command):
+                args = parser.parse_args([command, "-i", "kernel.py", "--log-tools"])
+                self.assertTrue(args.log_tools)
+                options = generation_options_from_args(args)
+                self.assertTrue(options.log_tools)
+
     def test_convert_maps_to_command_kind(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["convert", "-i", "kernel.py"])
@@ -166,6 +177,24 @@ class CliParserTests(unittest.TestCase):
         options = convert_options_from_args(args)
         self.assertIsInstance(options, ConvertOptions)
         self.assertEqual(options.prompt, "Avoid numerics changes.")
+
+    def test_convert_commands_accept_log_tools_option(self) -> None:
+        from triton_agent.commands.convert import convert_options_from_args
+
+        parser = build_parser()
+        for command in ("convert", "convert-batch"):
+            with self.subTest(command=command):
+                args = parser.parse_args([command, "-i", "kernel.py", "--log-tools"])
+                self.assertTrue(args.log_tools)
+                options = convert_options_from_args(args)
+                self.assertTrue(options.log_tools)
+
+    def test_log_check_commands_accept_log_tools_option(self) -> None:
+        parser = build_parser()
+        for command in ("log-check", "log-check-batch"):
+            with self.subTest(command=command):
+                args = parser.parse_args([command, "-i", "workspace", "--log-tools"])
+                self.assertTrue(args.log_tools)
 
     def test_convert_rejects_non_differential_test_mode(self) -> None:
         parser = build_parser()
@@ -927,6 +956,22 @@ class CliParserTests(unittest.TestCase):
         self.assertTrue(args.enable_agent_hooks)
         options = optimize_run_options_from_args(args)
         self.assertTrue(options.enable_agent_hooks)
+
+    def test_optimize_accepts_log_tools_option(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--log-tools"])
+
+        self.assertTrue(args.log_tools)
+        options = optimize_run_options_from_args(args)
+        self.assertTrue(options.log_tools)
+
+    def test_optimize_batch_accepts_log_tools_option(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-batch", "-i", "operators", "--log-tools"])
+
+        self.assertTrue(args.log_tools)
+        options = optimize_run_options_from_args(args)
+        self.assertTrue(options.log_tools)
 
     def test_optimize_batch_accepts_compiler_source_analysis_options(self) -> None:
         parser = build_parser()
@@ -2668,7 +2713,8 @@ class PathResolutionTests(unittest.TestCase):
             self.assertFalse((root / "learned_lessons.md").exists())
             self.assertFalse((root / "opt-round-1").exists())
             self.assertFalse((root / ".triton-agent").exists())
-            self.assertFalse((root / "triton-agent-logs").exists())
+            audit_files = sorted((root / "triton-agent-logs" / "otel").glob("*/agent-audit.md"))
+            self.assertEqual(len(audit_files), 1)
             self.assertFalse((root / "baseline").exists())
             self.assertFalse((root / "opt_kernel.py").exists())
             self.assertTrue(test_harness.exists())

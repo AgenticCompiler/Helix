@@ -19,6 +19,7 @@ def handle_log_check(parser: argparse.ArgumentParser, args: argparse.Namespace) 
         agent_name=str(getattr(args, "agent", "codex")),
         verbose=bool(getattr(args, "verbose", False)),
         show_output=bool(getattr(args, "show_output", False)),
+        log_tools=bool(getattr(args, "log_tools", False)),
     )
 
 
@@ -35,6 +36,7 @@ def handle_log_check_batch(parser: argparse.ArgumentParser, args: argparse.Names
         agent_name=str(getattr(args, "agent", "codex")),
         verbose=bool(getattr(args, "verbose", False)),
         show_output=bool(getattr(args, "show_output", False)),
+        log_tools=bool(getattr(args, "log_tools", False)),
         max_concurrency=int(getattr(args, "max_concurrency", 1)),
     )
 

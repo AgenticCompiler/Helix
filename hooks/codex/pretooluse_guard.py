@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import fnmatch
+import hashlib
 import json
+import os
 import re
 import shlex
 import sys
@@ -25,8 +28,17 @@ READ_COMMANDS = {
 }
 
 PATH_FRAGMENT_RE = re.compile(
-    r"(?P<path>(?:/|\.\.?/|\.codex/)[A-Za-z0-9_./*?{}+@%:,=-]+)"
+    r"(?P<path>(?:/|\.\.?/|\.codex/|\.opencode/)[A-Za-z0-9_./*?{}+@%:,=-]+)"
 )
+WINDOWS_PATH_FRAGMENT_RE = re.compile(
+    r"(?P<path>[A-Za-z]:[\\/][A-Za-z0-9_ .\\/(){}+@%:,=-]+)"
+)
+TRACE_PATH_ENV = "TRITON_AGENT_OTEL_TRACE_PATH"
+TRACE_RUN_ID_ENV = "TRITON_AGENT_OTEL_RUN_ID"
+TRACE_ROLE_ENV = "TRITON_AGENT_OTEL_ROLE"
+TRACE_WORKSPACE_ROOT_ENV = "TRITON_AGENT_WORKSPACE_ROOT"
+READ_TOOLS = {"Read", "Grep", "Glob"}
+EDIT_TOOLS = {"Edit", "MultiEdit", "Write"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -47,6 +59,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"triton-agent codex hook failed open: {exc}", file=sys.stderr)
         return 0
 
+    try:
+        append_trace_events(policy, payload, blocked=reason is not None)
+    except Exception as exc:  # noqa: BLE001 - Trace failures should not block the agent.
+        print(f"triton-agent codex hook trace failed open: {exc}", file=sys.stderr)
+
     if reason is None:
         return 0
 
@@ -55,6 +72,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def evaluate_payload(policy: dict[str, Any], payload: dict[str, Any]) -> str | None:
+    guard_policy = _guard_policy(policy)
+    if not guard_policy.get("enabled", True):
+        return None
+
     tool_name = payload.get("tool_name")
     tool_input = payload.get("tool_input")
     if tool_name != "Bash" or not isinstance(tool_input, dict):
@@ -73,9 +94,9 @@ def evaluate_payload(policy: dict[str, Any], payload: dict[str, Any]) -> str | N
         return None
 
     cwd = _resolve_cwd(tool_input.get("cwd"), workspace_root)
-    allow_roots = _allow_roots(policy, workspace_root)
-    deny_globs = [str(item) for item in policy.get("deny_read_globs", []) if isinstance(item, str)]
-    deny_message = str(policy.get("deny_message") or "This read is blocked by workspace policy.")
+    allow_roots = _allow_roots(guard_policy, workspace_root)
+    deny_globs = [str(item) for item in guard_policy.get("deny_read_globs", []) if isinstance(item, str)]
+    deny_message = str(guard_policy.get("deny_message") or "This read is blocked by workspace policy.")
 
     for candidate in _candidate_paths(command, tokens):
         resolved = _resolve_candidate(candidate, cwd, workspace_root)
@@ -87,6 +108,339 @@ def evaluate_payload(policy: dict[str, Any], payload: dict[str, Any]) -> str | N
             return deny_message
 
     return None
+
+
+def append_trace_events(policy: dict[str, Any], payload: dict[str, Any], *, blocked: bool) -> None:
+    trace_policy = _trace_policy(policy)
+    if not trace_policy.get("enabled", bool(os.environ.get(TRACE_PATH_ENV))):
+        return
+    trace_path = str(trace_policy.get("path") or os.environ.get(TRACE_PATH_ENV) or "")
+    if not trace_path:
+        return
+
+    tool_name = payload.get("tool_name")
+    tool_input = payload.get("tool_input")
+    if not isinstance(tool_name, str):
+        tool_name = "unknown"
+    if not isinstance(tool_input, dict):
+        tool_input = {}
+
+    timestamp = _timestamp()
+    base_event = {
+        "timestamp": timestamp,
+        "schema_version": 1,
+        "run_id": str(trace_policy.get("run_id") or os.environ.get(TRACE_RUN_ID_ENV) or ""),
+        "role": str(trace_policy.get("role") or os.environ.get(TRACE_ROLE_ENV) or ""),
+        "type": "tool_call",
+        "phase": "start",
+        "tool": tool_name,
+        "start_time": timestamp,
+        "status": "blocked" if blocked else "started",
+        "summary": _tool_summary(tool_name, tool_input),
+        "tool_use_id": payload.get("tool_use_id"),
+        "source": "codex_hook",
+        "confidence": "high",
+    }
+    _append_trace_event(Path(trace_path), base_event)
+
+    if tool_name == "Bash":
+        command = tool_input.get("command")
+        if isinstance(command, str):
+            command_event = {
+                "timestamp": timestamp,
+                "schema_version": 1,
+                "run_id": str(trace_policy.get("run_id") or os.environ.get(TRACE_RUN_ID_ENV) or ""),
+                "role": str(trace_policy.get("role") or os.environ.get(TRACE_ROLE_ENV) or ""),
+                "type": "command",
+                "phase": "start",
+                "command_kind": _classify_command(command),
+                "command": command,
+                "remote": _extract_remote(command),
+                "status": "blocked" if blocked else "started",
+                "source": "codex_hook",
+                "confidence": "high",
+            }
+            _append_trace_event(Path(trace_path), command_event)
+
+            tokens = _split_command(command)
+            if _contains_read_command(tokens):
+                workspace_root = _resolve_policy_path(
+                    os.environ.get(TRACE_WORKSPACE_ROOT_ENV) or policy.get("workspace_root")
+                )
+                if workspace_root is not None:
+                    cwd = _resolve_cwd(tool_input.get("cwd"), workspace_root)
+                    for candidate in _candidate_paths(command, tokens):
+                        resolved = _resolve_candidate(candidate, cwd, workspace_root)
+                        if resolved is None:
+                            continue
+                        file_event = {
+                            "timestamp": timestamp,
+                            "schema_version": 1,
+                            "run_id": str(trace_policy.get("run_id") or os.environ.get(TRACE_RUN_ID_ENV) or ""),
+                            "role": str(trace_policy.get("role") or os.environ.get(TRACE_ROLE_ENV) or ""),
+                            "type": "file_access",
+                            "phase": "instant",
+                            "action": "read",
+                            "path": _display_path(resolved, workspace_root),
+                            "status": "blocked" if blocked else "started",
+                            "source": "codex_hook",
+                            "confidence": "high",
+                        }
+                        _append_trace_event(Path(trace_path), file_event)
+        return
+
+    workspace_root = _resolve_policy_path(os.environ.get(TRACE_WORKSPACE_ROOT_ENV) or policy.get("workspace_root"))
+    if workspace_root is None:
+        return
+    cwd = _resolve_cwd(tool_input.get("cwd"), workspace_root)
+    if tool_name in READ_TOOLS:
+        _append_non_bash_file_access_trace(
+            Path(trace_path),
+            trace_policy,
+            tool_name=tool_name,
+            tool_input=tool_input,
+            timestamp=timestamp,
+            workspace_root=workspace_root,
+            cwd=cwd,
+            blocked=blocked,
+        )
+    elif tool_name in EDIT_TOOLS:
+        _append_non_bash_edit_trace(
+            Path(trace_path),
+            trace_policy,
+            tool_name=tool_name,
+            tool_input=tool_input,
+            timestamp=timestamp,
+            workspace_root=workspace_root,
+            cwd=cwd,
+            blocked=blocked,
+        )
+
+
+def _guard_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    guard = policy.get("guard")
+    if isinstance(guard, dict):
+        return guard
+    return policy
+
+
+def _trace_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    trace = policy.get("trace")
+    if isinstance(trace, dict):
+        return trace
+    return {"enabled": bool(os.environ.get(TRACE_PATH_ENV))}
+
+
+def _append_trace_event(trace_path: Path, event: dict[str, Any]) -> None:
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    with trace_path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n")
+
+
+def _timestamp() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _tool_summary(tool_name: str, tool_input: dict[str, Any]) -> str:
+    if tool_name == "Bash":
+        command = tool_input.get("command")
+        return command if isinstance(command, str) else "Bash command"
+    for key in ("file_path", "path", "pattern"):
+        value = tool_input.get(key)
+        if isinstance(value, str):
+            return value
+    return tool_name
+
+
+def _append_non_bash_file_access_trace(
+    trace_path: Path,
+    trace_policy: dict[str, Any],
+    *,
+    tool_name: str,
+    tool_input: dict[str, Any],
+    timestamp: str,
+    workspace_root: Path,
+    cwd: Path,
+    blocked: bool,
+) -> None:
+    for raw_path in _tool_input_paths(tool_name, tool_input):
+        resolved = _resolve_candidate(raw_path, cwd, workspace_root)
+        if resolved is None:
+            continue
+        event: dict[str, Any] = {
+            "timestamp": timestamp,
+            "schema_version": 1,
+            "run_id": str(trace_policy.get("run_id") or os.environ.get(TRACE_RUN_ID_ENV) or ""),
+            "role": str(trace_policy.get("role") or os.environ.get(TRACE_ROLE_ENV) or ""),
+            "type": "file_access",
+            "phase": "instant",
+            "action": "search" if tool_name in {"Grep", "Glob"} else "read",
+            "path": _display_path(resolved, workspace_root),
+            "resolved_under_workspace": _is_relative_to(resolved, workspace_root),
+            "status": "blocked" if blocked else "started",
+            "source": "codex_hook",
+            "confidence": "high",
+        }
+        try:
+            if resolved.is_file():
+                event["bytes"] = resolved.stat().st_size
+        except OSError:
+            pass
+        _append_trace_event(trace_path, event)
+
+
+def _append_non_bash_edit_trace(
+    trace_path: Path,
+    trace_policy: dict[str, Any],
+    *,
+    tool_name: str,
+    tool_input: dict[str, Any],
+    timestamp: str,
+    workspace_root: Path,
+    cwd: Path,
+    blocked: bool,
+) -> None:
+    raw_path = _first_tool_input_path(tool_input)
+    if raw_path is None:
+        return
+    resolved = _resolve_candidate(raw_path, cwd, workspace_root)
+    if resolved is None:
+        return
+    added_lines, removed_lines, digest = _edit_stats(tool_name, tool_input)
+    event: dict[str, Any] = {
+        "timestamp": timestamp,
+        "schema_version": 1,
+        "run_id": str(trace_policy.get("run_id") or os.environ.get(TRACE_RUN_ID_ENV) or ""),
+        "role": str(trace_policy.get("role") or os.environ.get(TRACE_ROLE_ENV) or ""),
+        "type": "edit",
+        "phase": "instant",
+        "path": _display_path(resolved, workspace_root),
+        "edit_kind": _classify_edit_path(resolved),
+        "added_lines": added_lines,
+        "removed_lines": removed_lines,
+        "diff_digest": digest,
+        "status": "blocked" if blocked else "started",
+        "source": "codex_hook",
+        "confidence": "high",
+    }
+    _append_trace_event(trace_path, event)
+
+
+def _tool_input_paths(tool_name: str, tool_input: dict[str, Any]) -> list[str]:
+    paths: list[str] = []
+    for key in ("file_path", "path", "filePath", "notebook_path"):
+        value = tool_input.get(key)
+        if isinstance(value, str) and value:
+            paths.append(value)
+    if tool_name == "Glob":
+        pattern = tool_input.get("pattern")
+        if isinstance(pattern, str) and pattern:
+            paths.append(pattern)
+    return paths
+
+
+def _first_tool_input_path(tool_input: dict[str, Any]) -> str | None:
+    for key in ("file_path", "path", "filePath", "notebook_path"):
+        value = tool_input.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _edit_stats(tool_name: str, tool_input: dict[str, Any]) -> tuple[int, int, str]:
+    added_lines = 0
+    removed_lines = 0
+    digest_parts: list[str] = [tool_name]
+    if tool_name == "MultiEdit" and isinstance(tool_input.get("edits"), list):
+        for edit in tool_input.get("edits", []):
+            if not isinstance(edit, dict):
+                continue
+            old_text = edit.get("old_string")
+            new_text = edit.get("new_string")
+            if isinstance(old_text, str):
+                removed_lines += _line_count(old_text)
+                digest_parts.append(old_text)
+            if isinstance(new_text, str):
+                added_lines += _line_count(new_text)
+                digest_parts.append(new_text)
+    else:
+        old_text = tool_input.get("old_string")
+        new_text = tool_input.get("new_string")
+        content = tool_input.get("content")
+        if isinstance(old_text, str):
+            removed_lines += _line_count(old_text)
+            digest_parts.append(old_text)
+        if isinstance(new_text, str):
+            added_lines += _line_count(new_text)
+            digest_parts.append(new_text)
+        if isinstance(content, str):
+            added_lines += _line_count(content)
+            digest_parts.append(content)
+    digest = "sha256:" + hashlib.sha256("\n".join(digest_parts).encode("utf-8", errors="replace")).hexdigest()
+    return added_lines, removed_lines, digest
+
+
+def _line_count(text: str) -> int:
+    if not text:
+        return 0
+    return len(text.splitlines()) or 1
+
+
+def _classify_edit_path(path: Path) -> str:
+    name = path.name.lower()
+    normalized = path.as_posix().lower()
+    if "/opt-round-" in normalized:
+        return "round_artifact"
+    if name.startswith(("test_", "differential_test_")):
+        return "test_harness"
+    if name.startswith("bench_"):
+        return "bench_harness"
+    if name.endswith((".md", ".txt", ".json", ".yaml", ".yml", ".toml")):
+        return "metadata" if name.endswith((".json", ".yaml", ".yml", ".toml")) else "documentation"
+    if name.endswith(".py"):
+        return "operator"
+    return "unknown"
+
+
+def _classify_command(command: str) -> str:
+    normalized = command.lower()
+    if "compare-perf" in normalized:
+        return "compare_perf"
+    if "compare-result" in normalized:
+        return "compare_result"
+    if "check-baseline" in normalized:
+        return "check_baseline"
+    if "check-round" in normalized:
+        return "check_round"
+    if "run-test" in normalized or "pytest" in normalized or "differential_test_" in normalized:
+        return "correctness_test"
+    if "run-bench" in normalized or "bench_" in normalized:
+        if "ssh" in normalized:
+            return "remote_bench"
+        return "benchmark"
+    if "msprof" in normalized or "profile export" in normalized:
+        return "profile"
+    if _extract_remote(command) is not None:
+        return "remote_command"
+    return "local_command"
+
+
+def _extract_remote(command: str) -> str | None:
+    tokens = _split_command(command)
+    for index, token in enumerate(tokens):
+        if Path(token).name != "ssh":
+            continue
+        if index + 1 < len(tokens):
+            return tokens[index + 1]
+        return "ssh"
+    return None
+
+
+def _display_path(path: Path, workspace_root: Path) -> str:
+    try:
+        return path.relative_to(workspace_root).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def build_denial_output(reason: str) -> dict[str, Any]:
@@ -109,7 +463,7 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 def _split_command(command: str) -> list[str]:
     try:
-        return shlex.split(command)
+        return shlex.split(command, posix=os.name != "nt")
     except ValueError:
         return []
 
@@ -134,16 +488,27 @@ def _candidate_paths(command: str, tokens: list[str]) -> list[str]:
         path = match.group("path")
         if not _is_read_command_token(path):
             candidates.append(path)
+    for match in WINDOWS_PATH_FRAGMENT_RE.finditer(command):
+        path = match.group("path").rstrip("'\"),")
+        if not _is_read_command_token(path):
+            candidates.append(path)
 
     return candidates
 
 
 def _looks_like_path(token: str) -> bool:
+    if token.startswith("-"):
+        return False
+    path = Path(token)
     return (
-        token.startswith("/")
+        path.is_absolute()
+        or token.startswith("/")
         or token.startswith("./")
         or token.startswith("../")
         or token.startswith(".codex/")
+        or token.startswith(".opencode/")
+        or "\\" in token
+        or path.suffix != ""
     )
 
 

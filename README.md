@@ -294,7 +294,8 @@ Common options:
 - `--optimize-knowledge v1|v2|v3`: default is `v1`. Select which optimize knowledge library is staged before the agent starts (`v3` uses `skills/triton-npu-optimize-knowledge-v3/`).
 - `--enable-compiler-source-analysis`: allow the optimize agent to use compiler source as an escalation after benchmark, profiler, and IR evidence.
 - `--enable-cann-ext-api`: allow A5-only CANN Triton extension API optimization patterns during optimize runs.
-- `--enable-agent-hooks`: enable the workspace-local Codex hook guard for this optimize run. Agent hooks are disabled by default.
+- `--log-tools`: collect structured agent invocation and tool trace events under `triton-agent-logs/otel/<run-id>/`.
+- `--enable-agent-hooks`: enable the workspace-local hook guard for this optimize run. Agent hooks are disabled by default.
 - `--min-rounds <N>`: require at least N optimization rounds.
 - `--no-agent-session`: disable persistent agent sessions when supported.
 - `--interact`
@@ -311,6 +312,7 @@ uv run triton-agent optimize --input a.py --optimize-knowledge v2
 uv run triton-agent optimize --input a.py --optimize-knowledge v3
 uv run triton-agent optimize --input a.py --enable-compiler-source-analysis
 uv run triton-agent optimize --input a.py --enable-cann-ext-api --target-chip A5
+uv run triton-agent optimize --input a.py --log-tools --agent codex
 uv run triton-agent optimize --input a.py --enable-agent-hooks --agent codex
 uv run triton-agent optimize --input a.py --prompt "Prioritize memory-coalescing improvements."
 ```
@@ -321,11 +323,23 @@ Compiler source analysis is opt-in. When enabled, the CLI prepares a shallow Asc
 
 CANN extension API pattern access is also opt-in. When `--enable-cann-ext-api` is set, optimize stages a dedicated skill with specialized CANN Triton extension API guidance, including `sub_vec_id()`-based rewrite patterns. This option is valid only with `--target-chip A5`.
 
+Structured tool logging is opt-in. For optimize runs, `--log-tools` writes
+machine-readable trace events under `triton-agent-logs/otel/<run-id>/` and does
+not enable the blocking hook guard by itself. Every backend can record
+runner-level `agent_invocation` events; Codex and OpenCode additionally stage
+passive hooks that record visible pre-tool command and file-read events when
+available. Trace summaries record the backend capability level and evidence gaps
+explicitly. Agent-backed generation, convert, and log-check commands also accept
+`--log-tools`; they write lightweight traces under
+`triton-agent-logs/tool-traces/<run-id>/`.
+
 Agent hooks are disabled by default. When `--enable-agent-hooks` is set on an
-optimize run with `--agent codex`, the CLI stages a temporary workspace-local
-Codex hook guard before launching the agent. This is intended for debugging and
-policy experiments where you want the agent to avoid redundant reads of staged
-skill implementation files.
+optimize run with a supported backend, the CLI stages a temporary
+workspace-local hook guard before launching the agent. This is intended for
+debugging and policy experiments where you want the agent to avoid redundant
+reads of staged skill implementation files. Passing both `--log-tools` and
+`--enable-agent-hooks` records trace events and enforces the guard in the same
+hook lifecycle.
 
 Resume modes:
 
@@ -349,7 +363,8 @@ Optimize behavior:
 - Generate missing harnesses only when the required validation artifact is absent.
 - Allow the agent to do minimal repair work during baseline preparation when that is required to reach a correct, benchmarkable starting point.
 - Keep canonical optimize-session performance comparisons anchored to `baseline/perf.txt`, even when a round also compares locally against its chosen parent.
-- Record each optimize code agent launch under `optimize-logs/triton-agent/<run-id>/agent-sessions.jsonl` with timestamp, role, session id, and agent backend. Missing session ids are recorded as `unknown`.
+- Record each optimize code agent launch under `triton-agent-logs/triton-agent/<run-id>/agent-sessions.jsonl` with timestamp, role, session id, and agent backend. Missing session ids are recorded as `unknown`.
+- Write structured optimize audit artifacts under `triton-agent-logs/otel/<run-id>/`: `trace.jsonl`, `summary.json`, and `agent-audit.md`.
 - Run optimize as explicit worker rounds with a supervisor audit between rounds instead of relying on one unconstrained agent pass.
 - Keep the shared workspace guidance role-neutral; worker versus supervisor role assignment comes from the launch prompt plus the live `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md` handoff files.
 - Use fresh agent invocations for worker and supervisor passes so role-specific optimize context does not leak across the session.
@@ -519,6 +534,7 @@ Common options:
 - `--min-rounds <N>`
 - `--no-agent-session`
 - `--max-concurrency <N>`: defaults to `1`
+- `--log-tools`
 - `--show-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -582,6 +598,7 @@ These options appear on multiple commands:
 - `--agent`: choose the agent backend for agent-backed generation and optimization commands.
 - `--interact`: attach to a live agent session instead of a non-interactive run.
 - `--show-output`: stream readable non-interactive agent output in the current terminal, and append the same output to `triton-agent-logs/<command>.show-output.log` under the workspace workdir for later debugging.
+- `--log-tools`: collect structured trace events. Optimize commands write `trace.jsonl`, `summary.json`, and `agent-audit.md` under `triton-agent-logs/otel/<run-id>/`; agent-backed generation, convert, and log-check commands write `trace.jsonl` and `summary.json` under `triton-agent-logs/tool-traces/<run-id>/`.
 - `--verbose`: print additional diagnostics.
 - `--remote`: run execution and comparison commands through SSH, and pass remote context to generation and optimize workflows.
 - `--remote-workdir`: choose the remote working root.
@@ -590,9 +607,11 @@ These options appear on multiple commands:
 
 ## Optional Agent Hook Guard
 
-When `optimize --enable-agent-hooks` launches with a supported backend,
+When `optimize --log-tools` or `optimize --enable-agent-hooks` launches with a supported backend,
 `triton-agent` stages temporary workspace-local agent hooks before the agent
-starts. Agent hooks are disabled by default.
+starts. In `--log-tools` mode the hooks are passive trace collectors. In
+`--enable-agent-hooks` mode the same staged hook lifecycle enforces the guard.
+Agent hooks are disabled by default.
 
 For `--agent codex`, the staged files are:
 
@@ -605,10 +624,12 @@ For `--agent opencode`, the staged files are:
 - `.opencode/plugins/triton-agent-hook-guard.js`
 - `.opencode/triton-agent-hooks/policy.json`
 
-The policy is rendered for the current workspace. It allows read-oriented shell
+The policy is rendered for the current workspace with separate `trace` and
+`guard` sections. `--log-tools` enables only `trace.enabled`; `--enable-agent-hooks`
+enables `guard.enabled`. When the guard is enabled, it allows read-oriented shell
 commands to inspect files inside that workspace, blocks reads outside the
-workspace, and blocks reads of staged skill implementation files under
-the backend-native staged skill path, such as `.codex/skills/*/scripts/` or
+workspace, and blocks reads of staged skill implementation files under the
+backend-native staged skill path, such as `.codex/skills/*/scripts/` or
 `.opencode/skills/*/scripts/`. A blocked read returns a short denial message to
 the agent telling it to stay within the workspace and use skill instructions or
 the documented command interface instead.
@@ -618,8 +639,9 @@ backend-owned hook paths already exist, the run fails explicitly instead of
 merging with or overwriting user-owned hook configuration.
 
 OpenCode hook support uses a project plugin under `.opencode/plugins/`. Because
-OpenCode's `--pure` mode disables external plugins, hook-enabled OpenCode runs
-omit `--pure`; ordinary OpenCode runs keep `--pure` unchanged.
+OpenCode's `--pure` mode disables external plugins, OpenCode runs with
+`--log-tools` or `--enable-agent-hooks` omit `--pure`; ordinary OpenCode runs
+keep `--pure` unchanged.
 
 ## Output Conventions
 

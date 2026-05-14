@@ -72,6 +72,14 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
 
         self.assertTrue(options.enable_agent_hooks)
 
+    def test_optimize_run_options_maps_log_tools(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--log-tools"])
+
+        options = optimize_run_options_from_args(args)
+
+        self.assertTrue(options.log_tools)
+
     def test_handle_optimize_rejects_cann_ext_api_without_a5(self) -> None:
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:

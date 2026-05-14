@@ -16,6 +16,7 @@ from triton_agent.optimize.models import GateDecision, GateResult
 from triton_agent.optimize.run_loop import OptimizeRunLoop
 from triton_agent.optimize.prompts import build_optimize_supervisor_prompt
 from triton_agent.optimize.pt_cleanup import cleanup_workspace_pt_files
+from triton_agent.otel_trace import build_trace_env
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
@@ -39,25 +40,42 @@ class RecoveryRunnerAdapter:
         self._stderr = stderr
 
     def run(self, request: AgentRequest) -> AgentResult:
+        traced_request = self._with_trace_env(request)
         if self._stdout is None and self._stderr is None:
-            result = cast(Any, self._runner).run(request)
+            result = cast(Any, self._runner).run(traced_request)
         else:
-            result = cast(Any, self._runner).run(request, stdout=self._stdout, stderr=self._stderr)
-        self._record_session(request, result)
+            result = cast(Any, self._runner).run(traced_request, stdout=self._stdout, stderr=self._stderr)
+        self._record_session(traced_request, result)
         return result
 
     def resume(self, request: AgentRequest, summary: str) -> AgentResult:
+        traced_request = self._with_trace_env(request)
         if self._stdout is None and self._stderr is None:
-            result = cast(Any, self._runner).resume(request, summary)
+            result = cast(Any, self._runner).resume(traced_request, summary)
         else:
             result = cast(Any, self._runner).resume(
-                request,
+                traced_request,
                 summary,
                 stdout=self._stdout,
                 stderr=self._stderr,
             )
-        self._record_session(request, result)
+        self._record_session(traced_request, result)
         return result
+
+    def _with_trace_env(self, request: AgentRequest) -> AgentRequest:
+        if not request.log_tools:
+            return request
+        role = request.optimize_role or "worker"
+        return replace(
+            request,
+            extra_env=build_trace_env(
+                request.extra_env,
+                trace_path=self._artifacts_state.otel_trace_path,
+                run_id=self._artifacts_state.archive.run_id,
+                role=role,
+                workspace_root=request.workdir,
+            ),
+        )
 
     def _record_session(self, request: AgentRequest, result: AgentResult) -> None:
         self._artifacts_manager.record_agent_session(
@@ -237,17 +255,33 @@ class SupervisedOptimizeAdapter:
         return f"round-{max_index + 1:03d}"
 
     def _run_request(self, request: AgentRequest) -> AgentResult:
+        traced_request = self._with_trace_env(request)
         if self._stdout is None and self._stderr is None:
-            result = cast(Any, self._runner).run(request)
+            result = cast(Any, self._runner).run(traced_request)
         else:
-            result = cast(Any, self._runner).run(request, stdout=self._stdout, stderr=self._stderr)
+            result = cast(Any, self._runner).run(traced_request, stdout=self._stdout, stderr=self._stderr)
         self._artifacts_manager.record_agent_session(
             self._artifacts_state,
-            role=request.optimize_role or "worker",
+            role=traced_request.optimize_role or "worker",
             session_id=result.session_id,
-            agent=request.agent_name,
+            agent=traced_request.agent_name,
         )
         return result
+
+    def _with_trace_env(self, request: AgentRequest) -> AgentRequest:
+        if not request.log_tools:
+            return request
+        role = request.optimize_role or "worker"
+        return replace(
+            request,
+            extra_env=build_trace_env(
+                request.extra_env,
+                trace_path=self._artifacts_state.otel_trace_path,
+                run_id=self._artifacts_state.archive.run_id,
+                role=role,
+                workspace_root=request.workdir,
+            ),
+        )
 
     def _parse_supervisor_decision(self, report_content: str) -> str | None:
         match = re.search(r"^Decision:\s*(.+?)\s*$", report_content, re.MULTILINE)

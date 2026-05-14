@@ -155,6 +155,7 @@ def build_optimize_request(
         compiler_source_path=compiler_source.path if compiler_source is not None else None,
         compiler_source_commit=compiler_source.commit if compiler_source is not None else None,
         enable_agent_hooks=options.enable_agent_hooks,
+        log_tools=options.log_tools,
     )
 
 

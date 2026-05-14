@@ -105,7 +105,10 @@ def run_optimize_batch(
                 return optimize_request_runner(request, forwarded_stdout, forwarded_stderr)
             return optimize_request_runner(request)
         with pool.acquire() as device:
-            request.extra_env = affinity_env_for_device(device)
+            request.extra_env = {
+                **(request.extra_env or {}),
+                **affinity_env_for_device(device),
+            }
             if forwarded_stdout is not None or forwarded_stderr is not None:
                 return optimize_request_runner(request, forwarded_stdout, forwarded_stderr)
             return optimize_request_runner(request)

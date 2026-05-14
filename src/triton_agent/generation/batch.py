@@ -88,7 +88,10 @@ def run_gen_eval_batch(
         )
         if pool is not None:
             with pool.acquire() as device:
-                request.extra_env = affinity_env_for_device(device)
+                request.extra_env = {
+                    **(request.extra_env or {}),
+                    **affinity_env_for_device(device),
+                }
                 if forwarded_stdout is not None or forwarded_stderr is not None:
                     return generation_request_runner(request, forwarded_stdout, forwarded_stderr)
                 return generation_request_runner(request)

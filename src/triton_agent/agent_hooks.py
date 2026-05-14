@@ -12,16 +12,19 @@ _OPENCODE_HOOK_DIR = Path(".opencode") / "triton-agent-hooks"
 _OPENCODE_PLUGIN_FILE = Path(".opencode") / "plugins" / "triton-agent-hook-guard.js"
 _CODEX_DENY_MESSAGE = (
     "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
-    "and do not inspect staged skill implementation files under .codex/skills/*/scripts/. "
+    "and do not inspect protected files (staged skill implementation files under "
+    ".codex/skills/*/scripts/ or triton-agent-logs/ output). "
     "Use the skill instructions and documented command interface instead."
 )
 _OPENCODE_DENY_MESSAGE = (
     "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
-    "and do not inspect staged skill implementation files under .opencode/skills/*/scripts/. "
+    "and do not inspect protected files (staged skill implementation files under "
+    ".opencode/skills/*/scripts/ or triton-agent-logs/ output). "
     "Use the skill instructions and documented command interface instead."
 )
-_CODEX_DENY_READ_GLOBS = (Path(".codex") / "skills" / "*" / "scripts" / "**",)
-_OPENCODE_DENY_READ_GLOBS = (Path(".opencode") / "skills" / "*" / "scripts" / "**",)
+_SHARED_DENY_READ_GLOBS = (Path("triton-agent-logs") / "**",)
+_CODEX_DENY_READ_GLOBS = _SHARED_DENY_READ_GLOBS + (Path(".codex") / "skills" / "*" / "scripts" / "**",)
+_OPENCODE_DENY_READ_GLOBS = _SHARED_DENY_READ_GLOBS + (Path(".opencode") / "skills" / "*" / "scripts" / "**",)
 
 
 @dataclass(frozen=True)
@@ -29,16 +32,33 @@ class AgentHookState:
     created_paths: list[Path]
 
 
+@dataclass(frozen=True)
+class AgentHookOptions:
+    trace_enabled: bool = False
+    guard_enabled: bool = False
+    trace_path: Path | None = None
+    run_id: str | None = None
+    role: str | None = None
+
+
 class AgentHookManager:
     def __init__(self, hooks_root: Path) -> None:
         self.hooks_root = hooks_root
 
-    def prepare_hooks(self, backend: str, workdir: Path) -> AgentHookState:
+    def prepare_hooks(
+        self,
+        backend: str,
+        workdir: Path,
+        options: AgentHookOptions | None = None,
+    ) -> AgentHookState:
+        options = options or AgentHookOptions(guard_enabled=True)
+        if not options.trace_enabled and not options.guard_enabled:
+            return AgentHookState(created_paths=[])
         normalized_backend = backend.lower()
         if normalized_backend == "codex":
-            return self._prepare_codex_hooks(workdir)
+            return self._prepare_codex_hooks(workdir, options)
         if normalized_backend == "opencode":
-            return self._prepare_opencode_hooks(workdir)
+            return self._prepare_opencode_hooks(workdir, options)
         return AgentHookState(created_paths=[])
 
     def cleanup(self, state: AgentHookState) -> list[str]:
@@ -65,7 +85,7 @@ class AgentHookManager:
             return ["No backend-specific hooks to clean up."]
         return [f"Cleaning up staged agent hooks: {', '.join(str(path) for path in state.created_paths)}"]
 
-    def _prepare_codex_hooks(self, workdir: Path) -> AgentHookState:
+    def _prepare_codex_hooks(self, workdir: Path, options: AgentHookOptions) -> AgentHookState:
         workspace = workdir.absolute()
         policy_workspace = workspace.resolve()
         template_dir = self.hooks_root / "codex"
@@ -89,14 +109,14 @@ class AgentHookManager:
             hook_dir.mkdir(parents=True)
             shutil.copy2(template_dir / "pretooluse_guard.py", hook_dir / "pretooluse_guard.py")
             created_paths.append(hook_dir)
-            self._write_codex_policy(hook_dir / "policy.json", policy_workspace)
+            self._write_codex_policy(hook_dir / "policy.json", policy_workspace, options)
         except Exception:
             self.cleanup(state)
             raise
 
         return state
 
-    def _prepare_opencode_hooks(self, workdir: Path) -> AgentHookState:
+    def _prepare_opencode_hooks(self, workdir: Path, options: AgentHookOptions) -> AgentHookState:
         workspace = workdir.absolute()
         policy_workspace = workspace.resolve()
         template_dir = self.hooks_root / "opencode"
@@ -119,27 +139,49 @@ class AgentHookManager:
 
             hook_dir.mkdir(parents=True)
             created_paths.append(hook_dir)
-            self._write_opencode_policy(hook_dir / "policy.json", policy_workspace)
+            self._write_opencode_policy(hook_dir / "policy.json", policy_workspace, options)
         except Exception:
             self.cleanup(state)
             raise
 
         return state
 
-    def _write_codex_policy(self, policy_path: Path, workspace: Path) -> None:
+    def _write_codex_policy(self, policy_path: Path, workspace: Path, options: AgentHookOptions) -> None:
         policy = {
             "workspace_root": str(workspace),
+            "trace": self._trace_policy(options),
+            "guard": {
+                "enabled": options.guard_enabled,
+                "allow_read_roots": [str(workspace)],
+                "deny_read_globs": [str(workspace / pattern) for pattern in _CODEX_DENY_READ_GLOBS],
+                "deny_message": _CODEX_DENY_MESSAGE,
+            },
             "allow_read_roots": [str(workspace)],
             "deny_read_globs": [str(workspace / pattern) for pattern in _CODEX_DENY_READ_GLOBS],
             "deny_message": _CODEX_DENY_MESSAGE,
         }
         policy_path.write_text(json.dumps(policy, indent=2) + "\n", encoding="utf-8")
 
-    def _write_opencode_policy(self, policy_path: Path, workspace: Path) -> None:
+    def _write_opencode_policy(self, policy_path: Path, workspace: Path, options: AgentHookOptions) -> None:
         policy = {
             "workspace_root": str(workspace),
+            "trace": self._trace_policy(options),
+            "guard": {
+                "enabled": options.guard_enabled,
+                "allow_read_roots": [str(workspace)],
+                "deny_read_globs": [str(workspace / pattern) for pattern in _OPENCODE_DENY_READ_GLOBS],
+                "deny_message": _OPENCODE_DENY_MESSAGE,
+            },
             "allow_read_roots": [str(workspace)],
             "deny_read_globs": [str(workspace / pattern) for pattern in _OPENCODE_DENY_READ_GLOBS],
             "deny_message": _OPENCODE_DENY_MESSAGE,
         }
         policy_path.write_text(json.dumps(policy, indent=2) + "\n", encoding="utf-8")
+
+    def _trace_policy(self, options: AgentHookOptions) -> dict[str, str | bool | None]:
+        return {
+            "enabled": options.trace_enabled,
+            "path": str(options.trace_path) if options.trace_path is not None else None,
+            "run_id": options.run_id,
+            "role": options.role,
+        }

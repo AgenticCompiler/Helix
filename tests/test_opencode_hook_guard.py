@@ -103,6 +103,39 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": True})
 
+    def test_blocks_triton_agent_logs_bash_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_file.parent.mkdir(parents=True)
+            log_file.write_text("log output\n", encoding="utf-8")
+
+            result = _evaluate_plugin(_policy(workspace), "bash", f"sed -n '1,20p' {log_file}", workspace)
+
+            self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
+
+    def test_blocks_triton_agent_logs_read_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_file.parent.mkdir(parents=True)
+            log_file.write_text("log output\n", encoding="utf-8")
+
+            result = _evaluate_plugin(_policy(workspace), "read", str(log_file), workspace)
+
+            self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
+
+    def test_allows_read_outside_triton_agent_logs_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            readme = workspace / "triton-agent-readme.md"
+            readme.write_text("not a log\n", encoding="utf-8")
+
+            result = _evaluate_plugin(_policy(workspace), "bash", f"cat {readme}", workspace)
+
+            self.assertEqual(result, {"allowed": True})
+
     def test_malformed_shell_payload_fails_open(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -112,10 +145,100 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": True})
 
+    def test_guard_disabled_allows_protected_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            log_file = workspace / "triton-agent-logs" / "trace.jsonl"
+            log_file.parent.mkdir(parents=True)
+            log_file.write_text("{}\n", encoding="utf-8")
+            policy = _policy(workspace)
+            policy["guard"] = {
+                "enabled": False,
+                "allow_read_roots": policy["allow_read_roots"],
+                "deny_read_globs": policy["deny_read_globs"],
+                "deny_message": policy["deny_message"],
+            }
+
+            result = _evaluate_plugin(policy, "bash", f"cat {log_file}", workspace)
+
+            self.assertEqual(result, {"allowed": True})
+
+    def test_trace_policy_records_bash_command_and_file_access(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            readme = workspace / "README.md"
+            readme.write_text("hello\n", encoding="utf-8")
+            trace_path = workspace / "triton-agent-logs" / "otel" / "run-001" / "trace.jsonl"
+            policy = _policy(workspace)
+            policy["guard"] = {
+                "enabled": False,
+                "allow_read_roots": policy["allow_read_roots"],
+                "deny_read_globs": policy["deny_read_globs"],
+                "deny_message": policy["deny_message"],
+            }
+            policy["trace"] = {
+                "enabled": True,
+                "path": str(trace_path),
+                "run_id": "run-001",
+                "role": "worker",
+            }
+
+            result = _evaluate_plugin(policy, "bash", "cat README.md", workspace)
+
+            self.assertEqual(result, {"allowed": True})
+            events = [json.loads(line) for line in trace_path.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual([event["type"] for event in events], ["tool_call", "command", "file_access"])
+            self.assertEqual(events[0]["source"], "opencode_hook")
+            self.assertEqual(events[1]["command_kind"], "local_command")
+            self.assertEqual(events[2]["path"], "README.md")
+
+    def test_trace_policy_records_edit_tool_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+            trace_path = workspace / "triton-agent-logs" / "otel" / "run-001" / "trace.jsonl"
+            policy = _policy(workspace)
+            policy["guard"] = {
+                "enabled": False,
+                "allow_read_roots": policy["allow_read_roots"],
+                "deny_read_globs": policy["deny_read_globs"],
+                "deny_message": policy["deny_message"],
+            }
+            policy["trace"] = {
+                "enabled": True,
+                "path": str(trace_path),
+                "run_id": "run-001",
+                "role": "worker",
+            }
+
+            result = _evaluate_plugin(
+                policy,
+                "edit",
+                None,
+                workspace,
+                args={
+                    "filePath": "kernel.py",
+                    "old_string": "print('x')\n",
+                    "new_string": "print('y')\nprint('z')\n",
+                },
+            )
+
+            self.assertEqual(result, {"allowed": True})
+            events = [json.loads(line) for line in trace_path.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual([event["type"] for event in events], ["tool_call", "edit"])
+            self.assertEqual(events[1]["path"], "kernel.py")
+            self.assertEqual(events[1]["edit_kind"], "operator")
+            self.assertEqual(events[1]["removed_lines"], 1)
+            self.assertEqual(events[1]["added_lines"], 2)
+            self.assertTrue(events[1]["diff_digest"].startswith("sha256:"))
+
 
 _DENY_MESSAGE = (
     "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
-    "and do not inspect staged skill implementation files under .opencode/skills/*/scripts/. "
+    "and do not inspect protected files (staged skill implementation files under "
+    ".opencode/skills/*/scripts/ or triton-agent-logs/ output). "
     "Use the skill instructions and documented command interface instead."
 )
 
@@ -125,7 +248,10 @@ def _policy(workspace: Path) -> dict[str, object]:
     return {
         "workspace_root": str(root),
         "allow_read_roots": [str(root)],
-        "deny_read_globs": [str(root / ".opencode" / "skills" / "*" / "scripts" / "**")],
+        "deny_read_globs": [
+            str(root / "triton-agent-logs" / "**"),
+            str(root / ".opencode" / "skills" / "*" / "scripts" / "**"),
+        ],
         "deny_message": _DENY_MESSAGE,
     }
 
@@ -135,6 +261,7 @@ def _evaluate_plugin(
     tool: str,
     command: Optional[str],
     cwd: Path,
+    args: Optional[dict[str, object]] = None,
 ) -> dict[str, object]:
     with tempfile.TemporaryDirectory() as tmp:
         harness = Path(tmp) / "harness.mjs"
@@ -144,6 +271,7 @@ def _evaluate_plugin(
             "tool": tool,
             "command": command,
             "cwd": str(cwd),
+            "args": args,
         }
         result = subprocess.run(
             ["node", str(harness)],
@@ -191,11 +319,11 @@ def _node_harness_source() -> str:
 
         const plugin = await TritonAgentHookGuard(context);
         const hook = plugin["tool.execute.before"];
-        const args = input.command === null
+        const args = input.args ?? (input.command === null
           ? {{}}
           : input.tool === "read"
             ? {{ filePath: input.command }}
-            : {{ command: input.command, cwd: input.cwd }};
+            : {{ command: input.command, cwd: input.cwd }});
         const hookInput = {{ tool: input.tool, cwd: input.cwd }};
         const output = {{ args }};
 

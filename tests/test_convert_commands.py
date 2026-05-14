@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -14,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.cli import build_parser
 from triton_agent.convert.models import ConvertOptions
 from triton_agent.models import AgentResult, CommandKind
+from triton_agent.otel_trace import TRACE_PATH_ENV
 
 
 class ConvertCommandModuleTests(unittest.TestCase):
@@ -112,6 +114,37 @@ class ConvertRuntimeTests(unittest.TestCase):
         self.assertIn("Additional user instructions:", request.prompt)
         self.assertIn("Keep the exported function name.", request.prompt)
 
+    def test_build_convert_request_enables_tool_trace_when_requested(self) -> None:
+        from triton_agent.convert.orchestration import build_convert_request
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            request = build_convert_request(
+                workdir / "kernel.py",
+                workdir / "kernel.py",
+                workdir,
+                ConvertOptions(
+                    interact=False,
+                    verbose=False,
+                    show_output=False,
+                    force_overwrite=False,
+                    agent_name="codex",
+                    remote=None,
+                    remote_workdir=None,
+                    output=None,
+                    test_mode="differential",
+                    prompt=None,
+                    log_tools=True,
+                ),
+            )
+
+            self.assertTrue(request.log_tools)
+            self.assertIsNotNone(request.extra_env)
+            assert request.extra_env is not None
+            trace_path = Path(request.extra_env[TRACE_PATH_ENV])
+            self.assertEqual(trace_path.parent.parent, workdir / "triton-agent-logs" / "tool-traces")
+            self.assertEqual(trace_path.name, "trace.jsonl")
+
     def test_handle_convert_builds_request_with_default_output(self) -> None:
         from triton_agent.commands.convert import handle_convert
 
@@ -188,6 +221,61 @@ class ConvertRuntimeTests(unittest.TestCase):
                 captured["output_path"],
                 (workspace / "triton_kernel.py").resolve(),
             )
+
+    def test_run_convert_request_writes_tool_trace_summary(self) -> None:
+        from triton_agent.convert.orchestration import build_convert_request, run_convert_request
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            trace_path = workdir / "triton-agent-logs" / "tool-traces" / "run-001" / "trace.jsonl"
+            request = build_convert_request(
+                workdir / "kernel.py",
+                workdir / "kernel.py",
+                workdir,
+                ConvertOptions(
+                    interact=False,
+                    verbose=False,
+                    show_output=False,
+                    force_overwrite=False,
+                    agent_name="codex",
+                    remote=None,
+                    remote_workdir=None,
+                    output=None,
+                    test_mode="differential",
+                    prompt=None,
+                    log_tools=True,
+                ),
+            )
+            assert request.extra_env is not None
+            request.extra_env[TRACE_PATH_ENV] = str(trace_path)
+
+            class DummyRunner:
+                def run(self, request):
+                    del request
+                    trace_path.parent.mkdir(parents=True, exist_ok=True)
+                    trace_path.write_text(
+                        json.dumps(
+                            {
+                                "schema_version": 1,
+                                "type": "agent_invocation",
+                                "phase": "end",
+                                "command_kind": "convert",
+                            }
+                        )
+                        + "\n",
+                        encoding="utf-8",
+                    )
+                    return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.convert.orchestration.SkillLinkManager.prepare_skills", return_value=()):
+                with patch("triton_agent.convert.orchestration.SkillLinkManager.cleanup", return_value=[]):
+                    with patch("triton_agent.convert.orchestration.create_runner", return_value=DummyRunner()):
+                        result = run_convert_request(request)
+
+            self.assertEqual(result.return_code, 0)
+            summary = json.loads((trace_path.parent / "summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["command_kind"], "convert")
+            self.assertEqual(summary["tool_trace_capability"], "agent_invocation_only")
 
 
 class ConvertBatchTests(unittest.TestCase):
