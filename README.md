@@ -696,6 +696,7 @@ For `--agent codex`, the staged files are:
 
 - `.codex/hooks.json`
 - `.codex/triton-agent-hooks/pretooluse_guard.py`
+- `.codex/triton-agent-hooks/tool_trace_hook.py`
 - `.codex/triton-agent-hooks/policy.json`
 
 For `--agent opencode`, the staged files are:
@@ -703,21 +704,21 @@ For `--agent opencode`, the staged files are:
 - `.opencode/plugins/triton-agent-hook-guard.js`
 - `.opencode/triton-agent-hooks/policy.json`
 
-The policy is rendered for the current workspace. When optimize enables compiler
-source analysis, the resolved compiler source checkout is also added as an
-explicit allowed read root for that run. For Codex, it evaluates both
-direct `Read` tool requests and read-oriented shell commands, including wrapped
-shell invocations such as `bash -lc "sed ..."`. For supported backends, it
-blocks reads outside the workspace unless the current run added an explicit
-allowed read root, and
-blocks reads of staged skill
-implementation files under the backend-native staged skill path, such as
-`.codex/skills/*/scripts/` or `.opencode/skills/*/scripts/`. A blocked read
-returns a short denial message to the agent telling it to stay within the
-workspace and use skill instructions or the documented command interface
-instead. The guard still allows documented helper-script entrypoints such as
-`python3 .opencode/skills/.../scripts/run-command.py ...`; it only blocks
-reading those staged implementation files as source.
+The policy is rendered for the current workspace with separate `trace` and
+`guard` sections. `--log-tools` enables only `trace.enabled`; `--enable-agent-hooks`
+enables `guard.enabled`. When optimize enables compiler source analysis, the
+resolved compiler source checkout is also added as an explicit allowed read root
+for that run. For Codex, the guard evaluates both direct `Read` tool requests
+and read-oriented shell commands, including wrapped shell invocations such as
+`bash -lc "sed ..."`. For supported backends, it blocks reads outside the
+workspace unless the current run added an explicit allowed read root, and blocks
+reads of staged skill implementation files under the backend-native staged skill
+path, such as `.codex/skills/*/scripts/` or `.opencode/skills/*/scripts/`. A
+blocked read returns a short denial message to the agent telling it to stay
+within the workspace and use skill instructions or the documented command
+interface instead. The guard still allows documented helper-script entrypoints
+such as `python3 .opencode/skills/.../scripts/run-command.py ...`; it only
+blocks reading those staged implementation files as source.
 
 The staged hook files are removed after the agent process exits. If
 backend-owned hook paths already exist, the run fails explicitly instead of

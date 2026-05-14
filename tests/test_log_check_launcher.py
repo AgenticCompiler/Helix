@@ -1,4 +1,5 @@
 import sys
+import json
 import tempfile
 import unittest
 from io import StringIO
@@ -8,8 +9,9 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.log_check.batch import run_log_check_batch
-from triton_agent.log_check.log_check_launcher import build_log_check_prompt, run_log_check
+from triton_agent.log_check.log_check_launcher import build_log_check_prompt, build_log_check_request, run_log_check
 from triton_agent.models import AgentRequest, AgentResult
+from triton_agent.otel_trace import TRACE_PATH_ENV
 from triton_agent.show_output_log import show_output_log_path
 from triton_agent.skills import SkillLinkSet
 
@@ -76,6 +78,64 @@ class LogCheckLauncherTests(unittest.TestCase):
                 show_output_log_path(request),
                 resolved_target / "triton-agent-logs" / "log-check.show-output.log",
             )
+
+    def test_build_log_check_request_enables_tool_trace_when_requested(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "LayerNorm"
+            target.mkdir()
+
+            request = build_log_check_request(target_path=target, log_tools=True)
+
+            self.assertTrue(request.log_tools)
+            self.assertIsNotNone(request.extra_env)
+            assert request.extra_env is not None
+            trace_path = Path(request.extra_env[TRACE_PATH_ENV])
+            self.assertEqual(trace_path.parent.parent, target.resolve() / "triton-agent-logs" / "tool-traces")
+            self.assertEqual(trace_path.name, "trace.jsonl")
+
+    def test_run_log_check_writes_tool_trace_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "LayerNorm"
+            target.mkdir()
+            captured: dict[str, AgentRequest] = {}
+
+            class DummyRunner:
+                def run(self, request: AgentRequest) -> AgentResult:
+                    captured["request"] = request
+                    trace_path = Path((request.extra_env or {})[TRACE_PATH_ENV])
+                    trace_path.parent.mkdir(parents=True, exist_ok=True)
+                    trace_path.write_text(
+                        json.dumps(
+                            {
+                                "schema_version": 1,
+                                "type": "agent_invocation",
+                                "phase": "end",
+                                "command_kind": "log-check",
+                            }
+                        )
+                        + "\n",
+                        encoding="utf-8",
+                    )
+                    (target / "log_check_result.md").write_text("summary:\noverall: PASS\n", encoding="utf-8")
+                    return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch(
+                "triton_agent.log_check.log_check_launcher.resolve_staged_skills",
+                side_effect=_dummy_resolve_staged_skills,
+            ), patch(
+                "triton_agent.log_check.log_check_launcher.SkillLinkManager",
+                return_value=_DummySkillLinkManager(),
+            ), patch(
+                "triton_agent.log_check.log_check_launcher.create_runner",
+                return_value=DummyRunner(),
+            ):
+                exit_code = run_log_check(target_path=target, log_tools=True)
+
+            self.assertEqual(exit_code, 0)
+            trace_path = Path((captured["request"].extra_env or {})[TRACE_PATH_ENV])
+            summary = json.loads((trace_path.parent / "summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["command_kind"], "log-check")
+            self.assertEqual(summary["tool_trace_capability"], "agent_invocation_only")
 
     def test_run_log_check_batch_uses_each_workspace_as_agent_workdir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
