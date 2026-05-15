@@ -84,7 +84,7 @@ class OptimizeCheckTests(unittest.TestCase):
                 "issues": ("baseline issue",),
                 "summary": f"checked {path.name}",
             },
-            check_round=lambda path: SimpleNamespace(
+            check_round=lambda path, **__: SimpleNamespace(
                 ok=True,
                 kind="round",
                 decision="pass",

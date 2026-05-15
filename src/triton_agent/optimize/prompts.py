@@ -178,24 +178,38 @@ def build_optimize_unsupervised_prompt(
     lines = [
         "This invocation is an unsupervised optimize run.",
         "Own the end-to-end optimize session and continue optimizing until the session should stop.",
-        "Treat this as a long-running task.",
-        *_shared_optimize_prompt_lines(
-            target_chip=target_chip,
-            optimize_check_line="Use the staged `triton-npu-optimize-check` skill to validate every completed round.",
-        ),
-        "After finishing each round, use the staged `triton-npu-optimize-check` skill to run `check-round` and repair the round until it passes.",
-        "Do not begin the next round until the current round passes `check-round` through `triton-npu-optimize-check`.",
-        "Record round outcomes and keep optimize artifacts up to date before stopping.",
     ]
     if min_rounds is not None:
-        lines.insert(
-            2,
-            f"Complete at least {min_rounds} optimization rounds before deciding the session should stop.",
+        lines.extend(
+            [
+                f"Complete at least {min_rounds} optimization rounds before deciding the session should stop.",
+                f"Once {min_rounds} optimization rounds are complete, stop the session after the current round passes `check-round` through `triton-npu-optimize-check` unless there is a concrete reason to continue.",
+            ]
         )
-        lines.insert(
-            3,
-            f"Once {min_rounds} optimization rounds are complete, stop the session after the current round passes `check-round` through `triton-npu-optimize-check` unless there is a concrete reason to continue.",
+    lines.append("Treat this as a long-running task.")
+    lines.extend(
+        _shared_optimize_prompt_lines(
+            target_chip=target_chip,
+            optimize_check_line="Use the staged `triton-npu-optimize-check` skill to validate every completed round.",
         )
+    )
+    if min_rounds is not None:
+        lines.append(
+            f"After finishing each round, use the staged `triton-npu-optimize-check` skill to run "
+            f"`check-round --round-dir opt-round-N --min-rounds {min_rounds}` and repair the round "
+            f"until it passes. Read the summary for the exit signal."
+        )
+    else:
+        lines.append(
+            "After finishing each round, use the staged `triton-npu-optimize-check` skill to run "
+            "`check-round` and repair the round until it passes."
+        )
+    lines.extend(
+        [
+            "Do not begin the next round until the current round passes `check-round` through `triton-npu-optimize-check`.",
+            "Record round outcomes and keep optimize artifacts up to date before stopping.",
+        ]
+    )
     return _finalize_optimize_prompt_lines(
         lines=lines,
         resume_existing_session=resume_existing_session,
