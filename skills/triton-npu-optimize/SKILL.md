@@ -127,7 +127,8 @@ Optimize analysis is layered.
 - Once baseline and round perf artifacts both exist, use the `triton-npu-run-eval` skill to run `compare-perf`.
 - Treat the `triton-npu-run-eval` skill's `compare-perf` flow as the only authority for claimed benchmark deltas and speedups, including `Avg improvement`, `Geomean speedup`, `Total speedup`, and any claimed benchmark delta.
 - Do not hand-calculate speedups or percentage improvements from raw perf files.
-- Use the sibling `triton-npu-optimize-check` skill to run `check-round` and repair the current round until it passes before continuing or stopping.
+- Use the sibling `triton-npu-optimize-check` skill to run `check-round` (with `--min-rounds <N>` when the session has a minimum round requirement) and repair the current round until it passes before continuing or stopping.
+- After `check-round` passes, read the summary output for the exit signal: if minimum rounds are satisfied, the session may stop after this round.
 
 ## Round Records
 
