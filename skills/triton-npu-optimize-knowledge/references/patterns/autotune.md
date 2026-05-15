@@ -2,9 +2,7 @@
 
 ## Summary
 
-Make use of autotune in Triton to optimize parameters automatically. Some analysis is
-still needed to set the possible values of parameters to try (limit the number of combinations
-to try to at most 20).
+Use Triton autotune to automatically search tile sizes and launch parameters within a bounded configuration space.
 
 ## Use When
 

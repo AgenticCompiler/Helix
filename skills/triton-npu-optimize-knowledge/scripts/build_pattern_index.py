@@ -160,18 +160,6 @@ def render_index(cards: list[PatternCard]) -> str:
         if card.use_when:
             lines.append("- Use When:")
             lines.extend(_render_bullets(card.use_when))
-        if card.avoid_when:
-            lines.append("- Avoid When:")
-            lines.extend(_render_bullets(card.avoid_when))
-        if card.signals_code:
-            lines.append("- Signals / Code:")
-            lines.extend(_render_bullets(card.signals_code))
-        if card.signals_profile:
-            lines.append("- Signals / Profile:")
-            lines.extend(_render_bullets(card.signals_profile))
-        if card.signals_ir:
-            lines.append("- Signals / IR:")
-            lines.extend(_render_bullets(card.signals_ir))
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 

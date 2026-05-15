@@ -2,7 +2,7 @@
 
 ## Summary
 
-For tensors with real multidimensional contiguous layout, use `tl.make_block_ptr` to model those dimensions directly instead of accessing the tensor through flattened one-dimensional offsets that stride through an inner dimension. A well-shaped block pointer lets the NPU DMA controller issue wider, more efficient transfers and reduces scalar address-generation overhead. When an inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape, include it in the tile and adjust the grid mapping.
+Use `tl.make_block_ptr` to model multidimensional contiguous tensor dimensions directly, enabling wider DMA transfers and reducing scalar address-generation overhead compared to flattened 1D offsets.
 
 ## Use When
 
@@ -14,8 +14,6 @@ For tensors with real multidimensional contiguous layout, use `tl.make_block_ptr
 
 ### Code
 
-- A high-dimensional contiguous tensor is accessed through flattened one-dimensional offsets that stride through an inner dimension.
-- An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
 - Manual pointer arithmetic reconstructs multi-dimensional coordinates from a single flat `program_id`.
 
 ## What To Verify After Applying

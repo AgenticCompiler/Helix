@@ -2,22 +2,9 @@
 
 ## Summary
 
-Remove scalarizing constructs that make an otherwise vector-friendly Ascend Triton kernel spend time on avoidable scalar control, address arithmetic, or long dependency chains.
-
-Use this as a trap-elimination pattern before larger rewrites. Apply one repair per round, then validate correctness and benchmark evidence through the normal optimize flow.
+Remove scalarizing constructs that block vector hardware utilization on Ascend NPU, including unnecessary scalar control flow, loop-carried pointer recurrences, modulo addressing, narrow masks, and int64 arithmetic on vector paths.
 
 ## Use When
-
-- Runtime values that are shape constants are passed as normal arguments instead of `tl.constexpr`.
-- Pointer variables are updated with `+=` inside a loop, creating loop-carried address dependencies.
-- Address expressions use modulo addressing (`%`) to wrap tail tiles or index boundaries.
-- `tl.where` masks all lanes except a single special position, or has exactly one false lane in a vector.
-- Integer elementwise arithmetic is done as scalar-looking `int64` work even though the value range is safely `int32`.
-- `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
-
-## Signals
-
-### Code
 
 - Runtime values that are shape constants are passed as normal arguments instead of `tl.constexpr`.
 - Pointer variables are updated with `+=` inside a loop, creating loop-carried address dependencies.

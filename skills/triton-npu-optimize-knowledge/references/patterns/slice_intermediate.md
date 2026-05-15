@@ -14,11 +14,7 @@ to read/write into UB.
 
 ## Detail
 
-### When to Use:
-
-**Apply this pattern when your kernel computation creates intermediate tensors that, combined with inputs and outputs, would exceed the Unified Buffer (UB) capacity.** This commonly occurs in operations like attention mechanisms, batch normalization, or any computation involving large tensors with element-wise operations that create temporary copies.
-
-### Principle and Implementation:
+### Principle and Implementation
 Ascend NPUs have fixed-size Unified Buffers (192KB per core), unlike CUDA's more flexible shared memory. When performing operations like `acc = acc * scale + update`, the system may need to store multiple full-sized tensors simultaneously: the original accumulator, the scaling factors broadcasted to the same shape, the update tensor, and intermediate results. Instead of letting the compiler fail with UB overflow, manually slice the computation using `extract_slice` to process smaller chunks that fit within UB constraints. The key insight is that `extract_slice` and `insert_slice` are low-overhead operations that create views rather than copies, allowing you to work on subsets of data while maintaining the overall computation.
 
 ```python

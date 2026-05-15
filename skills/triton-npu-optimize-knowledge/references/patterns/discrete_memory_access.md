@@ -2,9 +2,7 @@
 
 ## Summary
 
-When loading through discrete indices, do not use `tl.load` to read the target values directly from global memory. Instead, use `tl.load` to stage a contiguous range into the Unified Buffer first, then use the fast on-chip indexing path (`tl.gather` or equivalent) to select the target values.
-
-For fixed-channel AoS layouts such as `[N, 3]` coordinates, apply the same principle by passing a channel-first SoA buffer (`[3, N]`) into the kernel so each channel is loaded with contiguous `atom_idx` offsets instead of repeated stride-3 global loads.
+Stage a contiguous range into the Unified Buffer first, then use on-chip indexing (`tl.gather` or equivalent) to select target values, rather than loading directly from global memory through discrete indices. For fixed-channel AoS layouts, apply the same principle with channel-first SoA buffers to enable contiguous loads.
 
 ## Use When
 
@@ -24,7 +22,6 @@ For fixed-channel AoS layouts such as `[N, 3]` coordinates, apply the same princ
 
 ### Code
 
-- Code uses index arrays to access non-contiguous memory locations on the hot path.
 - Channel-wise loads use stride-2/3/4 addressing in the hot vector path.
 - Direct global-memory gather reads dominate more than the surrounding arithmetic.
 - Attempts to coalesce fixed fields would require extracting scalar components from a vector.
