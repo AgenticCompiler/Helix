@@ -31,6 +31,19 @@ Read this generated index first. Then read only the one or two most relevant det
   - `aiv_scalar_ratio` is much larger than `cube_utilization`.
   - Low Cube utilization is expected from the kernel semantics, not an accidental symptom of a missed `tl.dot` rewrite.
 
+### `accumulator-layout-alignment`
+
+- Summary: Shape accumulators and masks so the store order matches the output's contiguous memory direction. When the accumulator is carried in a shape that differs from the output memory layout — for example `(N, M)` when the output expects `(M, N)` — the store-time transpose can degrade into scalar element writes on Ascend NPU. Carry the accumulator in the output-native shape instead and adjust reduction axes to match.
+- Source: [accumulator-layout-alignment.md](patterns/accumulator-layout-alignment.md)
+- Use When:
+  - `tl.store` writes a transposed logical tensor and profiling or code inspection suggests the write degraded into scalar element stores.
+  - The accumulator shape differs from the output memory layout, forcing an implicit store-time transpose.
+  - The kernel performs a reduction that naturally produces the "wrong" shape order, and a simple axis swap in the reduction logic would avoid the store-side transpose entirely.
+- Signals / Code:
+  - The accumulator has shape `(N, M)` but the output tensor is `(M, N)` contiguously in memory.
+  - `tl.store` uses pointer expressions that stride across the accumulator's leading dimension in a way that mirrors a transpose.
+  - Reduction axes, mask broadcasts, and final pointer expressions all orbit around a shape convention that mismatches the output.
+
 ### `algebraic-optimization`
 
 - Summary: Look for **semantics-preserving** rewrites that reduce **memory passes**, **redundant full scans**, or **live ranges** before micro-tuning loads. The scope includes **floating-point identities** (for example single-pass mean/variance) and **operator-defined** equivalences (for example PyTorch **logical** ops with dtype-specific truthiness and broadcasting). Always validate against the reference; forms that are equivalent on paper can still **regress** after lowering to Ascend Triton (dependency chains, UB pressure, launch overhead).
@@ -82,6 +95,19 @@ Read this generated index first. Then read only the one or two most relevant det
 - Use When:
   - The kernel already has several plausible tile or launch parameter choices, and the main structure looks reasonable.
   - Manual parameter picking is likely leaving performance on the table, but the search space can still be kept small and bounded.
+
+### `block-pointer-dimensionality`
+
+- Summary: For tensors with real multidimensional contiguous layout, use `tl.make_block_ptr` to model those dimensions directly instead of accessing the tensor through flattened one-dimensional offsets that stride through an inner dimension. A well-shaped block pointer lets the NPU DMA controller issue wider, more efficient transfers and reduces scalar address-generation overhead. When an inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape, include it in the tile and adjust the grid mapping.
+- Source: [block-pointer-dimensionality.md](patterns/block-pointer-dimensionality.md)
+- Use When:
+  - A high-dimensional contiguous tensor is accessed through flattened one-dimensional offsets that stride through an inner dimension.
+  - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
+  - Profiling or IR suggests the 1D pointer path produces strided or non-coalesced loads across a dimension that is actually contiguous in memory.
+- Signals / Code:
+  - A high-dimensional contiguous tensor is accessed through flattened one-dimensional offsets that stride through an inner dimension.
+  - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
+  - Manual pointer arithmetic reconstructs multi-dimensional coordinates from a single flat `program_id`.
 
 ### `cache_use`
 
@@ -158,38 +184,27 @@ Read this generated index first. Then read only the one or two most relevant det
 
 ### `discrete_memory_access`
 
-- Summary: When loading discrete indices, rather than using `tl.load` to load the discrete set directly, use `tl.load` to load a continuous range first, then use `tl.gather` to select the target values.
+- Summary: When loading through discrete indices, do not use `tl.load` to read the target values directly from global memory. Instead, use `tl.load` to stage a contiguous range into the Unified Buffer first, then use the fast on-chip indexing path (`tl.gather` or equivalent) to select the target values.
 - Source: [discrete_memory_access.md](patterns/discrete_memory_access.md)
 - Use When:
   - The central bottleneck is discrete memory access that semantically looks like `out = x[idx]`.
   - Index-driven global loads dominate the hot path, and contiguous staging plus local selection is more plausible than direct scattered reads.
+  - The gather source array is small or medium enough that contiguous staging in shared memory is plausible.
   - The hot loop repeatedly reads fixed fields from AoS records with stride-C offsets, such as `[N, 3]` coordinates loaded as `atom_idx * 3 + channel`, and the input is reused enough to amortize wrapper-side SoA materialization.
 - Avoid When:
   - The source range is too large to stage or transpose profitably for the active shape.
+  - Memory access patterns are already sequential and contiguous.
   - The fixed field dimension is consumed as a whole and splitting it would require vector extraction.
   - The rewrite would introduce unsupported Ascend tensor indexing such as `vec[0]` on a loaded vector/tile.
 - Signals / Code:
+  - Code uses index arrays to access non-contiguous memory locations on the hot path.
   - Channel-wise loads use stride-2/3/4 addressing in the hot vector path.
+  - Direct global-memory gather reads dominate more than the surrounding arithmetic.
   - Attempts to coalesce fixed fields would require extracting scalar components from a vector.
   - A small fixed set of indexed setup values is used only for scalar frame/basis initialization.
-
-### `gather-load`
-
-- Summary: Stage gather-like input through contiguous loads before selecting indexed values so the kernel reduces expensive discrete global-memory reads on Ascend NPU.
-- Source: [gather-load.md](patterns/gather-load.md)
-- Use When:
-  - **Discrete access patterns**: When using index arrays to access non-contiguous memory
-  - **Small to medium source arrays**: When the source array can fit in shared memory
-  - **Performance-critical sections**: Where gather operations are bottleneck
-- Avoid When:
-  - **Large source arrays**: When M is too large for shared memory capacity
-  - **Already contiguous access**: When memory access patterns are already sequential
-  - **GPU targets**: This optimization is NPU-specific and may not benefit GPU architectures
-  - **Single-element access**: When only accessing a few discrete elements
-- Signals / Code:
-  - Code uses index arrays to access non-contiguous memory locations on the hot path.
-  - The gather source array is small or medium enough that contiguous staging in shared memory is plausible.
-  - Direct global-memory gather reads dominate more than the surrounding arithmetic.
+- Signals / Profile:
+  - Direct discrete global-memory reads appear as the dominant cost in the hot path.
+  - MTE bandwidth utilization is low relative to the amount of data consumed, indicating poor coalescing.
 
 ### `grid-flatten-and-ub-buffering`
 
@@ -207,23 +222,6 @@ Read this generated index first. Then read only the one or two most relevant det
   - Each physical program still processes many tiny rows or row-at-a-time transfers after grid mapping.
 - Signals / Profile:
   - Latency is dominated by too many logical tasks, uneven per-core work, or tiny row-wise memory transfers after a gather or scatter style rewrite.
-
-### `layout-store-and-block-pointers`
-
-- Summary: Improve latency by reshaping memory layout, block-pointer dimensionality, and store granularity so the NPU sees continuous vector-friendly transfers instead of scalarized transpose or many tiny operations.
-- Source: [layout-store-and-block-pointers.md](patterns/layout-store-and-block-pointers.md)
-- Use When:
-  - Multiple stores target adjacent addresses but are emitted as separate small `tl.store` operations.
-  - `tl.store` writes a transposed logical tensor and appears to degrade into scalar element stores.
-  - A high-dimensional contiguous tensor is accessed through flattened one-dimensional offsets that stride through an inner dimension.
-  - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
-  - A `tl.dot` operand uses `tl.trans(x).to(dtype)` before entering Cube work.
-  - A matmul epilogue adds bias after `tl.dot` in a way that creates unnecessary broadcast or load ordering overhead.
-- Signals / Code:
-  - Multiple stores target adjacent addresses but are emitted as separate small `tl.store` operations.
-  - A store writes a transposed logical tensor and appears to degrade into scalar element stores.
-  - A high-dimensional contiguous tensor is accessed through flattened one-dimensional offsets that stride through an inner dimension.
-  - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
 
 ### `loop-invariant-hoisting`
 
@@ -246,6 +244,23 @@ Read this generated index first. Then read only the one or two most relevant det
   - Repeated arithmetic chains (`muli/addi/index_cast`) inside `scf.while` / `scf.for` bodies.
   - Loop bodies contain repeated `subi/minsi/maxsi` patterns for bounds handling.
 
+### `merge-adjacent-stores`
+
+- Summary: Combine separate small `tl.store` operations into one wider store when the destination addresses form a continuous interval, so the NPU emits a single vector-friendly DMA write instead of multiple tiny transactions.
+- Source: [merge-adjacent-stores.md](patterns/merge-adjacent-stores.md)
+- Use When:
+  - Multiple stores target adjacent addresses but are emitted as separate small `tl.store` operations.
+  - The destination addresses are provably continuous and the per-element masks are compatible.
+  - Profiling or code inspection shows store granularity, not load or compute, is limiting throughput.
+- Avoid When:
+  - Destination addresses are not a continuous interval — merging would change semantics.
+  - Masks differ across the candidate stores in a way that changes correctness.
+  - The combined write would exceed UB capacity or register pressure for the active tile.
+- Signals / Code:
+  - Multiple `tl.store` calls write to addresses that differ only by a small constant offset within a contiguous block.
+  - A loop emits one `tl.store` per iteration even though the outputs across iterations are adjacent.
+  - Store instructions outnumber load instructions significantly in a copy-heavy or epilogue-heavy kernel.
+
 ### `padded_row_col_copy`
 
 - Summary: Optimize **constant pad** and similar **regular bounded copies** by rewriting a **flat 1D** kernel over `numel(out)` into **`out_rows` × `out_dim_last`**: grid over leading logical rows, **column blocks** on the last axis, and a **row-invariant input base** hoisted out of the column loop. Combine **`BLOCK_ROWS > 1`** when the last dim is small, **`NO_COL_PAD`** `constexpr` when the last axis has no pad, **host-side `BLOCK_COLS` refinement**, and optional **`NATIVE_MASKED_LOAD`** split by shape regime.
@@ -255,7 +270,7 @@ Read this generated index first. Then read only the one or two most relevant det
   - The baseline uses **`pid * BLOCK + arange`** over **`numel(out)`** with **heavy div/mod** for **all** coordinates each iteration.
   - Profiling shows **high scalar** or **`tl.load` / mask** cost on **last-dim** pad boundaries.
 - Avoid When:
-  - The hot path is **gather/scatter** or **index-driven** discrete access (prefer `gather-load` / `discrete_memory_access`).
+  - The hot path is **gather/scatter** or **index-driven** discrete access (prefer `discrete_memory_access`).
   - **Dynamic `if`/`elif` on tile kind** inside the column loop is required without proof the backend lowers it safely—prefer a **uniform** column loop on Ascend unless validated.
   - **Interior-only** fast paths that **omit `col_mask`** on `tl.store` without proof for **tail** blocks (`out_dim_last % BLOCK_COLS != 0`).
 - Signals / Code:
@@ -305,15 +320,17 @@ Read this generated index first. Then read only the one or two most relevant det
 
 ### `remove-implicit-transpose`
 
-- Summary: Eliminate **implicit transpose-style access** on Ascend NPU by **materializing the transposed operand on the host** (or by storing it in the preferred physical layout), instead of relying on stride tricks inside the kernel.
+- Summary: Eliminate **implicit transpose-style access** on Ascend NPU. This pattern targets two common forms:
 - Source: [remove-implicit-transpose.md](patterns/remove-implicit-transpose.md)
 - Use When:
   - You implement GEMM / Linear-like kernels where one operand is stored as `[N, K]` but the math needs `[K, N]` (e.g. `y = x @ w.T`).
   - Kernel code accesses the operand with **transpose-like strides** (treats `[N, K]` as `[K, N]`).
+  - A `tl.dot` operand uses `tl.trans(x).to(dtype)` where the transpose is applied before the dtype conversion, and the result feeds directly into `tl.dot`.
   - Profiling shows high **scalar/control** and/or large **WAIT_FLAG** time around the matmul path.
 - Signals / Code:
   - Weight is stored as `weight: [N, K]` (PyTorch `nn.Linear` default).
   - Kernel computes `b_ptrs` like `b_ptr + k * stride_bk + n * stride_bn` and relies on strides to emulate `[K, N]`.
+  - `tl.dot` operands use the pattern `tl.trans(b).to(tl.float16)` where the transpose is applied before the type cast.
 - Signals / Profile:
   - `WAIT_FLAG_DEVI` dominates the CUBE timeline around matmul.
   - `MOV_OUT_TO_L1_MULTI_ND2NZ` / `nd2nz` and related fixpipe steps appear frequently.

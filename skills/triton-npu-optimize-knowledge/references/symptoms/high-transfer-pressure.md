@@ -15,7 +15,7 @@ The round looks dominated by data movement, staging cost, or transfer-heavy exec
 - `tiling`
 - `cache-use`
 - `algebraic-optimization`
-- `gather-load`
+- `discrete_memory_access`
 - `slice-coalesce`
 - `slice-intermediate`
 

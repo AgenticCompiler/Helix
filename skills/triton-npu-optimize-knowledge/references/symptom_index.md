@@ -35,7 +35,7 @@ Read this generated index first. Then read only the one or two most relevant det
   - `tiling`
   - `cache-use`
   - `algebraic-optimization`
-  - `gather-load`
+  - `discrete_memory_access`
   - `slice-coalesce`
   - `slice-intermediate`
 - Common Non-Matches:
@@ -54,7 +54,7 @@ Read this generated index first. Then read only the one or two most relevant det
   - `cache-use`
   - `diagonal`
   - `slice-coalesce`
-  - `gather-load`
+  - `discrete_memory_access`
 - Common Non-Matches:
   - Poor locality is not the same as pure UB overflow; if the main issue is footprint size, prefer footprint-reduction patterns first.
   - Not every gather or scatter pattern is fixable through traversal order alone.
