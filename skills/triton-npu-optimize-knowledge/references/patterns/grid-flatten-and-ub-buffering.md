@@ -2,9 +2,7 @@
 
 ## Summary
 
-Change work distribution and UB staging when latency is dominated by too many logical tasks, uneven per-core work, physical-core load balance problems, or tiny row-wise memory transfers after a gather/scatter style rewrite.
-
-This pattern complements `program-multiple-rows`: that pattern widens row-wise work inside a program, while this one focuses on flattening logical work onto physical cores and then batching memory movement inside each core.
+Flatten logical work items onto physical cores and batch small row-wise memory transfers into wider UB stores to reduce launch overhead and improve per-core work density.
 
 ## Use When
 
@@ -13,18 +11,6 @@ This pattern complements `program-multiple-rows`: that pattern widens row-wise w
 - Each program processes many tiny rows after grid-to-physical-core mapping.
 - Gather-like code has continuous destination rows but still stores one row at a time.
 - Scatter-weight-gradient-like code has repeated row loads that can be batched from continuous source rows.
-
-## Signals
-
-### Code
-
-- The logical grid is much larger than the physical AICore or VectorCore count.
-- Work is partitioned by batch or sequence buckets that create visible load imbalance.
-- Each physical program still processes many tiny rows or row-at-a-time transfers after grid mapping.
-
-### Profile
-
-- Latency is dominated by too many logical tasks, uneven per-core work, or tiny row-wise memory transfers after a gather or scatter style rewrite.
 
 ## Repairs
 

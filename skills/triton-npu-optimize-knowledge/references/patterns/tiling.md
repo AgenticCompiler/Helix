@@ -2,7 +2,7 @@
 
 ## Summary
 
-Reduce per-program working-set size through hierarchical or sub-block tiling so large tiles, intermediates, or multi-tensor loads fit UB safely without collapsing overall task structure.
+Reduce per-program working-set size through hierarchical or sub-block tiling, keeping live data within UB capacity.
 
 ## Use When
 
@@ -20,9 +20,9 @@ Reduce per-program working-set size through hierarchical or sub-block tiling so 
 ## Problem Description
 
 **Root Cause:**
-- Ascend NPU has limited on-chip Unified Buffer (192KB on Atlas 800T A2/A3)
-- Large `BLOCK_SIZE` values cause excessive memory consumption per program instance
-- When loading multiple tensors or performing complex operations within a block, UB usage can overflow
+- Ascend NPU has limited on-chip Unified Buffer (192KB on Atlas 800T A2/A3).
+- When multiple tensors or complex operations are loaded simultaneously, UB usage can overflow.
+- Large `BLOCK_SIZE` values amplify the issue by increasing the number of live elements held per program instance.
 
 **Symptoms:**
 - Runtime errors indicating UB overflow
@@ -58,12 +58,7 @@ If the tiled loop already exists and the remaining problem is poor memory/comput
 
 ## Detection Pattern
 
-Look for code with these characteristics:
-
-1. **Large BLOCK_SIZE values** (> 8192)
-2. **Multiple tensor loads** within a single block
-3. **Complex operations** that require intermediate storage
-4. **UB overflow errors** at runtime
+A kernel that loads multiple large tensors in a single flat block risks UB overflow:
 
 ### Problematic Code Patterns
 

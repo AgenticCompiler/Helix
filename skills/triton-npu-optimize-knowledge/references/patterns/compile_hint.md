@@ -2,12 +2,7 @@
 
 ## Summary
 
-Try the following compile hints:
-
-  - Before call to `tl.dot` in matrices, use `tl.compile_hint(a, "dot_pad_only_k")` for matrices
-    involved in the product.
-  - Use `tl.multiple_of` (resp. `tl.max_contiguous`) to specify tensor slices that are known to be
-    aligned (resp. contiguous).
+Apply compiler hints (`dot_pad_only_k`, `max_contiguous`, `multiple_of`) to communicate alignment and contiguity assumptions so the Triton compiler can generate more efficient code.
 
 ## Use When
 

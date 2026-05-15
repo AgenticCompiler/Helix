@@ -31,12 +31,15 @@ Inside `## Signals`, the generator also recognizes these optional subsections:
 - `### IR`
 
 Free-form sections are allowed and stay in the authored card, but they are ignored for first-layer index generation.
-`## What To Verify After Applying` and `## Related Patterns` are also kept in the authored card only; they should not be emitted into the generated `pattern_index.md`, because the index is for triage rather than post-apply validation or cross-pattern navigation detail.
+`## Avoid When`, `## Signals` (and its `### Code`, `### Profile`, `### IR` subsections), `## What To Verify After Applying`, and `## Related Patterns` are also kept in the authored card only; they should not be emitted into the generated `pattern_index.md`, because the index is for triage rather than detailed detection or validation detail.
 
 ## Practical Rules
 
 - Every pattern card should begin with a top-level `# <Human Title>` heading.
 - Every pattern card must include both `## Summary` and `## Use When`.
+- **`## Summary` describes WHAT the pattern is/does.** Keep it to 1-2 sentences. Do not include signal-like language ("when X happens", "look for"), usage instructions, or implementation detail.
+- **`## Use When` describes WHEN to apply the pattern.** Keep it as detection conditions. Do not describe what the pattern is.
+- **Summary and Use When must be orthogonal**: information in one should not appear in the other.
 - Missing optional predefined sections are allowed.
 - `## Use When`, `## Avoid When`, and the optional signal subsections work best as bullet lists.
 - Both `- item` and `1. item` list styles are accepted by the generator.

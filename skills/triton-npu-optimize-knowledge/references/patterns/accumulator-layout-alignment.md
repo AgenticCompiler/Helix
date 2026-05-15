@@ -2,7 +2,7 @@
 
 ## Summary
 
-Shape accumulators and masks so the store order matches the output's contiguous memory direction. When the accumulator is carried in a shape that differs from the output memory layout — for example `(N, M)` when the output expects `(M, N)` — the store-time transpose can degrade into scalar element writes on Ascend NPU. Carry the accumulator in the output-native shape instead and adjust reduction axes to match.
+Align accumulator shapes with output memory layout to avoid store-time transposes that degrade into scalar element writes on Ascend NPU.
 
 ## Use When
 
