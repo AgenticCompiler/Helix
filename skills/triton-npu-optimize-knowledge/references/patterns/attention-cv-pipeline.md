@@ -4,8 +4,6 @@
 
 Reduce latency in Cube+Vector fused attention-like kernels by cutting vector-side instruction pressure, making mask/scale work cheaper, and using architecture-gated compile options only when the target device supports them.
 
-Use this after the kernel is already structurally sound. These optimizations are sensitive to numerics, architecture, and forward/backward consistency.
-
 ## Use When
 
 - A `tl.dot` loop is followed by substantial vector epilogue work such as scale, mask, softmax, dropout, or bias.
@@ -25,14 +23,7 @@ Use this after the kernel is already structurally sound. These optimizations are
 
 ### Code
 
-- A `tl.dot` loop is followed by repeated mask, scale, softmax, dropout, or bias work on the vector side.
-- The same mask tensor is recomputed inside a hot loop even though it depends only on host-known metadata.
-- The forward path stores log-sum-exp state in base-2 form solely because it uses `exp2`.
-
 ### Profile
-
-- Profiling suggests Cube and Vector work are close enough that vector-side instruction pressure is limiting overlap.
-- The kernel is structurally sound, but the post-dot vector path still appears to dominate latency.
 
 ## Repairs
 

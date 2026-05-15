@@ -2,8 +2,7 @@
 
 ## Summary
 
-Analyze memory access patterns, try to make use of cache and UB as much as possible. Make note of L2
-cache (96MB, shared by all cores) and size of L1 and UB (512KB, 256KB, respectively).
+Improve L2 cache (96MB shared), L1 cache (512KB per Cube core), and UB (192KB) utilization through better data placement, tile sizing, and memory access pattern analysis.
 
 ## Use When
 

@@ -14,10 +14,7 @@ global memory transactions.
 
 ## Detail
 
-### When to Use:
-**Apply this pattern when your kernel performs scatter/gather operations with non-contiguous memory access patterns, such as token rearrangement in MOE layers, sparse data processing, or any operation involving index-based data movement.** This optimization is essential when the number of NPU cores is limited (e.g., 20 Cube cores), and you need to maximize data reuse while minimizing expensive global memory transactions.
-
-### Principle and Implementation:
+### Principle and Implementation
 NPUs have significantly fewer cores than GPUs, making kernel launch overhead substantial. Unlike CUDA where launching thousands of small kernels is efficient due to massive parallelism, NPUs benefit from fewer, larger kernels that process more data per core. For scatter/gather operations, use `extract_slice` and `insert_slice` to batch process data within UB before performing coalesced global memory writes. This approach transforms multiple small, random memory accesses into fewer, larger, sequential accesses. The MOE token rearrangement example demonstrates two complementary patterns: using `extract_slice` to batch-load contiguous data then scatter-write individual tokens (token reverse), and using `insert_slice` to gather scattered data into a contiguous buffer for batch writing (token rearrangement).
 
 ```python

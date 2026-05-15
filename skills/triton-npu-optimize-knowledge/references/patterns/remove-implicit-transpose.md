@@ -2,13 +2,7 @@
 
 ## Summary
 
-Eliminate **implicit transpose-style access** on Ascend NPU. This pattern targets two common forms:
-
-1. **Host-side physical layout mismatch**: The operand is stored in one layout (e.g. `[N, K]`) but the kernel accesses it with transpose-like strides as if it were `[K, N]`. Fix by materializing the transposed operand on the host.
-
-2. **Dot-operand expression ordering**: A `tl.dot` operand goes through `tl.trans(x).to(dtype)` before entering Cube work, causing the compiler to insert extra layout transforms. Fix by reordering: do the dtype conversion first, then pass the transpose to `tl.dot` directly so the Cube unit handles it natively.
-
-In both cases the compiler inserts extra **layout transforms** (often visible as `nd2nz` + additional transpose/reorder control), and IR shows marks like **`MayImplicitTransposeWithLastAxis`**.
+Eliminate implicit transpose-style access on Ascend NPU by ensuring operands are in the physical layout the kernel needs, avoiding compiler-injected layout transforms.
 
 ## Use When
 
