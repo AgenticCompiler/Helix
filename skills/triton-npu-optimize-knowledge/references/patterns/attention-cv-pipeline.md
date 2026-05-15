@@ -19,12 +19,6 @@ Reduce latency in Cube+Vector fused attention-like kernels by cutting vector-sid
 - Profiling shows memory transfer, not vector epilogue work, is the dominant bottleneck.
 - Architecture-specific compile settings cannot be gated on verified target information.
 
-## Signals
-
-### Code
-
-### Profile
-
 ## Repairs
 
 ### Cube/Vector pipeline scheduling

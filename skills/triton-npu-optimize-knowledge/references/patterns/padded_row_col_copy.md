@@ -20,6 +20,9 @@ Rewrite flat 1D copy kernels over `numel(out)` into row–column tiled form to r
 
 ### Profile
 
+- Scalar or control overhead out of proportion to copy bandwidth.
+- Hot path dominated by **masked load** or **compare** chains for pad bounds.
+
 ## Avoid When
 
 - The hot path is **gather/scatter** or **index-driven** discrete access (prefer `discrete_memory_access`).
