@@ -2,7 +2,12 @@ import sys
 import unittest
 from errno import EIO
 from io import StringIO
+import multiprocessing
 from os import environ
+from pathlib import Path
+from queue import Empty
+import tempfile
+import textwrap
 from typing import Any, Optional, cast
 from unittest.mock import patch
 import signal
@@ -129,6 +134,54 @@ class BufferedProcessRunnerTests(unittest.TestCase):
             )
         self.assertEqual(result.return_code, 1)
 
+    def test_buffered_process_drains_large_stderr_without_blocking_child_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            helper = workspace / "emit_large_stderr.py"
+            created = workspace / "created.txt"
+            helper.write_text(
+                textwrap.dedent(
+                    """\
+                    import sys
+                    from pathlib import Path
+
+                    target = Path(sys.argv[1])
+                    sys.stderr.write("x" * (256 * 1024) + "\\n")
+                    sys.stderr.flush()
+                    target.write_text("ok", encoding="utf-8")
+                    sys.stdout.write("done\\n")
+                    sys.stdout.flush()
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            ctx = multiprocessing.get_context("spawn")
+            queue = ctx.Queue()
+            worker = ctx.Process(
+                target=_run_buffered_large_stderr_repro,
+                args=(str(helper), str(created), queue),
+            )
+            worker.start()
+            worker.join(timeout=5)
+            if worker.is_alive():
+                worker.terminate()
+                worker.join()
+                self.fail("buffered process runner hung while child emitted large stderr")
+
+            self.assertEqual(worker.exitcode, 0)
+            try:
+                payload = queue.get(timeout=1)
+            except Empty as exc:
+                raise AssertionError("buffered process worker did not return a result") from exc
+
+            self.assertNotIn("error", payload)
+            self.assertEqual(payload["return_code"], 0)
+            self.assertFalse(payload["stalled"])
+            self.assertTrue(payload["output_exists"])
+            self.assertEqual(payload["output_text"], "ok")
+            self.assertEqual(payload["stdout"], "done\n")
+
     @unittest.skipIf(not hasattr(__import__("os"), "killpg"), "requires POSIX process groups")
     def test_keyboard_interrupt_sends_two_sigints_then_force_kills(self) -> None:
         process = _BufferedFakeProcess(
@@ -141,22 +194,25 @@ class BufferedProcessRunnerTests(unittest.TestCase):
         )
         with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
             with patch("triton_agent.process_runner.os.killpg") as mocked_killpg:
-                with patch("triton_agent.process_runner.time.sleep"):
-                    with patch.object(
-                        process.stdout,
-                        "readline",
-                        side_effect=KeyboardInterrupt,
-                    ):
-                        result = run_buffered_process(
-                            ["codex", "exec"],
-                            "/tmp",
-                            stall_timeout_seconds=10,
-                            session_id_extractor=lambda _line: None,
-                            interrupt_policy=InterruptPolicy(
-                                first_sigint_grace_seconds=0.01,
-                                second_sigint_grace_seconds=0.01,
-                            ),
-                        )
+                sleep_calls = {"count": 0}
+
+                def _sleep(_seconds: float) -> None:
+                    if sleep_calls["count"] == 0:
+                        sleep_calls["count"] += 1
+                        raise KeyboardInterrupt
+                    sleep_calls["count"] += 1
+
+                with patch("triton_agent.process_runner.time.sleep", side_effect=_sleep):
+                    result = run_buffered_process(
+                        ["codex", "exec"],
+                        "/tmp",
+                        stall_timeout_seconds=10,
+                        session_id_extractor=lambda _line: None,
+                        interrupt_policy=InterruptPolicy(
+                            first_sigint_grace_seconds=0.01,
+                            second_sigint_grace_seconds=0.01,
+                        ),
+                    )
         self.assertEqual(result.return_code, 130)
         self.assertFalse(result.stalled)
         self.assertEqual(
@@ -424,20 +480,25 @@ class UnifiedProcessRunnerTests(unittest.TestCase):
 
 class _BufferedFakeStdout:
     def __init__(self, lines: list[str]) -> None:
-        self._lines = list(lines)
+        self._chunks = list(lines)
+
+    def read(self, _size: int = -1) -> str:
+        if self._chunks:
+            return self._chunks.pop(0)
+        return ""
 
     def readline(self) -> str:
-        if self._lines:
-            return self._lines.pop(0)
-        return ""
+        return self.read()
 
 
 class _BufferedFakeStderr:
     def __init__(self, text: str) -> None:
         self._text = text
 
-    def read(self) -> str:
-        return self._text
+    def read(self, _size: int = -1) -> str:
+        text = self._text
+        self._text = ""
+        return text
 
 
 class _BufferedFakeProcess:
@@ -462,11 +523,14 @@ class _BufferedFakeProcess:
             return self._poll_values.pop(0)
         if self._default_poll_return is not _USE_RETURNCODE:
             return cast(Optional[int], self._default_poll_return)
-        if self.stdout._lines:
+        if self.stdout._chunks:
             return None
         return 0 if self.returncode is None else self.returncode
 
     def terminate(self) -> None:
+        self.returncode = 1
+
+    def kill(self) -> None:
         self.returncode = 1
 
 
@@ -504,6 +568,32 @@ def _result():
     from triton_agent.models import AgentResult
 
     return AgentResult(return_code=0, stdout="", stderr="")
+
+
+def _run_buffered_large_stderr_repro(
+    helper_path: str,
+    output_path: str,
+    queue: Any,
+) -> None:
+    try:
+        result = run_buffered_process(
+            [sys.executable, helper_path, output_path],
+            str(Path(helper_path).parent),
+            stall_timeout_seconds=2,
+            session_id_extractor=lambda _line: None,
+        )
+        target = Path(output_path)
+        queue.put(
+            {
+                "return_code": result.return_code,
+                "stalled": result.stalled,
+                "stdout": result.stdout,
+                "output_exists": target.exists(),
+                "output_text": target.read_text(encoding="utf-8") if target.exists() else None,
+            }
+        )
+    except BaseException as exc:  # pragma: no cover - exercised only on failure
+        queue.put({"error": f"{type(exc).__name__}: {exc}"})
 
 
 if __name__ == "__main__":

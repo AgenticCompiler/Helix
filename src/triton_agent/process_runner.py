@@ -116,57 +116,99 @@ def run_buffered_process(
         env=_merged_env(extra_env),
         start_new_session=interrupt_policy is not None and not _IS_WINDOWS,
     )
-    stdout_lines: list[str] = []
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
     session_id: Optional[str] = None
-    start = time.monotonic()
+    session_buffer = ""
+    start_ref: list[float] = [time.monotonic()]
+    lock = threading.Lock()
+
+    def record_stdout_chunk(chunk: str) -> None:
+        nonlocal session_id, session_buffer
+        filtered = output_filter.feed(chunk) if output_filter is not None else chunk
+        with lock:
+            if filtered:
+                stdout_chunks.append(filtered)
+            start_ref[0] = time.monotonic()
+        if session_id is None:
+            session_id, session_buffer = _extract_session_id_from_text(
+                session_id_extractor,
+                session_id,
+                session_buffer,
+                chunk,
+            )
+
+    def record_stderr_chunk(chunk: str) -> None:
+        with lock:
+            if chunk:
+                stderr_chunks.append(chunk)
+            start_ref[0] = time.monotonic()
+
+    stdout_reader = threading.Thread(
+        target=_read_text_stream,
+        args=(process.stdout, record_stdout_chunk),
+        daemon=True,
+    )
+    stderr_reader = threading.Thread(
+        target=_read_text_stream,
+        args=(process.stderr, record_stderr_chunk),
+        daemon=True,
+    )
+    readers = (stdout_reader, stderr_reader)
+    for reader in readers:
+        reader.start()
 
     try:
         while True:
-            line = process.stdout.readline() if process.stdout is not None else ""
-            if line:
-                filtered = output_filter.feed(line) if output_filter is not None else line
-                if filtered:
-                    stdout_lines.append(filtered)
-                start = time.monotonic()
-                session_id = session_id or session_id_extractor(line)
-            elif process.poll() is not None:
+            if process.poll() is not None and not any(reader.is_alive() for reader in readers):
                 break
-            elif stall_timeout_seconds > 0 and time.monotonic() - start > stall_timeout_seconds:
+            if stall_timeout_seconds > 0 and time.monotonic() - start_ref[0] > stall_timeout_seconds:
                 process.terminate()
-                stderr_text = process.stderr.read() if process.stderr is not None else ""
+                if not _wait_for_process_exit(process, 1.0):
+                    process.kill()
+                for reader in readers:
+                    reader.join(timeout=1.0)
+                session_id = _flush_session_id_buffer(session_id_extractor, session_id, session_buffer)
+                if output_filter is not None:
+                    trailing = output_filter.feed("", flush=True)
+                    if trailing:
+                        stdout_chunks.append(trailing)
                 return AgentResult(
                     return_code=1,
-                    stdout="".join(stdout_lines),
-                    stderr=stderr_text,
+                    stdout="".join(stdout_chunks),
+                    stderr="".join(stderr_chunks),
                     stalled=True,
                     session_id=session_id,
                 )
+            time.sleep(0.05)
     except KeyboardInterrupt:
         if interrupt_policy is None:
             raise
         _interrupt_process(process, interrupt_policy)
-        stderr_text = process.stderr.read() if process.stderr is not None else ""
+        for reader in readers:
+            reader.join(timeout=1.0)
+        session_id = _flush_session_id_buffer(session_id_extractor, session_id, session_buffer)
         if output_filter is not None:
             trailing = output_filter.feed("", flush=True)
             if trailing:
-                stdout_lines.append(trailing)
+                stdout_chunks.append(trailing)
         return AgentResult(
             return_code=interrupt_policy.interrupted_return_code,
-            stdout="".join(stdout_lines),
-            stderr=stderr_text,
+            stdout="".join(stdout_chunks),
+            stderr="".join(stderr_chunks),
             stalled=False,
             session_id=session_id,
         )
 
-    stderr_text = process.stderr.read() if process.stderr is not None else ""
+    session_id = _flush_session_id_buffer(session_id_extractor, session_id, session_buffer)
     if output_filter is not None:
         trailing = output_filter.feed("", flush=True)
         if trailing:
-            stdout_lines.append(trailing)
+            stdout_chunks.append(trailing)
     return AgentResult(
         return_code=_resolved_returncode(process.returncode),
-        stdout="".join(stdout_lines),
-        stderr=stderr_text,
+        stdout="".join(stdout_chunks),
+        stderr="".join(stderr_chunks),
         stalled=False,
         session_id=session_id,
     )
@@ -388,6 +430,50 @@ def _run_streaming_process_pty(
 
 def _resolved_returncode(returncode: int | None) -> int:
     return returncode if returncode is not None else 1
+
+
+def _read_text_stream(
+    stream: TextIO | None,
+    on_chunk: Callable[[str], None],
+) -> None:
+    if stream is None:
+        return
+    while True:
+        chunk = stream.read(4096)
+        if not chunk:
+            break
+        on_chunk(chunk)
+
+
+def _extract_session_id_from_text(
+    extractor: Callable[[str], Optional[str]],
+    current_session_id: Optional[str],
+    pending_text: str,
+    chunk: str,
+) -> tuple[Optional[str], str]:
+    if current_session_id is not None:
+        return current_session_id, pending_text
+    pending_text += chunk
+    while True:
+        newline_index = pending_text.find("\n")
+        if newline_index == -1:
+            break
+        line = pending_text[: newline_index + 1]
+        pending_text = pending_text[newline_index + 1 :]
+        extracted = extractor(line)
+        if extracted is not None:
+            return extracted, pending_text
+    return None, pending_text
+
+
+def _flush_session_id_buffer(
+    extractor: Callable[[str], Optional[str]],
+    current_session_id: Optional[str],
+    pending_text: str,
+) -> Optional[str]:
+    if current_session_id is not None or not pending_text:
+        return current_session_id
+    return extractor(pending_text)
 
 
 def _merged_env(extra_env: Optional[dict[str, str]]) -> Optional[dict[str, str]]:
