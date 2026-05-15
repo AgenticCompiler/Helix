@@ -27,7 +27,7 @@ Adoption must pass **local correctness and benchmark gates**; this card does not
 
 ## Avoid When
 
-- The hot path is **gather/scatter** or **index-driven** discrete access (prefer `gather-load` / `discrete_memory_access`).
+- The hot path is **gather/scatter** or **index-driven** discrete access (prefer `discrete_memory_access`).
 - **Dynamic `if`/`elif` on tile kind** inside the column loop is required without proof the backend lowers it safely—prefer a **uniform** column loop on Ascend unless validated.
 - **Interior-only** fast paths that **omit `col_mask`** on `tl.store` without proof for **tail** blocks (`out_dim_last % BLOCK_COLS != 0`).
 

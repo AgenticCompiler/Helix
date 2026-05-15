@@ -111,7 +111,7 @@ while cdiv(inner_extent, BLOCK) * bundle > HW_PROGRAM_LIMIT and BLOCK < MAX_BLOC
 **After tile optimization**
 
 - **`DiscreteMemAccess` often remains** for the **core indexed op**; gains come from **fewer iterations**, not from turning the op into contiguous DMA.
-- For **staging / UB** alternatives (fewer discrete globals), see **[gather-load.md](gather-load.md)** and **[discrete_memory_access.md](discrete_memory_access.md)** when **workspace** allows.
+- For **staging / UB** alternatives (fewer discrete globals), see **[discrete_memory_access.md](discrete_memory_access.md)** when **workspace** allows.
 
 ## Avoid When
 
@@ -129,7 +129,6 @@ while cdiv(inner_extent, BLOCK) * bundle > HW_PROGRAM_LIMIT and BLOCK < MAX_BLOC
 
 ## Related Patterns
 
-- [gather-load.md](gather-load.md)
 - [discrete_memory_access.md](discrete_memory_access.md)
 - [tiling.md](tiling.md)
 

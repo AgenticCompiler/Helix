@@ -15,7 +15,7 @@ The kernel revisits data in an order that weakens reuse, causes repeated reloads
 - `cache-use`
 - `diagonal`
 - `slice-coalesce`
-- `gather-load`
+- `discrete_memory_access`
 
 ## Common Non-Matches
 
