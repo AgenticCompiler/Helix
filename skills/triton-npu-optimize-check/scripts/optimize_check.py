@@ -50,6 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     round_parser = subparsers.add_parser("check-round")
     round_parser.add_argument("--round-dir", required=True)
+    round_parser.add_argument("--min-rounds", type=int, default=None)
     return parser
 
 
@@ -60,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "check-baseline":
         result = check_baseline(Path(args.baseline_dir).expanduser().resolve())
     else:
-        result = check_round(Path(args.round_dir).expanduser().resolve())
+        result = check_round(Path(args.round_dir).expanduser().resolve(), min_rounds=args.min_rounds)
 
     print(json.dumps(asdict(result), ensure_ascii=True))
     print(result.summary, file=sys.stderr)

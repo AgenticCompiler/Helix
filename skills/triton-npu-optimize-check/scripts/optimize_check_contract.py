@@ -321,7 +321,11 @@ def check_baseline(baseline_dir_path: Path) -> OptimizeCheckResult:
     return _build_result(kind="baseline", decision="pass", issues=())
 
 
-def check_round(round_dir: Path) -> OptimizeCheckResult:
+def _count_round_directories(workspace: Path) -> int:
+    return sum(1 for path in workspace.glob("opt-round-*") if path.is_dir())
+
+
+def check_round(round_dir: Path, *, min_rounds: int | None = None) -> OptimizeCheckResult:
     artifact_inspection = inspect_round_artifacts(round_dir)
     artifact_issues = artifact_inspection.issues
     if artifact_issues:
@@ -397,13 +401,40 @@ def check_round(round_dir: Path) -> OptimizeCheckResult:
 
     cleaned = cleanup_dir_pt_files(round_dir)
     if cleaned:
-        return _build_result(
+        result = _build_result(
             kind="round",
             decision="pass",
             issues=(f"cleaned up {len(cleaned)} unused pt file(s) in {round_dir.name}: {', '.join(cleaned)}",),
         )
+    else:
+        result = _build_result(kind="round", decision="pass", issues=())
 
-    return _build_result(kind="round", decision="pass", issues=())
+    if min_rounds is not None:
+        completed = _count_round_directories(round_dir.parent)
+        if completed >= min_rounds:
+            result = _build_result(
+                kind="round",
+                decision="pass",
+                issues=result.issues,
+                summary=(
+                    f"round check passed. "
+                    f"Minimum round requirement satisfied ({completed}/{min_rounds}) — "
+                    f"the optimize session may stop after this round."
+                ),
+            )
+        else:
+            result = _build_result(
+                kind="round",
+                decision="pass",
+                issues=result.issues,
+                summary=(
+                    f"round check passed. "
+                    f"Round {completed}/{min_rounds} complete — "
+                    f"at least {min_rounds - completed} more round(s) required before stopping."
+                ),
+            )
+
+    return result
 
 
 def _load_json_object(path: Path, *, display_name: str) -> dict[str, Any]:
@@ -497,9 +528,11 @@ def _build_result(
     kind: Literal["baseline", "round"],
     decision: Literal["pass", "revise-required", "hard-fail"],
     issues: tuple[str, ...],
+    summary: str | None = None,
 ) -> OptimizeCheckResult:
     ok = decision == "pass"
-    summary = f"{kind} check passed" if ok else f"{kind} check requires fixes: {'; '.join(issues)}"
+    if summary is None:
+        summary = f"{kind} check passed" if ok else f"{kind} check requires fixes: {'; '.join(issues)}"
     return OptimizeCheckResult(
         ok=ok,
         kind=kind,
