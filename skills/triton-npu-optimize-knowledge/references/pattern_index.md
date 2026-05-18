@@ -15,7 +15,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `autotune`
 
-- Summary: Use Triton autotune to automatically search tile sizes and launch parameters within a bounded configuration space.
+- Summary: Use Triton-Ascend autotune as the default way to search split sizes, tile sizes, and selected compile options when the kernel structure is already reasonable and the main open question is parameter choice.
 - Source: [autotune.md](patterns/autotune.md)
 
 ## Generated Pattern Summaries
@@ -64,11 +64,15 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `autotune`
 
-- Summary: Use Triton autotune to automatically search tile sizes and launch parameters within a bounded configuration space.
+- Summary: Use Triton-Ascend autotune as the default way to search split sizes, tile sizes, and selected compile options when the kernel structure is already reasonable and the main open question is parameter choice.
 - Source: [autotune.md](patterns/autotune.md)
 - Use When:
-  - The kernel already has several plausible tile or launch parameter choices, and the main structure looks reasonable.
-  - Manual parameter picking is likely leaving performance on the table, but the search space can still be kept small and bounded.
+  - The kernel structure already looks semantically correct, and the likely headroom is in `BLOCK_*` selection, split shape, or Ascend-specific compile options such as `multibuffer`.
+  - The current optimization loop is drifting toward repeated manual tiling edits without strong evidence that a structural rewrite is needed first.
+  - The hot path exposes one or more free `tl.constexpr` parameters that are not hard-coded at launch time.
+  - Bounds masks or loop structure still map cleanly back to runtime shape arguments, so a shape-keyed autotune cache is plausible.
+  - The operator is vector-like rather than a Cube-only kernel path that needs a different optimization route.
+  - You are not already in a launch-mode experiment that explicitly changes execution style; if you are applying the A5 SIMT-only discrete-access pattern, `num_warps` and grid decomposition are rechecked there after `force_simt_only=True`.
 
 ### `block-pointer-dimensionality`
 
@@ -78,14 +82,6 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - A high-dimensional contiguous tensor is accessed through flattened one-dimensional offsets that stride through an inner dimension.
   - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
   - Profiling or IR suggests the 1D pointer path produces strided or non-coalesced loads across a dimension that is actually contiguous in memory.
-
-### `cache_use`
-
-- Summary: Improve L2 cache (96MB shared), L1 cache (512KB per Cube core), and UB (192KB) utilization through better data placement, tile sizing, and memory access pattern analysis.
-- Source: [cache_use.md](patterns/cache_use.md)
-- Use When:
-  - The bottleneck looks memory-hierarchy bound rather than purely compute bound.
-  - Repeated reloads, weak reuse, or poor locality suggest that L2, L1, or UB usage can be improved through better data placement or tile sizing.
 
 ### `classic-matmul`
 
@@ -100,11 +96,13 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `compile_hint`
 
-- Summary: Apply compiler hints (`dot_pad_only_k`, `max_contiguous`, `multiple_of`) to communicate alignment and contiguity assumptions so the Triton compiler can generate more efficient code.
+- Summary: Use compiler hints to communicate layout facts the compiler cannot safely infer from pointer math alone.
 - Source: [compile_hint.md](patterns/compile_hint.md)
 - Use When:
-  - The kernel structure already looks close to good, but the compiler still lacks explicit alignment or contiguity information.
-  - `tl.dot` tiles, slices, or pointer math are known to satisfy stronger layout assumptions than the code currently expresses.
+  - The hot kernel is already structurally good, but lowering still appears conservative.
+  - You can prove stronger alignment or contiguity facts than the current code expresses.
+  - `tl.dot` inputs are stable and only need targeted padding guidance on the active path.
+  - Parent comparisons are already close enough that small lowering changes can still matter.
 
 ### `constexpr-tile-discrete-access`
 
