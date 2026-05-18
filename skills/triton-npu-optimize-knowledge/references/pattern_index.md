@@ -165,6 +165,16 @@ Read this generated index first. Then read only the one or two most relevant det
   - Two independent vector-side computations happen in sequence and can be split across vector cores.
   - The bottleneck is not primarily memory movement, so exposing more vector-core concurrency is more promising than reworking loads.
 
+### `pooling-inner-w-slab-gather`
+
+- Summary: For **sliding-window spatial pooling** in **NCHW-style** layouts (**W** is the **innermost spatial** dimension with **contiguous** columns), replace the inner **`kw` loop** that does **per-lane masked `tl.load` on scattered input columns** (`start_w + kw` or equivalent) with **one contiguous nominal slab** along **input column index** of length **`W_SLAB_LEN = STRIDE_W * (BLOCK_OW - 1) + KERNEL_W`**, then **`tl.gather`** with lane indices **`STRIDE_W * tl.arange(BLOCK_OW) + kw`** for each **`kw`**, accumulating into a **`BLOCK_OW`-wide** vector. **Depth of outer loops** matches problem rank: **2D pooling** uses **`kh` / `kw`** only; **3D** adds **`kd`** (and optional **D** offsets) the same way—**W-slab geometry does not depend on 2D vs 3D.** Host picks **`BLOCK_OW`** from **`out_w`** (e.g. divisor-based candidates up to a cap). Branch with **`tl.constexpr`**: unmasked **`USE_W_SLAB_LOAD`** when **zero padding**, **full `out_w` tile alignment**, and (for **3D**) **every window fully inside** the unpadded input if required; **`USE_W_MASKED_SLAB`** when **tiles are full** but **slab columns can be OOB** (pad / ceil), using **`tl.load(..., mask=, other=0)`** on the slab then the same **`gather`**; else **`NO_PADDING_FASTPATH`** (vector loads per **`kw`**) or **generic boundary** loads. **Grid** is workload-specific; a common **2D** pattern is **`(batch * channels * out_h, cdiv(out_w, BLOCK_OW))`**; **3D** often folds **`out_d * out_h`** into the row axis. Pair with **`program-multiple-rows`** when slab setup should be amortized across consecutive flat spatial rows; pick grid axis order from measured launch vs reuse on the target NPU.
+- Source: [pooling-inner-w-slab-gather.md](patterns/pooling-inner-w-slab-gather.md)
+- Use When:
+  - The kernel is **AvgPool2d / AvgPool3d**, **MaxPool2d / MaxPool3d** (**values only**), or any **fixed `KERNEL_W`** reduction along **W** on a **contiguous** NCHW (or 5D) tensor, with **`kw`** in a constexpr loop and **`BLOCK_OW`** outputs per program.
+  - IR or profiling shows **many narrow or predicate-heavy global loads** along **`kw`** while **`stride_w`** maps output columns to **regularly strided** input columns.
+  - **`out_w`** is large enough that **vectorizing along `ow`** matters, and **`cdiv(out_w, BLOCK_OW)`** does not hurt launch scalability in measurement.
+  - You can prove **semantic equivalence** on the branches you enable (**ceil**, **padding**, **divisor** / **count_include_pad** for average, **numeric identity** for max on **`dtype` / `-inf`** rules).
+
 ### `program-multiple-rows`
 
 - Summary: Amortize per-program fixed costs and improve vector-friendly batching for **row-reduction or row-wise fused kernels** by mapping **multiple rows** to one Triton `program_id` via `BLOCK_M > 1`, instead of one row per program.
