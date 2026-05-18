@@ -13,6 +13,7 @@ OPTIONAL_SECTIONS = (
     "Related Patterns",
     "What To Verify After Applying",
 )
+VALID_PRIORITIES = ("high", "normal")
 _FRONTMATTER_BOUNDARY = "---"
 _SECTION_HEADING_RE = re.compile(r"^##\s+(?P<title>.+?)\s*$", flags=re.MULTILINE)
 _SUBSECTION_HEADING_RE = re.compile(r"^###\s+(?P<title>.+?)\s*$", flags=re.MULTILINE)
@@ -23,6 +24,7 @@ _LIST_ITEM_RE = re.compile(r"^(?:-\s+|\d+\.\s+)(?P<item>.+?)\s*$")
 class PatternCard:
     identifier: str
     title: str
+    priority: str
     summary: str
     use_when: list[str]
     avoid_when: list[str]
@@ -111,6 +113,13 @@ def _fallback_title(metadata: dict[str, str], source_path: Path, body: str) -> s
     return source_path.stem
 
 
+def _parse_priority(metadata: dict[str, str], source_path: Path) -> str:
+    priority = metadata.get("priority", "normal").strip() or "normal"
+    if priority not in VALID_PRIORITIES:
+        raise ValueError(f"{source_path.name} has invalid priority {priority!r}")
+    return priority
+
+
 def parse_pattern_card(path: Path) -> PatternCard:
     metadata, body = parse_frontmatter(path.read_text(encoding="utf-8"))
     sections = _top_level_sections(body)
@@ -123,6 +132,7 @@ def parse_pattern_card(path: Path) -> PatternCard:
     return PatternCard(
         identifier=metadata.get("id", path.stem),
         title=_fallback_title(metadata, path, body),
+        priority=_parse_priority(metadata, path),
         summary=_first_nonempty_paragraph(sections["Summary"]),
         use_when=_extract_bullets(sections["Use When"]),
         avoid_when=_extract_bullets(sections.get("Avoid When", "")),
@@ -142,6 +152,7 @@ def _render_bullets(items: list[str]) -> list[str]:
 
 
 def render_index(cards: list[PatternCard]) -> str:
+    high_priority_cards = [card for card in cards if card.priority == "high"]
     lines = [
         "# Optimization Pattern Index",
         "",
@@ -149,9 +160,26 @@ def render_index(cards: list[PatternCard]) -> str:
         "",
         "Read this generated index first. Then read only the one or two most relevant detailed pattern files for the current bottleneck.",
         "",
-        "## Generated Pattern Summaries",
+        "## High Priority Patterns",
         "",
     ]
+    if high_priority_cards:
+        for card in high_priority_cards:
+            lines.append(f"### `{card.identifier}`")
+            lines.append("")
+            lines.append(f"- Summary: {card.summary}")
+            lines.append(f"- Source: [{card.source_path.name}](patterns/{card.source_path.name})")
+            lines.append("")
+    else:
+        lines.append("- None.")
+        lines.append("")
+
+    lines.extend(
+        [
+        "## Generated Pattern Summaries",
+        "",
+        ]
+    )
     for card in cards:
         lines.append(f"### `{card.identifier}`")
         lines.append("")

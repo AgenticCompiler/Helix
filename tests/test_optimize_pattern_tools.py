@@ -87,6 +87,108 @@ Extra prose that should stay in the source file but not become a first-line inde
         ).read_text(encoding="utf-8")
         self.assertEqual(generated, checked_in)
 
+    def test_build_index_rejects_invalid_priority_value(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            patterns_dir = Path(tmp)
+            (patterns_dir / "demo.md").write_text(
+                """---
+priority: urgent
+---
+
+# Demo Pattern
+
+## Summary
+
+Short summary.
+
+## Use When
+
+- Stable trigger.
+""",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                ValueError, "demo.md has invalid priority 'urgent'"
+            ):
+                module.build_index_text(patterns_dir)
+
+    def test_generated_index_lists_high_priority_patterns_before_full_summaries(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            patterns_dir = Path(tmp)
+            (patterns_dir / "high.md").write_text(
+                """---
+id: high-pattern
+priority: high
+---
+
+# High Pattern
+
+## Summary
+
+High summary.
+
+## Use When
+
+- High trigger.
+""",
+                encoding="utf-8",
+            )
+            (patterns_dir / "normal.md").write_text(
+                """# Normal Pattern
+
+## Summary
+
+Normal summary.
+
+## Use When
+
+- Normal trigger.
+""",
+                encoding="utf-8",
+            )
+
+            rendered = module.build_index_text(patterns_dir)
+
+            self.assertIn("## High Priority Patterns", rendered)
+            self.assertIn("### `high-pattern`", rendered)
+            self.assertIn("- Summary: High summary.", rendered)
+            self.assertIn("[high.md](patterns/high.md)", rendered)
+            self.assertLess(
+                rendered.index("## High Priority Patterns"),
+                rendered.index("## Generated Pattern Summaries"),
+            )
+
+    def test_generated_index_renders_none_when_no_patterns_are_high_priority(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            patterns_dir = Path(tmp)
+            (patterns_dir / "normal.md").write_text(
+                """# Normal Pattern
+
+## Summary
+
+Normal summary.
+
+## Use When
+
+- Normal trigger.
+""",
+                encoding="utf-8",
+            )
+
+            rendered = module.build_index_text(patterns_dir)
+
+            self.assertIn("## High Priority Patterns", rendered)
+            self.assertIn("- None.", rendered)
+
     def test_generated_index_links_to_pattern_subdirectory(self) -> None:
         module = _load_skill_script(
             "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
@@ -209,6 +311,25 @@ Short summary.
             / "symptom_index.md"
         ).read_text(encoding="utf-8")
         self.assertEqual(generated, checked_in)
+
+    def test_checked_in_pattern_index_high_priority_section_lists_expected_cards(
+        self,
+    ) -> None:
+        checked_in = (
+            REPO_ROOT
+            / "skills"
+            / "triton-npu-optimize-knowledge"
+            / "references"
+            / "pattern_index.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("## High Priority Patterns", checked_in)
+        self.assertIn("### `a5-force-simt-only-discrete-access`", checked_in)
+        self.assertIn("### `autotune`", checked_in)
+        self.assertNotIn(
+            "### `classic-matmul`",
+            checked_in.split("## Generated Pattern Summaries")[0],
+        )
 
 if __name__ == "__main__":
     unittest.main()

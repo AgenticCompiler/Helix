@@ -63,6 +63,9 @@
 
 - Every optimize pattern card must begin with a top-level `# <Human Title>` heading before its structured sections.
 - Every generic optimize pattern card defined in `skills/triton-npu-optimize-knowledge/references/patterns/` must include `## Summary` and `## Use When`; it may additionally use `## Avoid When`, `## Signals`, `## Related Patterns`, and `## What To Verify After Applying`, with optional `### Code`, `### Profile`, and `### IR` under `## Signals`.
+- Pattern-card frontmatter may include `priority: high|normal`; omit it to default to `normal`.
+- `priority` is index-rendering metadata, not a replacement for structured sections in the card body.
+- The generated `pattern_index.md` must include a `## High Priority Patterns` section that lists cards marked `high`.
 - `## Summary` describes **what** the pattern is or does (1–2 sentences). `## Use When` describes **when** to apply it (detection conditions). Keep them orthogonal: the same information must not appear in both sections.
 - Every generic optimize symptom card defined in `skills/triton-npu-optimize-knowledge/references/symptoms/` must include `## Summary`, `## Evidence To Confirm`, and `## Candidate Pattern Directions`; it may additionally use `## Common Non-Matches`.
 - When existing pattern content already semantically belongs to one of those predefined sections, move it into that section instead of leaving it only in free-form prose.

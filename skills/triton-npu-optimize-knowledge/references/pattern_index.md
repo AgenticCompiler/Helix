@@ -4,6 +4,18 @@ Use this file to choose optimization directions before reading any detailed patt
 
 Read this generated index first. Then read only the one or two most relevant detailed pattern files for the current bottleneck.
 
+## High Priority Patterns
+
+### `a5-force-simt-only-discrete-access`
+
+- Summary: Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, then retune `num_warps` and grid decomposition. This profile-gated launch-mode experiment targets kernels whose hot path is primarily scalar/index-driven memory access.
+- Source: [a5-force-simt-only-discrete-access.md](patterns/a5-force-simt-only-discrete-access.md)
+
+### `autotune`
+
+- Summary: Use Triton autotune to automatically search tile sizes and launch parameters within a bounded configuration space.
+- Source: [autotune.md](patterns/autotune.md)
+
 ## Generated Pattern Summaries
 
 ### `a5-force-simt-only-discrete-access`

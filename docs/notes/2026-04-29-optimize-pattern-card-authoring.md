@@ -8,6 +8,7 @@ Do not hand-edit `skills/triton-npu-optimize-knowledge/references/pattern_index.
 
 Each pattern card may contain:
 
+- optional frontmatter metadata used by the generator
 - predefined sections used by the generator
 - free-form sections for additional explanation, examples, or architecture notes
 
@@ -32,11 +33,15 @@ Inside `## Signals`, the generator also recognizes these optional subsections:
 
 Free-form sections are allowed and stay in the authored card, but they are ignored for first-layer index generation.
 `## Avoid When`, `## Signals` (and its `### Code`, `### Profile`, `### IR` subsections), `## What To Verify After Applying`, and `## Related Patterns` are also kept in the authored card only; they should not be emitted into the generated `pattern_index.md`, because the index is for triage rather than detailed detection or validation detail.
+The generated `pattern_index.md` also includes a `## High Priority Patterns` section that lists only cards marked `priority: high`.
 
 ## Practical Rules
 
 - Every pattern card should begin with a top-level `# <Human Title>` heading.
 - Every pattern card must include both `## Summary` and `## Use When`.
+- Pattern-card frontmatter may include `priority: high|normal`.
+- If omitted, the generator will default to `normal`.
+- `priority` only affects generated index presentation.
 - **`## Summary` describes WHAT the pattern is/does.** Keep it to 1-2 sentences. Do not include signal-like language ("when X happens", "look for"), usage instructions, or implementation detail.
 - **`## Use When` describes WHEN to apply the pattern.** Keep it as detection conditions. Do not describe what the pattern is.
 - **Summary and Use When must be orthogonal**: information in one should not appear in the other.
