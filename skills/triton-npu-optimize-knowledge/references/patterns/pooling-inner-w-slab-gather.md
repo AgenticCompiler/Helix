@@ -1,8 +1,3 @@
----
-id: pooling-inner-w-slab-gather
-title: Spatial pooling — innermost W slab plus gather (2D / 3D and beyond)
----
-
 # Spatial pooling — innermost W slab plus gather (2D / 3D and beyond)
 
 ## Summary
