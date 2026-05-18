@@ -1,3 +1,7 @@
+---
+priority: high
+---
+
 # A5 SIMT-Only Discrete Access Pattern
 
 ## Summary

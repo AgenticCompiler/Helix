@@ -408,8 +408,12 @@ class GenerationContractTests(unittest.TestCase):
             if path.name == "index.md":
                 continue
             content = path.read_text(encoding="utf-8")
+            normalized = content
+            if content.startswith("---\n"):
+                _, _, normalized = content.partition("\n---\n")
+                normalized = normalized.lstrip()
             with self.subTest(path=path.name):
-                self.assertTrue(content.startswith("# "))
+                self.assertTrue(normalized.startswith("# "))
                 self.assertIn("## Summary", content)
                 self.assertIn("## Use When", content)
 
@@ -543,6 +547,12 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("## Evidence To Confirm", agents)
         self.assertIn("## Candidate Pattern Directions", agents)
 
+    def test_agents_declares_pattern_priority_authoring_rule(self) -> None:
+        agents = _read("AGENTS.md")
+        self.assertIn("priority: high|normal", agents)
+        self.assertIn("default to `normal`", agents)
+        self.assertIn("## High Priority Patterns", agents)
+
     def test_pattern_and_symptom_authoring_notes_point_to_knowledge_skill(self) -> None:
         pattern_note = _read("docs/notes/2026-04-29-optimize-pattern-card-authoring.md")
         symptom_note = _read("docs/notes/2026-04-30-optimize-symptom-card-authoring.md")
@@ -560,6 +570,12 @@ class GenerationContractTests(unittest.TestCase):
             symptom_note,
         )
         self.assertIn("build_symptom_index.py", symptom_note)
+
+    def test_pattern_authoring_note_describes_priority_contract(self) -> None:
+        pattern_note = _read("docs/notes/2026-04-29-optimize-pattern-card-authoring.md")
+        self.assertIn("priority: high|normal", pattern_note)
+        self.assertIn("default to `normal`", pattern_note)
+        self.assertIn("## High Priority Patterns", pattern_note)
 
     def test_compiler_source_analysis_skill_focuses_on_performance_navigation_and_next_action(
         self,
