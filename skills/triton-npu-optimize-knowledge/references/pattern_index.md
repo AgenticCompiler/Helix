@@ -4,6 +4,8 @@ Use this file to choose optimization directions before reading any detailed patt
 
 Read this generated index first. Then read only the one or two most relevant detailed pattern files for the current bottleneck.
 
+Before scanning the full list, first analyze whether the operator matches any high-priority patterns below. If it does, try those directions first.
+
 ## High Priority Patterns
 
 ### `a5-force-simt-only-discrete-access`

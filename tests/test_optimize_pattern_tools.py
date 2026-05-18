@@ -155,6 +155,10 @@ Normal summary.
 
             rendered = module.build_index_text(patterns_dir)
 
+            self.assertIn(
+                "Before scanning the full list, first analyze whether the operator matches any high-priority patterns below. If it does, try those directions first.",
+                rendered,
+            )
             self.assertIn("## High Priority Patterns", rendered)
             self.assertIn("### `high-pattern`", rendered)
             self.assertIn("- Summary: High summary.", rendered)
