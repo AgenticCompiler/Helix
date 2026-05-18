@@ -93,11 +93,13 @@ def run_local_standalone_bench(
     for case in cases:
         profile_root, temp_dir = _create_local_standalone_profile_dir(case.case_id, preserved_run_dir)
         try:
+            t0 = time.monotonic()
             metrics, error_message = _profile_case_with_profiler(
                 case,
                 resolution,
                 profile_root,
             )
+            elapsed = time.monotonic() - t0
         finally:
             if temp_dir is not None:
                 temp_dir.cleanup()
@@ -111,6 +113,7 @@ def run_local_standalone_bench(
                     kernel_names=resolution.kernel_names,
                     kernel_source=resolution.kernel_source,
                     error_message=error_message,
+                    elapsed_seconds=elapsed,
                 )
             )
             continue
@@ -120,6 +123,7 @@ def run_local_standalone_bench(
                 kernel_names=resolution.kernel_names,
                 kernel_source=resolution.kernel_source,
                 metrics=metrics,
+                elapsed_seconds=elapsed,
             )
         )
 

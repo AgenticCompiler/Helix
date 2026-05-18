@@ -25,6 +25,7 @@ class PerfCaseRecord:
     kernel_source: str
     metrics: PerfMetrics | None = None
     error_message: str | None = None
+    elapsed_seconds: float | None = None
 
 
 ComparisonMode = Literal["latency", "total-op"]
@@ -131,6 +132,7 @@ def render_perf_case_records(
     kernel_source_prefix: str,
     latency_error_prefix: str,
     missing_kernel_match_error: str,
+    elapsed_id_prefix: str = "",
 ) -> list[str]:
     rendered: list[str] = []
     for record in records:
@@ -143,6 +145,7 @@ def render_perf_case_records(
                 kernel_source_prefix=kernel_source_prefix,
                 latency_error_prefix=latency_error_prefix,
                 missing_kernel_match_error=missing_kernel_match_error,
+                elapsed_id_prefix=elapsed_id_prefix,
             )
         )
     return rendered
@@ -157,9 +160,13 @@ def render_perf_case_record(
     kernel_source_prefix: str,
     latency_error_prefix: str,
     missing_kernel_match_error: str,
+    elapsed_id_prefix: str = "",
 ) -> list[str]:
     case_label = record.case_label
     lines = [f"{latency_prefix}-{case_label}: {_format_case_latency_value(record)}"]
+    if record.elapsed_seconds is not None:
+        elapsed_id = f"{elapsed_id_prefix}-{case_label}" if elapsed_id_prefix else case_label
+        lines.append(f"# elapsed-seconds-{elapsed_id}: {record.elapsed_seconds:.6f}")
     if record.metrics is not None:
         raw_payload = json.dumps({"ops": record.metrics["ops"]}, separators=(",", ":"))
         lines.append(f"# {raw_prefix}-{case_label}: {raw_payload}")

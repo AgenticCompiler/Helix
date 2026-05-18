@@ -8,6 +8,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import TextIO, cast
 
@@ -307,6 +308,7 @@ def _run_local_bench_msprof(
                 "--bench",
                 str(case_idx),
             ]
+            t0 = time.monotonic()
             with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
                 result = run_streaming_process(
                     command,
@@ -314,6 +316,7 @@ def _run_local_bench_msprof(
                     stall_timeout_seconds=_bench_timeout(),
                     stdout=quiet_stdout,
                 )
+            elapsed = time.monotonic() - t0
             stdout_chunks.append(str(result["stdout"]))
             stderr_chunks.append(str(result["stderr"]))
             had_stalls = had_stalls or bool(result["stalled"])
@@ -327,6 +330,7 @@ def _run_local_bench_msprof(
                         kernel_names=resolution.kernel_names,
                         kernel_source=resolution.kernel_source,
                         error_message=_format_msprof_command_failure(result),
+                        elapsed_seconds=elapsed,
                     ),
                 )
                 continue
@@ -341,6 +345,7 @@ def _run_local_bench_msprof(
                         kernel_names=resolution.kernel_names,
                         kernel_source=resolution.kernel_source,
                         error_message=str(exc),
+                        elapsed_seconds=elapsed,
                     )
                 )
                 continue
@@ -351,6 +356,7 @@ def _run_local_bench_msprof(
                     kernel_names=resolution.kernel_names,
                     kernel_source=resolution.kernel_source,
                     metrics=metrics,
+                    elapsed_seconds=elapsed,
                 )
             )
         finally:
@@ -368,6 +374,7 @@ def _run_local_bench_msprof(
             kernel_source_prefix="kernel-source-case",
             latency_error_prefix="latency-error-case",
             missing_kernel_match_error=_MISSING_KERNEL_MATCH_ERROR,
+            elapsed_id_prefix="case",
         ),
     )
     return (
@@ -418,6 +425,7 @@ def _run_remote_bench_msprof(
             stderr=stderr,
         )
         try:
+            t0 = time.monotonic()
             result = run_remote_command_streaming(
                 spec,
                 remote_workspace,
@@ -435,6 +443,7 @@ def _run_remote_bench_msprof(
                 stderr=stderr,
                 stall_timeout_seconds=_bench_timeout(),
             )
+            elapsed = time.monotonic() - t0
             stdout_chunks.append(str(result["stdout"]))
             stderr_chunks.append(str(result["stderr"]))
             had_stalls = had_stalls or bool(result["stalled"])
@@ -448,6 +457,7 @@ def _run_remote_bench_msprof(
                         kernel_names=resolution.kernel_names,
                         kernel_source=resolution.kernel_source,
                         error_message=_format_msprof_command_failure(result),
+                        elapsed_seconds=elapsed,
                     ),
                 )
                 continue
@@ -469,6 +479,7 @@ def _run_remote_bench_msprof(
                         kernel_names=resolution.kernel_names,
                         kernel_source=resolution.kernel_source,
                         error_message=str(exc),
+                        elapsed_seconds=elapsed,
                     )
                 )
                 continue
@@ -479,6 +490,7 @@ def _run_remote_bench_msprof(
                     kernel_names=resolution.kernel_names,
                     kernel_source=resolution.kernel_source,
                     metrics=metrics,
+                    elapsed_seconds=elapsed,
                 )
             )
         finally:
@@ -500,6 +512,7 @@ def _run_remote_bench_msprof(
             kernel_source_prefix="kernel-source-case",
             latency_error_prefix="latency-error-case",
             missing_kernel_match_error=_MISSING_KERNEL_MATCH_ERROR,
+            elapsed_id_prefix="case",
         ),
     )
     return (

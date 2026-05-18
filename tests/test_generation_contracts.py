@@ -366,7 +366,7 @@ class GenerationContractTests(unittest.TestCase):
             "skills/triton-npu-optimize-knowledge/references/patterns/scalar-latency-traps.md"
         )
         layout = _read(
-            "skills/triton-npu-optimize-knowledge/references/patterns/layout-store-and-block-pointers.md"
+            "skills/triton-npu-optimize-knowledge/references/patterns/block-pointer-dimensionality.md"
         )
         grid = _read(
             "skills/triton-npu-optimize-knowledge/references/patterns/grid-flatten-and-ub-buffering.md"
@@ -376,19 +376,19 @@ class GenerationContractTests(unittest.TestCase):
         )
 
         self.assertIn("scalar-latency-traps", index)
-        self.assertIn("layout-store-and-block-pointers", index)
+        self.assertIn("merge-adjacent-stores", index)
         self.assertIn("grid-flatten-and-ub-buffering", index)
         self.assertIn("attention-cv-pipeline", index)
         self.assertIn("modulo addressing", index)
-        self.assertIn("physical-core load balance", index)
+        self.assertIn("grid-to-physical-core mapping", index)
 
         self.assertIn("tl.constexpr", scalar)
         self.assertIn("Loop pointer recurrences", scalar)
         self.assertIn("Modulo removal", scalar)
         self.assertIn("Cumsum axis splitting", scalar)
-        self.assertIn("store transpose degradation", layout)
-        self.assertIn("Raise block-pointer dimensionality", layout)
-        self.assertIn("tl.trans(x).to(dtype)", layout)
+        self.assertIn("flattened one-dimensional offsets", layout)
+        self.assertIn("tl.make_block_ptr", layout)
+        self.assertIn("boundary_check", layout)
         self.assertIn("physical cores", grid)
         self.assertIn("UB aggregate writes", grid)
         self.assertIn("UB bulk reads", grid)
@@ -432,8 +432,8 @@ class GenerationContractTests(unittest.TestCase):
         )
         tiling = _read("skills/triton-npu-optimize-knowledge/references/patterns/tiling.md")
         vec_cmp = _read("skills/triton-npu-optimize-knowledge/references/patterns/vec-cmp.md")
-        gather_load = _read(
-            "skills/triton-npu-optimize-knowledge/references/patterns/gather-load.md"
+        discrete_memory = _read(
+            "skills/triton-npu-optimize-knowledge/references/patterns/discrete_memory_access.md"
         )
         reorder_load = _read(
             "skills/triton-npu-optimize-knowledge/references/patterns/reorder-load.md"
@@ -448,7 +448,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertNotIn("## Verification checklist", program_rows)
         self.assertNotIn("## Relation to other patterns", program_rows)
 
-        for content in (software_pipeline, tiling, vec_cmp, gather_load, reorder_load):
+        for content in (software_pipeline, tiling, vec_cmp, discrete_memory, reorder_load):
             with self.subTest(card_preview=content.splitlines()[0]):
                 self.assertIn("## Signals", content)
                 self.assertIn("## What To Verify After Applying", content)

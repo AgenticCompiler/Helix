@@ -13,12 +13,17 @@ from optimize_check_contract import (
     RoundArtifactsInspection,
     RoundState,
     baseline_gate_issues,
+    cleanup_dir_pt_files,
     check_baseline,
     check_round,
+    expected_round_operator_name,
+    expected_round_perf_name,
     inspect_baseline_artifacts,
     inspect_round_artifacts,
     load_baseline_state,
     load_round_state,
+    resolve_round_operator_file,
+    resolve_round_perf_file,
 )
 
 __all__ = [
@@ -30,14 +35,19 @@ __all__ = [
     "RoundState",
     "analyze_triton_kernel_continuity",
     "baseline_gate_issues",
+    "cleanup_dir_pt_files",
     "build_parser",
     "check_baseline",
     "check_round",
+    "expected_round_operator_name",
+    "expected_round_perf_name",
     "inspect_baseline_artifacts",
     "inspect_round_artifacts",
     "load_baseline_state",
     "load_round_state",
     "main",
+    "resolve_round_operator_file",
+    "resolve_round_perf_file",
 ]
 
 

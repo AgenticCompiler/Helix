@@ -2,21 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from triton_agent.optimize.skill_contract import optimize_check_module
 
-def cleanup_dir_pt_files(directory: Path) -> list[str]:
-    cleaned: list[str] = []
-    for pt_file in sorted(directory.iterdir()):
-        if not pt_file.is_file():
-            continue
-        name_lower = pt_file.name.lower()
-        if not (name_lower == "test_result.pt" or name_lower.endswith("_result.pt")):
-            continue
-        try:
-            pt_file.unlink()
-            cleaned.append(pt_file.name)
-        except OSError:
-            pass
-    return cleaned
+_OPTIMIZE_CHECK_MODULE = optimize_check_module()
+
+cleanup_dir_pt_files = _OPTIMIZE_CHECK_MODULE.cleanup_dir_pt_files  # type: ignore[reportUnknownVariableType]
 
 
 def cleanup_workspace_pt_files(workdir: Path) -> list[str]:

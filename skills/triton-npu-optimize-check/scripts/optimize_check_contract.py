@@ -6,13 +6,25 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from kernel_continuity_check import analyze_triton_kernel_continuity
-from triton_agent.optimize.naming import (
-    expected_round_operator_name,
-    expected_round_perf_name,
-    resolve_round_operator_file,
-    resolve_round_perf_file,
-)
-from triton_agent.optimize.pt_cleanup import cleanup_dir_pt_files
+
+_BATCH_OPTIMIZE_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")
+_BATCH_OPTIMIZE_EXCLUDED_NAMES = {"__init__.py"}
+
+
+def cleanup_dir_pt_files(directory: Path) -> list[str]:
+    cleaned: list[str] = []
+    for pt_file in sorted(directory.iterdir()):
+        if not pt_file.is_file():
+            continue
+        name_lower = pt_file.name.lower()
+        if not (name_lower == "test_result.pt" or name_lower.endswith("_result.pt")):
+            continue
+        try:
+            pt_file.unlink()
+            cleaned.append(pt_file.name)
+        except OSError:
+            pass
+    return cleaned
 
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "references" / "contract.json"
 CONTRACT_DATA = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
@@ -499,6 +511,95 @@ def _find_baseline_operator_snapshot(root: Path) -> Path | None:
         path
         for path in sorted(root.iterdir())
         if path.is_file() and path.name not in _BASELINE_METADATA_FILENAMES
+    ]
+    if len(candidates) == 1:
+        return candidates[0]
+    if candidates:
+        preferred_python = [path for path in candidates if path.suffix == ".py"]
+        if len(preferred_python) == 1:
+            return preferred_python[0]
+        return candidates[0]
+    return None
+
+
+def _is_batch_optimize_operator_candidate(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    if path.suffix != ".py":
+        return False
+    if path.name in _BATCH_OPTIMIZE_EXCLUDED_NAMES:
+        return False
+    return not path.name.startswith(_BATCH_OPTIMIZE_EXCLUDED_PREFIXES)
+
+
+def _resolve_batch_optimize_operator_file(workspace: Path) -> Path:
+    candidates = [
+        path for path in sorted(workspace.iterdir()) if _is_batch_optimize_operator_candidate(path)
+    ]
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        raise ValueError(f"no candidate operator file found in workspace: {workspace}")
+    raise ValueError(f"multiple candidate operator files found in workspace: {workspace}")
+
+
+def expected_round_operator_name(workspace: Path) -> str:
+    operator_file = _resolve_batch_optimize_operator_file(workspace)
+    return f"opt_{operator_file.name}"
+
+
+def expected_round_perf_name(workspace: Path) -> str:
+    operator_file = _resolve_batch_optimize_operator_file(workspace)
+    return f"opt_{operator_file.stem}_perf.txt"
+
+
+def resolve_round_perf_file(round_dir: Path) -> Path | None:
+    workspace = round_dir.parent
+    try:
+        perf_name = expected_round_perf_name(workspace)
+    except ValueError:
+        perf_name = None
+    if perf_name is not None:
+        perf_path = round_dir / perf_name
+        if perf_path.is_file():
+            return perf_path
+
+    perf_txt = round_dir / "perf.txt"
+    if perf_txt.is_file():
+        return perf_txt
+
+    perf_files = sorted(path for path in round_dir.glob("*_perf.txt") if path.is_file())
+    if len(perf_files) == 1:
+        return perf_files[0]
+    return None
+
+
+def resolve_round_operator_file(round_dir: Path) -> Path | None:
+    workspace = round_dir.parent
+    try:
+        operator_name = expected_round_operator_name(workspace)
+    except ValueError:
+        operator_name = None
+    if operator_name is not None:
+        operator_path = round_dir / operator_name
+        if operator_path.is_file():
+            return operator_path
+
+    try:
+        legacy_operator_name = _resolve_batch_optimize_operator_file(workspace).name
+    except ValueError:
+        legacy_operator_name = None
+    if legacy_operator_name is not None:
+        legacy_operator_path = round_dir / legacy_operator_name
+        if legacy_operator_path.is_file():
+            return legacy_operator_path
+
+    candidates = [
+        path
+        for path in sorted(round_dir.iterdir())
+        if path.is_file()
+        and path.name not in _ROUND_METADATA_FILENAMES
+        and not path.name.endswith("_perf.txt")
     ]
     if len(candidates) == 1:
         return candidates[0]
