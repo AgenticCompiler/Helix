@@ -35,12 +35,6 @@ For **sliding-window spatial pooling** in **NCHW-style** layouts (**W** is the *
 
 - Baseline: repeated **small loads** or **per-lane** predicates on **W** inside lowered loops. Optimized: **`tensor<W_SLAB_LEN x dtype>`** (or masked equivalent), then **`hfusion.gather` / `triton_gather`** into **`BLOCK_OW`** and **`arith.addf`** (**average**) or **`maxnumf` / max** (**max**).
 
-## Related Patterns
-
-- `gather-load`
-- `discrete_memory_access`
-- `constexpr-tile-discrete-access`
-- `program-multiple-rows`
 
 ## What To Verify After Applying
 
