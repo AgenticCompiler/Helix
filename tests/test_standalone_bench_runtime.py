@@ -1,6 +1,7 @@
 import os
 import sys
 import tempfile
+import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
@@ -123,7 +124,7 @@ def build_standalone_bench_cases(operator_api):
                     },
                     None,
                 ),
-            ):
+            ), patch.object(module.time, "monotonic", side_effect=[0.0, 1.5]):
                 result, perf_path = module.run_local_standalone_bench(bench_file, operator_file)
                 perf_text = perf_path.read_text(encoding="utf-8")
 
@@ -134,11 +135,56 @@ def build_standalone_bench_cases(operator_api):
             perf_text,
             (
                 'latency-case-a: 11.0\n'
+                '# elapsed-seconds-case-a: 1.500000\n'
                 '# raw-op-statistic-case-a: {"ops":[{"op_type":"KernelA","avg_time_us":5.0},{"op_type":"KernelB","avg_time_us":6.0}]}\n'
                 '# resolved-kernels-case-a: KernelA,KernelB\n'
                 '# kernel-source-case-a: metadata\n'
             ),
         )
+
+    def test_run_local_standalone_bench_elapsed_seconds_on_failure(self) -> None:
+        module = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            bench_file.write_text(
+                """# bench-mode: standalone
+# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_standalone_bench_cases(operator_api):
+    def run_case():
+        operator_api("case-a")
+    return [{"id": "case-a", "fn": run_case}]
+""",
+                encoding="utf-8",
+            )
+            operator_file.write_text(
+                """def build_api():
+    return lambda *_args, **_kwargs: None
+""",
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                module,
+                "_profile_case_with_profiler",
+                return_value=(None, "profiling failed"),
+            ), patch.object(module.time, "monotonic", side_effect=[0.0, 2.5]):
+                result, perf_path = module.run_local_standalone_bench(bench_file, operator_file)
+                perf_text = perf_path.read_text(encoding="utf-8")
+
+        self.assertEqual(result, make_skill_result(1, "", "case-a: profiling failed"))
+        if perf_path is None:
+            self.fail("expected standalone perf path")
+        self.assertIn("latency-case-a: NA\n", perf_text)
+        self.assertIn("# elapsed-seconds-case-a: 2.500000\n", perf_text)
+        self.assertIn("# latency-error-case-a: profiling failed\n", perf_text)
 
     def test_run_local_standalone_bench_keeps_profiler_artifacts_under_configured_output_root(self) -> None:
         module = load_standalone_bench_runtime_module()

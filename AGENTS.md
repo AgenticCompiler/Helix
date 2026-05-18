@@ -32,6 +32,7 @@
 - Clean up only the copied skill paths created by the current run.
 - Never delete or replace user-owned files or directories during cleanup.
 - Treat the top-level `workspace/` directory as a placeholder area for local experimentation, not as repository-owned source, fixture, or verification input.
+- Keep `skills/*/scripts/` self-contained: skill-side Python helpers must not import `triton_agent`. If runtime code needs to reuse a skill-script implementation, load it through the existing bridge layer in `src/triton_agent/skill_loader.py` instead of creating a reverse dependency from the skill back into `src/`.
 - When modifying Python files under `skills/*/scripts/`, always run the additional file-scoped `pyright` strict check via `bash scripts/run-skill-script-pyright.sh skills/path/to/script.py` before considering the change complete, even though the repository default keeps those scripts in basic mode.
 
 ## Agent Backends

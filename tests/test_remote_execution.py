@@ -18,6 +18,16 @@ from tests.run_skill_test_utils import (
 
 
 class RemoteExecutionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._bench_module = load_bench_runner_module()
+        cls._monotonic_patcher = patch.object(cls._bench_module.time, "monotonic", return_value=0.0)
+        cls._monotonic_patcher.start()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._monotonic_patcher.stop()
+
     def test_app_remote_execution_module_has_been_removed(self) -> None:
         remote_execution = Path(__file__).resolve().parents[1] / "src" / "triton_agent" / "remote_execution.py"
 
@@ -411,10 +421,12 @@ class RemoteExecutionTests(unittest.TestCase):
                 perf_path.read_text(encoding="utf-8"),
                 (
                     'latency-case-1: 2.5\n'
+                    '# elapsed-seconds-case-1: 0.000000\n'
                     '# raw-op-statistic-case-1: {"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}]}\n'
                     '# resolved-kernels-case-1: KernelB\n'
                     '# kernel-source-case-1: metadata\n'
                     'latency-case-2: 5.0\n'
+                    '# elapsed-seconds-case-2: 0.000000\n'
                     '# raw-op-statistic-case-2: {"ops":[{"op_type":"KernelA","avg_time_us":3.0},{"op_type":"KernelB","avg_time_us":5.0}]}\n'
                     '# resolved-kernels-case-2: KernelB\n'
                     '# kernel-source-case-2: metadata\n'
@@ -495,10 +507,12 @@ class RemoteExecutionTests(unittest.TestCase):
                 perf_path.read_text(encoding="utf-8"),
                 (
                     "latency-case-1: NA\n"
+                    "# elapsed-seconds-case-1: 0.000000\n"
                     "# latency-error-case-1: msprof command failed with return code 1\n"
                     "# resolved-kernels-case-1: KernelB\n"
                     "# kernel-source-case-1: metadata\n"
                     "latency-case-2: 5.0\n"
+                    "# elapsed-seconds-case-2: 0.000000\n"
                     '# raw-op-statistic-case-2: {"ops":[{"op_type":"KernelB","avg_time_us":5.0}]}\n'
                     "# resolved-kernels-case-2: KernelB\n"
                     "# kernel-source-case-2: metadata\n"
@@ -571,6 +585,7 @@ class RemoteExecutionTests(unittest.TestCase):
                 perf_path.read_text(encoding="utf-8"),
                 (
                     'latency-case-1: NA\n'
+                    '# elapsed-seconds-case-1: 0.000000\n'
                     '# raw-op-statistic-case-1: {"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}]}\n'
                     '# latency-error-case-1: no resolved kernels matched op_statistic csv\n'
                     '# resolved-kernels-case-1: MissingKernel\n'
@@ -644,6 +659,7 @@ class RemoteExecutionTests(unittest.TestCase):
                 perf_path.read_text(encoding="utf-8"),
                 (
                     'latency-case-1: 4.0\n'
+                    '# elapsed-seconds-case-1: 0.000000\n'
                     '# raw-op-statistic-case-1: {"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}]}\n'
                     '# resolved-kernels-case-1: KernelA,KernelB\n'
                     '# kernel-source-case-1: metadata\n'
@@ -698,6 +714,117 @@ class RemoteExecutionTests(unittest.TestCase):
             ],
         )
         self.assertIn("run_local_standalone_bench", remote_run.call_args.args[2][2])
+
+    def test_run_remote_bench_msprof_elapsed_seconds_in_perf_output_success(self) -> None:
+        module = load_bench_runner_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            bench_file.write_text(
+                "# bench-mode: msprof\n# api-name: abs_\n# kernel: OpB\n",
+                encoding="utf-8",
+            )
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+
+            buffered_payloads = ["1\n", "/tmp/msprof-case-1\n", '{"kernel_avg_time_us":3.0,"ops":[{"op_type":"OpB","avg_time_us":3.0}]}\n']
+
+            def _fake_remote_buffered(spec, remote_workspace, command, **kwargs):
+                if command == ["python3", "bench_abs.py", "--num-bench"]:
+                    return make_skill_result(0, buffered_payloads.pop(0), "")
+                if command == ["mktemp", "-d"]:
+                    return make_skill_result(0, buffered_payloads.pop(0), "")
+                if isinstance(command, list) and command[:2] == ["python3", "-c"]:
+                    return make_skill_result(0, buffered_payloads.pop(0), "")
+                if isinstance(command, list) and command[:2] == ["rm", "-rf"]:
+                    return make_skill_result(0, "", "")
+                return make_skill_result(1, "", "unexpected command")
+
+            self._monotonic_patcher.stop()
+            try:
+                with patch.object(
+                    module,
+                    "create_remote_workspace",
+                    return_value=("spec", "/tmp/remote-msprof"),
+                ), patch.object(module, "copy_file_to_remote"), patch.object(
+                    module,
+                    "run_remote_command_buffered",
+                    side_effect=_fake_remote_buffered,
+                ), patch.object(
+                    module,
+                    "run_remote_command_streaming",
+                    return_value=make_skill_result(0, "", ""),
+                ), patch.object(
+                    module.time, "monotonic", side_effect=[0.0, 1.5]
+                ), patch.object(module, "copy_file_from_remote"), patch.object(
+                    module, "cleanup_remote_workspace"
+                ):
+                    result, perf_path, _ws = module.run_remote_bench(
+                        bench_file,
+                        operator_file,
+                        "msprof",
+                        "alice@example.com",
+                        None,
+                    )
+            finally:
+                self._monotonic_patcher.start()
+
+            self.assertEqual(result["return_code"], 0)
+            if perf_path is None:
+                self.fail("expected remote msprof perf path")
+            perf_text = perf_path.read_text(encoding="utf-8")
+            self.assertIn("latency-case-1: 3.0\n", perf_text)
+            self.assertIn("# elapsed-seconds-case-1: 1.500000\n", perf_text)
+
+    def test_run_remote_bench_msprof_elapsed_seconds_in_perf_output_failure(self) -> None:
+        module = load_bench_runner_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            bench_file.write_text(
+                "# bench-mode: msprof\n# api-name: abs_\n# kernel: OpB\n",
+                encoding="utf-8",
+            )
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+
+            self._monotonic_patcher.stop()
+            try:
+                with patch.object(
+                    module,
+                    "create_remote_workspace",
+                    return_value=("spec", "/tmp/remote-msprof"),
+                ), patch.object(module, "copy_file_to_remote"), patch.object(
+                    module,
+                    "run_remote_command_buffered",
+                    return_value=make_skill_result(0, "1\n", ""),
+                ), patch.object(
+                    module,
+                    "run_remote_command_streaming",
+                    return_value=make_skill_result(1, "", "command failed"),
+                ), patch.object(
+                    module.time, "monotonic", side_effect=[0.0, 2.5]
+                ), patch.object(module, "copy_file_from_remote"), patch.object(
+                    module, "cleanup_remote_workspace"
+                ):
+                    result, perf_path, _ws = module.run_remote_bench(
+                        bench_file,
+                        operator_file,
+                        "msprof",
+                        "alice@example.com",
+                        None,
+                    )
+            finally:
+                self._monotonic_patcher.start()
+
+            self.assertEqual(result["return_code"], 1)
+            if perf_path is None:
+                self.fail("expected remote msprof perf path for failed case")
+            perf_text = perf_path.read_text(encoding="utf-8")
+            self.assertIn("latency-case-1: NA\n", perf_text)
+            self.assertIn("# elapsed-seconds-case-1: 2.500000\n", perf_text)
 
 
 if __name__ == "__main__":

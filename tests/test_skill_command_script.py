@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 import importlib.util
+import json
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -324,6 +325,89 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertIn("optimize_check.py", completed.stdout)
         self.assertIn("check-baseline", completed.stdout)
         self.assertIn("check-round", completed.stdout)
+
+    def test_optimize_check_script_supports_runtime_without_pt_cleanup_module(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        script = (
+            repo_root
+            / "skills"
+            / "triton-npu-optimize-check"
+            / "scripts"
+            / "optimize_check.py"
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            workspace = tmpdir / "workspace"
+            runtime_root = tmpdir / "runtime"
+            optimize_dir = runtime_root / "triton_agent" / "optimize"
+            workspace.mkdir()
+            (workspace / "baseline").mkdir()
+            optimize_dir.mkdir(parents=True)
+
+            (workspace / "baseline" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "standalone",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (workspace / "baseline" / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+            (workspace / "baseline" / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (workspace / "baseline" / "test_result.pt").write_text("stub\n", encoding="utf-8")
+
+            (runtime_root / "triton_agent" / "__init__.py").write_text("", encoding="utf-8")
+            (optimize_dir / "__init__.py").write_text("", encoding="utf-8")
+            (optimize_dir / "naming.py").write_text(
+                "from pathlib import Path\n\n"
+                "def expected_round_operator_name(workspace: Path) -> str:\n"
+                "    return 'opt_kernel.py'\n\n"
+                "def expected_round_perf_name(workspace: Path) -> str:\n"
+                "    return 'opt_kernel_perf.txt'\n\n"
+                "def resolve_round_operator_file(round_dir: Path):\n"
+                "    return None\n\n"
+                "def resolve_round_perf_file(round_dir: Path):\n"
+                "    return None\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            script_dir = str(script.parent)
+            runtime_path = str(runtime_root)
+            pythonpath_entries = [runtime_path, script_dir]
+            if env.get("PYTHONPATH"):
+                pythonpath_entries.append(env["PYTHONPATH"])
+            env["PYTHONPATH"] = ":".join(pythonpath_entries)
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "check-baseline",
+                    "--baseline-dir",
+                    str(workspace / "baseline"),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn('"decision": "pass"', completed.stdout)
+        self.assertFalse((workspace / "baseline" / "test_result.pt").exists())
 
 
 if __name__ == "__main__":
