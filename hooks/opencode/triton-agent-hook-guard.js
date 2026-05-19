@@ -13,6 +13,8 @@ const READ_COMMANDS = new Set([
   "sed",
   "tail",
 ]);
+const PYTHON_COMMANDS = new Set(["python", "python3"]);
+const SHELL_CONTROL_OPERATORS = new Set(["&&", "||", "|", ";", "&"]);
 
 const PATH_FRAGMENT_RE = /(?:\/|\.\.?\/|\.opencode\/)[A-Za-z0-9_./*?{}+@%:,=-]+/g;
 
@@ -106,7 +108,14 @@ async function evaluateOutput(policy, input, output) {
   }
 
   for (const candidate of candidatePaths(command, tokens)) {
-    const reason = await evaluateCandidate(candidate, cwd, allowRoots, denyGlobs, denyMessage);
+    const reason = await evaluateCandidate(
+      candidate.path,
+      cwd,
+      allowRoots,
+      denyGlobs,
+      denyMessage,
+      candidate.allowProtectedScriptEntrypoint,
+    );
     if (reason) {
       return reason;
     }
@@ -115,13 +124,23 @@ async function evaluateOutput(policy, input, output) {
   return null;
 }
 
-async function evaluateCandidate(candidate, cwd, allowRoots, denyGlobs, denyMessage) {
+async function evaluateCandidate(
+  candidate,
+  cwd,
+  allowRoots,
+  denyGlobs,
+  denyMessage,
+  allowProtectedScriptEntrypoint = false,
+) {
   const resolved = await resolveCandidate(candidate, cwd);
   if (!resolved) {
     return null;
   }
   if (!isUnderAnyRoot(resolved, allowRoots)) {
     return denyMessage;
+  }
+  if (allowProtectedScriptEntrypoint && isProtectedScriptPath(resolved, allowRoots[0])) {
+    return null;
   }
   if (matchesAnyGlob(resolved, denyGlobs)) {
     return denyMessage;
@@ -181,25 +200,76 @@ function isReadCommandToken(token) {
   return READ_COMMANDS.has(path.basename(token));
 }
 
+function isPythonCommandToken(token) {
+  return PYTHON_COMMANDS.has(path.basename(token));
+}
+
 function candidatePaths(command, tokens) {
   const candidates = [];
-  for (const token of tokens) {
+  const pythonEntrypointIndexes = pythonEntrypointCandidateIndexes(tokens);
+  const pythonEntrypointValues = new Set(
+    [...pythonEntrypointIndexes]
+      .filter((index) => index < tokens.length)
+      .map((index) => tokens[index]),
+  );
+
+  for (const [index, token] of tokens.entries()) {
     if (isReadCommandToken(token)) {
       continue;
     }
     if (looksLikePath(token)) {
-      candidates.push(token);
+      candidates.push({
+        path: token,
+        allowProtectedScriptEntrypoint: pythonEntrypointIndexes.has(index),
+      });
     }
   }
 
   for (const match of command.matchAll(PATH_FRAGMENT_RE)) {
     const candidate = match[0];
-    if (!isReadCommandToken(candidate)) {
-      candidates.push(candidate);
+    if (!isReadCommandToken(candidate) && !pythonEntrypointValues.has(candidate)) {
+      candidates.push({ path: candidate, allowProtectedScriptEntrypoint: false });
     }
   }
 
   return candidates;
+}
+
+function pythonEntrypointCandidateIndexes(tokens) {
+  const indexes = new Set();
+  for (const [index, token] of tokens.entries()) {
+    if (!isPythonCommandToken(token)) {
+      continue;
+    }
+    const entrypointIndex = pythonEntrypointCandidateIndex(tokens, index + 1);
+    if (entrypointIndex !== null) {
+      indexes.add(entrypointIndex);
+    }
+  }
+  return indexes;
+}
+
+function pythonEntrypointCandidateIndex(tokens, start) {
+  for (let index = start; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (SHELL_CONTROL_OPERATORS.has(token)) {
+      return null;
+    }
+    if (token === "-c" || token === "-m") {
+      return null;
+    }
+    if (token === "--") {
+      continue;
+    }
+    if (token.startsWith("-")) {
+      continue;
+    }
+    if (looksLikePath(token)) {
+      return index;
+    }
+    return null;
+  }
+  return null;
 }
 
 function looksLikePath(token) {
@@ -209,6 +279,15 @@ function looksLikePath(token) {
     token.startsWith("../") ||
     token.startsWith(".opencode/")
   );
+}
+
+function isProtectedScriptPath(candidate, workspaceRoot) {
+  const relative = path.relative(workspaceRoot, candidate);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    return false;
+  }
+  const parts = relative.split(path.sep);
+  return parts.length >= 5 && parts[0] === ".opencode" && parts[1] === "skills" && parts[3] === "scripts";
 }
 
 function resolvePolicyPath(value) {

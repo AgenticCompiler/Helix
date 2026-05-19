@@ -630,7 +630,9 @@ implementation files under the backend-native staged skill path, such as
 `.codex/skills/*/scripts/` or `.opencode/skills/*/scripts/`. A blocked read
 returns a short denial message to the agent telling it to stay within the
 workspace and use skill instructions or the documented command interface
-instead.
+instead. The guard still allows documented helper-script entrypoints such as
+`python3 .opencode/skills/.../scripts/run-command.py ...`; it only blocks
+reading those staged implementation files as source.
 
 The staged hook files are removed after the agent process exits. If
 backend-owned hook paths already exist, the run fails explicitly instead of

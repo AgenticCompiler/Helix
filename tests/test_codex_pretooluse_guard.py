@@ -90,6 +90,21 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
+    def test_allows_python_entrypoint_for_staged_helper_script(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            script = workspace / ".codex" / "skills" / "triton-npu-run-eval" / "scripts" / "run-command.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("print('helper')\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.evaluate_payload(
+                _policy(workspace),
+                _payload(workspace, f"python3 {script} run-test --test-file differential_test_file.py"),
+            )
+
+            self.assertIsNone(reason)
+
     def test_blocks_nested_bash_lc_read_of_protected_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
