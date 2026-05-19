@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -9,6 +10,15 @@ from kernel_continuity_check import analyze_triton_kernel_continuity
 
 _BATCH_OPTIMIZE_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")
 _BATCH_OPTIMIZE_EXCLUDED_NAMES = {"__init__.py"}
+_OPTIMIZE_DELETE_PT_FILES_ENV = "TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES"
+_TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def ordinary_optimize_pt_cleanup_enabled() -> bool:
+    raw_value = os.environ.get(_OPTIMIZE_DELETE_PT_FILES_ENV)
+    if raw_value is None:
+        return False
+    return raw_value.strip().lower() in _TRUTHY_ENV_VALUES
 
 
 def cleanup_dir_pt_files(directory: Path) -> list[str]:
@@ -321,15 +331,6 @@ def check_baseline(baseline_dir_path: Path) -> OptimizeCheckResult:
             decision="revise-required",
             issues=issues,
         )
-    workspace = baseline_dir_path.parent
-    cleaned = cleanup_dir_pt_files(baseline_dir_path)
-    cleaned.extend(cleanup_dir_pt_files(workspace))
-    if cleaned:
-        return _build_result(
-            kind="baseline",
-            decision="pass",
-            issues=(f"cleaned up {len(cleaned)} unused pt file(s): {', '.join(cleaned)}",),
-        )
     return _build_result(kind="baseline", decision="pass", issues=())
 
 
@@ -411,7 +412,9 @@ def check_round(round_dir: Path, *, min_rounds: int | None = None) -> OptimizeCh
             issues=((continuity.reason or "round operator failed Triton continuity check"),),
         )
 
-    cleaned = cleanup_dir_pt_files(round_dir)
+    cleaned: list[str] = []
+    if ordinary_optimize_pt_cleanup_enabled():
+        cleaned = cleanup_dir_pt_files(round_dir)
     if cleaned:
         result = _build_result(
             kind="round",

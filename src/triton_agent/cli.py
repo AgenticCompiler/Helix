@@ -62,6 +62,10 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
                 "Directory used to keep local benchmark profiler output.",
             ),
             (
+                "TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES",
+                "Enable ordinary optimize PT cleanup; default keeps PT files and does not affect --reset-optimize.",
+            ),
+            (
                 "TRITON_AGENT_HOME",
                 "Overrides the triton-agent home directory for cached artifacts.",
             ),

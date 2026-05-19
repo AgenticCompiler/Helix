@@ -405,9 +405,9 @@ class SkillCommandScriptTests(unittest.TestCase):
                 env=env,
             )
 
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertIn('"decision": "pass"', completed.stdout)
-        self.assertFalse((workspace / "baseline" / "test_result.pt").exists())
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn('"decision": "pass"', completed.stdout)
+            self.assertTrue((workspace / "baseline" / "test_result.pt").exists())
 
 
 if __name__ == "__main__":

@@ -80,4 +80,6 @@ def _format_prefix(stream: TextIO, category: str) -> str:
 
 def _supports_color(stream: TextIO) -> bool:
     isatty = getattr(stream, "isatty", None)
-    return callable(isatty) and isatty()
+    if not callable(isatty):
+        return False
+    return bool(isatty())

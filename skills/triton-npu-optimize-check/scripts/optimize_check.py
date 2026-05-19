@@ -22,6 +22,7 @@ from optimize_check_contract import (
     inspect_round_artifacts,
     load_baseline_state,
     load_round_state,
+    ordinary_optimize_pt_cleanup_enabled,
     resolve_round_operator_file,
     resolve_round_perf_file,
 )
@@ -46,6 +47,7 @@ __all__ = [
     "load_baseline_state",
     "load_round_state",
     "main",
+    "ordinary_optimize_pt_cleanup_enabled",
     "resolve_round_operator_file",
     "resolve_round_perf_file",
 ]

@@ -61,6 +61,7 @@ These are the environment variables that `triton-agent` reads directly at runtim
 | `TRITON_AGENT_BATCH_NPU_DEVICES` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Comma-separated Ascend device list that also supports inclusive numeric ranges such as `0,3-5,8-9`. When set, concurrent batch workspaces are pinned to distinct devices, and `--max-concurrency` must not exceed the number of configured devices. |
 | `TRITON_AGENT_CODE_AGENT_MAX_RETRIES` | No | Agent-backed commands | Non-negative integer retry budget for transient code-agent failures such as rate limits. Default is `2`. Set `0` to disable retries. |
 | `TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR` | No | Local `run-bench`, `verify`, and optimize benchmark validation | Preserves local benchmark profiler output directories under the given root instead of using auto-cleaned temporary directories. Applies to both `standalone` and `msprof` benchmark modes so you can inspect raw profiler artifacts after local benchmark runs. |
+| `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` | No | Ordinary `optimize`, `optimize-batch` PT cleanup | Opts back into deleting optimize-owned archived PT results during ordinary round and end-of-run cleanup. By default those PT files are preserved. This variable does not affect `check-baseline`, which never deletes PT files, or `--reset-optimize`, which still deletes known optimize PT artifacts. |
 | `LLM_API_KEY` | Only for `--agent openhands` | OpenHands backend | API key forwarded to the OpenHands SDK LLM client. |
 | `LLM_MODEL` | Only for `--agent openhands` | OpenHands backend | Model name passed to the OpenHands SDK LLM client. |
 | `LLM_BASE_URL` | No | OpenHands backend | Optional custom base URL for the OpenHands SDK LLM client. |
@@ -70,6 +71,7 @@ Examples:
 ```bash
 export TRITON_AGENT_BATCH_NPU_DEVICES=0,3-5,8-9
 export TRITON_AGENT_CODE_AGENT_MAX_RETRIES=4
+export TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES=1
 export TRITON_AGENT_HOME=$HOME/.triton-agent
 uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
 ```
@@ -338,6 +340,9 @@ Optimize behavior:
 
 - Establish or reuse a canonical `baseline/` directory before treating `opt-round-1` as the first optimization round.
 - If `baseline/` is missing or invalid, baseline preparation is handled by `triton-npu-prepare-optimize-baseline` before round work begins.
+- `check-baseline` never deletes archived PT result files.
+- Ordinary optimize cleanup preserves archived PT result files by default. Set `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES=1` to re-enable round and end-of-run PT cleanup.
+- `--reset-optimize` still deletes known optimize PT artifacts, including workspace-root `*_result.pt` files.
 - Every optimize run follows the default layered analysis ladder: pattern triage -> profiling diagnosis -> IR attribution -> compiler-source escalation.
 - Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.
 - Use compiler source only as the deepest escalation, and only when `--enable-compiler-source-analysis` is set.

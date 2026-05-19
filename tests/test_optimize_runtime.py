@@ -22,6 +22,7 @@ from triton_agent.optimize.execution import (
     _latest_round_dir,
 )
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
+from triton_agent.optimize.pt_cleanup import cleanup_workspace_pt_files
 from triton_agent.optimize.archive import ArchiveState
 from triton_agent.optimize.memory_file import MemoryFileState
 from triton_agent.optimize.resume import reset_optimize_workspace
@@ -1580,6 +1581,52 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertTrue((outside / "runtime-real").exists())
             self.assertTrue((outside / "logs-real").exists())
             self.assertTrue((outside / "round-real").exists())
+
+    def test_cleanup_workspace_pt_files_preserves_pt_files_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            round_dir = workdir / "opt-round-1"
+            round_dir.mkdir()
+            root_pt = workdir / "kernel_result.pt"
+            round_pt = round_dir / "test_result.pt"
+            root_pt.write_text("root\n", encoding="utf-8")
+            round_pt.write_text("round\n", encoding="utf-8")
+
+            cleaned = cleanup_workspace_pt_files(workdir)
+
+            self.assertEqual(cleaned, [])
+            self.assertTrue(root_pt.exists())
+            self.assertTrue(round_pt.exists())
+
+    def test_cleanup_workspace_pt_files_deletes_pt_files_when_env_var_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            round_dir = workdir / "opt-round-1"
+            round_dir.mkdir()
+            root_pt = workdir / "kernel_result.pt"
+            round_pt = round_dir / "test_result.pt"
+            root_pt.write_text("root\n", encoding="utf-8")
+            round_pt.write_text("round\n", encoding="utf-8")
+
+            with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "1"}, clear=False):
+                cleaned = cleanup_workspace_pt_files(workdir)
+
+            self.assertEqual(cleaned, ["kernel_result.pt", "opt-round-1/test_result.pt"])
+            self.assertFalse(root_pt.exists())
+            self.assertFalse(round_pt.exists())
+
+    def test_reset_optimize_workspace_deletes_result_pt_files_regardless_of_env_var(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            result_pt = workdir / "kernel_result.pt"
+            result_pt.write_text("stub\n", encoding="utf-8")
+
+            with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "0"}, clear=False):
+                reset_optimize_workspace(operator, workdir)
+
+            self.assertFalse(result_pt.exists())
 
     def test_run_optimize_request_keeps_interactive_only_for_worker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
