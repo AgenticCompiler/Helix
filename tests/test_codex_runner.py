@@ -243,11 +243,13 @@ class CodexRunnerTests(unittest.TestCase):
             with patch("triton_agent.backends.base.run_process", return_value=_ok_result()):
                 result = runner.run(request, stderr=stderr)
             self.assertEqual(result.return_code, 0)
-            self.assertIn("[agent]", stderr.getvalue())
-            self.assertIn("command:", stderr.getvalue())
-            self.assertIn("prompt:", stderr.getvalue())
+            self.assertIn("[command]", stderr.getvalue())
             self.assertIn("codex exec", stderr.getvalue())
+            self.assertIn("prompt:", stderr.getvalue())
             self.assertIn("<prompt>", stderr.getvalue())
+            self.assertNotIn("[command] command:", stderr.getvalue())
+            self.assertIn("\n  Prompt body\n", stderr.getvalue())
+            self.assertNotIn("[command]   Prompt body", stderr.getvalue())
 
     def test_show_output_streams_non_interactive_stdout(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

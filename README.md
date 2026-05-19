@@ -605,13 +605,15 @@ For `--agent opencode`, the staged files are:
 - `.opencode/plugins/triton-agent-hook-guard.js`
 - `.opencode/triton-agent-hooks/policy.json`
 
-The policy is rendered for the current workspace. It allows read-oriented shell
-commands to inspect files inside that workspace, blocks reads outside the
-workspace, and blocks reads of staged skill implementation files under
-the backend-native staged skill path, such as `.codex/skills/*/scripts/` or
-`.opencode/skills/*/scripts/`. A blocked read returns a short denial message to
-the agent telling it to stay within the workspace and use skill instructions or
-the documented command interface instead.
+The policy is rendered for the current workspace. For Codex, it evaluates both
+direct `Read` tool requests and read-oriented shell commands, including wrapped
+shell invocations such as `bash -lc "sed ..."`. For supported backends, it
+blocks reads outside the workspace and blocks reads of staged skill
+implementation files under the backend-native staged skill path, such as
+`.codex/skills/*/scripts/` or `.opencode/skills/*/scripts/`. A blocked read
+returns a short denial message to the agent telling it to stay within the
+workspace and use skill instructions or the documented command interface
+instead.
 
 The staged hook files are removed after the agent process exits. If
 backend-owned hook paths already exist, the run fails explicitly instead of

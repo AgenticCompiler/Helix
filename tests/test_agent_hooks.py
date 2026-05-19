@@ -29,6 +29,31 @@ class AgentHookManagerTests(unittest.TestCase):
             self.assertTrue(guard_script.exists())
             self.assertEqual(state.created_paths, [hooks_json, hook_dir])
 
+            hooks_config = json.loads(hooks_json.read_text(encoding="utf-8"))
+            self.assertEqual(
+                hooks_config["hooks"]["PreToolUse"],
+                [
+                    {
+                        "matcher": "Bash",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "python3 .codex/triton-agent-hooks/pretooluse_guard.py --policy .codex/triton-agent-hooks/policy.json",
+                            }
+                        ],
+                    },
+                    {
+                        "matcher": "Read",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "python3 .codex/triton-agent-hooks/pretooluse_guard.py --policy .codex/triton-agent-hooks/policy.json",
+                            }
+                        ],
+                    },
+                ],
+            )
+
             policy = json.loads(policy_json.read_text(encoding="utf-8"))
             self.assertEqual(policy["workspace_root"], str(workspace.resolve()))
             self.assertEqual(policy["allow_read_roots"], [str(workspace.resolve())])

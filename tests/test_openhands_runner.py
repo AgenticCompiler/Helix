@@ -322,11 +322,15 @@ class OpenHandsRunnerTests(unittest.TestCase):
                         )
 
             self.assertEqual(result.return_code, 0)
-            self.assertIn("command: openhands sdk", stderr.getvalue())
+            self.assertIn("[command]", stderr.getvalue())
+            self.assertIn("openhands sdk", stderr.getvalue())
             self.assertIn("prompt:", stderr.getvalue())
             self.assertIn("  first line", stderr.getvalue())
             self.assertIn("  second line", stderr.getvalue())
             self.assertNotIn("  sdk", stderr.getvalue())
+            self.assertNotIn("[command] command:", stderr.getvalue())
+            self.assertNotIn("[command]   first line", stderr.getvalue())
+            self.assertNotIn("[command]   second line", stderr.getvalue())
 
     def _request(
         self,

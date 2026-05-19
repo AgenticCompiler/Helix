@@ -131,7 +131,7 @@ class TraeCLIRunnerTests(unittest.TestCase):
             with patch("triton_agent.backends.base.run_process", return_value=_ok_result()):
                 result = runner.run(request, stderr=stderr)
             self.assertEqual(result.return_code, 0)
-            self.assertIn("[agent]", stderr.getvalue())
+            self.assertIn("[command]", stderr.getvalue())
             self.assertIn("traecli --print --yolo", stderr.getvalue())
 
     def test_resume_prompt_preserves_base_context_and_supervised_contract(self) -> None:
