@@ -22,159 +22,83 @@ The example applies this technique to matrix multiplication, but it may be appli
 
 ## Detail
 
-### Diagonal Matmul
+Diagonal traversal changes the *order* of output tiles, not the tile compute body itself.
+With ordinary row-major traversal, a `4 x 4` tile grid is visited like this:
 
-See example below
+```text
+0  1  2  3
+4  5  6  7
+8  9 10 11
+12 13 14 15
+```
+
+Inside a diagonal group, the same region is visited one diagonal stripe at a time instead:
+
+```text
+0  4  8 12
+13  1  5  9
+10 14  2  6
+7 11 15  3
+```
+
+That small traversal change can reduce cases where many programs hammer the same cache region at once.
+The example below keeps only the traversal logic and leaves the usual load / `tl.dot` / store body implied.
 
 ```python
-@triton.autotune(
-configs=[
-        triton.Config({"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128, "BLOCK_TRESHHOLD": 8}),
-    ],
-    key=["M", "N", "K"]
-)
 @triton.jit
 def matmul_kernel(
-        mat_a, mat_b, mat_c,
-        M: tl.constexpr,
-        N: tl.constexpr,
-        K: tl.constexpr,
-        num_cores: tl.constexpr,
-        BLOCK_M: tl.constexpr,
-        BLOCK_N: tl.constexpr,
-        BLOCK_K: tl.constexpr,
-        BLOCK_TRESHHOLD: tl.constexpr,
+    mat_a,
+    mat_b,
+    mat_c,
+    M,
+    N,
+    K,
+    num_cores: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    DIAGONAL_GROUP: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
-    task_m_idx = 0
-    task_n_idx = 0
+    pid = tl.program_id(0)
+    num_blocks_m = triton.cdiv(M, BLOCK_M)
+    num_blocks_n = triton.cdiv(N, BLOCK_N)
+    num_blocks = num_blocks_m * num_blocks_n
 
-    '''
-    With ordinary horizontal work partitioning, the task-block numbering is:
-    [0,  1,  2,  3,  4,  5,  6,  7]
-    [8,  9,  10, 11, 12, 13, 14, 15]
-    [16, 17, 18, 19, 20, 21, 22, 23]
-    [24, 25, 26, 27, 28, 29, 30, 31]
-    [32, 33, 34, 35, 36, 37, 38, 39]
-    [40, 41, 42, 43, 44, 45, 46, 47]
-    [48, 49, 50, 51, 52, 53, 54, 55]
-    [56, 57, 58, 59, 60, 61, 62, 63]
-    Core 0 handles tasks 0, 20, 40, and 60 (4 blocks).
-    Core 1 handles tasks 1, 21, 41, and 61 (4 blocks).
-    Core 2 handles tasks 2, 22, 42, and 62 (4 blocks).
-    ...
-    Core 19 handles tasks 19, 39, and 59 (3 blocks).
-    
-    For large shapes, the traditional horizontal partitioning above causes two problems:
-    1. Many cores access the same left-matrix cache region at the same time, creating bank conflicts
-       and lowering hardware efficiency.
-    2. By the time one full row of mat_c is complete, all right-matrix data for that row has already
-       been consumed. When the right matrix is large, it can exceed L2-cache capacity, triggering
-       cache eviction and reload traffic. Later rows then see more cache misses, which lowers L2 hit
-       rate and hurts kernel performance.
-    Using 8 x 8 diagonal partitioning lets each 8 x 8 block region progress along the diagonal, which
-    significantly improves both problems above.
+    use_diagonal = (
+        num_blocks_m >= DIAGONAL_GROUP
+        and num_blocks_n >= DIAGONAL_GROUP
+        and num_blocks_m % DIAGONAL_GROUP == 0
+        and num_blocks_n % DIAGONAL_GROUP == 0
+    )
 
-    The example below uses 8 x 8 diagonal partitioning. In practice, `BLOCK_TRESHHOLD` is tuned to
-    choose the best threshold. Under 8 x 8 diagonal partitioning, each 8 x 8 region is numbered like this:
-    [0,  8,  16, 24, 32, 40, 48, 56]
-    [57, 1,  9,  17, 25, 33, 41, 49]
-    [50, 58, 2,  10, 18, 26, 34, 42]
-    [43, 51, 59, 3,  11, 19, 27, 35]
-    [36, 44, 52, 60, 4,  12, 20, 28]
-    [29, 37, 45, 53, 61, 5,  13, 21]
-    [22, 30, 38, 46, 54, 62, 6,  14]
-    [15, 23, 31, 39, 47, 55, 63, 7]
-    
-    When the M dimension spans more than 8 base blocks, diagonal partitioning can significantly reduce
-    bank conflicts. When the right matrix exceeds L2-cache capacity, diagonal partitioning can also
-    improve L2 reuse. So when both M and N exceed 8 blocks, enabling diagonal partitioning is often
-    beneficial, especially when the right matrix is larger than L2.
-    '''
-    NUM_BLOCKS_M = triton.cdiv(M, BLOCK_M)
-    NUM_BLOCKS_N = triton.cdiv(N, BLOCK_N)
-    NUM_BLOCKS = NUM_BLOCKS_M * NUM_BLOCKS_N
-    # Enable diagonal partitioning when the task count is large enough to benefit from it.
-    if NUM_BLOCKS_M >= BLOCK_TRESHHOLD and NUM_BLOCKS_N >= BLOCK_TRESHHOLD:
-        for block_idx in range (
-            pid, NUM_BLOCKS, num_cores
-        ):
-            # 8 x 8 diagonal partitioning implementation
-            curThresholdM = BLOCK_TRESHHOLD if block_idx < (NUM_BLOCKS_M // BLOCK_TRESHHOLD * BLOCK_TRESHHOLD) * NUM_BLOCKS_N else NUM_BLOCKS_M % BLOCK_TRESHHOLD
-            curThresholdM_thresholdN = curThresholdM * BLOCK_TRESHHOLD
-            curThresholdN = BLOCK_TRESHHOLD if block_idx % (NUM_BLOCKS_N * BLOCK_TRESHHOLD) < (curThresholdM * NUM_BLOCKS_N) // curThresholdM_thresholdN * curThresholdM_thresholdN else NUM_BLOCKS_N % BLOCK_TRESHHOLD
-            localRelativeBlock = block_idx % (BLOCK_TRESHHOLD * NUM_BLOCKS_N) % (BLOCK_TRESHHOLD * curThresholdM)
-            task_m_idx = localRelativeBlock % curThresholdM + block_idx // (BLOCK_TRESHHOLD * NUM_BLOCKS_N) * BLOCK_TRESHHOLD
-            # Compute the least common multiple to make the block-coordinate mapping easier.
-            x, y = curThresholdM, curThresholdN if curThresholdM > curThresholdN else curThresholdN, curThresholdM
-            while y != 0:
-                x, y = y, x % y
-            lcm = curThresholdM * curThresholdN // x
-            task_n_idx = (localRelativeBlock + (localRelativeBlock // lcm)) % curThresholdN + block_idx % (BLOCK_TRESHHOLD * NUM_BLOCKS_N) // curThresholdM_thresholdN * BLOCK_TRESHHOLD
-            
-            m_start = task_m_idx * BLOCK_M
-            n_start = task_n_idx * BLOCK_N
-            
-            mat_c_block = tl.zeros((BLOCK_M, BLOCK_N),dtype = tl.float32)
-            for k_start in range(0, K, BLOCK_K):
-                mat_a_offset = ((m_start + tl.arange(0, BLOCK_M)) * K)[:, None] + (
-                    k_start + tl.arange(0, BLOCK_K)
-                )[None, :]
-                mat_a_mask = ((m_start + tl.arange(0, BLOCK_M)) < M)[:, None] & (
-                    (k_start + tl.arange(0, BLOCK_K)) < K
-                )[None, :]
-                mat_a_block = tl.load(mat_a + mat_a_offset, mask = mat_a_mask, other = 0.0)
-                tl.compile_hint(mat_a_block, "dot_pad_only_k")
-                mat_b_offset = ((k_start + tl.arange(0, BLOCK_K)) * N)[:, None] + ( 
-                    n_start + tl.arange(0, BLOCK_N)
-                )[None, :]
-                mat_b_mask = ((k_start + tl.arange(0, BLOCK_K)) < K)[:, None] & (
-                    (n_start + tl.arange(0, BLOCK_N)) < N
-                )[None, :]
-                mat_b_block = tl.load(mat_b + mat_b_offset, mask = mat_b_mask, other = 0.0)
-                tl.compile_hint(mat_b_block, "dot_pad_only_k")
-                mat_c_block = tl.dot(mat_a_block, mat_b_block, mat_c_block)
-            mat_c_offset = ((m_start + tl.arange(0, BLOCK_M)) * N)[:, None] + (
-                n_start + tl.arange(0, BLOCK_N)
-            )[None, :]
-            mat_c_mask = ((m_start + tl.arange(0, BLOCK_M)) < M)[:, None] & (
-                (n_start + tl.arange(0, BLOCK_N)) < N
-            )[None, :]
-            tl.store(mat_c + mat_c_offset, mat_c_block.to(tl.bfloat16), mask = mat_c_mask)
-    else:
-        # Traditional sequential partitioning
-        for block_idx in range (
-            pid, NUM_BLOCKS, num_cores
-        ):
-            task_m_idx = block_idx // NUM_BLOCKS_N
-            task_n_idx = block_idx % NUM_BLOCKS_N
-            m_start = task_m_idx * BLOCK_M
-            n_start = task_n_idx * BLOCK_N
-            
-            mat_c_block = tl.zeros((BLOCK_M, BLOCK_N),dtype = tl.float32)
-            for k_start in range(0, K, BLOCK_K):
-                mat_a_offset = ((m_start + tl.arange(0, BLOCK_M)) * K)[:, None] + (
-                    k_start + tl.arange(0, BLOCK_K)
-                )[None, :]
-                mat_a_mask = ((m_start + tl.arange(0, BLOCK_M)) < M)[:, None] & (
-                    (k_start + tl.arange(0, BLOCK_K)) < K
-                )[None, :]
-                mat_a_block = tl.load(mat_a + mat_a_offset, mask = mat_a_mask, other = 0.0)
-                tl.compile_hint(mat_a_block, "dot_pad_only_k")
-                mat_b_offset = ((k_start + tl.arange(0, BLOCK_K)) * N)[:, None] + ( 
-                    n_start + tl.arange(0, BLOCK_N)
-                )[None, :]
-                mat_b_mask = ((k_start + tl.arange(0, BLOCK_K)) < K)[:, None] & (
-                    (n_start + tl.arange(0, BLOCK_N)) < N
-                )[None, :]
-                mat_b_block = tl.load(mat_b + mat_b_offset, mask = mat_b_mask, other = 0.0)
-                tl.compile_hint(mat_b_block, "dot_pad_only_k")
-                mat_c_block = tl.dot(mat_a_block, mat_b_block, mat_c_block)
-            mat_c_offset = ((m_start + tl.arange(0, BLOCK_M)) * N)[:, None] + (
-                n_start + tl.arange(0, BLOCK_N)
-            )[None, :]
-            mat_c_mask = ((m_start + tl.arange(0, BLOCK_M)) < M)[:, None] & (
-                (n_start + tl.arange(0, BLOCK_N)) < N
-            )[None, :]
-            tl.store(mat_c + mat_c_offset, mat_c_block.to(tl.bfloat16), mask = mat_c_mask)
+    for block_idx in range(pid, num_blocks, num_cores):
+        if use_diagonal:
+            group_blocks = DIAGONAL_GROUP * DIAGONAL_GROUP
+            groups_per_row = num_blocks_n // DIAGONAL_GROUP
+
+            group_idx = block_idx // group_blocks
+            local_idx = block_idx % group_blocks
+
+            group_m0 = (group_idx // groups_per_row) * DIAGONAL_GROUP
+            group_n0 = (group_idx % groups_per_row) * DIAGONAL_GROUP
+
+            local_m = local_idx % DIAGONAL_GROUP
+            diagonal_step = local_idx // DIAGONAL_GROUP
+            local_n = (local_m + diagonal_step) % DIAGONAL_GROUP
+
+            task_m_idx = group_m0 + local_m
+            task_n_idx = group_n0 + local_n
+        else:
+            task_m_idx = block_idx // num_blocks_n
+            task_n_idx = block_idx % num_blocks_n
+
+        m_start = task_m_idx * BLOCK_M
+        n_start = task_n_idx * BLOCK_N
+
+        # Use (m_start, n_start) with the usual tiled matmul body here.
+        # The optimization is the traversal order, not a different dot kernel.
 ```
+
+This compact example assumes diagonal traversal only for full `DIAGONAL_GROUP x DIAGONAL_GROUP`
+regions. Tail groups can fall back to ordinary traversal if partial-edge handling would make the
+mapping harder to reason about than the expected cache benefit justifies.
