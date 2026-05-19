@@ -196,6 +196,19 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Profiling or timeline views suggest **high scalar/control overhead**, **under-filled vector work per program**, or **many tiny programs** relative to problem size `B` (batch / number of rows).
   - The row-wise math already uses **tile loops along `N`** (`BLOCK_N`); increasing **`BLOCK_M`** does not force an extra full pass over global memory if you keep a **single streaming pass** over `N` per program.
 
+### `reduce-avoid-transpose-copy`
+
+- Summary: Avoid implementing a non-last-dimension single-axis reduction by first doing `movedim(...).contiguous()` or an equivalent layout materialization. For contiguous row-major input, compute `[outer, reduce, inner]` from the original shape and reduce directly from the original layout with a strided/tiled kernel.
+- Source: [reduce-avoid-transpose-copy.md](patterns/reduce-avoid-transpose-copy.md)
+- Use When:
+  - The operator reduces exactly one logical axis.
+  - The reduce dimension is not the last dimension.
+  - The input tensor is contiguous in its original row-major layout.
+  - The current implementation uses `movedim(...).contiguous()`, `transpose(...).contiguous()`, `permute(...).contiguous()`, or another full layout materialization before reduction.
+  - Profiling shows `Transpose`, `Memcpy`, `DataCopy`, `Contiguous`, or similar layout-conversion work before the reduction kernel.
+  - The copy time is comparable to or larger than the reduction-kernel time.
+  - The suffix dimension after the reduced axis is large enough to provide reasonably coalesced loads along `inner`.
+
 ### `remove-implicit-transpose`
 
 - Summary: Eliminate implicit transpose-style access on Ascend NPU by ensuring operands are in the physical layout the kernel needs, avoiding compiler-injected layout transforms.

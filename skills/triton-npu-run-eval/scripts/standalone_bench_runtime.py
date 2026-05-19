@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import csv
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_stdout
 import importlib
 import importlib.util
 import os
@@ -83,6 +83,8 @@ def load_standalone_bench_cases(
 def run_local_standalone_bench(
     bench_file: Path,
     operator_file: Path,
+    *,
+    verbose: bool = False,
 ) -> tuple[ResultPayload, Path]:
     cases, resolution = load_standalone_bench_cases(bench_file, operator_file)
     case_records: list[PerfCaseRecord] = []
@@ -98,6 +100,7 @@ def run_local_standalone_bench(
                 case,
                 resolution,
                 profile_root,
+                verbose=verbose,
             )
             elapsed = time.monotonic() - t0
         finally:
@@ -267,6 +270,8 @@ def _profile_case_with_profiler(
     case: StandaloneBenchCase,
     resolution: KernelResolution,
     profile_root: Path,
+    *,
+    verbose: bool = False,
 ) -> tuple[PerfMetrics | None, str | None]:
     try:
         import torch
@@ -289,7 +294,8 @@ def _profile_case_with_profiler(
             data_simplification=False,
         )
 
-        with _suppress_output_streams():
+        _suppress_ctx = _suppress_output_streams() if not verbose else nullcontext()
+        with _suppress_ctx:
             case.fn()
             _synchronize(torch)
 
