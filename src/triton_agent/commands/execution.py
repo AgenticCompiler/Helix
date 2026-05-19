@@ -86,11 +86,12 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
                 bench_file,
                 operator_file,
                 resolved_bench_mode,
+                verbose=args.verbose,
             )
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    if result.return_code != 0:
+    if args.verbose or result.return_code != 0:
         render_result(result, show_output=False)
     if args.remote and args.keep_remote_workdir and remote_workspace is not None:
         print(f"Remote workspace: {remote_workspace}")
