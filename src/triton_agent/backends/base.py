@@ -16,7 +16,7 @@ from triton_agent.show_output_log import (
     write_show_output_attempt_result,
     write_show_output_attempt_start,
 )
-from triton_agent.verbose import emit_verbose_lines, format_command_messages
+from triton_agent.verbose import emit_command_block, emit_verbose_lines
 
 
 class AgentRunner(ABC):
@@ -87,7 +87,7 @@ class AgentRunner(ABC):
         return None
 
     def _log_launch_command(self, command: list[str], stream: TextIO) -> None:
-        emit_verbose_lines(stream, "agent", format_command_messages(command))
+        emit_command_block(stream, command)
 
     def _hook_manager(self) -> AgentHookManager:
         repo_root = Path(__file__).resolve().parents[3]

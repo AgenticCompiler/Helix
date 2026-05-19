@@ -150,7 +150,7 @@ class PiRunnerTests(unittest.TestCase):
             with patch("triton_agent.backends.base.run_process", return_value=_ok_result()):
                 result = runner.run(request, stderr=stderr)
             self.assertEqual(result.return_code, 0)
-            self.assertIn("[agent]", stderr.getvalue())
+            self.assertIn("[command]", stderr.getvalue())
             self.assertIn("pi --print", stderr.getvalue())
             self.assertIn("--thinking high", stderr.getvalue())
             self.assertIn("--no-extensions", stderr.getvalue())

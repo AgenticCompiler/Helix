@@ -23,6 +23,9 @@ READ_COMMANDS = {
     "sed",
     "tail",
 }
+READ_TOOL_PATH_KEYS = ("file_path", "filePath")
+SHELL_WRAPPER_FLAGS = {"-c", "-lc"}
+SHELL_WRAPPERS = {"bash", "sh", "zsh"}
 
 PATH_FRAGMENT_RE = re.compile(
     r"(?P<path>(?:/|\.\.?/|\.codex/)[A-Za-z0-9_./*?{}+@%:,=-]+)"
@@ -57,54 +60,107 @@ def main(argv: list[str] | None = None) -> int:
 def evaluate_payload(policy: dict[str, Any], payload: dict[str, Any]) -> str | None:
     tool_name = payload.get("tool_name")
     tool_input = payload.get("tool_input")
-    if tool_name != "Bash" or not isinstance(tool_input, dict):
-        return None
-
-    command = tool_input.get("command")
-    if not isinstance(command, str):
-        return None
-
-    tokens = _split_command(command)
-    if not _contains_read_command(tokens):
+    if not isinstance(tool_input, dict):
         return None
 
     workspace_root = _resolve_policy_path(policy.get("workspace_root"))
     if workspace_root is None:
         return None
 
-    cwd = _resolve_cwd(tool_input.get("cwd"), workspace_root)
+    cwd = _resolve_cwd(tool_input.get("cwd") or payload.get("cwd"), workspace_root)
     allow_roots = _allow_roots(policy, workspace_root)
     deny_globs = [str(item) for item in policy.get("deny_read_globs", []) if isinstance(item, str)]
     deny_message = str(policy.get("deny_message") or "This read is blocked by workspace policy.")
 
-    for candidate in _candidate_paths(command, tokens):
-        resolved = _resolve_candidate(candidate, cwd, workspace_root)
-        if resolved is None:
-            continue
-        if not _is_under_any_root(resolved, allow_roots):
-            return deny_message
-        if _matches_any_glob(resolved, deny_globs):
-            return deny_message
+    if tool_name == "Read":
+        candidate = _read_tool_path(tool_input)
+        if candidate is None:
+            return None
+        return _evaluate_candidate(candidate, cwd, workspace_root, allow_roots, deny_globs, deny_message)
+
+    if tool_name != "Bash":
+        return None
+
+    command = tool_input.get("command")
+    if not isinstance(command, str):
+        return None
+
+    for candidate in _candidate_paths(command):
+        reason = _evaluate_candidate(candidate, cwd, workspace_root, allow_roots, deny_globs, deny_message)
+        if reason is not None:
+            return reason
 
     return None
 
 
-def build_denial_output(reason: str) -> dict[str, Any]:
-    return {
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": reason,
-        }
-    }
+def _evaluate_candidate(
+    candidate: str,
+    cwd: Path,
+    workspace_root: Path,
+    allow_roots: list[Path],
+    deny_globs: list[str],
+    deny_message: str,
+) -> str | None:
+    resolved = _resolve_candidate(candidate, cwd, workspace_root)
+    if resolved is None:
+        return None
+    if not _is_under_any_root(resolved, allow_roots):
+        return deny_message
+    if _matches_any_glob(resolved, deny_globs):
+        return deny_message
+    return None
 
 
-def _load_json(path: Path) -> dict[str, Any]:
-    with path.open(encoding="utf-8") as file:
-        data = json.load(file)
-    if not isinstance(data, dict):
-        raise ValueError(f"expected JSON object in {path}")
-    return data
+def _read_tool_path(tool_input: dict[str, Any]) -> str | None:
+    for key in READ_TOOL_PATH_KEYS:
+        value = tool_input.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _candidate_paths(command: str) -> list[str]:
+    return _candidate_paths_inner(command, seen_commands=set())
+
+
+def _candidate_paths_inner(command: str, *, seen_commands: set[str]) -> list[str]:
+    if command in seen_commands:
+        return []
+
+    tokens = _split_command(command)
+    candidates: list[str] = []
+    next_seen_commands = seen_commands | {command}
+    for nested_command in _shell_wrapper_commands(tokens):
+        candidates.extend(_candidate_paths_inner(nested_command, seen_commands=next_seen_commands))
+
+    if not _contains_read_command(tokens):
+        return candidates
+
+    for token in tokens:
+        if _is_read_command_token(token):
+            continue
+        if _looks_like_path(token):
+            candidates.append(token)
+
+    for match in PATH_FRAGMENT_RE.finditer(command):
+        path = match.group("path")
+        if not _is_read_command_token(path):
+            candidates.append(path)
+
+    return candidates
+
+
+def _shell_wrapper_commands(tokens: list[str]) -> list[str]:
+    commands: list[str] = []
+    for index, token in enumerate(tokens):
+        if Path(token).name not in SHELL_WRAPPERS:
+            continue
+        if index + 2 >= len(tokens):
+            continue
+        if tokens[index + 1] not in SHELL_WRAPPER_FLAGS:
+            continue
+        commands.append(tokens[index + 2])
+    return commands
 
 
 def _split_command(command: str) -> list[str]:
@@ -122,22 +178,6 @@ def _is_read_command_token(token: str) -> bool:
     return Path(token).name in READ_COMMANDS
 
 
-def _candidate_paths(command: str, tokens: list[str]) -> list[str]:
-    candidates: list[str] = []
-    for token in tokens:
-        if _is_read_command_token(token):
-            continue
-        if _looks_like_path(token):
-            candidates.append(token)
-
-    for match in PATH_FRAGMENT_RE.finditer(command):
-        path = match.group("path")
-        if not _is_read_command_token(path):
-            candidates.append(path)
-
-    return candidates
-
-
 def _looks_like_path(token: str) -> bool:
     return (
         token.startswith("/")
@@ -145,6 +185,23 @@ def _looks_like_path(token: str) -> bool:
         or token.startswith("../")
         or token.startswith(".codex/")
     )
+
+def build_denial_output(reason: str) -> dict[str, Any]:
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        }
+    }
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    with path.open(encoding="utf-8") as file:
+        data = json.load(file)
+    if not isinstance(data, dict):
+        raise ValueError(f"expected JSON object in {path}")
+    return data
 
 
 def _resolve_policy_path(value: object) -> Path | None:

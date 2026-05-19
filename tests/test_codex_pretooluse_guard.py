@@ -90,6 +90,21 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
+    def test_blocks_nested_bash_lc_read_of_protected_script(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            script = workspace / ".codex" / "skills" / "skill-a" / "scripts" / "helper.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("print('helper')\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.evaluate_payload(
+                _policy(workspace),
+                _payload(workspace, f"bash -lc \"sed -n '1,20p' {script}\""),
+            )
+
+            self.assertEqual(reason, _DENY_MESSAGE)
+
     def test_blocks_triton_agent_logs_bash_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -135,17 +150,55 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             self.assertIsNone(reason)
 
-    def test_ignores_non_bash_tool_payloads(self) -> None:
+    def test_blocks_protected_read_tool_payload_with_file_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
-            workspace.mkdir()
             guard = _load_guard_module()
-            payload = _payload(workspace, "cat /etc/passwd")
-            payload["tool_name"] = "Read"
+            script = workspace / ".codex" / "skills" / "skill-a" / "scripts" / "helper.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("print('helper')\n", encoding="utf-8")
+            payload = _read_payload(script)
 
             reason = guard.evaluate_payload(_policy(workspace), payload)
 
+            self.assertEqual(reason, _DENY_MESSAGE)
+
+    def test_blocks_read_tool_payload_outside_workspace_with_file_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            outside = Path(tmp) / "outside.txt"
+            outside.write_text("secret\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.evaluate_payload(_policy(workspace), _read_payload(outside))
+
+            self.assertEqual(reason, _DENY_MESSAGE)
+
+    def test_allows_in_workspace_read_tool_payload_with_file_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            readme = workspace / "README.md"
+            readme.write_text("hello\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.evaluate_payload(_policy(workspace), _read_payload(readme))
+
             self.assertIsNone(reason)
+
+    def test_blocks_protected_read_tool_payload_with_file_path_camel_case(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            guard = _load_guard_module()
+            script = workspace / ".codex" / "skills" / "skill-a" / "scripts" / "helper.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("print('helper')\n", encoding="utf-8")
+            payload = _read_payload(script, key="filePath")
+
+            reason = guard.evaluate_payload(_policy(workspace), payload)
+
+            self.assertEqual(reason, _DENY_MESSAGE)
 
     def test_malformed_payload_fails_open(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -206,6 +259,21 @@ def _payload(workspace: Path, command: str) -> dict[str, object]:
         "permission_mode": "default",
         "tool_name": "Bash",
         "tool_input": {"command": command},
+        "tool_use_id": "call-1",
+    }
+
+
+def _read_payload(path: Path, *, key: str = "file_path") -> dict[str, object]:
+    return {
+        "session_id": "session",
+        "turn_id": "turn",
+        "transcript_path": None,
+        "cwd": str(path.parent),
+        "hook_event_name": "PreToolUse",
+        "model": "gpt-5.5",
+        "permission_mode": "default",
+        "tool_name": "Read",
+        "tool_input": {key: str(path)},
         "tool_use_id": "call-1",
     }
 

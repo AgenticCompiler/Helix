@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import shlex
 import sys
 from dataclasses import dataclass
 from importlib import import_module
@@ -15,7 +14,7 @@ from triton_agent.show_output_log import (
     write_show_output_attempt_result,
     write_show_output_attempt_start,
 )
-from triton_agent.verbose import emit_verbose_lines
+from triton_agent.verbose import emit_command_block
 
 
 class OpenHandsSetupError(RuntimeError):
@@ -161,9 +160,7 @@ class OpenHandsRunner(AgentRunner):
         return conversation, emitted_lines
 
     def _log_sdk_launch(self, request: AgentRequest, stream: TextIO) -> None:
-        messages = [f"command: {shlex.join(self.build_command(request))}", "prompt:"]
-        messages.extend(f"  {line}" for line in request.prompt.splitlines())
-        emit_verbose_lines(stream, "agent", messages)
+        emit_command_block(stream, [*self.build_command(request), request.prompt])
 
 
 def _load_openhands_dependencies() -> _OpenHandsDependencies:

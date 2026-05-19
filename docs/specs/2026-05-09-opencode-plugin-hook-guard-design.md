@@ -93,14 +93,14 @@ OpenCode command construction should keep the existing command shape for normal 
 
 ```text
 opencode run --dir <workspace> --pure --thinking <prompt>
-opencode <workspace> --pure --thinking --prompt <prompt>
+opencode <workspace> --pure --prompt <prompt>
 ```
 
 When hooks are enabled, the same commands should omit `--pure`:
 
 ```text
 opencode run --dir <workspace> --thinking <prompt>
-opencode <workspace> --thinking --prompt <prompt>
+opencode <workspace> --prompt <prompt>
 ```
 
 No new CLI flag is needed. `--enable-agent-hooks` already maps to `AgentRequest.enable_agent_hooks` for optimize runs.
