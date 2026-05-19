@@ -510,6 +510,7 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
     if spec.input_mode == "compare-perf":
         subparser.add_argument("--baseline", required=True)
         subparser.add_argument("--compare", required=True)
+        subparser.add_argument("--skip-latency-errors", action="store_true")
         return
     subparser.add_argument("-i", "--input", required=True)
 

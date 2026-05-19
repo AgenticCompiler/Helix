@@ -74,8 +74,17 @@ def resolve_bench_kernel_resolution(
     return _resolve_bench_kernel_resolution(bench_file, operator_file)
 
 
-def compare_perf_files(baseline_perf: Path, compare_perf: Path) -> int:
-    return _compare_perf_files(baseline_perf, compare_perf)
+def compare_perf_files(
+    baseline_perf: Path,
+    compare_perf: Path,
+    *,
+    skip_latency_errors: bool = False,
+) -> int:
+    return _compare_perf_files(
+        baseline_perf,
+        compare_perf,
+        skip_latency_errors=skip_latency_errors,
+    )
 
 
 def parse_perf_file(path: Path) -> dict[str, float]:

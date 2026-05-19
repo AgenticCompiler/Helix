@@ -88,7 +88,13 @@ class CompareRemoteResultFn(Protocol):
 
 
 class ComparePerfFn(Protocol):
-    def __call__(self, baseline_perf: Path, compare_perf: Path) -> int: ...
+    def __call__(
+        self,
+        baseline_perf: Path,
+        compare_perf: Path,
+        *,
+        skip_latency_errors: bool = False,
+    ) -> int: ...
 
 
 class RunLocalProfileBenchFn(Protocol):
@@ -188,6 +194,7 @@ def build_parser() -> argparse.ArgumentParser:
     compare_perf = subparsers.add_parser("compare-perf")
     compare_perf.add_argument("--baseline", required=True)
     compare_perf.add_argument("--compare", required=True)
+    compare_perf.add_argument("--skip-latency-errors", action="store_true")
 
     return parser
 
@@ -221,7 +228,11 @@ def main(argv: list[str] | None = None) -> int:
         compare_perf_files = _load_compare_perf_function()
         baseline_perf = _resolve_existing_path(parser, args.baseline, "Baseline perf")
         compare_perf = _resolve_existing_path(parser, args.compare, "Compare perf")
-        return compare_perf_files(baseline_perf, compare_perf)
+        return compare_perf_files(
+            baseline_perf,
+            compare_perf,
+            skip_latency_errors=args.skip_latency_errors,
+        )
 
     if args.command == "run-test":
         _parse_test_metadata, run_local_test, run_remote_test = _load_test_functions()
