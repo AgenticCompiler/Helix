@@ -5,7 +5,7 @@ from pathlib import Path
 import shutil
 
 from triton_agent.execution import parse_bench_metadata, parse_test_metadata
-from triton_agent.optimize.baseline import baseline_dir, baseline_gate_issues
+from triton_agent.optimize.baseline import baseline_dir, baseline_gate_issues, load_baseline_state
 
 
 @dataclass(frozen=True)
@@ -65,8 +65,8 @@ def _classify_optimize_workspace(
     opt_note_path = workdir / "opt-note.md"
     has_opt_note = opt_note_path.exists()
     has_rounds = any(path.is_dir() for path in workdir.glob("opt-round-*"))
-    test_harnesses = _existing_test_harnesses(input_path)
-    bench_harness = input_path.with_name(f"bench_{input_path.stem}.py")
+    test_harnesses = _existing_test_harnesses(input_path, workdir)
+    bench_harness = _existing_bench_harness(input_path, workdir)
     has_bench = bench_harness.exists()
     has_baseline_dir = baseline_dir(workdir).exists()
 
@@ -187,7 +187,7 @@ def _require_resumable_session(
             f"resume continue requires established baseline/: {workdir / 'baseline'} ({baseline_issue})"
         )
 
-    test_harnesses = _existing_test_harnesses(input_path)
+    test_harnesses = _existing_test_harnesses(input_path, workdir)
     if not test_harnesses:
         raise ValueError(
             f"resume continue requires an existing generated test harness for {input_path.name}"
@@ -197,7 +197,7 @@ def _require_resumable_session(
             "resume continue found multiple test harnesses. Keep only the active optimize test harness."
         )
 
-    bench_harness = input_path.with_name(f"bench_{input_path.stem}.py")
+    bench_harness = _existing_bench_harness(input_path, workdir)
     if not bench_harness.exists():
         raise ValueError(
             f"resume continue requires an existing generated benchmark harness: {bench_harness}"
@@ -220,12 +220,70 @@ def _require_resumable_session(
     )
 
 
-def _existing_test_harnesses(input_path: Path) -> list[Path]:
-    candidates = [
-        input_path.with_name(f"differential_test_{input_path.stem}.py"),
-        input_path.with_name(f"test_{input_path.stem}.py"),
-    ]
-    return [path for path in candidates if path.exists()]
+def _existing_test_harnesses(input_path: Path, workdir: Path) -> list[Path]:
+    declared_test = _declared_test_harness(input_path, workdir)
+    candidates: list[Path] = []
+    if declared_test is not None:
+        candidates.append(declared_test)
+    candidates.extend(
+        [
+            input_path.with_name(f"differential_test_{input_path.stem}.py"),
+            input_path.with_name(f"test_{input_path.stem}.py"),
+        ]
+    )
+    return _existing_unique_paths(candidates)
+
+
+def _existing_bench_harness(input_path: Path, workdir: Path) -> Path:
+    declared_bench = _declared_bench_harness(input_path, workdir)
+    if declared_bench is not None and declared_bench.exists():
+        return declared_bench
+    return input_path.with_name(f"bench_{input_path.stem}.py")
+
+
+def _declared_test_harness(input_path: Path, workdir: Path) -> Path | None:
+    state = _matching_baseline_state(input_path, workdir)
+    if state is None:
+        return None
+    path = workdir / state.test_file
+    if not path.exists():
+        return None
+    return path
+
+
+def _declared_bench_harness(input_path: Path, workdir: Path) -> Path | None:
+    state = _matching_baseline_state(input_path, workdir)
+    if state is None:
+        return None
+    path = workdir / state.bench_file
+    if not path.exists():
+        return None
+    return path
+
+
+def _matching_baseline_state(input_path: Path, workdir: Path):
+    try:
+        state = load_baseline_state(workdir)
+    except ValueError:
+        return None
+
+    declared_source = (workdir / state.source_operator).resolve()
+    if declared_source != input_path.resolve():
+        return None
+    return state
+
+
+def _existing_unique_paths(paths: list[Path]) -> list[Path]:
+    unique_paths: list[Path] = []
+    seen: set[Path] = set()
+    for path in paths:
+        resolved = path.resolve(strict=False)
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if path.exists():
+            unique_paths.append(path)
+    return unique_paths
 
 
 def _parse_test_mode(test_file: Path) -> str | None:
