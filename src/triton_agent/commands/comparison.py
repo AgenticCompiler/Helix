@@ -35,6 +35,7 @@ class ComparePerfModule(Protocol):
         compare_perf: Path,
         *,
         skip_latency_errors: bool = False,
+        metric_source: str = "auto",
     ) -> int: ...
 
 
@@ -76,11 +77,13 @@ def compare_perf_files(
     compare_perf: Path,
     *,
     skip_latency_errors: bool = False,
+    metric_source: str = "auto",
 ) -> int:
     return _load_compare_perf().compare_perf_files(
         baseline_perf,
         compare_perf,
         skip_latency_errors=skip_latency_errors,
+        metric_source=metric_source,
     )
 
 
@@ -119,4 +122,5 @@ def handle_compare_perf(parser: argparse.ArgumentParser, args: argparse.Namespac
         baseline_perf,
         compare_perf,
         skip_latency_errors=args.skip_latency_errors,
+        metric_source=args.metric_source,
     )

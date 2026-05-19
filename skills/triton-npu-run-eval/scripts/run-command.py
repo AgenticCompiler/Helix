@@ -94,6 +94,7 @@ class ComparePerfFn(Protocol):
         compare_perf: Path,
         *,
         skip_latency_errors: bool = False,
+        metric_source: str = "auto",
     ) -> int: ...
 
 
@@ -195,6 +196,11 @@ def build_parser() -> argparse.ArgumentParser:
     compare_perf.add_argument("--baseline", required=True)
     compare_perf.add_argument("--compare", required=True)
     compare_perf.add_argument("--skip-latency-errors", action="store_true")
+    compare_perf.add_argument(
+        "--metric-source",
+        default="auto",
+        choices=["auto", "kernel", "total-op"],
+    )
 
     return parser
 
@@ -232,6 +238,7 @@ def main(argv: list[str] | None = None) -> int:
             baseline_perf,
             compare_perf,
             skip_latency_errors=args.skip_latency_errors,
+            metric_source=args.metric_source,
         )
 
     if args.command == "run-test":

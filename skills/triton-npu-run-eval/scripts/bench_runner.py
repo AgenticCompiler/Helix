@@ -19,6 +19,7 @@ from bench_contract import (
     resolve_bench_kernel_resolution as _resolve_bench_kernel_resolution,
 )
 from perf_artifacts import (
+    MetricSource,
     PerfCaseRecord,
     PerfMetrics,
     PerfOpRow,
@@ -79,11 +80,13 @@ def compare_perf_files(
     compare_perf: Path,
     *,
     skip_latency_errors: bool = False,
+    metric_source: MetricSource = "auto",
 ) -> int:
     return _compare_perf_files(
         baseline_perf,
         compare_perf,
         skip_latency_errors=skip_latency_errors,
+        metric_source=metric_source,
     )
 
 
