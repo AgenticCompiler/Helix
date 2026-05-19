@@ -61,7 +61,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             self.assertEqual(result["return_code"], 0)
             self.assertEqual(resolved_perf, perf_file)
-            helper.assert_called_once_with(bench_file, operator_file)
+            helper.assert_called_once_with(bench_file, operator_file, verbose=False)
             streaming.assert_not_called()
 
     def test_run_local_bench_standalone_preserves_helper_perf_path(self) -> None:
@@ -106,8 +106,8 @@ class LocalBenchRunnerTests(unittest.TestCase):
             fake_result = make_skill_result(0, "", "")
             perf_file = root / "abs_perf.txt"
 
-            def _fake_helper(passed_bench: Path, passed_operator: Path):
-                del passed_bench, passed_operator
+            def _fake_helper(passed_bench: Path, passed_operator: Path, *, verbose: bool = False):
+                del passed_bench, passed_operator, verbose
                 observed_cwds.append(Path.cwd())
                 return fake_result, perf_file
 

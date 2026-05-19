@@ -99,11 +99,12 @@ def run_local_bench(
     bench_file: Path,
     operator_file: Path,
     bench_mode: str,
+    verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     with _local_bench_workdir(bench_file.parent):
         if bench_mode == "msprof":
-            return _run_local_bench_msprof(bench_file, operator_file)
-        return _run_local_bench_standalone(bench_file, operator_file)
+            return _run_local_bench_msprof(bench_file, operator_file, verbose=verbose)
+        return _run_local_bench_standalone(bench_file, operator_file, verbose=verbose)
 
 
 def run_remote_bench(
@@ -164,8 +165,10 @@ def run_remote_bench(
 def _run_local_bench_standalone(
     bench_file: Path,
     operator_file: Path,
+    *,
+    verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
-    return run_local_standalone_bench(bench_file, operator_file)
+    return run_local_standalone_bench(bench_file, operator_file, verbose=verbose)
 
 
 @contextlib.contextmanager
@@ -238,9 +241,11 @@ def _run_remote_bench_standalone(
 def run_local_standalone_bench(
     bench_file: Path,
     operator_file: Path,
+    *,
+    verbose: bool = False,
 ) -> tuple[ResultPayload, Path]:
     runtime = _load_standalone_runtime_module()
-    return runtime.run_local_standalone_bench(bench_file, operator_file)
+    return runtime.run_local_standalone_bench(bench_file, operator_file, verbose=verbose)
 
 
 def _standalone_runtime_script_path() -> Path:
@@ -284,6 +289,8 @@ def _build_remote_standalone_run_all_script() -> str:
 def _run_local_bench_msprof(
     bench_file: Path,
     operator_file: Path,
+    *,
+    verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
     count_result = run_buffered_process(
@@ -318,13 +325,17 @@ def _run_local_bench_msprof(
                 str(case_idx),
             ]
             t0 = time.monotonic()
-            with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
+            stream_target: TextIO = sys.stdout if verbose else open(os.devnull, "w", encoding="utf-8")
+            try:
                 result = run_streaming_process(
                     command,
                     str(bench_file.parent),
                     stall_timeout_seconds=_bench_timeout(),
-                    stdout=quiet_stdout,
+                    stdout=stream_target,
                 )
+            finally:
+                if stream_target is not sys.stdout:
+                    stream_target.close()
             elapsed = time.monotonic() - t0
             stdout_chunks.append(str(result["stdout"]))
             stderr_chunks.append(str(result["stderr"]))

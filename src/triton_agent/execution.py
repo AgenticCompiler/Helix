@@ -37,6 +37,7 @@ class BenchRunnerModule(Protocol):
         bench_file: Path,
         operator_file: Path,
         bench_mode: str,
+        verbose: bool = False,
     ) -> tuple[RunSkillPayload, Path | None]: ...
 
     def run_remote_bench(
@@ -107,8 +108,11 @@ def run_local_bench(
     bench_file: Path,
     operator_file: Path,
     bench_mode: str,
+    verbose: bool = False,
 ) -> tuple[AgentResult, Path | None]:
-    result, perf_path = _load_bench_runner().run_local_bench(bench_file, operator_file, bench_mode)
+    result, perf_path = _load_bench_runner().run_local_bench(
+        bench_file, operator_file, bench_mode, verbose=verbose
+    )
     return normalize_agent_result(result), perf_path
 
 

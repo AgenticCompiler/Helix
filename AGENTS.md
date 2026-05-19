@@ -55,7 +55,7 @@
 - Document behavior in terms of user-visible semantics first and implementation details second.
 - Use `AGENTS.md` for stable project rules and workflow expectations.
 - Keep human-facing contract prose in skills or focused references, and keep machine-readable contracts in one loadable source rather than duplicating field lists across prompts, checkers, and runtime code.
-- Use the standard repository verification commands documented in `README.md`.
+- Use the standard repository verification commands documented in `README.md`: `uv run --group dev ruff check`, `uv run pyright`, and `uv run python -m unittest discover -s tests -v`.
 - Generic optimize pattern cards under `skills/triton-npu-optimize-knowledge/references/patterns/` are authored Markdown sources, while `skills/triton-npu-optimize-knowledge/references/pattern_index.md` is generated and must be regenerated after editing a pattern card instead of hand-edited.
 - Generic optimize symptom cards under `skills/triton-npu-optimize-knowledge/references/symptoms/` are authored Markdown sources, while `skills/triton-npu-optimize-knowledge/references/symptom_index.md` is generated and must be regenerated after editing a symptom card instead of hand-edited.
 
