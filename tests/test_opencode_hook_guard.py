@@ -68,6 +68,22 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
 
+    def test_allows_python_entrypoint_for_staged_helper_script(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            script = workspace / ".opencode" / "skills" / "triton-npu-run-eval" / "scripts" / "run-command.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("print('helper')\n", encoding="utf-8")
+
+            result = _evaluate_plugin(
+                _policy(workspace),
+                "bash",
+                f"python3 {script} run-test --test-file differential_test_file.py",
+                workspace,
+            )
+
+            self.assertEqual(result, {"allowed": True})
+
     def test_blocks_read_tool_for_protected_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
