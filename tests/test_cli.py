@@ -3469,6 +3469,7 @@ class PathResolutionTests(unittest.TestCase):
                 bench_file.resolve(),
                 operator.resolve(),
                 "standalone",
+                verbose=False,
             )
             self.assertEqual(
                 stdout.getvalue(),
@@ -3505,6 +3506,7 @@ class PathResolutionTests(unittest.TestCase):
                 bench_file.resolve(),
                 operator.resolve(),
                 "msprof",
+                verbose=False,
             )
 
     def test_run_bench_wrapper_calls_loaded_skill_module(self) -> None:

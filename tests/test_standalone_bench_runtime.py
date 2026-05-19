@@ -219,8 +219,8 @@ def build_standalone_bench_cases(operator_api):
 
             created_output_dirs: list[Path] = []
 
-            def _fake_profile_case(case, resolution, profile_root):
-                del resolution
+            def _fake_profile_case(case, resolution, profile_root, *, verbose=False):
+                del resolution, verbose
                 created_output_dirs.append(profile_root)
                 profile_root.mkdir(parents=True, exist_ok=True)
                 (profile_root / f"{case.case_id}.txt").write_text("kept\n", encoding="utf-8")
@@ -287,8 +287,8 @@ def build_standalone_bench_cases(operator_api):
 
             seen_after_cleanup: list[bool] = []
 
-            def _fake_profile_case(case, resolution, profile_root):
-                del resolution, profile_root
+            def _fake_profile_case(case, resolution, profile_root, *, verbose=False):
+                del resolution, profile_root, verbose
                 seen_after_cleanup.append(extra_info.exists())
                 if case.case_id == "case-a":
                     if not extra_info.exists():
