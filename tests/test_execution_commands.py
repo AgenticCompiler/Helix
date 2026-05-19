@@ -47,6 +47,53 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 "differential",
             )
 
+    def test_handle_run_test_auto_compares_differential_result_when_oracle_provided(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            oracle = root / "oracle_result.pt"
+            archive = root / "kernel_result.pt"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            oracle.write_text("oracle", encoding="utf-8")
+
+            args = parser.parse_args(
+                [
+                    "run-test",
+                    "--test-file",
+                    str(test_file),
+                    "--operator-file",
+                    str(operator),
+                    "--oracle-result",
+                    str(oracle),
+                ]
+            )
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch(
+                "triton_agent.commands.execution.run_local_test",
+                return_value=(fake_result, archive),
+            ) as run_mock:
+                with patch(
+                    "triton_agent.commands.execution.compare_result_files",
+                    return_value=0,
+                ) as compare_mock:
+                    exit_code = handle_run_test(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            run_mock.assert_called_once_with(
+                test_file.resolve(),
+                operator.resolve(),
+                "differential",
+            )
+            compare_mock.assert_called_once_with(
+                oracle.resolve(),
+                archive,
+                "balanced",
+            )
+
     def test_handle_run_bench_prints_perf_file(self) -> None:
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:

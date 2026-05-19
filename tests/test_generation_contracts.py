@@ -183,7 +183,8 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("Use the `triton-npu-run-eval` skill to validate generated tests.", test_gen)
         self.assertIn("run `run-test` with `--test-mode standalone`", test_gen)
         self.assertIn("run `run-test` with `--test-mode differential`", test_gen)
-        self.assertIn("run `compare-result` on the archived payload", test_gen)
+        self.assertIn("run `run-test` with `--oracle-result <oracle_result.pt>`", test_gen)
+        self.assertIn("keep `compare-result` for reruns", test_gen)
 
         bench_gen = _read("skills/triton-npu-gen-bench/SKILL.md")
         self.assertIn("## Validation Commands", bench_gen)
@@ -219,6 +220,7 @@ class GenerationContractTests(unittest.TestCase):
 
         self.assertIn("Always pass both `--test-file` and `--operator-file`.", run_test)
         self.assertIn("--test-mode differential", run_test)
+        self.assertIn("--oracle-result", run_test)
         self.assertIn("--remote user@host:2222", run_test)
         self.assertIn("generated tests are import-only modules", run_test)
         self.assertIn("build_operator_api(operator_module)", run_test)
@@ -233,7 +235,8 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("do not pass kernel filter arguments", profile_bench)
         self.assertIn("--keep-remote-workdir", profile_bench)
 
-        self.assertIn("compare the archived result payloads after `run-test` succeeds", compare_result)
+        self.assertIn("rerun or inspect the comparison separately from `run-test`", compare_result)
+        self.assertIn("Prefer `run-test --oracle-result ...`", compare_result)
         self.assertIn("--compare-level balanced", compare_result)
 
         self.assertIn("Avg improvement", compare_perf)

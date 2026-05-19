@@ -762,6 +762,24 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(gen_args.test_mode, "standalone")
         self.assertIsNone(run_args.test_mode)
 
+    def test_run_test_accepts_oracle_result_and_compare_level(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run-test",
+                "--test-file",
+                "differential_test_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--oracle-result",
+                "oracle_result.pt",
+                "--compare-level",
+                "strict",
+            ]
+        )
+        self.assertEqual(args.oracle_result, "oracle_result.pt")
+        self.assertEqual(args.compare_level, "strict")
+
     def test_gen_eval_defaults_to_differential_test_mode(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["gen-eval", "-i", "kernel.py"])
@@ -3294,6 +3312,46 @@ class PathResolutionTests(unittest.TestCase):
                     "Hint: use `compare-result` to inspect this archived result instead of reading it directly.\n"
                 ),
             )
+
+    def test_main_run_test_auto_compares_differential_result_when_oracle_provided(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            archive = root / "kernel_result.pt"
+            oracle = root / "oracle_result.pt"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')", encoding="utf-8")
+            oracle.write_text("oracle", encoding="utf-8")
+
+            stdout = StringIO()
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.commands.execution.run_local_test", return_value=(fake_result, archive)):
+                with patch("triton_agent.commands.execution.compare_result_files", return_value=1) as compare_mock:
+                    with redirect_stdout(stdout):
+                        exit_code = main(
+                            [
+                                "run-test",
+                                "--test-file",
+                                str(test_file),
+                                "--operator-file",
+                                str(operator),
+                                "--test-mode",
+                                "differential",
+                                "--oracle-result",
+                                str(oracle),
+                            ]
+                        )
+
+            self.assertEqual(exit_code, 1)
+            compare_mock.assert_called_once_with(
+                oracle.resolve(),
+                archive,
+                "balanced",
+            )
+            self.assertIn(f"Archived result: {archive}\n", stdout.getvalue())
+            self.assertNotIn("Hint: use `compare-result`", stdout.getvalue())
 
     def test_main_run_test_uses_remote_runner_when_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

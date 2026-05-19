@@ -137,6 +137,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_test = subparsers.add_parser("run-test")
     run_test.add_argument("--test-file", required=True)
     run_test.add_argument("--operator-file", required=True)
+    run_test.add_argument("--oracle-result")
+    run_test.add_argument("--compare-level", choices=["strict", "balanced", "relaxed"])
     run_test.add_argument("--remote")
     run_test.add_argument("--remote-workdir")
     run_test.add_argument("--keep-remote-workdir", action="store_true")
@@ -225,7 +227,18 @@ def main(argv: list[str] | None = None) -> int:
         _parse_test_metadata, run_local_test, run_remote_test = _load_test_functions()
         test_file = _resolve_existing_path(parser, args.test_file, "Test file")
         operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
+        oracle_result = (
+            _resolve_existing_path(parser, args.oracle_result, "Oracle result")
+            if args.oracle_result is not None
+            else None
+        )
         resolved_test_mode = args.test_mode or _resolve_test_mode_from_metadata(test_file)
+        compare_level = _resolve_run_test_compare_level(
+            parser,
+            args,
+            resolved_test_mode,
+            oracle_result,
+        )
         remote_workspace: str | None = None
         try:
             if args.remote:
@@ -246,12 +259,23 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         _render_result(result, show_output=True)
         print(f"Return code: {result['return_code']}")
+        final_code = int(result["return_code"])
         if archived_result is not None:
             print(f"Archived result: {archived_result}")
-            print(_RUN_TEST_HINT)
+            if oracle_result is not None:
+                compare_result_files = _load_compare_result_functions()[0]
+                final_code = compare_result_files(oracle_result, archived_result, compare_level)
+            else:
+                print(_RUN_TEST_HINT)
+        elif oracle_result is not None:
+            print(
+                "Differential run-test did not produce an archived result required for automatic comparison.",
+                file=sys.stderr,
+            )
+            final_code = 1
         if args.remote and args.keep_remote_workdir and remote_workspace is not None:
             print(f"Remote workspace: {remote_workspace}")
-        return int(result["return_code"])
+        return final_code
 
     if args.command == "profile-bench":
         run_local_profile_bench, run_remote_profile_bench = _load_profile_functions()
@@ -355,6 +379,19 @@ def _resolve_test_mode_from_metadata(test_file: Path) -> str:
     if mode not in {"standalone", "differential"}:
         raise ValueError(f"Test metadata is missing required 'test-mode' entry: {test_file}")
     return mode
+
+
+def _resolve_run_test_compare_level(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    resolved_test_mode: str,
+    oracle_result: Path | None,
+) -> str:
+    if args.compare_level is not None and oracle_result is None:
+        parser.error("--compare-level requires --oracle-result")
+    if oracle_result is not None and resolved_test_mode != "differential":
+        parser.error("--oracle-result is supported only with --test-mode differential")
+    return args.compare_level or "balanced"
 
 
 def _resolve_bench_mode_from_metadata(bench_file: Path) -> str:
