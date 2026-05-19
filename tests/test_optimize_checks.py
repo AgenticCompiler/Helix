@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -151,6 +152,37 @@ class OptimizeCheckTests(unittest.TestCase):
             self.assertEqual(result.kind, "round")
             self.assertEqual(result.decision, "pass")
             self.assertEqual(result.issues, ())
+
+    def test_check_round_preserves_pt_files_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            round_dir = self._write_round(workdir, "opt-round-1", round_disposition="continue")
+            pt_file = round_dir / "test_result.pt"
+            pt_file.write_text("stub\n", encoding="utf-8")
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertTrue(result.ok)
+            self.assertEqual(result.kind, "round")
+            self.assertEqual(result.decision, "pass")
+            self.assertTrue(pt_file.exists())
+
+    def test_check_round_deletes_pt_files_when_env_var_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            round_dir = self._write_round(workdir, "opt-round-1", round_disposition="continue")
+            pt_file = round_dir / "test_result.pt"
+            pt_file.write_text("stub\n", encoding="utf-8")
+
+            with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "1"}, clear=False):
+                result = optimize_checks.check_round(round_dir)
+
+            self.assertTrue(result.ok)
+            self.assertEqual(result.kind, "round")
+            self.assertEqual(result.decision, "pass")
+            self.assertFalse(pt_file.exists())
 
     def test_check_round_allows_missing_perf_analysis_when_not_declared(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

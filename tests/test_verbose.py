@@ -5,12 +5,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.verbose import emit_command_block, emit_verbose
+from triton_agent.verbose import _supports_color, emit_command_block, emit_verbose
 
 
 class _TtyStringIO(StringIO):
     def isatty(self) -> bool:
         return True
+
+
+class _TruthyIsattyStream(StringIO):
+    def isatty(self) -> object:
+        return object()
 
 
 class VerboseTests(unittest.TestCase):
@@ -62,6 +67,9 @@ class VerboseTests(unittest.TestCase):
         self.assertIn("\033[38;5;245m  first line\033[0m\n", output)
         self.assertIn("\033[38;5;245m  second line\033[0m\n", output)
         self.assertNotIn("[command]   first line", output)
+
+    def test_supports_color_coerces_truthy_isatty_results_to_bool(self) -> None:
+        self.assertIs(_supports_color(_TruthyIsattyStream()), True)
 
 
 if __name__ == "__main__":
