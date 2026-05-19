@@ -128,6 +128,8 @@ uv run triton-agent run-test --test-file test_a.py --operator-file a.py
 Common options:
 
 - `--test-mode standalone|differential`: override the mode recorded in the test file.
+- `--oracle-result <path>`: in `differential` mode, automatically compare the new archived result against an existing oracle payload.
+- `--compare-level strict|balanced|relaxed`: comparison tolerance to use with `--oracle-result`. Default is `balanced`.
 - `--remote user@host[:port]`: run through SSH on a remote machine.
 - `--remote-workdir <path>`: set the remote working root.
 - `--keep-remote-workdir`: keep the remote workspace for debugging.
@@ -137,6 +139,16 @@ Example:
 
 ```bash
 uv run triton-agent run-test --test-file differential_test_a.py --operator-file opt_a.py
+```
+
+If you already have an oracle payload from a baseline or source run, you can finish the differential check in one command:
+
+```bash
+uv run triton-agent run-test \
+  --test-file differential_test_a.py \
+  --operator-file opt_a.py \
+  --test-mode differential \
+  --oracle-result a_result.pt
 ```
 
 ## Generate Evaluation Assets
@@ -546,7 +558,7 @@ Batch rerun behavior:
 
 ## Compare Archived Outputs
 
-Use these commands after you already have archived result or performance files.
+Use these commands after you already have archived result or performance files, or when you want to rerun a comparison independently from `run-test`.
 
 ### Compare Correctness Results
 

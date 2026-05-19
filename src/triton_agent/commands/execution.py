@@ -4,6 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from triton_agent.commands.comparison import compare_result_files
 from triton_agent.execution import (
     resolve_bench_mode_from_metadata,
     resolve_test_mode_from_metadata,
@@ -19,8 +20,9 @@ _RUN_TEST_HINT = "Hint: use `compare-result` to inspect this archived result ins
 
 
 def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
-    test_file, operator_file = resolve_run_test_paths(parser, args)
+    test_file, operator_file, oracle_result = resolve_run_test_paths(parser, args)
     resolved_test_mode = args.test_mode or resolve_test_mode_from_metadata(test_file)
+    compare_level = resolve_run_test_compare_level(parser, args, resolved_test_mode, oracle_result)
     remote_workspace: str | None = None
     try:
         if args.remote:
@@ -45,12 +47,22 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
         return 1
     render_result(result, show_output=True)
     print(f"Return code: {result.return_code}")
+    final_code = result.return_code
     if archived_result is not None:
         print(f"Archived result: {archived_result}")
-        print(_RUN_TEST_HINT)
+        if oracle_result is not None:
+            final_code = compare_result_files(oracle_result, archived_result, compare_level)
+        else:
+            print(_RUN_TEST_HINT)
+    elif oracle_result is not None:
+        print(
+            "Differential run-test did not produce an archived result required for automatic comparison.",
+            file=sys.stderr,
+        )
+        final_code = 1
     if args.remote and args.keep_remote_workdir and remote_workspace is not None:
         print(f"Remote workspace: {remote_workspace}")
-    return result.return_code
+    return final_code
 
 
 def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -91,14 +103,32 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
 def resolve_run_test_paths(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
-) -> tuple[Path, Path]:
+) -> tuple[Path, Path, Path | None]:
     test_file = Path(args.test_file).expanduser().resolve()
     if not test_file.exists():
         parser.error(f"Test file path does not exist: {test_file}")
     operator_file = Path(args.operator_file).expanduser().resolve()
     if not operator_file.exists():
         parser.error(f"Operator file path does not exist: {operator_file}")
-    return test_file, operator_file
+    oracle_result: Path | None = None
+    if getattr(args, "oracle_result", None) is not None:
+        oracle_result = Path(args.oracle_result).expanduser().resolve()
+        if not oracle_result.exists():
+            parser.error(f"Oracle result path does not exist: {oracle_result}")
+    return test_file, operator_file, oracle_result
+
+
+def resolve_run_test_compare_level(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    resolved_test_mode: str,
+    oracle_result: Path | None,
+) -> str:
+    if args.compare_level is not None and oracle_result is None:
+        parser.error("--compare-level requires --oracle-result")
+    if oracle_result is not None and resolved_test_mode != "differential":
+        parser.error("--oracle-result is supported only with --test-mode differential")
+    return args.compare_level or "balanced"
 
 
 def resolve_run_bench_paths(
