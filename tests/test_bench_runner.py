@@ -921,7 +921,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertIn("Total speedup: 1.67x", output)
             self.assertIn("Metric source: kernel", output)
 
-    def test_compare_perf_files_fails_on_case_execution_error_marker(self) -> None:
+    def test_compare_perf_files_fails_by_default_on_case_execution_error_marker(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -933,10 +933,11 @@ class LocalBenchRunnerTests(unittest.TestCase):
                     "# latency-error-case-1: msprof command failed with return code 1\n"
                     "# resolved-kernels-case-1: Kernel\n"
                     "# kernel-source-case-1: metadata\n"
+                    "latency-case-2: 10\n"
                 ),
                 encoding="utf-8",
             )
-            compare.write_text("latency-case-1: 8\n", encoding="utf-8")
+            compare.write_text("latency-case-1: 8\nlatency-case-2: 8\n", encoding="utf-8")
 
             stdout_path = root / "stdout.txt"
             original_stdout = sys.stdout
@@ -949,6 +950,47 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             output = stdout_path.read_text(encoding="utf-8")
             self.assertEqual(return_code, 1)
+            self.assertIn("cannot compare 'latency-case-1'", output)
+            self.assertNotIn("Perf comparison:", output)
+
+    def test_compare_perf_files_skips_case_execution_error_when_requested(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "compare_perf.txt"
+            baseline.write_text(
+                (
+                    "latency-case-1: NA\n"
+                    "# latency-error-case-1: msprof command failed with return code 1\n"
+                    "# resolved-kernels-case-1: Kernel\n"
+                    "# kernel-source-case-1: metadata\n"
+                    "latency-case-2: 10\n"
+                ),
+                encoding="utf-8",
+            )
+            compare.write_text("latency-case-1: 8\nlatency-case-2: 8\n", encoding="utf-8")
+
+            stdout_path = root / "stdout.txt"
+            original_stdout = sys.stdout
+            try:
+                with stdout_path.open("w", encoding="utf-8") as handle:
+                    sys.stdout = handle
+                    return_code = module.compare_perf_files(
+                        baseline, compare, skip_latency_errors=True
+                    )
+            finally:
+                sys.stdout = original_stdout
+
+            output = stdout_path.read_text(encoding="utf-8")
+            self.assertEqual(return_code, 1)
+            self.assertIn("Perf comparison:", output)
+            self.assertIn("latency-case-2: baseline=10, compare=8, delta=-20.00%", output)
+            self.assertIn("Avg improvement: +20.0%", output)
+            self.assertIn("Geomean speedup: 1.25x", output)
+            self.assertIn("Total speedup: 1.25x", output)
+            self.assertIn("Metric source: kernel", output)
+            self.assertIn("FAIL: skipped 1 latency entries due to latency errors", output)
             self.assertIn("latency-case-1", output)
             self.assertIn("latency-error-case-1", output)
 

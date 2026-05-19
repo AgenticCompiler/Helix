@@ -714,6 +714,22 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.COMPARE_PERF)
         self.assertEqual(args.baseline, "baseline_perf.txt")
         self.assertEqual(args.compare, "candidate_perf.txt")
+        self.assertFalse(args.skip_latency_errors)
+
+    def test_compare_perf_accepts_skip_latency_errors_flag(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "compare-perf",
+                "--baseline",
+                "baseline_perf.txt",
+                "--compare",
+                "candidate_perf.txt",
+                "--skip-latency-errors",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.COMPARE_PERF)
+        self.assertTrue(args.skip_latency_errors)
 
     def test_verbose_option_is_available(self) -> None:
         parser = build_parser()
@@ -3687,7 +3703,38 @@ class PathResolutionTests(unittest.TestCase):
                 )
 
             self.assertEqual(exit_code, 0)
-            mocked.assert_called_once_with(baseline.resolve(), compare.resolve())
+            mocked.assert_called_once_with(
+                baseline.resolve(),
+                compare.resolve(),
+                skip_latency_errors=False,
+            )
+
+    def test_main_compare_perf_forwards_skip_latency_errors_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "candidate_perf.txt"
+            baseline.write_text("latency-a: 10\n", encoding="utf-8")
+            compare.write_text("latency-a: 11\n", encoding="utf-8")
+
+            with patch("triton_agent.commands.comparison.compare_perf_files", return_value=0) as mocked:
+                exit_code = main(
+                    [
+                        "compare-perf",
+                        "--baseline",
+                        str(baseline),
+                        "--compare",
+                        str(compare),
+                        "--skip-latency-errors",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                baseline.resolve(),
+                compare.resolve(),
+                skip_latency_errors=True,
+            )
 
     def test_main_run_test_reports_missing_operator_file_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

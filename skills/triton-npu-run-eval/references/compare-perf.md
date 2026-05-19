@@ -15,5 +15,6 @@ Rules:
 
 - Keep the baseline file in the standard `latency-<id>: <float>` format.
 - The compare-side file may include extra summary lines such as `mean_ms: ...`; the helper ignores them unless they replace a required latency entry.
+- By default, non-recoverable `# latency-error-<id>:` markers fail the comparison immediately. Add `--skip-latency-errors` to keep comparing valid cases and report skipped-case errors at the end.
 - The command prints per-case deltas plus `Avg improvement`, `Geomean speedup`, and `Total speedup`.
 - During optimize workflows, treat this command as the authority for claimed benchmark deltas and speedups.

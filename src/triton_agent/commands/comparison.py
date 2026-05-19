@@ -29,7 +29,13 @@ class CompareResultModule(Protocol):
 
 
 class ComparePerfModule(Protocol):
-    def compare_perf_files(self, baseline_perf: Path, compare_perf: Path) -> int: ...
+    def compare_perf_files(
+        self,
+        baseline_perf: Path,
+        compare_perf: Path,
+        *,
+        skip_latency_errors: bool = False,
+    ) -> int: ...
 
 
 def _load_compare_result() -> CompareResultModule:
@@ -65,8 +71,17 @@ def compare_remote_result_files(
     )
 
 
-def compare_perf_files(baseline_perf: Path, compare_perf: Path) -> int:
-    return _load_compare_perf().compare_perf_files(baseline_perf, compare_perf)
+def compare_perf_files(
+    baseline_perf: Path,
+    compare_perf: Path,
+    *,
+    skip_latency_errors: bool = False,
+) -> int:
+    return _load_compare_perf().compare_perf_files(
+        baseline_perf,
+        compare_perf,
+        skip_latency_errors=skip_latency_errors,
+    )
 
 
 def handle_compare_result(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -100,4 +115,8 @@ def handle_compare_perf(parser: argparse.ArgumentParser, args: argparse.Namespac
     compare_perf = Path(args.compare).expanduser().resolve()
     if not compare_perf.exists():
         parser.error(f"Compare perf path does not exist: {compare_perf}")
-    return compare_perf_files(baseline_perf, compare_perf)
+    return compare_perf_files(
+        baseline_perf,
+        compare_perf,
+        skip_latency_errors=args.skip_latency_errors,
+    )

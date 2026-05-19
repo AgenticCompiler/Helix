@@ -11,6 +11,33 @@ from pathlib import Path
 from unittest.mock import patch
 
 class SkillCommandScriptTests(unittest.TestCase):
+    def test_compare_perf_parser_accepts_skip_latency_errors_flag(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        args = module.build_parser().parse_args(
+            [
+                "compare-perf",
+                "--baseline",
+                "baseline_perf.txt",
+                "--compare",
+                "candidate_perf.txt",
+                "--skip-latency-errors",
+            ]
+        )
+
+        self.assertTrue(args.skip_latency_errors)
+
     @unittest.skipIf(shutil.which("bash") is None, "requires bash")
     def test_skill_script_pyright_wrapper_requires_exactly_one_target(self) -> None:
         script = (

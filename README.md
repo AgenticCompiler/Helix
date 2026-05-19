@@ -585,6 +585,9 @@ uv run triton-agent compare-perf \
 
 The baseline file should stay in the standard `latency-<id>: <float>` format. The compare-side file may
 include extra summary fields, which are ignored unless they replace a required latency entry.
+By default, `compare-perf` fails immediately when a case carries a non-recoverable
+`# latency-error-<id>:` marker. Pass `--skip-latency-errors` to keep comparing the
+remaining valid cases, then return failure after printing the skipped-case summary.
 The command prints:
 
 - one comparison line per latency id with baseline, compare, and delta
