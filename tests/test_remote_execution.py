@@ -1,10 +1,14 @@
 import sys
 import unittest
+import json
 from io import StringIO
 from os import environ
 from pathlib import Path
+from typing import Optional
 from unittest.mock import patch
 import tempfile
+import subprocess
+import shutil
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -70,6 +74,66 @@ class RemoteExecutionTests(unittest.TestCase):
 
         self.assertIn("[remote]", stderr.getvalue())
         self.assertIn("scp -P 2200 /tmp/local.txt alice@example.com:/tmp/remote.txt", stderr.getvalue())
+
+    def test_parse_standalone_case_payload_accepts_metrics_on_python39_runtime(self) -> None:
+        module = load_bench_runner_module()
+
+        result = make_skill_result(
+            0,
+            (
+                '{"case_label":"case-a","kernel_names":["KernelA"],"kernel_source":"metadata",'
+                '"metrics":{"kernel_avg_time_us":1.0,"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},'
+                '"error_message":null,"elapsed_seconds":0.0}\n'
+            ),
+            "",
+        )
+
+        record = module._standalone._parse_standalone_case_result_payload(
+            result,
+            case_id="case-a",
+            fallback_kernel_source="metadata",
+        )
+
+        self.assertEqual(record.case_label, "case-a")
+        self.assertIsNotNone(record.metrics)
+        if record.metrics is None:
+            self.fail("expected parsed metrics")
+        self.assertEqual(record.metrics["kernel_avg_time_us"], 1.0)
+
+    @unittest.skipIf(shutil.which("python3") is None, "requires python3")
+    def test_parse_standalone_case_payload_accepts_metrics_in_system_python_subprocess(self) -> None:
+        script = """
+import json
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path.cwd() / "src"))
+from triton_agent.skill_loader import load_operator_eval_script_module
+module = load_operator_eval_script_module("bench_runner")
+result = {
+    "return_code": 0,
+    "stdout": '{"case_label":"case-a","kernel_names":["KernelA"],"kernel_source":"metadata","metrics":{"kernel_avg_time_us":1.0,"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},"error_message":null,"elapsed_seconds":0.0}\\n',
+    "stderr": "",
+    "stalled": False,
+    "session_id": None,
+}
+record = module._standalone._parse_standalone_case_result_payload(
+    result,
+    case_id="case-a",
+    fallback_kernel_source="metadata",
+)
+print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.metrics["kernel_avg_time_us"]}))
+"""
+        completed = subprocess.run(
+            ["python3", "-c", script],
+            cwd=str(Path(__file__).resolve().parents[1]),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, msg=completed.stderr or completed.stdout)
+        parsed = json.loads(completed.stdout.strip())
+        self.assertEqual(parsed["case_label"], "case-a")
+        self.assertEqual(parsed["kernel_avg_time_us"], 1.0)
 
     def test_run_runtime_buffered_none_returncode_defaults_to_failure(self) -> None:
         module = load_operator_eval_script_module("run_runtime")
@@ -341,6 +405,125 @@ class RemoteExecutionTests(unittest.TestCase):
         )
         cleanup.assert_called_once_with("spec", "/tmp/remote-clean", verbose=False, stderr=None)
 
+    def test_run_remote_bench_standalone_parallel_uses_isolated_case_workspaces_and_device_envs(self) -> None:
+        module = load_bench_runner_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
+            operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
+
+            streamed_commands: list[tuple[str, Optional[str], list[str]]] = []
+            buffered_case_dirs: list[str] = []
+
+            def _fake_remote_buffered(spec, remote_workspace, command, **kwargs):
+                self.assertEqual(spec, "spec")
+                self.assertEqual(remote_workspace, "/tmp/remote-standalone")
+                if isinstance(command, list) and command[:3] == ["mkdir", "-p", "/tmp/remote-standalone/case-case-a"]:
+                    buffered_case_dirs.append(command[2])
+                    return make_skill_result(0, "", "")
+                if isinstance(command, list) and command[:3] == ["mkdir", "-p", "/tmp/remote-standalone/case-case-b"]:
+                    buffered_case_dirs.append(command[2])
+                    return make_skill_result(0, "", "")
+                if isinstance(command, list) and command[:2] == ["rm", "-rf"]:
+                    return make_skill_result(0, "", "")
+                self.fail(f"unexpected buffered remote command: {command}")
+
+            def _fake_copy(spec, local_path, remote_path, **kwargs):
+                del spec, local_path, kwargs
+                self.assertTrue(
+                    remote_path.endswith("/bench_case.py")
+                    or remote_path.endswith("/operator_case.py")
+                    or remote_path.endswith("/standalone_bench_runtime.py")
+                    or remote_path.endswith("/bench_contract.py")
+                    or remote_path.endswith("/perf_artifacts.py")
+                )
+
+            def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
+                del spec
+                streamed_commands.append(
+                    (
+                        remote_workspace,
+                        (kwargs.get("extra_env") or {}).get("ASCEND_RT_VISIBLE_DEVICES"),
+                        command,
+                    )
+                )
+                case_id = command[-1]
+                return make_skill_result(
+                    0,
+                    (
+                        '{"case_label":"'
+                        + case_id
+                        + '","kernel_names":["KernelA"],"kernel_source":"metadata","metrics":{"kernel_avg_time_us":1.0,"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},"error_message":null,"elapsed_seconds":0.0}\n'
+                    ),
+                    "",
+                )
+
+            with patch.object(
+                module,
+                "_load_standalone_runtime_module",
+            ) as load_runtime:
+                load_runtime.return_value = type(
+                    "_FakeRuntime",
+                    (),
+                    {
+                        "load_standalone_bench_cases": staticmethod(
+                            lambda *_args, **_kwargs: (
+                                [
+                                    type("_Case", (), {"case_id": "case-a"})(),
+                                    type("_Case", (), {"case_id": "case-b"})(),
+                                ],
+                                type("_Resolution", (), {"kernel_names": ["KernelA"], "kernel_source": "metadata"})(),
+                            )
+                        ),
+                        "runtime_support_paths": staticmethod(lambda: []),
+                    },
+                )()
+                with patch.object(
+                    module,
+                    "create_remote_workspace",
+                    return_value=("spec", "/tmp/remote-standalone"),
+                ), patch.object(module, "copy_file_to_remote", side_effect=_fake_copy), patch.object(
+                    module,
+                    "run_remote_command_buffered",
+                    side_effect=_fake_remote_buffered,
+                ), patch.object(
+                    module,
+                    "run_remote_command_streaming",
+                    side_effect=_fake_remote_streaming,
+                ), patch.object(module, "cleanup_remote_workspace") as cleanup:
+                    result, perf_path, remote_workspace = module.run_remote_bench(
+                        bench_file,
+                        operator_file,
+                        "standalone",
+                        "alice@example.com",
+                        None,
+                        npu_devices="0,2",
+                    )
+
+            self.assertEqual(result["return_code"], 0)
+            self.assertEqual(remote_workspace, "/tmp/remote-standalone")
+            self.assertEqual(
+                set(buffered_case_dirs),
+                {"/tmp/remote-standalone/case-case-a", "/tmp/remote-standalone/case-case-b"},
+            )
+            self.assertEqual(
+                {remote_workspace for remote_workspace, _, _ in streamed_commands},
+                {"/tmp/remote-standalone/case-case-a", "/tmp/remote-standalone/case-case-b"},
+            )
+            self.assertEqual({device for _, device, _ in streamed_commands}, {"0", "2"})
+            self.assertEqual(
+                {command[3] for _, _, command in streamed_commands},
+                {"bench_case.py"},
+            )
+            if perf_path is None:
+                self.fail("expected standalone perf path")
+            perf_text = perf_path.read_text(encoding="utf-8")
+            self.assertLess(perf_text.index("latency-case-a"), perf_text.index("latency-case-b"))
+            cleanup.assert_called_once_with("spec", "/tmp/remote-standalone", verbose=False, stderr=None)
+
     def test_run_remote_bench_msprof_sums_avg_time_from_remote_csv_and_cleans_profiler_tmpdirs(self) -> None:
         module = load_bench_runner_module()
 
@@ -431,6 +614,94 @@ class RemoteExecutionTests(unittest.TestCase):
                     '# kernel-source-case-2: metadata\n'
                 ),
             )
+            cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
+
+    def test_run_remote_bench_msprof_parallel_uses_isolated_case_workspaces_and_device_envs(self) -> None:
+        module = load_bench_runner_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_kernel.py"
+            operator_file = root / "kernel.py"
+            bench_file.write_text("# bench-mode: msprof\n# kernel: KernelB\n", encoding="utf-8")
+            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
+
+            streamed_commands: list[tuple[str, Optional[str], list[str]]] = []
+            buffered_case_dirs: list[str] = []
+            metric_payloads = {
+                "/tmp/remote-msprof/case-1/msprof-output": '{"kernel_avg_time_us":2.5,"ops":[{"op_type":"KernelB","avg_time_us":2.5}]}\n',
+                "/tmp/remote-msprof/case-2/msprof-output": '{"kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelB","avg_time_us":5.0}]}\n',
+            }
+
+            def _fake_remote_buffered(spec, remote_workspace, command, **kwargs):
+                self.assertEqual(spec, "spec")
+                self.assertEqual(remote_workspace, "/tmp/remote-msprof")
+                if command == ["python3", "bench_kernel.py", "--num-bench"]:
+                    return make_skill_result(0, "2\n", "")
+                if isinstance(command, list) and command[:3] == ["mkdir", "-p", "/tmp/remote-msprof/case-1"]:
+                    buffered_case_dirs.append(command[2])
+                    return make_skill_result(0, "", "")
+                if isinstance(command, list) and command[:3] == ["mkdir", "-p", "/tmp/remote-msprof/case-2"]:
+                    buffered_case_dirs.append(command[2])
+                    return make_skill_result(0, "", "")
+                if isinstance(command, list) and command[:2] == ["python3", "-c"]:
+                    output_dir = command[3]
+                    return make_skill_result(0, metric_payloads[output_dir], "")
+                if isinstance(command, list) and command[:2] == ["rm", "-rf"]:
+                    return make_skill_result(0, "", "")
+                self.fail(f"unexpected buffered remote command: {command}")
+
+            def _fake_copy(spec, local_path, remote_path, **kwargs):
+                del spec, local_path, kwargs
+                self.assertTrue(
+                    remote_path.endswith("/bench_kernel.py")
+                    or remote_path.endswith("/kernel.py")
+                    or remote_path.endswith("/bench_kernel.json")
+                )
+
+            def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
+                del spec
+                self.assertEqual(remote_workspace, "/tmp/remote-msprof")
+                self.assertEqual(command[0], "msprof")
+                output_dir = command[1].split("=", 1)[1]
+                extra_env = kwargs.get("extra_env") or {}
+                streamed_commands.append((output_dir, extra_env.get("ASCEND_RT_VISIBLE_DEVICES"), command))
+                return make_skill_result(0, "profile stdout\n", "")
+
+            with patch.object(
+                module,
+                "create_remote_workspace",
+                return_value=("spec", "/tmp/remote-msprof"),
+            ), patch.object(module, "copy_file_to_remote", side_effect=_fake_copy), patch.object(
+                module,
+                "run_remote_command_buffered",
+                side_effect=_fake_remote_buffered,
+            ), patch.object(
+                module,
+                "run_remote_command_streaming",
+                side_effect=_fake_remote_streaming,
+            ), patch.object(module, "cleanup_remote_workspace") as cleanup:
+                result, perf_path, remote_workspace = module.run_remote_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                    "alice@example.com",
+                    None,
+                    npu_devices="0,2",
+                )
+
+            self.assertEqual(result["return_code"], 0)
+            self.assertEqual(remote_workspace, "/tmp/remote-msprof")
+            self.assertEqual(set(buffered_case_dirs), {"/tmp/remote-msprof/case-1", "/tmp/remote-msprof/case-2"})
+            self.assertEqual({device for _, device, _ in streamed_commands}, {"0", "2"})
+            self.assertEqual(
+                {output_dir for output_dir, _, _ in streamed_commands},
+                {"/tmp/remote-msprof/case-1/msprof-output", "/tmp/remote-msprof/case-2/msprof-output"},
+            )
+            if perf_path is None:
+                self.fail("expected msprof perf path")
+            perf_text = perf_path.read_text(encoding="utf-8")
+            self.assertLess(perf_text.index("latency-case-1"), perf_text.index("latency-case-2"))
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
 
     def test_run_remote_bench_msprof_continues_after_failed_case_and_persists_perf(self) -> None:

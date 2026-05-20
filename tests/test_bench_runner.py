@@ -5,6 +5,7 @@ import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
+from typing import Optional
 from unittest.mock import patch
 
 from tests.run_skill_test_utils import load_bench_runner_module, make_skill_result
@@ -34,6 +35,43 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             self.assertEqual(metadata["kernel"], "abs_kernel")
             self.assertEqual(metadata["api-name"], "abs_")
+
+    def test_parse_npu_devices_returns_none_when_unset(self) -> None:
+        module = load_bench_runner_module()
+
+        self.assertIsNone(module.parse_npu_devices(None))
+
+    def test_parse_npu_devices_trims_whitespace_and_expands_ranges(self) -> None:
+        module = load_bench_runner_module()
+
+        self.assertEqual(
+            module.parse_npu_devices(" 0, 2-4 , 7 "),
+            ("0", "2", "3", "4", "7"),
+        )
+
+    def test_parse_npu_devices_rejects_empty_entries(self) -> None:
+        module = load_bench_runner_module()
+
+        with self.assertRaisesRegex(ValueError, "--npu-devices"):
+            module.parse_npu_devices("0,,1")
+
+    def test_parse_npu_devices_rejects_duplicates(self) -> None:
+        module = load_bench_runner_module()
+
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            module.parse_npu_devices("0,1,0")
+
+    def test_parse_npu_devices_rejects_descending_ranges(self) -> None:
+        module = load_bench_runner_module()
+
+        with self.assertRaisesRegex(ValueError, "range"):
+            module.parse_npu_devices("5-3")
+
+    def test_parse_npu_devices_rejects_malformed_ranges(self) -> None:
+        module = load_bench_runner_module()
+
+        with self.assertRaisesRegex(ValueError, "range"):
+            module.parse_npu_devices("1-3-5")
 
     def test_run_local_bench_standalone_delegates_to_hook_runtime(self) -> None:
         module = load_bench_runner_module()
@@ -126,6 +164,118 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(result["return_code"], 0)
             self.assertEqual(resolved_perf, perf_file)
             self.assertEqual(observed_cwds, [bench_dir.resolve()])
+
+    def test_run_local_bench_msprof_delegates_via_facade_helper(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            bench_file.write_text("# bench-mode: msprof\n# kernel: OpA\n", encoding="utf-8")
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+
+            fake_result = make_skill_result(0, "", "")
+            perf_file = root / "abs_perf.txt"
+
+            with patch.object(
+                module,
+                "_run_local_bench_msprof",
+                return_value=(fake_result, perf_file),
+            ) as helper:
+                result, resolved_perf = module.run_local_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                )
+
+            self.assertEqual(result, fake_result)
+            self.assertEqual(resolved_perf, perf_file)
+            helper.assert_called_once_with(bench_file, operator_file, verbose=False)
+
+    def test_run_local_bench_standalone_parallel_uses_isolated_case_workdirs_and_device_envs(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
+            operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
+
+            observed: list[tuple[Path, Optional[str], str, list[str]]] = []
+
+            def _fake_buffered_process(command, workdir, stall_timeout_seconds, extra_env=None):
+                del stall_timeout_seconds
+                workdir_path = Path(workdir)
+                case_id = command[-1]
+                observed.append(
+                    (
+                        workdir_path,
+                        None if extra_env is None else extra_env.get("ASCEND_RT_VISIBLE_DEVICES"),
+                        case_id,
+                        command,
+                    )
+                )
+                self.assertEqual(command[0:2], [module.local_python_executable(), "-c"])
+                self.assertIn("run_one_standalone_case_record", command[2])
+                self.assertEqual(command[3:], [bench_file.name, operator_file.name, case_id])
+                self.assertNotEqual(workdir_path, root)
+                self.assertTrue((workdir_path / bench_file.name).exists())
+                self.assertTrue((workdir_path / operator_file.name).exists())
+                avg = 1.0 if case_id == "case-a" else 2.0
+                return make_skill_result(
+                    0,
+                    (
+                        '{"case_label":"'
+                        + case_id
+                        + '","kernel_names":["KernelA"],"kernel_source":"metadata","metrics":{"kernel_avg_time_us":'
+                        + str(avg)
+                        + ',"ops":[{"op_type":"KernelA","avg_time_us":'
+                        + str(avg)
+                        + '}]},"error_message":null,"elapsed_seconds":0.0}\n'
+                    ),
+                    "",
+                )
+
+            with patch.object(
+                module,
+                "_load_standalone_runtime_module",
+            ) as load_runtime:
+                load_runtime.return_value = type(
+                    "_FakeRuntime",
+                    (),
+                    {
+                        "load_standalone_bench_cases": staticmethod(
+                            lambda *_args, **_kwargs: (
+                                [
+                                    type("_Case", (), {"case_id": "case-a"})(),
+                                    type("_Case", (), {"case_id": "case-b"})(),
+                                ],
+                                type("_Resolution", (), {"kernel_names": ["KernelA"], "kernel_source": "metadata"})(),
+                            )
+                        ),
+                        "runtime_support_paths": staticmethod(lambda: []),
+                    },
+                )()
+                with patch.object(
+                    module,
+                    "run_buffered_process",
+                    side_effect=_fake_buffered_process,
+                ):
+                    result, perf_path = module.run_local_bench(
+                        bench_file,
+                        operator_file,
+                        "standalone",
+                        npu_devices="0,2",
+                    )
+
+            self.assertEqual(result["return_code"], 0)
+            self.assertEqual(len(observed), 2)
+            self.assertEqual(len({item[0] for item in observed}), 2)
+            self.assertEqual({item[1] for item in observed}, {"0", "2"})
+            if perf_path is None:
+                self.fail("expected standalone perf path")
+            perf_text = perf_path.read_text(encoding="utf-8")
+            self.assertLess(perf_text.index("latency-case-a"), perf_text.index("latency-case-b"))
 
     def test_run_remote_bench_standalone_uses_module_helper_files(self) -> None:
         module = load_bench_runner_module()
@@ -254,6 +404,67 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertIn("--bench", case_command)
             self.assertTrue(created_output_dirs)
             self.assertTrue(all(not path.exists() for path in created_output_dirs))
+
+    def test_run_local_bench_msprof_parallel_uses_isolated_case_workdirs_and_device_envs(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            bench_file.write_text(
+                "# bench-mode: msprof\n# api-name: abs_\n# kernel: OpB\n",
+                encoding="utf-8",
+            )
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+
+            observed_workdirs: list[Path] = []
+            observed_devices: list[Optional[str]] = []
+
+            def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
+                del stall_timeout_seconds, stdout
+                self.assertEqual(command[0], "msprof")
+                workdir_path = Path(workdir)
+                observed_workdirs.append(workdir_path)
+                observed_devices.append((kwargs.get("extra_env") or {}).get("ASCEND_RT_VISIBLE_DEVICES"))
+                self.assertNotEqual(workdir_path, root)
+                self.assertTrue((workdir_path / "bench_abs.py").exists())
+                self.assertTrue((workdir_path / "abs.py").exists())
+                output_dir = Path(command[1].split("=", 1)[1])
+                case_idx = int(command[-1])
+                if case_idx == 1:
+                    __import__("time").sleep(0.05)
+                (output_dir / f"op_statistic_{case_idx}.csv").write_text(
+                    "\n".join(
+                        [
+                            "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                            f"0,OpB,AI_CORE,1,{case_idx * 10},1,{case_idx * 2.5},3,100",
+                        ]
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return make_skill_result(0, f"profile {case_idx}\n", "")
+
+            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "2\n", "")), patch.object(
+                module,
+                "run_streaming_process",
+                side_effect=_fake_streaming,
+            ):
+                result, perf_path = module.run_local_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                    npu_devices="0,2",
+                )
+
+            self.assertEqual(result["return_code"], 0)
+            self.assertEqual(len(observed_workdirs), 2)
+            self.assertEqual(len({path for path in observed_workdirs}), 2)
+            self.assertEqual(set(observed_devices), {"0", "2"})
+            if perf_path is None:
+                self.fail("expected msprof perf path")
+            perf_text = perf_path.read_text(encoding="utf-8")
+            self.assertLess(perf_text.index("latency-case-1"), perf_text.index("latency-case-2"))
 
     def test_run_local_bench_msprof_cleans_extra_info_in_bench_workdir(self) -> None:
         module = load_bench_runner_module()

@@ -8,9 +8,130 @@ import importlib.util
 import json
 from io import StringIO
 from pathlib import Path
+from typing import Optional
 from unittest.mock import patch
 
 class SkillCommandScriptTests(unittest.TestCase):
+    def test_run_bench_parser_accepts_npu_devices_flag(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        args = module.build_parser().parse_args(
+            [
+                "run-bench",
+                "--bench-file",
+                "bench_abs.py",
+                "--operator-file",
+                "opt_abs.py",
+                "--npu-devices",
+                "0,1,4-5",
+            ]
+        )
+
+        self.assertEqual(args.npu_devices, "0,1,4-5")
+
+    def test_script_run_bench_threads_npu_devices_to_local_runner(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            perf_file = root / "kernel_perf.txt"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\nprint('bench')\n", encoding="utf-8")
+
+            observed_args: list[object] = []
+
+            def fake_run_local_bench(
+                bench_path: Path,
+                operator_path: Path,
+                bench_mode: str,
+                npu_devices: Optional[str] = None,
+            ) -> tuple[dict[str, object], Path]:
+                observed_args.extend([bench_path, operator_path, bench_mode, npu_devices])
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    perf_file,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_bench_functions",
+                    return_value=(
+                        lambda _path: {"bench-mode": "msprof"},
+                        fake_run_local_bench,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ):
+                    exit_code = module.main(
+                        [
+                            "run-bench",
+                            "--bench-file",
+                            str(bench_file),
+                            "--operator-file",
+                            str(operator),
+                            "--npu-devices",
+                            "0,2",
+                        ]
+                    )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            observed_args,
+            [
+                bench_file.resolve(),
+                operator.resolve(),
+                "msprof",
+                "0,2",
+            ],
+        )
+        self.assertEqual(
+            stdout.getvalue(),
+            (
+                f"Perf file: {perf_file}\n"
+                "Hint: use `compare-perf` to inspect this perf artifact instead of reading it directly.\n"
+            ),
+        )
+        self.assertEqual(stderr.getvalue(), "")
+
     def test_compare_perf_parser_accepts_skip_latency_errors_flag(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
