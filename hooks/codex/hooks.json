@@ -2,11 +2,22 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|Read|Grep|Glob|Edit|MultiEdit|Write",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .codex/triton-agent-hooks/pretooluse_guard.py --policy .codex/triton-agent-hooks/policy.json"
+            "command": "python .codex/triton-agent-hooks/tool_trace_hook.py --policy .codex/triton-agent-hooks/policy.json --event PreToolUse"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Read|Grep|Glob|Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .codex/triton-agent-hooks/tool_trace_hook.py --policy .codex/triton-agent-hooks/policy.json --event PostToolUse"
           }
         ]
       },
