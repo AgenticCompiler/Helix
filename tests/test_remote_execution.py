@@ -155,12 +155,11 @@ class RemoteExecutionTests(unittest.TestCase):
                 module.parse_remote_spec("alice@example.com"),
                 "/tmp/workspace",
                 ["python3", "bench.py"],
-                extra_env={"ASCEND_RT_VISIBLE_DEVICES": "4", "TRITON_AGENT_ASSIGNED_NPU": "4"},
+                extra_env={"ASCEND_RT_VISIBLE_DEVICES": "4"},
             )
 
         command = mocked.call_args.args[0]
         self.assertIn("ASCEND_RT_VISIBLE_DEVICES=4", command[-1])
-        self.assertIn("TRITON_AGENT_ASSIGNED_NPU=4", command[-1])
 
     def test_run_remote_test_keeps_workspace_when_requested(self) -> None:
         module = load_test_runner_module()

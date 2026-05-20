@@ -88,7 +88,6 @@ uv run triton-agent gen-test --input a.py --agent openhands
 These variables are normally set by `triton-agent` for child processes. You usually do not need to export them yourself:
 
 - `ASCEND_RT_VISIBLE_DEVICES`: set for each batch workspace when `TRITON_AGENT_BATCH_NPU_DEVICES` is configured.
-- `TRITON_AGENT_ASSIGNED_NPU`: companion variable that records the device chosen for the current workspace.
 
 ## Generate Tests
 

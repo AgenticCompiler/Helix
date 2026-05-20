@@ -15,8 +15,10 @@ const READ_COMMANDS = new Set([
 ]);
 const PYTHON_COMMANDS = new Set(["python", "python3"]);
 const SHELL_CONTROL_OPERATORS = new Set(["&&", "||", "|", ";", "&"]);
+const PROTECTED_RELATIVE_PATH_PREFIXES = ["triton-agent-logs/"];
 
-const PATH_FRAGMENT_RE = /(?:\/|\.\.?\/|\.opencode\/)[A-Za-z0-9_./*?{}+@%:,=-]+/g;
+const PATH_FRAGMENT_RE =
+  /(?:^|[^A-Za-z0-9_./-])(?<path>(?:\/|\.\.?\/|\.opencode\/|triton-agent-logs\/)[A-Za-z0-9_./*?{}+@%:,=-]+)/g;
 
 export async function TritonAgentHookGuard(context) {
   const policy = await loadPolicy(context);
@@ -212,6 +214,7 @@ function candidatePaths(command, tokens) {
       .filter((index) => index < tokens.length)
       .map((index) => tokens[index]),
   );
+  const explicitPathTokens = new Set(tokens.filter((token) => looksLikePath(token)));
 
   for (const [index, token] of tokens.entries()) {
     if (isReadCommandToken(token)) {
@@ -226,8 +229,15 @@ function candidatePaths(command, tokens) {
   }
 
   for (const match of command.matchAll(PATH_FRAGMENT_RE)) {
-    const candidate = match[0];
-    if (!isReadCommandToken(candidate) && !pythonEntrypointValues.has(candidate)) {
+    const candidate = match.groups?.path;
+    if (typeof candidate !== "string") {
+      continue;
+    }
+    if (
+      !isReadCommandToken(candidate) &&
+      !pythonEntrypointValues.has(candidate) &&
+      !isNestedPathFragment(candidate, explicitPathTokens)
+    ) {
       candidates.push({ path: candidate, allowProtectedScriptEntrypoint: false });
     }
   }
@@ -277,8 +287,18 @@ function looksLikePath(token) {
     token.startsWith("/") ||
     token.startsWith("./") ||
     token.startsWith("../") ||
-    token.startsWith(".opencode/")
+    token.startsWith(".opencode/") ||
+    PROTECTED_RELATIVE_PATH_PREFIXES.some((prefix) => token.startsWith(prefix))
   );
+}
+
+function isNestedPathFragment(candidate, explicitPathTokens) {
+  for (const token of explicitPathTokens) {
+    if (candidate !== token && token.includes(candidate)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function isProtectedScriptPath(candidate, workspaceRoot) {

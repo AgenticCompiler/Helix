@@ -36,12 +36,11 @@ class BatchNpuAffinityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "range"):
             parse_batch_npu_devices("1-3-5")
 
-    def test_affinity_env_for_device_uses_visible_devices_and_diagnostic_env(self) -> None:
+    def test_affinity_env_for_device_uses_visible_devices(self) -> None:
         self.assertEqual(
             affinity_env_for_device("3"),
             {
                 "ASCEND_RT_VISIBLE_DEVICES": "3",
-                "TRITON_AGENT_ASSIGNED_NPU": "3",
             },
         )
 
