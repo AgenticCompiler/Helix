@@ -134,6 +134,7 @@ class _CommandSpec:
     test_mode_choices: tuple[str, ...] | None = None
     has_bench_mode: bool = False
     bench_mode_default: str | None = None
+    has_npu_devices: bool = False
     has_optimize_options: bool = False
     has_prompt: bool = False
     max_concurrency_default: int | None = None
@@ -253,6 +254,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_remote=True,
         keep_remote_workdir=True,
         has_bench_mode=True,
+        has_npu_devices=True,
     ),
     CommandKind.COMPARE_RESULT: _CommandSpec(
         handler=handle_compare_result,
@@ -405,6 +407,8 @@ def build_parser() -> argparse.ArgumentParser:
                 default=spec.bench_mode_default,
                 choices=_BENCH_MODE_CHOICES,
             )
+        if spec.has_npu_devices:
+            subparser.add_argument("--npu-devices")
         if spec.has_optimize_options:
             subparser.add_argument("--min-rounds", type=int)
             subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES)

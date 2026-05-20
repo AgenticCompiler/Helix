@@ -93,42 +93,11 @@ def run_local_standalone_bench(
     preserved_run_dir = _create_local_preserved_profile_run_dir(prefix="triton-agent-standalone-bench-")
 
     for case in cases:
-        profile_root, temp_dir = _create_local_standalone_profile_dir(case.case_id, preserved_run_dir)
-        try:
-            t0 = time.monotonic()
-            metrics, error_message = _profile_case_with_profiler(
-                case,
-                resolution,
-                profile_root,
-                verbose=verbose,
-            )
-            elapsed = time.monotonic() - t0
-        finally:
-            if temp_dir is not None:
-                temp_dir.cleanup()
-            _cleanup_local_bench_extra_info(bench_file.parent)
-        if error_message is not None:
+        record = _run_standalone_case(case, resolution, preserved_run_dir, bench_file.parent, verbose=verbose)
+        if record.error_message is not None:
             had_failures = True
-            stderr_chunks.append(f"{case.case_id}: {error_message}")
-            case_records.append(
-                PerfCaseRecord(
-                    case_label=case.case_id,
-                    kernel_names=resolution.kernel_names,
-                    kernel_source=resolution.kernel_source,
-                    error_message=error_message,
-                    elapsed_seconds=elapsed,
-                )
-            )
-            continue
-        case_records.append(
-            PerfCaseRecord(
-                case_label=case.case_id,
-                kernel_names=resolution.kernel_names,
-                kernel_source=resolution.kernel_source,
-                metrics=metrics,
-                elapsed_seconds=elapsed,
-            )
-        )
+            stderr_chunks.append(f"{case.case_id}: {record.error_message}")
+        case_records.append(record)
 
     perf_path = perf_output_path(operator_file)
     write_perf_lines(
@@ -176,6 +145,18 @@ def run_one_standalone_case(
     case = _select_case(cases, case_id)
     case.fn()
     return make_result(return_code=0, stdout="", stderr="")
+
+
+def run_one_standalone_case_record(
+    bench_file: Path,
+    operator_file: Path,
+    case_id: str,
+    *,
+    verbose: bool = False,
+) -> PerfCaseRecord:
+    cases, resolution = load_standalone_bench_cases(bench_file, operator_file)
+    case = _select_case(cases, case_id)
+    return _run_standalone_case(case, resolution, None, bench_file.parent, verbose=verbose)
 
 
 def runtime_support_paths() -> list[Path]:
@@ -333,6 +314,45 @@ def _profile_case_with_profiler(
         return _read_profiler_metrics(profile_root, case.repeats, resolution.kernel_names), None
     except Exception as exc:
         return None, f"{type(exc).__name__}: {exc}"
+
+
+def _run_standalone_case(
+    case: StandaloneBenchCase,
+    resolution: KernelResolution,
+    preserved_run_dir: Path | None,
+    cleanup_workdir: Path,
+    *,
+    verbose: bool = False,
+) -> PerfCaseRecord:
+    profile_root, temp_dir = _create_local_standalone_profile_dir(case.case_id, preserved_run_dir)
+    try:
+        t0 = time.monotonic()
+        metrics, error_message = _profile_case_with_profiler(
+            case,
+            resolution,
+            profile_root,
+            verbose=verbose,
+        )
+        elapsed = time.monotonic() - t0
+    finally:
+        if temp_dir is not None:
+            temp_dir.cleanup()
+        _cleanup_local_bench_extra_info(cleanup_workdir)
+    if error_message is not None:
+        return PerfCaseRecord(
+            case_label=case.case_id,
+            kernel_names=resolution.kernel_names,
+            kernel_source=resolution.kernel_source,
+            error_message=error_message,
+            elapsed_seconds=elapsed,
+        )
+    return PerfCaseRecord(
+        case_label=case.case_id,
+        kernel_names=resolution.kernel_names,
+        kernel_source=resolution.kernel_source,
+        metrics=metrics,
+        elapsed_seconds=elapsed,
+    )
 
 
 @contextmanager
