@@ -436,6 +436,22 @@ class CliParserTests(unittest.TestCase):
         self.assertFalse(hasattr(args, "interact"))
         self.assertFalse(hasattr(args, "agent"))
 
+    def test_run_bench_accepts_npu_devices_option(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run-bench",
+                "--bench-file",
+                "bench_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--npu-devices",
+                "0,2-3",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.RUN_BENCH)
+        self.assertEqual(args.npu_devices, "0,2-3")
+
     def test_run_test_requires_test_and_operator_files(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
@@ -3499,6 +3515,7 @@ class PathResolutionTests(unittest.TestCase):
                 bench_file.resolve(),
                 operator.resolve(),
                 "standalone",
+                None,
                 verbose=False,
             )
             self.assertEqual(
@@ -3536,6 +3553,38 @@ class PathResolutionTests(unittest.TestCase):
                 bench_file.resolve(),
                 operator.resolve(),
                 "msprof",
+                None,
+                verbose=False,
+            )
+
+    def test_main_run_bench_threads_npu_devices_to_local_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\n# kernel: k\nprint('bench')", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch("triton_agent.commands.execution.run_local_bench", return_value=(fake_result, None)) as mocked:
+                exit_code = main(
+                    [
+                        "run-bench",
+                        "--bench-file",
+                        str(bench_file),
+                        "--operator-file",
+                        str(operator),
+                        "--npu-devices",
+                        "0,2-3",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                bench_file.resolve(),
+                operator.resolve(),
+                "msprof",
+                "0,2-3",
                 verbose=False,
             )
 
@@ -3599,6 +3648,47 @@ class PathResolutionTests(unittest.TestCase):
                 "standalone",
                 "alice@example.com",
                 None,
+                None,
+                keep_remote_workdir=False,
+                verbose=False,
+                stderr=sys.stderr,
+            )
+
+    def test_main_run_bench_threads_npu_devices_to_remote_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch(
+                "triton_agent.commands.execution.run_remote_bench",
+                return_value=(fake_result, None, "/tmp/triton-agent-bench"),
+            ) as mocked:
+                exit_code = main(
+                    [
+                        "run-bench",
+                        "--bench-file",
+                        str(bench_file),
+                        "--operator-file",
+                        str(operator),
+                        "--remote",
+                        "alice@example.com",
+                        "--npu-devices",
+                        "4-5",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                bench_file.resolve(),
+                operator.resolve(),
+                "standalone",
+                "alice@example.com",
+                None,
+                "4-5",
                 keep_remote_workdir=False,
                 verbose=False,
                 stderr=sys.stderr,

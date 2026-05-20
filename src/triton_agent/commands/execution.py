@@ -77,6 +77,7 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
                 resolved_bench_mode,
                 args.remote,
                 args.remote_workdir,
+                args.npu_devices,
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
@@ -86,6 +87,7 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
                 bench_file,
                 operator_file,
                 resolved_bench_mode,
+                args.npu_devices,
                 verbose=args.verbose,
             )
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
