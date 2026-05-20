@@ -2,7 +2,7 @@
 
 ## Summary
 
-Optimize gather-like kernels by reshaping index-heavy scattered reads into load patterns closer to contiguous copy work. On Ascend NPU, gather performance often improves when hot paths reduce per-element index decoding, minimize high-width index traffic, and specialize dominant rank/axis cases.
+Optimize gather-like kernels by reshaping index-heavy scattered reads into load patterns closer to contiguous copy work. On Ascend NPU, gather performance often improves when hot paths reduce per-element index decoding and minimize high-width index traffic.
 
 This card focuses on gather-specific load shaping (index dtype, axis specialization, row/span mapping), not generic tiling.
 
@@ -29,7 +29,6 @@ Direct gather-style global-memory access can underperform on Ascend NPU because 
 - Direct global loads driven by index vectors in the hot path.
 - Repeated coordinate decode for rank/axis handling.
 - `int64` index tensors where safe `int32` fast paths exist.
-- Exact-tile gather shapes still written with `boundary_check`, padding, or element masks.
 
 ### Profile
 
@@ -40,10 +39,9 @@ Direct gather-style global-memory access can underperform on Ascend NPU because 
 
 1. Add `int32` index fast paths when axis bounds allow.
 2. Specialize by dominant rank/axis cases.
-3. For exact-tile rank/axis cases, consider the `exact-tile-no-boundary-fast-path` pattern.
-4. Map work to contiguous spans where semantics permit.
-5. Keep robust fallback paths for noncontiguous regimes.
-6. Validate parent-vs-parent after each specialization.
+3. Map work to contiguous spans where semantics permit.
+4. Keep robust fallback paths for noncontiguous regimes.
+5. Validate parent-vs-parent after each specialization.
 
 ## Optimization Example
 
@@ -103,29 +101,6 @@ Split dominant gather regimes into dedicated kernels instead of forcing one gene
 
 When output selection aligns with contiguous inner spans, prefer contiguous movement plus local indexing.
 
-### Aligned no-boundary rank/axis fast path
-
-When a dominant gather case has exact tile coverage, split it from the generic masked kernel. This is especially useful for rank-2 `dim=0` gather where `out_rows % BLOCK_M == 0` and `out_cols % BLOCK_N == 0`.
-
-```python
-if out_rows % BLOCK_M == 0 and out_cols % BLOCK_N == 0:
-    _gather_rank2_dim0_aligned_kernel[grid](...)
-else:
-    _gather_rank2_dim0_kernel[grid](...)
-```
-
-The aligned kernel should remove block-pointer `boundary_check`, padding, and element masks:
-
-```python
-gathered = tl.load(index_block)
-if INDEX_IS_I64:
-    gathered = gathered.to(tl.int32)
-values = tl.load(x_ptr + gathered * X_COLS + cols)
-tl.store(out_block, values)
-```
-
-Evidence from NPUKernelBench `20_Gather`: for `bf16 x=(5120,27648), dim=0, index=(2560,27648)`, splitting an exact-tile aligned gather kernel reduced about `4239us -> 3850us` (**~1.10x**). Treat this as a bounded control-overhead win; the remaining bottleneck is still random global-memory gather. For the generic version of this repair, see `exact-tile-no-boundary-fast-path`.
-
 ### Launch-shape repair
 
 After remapping to contiguous spans, adjust grid/program mapping to stay balanced and valid.
@@ -136,8 +111,6 @@ After remapping to contiguous spans, adjust grid/program mapping to stay balance
 - Generic-only kernels persist even after strong case-specific evidence.
 - One fast-path specialization regresses broader shape mix without fallback dispatch.
 - Main gains actually come from store/layout cleanup rather than gather-load shape.
-- Aligned no-boundary paths are over-applied to tail tiles; guard exact divisibility and retain fallback.
-- Removing boundary logic only gives small gains when random global-memory loads dominate.
 
 ## Risks
 
@@ -151,7 +124,6 @@ After remapping to contiguous spans, adjust grid/program mapping to stay balance
 - Parent-vs-child performance on identical benchmark mix.
 - Dominant gather case improves without unacceptable regressions elsewhere.
 - Dispatch guards for dtype/shape paths are explicit and correct.
-- Exact-tile fast paths produce the same values as the masked fallback on representative shapes.
 
 ## Related Patterns
 
@@ -159,4 +131,3 @@ After remapping to contiguous spans, adjust grid/program mapping to stay balance
 - `layout-store-and-block-pointers`
 - `scalar-latency-traps`
 - `program-multiple-rows`
-- `exact-tile-no-boundary-fast-path`

@@ -131,6 +131,16 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - The gather source array is small or medium enough that contiguous staging in shared memory is plausible.
   - The hot loop repeatedly reads fixed fields from AoS records with stride-C offsets, such as `[N, 3]` coordinates loaded as `atom_idx * 3 + channel`, and the input is reused enough to amortize wrapper-side SoA materialization.
 
+### `exact-tile-no-boundary-fast-path`
+
+- Summary: Split exact-tile hot paths from generic masked kernels when dispatch-time shape guards can prove there are no tail tiles, so Ascend lowering can avoid boundary-only masks, padding values, block-pointer `boundary_check`, and related control branches.
+- Source: [exact-tile-no-boundary-fast-path.md](patterns/exact-tile-no-boundary-fast-path.md)
+- Use When:
+  - A dominant benchmark shape is exactly tile-divisible, such as `M % BLOCK_M == 0` and `N % BLOCK_N == 0`.
+  - Python dispatch can guard the aligned branch before launch and keep the original masked kernel as fallback.
+  - MLIR, LLVM, or profiler traces still show boundary checks, masks, padding, or branch/control overhead on the exact-tile hot path.
+  - The kernel is already structurally reasonable, so a bounded control-overhead cleanup can matter.
+
 ### `grid-flatten-and-ub-buffering`
 
 - Summary: Flatten logical work items onto physical cores and batch small row-wise memory transfers into wider UB stores to reduce launch overhead and improve per-core work density.
