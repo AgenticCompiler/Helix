@@ -2,6 +2,13 @@ import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
 
+const toolLifecycleCache = new Map();
+let _toolUseIdCounter = 0;
+function generateToolUseId() {
+  _toolUseIdCounter += 1;
+  return `opencode-hook-${Date.now()}-${_toolUseIdCounter}`;
+}
+
 const READ_COMMANDS = new Set([
   "awk",
   "cat",
@@ -26,10 +33,25 @@ export async function TritonAgentHookGuard(context) {
       if (!policy) {
         return;
       }
+      const toolUseId = output?.meta?.tool_use_id || generateToolUseId();
+      toolLifecycleCache.set(toolUseId, {
+        startTime: Date.now(),
+        tool: input?.tool || "unknown",
+        args: output?.args ?? {},
+      });
+
       await appendTraceEvents(policy, input, output);
       const reason = await evaluateOutput(policy, input, output);
       if (reason) {
         throw new Error(reason);
+      }
+    },
+
+    "tool.execute.after": async (input, output) => {
+      try {
+        await handleToolAfter(policy, input, output);
+      } catch (_err) {
+        // Fail open: trace write failure must not interrupt workflow
       }
     },
   };
@@ -573,4 +595,64 @@ function globToRegexSource(pattern) {
     }
   }
   return source;
+}
+
+async function handleToolAfter(policy, input, output) {
+  const tracePolicy = tracePolicyFor(policy);
+  if (tracePolicy.enabled !== true || typeof tracePolicy.path !== "string" || tracePolicy.path.length === 0) {
+    return;
+  }
+
+  const toolUseId = output?.meta?.tool_use_id;
+  const cached = toolUseId ? toolLifecycleCache.get(toolUseId) : undefined;
+  const endTime = Date.now();
+  const durationMs = cached ? endTime - cached.startTime : 0;
+  const tool = input?.tool || cached?.tool || "unknown";
+  const isError = output?.error != null;
+  const status = isError ? "error" : "ok";
+
+  const timestamp = new Date().toISOString();
+  const runId = typeof tracePolicy.run_id === "string" ? tracePolicy.run_id : "";
+  const role = typeof tracePolicy.role === "string" ? tracePolicy.role : "";
+
+  await appendTraceEvent(tracePolicy.path, {
+    schema_version: 1,
+    timestamp,
+    run_id: runId,
+    role,
+    type: "tool_call",
+    phase: "end",
+    tool,
+    tool_use_id: toolUseId,
+    duration_ms: durationMs,
+    duration_source: "hook_clock_join",
+    status,
+    source: "opencode_hook",
+    confidence: "high",
+  });
+
+  if (tool === "bash" || tool === "shell") {
+    const command = cached?.args?.command ?? output?.args?.command ?? "";
+    await appendTraceEvent(tracePolicy.path, {
+      schema_version: 1,
+      timestamp,
+      run_id: runId,
+      role,
+      type: "command",
+      phase: "end",
+      tool_use_id: toolUseId,
+      command_kind: command ? classifyCommand(command) : "unknown",
+      command,
+      remote: command ? extractRemote(command) : null,
+      duration_ms: durationMs,
+      duration_source: "hook_clock_join",
+      status,
+      source: "opencode_hook",
+      confidence: "high",
+    });
+  }
+
+  if (toolUseId) {
+    toolLifecycleCache.delete(toolUseId);
+  }
 }

@@ -5,6 +5,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from triton_agent.otel_trace import append_trace_event, utc_timestamp
+
 
 _CODEX_HOOK_DIR = Path(".codex") / "triton-agent-hooks"
 _CODEX_HOOKS_JSON = Path(".codex") / "hooks.json"
@@ -107,9 +109,12 @@ class AgentHookManager:
             created_paths.append(hooks_json)
 
             hook_dir.mkdir(parents=True)
-            shutil.copy2(template_dir / "pretooluse_guard.py", hook_dir / "pretooluse_guard.py")
+            shutil.copy2(template_dir / "tool_trace_hook.py", hook_dir / "tool_trace_hook.py")
             created_paths.append(hook_dir)
             self._write_codex_policy(hook_dir / "policy.json", policy_workspace, options)
+
+            if options.trace_enabled and options.trace_path is not None:
+                self._write_trace_setup_event(options, hook_dir)
         except Exception:
             self.cleanup(state)
             raise
@@ -185,3 +190,19 @@ class AgentHookManager:
             "run_id": options.run_id,
             "role": options.role,
         }
+
+    def _write_trace_setup_event(self, options: AgentHookOptions, hook_dir: Path) -> None:
+        if options.trace_path is None:
+            return
+        append_trace_event(options.trace_path, {
+            "schema_version": 1,
+            "type": "diagnostic",
+            "phase": "instant",
+            "code": "trace_setup",
+            "detail": f"Codex trace hooks staged: hook_dir={hook_dir}, run_id={options.run_id}, role={options.role}",
+            "source": "codex_hook",
+            "confidence": "high",
+            "run_id": options.run_id or "",
+            "role": options.role or "worker",
+            "timestamp": utc_timestamp(),
+        })

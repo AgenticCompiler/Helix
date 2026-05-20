@@ -23,7 +23,7 @@ class AgentHookManagerTests(unittest.TestCase):
             hooks_json = workspace / ".codex" / "hooks.json"
             hook_dir = workspace / ".codex" / "triton-agent-hooks"
             policy_json = hook_dir / "policy.json"
-            guard_script = hook_dir / "pretooluse_guard.py"
+            guard_script = hook_dir / "tool_trace_hook.py"
             self.assertTrue(hooks_json.exists())
             self.assertTrue(policy_json.exists())
             self.assertTrue(guard_script.exists())
