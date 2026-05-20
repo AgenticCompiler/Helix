@@ -51,18 +51,11 @@ Each section is retrieval-focused: when to try, what to look for, and what not t
 - Avoid when source spans are too large for useful local staging or access is already contiguous.
 - First move: load contiguous span, then select via local gather/indexing.
 
-## exact-tile-no-boundary-fast-path
-- Use when a hot shape is exactly tile-divisible but the kernel still lowers boundary-only masks, padding, or block-pointer boundary checks.
-- Strong signal: dispatch can prove conditions such as `M % BLOCK_M == 0` and `N % BLOCK_N == 0`.
-- Avoid when masks carry algorithm semantics, exact-divisibility guards are unavailable, or the main bottleneck is elsewhere.
-- First move: split a guarded aligned kernel that removes boundary-only checks while retaining the generic masked fallback.
-
 ## gather-load
 - Use when gather-like reads are the central bottleneck and indices are explicit in hot code.
 - Strong signal: random global loads dominate more than surrounding compute.
-- Also use when exact-tile rank/axis gather still lowers with boundary checks; pair with `exact-tile-no-boundary-fast-path`.
 - Avoid when operation is not gather-dominated or staging cannot fit practical on-chip footprint.
-- First move: specialize the dominant axis case, then apply exact-tile no-boundary splitting only when guarded.
+- First move: convert to two-phase path (contiguous stage then indexed select).
 
 ## grid-flatten-and-ub-buffering
 - Use when logical task count far exceeds cores and per-program movement is too fragmented.
