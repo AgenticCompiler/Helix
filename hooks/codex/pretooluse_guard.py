@@ -28,9 +28,10 @@ SHELL_WRAPPER_FLAGS = {"-c", "-lc"}
 SHELL_WRAPPERS = {"bash", "sh", "zsh"}
 PYTHON_COMMANDS = {"python", "python3"}
 SHELL_CONTROL_OPERATORS = {"&&", "||", "|", ";", "&"}
+PROTECTED_RELATIVE_PATH_PREFIXES = ("triton-agent-logs/",)
 
 PATH_FRAGMENT_RE = re.compile(
-    r"(?P<path>(?:/|\.\.?/|\.codex/)[A-Za-z0-9_./*?{}+@%:,=-]+)"
+    r"(?:^|[^A-Za-z0-9_./-])(?P<path>(?:/|\.\.?/|\.codex/|triton-agent-logs/)[A-Za-z0-9_./*?{}+@%:,=-]+)"
 )
 
 
@@ -152,6 +153,7 @@ def _candidate_paths_inner(command: str, *, seen_commands: set[str]) -> list[tup
 
     python_entrypoint_indexes = _python_entrypoint_candidate_indexes(tokens)
     python_entrypoint_values = {tokens[index] for index in python_entrypoint_indexes}
+    explicit_path_tokens = {token for token in tokens if _looks_like_path(token)}
 
     for index, token in enumerate(tokens):
         if _is_read_command_token(token):
@@ -161,7 +163,11 @@ def _candidate_paths_inner(command: str, *, seen_commands: set[str]) -> list[tup
 
     for match in PATH_FRAGMENT_RE.finditer(command):
         path = match.group("path")
-        if not _is_read_command_token(path) and path not in python_entrypoint_values:
+        if (
+            not _is_read_command_token(path)
+            and path not in python_entrypoint_values
+            and not _is_nested_path_fragment(path, explicit_path_tokens)
+        ):
             candidates.append((path, False))
 
     return candidates
@@ -233,7 +239,12 @@ def _looks_like_path(token: str) -> bool:
         or token.startswith("./")
         or token.startswith("../")
         or token.startswith(".codex/")
+        or token.startswith(PROTECTED_RELATIVE_PATH_PREFIXES)
     )
+
+
+def _is_nested_path_fragment(candidate: str, explicit_path_tokens: set[str]) -> bool:
+    return any(candidate != token and candidate in token for token in explicit_path_tokens)
 
 
 def _is_protected_script_path(path: Path, workspace_root: Path) -> bool:

@@ -110,11 +110,8 @@ This feature should not silently oversubscribe devices through round-robin behav
 For an assigned device `<D>`, inject:
 
 - `ASCEND_RT_VISIBLE_DEVICES=<D>`
-- `TRITON_AGENT_ASSIGNED_NPU=<D>`
 
-`ASCEND_RT_VISIBLE_DEVICES` is the actual runtime affinity control. `TRITON_AGENT_ASSIGNED_NPU` is a diagnostic variable for logs, debugging, and possible future script introspection.
-
-The initial design should not require additional affinity variables unless later testing proves Ascend runtime coverage is insufficient.
+`ASCEND_RT_VISIBLE_DEVICES` is the actual runtime affinity control.
 
 ## Propagation Layers
 
@@ -148,7 +145,7 @@ Remote commands launched through SSH must receive the same assigned environment 
 Conceptually:
 
 ```bash
-cd <remote_workspace> && ASCEND_RT_VISIBLE_DEVICES=<D> TRITON_AGENT_ASSIGNED_NPU=<D> python3 bench_x.py ...
+cd <remote_workspace> && ASCEND_RT_VISIBLE_DEVICES=<D> python3 bench_x.py ...
 ```
 
 This is required because local process environment does not automatically propagate across SSH boundaries.

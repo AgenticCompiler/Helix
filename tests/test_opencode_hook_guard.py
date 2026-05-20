@@ -84,6 +84,31 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": True})
 
+    def test_allows_relative_python_entrypoint_for_staged_helper_script_with_redirection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            script = workspace / ".opencode" / "skills" / "triton-npu-run-eval" / "scripts" / "run-command.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("print('helper')\n", encoding="utf-8")
+            bench_file = workspace / "bench_triton_5_MoeInitRouting.py"
+            bench_file.write_text("pass\n", encoding="utf-8")
+            operator_dir = workspace / "baseline"
+            operator_dir.mkdir()
+            operator_file = operator_dir / "opt_triton_5_MoeInitRouting.py"
+            operator_file.write_text("pass\n", encoding="utf-8")
+
+            result = _evaluate_plugin(
+                _policy(workspace),
+                "bash",
+                "python3 .opencode/skills/triton-npu-run-eval/scripts/run-command.py "
+                "run-bench --bench-file bench_triton_5_MoeInitRouting.py "
+                "--operator-file baseline/opt_triton_5_MoeInitRouting.py "
+                "--bench-mode msprof 2>&1",
+                workspace,
+            )
+
+            self.assertEqual(result, {"allowed": True})
+
     def test_blocks_read_tool_for_protected_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -130,6 +155,22 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
 
+    def test_blocks_triton_agent_logs_bare_relative_bash_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_file.parent.mkdir(parents=True)
+            log_file.write_text("log output\n", encoding="utf-8")
+
+            result = _evaluate_plugin(
+                _policy(workspace),
+                "bash",
+                "cat triton-agent-logs/gen-test.show-output.log",
+                workspace,
+            )
+
+            self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
+
     def test_blocks_triton_agent_logs_read_tool(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -138,6 +179,22 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             log_file.write_text("log output\n", encoding="utf-8")
 
             result = _evaluate_plugin(_policy(workspace), "read", str(log_file), workspace)
+
+            self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
+
+    def test_blocks_python_one_liner_opening_relative_triton_agent_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_file.parent.mkdir(parents=True)
+            log_file.write_text("log output\n", encoding="utf-8")
+
+            result = _evaluate_plugin(
+                _policy(workspace),
+                "bash",
+                'python3 -c "print(open(\'triton-agent-logs/gen-test.show-output.log\').read())"',
+                workspace,
+            )
 
             self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
 
