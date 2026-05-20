@@ -33,6 +33,7 @@ Read this generated index first. Then read only the one or two most relevant det
   - Code structure repeatedly reloads tensors, stages many intermediates, or performs gather/scatter-like movement.
 - Candidate Pattern Directions:
   - `tiling`
+  - `effective-extent-tiling`
   - `cache-use`
   - `algebraic-optimization`
   - `discrete_memory_access`
@@ -60,6 +61,20 @@ Read this generated index first. Then read only the one or two most relevant det
 - Common Non-Matches:
   - Poor locality is not the same as pure UB overflow; if the main issue is footprint size, prefer footprint-reduction patterns first.
   - Not every gather or scatter pattern is fixable through traversal order alone.
+
+### `unsupported-dtype-fallback`
+
+- Summary: The hot path appears to be running an operator on AiCPU or another slower fallback backend because the active dtype or operator combination is unsupported on AiCore.
+- Source: [unsupported-dtype-fallback.md](symptoms/unsupported-dtype-fallback.md)
+- Evidence To Confirm:
+  - Runtime logs explicitly mention unsupported dtype or unsupported operator placement on **AiCore**, often together with an **AiCpu** fallback warning.
+  - Profiling shows an operator with tiny logical work still taking unusually high time, which suggests fallback dispatch and synchronization overhead dominate the measurement.
+  - Code inspection shows a framework op using **`int32`**, **`int64`**, or another non-default dtype where a semantically equivalent supported dtype may exist for the active workload.
+- Candidate Pattern Directions:
+  - `argsort-avoid-aicpu-fallback`
+- Common Non-Matches:
+  - Not every AiCPU operator in a profile is a meaningful optimization target; some tiny host-side setup ops are expected and not on the critical path.
+  - A slow operator without an explicit fallback warning is not enough evidence by itself; confirm backend placement before assuming a dtype-support gap.
 
 ### `weak-pipeline-overlap`
 
