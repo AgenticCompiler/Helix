@@ -142,6 +142,7 @@ def capture_local_archive(
     bench_file: Path,
     operator_file: Path,
     archive_dir: Path,
+    bench_case: int | None = None,
 ) -> Path:
     _prepare_empty_archive_dir(archive_dir)
     bench_mode = _resolve_bench_mode(bench_file)
@@ -149,6 +150,7 @@ def capture_local_archive(
         bench_file=bench_file,
         operator_file=operator_file,
         bench_mode=bench_mode,
+        bench_case=bench_case,
     )
     result = _run_local_command(command, cwd=bench_file.parent)
     if int(str(result["return_code"])) != 0:
@@ -185,6 +187,7 @@ def capture_remote_archive(
     remote: str,
     remote_workdir: str | None,
     keep_remote_workdir: bool,
+    bench_case: int | None = None,
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[Path, str]:
@@ -200,6 +203,7 @@ def capture_remote_archive(
         operator_file=remote_operator_file,
         python_executable="python3",
         bench_mode=bench_mode,
+        bench_case=bench_case,
     )
     try:
         run_remote_command_buffered(
@@ -295,10 +299,14 @@ def capture_remote_archive(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Capture Triton Ascend IR into an IR directory.")
+    parser = argparse.ArgumentParser(
+        description="Capture Triton Ascend IR into an IR directory.",
+        allow_abbrev=False,
+    )
     parser.add_argument("--ir-dir", required=True)
     parser.add_argument("--bench-file", required=True)
     parser.add_argument("--operator-file", required=True)
+    parser.add_argument("--bench", type=int)
     parser.add_argument("--remote")
     parser.add_argument("--remote-workdir")
     parser.add_argument("--keep-remote-workdir", action="store_true")
@@ -320,6 +328,7 @@ def main(argv: list[str] | None = None) -> int:
                 remote=args.remote,
                 remote_workdir=args.remote_workdir,
                 keep_remote_workdir=args.keep_remote_workdir,
+                bench_case=args.bench,
                 verbose=args.verbose,
                 stderr=sys.stderr,
             )
@@ -332,6 +341,7 @@ def main(argv: list[str] | None = None) -> int:
             bench_file=bench_file,
             operator_file=operator_file,
             archive_dir=archive_dir,
+            bench_case=args.bench,
         )
         print(f"Capture manifest: {manifest_path}")
         return 0
@@ -430,6 +440,7 @@ def build_execution_command(
     operator_file: Path,
     python_executable: str | None = None,
     bench_mode: str | None = None,
+    bench_case: int | None = None,
 ) -> list[str]:
     operator_arg = operator_file.name
     if bench_file.parent != operator_file.parent:
@@ -437,6 +448,8 @@ def build_execution_command(
     interpreter = sys.executable if python_executable is None else python_executable
     resolved_bench_mode = bench_mode or _resolve_bench_mode(bench_file)
     if resolved_bench_mode == "standalone":
+        if bench_case is not None:
+            raise ValueError("--bench is only valid for msprof benchmark capture")
         helper_script = (
             _standalone_runtime_script_path() if python_executable is None else Path("standalone_bench_runtime.py")
         )
@@ -454,6 +467,7 @@ def build_execution_command(
         bench_file.name,
         "--operator-file",
         operator_arg,
+        *([] if bench_case is None else ["--bench", str(bench_case)]),
     ]
 
 

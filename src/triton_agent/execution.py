@@ -37,6 +37,7 @@ class BenchRunnerModule(Protocol):
         bench_file: Path,
         operator_file: Path,
         bench_mode: str,
+        npu_devices: str | None = None,
         verbose: bool = False,
     ) -> tuple[RunSkillPayload, Path | None]: ...
 
@@ -47,6 +48,7 @@ class BenchRunnerModule(Protocol):
         bench_mode: str,
         remote: str,
         remote_workdir: str | None,
+        npu_devices: str | None = None,
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: TextIO | None = None,
@@ -108,10 +110,11 @@ def run_local_bench(
     bench_file: Path,
     operator_file: Path,
     bench_mode: str,
+    npu_devices: str | None = None,
     verbose: bool = False,
 ) -> tuple[AgentResult, Path | None]:
     result, perf_path = _load_bench_runner().run_local_bench(
-        bench_file, operator_file, bench_mode, verbose=verbose
+        bench_file, operator_file, bench_mode, npu_devices, verbose=verbose
     )
     return normalize_agent_result(result), perf_path
 
@@ -122,6 +125,7 @@ def run_remote_bench(
     bench_mode: str,
     remote: str,
     remote_workdir: str | None,
+    npu_devices: str | None = None,
     *,
     keep_remote_workdir: bool = False,
     verbose: bool = False,
@@ -133,6 +137,7 @@ def run_remote_bench(
         bench_mode,
         remote,
         remote_workdir,
+        npu_devices,
         keep_remote_workdir=keep_remote_workdir,
         verbose=verbose,
         stderr=stderr,

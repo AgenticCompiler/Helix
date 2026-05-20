@@ -53,6 +53,7 @@ class RunLocalBenchFn(Protocol):
         bench_file: Path,
         operator_file: Path,
         bench_mode: str,
+        npu_devices: str | None = None,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -64,6 +65,7 @@ class RunRemoteBenchFn(Protocol):
         bench_mode: str,
         remote: str,
         remote_workdir: str | None,
+        npu_devices: str | None = None,
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: object | None = None,
@@ -160,6 +162,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_bench.add_argument("--keep-remote-workdir", action="store_true")
     run_bench.add_argument("--verbose", action="store_true")
     run_bench.add_argument("--bench-mode", choices=["standalone", "msprof"])
+    run_bench.add_argument("--npu-devices")
 
     profile_bench = subparsers.add_parser("profile-bench")
     profile_bench.add_argument("--bench-file", required=True)
@@ -360,12 +363,18 @@ def main(argv: list[str] | None = None) -> int:
                 resolved_bench_mode,
                 args.remote,
                 args.remote_workdir,
+                args.npu_devices,
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
             )
         else:
-            result, perf_path = run_local_bench(bench_file, operator_file, resolved_bench_mode)
+            result, perf_path = run_local_bench(
+                bench_file,
+                operator_file,
+                resolved_bench_mode,
+                args.npu_devices,
+            )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1

@@ -39,6 +39,41 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
         self.assertEqual(args.bench_file, "bench.py")
         self.assertEqual(args.operator_file, "kernel.py")
 
+    def test_build_parser_accepts_explicit_msprof_bench_case(self) -> None:
+        module = _load_capture_ir_module()
+
+        args = module.build_parser().parse_args(
+            [
+                "--ir-dir",
+                "ir",
+                "--bench-file",
+                "bench.py",
+                "--operator-file",
+                "kernel.py",
+                "--bench",
+                "5",
+            ]
+        )
+
+        self.assertEqual(args.bench, 5)
+
+    def test_build_parser_rejects_bench_abbreviation(self) -> None:
+        module = _load_capture_ir_module()
+
+        with self.assertRaises(SystemExit):
+            module.build_parser().parse_args(
+                [
+                    "--ir-dir",
+                    "ir",
+                    "--bench-file",
+                    "bench.py",
+                    "--operator-file",
+                    "kernel.py",
+                    "--ben",
+                    "5",
+                ]
+            )
+
     def test_build_execution_command_uses_runtime_helper_for_standalone_benches(self) -> None:
         module = _load_capture_ir_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -71,6 +106,49 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                 "matmul.py",
             ],
         )
+
+    def test_build_execution_command_forwards_bench_case_for_msprof_benches(self) -> None:
+        module = _load_capture_ir_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_matmul.py"
+            operator_file = root / "matmul.py"
+            bench_file.write_text("# bench-mode: msprof\n", encoding="utf-8")
+            operator_file.write_text("def matmul():\n    pass\n", encoding="utf-8")
+
+            command = module.build_execution_command(
+                bench_file=bench_file,
+                operator_file=operator_file,
+                bench_case=5,
+            )
+
+        self.assertEqual(
+            command,
+            [
+                sys.executable,
+                "bench_matmul.py",
+                "--operator-file",
+                "matmul.py",
+                "--bench",
+                "5",
+            ],
+        )
+
+    def test_build_execution_command_rejects_bench_case_for_standalone_benches(self) -> None:
+        module = _load_capture_ir_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_matmul.py"
+            operator_file = root / "matmul.py"
+            bench_file.write_text("# bench-mode: standalone\n", encoding="utf-8")
+            operator_file.write_text("def matmul():\n    pass\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "--bench is only valid for msprof benchmark capture"):
+                module.build_execution_command(
+                    bench_file=bench_file,
+                    operator_file=operator_file,
+                    bench_case=5,
+                )
 
     def test_extract_capture_details_reads_dump_path_and_compile_command(self) -> None:
         module = _load_capture_ir_module()
@@ -270,6 +348,68 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
             remote_run.call_args_list[1].args[2],
         )
         cleanup.assert_not_called()
+
+    def test_capture_remote_archive_forwards_bench_case_for_msprof_bench(self) -> None:
+        module = _load_capture_ir_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive_dir = root / "archive"
+            bench_file = root / "bench.py"
+            operator_file = root / "kernel.py"
+            bench_file.write_text("# bench-mode: msprof\n", encoding="utf-8")
+            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
+
+            def _fake_copy_directory(_spec, _remote_path, local_path, **_kwargs):
+                (local_path / "triton_dump").mkdir(parents=True)
+                (local_path / "triton_dump" / "kernel.ttadapter.mlir").write_text(
+                    "module {}\n",
+                    encoding="utf-8",
+                )
+                (local_path / "bishengir_stages").mkdir()
+                (local_path / "all-ir.txt").write_text("stderr\n", encoding="utf-8")
+
+            with patch.object(
+                module,
+                "create_remote_workspace",
+                return_value=("spec", "/tmp/remote-ir"),
+            ), patch.object(module, "copy_file_to_remote") as copy_file, patch.object(
+                module,
+                "copy_directory_from_remote",
+                side_effect=_fake_copy_directory,
+            ), patch.object(
+                module,
+                "run_remote_command_buffered",
+                side_effect=[
+                    module.make_result(return_code=0, stdout="ok\n", stderr=""),
+                    module.make_result(
+                        return_code=0,
+                        stdout=(
+                            "Dumping intermediate results to /tmp/triton-dump\n"
+                            "[DEBUG] cmd_list: bishengir-compile /tmp/kernel.ttadapter.mlir --target=Ascend910\n"
+                        ),
+                        stderr="",
+                    ),
+                    module.make_result(return_code=0, stdout="ok\n", stderr=""),
+                    module.make_result(return_code=0, stdout="ok\n", stderr=""),
+                ],
+            ) as remote_run, patch.object(module, "cleanup_remote_workspace"):
+                module.capture_remote_archive(
+                    bench_file=bench_file,
+                    operator_file=operator_file,
+                    archive_dir=archive_dir,
+                    remote="alice@example.com",
+                    remote_workdir=None,
+                    keep_remote_workdir=False,
+                    bench_case=5,
+                )
+
+        copied_names = [call.args[2].rsplit("/", 1)[-1] for call in copy_file.call_args_list]
+        self.assertEqual(copied_names, ["bench.py", "kernel.py"])
+        self.assertIn(
+            "python3 bench.py --operator-file kernel.py --bench 5",
+            remote_run.call_args_list[1].args[2],
+        )
 
     def test_run_local_replay_failure_includes_command_stdout_and_stderr(self) -> None:
         module = _load_capture_ir_module()
