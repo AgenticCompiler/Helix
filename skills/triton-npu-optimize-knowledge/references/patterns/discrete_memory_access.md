@@ -34,7 +34,7 @@ Stage a contiguous range into the Unified Buffer first, then use on-chip indexin
 
 ## Related Patterns
 
-- `constexpr-tile-discrete-access`
+- `effective-extent-tiling`
 - `slice_coalesce`
 - `tiling`
 

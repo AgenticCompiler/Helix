@@ -50,6 +50,16 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Elementwise **logical** ops (`logical_or`, `logical_and`, …) use **broadcasting**, and truth tests (`ne`, `!= 0`) run on **fully expanded** numeric tensors.
   - You want fewer global passes or cheaper elementwise work **before** changing tile sizes, pipelines, or autotune grids.
 
+### `argsort-avoid-aicpu-fallback`
+
+- Summary: When Ascend `ArgSort` would fall back to AiCPU for `int32` or `int64` keys, cast the keys to `float32` first so the sort can stay on AiCore, but only when the integer domain is exactly representable in `float32`.
+- Source: [argsort-avoid-aicpu-fallback.md](patterns/argsort-avoid-aicpu-fallback.md)
+- Use When:
+  - The hot path calls **`torch.argsort()`** on **`int32`** or **`int64`** tensors on Ascend NPU.
+  - Runtime logs report that **`ArgSort`** does not support the active integer dtype on **AiCore** and is running on **AiCpu** instead.
+  - The sort keys are small-range integers such as **expert ids**, **routing ids**, **bucket ids**, or similar categorical keys whose absolute values stay within the exact-integer range of **`float32`**.
+  - Profiling shows unusually high sort latency for tiny or moderate element counts, consistent with fallback dispatch overhead rather than the logical sort size.
+
 ### `attention-cv-pipeline`
 
 - Summary: Reduce latency in Cube+Vector fused attention-like kernels by cutting vector-side instruction pressure, making mask/scale work cheaper, and using architecture-gated compile options only when the target device supports them.
@@ -104,15 +114,6 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - `tl.dot` inputs are stable and only need targeted padding guidance on the active path.
   - Parent comparisons are already close enough that small lowering changes can still matter.
 
-### `constexpr-tile-discrete-access`
-
-- Summary: Align constexpr tile dimensions to the effective logical extent along each tiled axis, removing wasted masked iterations when lowered scalar-loop bounds exceed the actual workload.
-- Source: [constexpr-tile-discrete-access.md](patterns/constexpr-tile-discrete-access.md)
-- Use When:
-  - Any kernel where **`tl.arange` / 2D tile** size is **`tl.constexpr`** but a **mask** or **valid count** shows the **active outputs or indices** are **much smaller** than that tile (including **index_select**, **gather-like** `tl.load(ptr + f(index))`, **scatter-like** `tl.atomic_add` / indexed stores, and similar **output-sized < loop-sized** patterns).
-  - Simulator or profiler shows **hot loops** or **LD/ST `call_count`** scaling with **full tile area** or **2048-style** constants, not with the **logical `numel`** of the case.
-  - MLIR shows **`scf.for`** upper bound tied to tile constants while **`DiscreteMemAccess`** / **`ExtractedLoadOrStore`** appear on extracted load/store paths.
-
 ### `diagonal`
 
 - Summary: While it is good to access data from L2 cache as much as possible, having multiple kernels accessing the *same* data from the L2 cache may cause bank conflicts that slow down operations. One can use the diagonal access pattern to replace the usual swizzle pattern to alleviate this problem. The example applies this technique to matrix multiplication, but it may be applicable in other contexts.
@@ -130,6 +131,16 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Index-driven global loads dominate the hot path, and contiguous staging plus local selection is more plausible than direct scattered reads.
   - The gather source array is small or medium enough that contiguous staging in shared memory is plausible.
   - The hot loop repeatedly reads fixed fields from AoS records with stride-C offsets, such as `[N, 3]` coordinates loaded as `atom_idx * 3 + channel`, and the input is reused enough to amortize wrapper-side SoA materialization.
+
+### `effective-extent-tiling`
+
+- Summary: Choose tile widths from the live logical extent on each axis instead of a legacy maximum or blanket power-of-two rule, so masked lanes do not dominate loop trip counts, transfer work, or vector-path work.
+- Source: [effective-extent-tiling.md](patterns/effective-extent-tiling.md)
+- Use When:
+  - A **`BLOCK_*`** tile is much larger than the **valid extent** protected by a mask, so the kernel does visibly more padded lane work than useful work.
+  - The hot path is either **indexed / masked access** or a **copy-like contiguous axis** whose width does not participate in **`tl.dot`**, cube alignment, or reduction-tree structure.
+  - Profiling or IR suggests execution cost scales with the **tile width** more than with the **live element count**.
+  - The host already has shape information that could choose a smaller tile or a different launch branch.
 
 ### `exact-tile-no-boundary-fast-path`
 
