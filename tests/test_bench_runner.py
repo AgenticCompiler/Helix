@@ -466,6 +466,61 @@ class LocalBenchRunnerTests(unittest.TestCase):
             perf_text = perf_path.read_text(encoding="utf-8")
             self.assertLess(perf_text.index("latency-case-1"), perf_text.index("latency-case-2"))
 
+    def test_run_local_bench_msprof_parallel_stages_discovered_case_json_files(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_all_cases.py"
+            operator_file = root / "opt_kernel.py"
+            discovered_json = root / "5_MoeInitRouting.json"
+            bench_file.write_text(
+                "# bench-mode: msprof\n# api-name: kernel\n# kernel: KernelB\n",
+                encoding="utf-8",
+            )
+            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
+            discovered_json.write_text('{"cases":[1]}\n', encoding="utf-8")
+
+            observed_workdirs: list[Path] = []
+
+            def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
+                del stall_timeout_seconds, stdout, kwargs
+                self.assertEqual(command[0], "msprof")
+                workdir_path = Path(workdir)
+                observed_workdirs.append(workdir_path)
+                self.assertTrue((workdir_path / bench_file.name).exists())
+                self.assertTrue((workdir_path / operator_file.name).exists())
+                self.assertTrue((workdir_path / discovered_json.name).exists())
+                output_dir = Path(command[1].split("=", 1)[1])
+                (output_dir / "op_statistic_1.csv").write_text(
+                    "\n".join(
+                        [
+                            "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                            "0,KernelB,AI_CORE,1,20,2,5.0,7,100",
+                        ]
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return make_skill_result(0, "profile 1\n", "")
+
+            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+                module,
+                "run_streaming_process",
+                side_effect=_fake_streaming,
+            ):
+                result, perf_path = module.run_local_bench(
+                    bench_file,
+                    operator_file,
+                    "msprof",
+                    npu_devices="1",
+                )
+
+            self.assertEqual(result["return_code"], 0)
+            self.assertEqual(len(observed_workdirs), 1)
+            if perf_path is None:
+                self.fail("expected msprof perf path")
+            self.assertIn("latency-case-1: 5.0", perf_path.read_text(encoding="utf-8"))
+
     def test_run_local_bench_msprof_cleans_extra_info_in_bench_workdir(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:

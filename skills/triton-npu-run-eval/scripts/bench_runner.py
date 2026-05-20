@@ -479,13 +479,23 @@ def _bench_case_input_paths(
     *,
     support_paths: Sequence[Path] = (),
 ) -> list[Path]:
-    input_paths = [bench_file]
-    sibling_cases = bench_file.with_suffix(".json")
-    if sibling_cases.exists():
-        input_paths.append(sibling_cases)
+    input_paths: list[Path] = [bench_file]
+    discovered_json_paths = sorted(
+        path for path in bench_file.parent.glob("*.json") if path.is_file()
+    )
+    input_paths.extend(discovered_json_paths)
     input_paths.append(operator_file)
     input_paths.extend(support_paths)
-    return input_paths
+
+    unique_paths: list[Path] = []
+    seen: set[Path] = set()
+    for input_path in input_paths:
+        resolved_path = input_path.resolve()
+        if resolved_path in seen:
+            continue
+        seen.add(resolved_path)
+        unique_paths.append(input_path)
+    return unique_paths
 
 
 def _create_local_case_workspace(
