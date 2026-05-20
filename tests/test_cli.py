@@ -731,6 +731,36 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.COMPARE_PERF)
         self.assertTrue(args.skip_latency_errors)
 
+    def test_compare_perf_accepts_metric_source_flag(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "compare-perf",
+                "--baseline",
+                "baseline_perf.txt",
+                "--compare",
+                "candidate_perf.txt",
+                "--metric-source",
+                "total-op",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.COMPARE_PERF)
+        self.assertEqual(args.metric_source, "total-op")
+
+    def test_compare_perf_defaults_metric_source_to_auto(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "compare-perf",
+                "--baseline",
+                "baseline_perf.txt",
+                "--compare",
+                "candidate_perf.txt",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.COMPARE_PERF)
+        self.assertEqual(args.metric_source, "auto")
+
     def test_verbose_option_is_available(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["gen-test", "-i", "kernel.py", "--verbose"])
@@ -3709,6 +3739,7 @@ class PathResolutionTests(unittest.TestCase):
                 baseline.resolve(),
                 compare.resolve(),
                 skip_latency_errors=False,
+                metric_source="auto",
             )
 
     def test_main_compare_perf_forwards_skip_latency_errors_flag(self) -> None:
@@ -3736,6 +3767,36 @@ class PathResolutionTests(unittest.TestCase):
                 baseline.resolve(),
                 compare.resolve(),
                 skip_latency_errors=True,
+                metric_source="auto",
+            )
+
+    def test_main_compare_perf_forwards_metric_source_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "candidate_perf.txt"
+            baseline.write_text("latency-a: 10\n", encoding="utf-8")
+            compare.write_text("latency-a: 11\n", encoding="utf-8")
+
+            with patch("triton_agent.commands.comparison.compare_perf_files", return_value=0) as mocked:
+                exit_code = main(
+                    [
+                        "compare-perf",
+                        "--baseline",
+                        str(baseline),
+                        "--compare",
+                        str(compare),
+                        "--metric-source",
+                        "kernel",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                baseline.resolve(),
+                compare.resolve(),
+                skip_latency_errors=False,
+                metric_source="kernel",
             )
 
     def test_main_run_test_reports_missing_operator_file_without_traceback(self) -> None:

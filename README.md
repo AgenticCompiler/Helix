@@ -585,6 +585,10 @@ uv run triton-agent compare-perf \
 
 The baseline file should stay in the standard `latency-<id>: <float>` format. The compare-side file may
 include extra summary fields, which are ignored unless they replace a required latency entry.
+Pass `--metric-source kernel` to require kernel-only comparison, or `--metric-source total-op`
+to force total-op aggregation for every case. The default `--metric-source auto` preserves the
+existing behavior of preferring kernel latency and falling back to total-op when kernel timing
+is unavailable.
 By default, `compare-perf` fails immediately when a case carries a non-recoverable
 `# latency-error-<id>:` marker. Pass `--skip-latency-errors` to keep comparing the
 remaining valid cases, then return failure after printing the skipped-case summary.

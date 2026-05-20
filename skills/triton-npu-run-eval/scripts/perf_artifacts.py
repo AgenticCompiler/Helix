@@ -29,6 +29,7 @@ class PerfCaseRecord:
 
 
 ComparisonMode = Literal["latency", "total-op"]
+MetricSource = Literal["auto", "kernel", "total-op"]
 
 
 @dataclass(frozen=True)
@@ -63,16 +64,19 @@ def compare_perf_files(
     compare_perf: Path,
     *,
     skip_latency_errors: bool = False,
+    metric_source: MetricSource = "auto",
 ) -> int:
     try:
         baseline_outcome = _parse_perf_entries_for_comparison(
             baseline_perf,
             skip_latency_errors=skip_latency_errors,
+            metric_source=metric_source,
         )
         compare_outcome = _parse_required_perf_entries_for_comparison(
             compare_perf,
             baseline_outcome.entries,
             skip_latency_errors=skip_latency_errors,
+            metric_source=metric_source,
         )
     except ValueError as exc:
         print(f"FAIL: {exc}")
@@ -102,9 +106,10 @@ def compare_perf_files(
     print(f"Avg improvement: {_format_improvement_percent(avg_improvement)}")
     print(f"Geomean speedup: {_format_speedup(geomean_speedup)}")
     print(f"Total speedup: {_format_speedup(total_speedup)}")
-    print(
-        f"Metric source: {_summarize_metric_source({latency_id: baseline_outcome.entries[latency_id] for latency_id in comparable_ids})}"
-    )
+    compared_entries = {
+        latency_id: baseline_outcome.entries[latency_id] for latency_id in comparable_ids
+    }
+    print(f"Metric source: {_summarize_metric_source(compared_entries, metric_source=metric_source)}")
     skipped_latency_errors = {
         **baseline_outcome.skipped_latency_errors,
         **compare_outcome.skipped_latency_errors,
@@ -224,11 +229,21 @@ def _parse_perf_entries_for_comparison(
     path: Path,
     *,
     skip_latency_errors: bool,
+    metric_source: MetricSource,
 ) -> PerfParseOutcome:
-    return _parse_perf_entries_impl(path, tolerate_latency_errors=skip_latency_errors)
+    return _parse_perf_entries_impl(
+        path,
+        tolerate_latency_errors=skip_latency_errors,
+        metric_source=metric_source,
+    )
 
 
-def _parse_perf_entries_impl(path: Path, *, tolerate_latency_errors: bool) -> PerfParseOutcome:
+def _parse_perf_entries_impl(
+    path: Path,
+    *,
+    tolerate_latency_errors: bool,
+    metric_source: MetricSource = "auto",
+) -> PerfParseOutcome:
     lines = path.read_text(encoding="utf-8").splitlines()
     raw_totals = _parse_raw_op_statistic_totals(path, lines)
     latency_errors = _parse_latency_errors(path, lines)
@@ -257,22 +272,13 @@ def _parse_perf_entries_impl(path: Path, *, tolerate_latency_errors: bool) -> Pe
                 skipped_latency_errors[latency_id] = uncomparable_error
                 continue
             raise ValueError(uncomparable_error)
-        if value_text == "NA":
-            total_op_value = _require_raw_total(path, line_no, latency_id, raw_totals)
-            entries[latency_id] = PerfEntry(
-                display_value=f"NA ({_format_total_op_display(total_op_value)})",
-                numeric_value=total_op_value,
-                comparison_mode="total-op",
-            )
-            continue
-        try:
-            parsed_value = float(value_text)
-        except ValueError as exc:
-            raise ValueError(f"{path}:{line_no} has invalid latency value '{value_text}'") from exc
-        entries[latency_id] = PerfEntry(
-            display_value=value_text,
-            numeric_value=parsed_value,
-            comparison_mode="latency",
+        entries[latency_id] = _build_perf_entry_for_source(
+            path=path,
+            line_no=line_no,
+            latency_id=latency_id,
+            value_text=value_text,
+            raw_totals=raw_totals,
+            metric_source=metric_source,
         )
     if not entries and not skipped_latency_errors:
         raise ValueError(f"{path} did not contain any latency-<id>: <value> entries")
@@ -307,9 +313,13 @@ def _parse_required_perf_entries_for_comparison(
     required_latency_ids: RequiredLatencyIds,
     *,
     skip_latency_errors: bool,
+    metric_source: MetricSource,
 ) -> PerfParseOutcome:
     return _parse_required_perf_entries_impl(
-        path, required_latency_ids, tolerate_latency_errors=skip_latency_errors
+        path,
+        required_latency_ids,
+        tolerate_latency_errors=skip_latency_errors,
+        metric_source=metric_source,
     )
 
 
@@ -318,6 +328,7 @@ def _parse_required_perf_entries_impl(
     required_latency_ids: RequiredLatencyIds,
     *,
     tolerate_latency_errors: bool,
+    metric_source: MetricSource = "auto",
 ) -> PerfParseOutcome:
     required_ids, comparison_modes = _resolve_required_latency_requirements(required_latency_ids)
     if not required_ids:
@@ -347,31 +358,18 @@ def _parse_required_perf_entries_impl(
                 skipped_latency_errors[latency_id] = uncomparable_error
                 continue
             raise ValueError(uncomparable_error)
-        if comparison_modes[latency_id] == "total-op":
-            total_op_value = _require_raw_total(path, line_no, latency_id, raw_totals)
-            display_value = (
-                f"NA ({_format_total_op_display(total_op_value)})"
-                if value_text == "NA"
-                else _format_total_op_display(total_op_value)
-            )
-            entries[latency_id] = PerfEntry(
-                display_value=display_value,
-                numeric_value=total_op_value,
-                comparison_mode="total-op",
-            )
-            continue
-        if value_text == "NA":
-            raise ValueError(
-                f"{path}:{line_no} has latency value 'NA' but baseline requires kernel latency"
-            )
-        try:
-            parsed_value = float(value_text)
-        except ValueError as exc:
-            raise ValueError(f"{path}:{line_no} has invalid latency value '{value_text}'") from exc
-        entries[latency_id] = PerfEntry(
-            display_value=value_text,
-            numeric_value=parsed_value,
-            comparison_mode="latency",
+        effective_metric_source = (
+            "total-op"
+            if metric_source == "auto" and comparison_modes[latency_id] == "total-op"
+            else metric_source
+        )
+        entries[latency_id] = _build_perf_entry_for_source(
+            path=path,
+            line_no=line_no,
+            latency_id=latency_id,
+            value_text=value_text,
+            raw_totals=raw_totals,
+            metric_source=effective_metric_source,
         )
 
     missing_ids = sorted(required_ids - set(entries) - set(skipped_latency_errors))
@@ -470,13 +468,77 @@ def _require_raw_total(
     line_no: int,
     latency_id: str,
     raw_totals: dict[str, float],
+    *,
+    reason: str = "to provide total-op fallback",
 ) -> float:
     total = raw_totals.get(latency_id)
     if total is None:
         raise ValueError(
-            f"{path}:{line_no} requires '# raw-op-statistic-{latency_id.removeprefix('latency-')}: ...' to provide total-op fallback"
+            f"{path}:{line_no} requires '# raw-op-statistic-{latency_id.removeprefix('latency-')}: ...' {reason}"
         )
     return total
+
+
+def _build_perf_entry_for_source(
+    *,
+    path: Path,
+    line_no: int,
+    latency_id: str,
+    value_text: str,
+    raw_totals: dict[str, float],
+    metric_source: MetricSource,
+) -> PerfEntry:
+    if metric_source == "kernel":
+        if value_text == "NA":
+            raise ValueError(
+                f"{path}:{line_no} requires kernel latency for '{latency_id}' under --metric-source kernel"
+            )
+        try:
+            parsed_value = float(value_text)
+        except ValueError as exc:
+            raise ValueError(f"{path}:{line_no} has invalid latency value '{value_text}'") from exc
+        return PerfEntry(
+            display_value=value_text,
+            numeric_value=parsed_value,
+            comparison_mode="latency",
+        )
+
+    if metric_source == "total-op":
+        total_op_value = _require_raw_total(
+            path,
+            line_no,
+            latency_id,
+            raw_totals,
+            reason=f"for '{latency_id}' under --metric-source total-op",
+        )
+        display_value = (
+            f"NA ({_format_total_op_display(total_op_value)})"
+            if value_text == "NA"
+            else _format_total_op_display(total_op_value)
+        )
+        return PerfEntry(
+            display_value=display_value,
+            numeric_value=total_op_value,
+            comparison_mode="total-op",
+        )
+
+    if value_text == "NA":
+        total_op_value = _require_raw_total(path, line_no, latency_id, raw_totals)
+        return PerfEntry(
+            display_value=f"NA ({_format_total_op_display(total_op_value)})",
+            numeric_value=total_op_value,
+            comparison_mode="total-op",
+        )
+
+    try:
+        parsed_value = float(value_text)
+    except ValueError as exc:
+        raise ValueError(f"{path}:{line_no} has invalid latency value '{value_text}'") from exc
+    return PerfEntry(
+        display_value=value_text,
+        numeric_value=parsed_value,
+        comparison_mode="latency",
+    )
 
 
 def _get_uncomparable_latency_error(
@@ -542,9 +604,17 @@ def _format_speedup(value: float | None) -> str:
     return f"{value:.2f}x"
 
 
-def _summarize_metric_source(entries: dict[str, PerfEntry]) -> str:
+def _summarize_metric_source(
+    entries: dict[str, PerfEntry],
+    *,
+    metric_source: MetricSource = "auto",
+) -> str:
     if not entries:
         return "unknown"
+    if metric_source == "kernel":
+        return "kernel"
+    if metric_source == "total-op":
+        return "total-op"
     modes = {entry.comparison_mode for entry in entries.values()}
     if modes == {"latency"}:
         return "kernel"

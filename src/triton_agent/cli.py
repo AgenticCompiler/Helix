@@ -511,6 +511,11 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--baseline", required=True)
         subparser.add_argument("--compare", required=True)
         subparser.add_argument("--skip-latency-errors", action="store_true")
+        subparser.add_argument(
+            "--metric-source",
+            default="auto",
+            choices=("auto", "kernel", "total-op"),
+        )
         return
     subparser.add_argument("-i", "--input", required=True)
 
