@@ -190,13 +190,13 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `pooling-inner-w-slab-gather`
 
-- Summary: For **sliding-window spatial pooling** in **NCHW-style** layouts where **W** is the **innermost contiguous** dimension, load one contiguous **W slab** that covers a whole **`BLOCK_OW`** tile of output windows, then use **`tl.gather`** to pick the per-`kw` values each output column needs. This rewrites many overlapping, predicate-heavy loads inside the inner **`kw`** loop into **one reusable contiguous load plus local indexed selection**; the **W-slab geometry is the same in 2D and 3D**, only the outer **`kh`** / **`kd`** loops differ.
+- Summary: For **sliding-window spatial pooling** in **NCHW-style** layouts where **W** is the **innermost contiguous** dimension, load one **W slab** of length **`W_SLAB_LEN = STRIDE_W * (BLOCK_OW - 1) + KERNEL_W`** at **`w_abs_min = ow_pid * BLOCK_OW * STRIDE_W - PAD_W`**, then **`tl.gather(slab, STRIDE_W * arange(BLOCK_OW) + kw)`** per **`kw`** instead of many **`start_w + kw`** masked loads. **2D/3D+** differ only in outer **`kh`/`kd`** loops. **Adoption gate:** not applied unless the hot path shows **`W_SLAB_LEN` load + gather**; **interior/boundary splits** may **combine** but **do not replace** gather. Operator-agnostic—validate on your harness.
 - Source: [pooling-inner-w-slab-gather.md](patterns/pooling-inner-w-slab-gather.md)
 - Use When:
-  - The kernel is **AvgPool2d / AvgPool3d**, **MaxPool2d / MaxPool3d** (**values only**), or any **fixed `KERNEL_W`** reduction along **W** on a **contiguous** NCHW (or 5D) tensor, with **`kw`** in a constexpr loop and **`BLOCK_OW`** outputs per program.
-  - IR or profiling shows **many narrow or predicate-heavy global loads** along **`kw`** while **`stride_w`** maps output columns to **regularly strided** input columns.
-  - **`out_w`** is large enough that **vectorizing along `ow`** matters, and **`cdiv(out_w, BLOCK_OW)`** does not hurt launch scalability in measurement.
-  - You can prove **semantic equivalence** on the branches you enable (**ceil**, **padding**, **divisor** / **count_include_pad** for average, **numeric identity** for max on **`dtype` / `-inf`** rules).
+  - The kernel is **AvgPool / MaxPool** (**values only**), or any **fixed `KERNEL_W`** reduction along **W** on a **contiguous** NCHW (or 5D) tensor,   with **`kw`** in a **`tl.constexpr`** loop and **`BLOCK_OW`** output columns per program.
+  - Profiling or IR shows **repeated narrow or predicate-heavy global loads** on **W** inside **`kw`**, while **`stride_w`** maps output columns to   **regularly strided** input columns.
+  - **`out_w`** is large enough that **vectorizing along `ow`** matters, and **`triton.cmotion.cdiv(out_w, BLOCK_OW)`** (launch count along W) stays  below a measured knee on the target NPU.
+  - You can prove **semantic equivalence** for the branches you enable (**padding**, **ceil**, **divisor** / **count_include_pad** for average,   **`-inf` / dtype** rules for max).
 
 ### `program-multiple-rows`
 
@@ -275,6 +275,17 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Use When:
   - The hot loop already has a real tiled structure, but loads and computation still happen too serially.
   - Profiling suggests wait-heavy or overlap-poor behavior, and the next question is pipeline quality rather than basic kernel structure.
+
+### `stencil-resize-gm-to-ub-staging`
+
+- Summary: For 2D sampling kernels (resize, gather-stencil, pooling-like windows) whose hot path reads **multiple overlapping input samples per output point**, the core memory strategy is: **stage one contiguous input slab from global memory (GM) into on-chip buffer (UB) per program**, flatten it, then serve stencil reads via **UB-resident gather** and vector math. Secondary wins — often larger than tuning gather itself — are **eliminating UB internal densify copies**, **aligning slab row stride with gather indexing at allocation time**, **tightening slab bounds to the true input window**, and **enlarging the output tile to cut program count**. Prefer **2D output tiling** `(BLOCK_H, BLOCK_W)` over flattening the output plane onto a single 1D program axis.
+- Source: [stencil-resize-gm-to-ub-staging.md](patterns/stencil-resize-gm-to-ub-staging.md)
+- Use When:
+  - Kernel is memory-bound; input read count scales with `(output pixels × stencil footprint)`.
+  - IR shows `{DiscreteMemAccess}` / `{ExtractedLoadOrStore}` on per-lane GM loads in the stencil hot path.
+  - IR shows **`hivm.hir.copy` UB strided → UB dense** between slab load and gather.
+  - Source maps a **2D output tile** through a **1D linear program layout**, or uses **dynamic-index global loads** per stencil sample instead of a staged slab.
+  - msprof shows high **ST/LD** or inner **call_count** while **VGATHER share stays ~1%** — layout/launch issue, not gather-compute bound.
 
 ### `tiling`
 
