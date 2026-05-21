@@ -137,7 +137,7 @@ The converted operator **must** be a pure Triton Ascend implementation. The `for
 
 **1. Fully PyTorch — no kernel at all**
 ```python
-# ❌ FAILS: pure PyTorch, no Triton kernel
+# Forbidden: pure PyTorch, no Triton kernel
 def forward(self, x, w):
     return torch.matmul(x, w)
 ```
@@ -149,21 +149,21 @@ def matmul_kernel(...):
     pass
 
 def forward(self, x, w):
-    return torch.matmul(x, w)  # kernel defined but unused
+    return torch.matmul(x, w)  # Forbidden: kernel defined but unused
 ```
 
 **3. Mixed: partial kernel + partial torch**
 ```python
 def forward(self, x, w):
     y = self.kernel[grid](x, w)
-    return y.sum(dim=-1)  # ❌ tensor method compute after kernel
+    return y.sum(dim=-1)  # Forbidden: tensor method compute after kernel
 ```
 
 **4. Tensor operators in forward**
 ```python
 def forward(self, x, w):
     y = self.kernel[grid](x, w)
-    return y + 1  # ❌ + is a PyTorch operator
+    return y + 1  # Forbidden: + is a PyTorch operator
 ```
 
 ### Correct Pattern
@@ -174,14 +174,14 @@ def add_kernel(x_ptr, y_ptr, output_ptr, n, BLOCK_SIZE: tl.constexpr):
     idx = tl.arange(0, BLOCK_SIZE)
     x = tl.load(x_ptr + idx)
     y = tl.load(y_ptr + idx)
-    output = x + y  # ✅ compute inside kernel
+    output = x + y  # compute inside kernel
     tl.store(output_ptr + idx, output)
 
 class ModelNew(nn.Module):
     def forward(self, x, y):
-        output = torch.empty_like(x)  # ✅ allowed: buffer alloc
-        add_kernel[(1,)](x, y, output, x.numel(), BLOCK_SIZE=128)  # ✅ allowed: kernel launch
-        return output  # ✅ allowed: return kernel output
+        output = torch.empty_like(x)  # Allowed: buffer alloc
+        add_kernel[(1,)](x, y, output, x.numel(), BLOCK_SIZE=128)  # Allowed: kernel launch
+        return output  # Allowed: return kernel output
 ```
 
 ## Quality Rules
@@ -196,7 +196,6 @@ class ModelNew(nn.Module):
 - Keep the converted file runnable as a PyTorch-facing operator artifact.
 - Prefer targeted conversion over unrelated refactoring.
 - Use differential correctness validation instead of inventing a second validation workflow here.
-- Do not call tensor reduction ops (`.min()`, `.max()`, `.sum()`, `.mean()`, etc.) followed by `.item()` on GPU/NPU input tensors in the kernel-launch path. This pattern forces a GPU→CPU synchronization and scans entire tensors, defeating the performance purpose of the conversion. Metadata checks (`.dtype`, `.ndim`, `.device`, `.shape`, `.numel()`) are safe and do not cause synchronization.
 
 ## Do Not
 
@@ -208,5 +207,4 @@ class ModelNew(nn.Module):
 - Do not call `optimize` or create `opt-round-*` directories from this workflow.
 - Do not create `baseline/` or any optimize-session artifacts from this workflow.
 - Do not replace the converted Triton kernel path with pure PyTorch just to get validation green.
-- Do not call `.item()` on a GPU/NPU tensor that is the result of a reduction op (`.min()`, `.max()`, `.sum()`, `.mean()`, etc.) in the kernel-launch path — this forces a device→host synchronization that scans the full tensor. Tensor metadata checks (`.dtype`, `.ndim`, `.device`, `.shape`, `.numel()`) and `.item()` in non-hot-path code (initialization, test data generation) are fine.
 - Do not submit a pure PyTorch rewrite as the converted result, even when the wrapper signature or differential outputs still look correct.
