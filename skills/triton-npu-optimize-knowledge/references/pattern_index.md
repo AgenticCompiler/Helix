@@ -50,16 +50,6 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Elementwise **logical** ops (`logical_or`, `logical_and`, …) use **broadcasting**, and truth tests (`ne`, `!= 0`) run on **fully expanded** numeric tensors.
   - You want fewer global passes or cheaper elementwise work **before** changing tile sizes, pipelines, or autotune grids.
 
-### `argsort-avoid-aicpu-fallback`
-
-- Summary: When Ascend `ArgSort` would fall back to AiCPU for `int32` or `int64` keys, cast the keys to `float32` first so the sort can stay on AiCore, but only when the integer domain is exactly representable in `float32`.
-- Source: [argsort-avoid-aicpu-fallback.md](patterns/argsort-avoid-aicpu-fallback.md)
-- Use When:
-  - The hot path calls **`torch.argsort()`** on **`int32`** or **`int64`** tensors on Ascend NPU.
-  - Runtime logs report that **`ArgSort`** does not support the active integer dtype on **AiCore** and is running on **AiCpu** instead.
-  - The sort keys are small-range integers such as **expert ids**, **routing ids**, **bucket ids**, or similar categorical keys whose absolute values stay within the exact-integer range of **`float32`**.
-  - Profiling shows unusually high sort latency for tiny or moderate element counts, consistent with fallback dispatch overhead rather than the logical sort size.
-
 ### `attention-cv-pipeline`
 
 - Summary: Reduce latency in Cube+Vector fused attention-like kernels by cutting vector-side instruction pressure, making mask/scale work cheaper, and using architecture-gated compile options only when the target device supports them.

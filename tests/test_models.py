@@ -61,6 +61,7 @@ class AgentRequestTests(unittest.TestCase):
             round_brief_path=Path("/tmp/.triton-agent/round-brief.md"),
             supervisor_report_path=Path("/tmp/.triton-agent/supervisor-report.md"),
             target_chip="A3",
+            optimize_target="operator",
         )
 
         updated = request.with_prompt("updated")
@@ -84,6 +85,7 @@ class AgentRequestTests(unittest.TestCase):
         self.assertEqual(updated.round_brief_path, request.round_brief_path)
         self.assertEqual(updated.supervisor_report_path, request.supervisor_report_path)
         self.assertEqual(updated.target_chip, request.target_chip)
+        self.assertEqual(updated.optimize_target, request.optimize_target)
 
 
 if __name__ == "__main__":

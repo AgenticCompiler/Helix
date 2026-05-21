@@ -277,6 +277,7 @@ def execute_supervised_optimize(
     artifacts_state = artifacts_manager.prepare_supervised_session(
         request.workdir,
         agent_name=request.agent_name,
+        optimize_target=request.optimize_target,
         compiler_source_path=request.compiler_source_path,
         compiler_source_commit=request.compiler_source_commit,
         enable_cann_ext_api=_request_enables_cann_ext_api(request),
@@ -329,6 +330,7 @@ def execute_unsupervised_optimize(
         test_mode=request.test_mode or "differential",
         bench_mode=request.bench_mode or "standalone",
         agent_name=request.agent_name,
+        optimize_target=request.optimize_target,
         compiler_source_path=request.compiler_source_path,
         compiler_source_commit=request.compiler_source_commit,
         enable_cann_ext_api=_request_enables_cann_ext_api(request),

@@ -69,9 +69,8 @@ class VerifyTests(unittest.TestCase):
                     "correctness_status": "passed",
                     "benchmark_status": "passed",
                     "perf_artifact": "opt_kernel_perf.txt",
-                    "canonical_baseline": "baseline",
                     "comparison_target": "baseline/perf.txt",
-                    "perf_summary_source": "compare-perf",
+                    "effective_metric_source": "kernel",
                     "summary_path": "summary.md",
                     "opt_note_updated": True,
                     "round_disposition": "stop",
@@ -148,10 +147,9 @@ class VerifyTests(unittest.TestCase):
                         "evidence_sources": ["benchmark"],
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
-                        "perf_artifact": "perf.txt",
-                        "canonical_baseline": "baseline",
-                        "comparison_target": "baseline/perf.txt",
-                        "perf_summary_source": "compare-perf",
+                    "perf_artifact": "perf.txt",
+                    "comparison_target": "baseline/perf.txt",
+                    "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,
                         "round_disposition": "stop",
@@ -224,7 +222,11 @@ class VerifyTests(unittest.TestCase):
                     ((target.bench_file, target.copied_operator, target.bench_mode), {}),
                 ],
             )
-            compare_perf.assert_called_once_with(baseline_perf_path, perf_path)
+            compare_perf.assert_called_once_with(
+                baseline_perf_path,
+                perf_path,
+                metric_source="kernel",
+            )
             self.assertEqual((target.verify_dir / "test.log").read_text(encoding="utf-8"), "test ok\n")
             self.assertEqual(
                 (target.verify_dir / "rerun-best-bench.log").read_text(encoding="utf-8"),
@@ -248,20 +250,14 @@ class VerifyTests(unittest.TestCase):
                 sorted(optimize_status),
                 [
                     "avg_improvement",
-                    "baseline_mean",
-                    "best_mean",
                     "geomean_speedup",
                     "state",
-                    "total_speedup",
                     "warnings",
                 ],
             )
             self.assertEqual(optimize_status["state"], "ok")
-            self.assertEqual(optimize_status["baseline_mean"], 15.0)
-            self.assertEqual(optimize_status["best_mean"], 13.0)
             self.assertAlmostEqual(optimize_status["avg_improvement"], 0.15)
             self.assertAlmostEqual(optimize_status["geomean_speedup"], (10 / 8 * 20 / 18) ** 0.5)
-            self.assertAlmostEqual(optimize_status["total_speedup"], 30 / 26)
             self.assertEqual(optimize_status["warnings"], [])
             self.assertEqual(
                 state["workspace"],
@@ -318,28 +314,22 @@ class VerifyTests(unittest.TestCase):
             self.assertEqual(verify_result["compare_perf"]["return_code"], 0)
             self.assertEqual(
                 sorted(verify_result["speedup"]),
-                ["avg_improvement", "geomean_speedup", "total_speedup", "warnings"],
+                ["avg_improvement", "geomean_speedup", "warnings"],
             )
             self.assertAlmostEqual(verify_result["speedup"]["avg_improvement"], ((11 - 8) / 11 + (22 - 18) / 22) / 2)
             self.assertAlmostEqual(verify_result["speedup"]["geomean_speedup"], (11 / 8 * 22 / 18) ** 0.5)
-            self.assertAlmostEqual(verify_result["speedup"]["total_speedup"], 33 / 26)
             self.assertEqual(verify_result["speedup"]["warnings"], [])
             self.assertEqual(
                 verify_result["consistency"],
                 {
                     "status": "matched",
                     "geomean_speedup_delta": verify_result["consistency"]["geomean_speedup_delta"],
-                    "total_speedup_delta": verify_result["consistency"]["total_speedup_delta"],
                     "avg_improvement_delta": verify_result["consistency"]["avg_improvement_delta"],
                 },
             )
             self.assertAlmostEqual(
                 verify_result["consistency"]["geomean_speedup_delta"],
                 ((11 / 8 * 22 / 18) ** 0.5) - ((10 / 8 * 20 / 18) ** 0.5),
-            )
-            self.assertAlmostEqual(
-                verify_result["consistency"]["total_speedup_delta"],
-                (33 / 26) - (30 / 26),
             )
 
     def test_run_verify_test_phase_skips_benchmark(self) -> None:
@@ -400,7 +390,76 @@ class VerifyTests(unittest.TestCase):
             self.assertEqual(result.return_code, 0)
             run_test.assert_not_called()
             self.assertEqual(run_bench.call_count, 2)
-            compare_perf.assert_called_once_with(baseline_perf_path, perf_path)
+            compare_perf.assert_called_once_with(
+                baseline_perf_path,
+                perf_path,
+                metric_source="kernel",
+            )
+
+    def test_run_verify_bench_phase_uses_total_op_metric_source_when_best_round_requests_it(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            self._write_baseline(workspace)
+            round_dir = self._write_round(
+                workspace,
+                1,
+                "\n".join(
+                    [
+                        "latency-a: 8",
+                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":8.0}]}',
+                        "latency-b: 18",
+                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":18.0}]}',
+                    ]
+                )
+                + "\n",
+            )
+            (workspace / "baseline" / "perf.txt").write_text(
+                "\n".join(
+                    [
+                        "latency-a: 10",
+                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":10.0}]}',
+                        "latency-b: 20",
+                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":20.0}]}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            payload = json.loads((round_dir / "round-state.json").read_text(encoding="utf-8"))
+            payload["effective_metric_source"] = "total-op"
+            (round_dir / "round-state.json").write_text(json.dumps(payload), encoding="utf-8")
+            target = prepare_verify_target(
+                workspace,
+                timestamp_label="20260420-153012",
+            )
+            baseline_perf_path = target.verify_dir / "baseline_kernel_perf.txt"
+            perf_path = target.verify_dir / "opt_kernel_perf.txt"
+
+            with patch("triton_agent.verification.core.run_local_test") as run_test:
+                with patch(
+                    "triton_agent.verification.core.run_local_bench",
+                    side_effect=[
+                        (AgentResult(return_code=0, stdout="", stderr=""), baseline_perf_path),
+                        (AgentResult(return_code=0, stdout="", stderr=""), perf_path),
+                    ],
+                ) as run_bench:
+                    with patch(
+                        "triton_agent.verification.core.compare_perf_files",
+                        return_value=0,
+                    ) as compare_perf:
+                        result = run_verify(
+                            target,
+                            VerifyOptions(phase="bench"),
+                        )
+
+            self.assertEqual(result.return_code, 0)
+            run_test.assert_not_called()
+            self.assertEqual(run_bench.call_count, 2)
+            compare_perf.assert_called_once_with(
+                baseline_perf_path,
+                perf_path,
+                metric_source="total-op",
+            )
 
     def test_run_verify_consistency_ignores_avg_improvement_and_uses_wide_tolerance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -417,7 +476,6 @@ class VerifyTests(unittest.TestCase):
                     target.optimize_status,
                     avg_improvement=-0.2,
                     geomean_speedup=1.05,
-                    total_speedup=1.0,
                 ),
             )
             baseline_perf_path = target.verify_dir / "baseline_kernel_perf.txt"
@@ -447,7 +505,6 @@ class VerifyTests(unittest.TestCase):
             self.assertAlmostEqual(consistency["avg_improvement_delta"], ((9 - 8) / 9 + (18 - 18) / 18) / 2 + 0.2)
             self.assertGreater(abs(consistency["avg_improvement_delta"]), 0.2)
             self.assertLessEqual(abs(consistency["geomean_speedup_delta"]), 0.2)
-            self.assertLessEqual(abs(consistency["total_speedup_delta"]), 0.2)
 
     def test_run_verify_stops_after_failed_test_in_all_phase(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -10,6 +10,30 @@ from triton_agent.agent_hooks import AgentHookManager
 
 
 class AgentHookManagerTests(unittest.TestCase):
+    def test_prepare_codex_hooks_includes_extra_allowed_read_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            compiler_source = Path(tmp) / "compiler-sources" / "AscendNPU-IR"
+            workspace.mkdir()
+            compiler_source.mkdir(parents=True)
+            manager = AgentHookManager(Path(__file__).resolve().parents[1] / "hooks")
+
+            state = manager.prepare_hooks(
+                "codex",
+                workspace,
+                extra_allowed_read_roots=(compiler_source,),
+            )
+
+            policy_path = workspace / ".codex" / "triton-agent-hooks" / "policy.json"
+            policy = json.loads(policy_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(
+                policy["allow_read_roots"],
+                [str(workspace.resolve()), str(compiler_source.resolve())],
+            )
+
+            self.assertEqual(manager.cleanup(state), [])
+
     def test_prepare_codex_hooks_stages_workspace_policy_and_cleans_owned_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -111,6 +135,30 @@ class AgentHookManagerTests(unittest.TestCase):
             self.assertFalse(hook_dir.exists())
             self.assertTrue((workspace / ".opencode").exists())
             self.assertTrue((workspace / ".opencode" / "plugins").exists())
+
+    def test_prepare_opencode_hooks_includes_extra_allowed_read_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            compiler_source = Path(tmp) / "compiler-sources" / "AscendNPU-IR"
+            workspace.mkdir()
+            compiler_source.mkdir(parents=True)
+            manager = AgentHookManager(Path(__file__).resolve().parents[1] / "hooks")
+
+            state = manager.prepare_hooks(
+                "opencode",
+                workspace,
+                extra_allowed_read_roots=(compiler_source,),
+            )
+
+            policy_path = workspace / ".opencode" / "triton-agent-hooks" / "policy.json"
+            policy = json.loads(policy_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(
+                policy["allow_read_roots"],
+                [str(workspace.resolve()), str(compiler_source.resolve())],
+            )
+
+            self.assertEqual(manager.cleanup(state), [])
 
     def test_prepare_codex_hooks_rejects_existing_hooks_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

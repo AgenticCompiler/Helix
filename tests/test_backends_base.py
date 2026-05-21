@@ -141,7 +141,53 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 result = runner.run(request)
 
             self.assertEqual(result.return_code, 0)
-            mocked_prepare.assert_called_once_with("dummy", workspace)
+            mocked_prepare.assert_called_once_with("dummy", workspace, extra_allowed_read_roots=())
+            mocked_cleanup.assert_called_once_with(hook_state)
+
+    def test_base_runner_passes_compiler_source_path_to_agent_hooks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            compiler_source = workspace / "compiler-sources" / "AscendNPU-IR"
+            runner = _DummyRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="dummy",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+                compiler_source_path=compiler_source,
+                enable_agent_hooks=True,
+            )
+            hook_state = AgentHookState(created_paths=[workspace / ".codex" / "hooks.json"])
+
+            with (
+                patch(
+                    "triton_agent.backends.base.AgentHookManager.prepare_hooks",
+                    return_value=hook_state,
+                ) as mocked_prepare,
+                patch(
+                    "triton_agent.backends.base.AgentHookManager.cleanup",
+                    return_value=[],
+                ) as mocked_cleanup,
+                patch("triton_agent.backends.base.run_process", return_value=_ok_result()),
+            ):
+                result = runner.run(request)
+
+            self.assertEqual(result.return_code, 0)
+            mocked_prepare.assert_called_once_with(
+                "dummy",
+                workspace,
+                extra_allowed_read_roots=(compiler_source,),
+            )
             mocked_cleanup.assert_called_once_with(hook_state)
 
     def test_base_runner_cleans_agent_hooks_when_run_fails(self) -> None:

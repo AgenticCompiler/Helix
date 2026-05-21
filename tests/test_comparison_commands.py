@@ -80,6 +80,26 @@ class ComparisonCommandHandlerTests(unittest.TestCase):
             metric_source="total-op",
         )
 
+    def test_compare_perf_files_forwards_metric_source_all_flag(self) -> None:
+        module = comparison_module._load_compare_perf()
+        baseline = Path("/tmp/baseline_perf.txt")
+        compare = Path("/tmp/candidate_perf.txt")
+
+        with patch.object(module, "compare_perf_files", return_value=1) as mocked:
+            exit_code = comparison_module.compare_perf_files(
+                baseline,
+                compare,
+                metric_source="all",
+            )
+
+        self.assertEqual(exit_code, 1)
+        mocked.assert_called_once_with(
+            baseline,
+            compare,
+            skip_latency_errors=False,
+            metric_source="all",
+        )
+
     def test_compare_result_files_runs_via_skill_wrapper(self) -> None:
         module = comparison_module._load_compare_result()
         oracle = Path("/tmp/oracle.pt")
@@ -244,6 +264,40 @@ class ComparisonCommandHandlerTests(unittest.TestCase):
                 compare.resolve(),
                 skip_latency_errors=False,
                 metric_source="kernel",
+            )
+
+    def test_handle_compare_perf_forwards_metric_source_all_flag(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "candidate_perf.txt"
+            baseline.write_text("latency-a: 10\n", encoding="utf-8")
+            compare.write_text("latency-a: 11\n", encoding="utf-8")
+            args = parser.parse_args(
+                [
+                    "compare-perf",
+                    "--baseline",
+                    str(baseline),
+                    "--compare",
+                    str(compare),
+                    "--metric-source",
+                    "all",
+                ]
+            )
+
+            with patch(
+                "triton_agent.commands.comparison.compare_perf_files",
+                return_value=0,
+            ) as mocked:
+                exit_code = handle_compare_perf(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                baseline.resolve(),
+                compare.resolve(),
+                skip_latency_errors=False,
+                metric_source="all",
             )
 
 

@@ -310,6 +310,7 @@ Common options:
 - `--prompt "..."`: append extra worker instructions without replacing the built-in optimize contract.
 - `--test-mode standalone|differential`: default is `differential`
 - `--bench-mode standalone|msprof`: default is `standalone`. Sets the benchmark mode for fresh runs. With `--resume auto`, resumable workspaces keep the benchmark mode recorded in their existing benchmark harness.
+- `--optimize-target kernel|operator`: default is `kernel`. `kernel` keeps the session focused on optimizing the Triton Ascend NPU kernel path itself. `operator` broadens the target to end-to-end operator latency and allows coordinated wrapper/data-movement/scheduling/pre/post-processing/kernel changes while still requiring a real Triton Ascend NPU computation path.
 - `--resume auto|continue|fresh`: default is `auto`
 - `--reset-optimize`: only valid with `--resume fresh`; remove known optimize-session artifacts before starting a new run while keeping reusable test and benchmark harnesses.
 - `--optimize-knowledge v1|v2|v3`: default is `v1`. Select which optimize knowledge library is staged before the agent starts (`v3` uses `skills/triton-npu-optimize-knowledge-v3/`).
@@ -334,6 +335,7 @@ uv run triton-agent optimize --input a.py --enable-compiler-source-analysis
 uv run triton-agent optimize --input a.py --enable-cann-ext-api --target-chip A5
 uv run triton-agent optimize --input a.py --enable-agent-hooks --agent codex
 uv run triton-agent optimize --input a.py --prompt "Prioritize memory-coalescing improvements."
+uv run triton-agent optimize --input a.py --optimize-target operator
 ```
 
 Optimize knowledge selection is explicit. `--optimize-knowledge v1` keeps the current default optimize knowledge library. `--optimize-knowledge v2` stages `triton-npu-optimize-knowledge-v2`. `--optimize-knowledge v3` stages `triton-npu-optimize-knowledge-v3` (working copy forked from `triton-npu-optimize-knowledge` for ongoing updates).
@@ -358,6 +360,10 @@ Resume modes:
 Optimize behavior:
 
 - Establish or reuse a canonical `baseline/` directory before treating `opt-round-1` as the first optimization round.
+- `compare-perf` remains the authority for round speedup claims.
+- In `--optimize-target kernel`, optimize prefers the kernel-oriented comparison view, but rounds may still resolve to `effective_metric_source=total-op` or `mixed` when kernel timing is unavailable for some cases.
+- In `--optimize-target operator`, optimize should inspect both kernel and total-op comparison views and use the total-op conclusion as the canonical round basis.
+- Each round records exactly one resolved comparison basis in `round-state.json` as `effective_metric_source`.
 - If `baseline/` is missing or invalid, baseline preparation is handled by `triton-npu-prepare-optimize-baseline` before round work begins.
 - `check-baseline` never deletes archived PT result files.
 - Ordinary optimize cleanup preserves archived PT result files by default. Set `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES=1` to re-enable round and end-of-run PT cleanup.
@@ -593,7 +599,8 @@ uv run triton-agent compare-perf \
 The baseline file should stay in the standard `latency-<id>: <float>` format. The compare-side file may
 include extra summary fields, which are ignored unless they replace a required latency entry.
 Pass `--metric-source kernel` to require kernel-only comparison, or `--metric-source total-op`
-to force total-op aggregation for every case. The default `--metric-source auto` preserves the
+to force total-op aggregation for every case. Pass `--metric-source all` to print both the
+kernel and total-op sections in one command. The default `--metric-source auto` preserves the
 existing behavior of preferring kernel latency and falling back to total-op when kernel timing
 is unavailable.
 By default, `compare-perf` fails immediately when a case carries a non-recoverable
@@ -636,10 +643,14 @@ For `--agent opencode`, the staged files are:
 - `.opencode/plugins/triton-agent-hook-guard.js`
 - `.opencode/triton-agent-hooks/policy.json`
 
-The policy is rendered for the current workspace. For Codex, it evaluates both
+The policy is rendered for the current workspace. When optimize enables compiler
+source analysis, the resolved compiler source checkout is also added as an
+explicit allowed read root for that run. For Codex, it evaluates both
 direct `Read` tool requests and read-oriented shell commands, including wrapped
 shell invocations such as `bash -lc "sed ..."`. For supported backends, it
-blocks reads outside the workspace and blocks reads of staged skill
+blocks reads outside the workspace unless the current run added an explicit
+allowed read root, and
+blocks reads of staged skill
 implementation files under the backend-native staged skill path, such as
 `.codex/skills/*/scripts/` or `.opencode/skills/*/scripts/`. A blocked read
 returns a short denial message to the agent telling it to stay within the

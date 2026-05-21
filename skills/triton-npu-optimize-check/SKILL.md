@@ -19,12 +19,14 @@ Use the bundled helper script:
 ```bash
 python3 scripts/optimize_check.py check-baseline --baseline-dir baseline
 python3 scripts/optimize_check.py check-round --round-dir opt-round-1
+python3 scripts/optimize_check.py check-round --round-dir opt-round-1 --optimize-target kernel
 ```
 
 ## Behavior
 
 - `check-baseline` verifies canonical baseline artifacts and baseline state.
 - `check-round` verifies round-local artifacts and the recorded round state against the canonical baseline contract.
+- When `--optimize-target kernel` is provided, `check-round` still allows rounds whose recorded `effective_metric_source` fell back to `total-op` or `mixed`, but returns that mismatch as a warning-style issue so the caller can surface it.
 - When a check fails, treat the returned issues as the repair checklist.
 - Do not start the next optimize round until the current check passes.
 - Do not use this skill to invent missing evidence or to replace benchmark, correctness, profile, or IR work that the workflow still requires.

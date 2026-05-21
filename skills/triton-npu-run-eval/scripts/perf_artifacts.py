@@ -29,7 +29,7 @@ class PerfCaseRecord:
 
 
 ComparisonMode = Literal["latency", "total-op"]
-MetricSource = Literal["auto", "kernel", "total-op"]
+MetricSource = Literal["auto", "kernel", "total-op", "all"]
 
 
 @dataclass(frozen=True)
@@ -66,6 +66,12 @@ def compare_perf_files(
     skip_latency_errors: bool = False,
     metric_source: MetricSource = "auto",
 ) -> int:
+    if metric_source == "all":
+        return _compare_perf_files_all(
+            baseline_perf,
+            compare_perf,
+            skip_latency_errors=skip_latency_errors,
+        )
     try:
         baseline_outcome = _parse_perf_entries_for_comparison(
             baseline_perf,
@@ -102,10 +108,9 @@ def compare_perf_files(
             f"compare={compare_display}, "
             f"delta={_format_delta_percent(baseline_value, compare_value)}"
         )
-    avg_improvement, geomean_speedup, total_speedup = _summarize_perf_metrics(baseline, compare)
+    avg_improvement, geomean_speedup = _summarize_perf_metrics(baseline, compare)
     print(f"Avg improvement: {_format_improvement_percent(avg_improvement)}")
     print(f"Geomean speedup: {_format_speedup(geomean_speedup)}")
-    print(f"Total speedup: {_format_speedup(total_speedup)}")
     compared_entries = {
         latency_id: baseline_outcome.entries[latency_id] for latency_id in comparable_ids
     }
@@ -123,12 +128,134 @@ def compare_perf_files(
     return 0
 
 
+def _compare_perf_files_all(
+    baseline_perf: Path,
+    compare_perf: Path,
+    *,
+    skip_latency_errors: bool,
+) -> int:
+    exit_codes: list[int] = []
+    section_results: list[tuple[str, str]] = []
+    for section_metric_source in ("kernel", "total-op"):
+        try:
+            baseline_outcome = _parse_perf_entries_for_comparison(
+                baseline_perf,
+                skip_latency_errors=skip_latency_errors,
+                metric_source=cast(MetricSource, section_metric_source),
+            )
+            compare_outcome = _parse_required_perf_entries_for_comparison(
+                compare_perf,
+                baseline_outcome.entries,
+                skip_latency_errors=skip_latency_errors,
+                metric_source=cast(MetricSource, section_metric_source),
+            )
+        except ValueError as exc:
+            section_results.append(
+                (
+                    section_metric_source,
+                    f"Metric source section: {section_metric_source}\nunavailable: {exc}\n",
+                )
+            )
+            exit_codes.append(1)
+            continue
+
+        comparable_ids = sorted(set(baseline_outcome.entries) & set(compare_outcome.entries))
+        baseline = {
+            latency_id: baseline_outcome.entries[latency_id].numeric_value
+            for latency_id in comparable_ids
+        }
+        compare = {
+            latency_id: compare_outcome.entries[latency_id].numeric_value
+            for latency_id in comparable_ids
+        }
+        lines = [f"Metric source section: {section_metric_source}", "Perf comparison:"]
+        for latency_id in comparable_ids:
+            baseline_value = baseline[latency_id]
+            compare_value = compare[latency_id]
+            baseline_display = baseline_outcome.entries[latency_id].display_value
+            compare_display = compare_outcome.entries[latency_id].display_value
+            lines.append(
+                f"{latency_id}: baseline={baseline_display}, "
+                f"compare={compare_display}, "
+                f"delta={_format_delta_percent(baseline_value, compare_value)}"
+            )
+        avg_improvement, geomean_speedup = _summarize_perf_metrics(
+            baseline, compare
+        )
+        lines.append(f"Avg improvement: {_format_improvement_percent(avg_improvement)}")
+        lines.append(f"Geomean speedup: {_format_speedup(geomean_speedup)}")
+        lines.append(f"Metric source: {section_metric_source}")
+        skipped_latency_errors = {
+            **baseline_outcome.skipped_latency_errors,
+            **compare_outcome.skipped_latency_errors,
+        }
+        if skipped_latency_errors:
+            lines.append(
+                f"FAIL: skipped {len(skipped_latency_errors)} latency entries due to latency errors"
+            )
+            for latency_id in sorted(skipped_latency_errors):
+                lines.append(skipped_latency_errors[latency_id])
+            exit_codes.append(1)
+        else:
+            lines.append(f"PASS: compared {len(baseline)} latency entries")
+            exit_codes.append(0)
+        section_results.append((section_metric_source, "\n".join(lines) + "\n"))
+
+    for _section_name, output in section_results:
+        print(output, end="")
+    return 0 if section_results and all(code == 0 for code in exit_codes) else 1
+
+
 def parse_perf_file(path: Path) -> dict[str, float]:
     return _parse_perf_file(path)
 
 
 def parse_required_perf_file(path: Path, required_latency_ids: RequiredLatencyIds) -> dict[str, float]:
     return _parse_required_perf_file(path, required_latency_ids)
+
+
+def parse_perf_file_for_metric_source(
+    path: Path,
+    *,
+    metric_source: MetricSource = "auto",
+) -> dict[str, float]:
+    if metric_source == "all":
+        raise ValueError("parse_perf_file_for_metric_source does not support metric_source='all'")
+    outcome = _parse_perf_entries_for_comparison(
+        path,
+        skip_latency_errors=False,
+        metric_source=metric_source,
+    )
+    return PerfValueMap(
+        {latency_id: entry.numeric_value for latency_id, entry in outcome.entries.items()},
+        comparison_modes={
+            latency_id: entry.comparison_mode for latency_id, entry in outcome.entries.items()
+        },
+    )
+
+
+def parse_required_perf_file_for_metric_source(
+    path: Path,
+    required_latency_ids: RequiredLatencyIds,
+    *,
+    metric_source: MetricSource = "auto",
+) -> dict[str, float]:
+    if metric_source == "all":
+        raise ValueError(
+            "parse_required_perf_file_for_metric_source does not support metric_source='all'"
+        )
+    outcome = _parse_required_perf_entries_for_comparison(
+        path,
+        required_latency_ids,
+        skip_latency_errors=False,
+        metric_source=metric_source,
+    )
+    return PerfValueMap(
+        {latency_id: entry.numeric_value for latency_id, entry in outcome.entries.items()},
+        comparison_modes={
+            latency_id: entry.comparison_mode for latency_id, entry in outcome.entries.items()
+        },
+    )
 
 
 def perf_output_path(operator_file: Path) -> Path:
@@ -572,12 +699,12 @@ def _format_delta_percent(baseline: float, compare: float) -> str:
 def _summarize_perf_metrics(
     baseline: dict[str, float],
     compare: dict[str, float],
-) -> tuple[float | None, float | None, float | None]:
+) -> tuple[float | None, float | None]:
     pairs = [(baseline[latency_id], compare[latency_id]) for latency_id in sorted(baseline)]
     if not pairs:
-        return None, None, None
+        return None, None
     if any(baseline_value <= 0 or compare_value <= 0 for baseline_value, compare_value in pairs):
-        return None, None, None
+        return None, None
 
     improvements = [
         (baseline_value - compare_value) / baseline_value
@@ -586,10 +713,7 @@ def _summarize_perf_metrics(
     ratios = [baseline_value / compare_value for baseline_value, compare_value in pairs]
     avg_improvement = sum(improvements) / len(improvements)
     geomean_speedup = math.exp(sum(math.log(ratio) for ratio in ratios) / len(ratios))
-    total_speedup = sum(baseline_value for baseline_value, _ in pairs) / sum(
-        compare_value for _, compare_value in pairs
-    )
-    return avg_improvement, geomean_speedup, total_speedup
+    return avg_improvement, geomean_speedup
 
 
 def _format_improvement_percent(value: float | None) -> str:
