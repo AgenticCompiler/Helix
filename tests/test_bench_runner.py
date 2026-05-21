@@ -1247,7 +1247,6 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertIn("delta=-20.00%", output)
             self.assertIn("Avg improvement: +35.0%", output)
             self.assertIn("Geomean speedup: 1.58x", output)
-            self.assertIn("Total speedup: 1.67x", output)
             self.assertIn("Metric source: kernel", output)
 
     def test_compare_perf_files_fails_by_default_on_case_execution_error_marker(self) -> None:
@@ -1317,7 +1316,6 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertIn("latency-case-2: baseline=10, compare=8, delta=-20.00%", output)
             self.assertIn("Avg improvement: +20.0%", output)
             self.assertIn("Geomean speedup: 1.25x", output)
-            self.assertIn("Total speedup: 1.25x", output)
             self.assertIn("Metric source: kernel", output)
             self.assertIn("FAIL: skipped 1 latency entries due to latency errors", output)
             self.assertIn("latency-case-1", output)

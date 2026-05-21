@@ -69,9 +69,7 @@ class VerifyTests(unittest.TestCase):
                     "correctness_status": "passed",
                     "benchmark_status": "passed",
                     "perf_artifact": "opt_kernel_perf.txt",
-                    "canonical_baseline": "baseline",
                     "comparison_target": "baseline/perf.txt",
-                    "perf_summary_source": "compare-perf",
                     "effective_metric_source": "kernel",
                     "summary_path": "summary.md",
                     "opt_note_updated": True,
@@ -149,11 +147,9 @@ class VerifyTests(unittest.TestCase):
                         "evidence_sources": ["benchmark"],
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
-                        "perf_artifact": "perf.txt",
-                        "canonical_baseline": "baseline",
-                        "comparison_target": "baseline/perf.txt",
-                        "perf_summary_source": "compare-perf",
-                        "effective_metric_source": "kernel",
+                    "perf_artifact": "perf.txt",
+                    "comparison_target": "baseline/perf.txt",
+                    "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,
                         "round_disposition": "stop",
@@ -254,20 +250,14 @@ class VerifyTests(unittest.TestCase):
                 sorted(optimize_status),
                 [
                     "avg_improvement",
-                    "baseline_mean",
-                    "best_mean",
                     "geomean_speedup",
                     "state",
-                    "total_speedup",
                     "warnings",
                 ],
             )
             self.assertEqual(optimize_status["state"], "ok")
-            self.assertEqual(optimize_status["baseline_mean"], 15.0)
-            self.assertEqual(optimize_status["best_mean"], 13.0)
             self.assertAlmostEqual(optimize_status["avg_improvement"], 0.15)
             self.assertAlmostEqual(optimize_status["geomean_speedup"], (10 / 8 * 20 / 18) ** 0.5)
-            self.assertAlmostEqual(optimize_status["total_speedup"], 30 / 26)
             self.assertEqual(optimize_status["warnings"], [])
             self.assertEqual(
                 state["workspace"],
@@ -324,28 +314,22 @@ class VerifyTests(unittest.TestCase):
             self.assertEqual(verify_result["compare_perf"]["return_code"], 0)
             self.assertEqual(
                 sorted(verify_result["speedup"]),
-                ["avg_improvement", "geomean_speedup", "total_speedup", "warnings"],
+                ["avg_improvement", "geomean_speedup", "warnings"],
             )
             self.assertAlmostEqual(verify_result["speedup"]["avg_improvement"], ((11 - 8) / 11 + (22 - 18) / 22) / 2)
             self.assertAlmostEqual(verify_result["speedup"]["geomean_speedup"], (11 / 8 * 22 / 18) ** 0.5)
-            self.assertAlmostEqual(verify_result["speedup"]["total_speedup"], 33 / 26)
             self.assertEqual(verify_result["speedup"]["warnings"], [])
             self.assertEqual(
                 verify_result["consistency"],
                 {
                     "status": "matched",
                     "geomean_speedup_delta": verify_result["consistency"]["geomean_speedup_delta"],
-                    "total_speedup_delta": verify_result["consistency"]["total_speedup_delta"],
                     "avg_improvement_delta": verify_result["consistency"]["avg_improvement_delta"],
                 },
             )
             self.assertAlmostEqual(
                 verify_result["consistency"]["geomean_speedup_delta"],
                 ((11 / 8 * 22 / 18) ** 0.5) - ((10 / 8 * 20 / 18) ** 0.5),
-            )
-            self.assertAlmostEqual(
-                verify_result["consistency"]["total_speedup_delta"],
-                (33 / 26) - (30 / 26),
             )
 
     def test_run_verify_test_phase_skips_benchmark(self) -> None:
@@ -492,7 +476,6 @@ class VerifyTests(unittest.TestCase):
                     target.optimize_status,
                     avg_improvement=-0.2,
                     geomean_speedup=1.05,
-                    total_speedup=1.0,
                 ),
             )
             baseline_perf_path = target.verify_dir / "baseline_kernel_perf.txt"
@@ -522,7 +505,6 @@ class VerifyTests(unittest.TestCase):
             self.assertAlmostEqual(consistency["avg_improvement_delta"], ((9 - 8) / 9 + (18 - 18) / 18) / 2 + 0.2)
             self.assertGreater(abs(consistency["avg_improvement_delta"]), 0.2)
             self.assertLessEqual(abs(consistency["geomean_speedup_delta"]), 0.2)
-            self.assertLessEqual(abs(consistency["total_speedup_delta"]), 0.2)
 
     def test_run_verify_stops_after_failed_test_in_all_phase(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

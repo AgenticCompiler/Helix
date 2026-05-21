@@ -50,7 +50,7 @@ def inspect_optimize_status_workspace(
 ) -> OptimizeStatusWorkspace:
     del verbose
     opt_note, round_dirs, top_level_perf_files = collect_optimize_status_artifacts(workspace)
-    latest_verify_state, verified, verified_geomean_speedup, verified_total_speedup = inspect_latest_verify_result(
+    latest_verify_state, verified, verified_geomean_speedup = inspect_latest_verify_result(
         workspace
     )
 
@@ -59,29 +59,23 @@ def inspect_optimize_status_workspace(
         return OptimizeStatusWorkspace(
             workspace=workspace,
             state="no-session",
-            baseline_mean=None,
-            best_mean=None,
             avg_improvement=None,
             geomean_speedup=None,
-            total_speedup=None,
             best_round=None,
             logged_best=None,
             warnings=(),
             latest_verify_state=latest_verify_state,
             verified=verified,
             verified_geomean_speedup=verified_geomean_speedup,
-            verified_total_speedup=verified_total_speedup,
         )
 
     warnings: list[str] = []
     baseline_path, baseline_selection_failed = select_baseline_perf_file(workspace, top_level_perf_files, warnings)
     baseline_values_by_source: dict[str, dict[str, float]] = {}
-    baseline_mean: float | None = None
     has_any_baseline_values = False
     if baseline_path is not None:
         try:
-            parsed_baseline_values = _load_bench_perf_parser().parse_perf_file(baseline_path)
-            baseline_mean = mean_value(parsed_baseline_values.values())
+            _load_bench_perf_parser().parse_perf_file(baseline_path)
             has_any_baseline_values = True
         except ValueError as exc:
             warnings.append(str(exc))
@@ -90,13 +84,11 @@ def inspect_optimize_status_workspace(
     summary_logged_best: str | None = None
     legacy_logged_best: str | None = None
     logged_geomean_speedup: str | None = None
-    logged_total_speedup: str | None = None
     if opt_note.exists():
         (
             summary_logged_best,
             legacy_logged_best,
             logged_geomean_speedup,
-            logged_total_speedup,
         ) = parse_logged_best_round_details(opt_note)
         logged_best = summary_logged_best or legacy_logged_best
         if (
@@ -158,7 +150,6 @@ def inspect_optimize_status_workspace(
                 effective_metric_source=metric_source,
                 avg_improvement=mean_value(improvement_values),
                 geomean_speedup=geomean_value(speedup_values),
-                total_speedup=sum(valid_baseline_values) / sum(valid_round_values),
                 mean_latency=mean_value(valid_round_values),
             )
         )
@@ -166,31 +157,27 @@ def inspect_optimize_status_workspace(
     if comparable_rounds:
         best_round = max(
             comparable_rounds,
-            key=lambda item: (item.geomean_speedup, item.total_speedup, -item.mean_latency),
+            key=lambda item: (item.geomean_speedup, -item.mean_latency),
         )
         if logged_best is not None and logged_best != best_round.round_name:
             warnings.append(
                 "numeric best round != logged best. "
                 "computed speedup: "
-                f"{format_speedup_value(best_round.geomean_speedup)}, {format_speedup_value(best_round.total_speedup)}; "
+                f"{format_speedup_value(best_round.geomean_speedup)}; "
                 "logged speedup: "
-                f"{format_speedup_source(logged_geomean_speedup)}, {format_speedup_source(logged_total_speedup)}"
+                f"{format_speedup_source(logged_geomean_speedup)}"
             )
         return OptimizeStatusWorkspace(
             workspace=workspace,
             state="ok",
-            baseline_mean=baseline_mean,
-            best_mean=best_round.mean_latency,
             avg_improvement=best_round.avg_improvement,
             geomean_speedup=best_round.geomean_speedup,
-            total_speedup=best_round.total_speedup,
             best_round=best_round.round_name,
             logged_best=logged_best,
             warnings=tuple(dict.fromkeys(warnings)),
             latest_verify_state=latest_verify_state,
             verified=verified,
             verified_geomean_speedup=verified_geomean_speedup,
-            verified_total_speedup=verified_total_speedup,
         )
 
     if baseline_path is None and not baseline_selection_failed:
@@ -201,18 +188,14 @@ def inspect_optimize_status_workspace(
     return OptimizeStatusWorkspace(
         workspace=workspace,
         state="warning",
-        baseline_mean=baseline_mean,
-        best_mean=None,
         avg_improvement=None,
         geomean_speedup=None,
-        total_speedup=None,
         best_round=None,
         logged_best=logged_best,
         warnings=tuple(dict.fromkeys(warnings)),
         latest_verify_state=latest_verify_state,
         verified=verified,
         verified_geomean_speedup=verified_geomean_speedup,
-        verified_total_speedup=verified_total_speedup,
     )
 
 
@@ -225,8 +208,12 @@ def scan_optimize_status_workspaces(root: Path, *, verbose: bool = False) -> lis
 
 def workspace_has_optimize_artifacts(workspace: Path) -> bool:
     opt_note, round_dirs, top_level_perf_files = collect_optimize_status_artifacts(workspace)
-    baseline_perf = baseline_dir(workspace) / "perf.txt"
-    return bool(opt_note.exists() or round_dirs or top_level_perf_files or baseline_perf.exists())
+    baseline_dir_path = baseline_dir(workspace)
+    if baseline_dir_path.is_dir() and (
+        (baseline_dir_path / "perf.txt").is_file() or any(baseline_dir_path.glob("*_perf.txt"))
+    ):
+        return True
+    return bool(opt_note.exists() or round_dirs or top_level_perf_files)
 
 
 def collect_optimize_status_artifacts(
@@ -241,12 +228,12 @@ def collect_optimize_status_artifacts(
     return opt_note, round_dirs, top_level_perf_files
 
 
-def inspect_latest_verify_result(workspace: Path) -> tuple[Path | None, bool, float | None, float | None]:
+def inspect_latest_verify_result(workspace: Path) -> tuple[Path | None, bool, float | None]:
     state_path = find_latest_verify_state(workspace)
     if state_path is None:
-        return None, False, None, None
-    verified, geomean_speedup, total_speedup = inspect_verify_state_summary(state_path)
-    return state_path, verified, geomean_speedup, total_speedup
+        return None, False, None
+    verified, geomean_speedup = inspect_verify_state_summary(state_path)
+    return state_path, verified, geomean_speedup
 
 
 def find_latest_verify_state(workspace: Path) -> Path | None:
@@ -264,18 +251,18 @@ def find_latest_verify_state(workspace: Path) -> Path | None:
 
 
 def verify_state_is_verified(state_path: Path) -> bool:
-    verified, _, _ = inspect_verify_state_summary(state_path)
+    verified, _ = inspect_verify_state_summary(state_path)
     return verified
 
 
-def inspect_verify_state_summary(state_path: Path) -> tuple[bool, float | None, float | None]:
+def inspect_verify_state_summary(state_path: Path) -> tuple[bool, float | None]:
     try:
         payload = json.loads(state_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return False, None, None
+        return False, None
     verify_result = payload.get("verify-result")
     if not isinstance(verify_result, dict):
-        return False, None, None
+        return False, None
     verify_result_dict = cast(dict[str, object], verify_result)
     required_entries: tuple[object | None, ...] = (
         verify_result_dict.get("test"),
@@ -285,19 +272,18 @@ def inspect_verify_state_summary(state_path: Path) -> tuple[bool, float | None, 
     )
     for entry in required_entries:
         if not isinstance(entry, dict):
-            return False, None, None
+            return False, None
         entry_dict = cast(dict[str, object], entry)
         status = entry_dict.get("status")
         if status != "passed":
-            return False, None, None
+            return False, None
     speedup = verify_result_dict.get("speedup")
     if not isinstance(speedup, dict):
-        return True, None, None
+        return True, None
     speedup_dict = cast(dict[str, object], speedup)
     return (
         True,
         _optional_float(speedup_dict.get("geomean_speedup")),
-        _optional_float(speedup_dict.get("total_speedup")),
     )
 
 
@@ -317,6 +303,15 @@ def select_baseline_perf_file(
     baseline_perf = baseline_dir(workspace) / "perf.txt"
     if baseline_perf.is_file():
         return baseline_perf, False
+
+    baseline_dir_path = baseline_dir(workspace)
+    if baseline_dir_path.is_dir():
+        operator_perf_files = sorted(baseline_dir_path.glob("*_perf.txt"))
+        if len(operator_perf_files) == 1:
+            return operator_perf_files[0], False
+        if len(operator_perf_files) > 1:
+            warnings.append("found multiple baseline perf files")
+            return None, True
 
     if not paths:
         return None, False
@@ -405,16 +400,15 @@ def parse_logged_best_round(path: Path) -> str | None:
 
 
 def parse_logged_best_rounds(path: Path) -> tuple[str | None, str | None]:
-    summary_best, legacy_best, _, _ = parse_logged_best_round_details(path)
+    summary_best, legacy_best, _ = parse_logged_best_round_details(path)
     return summary_best, legacy_best
 
 
-def parse_logged_best_round_details(path: Path) -> tuple[str | None, str | None, str | None, str | None]:
+def parse_logged_best_round_details(path: Path) -> tuple[str | None, str | None, str | None]:
     current_round: str | None = None
     legacy_best: str | None = None
     summary_best: str | None = None
     summary_geomean_speedup: str | None = None
-    summary_total_speedup: str | None = None
     in_overall_summary = False
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
@@ -440,13 +434,10 @@ def parse_logged_best_round_details(path: Path) -> tuple[str | None, str | None,
             geomean_match = re.match(r"Geomean\s+speedup:\s*(.+)", line, flags=re.IGNORECASE)
             if geomean_match:
                 summary_geomean_speedup = normalize_summary_value(geomean_match.group(1))
-            total_match = re.match(r"Total\s+speedup:\s*(.+)", line, flags=re.IGNORECASE)
-            if total_match:
-                summary_total_speedup = normalize_summary_value(total_match.group(1))
             continue
         if line.lower().startswith("best status:") and "current best" in line.lower():
             legacy_best = current_round
-    return summary_best, legacy_best, summary_geomean_speedup, summary_total_speedup
+    return summary_best, legacy_best, summary_geomean_speedup
 
 
 def normalize_round_name(value: str) -> str | None:

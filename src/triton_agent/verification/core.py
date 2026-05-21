@@ -412,11 +412,8 @@ def _build_inputs_state(
 def _build_optimize_status_state(status: OptimizeStatusWorkspace) -> dict[str, object]:
     return {
         "state": status.state,
-        "baseline_mean": status.baseline_mean,
-        "best_mean": status.best_mean,
         "avg_improvement": status.avg_improvement,
         "geomean_speedup": status.geomean_speedup,
-        "total_speedup": status.total_speedup,
         "warnings": list(status.warnings),
     }
 
@@ -436,7 +433,6 @@ def _build_speedup_state(
             {
                 "avg_improvement": None,
                 "geomean_speedup": None,
-                "total_speedup": None,
                 "warnings": missing_perf_warnings,
             }
         )
@@ -468,7 +464,6 @@ def _build_speedup_state(
             {
                 "avg_improvement": None,
                 "geomean_speedup": None,
-                "total_speedup": None,
                 "warnings": [str(exc)],
             }
         )
@@ -497,7 +492,6 @@ def _build_speedup_state(
             {
                 "avg_improvement": None,
                 "geomean_speedup": None,
-                "total_speedup": None,
                 "warnings": warnings or ["missing comparable verify perf data"],
             }
         )
@@ -505,7 +499,6 @@ def _build_speedup_state(
     return {
         "avg_improvement": _mean_value(improvement_values),
         "geomean_speedup": _geomean_value(speedup_values),
-        "total_speedup": sum(valid_baseline_values) / sum(valid_verify_values),
         "warnings": warnings,
     }
 
@@ -536,9 +529,8 @@ def _build_consistency_state(
         speedup_state.get("geomean_speedup"),
         optimize_status.geomean_speedup,
     )
-    total_delta = _metric_delta(speedup_state.get("total_speedup"), optimize_status.total_speedup)
     avg_delta = _metric_delta(speedup_state.get("avg_improvement"), optimize_status.avg_improvement)
-    decision_deltas = (geomean_delta, total_delta)
+    decision_deltas = (geomean_delta,)
     warnings_value = speedup_state.get("warnings")
     has_warnings = isinstance(warnings_value, list) and len(cast(list[object], warnings_value)) > 0
     if (
@@ -556,7 +548,6 @@ def _build_consistency_state(
     return {
         "status": status,
         "geomean_speedup_delta": geomean_delta,
-        "total_speedup_delta": total_delta,
         "avg_improvement_delta": avg_delta,
     }
 

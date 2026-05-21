@@ -209,6 +209,24 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": True})
 
+    def test_allows_read_from_extra_allow_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            compiler_source = Path(tmp) / "compiler-sources" / "AscendNPU-IR"
+            source_file = compiler_source / "passes" / "lowering.cc"
+            source_file.parent.mkdir(parents=True)
+            source_file.write_text("pass\n", encoding="utf-8")
+            workspace.mkdir()
+
+            result = _evaluate_plugin(
+                _policy(workspace, extra_allow_roots=[compiler_source]),
+                "bash",
+                f"sed -n '1,20p' {source_file}",
+                workspace,
+            )
+
+            self.assertEqual(result, {"allowed": True})
+
     def test_malformed_shell_payload_fails_open(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -227,11 +245,14 @@ _DENY_MESSAGE = (
 )
 
 
-def _policy(workspace: Path) -> dict[str, object]:
+def _policy(workspace: Path, extra_allow_roots: Optional[list[Path]] = None) -> dict[str, object]:
     root = workspace.resolve()
+    allow_read_roots = [str(root)]
+    if extra_allow_roots is not None:
+        allow_read_roots.extend(str(path.resolve()) for path in extra_allow_roots)
     return {
         "workspace_root": str(root),
-        "allow_read_roots": [str(root)],
+        "allow_read_roots": allow_read_roots,
         "deny_read_globs": [
             str(root / "triton-agent-logs" / "**"),
             str(root / ".opencode" / "skills" / "*" / "scripts" / "**"),

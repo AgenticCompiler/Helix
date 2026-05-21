@@ -10,7 +10,7 @@ Expected long-lived artifacts:
 - `bench_<operator-stem>.py` or the mode-specific generated benchmark artifact
 - `baseline/`
 - `baseline/state.json`
-- `baseline/perf.txt`
+- `baseline/<operator>_perf.txt`
 - `opt-note.md`
 - `learned_lessons.md`
 - `opt-round-1/`
@@ -32,8 +32,9 @@ The canonical optimize baseline lives under `baseline/`.
 Required baseline artifacts:
 
 - one baseline operator snapshot under `baseline/`
-- `baseline/perf.txt`
+- `baseline/<operator>_perf.txt`
 - `baseline/state.json`
+
 
 `baseline/state.json` must contain these fields:
 
@@ -96,9 +97,7 @@ Each completed round must also include `round-state.json`.
 - `correctness_status`
 - `benchmark_status`
 - `perf_artifact`
-- `canonical_baseline`
 - `comparison_target`
-- `perf_summary_source`
 - `effective_metric_source`
 - `summary_path`
 - `opt_note_updated`

@@ -25,13 +25,10 @@ class OptimizeStatusTests(unittest.TestCase):
         best_bench_status: str = "passed",
         compare_status: str = "passed",
         geomean_speedup: Union[float, None] = None,
-        total_speedup: Union[float, None] = None,
     ) -> Path:
         speedup: dict[str, object] = {}
         if geomean_speedup is not None:
             speedup["geomean_speedup"] = geomean_speedup
-        if total_speedup is not None:
-            speedup["total_speedup"] = total_speedup
         verify_dir = workspace / "opt-verify" / verify_name
         verify_dir.mkdir(parents=True)
         state_path = verify_dir / "verify-state.json"
@@ -142,15 +139,12 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertEqual(status.state, "ok")
             self.assertEqual(status.best_round, "round-2")
             self.assertEqual(status.logged_best, "round-1")
-            self.assertAlmostEqual(status.baseline_mean or 0.0, 15.0)
-            self.assertAlmostEqual(status.best_mean or 0.0, 9.5)
             self.assertAlmostEqual(status.avg_improvement or 0.0, 0.3)
             self.assertAlmostEqual(status.geomean_speedup or 0.0, (10 / 9 * 20 / 10) ** 0.5)
-            self.assertAlmostEqual(status.total_speedup or 0.0, 30 / 19)
             self.assertIn(
                 "numeric best round != logged best. "
-                "computed speedup: 1.49x, 1.58x; "
-                "logged speedup: 1.16x, 1.18x",
+                "computed speedup: 1.49x; "
+                "logged speedup: 1.16x",
                 status.warnings,
             )
 
@@ -237,7 +231,6 @@ class OptimizeStatusTests(unittest.TestCase):
                 workspace,
                 "verify-20260421-120000",
                 geomean_speedup=1.23,
-                total_speedup=1.34,
             )
 
             status = inspect_optimize_status_workspace(workspace)
@@ -246,8 +239,6 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertEqual(status.latest_verify_state, latest_state)
             self.assertTrue(status.verified)
             self.assertAlmostEqual(status.verified_geomean_speedup or 0.0, 1.23)
-            self.assertAlmostEqual(status.verified_total_speedup or 0.0, 1.34)
-
     def test_inspect_optimize_status_workspace_marks_partial_latest_verify_as_unverified(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -273,7 +264,6 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertEqual(status.latest_verify_state, latest_state)
             self.assertFalse(status.verified)
             self.assertIsNone(status.verified_geomean_speedup)
-            self.assertIsNone(status.verified_total_speedup)
 
     def test_inspect_optimize_status_workspace_ignores_extra_round_perf_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -300,10 +290,8 @@ class OptimizeStatusTests(unittest.TestCase):
 
             self.assertEqual(status.state, "ok")
             self.assertEqual(status.best_round, "round-1")
-            self.assertAlmostEqual(status.best_mean or 0.0, 11.0)
             self.assertAlmostEqual(status.avg_improvement or 0.0, 0.275)
             self.assertAlmostEqual(status.geomean_speedup or 0.0, (10 / 7 * 20 / 15) ** 0.5)
-            self.assertAlmostEqual(status.total_speedup or 0.0, 30 / 22)
             self.assertEqual(status.warnings, ())
 
     def test_inspect_optimize_status_workspace_prefers_best_geomean_speedup(self) -> None:
@@ -333,7 +321,6 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertEqual(status.best_round, "round-1")
             self.assertAlmostEqual(status.avg_improvement or 0.0, 0.25)
             self.assertAlmostEqual(status.geomean_speedup or 0.0, (1 / 0.5 * 100 / 100) ** 0.5)
-            self.assertAlmostEqual(status.total_speedup or 0.0, 101 / 100.5)
 
     def test_inspect_optimize_status_workspace_uses_total_op_basis_when_round_state_requests_it(
         self,
@@ -414,9 +401,7 @@ class OptimizeStatusTests(unittest.TestCase):
                             "correctness_status": "passed",
                             "benchmark_status": "passed",
                             "perf_artifact": "opt_kernel_perf.txt",
-                            "canonical_baseline": "baseline",
                             "comparison_target": "baseline/perf.txt",
-                            "perf_summary_source": "compare-perf",
                             "effective_metric_source": "total-op",
                             "summary_path": "summary.md",
                             "opt_note_updated": True,
@@ -431,7 +416,6 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertEqual(status.state, "ok")
             self.assertEqual(status.best_round, "round-2")
             self.assertAlmostEqual(status.geomean_speedup or 0.0, (50 / 40 * 50 / 40) ** 0.5)
-            self.assertAlmostEqual(status.total_speedup or 0.0, 100 / 80)
             self.assertEqual(status.warnings, ())
 
     def test_inspect_optimize_status_workspace_prefers_baseline_directory_perf(self) -> None:
@@ -480,7 +464,6 @@ class OptimizeStatusTests(unittest.TestCase):
             status = inspect_optimize_status_workspace(workspace)
 
             self.assertEqual(status.state, "ok")
-            self.assertAlmostEqual(status.baseline_mean or 0.0, 15.0)
 
     def test_inspect_optimize_status_workspace_accepts_legacy_round_perf_txt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -507,7 +490,6 @@ class OptimizeStatusTests(unittest.TestCase):
 
             self.assertEqual(status.state, "ok")
             self.assertEqual(status.best_round, "round-2")
-            self.assertAlmostEqual(status.best_mean or 0.0, 11.0)
 
     def test_inspect_optimize_status_workspace_prefers_non_opt_baseline_perf_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -556,7 +538,6 @@ class OptimizeStatusTests(unittest.TestCase):
             status = inspect_optimize_status_workspace(workspace)
 
             self.assertEqual(status.state, "ok")
-            self.assertAlmostEqual(status.baseline_mean or 0.0, 15.0)
             self.assertEqual(status.best_round, "round-1")
             self.assertEqual(status.warnings, ())
 
@@ -582,7 +563,6 @@ class OptimizeStatusTests(unittest.TestCase):
             status = inspect_optimize_status_workspace(workspace)
 
             self.assertEqual(status.state, "ok")
-            self.assertAlmostEqual(status.baseline_mean or 0.0, 15.0)
             self.assertNotIn("found multiple baseline perf files", status.warnings)
 
     def test_inspect_optimize_status_workspace_ambiguous_baseline_does_not_repeat_missing_warning(self) -> None:

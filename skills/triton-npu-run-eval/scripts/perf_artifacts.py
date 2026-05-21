@@ -108,10 +108,9 @@ def compare_perf_files(
             f"compare={compare_display}, "
             f"delta={_format_delta_percent(baseline_value, compare_value)}"
         )
-    avg_improvement, geomean_speedup, total_speedup = _summarize_perf_metrics(baseline, compare)
+    avg_improvement, geomean_speedup = _summarize_perf_metrics(baseline, compare)
     print(f"Avg improvement: {_format_improvement_percent(avg_improvement)}")
     print(f"Geomean speedup: {_format_speedup(geomean_speedup)}")
-    print(f"Total speedup: {_format_speedup(total_speedup)}")
     compared_entries = {
         latency_id: baseline_outcome.entries[latency_id] for latency_id in comparable_ids
     }
@@ -180,12 +179,11 @@ def _compare_perf_files_all(
                 f"compare={compare_display}, "
                 f"delta={_format_delta_percent(baseline_value, compare_value)}"
             )
-        avg_improvement, geomean_speedup, total_speedup = _summarize_perf_metrics(
+        avg_improvement, geomean_speedup = _summarize_perf_metrics(
             baseline, compare
         )
         lines.append(f"Avg improvement: {_format_improvement_percent(avg_improvement)}")
         lines.append(f"Geomean speedup: {_format_speedup(geomean_speedup)}")
-        lines.append(f"Total speedup: {_format_speedup(total_speedup)}")
         lines.append(f"Metric source: {section_metric_source}")
         skipped_latency_errors = {
             **baseline_outcome.skipped_latency_errors,
@@ -701,12 +699,12 @@ def _format_delta_percent(baseline: float, compare: float) -> str:
 def _summarize_perf_metrics(
     baseline: dict[str, float],
     compare: dict[str, float],
-) -> tuple[float | None, float | None, float | None]:
+) -> tuple[float | None, float | None]:
     pairs = [(baseline[latency_id], compare[latency_id]) for latency_id in sorted(baseline)]
     if not pairs:
-        return None, None, None
+        return None, None
     if any(baseline_value <= 0 or compare_value <= 0 for baseline_value, compare_value in pairs):
-        return None, None, None
+        return None, None
 
     improvements = [
         (baseline_value - compare_value) / baseline_value
@@ -715,10 +713,7 @@ def _summarize_perf_metrics(
     ratios = [baseline_value / compare_value for baseline_value, compare_value in pairs]
     avg_improvement = sum(improvements) / len(improvements)
     geomean_speedup = math.exp(sum(math.log(ratio) for ratio in ratios) / len(ratios))
-    total_speedup = sum(baseline_value for baseline_value, _ in pairs) / sum(
-        compare_value for _, compare_value in pairs
-    )
-    return avg_improvement, geomean_speedup, total_speedup
+    return avg_improvement, geomean_speedup
 
 
 def _format_improvement_percent(value: float | None) -> str:

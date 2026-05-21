@@ -48,7 +48,14 @@ class AgentRunner(ABC):
             return self._run_with_retry(command, request, stdout=stdout)
 
         hook_manager = self._hook_manager()
-        hook_state = hook_manager.prepare_hooks(request.agent_name, request.workdir)
+        extra_allowed_read_roots = (
+            (request.compiler_source_path,) if request.compiler_source_path is not None else ()
+        )
+        hook_state = hook_manager.prepare_hooks(
+            request.agent_name,
+            request.workdir,
+            extra_allowed_read_roots=extra_allowed_read_roots,
+        )
         if request.verbose:
             emit_verbose_lines(stderr or sys.stderr, "hooks", hook_manager.describe_prepare(hook_state))
         try:

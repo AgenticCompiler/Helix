@@ -65,7 +65,6 @@ class OptimizeStatusRound:
     effective_metric_source: str
     avg_improvement: float
     geomean_speedup: float
-    total_speedup: float
     mean_latency: float
 
 
@@ -73,18 +72,14 @@ class OptimizeStatusRound:
 class OptimizeStatusWorkspace:
     workspace: Path
     state: str
-    baseline_mean: float | None
-    best_mean: float | None
     avg_improvement: float | None
     geomean_speedup: float | None
-    total_speedup: float | None
     best_round: str | None
     logged_best: str | None
     warnings: tuple[str, ...]
     latest_verify_state: Path | None = None
     verified: bool = False
     verified_geomean_speedup: float | None = None
-    verified_total_speedup: float | None = None
 
 
 class GateDecision(str, Enum):

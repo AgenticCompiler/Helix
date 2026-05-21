@@ -7,7 +7,7 @@
     "test_mode": "record the resolved correctness mode used for the baseline run.",
     "bench_file": "record the workspace-relative path to the benchmark harness used for the baseline.",
     "bench_mode": "record the resolved benchmark mode used for the baseline run.",
-    "perf_artifact": "record the canonical baseline perf artifact path, normally `baseline/perf.txt`.",
+    "perf_artifact": "record the canonical baseline perf artifact path, normally `baseline/<operator>_perf.txt`.",
     "correctness_status": "record the final baseline correctness result; use `passed` only after correctness succeeds.",
     "benchmark_status": "record the final baseline benchmark result; use `passed` only after the benchmark succeeds.",
     "baseline_established": "set this to `true` only after `correctness_status` is `passed`, `benchmark_status` is `passed`, and the canonical baseline artifacts are written."
@@ -20,9 +20,7 @@
     "correctness_status",
     "benchmark_status",
     "perf_artifact",
-    "canonical_baseline",
     "comparison_target",
-    "perf_summary_source",
     "effective_metric_source",
     "summary_path",
     "opt_note_updated",

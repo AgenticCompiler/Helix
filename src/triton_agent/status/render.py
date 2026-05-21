@@ -53,14 +53,6 @@ def render_optimize_status_results(
         if item.state == "no-session":
             continue
         print(
-            _style(stream, f"  Baseline mean: {format_optimize_status_float(item.baseline_mean)}", _BODY_COLOR),
-            file=stream,
-        )
-        print(
-            _style(stream, f"  Best mean: {format_optimize_status_float(item.best_mean)}", _BODY_COLOR),
-            file=stream,
-        )
-        print(
             _style(
                 stream,
                 f"  Avg improvement: {format_optimize_status_percent(item.avg_improvement)}",
@@ -72,14 +64,6 @@ def render_optimize_status_results(
             _style(
                 stream,
                 f"  Geomean speedup: {format_optimize_status_speedup(item.geomean_speedup)}",
-                _BODY_COLOR,
-            ),
-            file=stream,
-        )
-        print(
-            _style(
-                stream,
-                f"  Total speedup: {format_optimize_status_speedup(item.total_speedup)}",
                 _BODY_COLOR,
             ),
             file=stream,
@@ -115,20 +99,18 @@ def render_optimize_status_markdown_table(
         if item.state != "no-session"
     ]
     print(
-        "| 名称 | Geomean speedup | Total speedup | Verified | "
-        "Verified Geomean speedup | Verified Total speedup | Notes |",
+        "| 名称 | Geomean speedup | Verified | "
+        "Verified Geomean speedup | Notes |",
         file=stream,
     )
-    print("| --- | --- | --- | --- | --- | --- | --- |", file=stream)
+    print("| --- | --- | --- | --- | --- |", file=stream)
     for item in rows:
         print(
             "| "
             f"{item.workspace.name} | "
             f"{format_optimize_status_speedup_cell(item.geomean_speedup)} | "
-            f"{format_optimize_status_speedup_cell(item.total_speedup)} | "
             f"{format_optimize_status_verified_cell(item)} | "
             f"{format_optimize_status_verified_speedup_cell(item.verified_geomean_speedup)} | "
-            f"{format_optimize_status_verified_speedup_cell(item.verified_total_speedup)} | "
             f"{format_optimize_status_notes_cell(item)} |",
             file=stream,
         )

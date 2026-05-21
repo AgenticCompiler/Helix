@@ -643,10 +643,14 @@ For `--agent opencode`, the staged files are:
 - `.opencode/plugins/triton-agent-hook-guard.js`
 - `.opencode/triton-agent-hooks/policy.json`
 
-The policy is rendered for the current workspace. For Codex, it evaluates both
+The policy is rendered for the current workspace. When optimize enables compiler
+source analysis, the resolved compiler source checkout is also added as an
+explicit allowed read root for that run. For Codex, it evaluates both
 direct `Read` tool requests and read-oriented shell commands, including wrapped
 shell invocations such as `bash -lc "sed ..."`. For supported backends, it
-blocks reads outside the workspace and blocks reads of staged skill
+blocks reads outside the workspace unless the current run added an explicit
+allowed read root, and
+blocks reads of staged skill
 implementation files under the backend-native staged skill path, such as
 `.codex/skills/*/scripts/` or `.opencode/skills/*/scripts/`. A blocked read
 returns a short denial message to the agent telling it to stay within the

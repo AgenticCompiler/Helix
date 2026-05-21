@@ -416,18 +416,44 @@ def _normalize_compile_command_tokens(tokens: list[str]) -> list[str]:
     index = 0
     while index < len(tokens):
         token = tokens[index]
-        if token.startswith("--append-bisheng-options="):
+        prefix = _space_separated_option_prefix(token)
+        if prefix is not None:
             value = token.split("=", 1)[1]
             merged: list[str] = [value] if value else []
             index += 1
-            while index < len(tokens) and not tokens[index].startswith("-"):
+            while index < len(tokens) and _should_merge_space_separated_option_value(prefix, tokens[index]):
                 merged.append(tokens[index])
                 index += 1
-            normalized.append(f"--append-bisheng-options={' '.join(merged).strip()}")
+            normalized.append(f"{prefix}{' '.join(merged)}")
             continue
         normalized.append(token)
         index += 1
     return normalized
+
+
+def _space_separated_option_prefix(token: str) -> str | None:
+    for prefix in (
+        "--append-bisheng-options=",
+        "--discrete-mask-access-conversion=",
+        "--triton-to-unstructure=",
+        "--triton-to-linalg=",
+    ):
+        if token.startswith(prefix):
+            return prefix
+    return None
+
+
+def _should_merge_space_separated_option_value(prefix: str, token: str) -> bool:
+    if token.startswith("-"):
+        return False
+    if prefix == "--append-bisheng-options=":
+        return True
+    return _looks_like_inline_option_assignment(token)
+
+
+def _looks_like_inline_option_assignment(token: str) -> bool:
+    name, separator, _value = token.partition("=")
+    return bool(separator) and bool(name) and all(character.isalnum() or character in "._-" for character in name)
 
 
 def _looks_like_ttadapter_input(token: str) -> bool:
