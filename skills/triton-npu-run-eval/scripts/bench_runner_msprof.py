@@ -144,6 +144,8 @@ def run_local_bench_msprof_parallel(
     operator_file: Path,
     devices: tuple[str, ...],
     *,
+    source_root: Path,
+    json_search_root: Path,
     verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     resolution = deps.resolve_bench_kernel_resolution(bench_file, operator_file)
@@ -156,7 +158,8 @@ def run_local_bench_msprof_parallel(
         return count_result, None
 
     case_count = deps._parse_case_count(str(count_result["stdout"]))
-    operator_arg = os.path.relpath(operator_file, bench_file.parent)
+    bench_arg = deps._case_workspace_command_path(bench_file, source_root=source_root)
+    operator_arg = deps._case_workspace_command_path(operator_file, source_root=source_root)
     stdout_chunks = [str(count_result["stdout"])]
     stderr_chunks = [str(count_result["stderr"])]
     preserved_run_dir = _create_local_msprof_preserved_run_dir(deps)
@@ -169,10 +172,13 @@ def run_local_bench_msprof_parallel(
             bench_file,
             operator_file,
             operator_arg,
+            bench_arg,
             resolution,
             int(case_label),
             pool,
             preserved_run_dir,
+            source_root,
+            json_search_root,
             verbose,
         )
 
@@ -326,6 +332,8 @@ def run_remote_bench_msprof_parallel(
     operator_file: Path,
     devices: tuple[str, ...],
     *,
+    source_root: Path,
+    json_search_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
@@ -357,6 +365,8 @@ def run_remote_bench_msprof_parallel(
             resolution,
             int(case_label),
             pool,
+            source_root,
+            json_search_root,
             verbose,
             stderr,
         )
@@ -379,13 +389,22 @@ def _run_local_msprof_case_parallel(
     bench_file: Path,
     operator_file: Path,
     operator_arg: str,
+    bench_arg: str,
     resolution: KernelResolution,
     case_idx: int,
     pool: NpuDevicePool,
     preserved_run_dir: Path | None,
+    source_root: Path,
+    json_search_root: Path,
     verbose: bool,
 ) -> _MsprofCaseOutcome:
-    case_workspace, cleanup = deps._create_local_msprof_case_workspace(bench_file, operator_file, case_idx)
+    case_workspace, cleanup = deps._create_local_msprof_case_workspace(
+        bench_file,
+        operator_file,
+        case_idx,
+        source_root=source_root,
+        json_search_root=json_search_root,
+    )
     output_dir, temp_dir = deps._create_local_msprof_output_dir(case_idx, preserved_run_dir)
     try:
         with pool.acquire() as device:
@@ -393,7 +412,7 @@ def _run_local_msprof_case_parallel(
                 "msprof",
                 f"--output={output_dir}",
                 deps.local_python_executable(),
-                bench_file.name,
+                bench_arg,
                 "--operator-file",
                 operator_arg,
                 "--bench",
@@ -426,6 +445,8 @@ def _run_remote_msprof_case_parallel(
     resolution: KernelResolution,
     case_idx: int,
     pool: NpuDevicePool,
+    source_root: Path,
+    json_search_root: Path,
     verbose: bool,
     stderr: TextIO | None,
 ) -> _MsprofCaseOutcome:
@@ -437,28 +458,32 @@ def _run_remote_msprof_case_parallel(
         verbose=verbose,
         stderr=stderr,
     )
-    deps._stage_remote_msprof_case_workspace(
+    workspace_root = deps._stage_remote_msprof_case_workspace(
         spec,
         bench_file,
         operator_file,
         case_workspace,
+        source_root=source_root,
+        json_search_root=json_search_root,
         verbose=verbose,
         stderr=stderr,
     )
-    output_dir = f"{case_workspace}/msprof-output"
+    bench_arg = deps._case_workspace_command_path(bench_file, source_root=source_root)
+    operator_arg = deps._case_workspace_command_path(operator_file, source_root=source_root)
+    output_dir = f"{workspace_root}/msprof-output"
     try:
         with pool.acquire() as device:
             t0 = time.monotonic()
             result = deps.run_remote_command_streaming(
                 spec,
-                remote_workspace,
+                workspace_root,
                 [
                     "msprof",
                     f"--output={output_dir}",
                     "python3",
-                    bench_file.name,
+                    bench_arg,
                     "--operator-file",
-                    operator_file.name,
+                    operator_arg,
                     "--bench",
                     str(case_idx),
                 ],
@@ -471,7 +496,7 @@ def _run_remote_msprof_case_parallel(
         return _build_remote_msprof_case_outcome(
             deps,
             spec,
-            remote_workspace,
+            workspace_root,
             result,
             resolution,
             case_idx,
