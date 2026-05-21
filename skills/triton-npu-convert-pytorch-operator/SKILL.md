@@ -196,6 +196,7 @@ class ModelNew(nn.Module):
 - Keep the converted file runnable as a PyTorch-facing operator artifact.
 - Prefer targeted conversion over unrelated refactoring.
 - Use differential correctness validation instead of inventing a second validation workflow here.
+- Input validation in the converted operator must limit itself to zero-cost metadata checks (`.dtype`, `.ndim`, `.device`, `.shape`, `.numel()`). Never scan tensor data for bounds or value-range validation — calling `.min().item()`, `.max().item()`, or any reduction+`.item()` on input tensors forces a GPU→CPU synchronization on every forward call and destroys performance. The caller is responsible for providing valid inputs, just as it is for the original PyTorch operator.
 
 ## Do Not
 
@@ -207,4 +208,5 @@ class ModelNew(nn.Module):
 - Do not call `optimize` or create `opt-round-*` directories from this workflow.
 - Do not create `baseline/` or any optimize-session artifacts from this workflow.
 - Do not replace the converted Triton kernel path with pure PyTorch just to get validation green.
+- Do not create input-validation helpers (e.g., `_validate_index`, `_check_bounds`, `_assert_indices`, or similarly-named functions) that scan tensor data. Specifically, never call `.min().item()`, `.max().item()`, `.sum().item()`, or any reduction followed by `.item()` on GPU/NPU tensors before launching a kernel. These force a full-tensor GPU→CPU synchronization on every forward call. The converted operator inherits the same input contract as the original PyTorch operator — if the caller passes out-of-bounds indices, that is a caller bug, not something the conversion must guard against.
 - Do not submit a pure PyTorch rewrite as the converted result, even when the wrapper signature or differential outputs still look correct.
