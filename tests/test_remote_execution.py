@@ -841,9 +841,11 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             operator_dir = root / "opt-round-13"
             operator_dir.mkdir()
             operator_file = operator_dir / "opt_kernel.py"
+            operator_json = operator_dir / "5_MoeInitRouting.json"
             discovered_json = root / "5_MoeInitRouting.json"
             bench_file.write_text("# bench-mode: msprof\n# kernel: KernelB\n", encoding="utf-8")
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
+            operator_json.write_text('{"from":"operator-dir"}\n', encoding="utf-8")
             discovered_json.write_text('{"cases":[1]}\n', encoding="utf-8")
 
             copied_remote_paths: list[str] = []
@@ -912,6 +914,10 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             self.assertIn(f"/tmp/remote-msprof/case-1/{mirrored_root}/bench_all_cases.py", copied_remote_paths)
             self.assertIn(
                 f"/tmp/remote-msprof/case-1/{mirrored_root}/opt-round-13/opt_kernel.py",
+                copied_remote_paths,
+            )
+            self.assertIn(
+                f"/tmp/remote-msprof/case-1/{mirrored_root}/opt-round-13/5_MoeInitRouting.json",
                 copied_remote_paths,
             )
             self.assertIn(f"/tmp/remote-msprof/case-1/{mirrored_root}/5_MoeInitRouting.json", copied_remote_paths)
