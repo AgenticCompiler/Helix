@@ -751,7 +751,7 @@ def _build_top_slow_operations(events: list[dict[str, Any]], *, limit: int = 10)
         return int(d) if isinstance(d, (int, float)) else 0
 
     sorted_events = sorted(events, key=_duration, reverse=True)
-    results = []
+    results: list[dict[str, Any]] = []
     for event in sorted_events[:limit]:
         d = _duration(event)
         if d == 0:
