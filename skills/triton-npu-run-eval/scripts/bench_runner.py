@@ -527,7 +527,7 @@ def _bench_case_input_paths(
     support_paths: Sequence[Path] = (),
 ) -> list[Path]:
     input_paths: list[Path] = [bench_file]
-    json_roots = [bench_file.parent.resolve()]
+    json_roots = [bench_file.parent.resolve(), operator_file.parent.resolve()]
     if json_search_root is not None:
         resolved_json_root = json_search_root.resolve()
         if resolved_json_root not in json_roots:

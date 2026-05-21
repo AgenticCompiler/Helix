@@ -529,12 +529,14 @@ class LocalBenchRunnerTests(unittest.TestCase):
             operator_dir = root / "opt-round-13"
             operator_dir.mkdir()
             operator_file = operator_dir / "opt_kernel.py"
+            operator_json = operator_dir / "5_MoeInitRouting.json"
             discovered_json = root / "5_MoeInitRouting.json"
             bench_file.write_text(
                 "# bench-mode: msprof\n# api-name: kernel\n# kernel: KernelB\n",
                 encoding="utf-8",
             )
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
+            operator_json.write_text('{"from":"operator-dir"}\n', encoding="utf-8")
             discovered_json.write_text('{"cases":[1]}\n', encoding="utf-8")
 
             observed_workdirs: list[Path] = []
@@ -547,6 +549,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 self.assertTrue((workdir_path / "bench_all_cases.py").exists())
                 self.assertTrue((workdir_path / "5_MoeInitRouting.json").exists())
                 self.assertTrue((workdir_path / "opt-round-13" / "opt_kernel.py").exists())
+                self.assertTrue((workdir_path / "opt-round-13" / "5_MoeInitRouting.json").exists())
                 self.assertEqual(
                     command[3:6],
                     ["bench_all_cases.py", "--operator-file", "opt-round-13/opt_kernel.py"],
