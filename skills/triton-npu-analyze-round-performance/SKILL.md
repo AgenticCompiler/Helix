@@ -29,7 +29,8 @@ When compiler source analysis is enabled by the launch prompt or workspace guida
 Read [references/ascend-npu-profiling-analysis.md](references/ascend-npu-profiling-analysis.md) when the round needs deeper interpretation of `op_summary`, `task_time`, `api_statistic`, `msprof` JSON, or `.bin` signals.
 Read [references/ascend-npu-optimization-guidance.md](references/ascend-npu-optimization-guidance.md) when you need help turning profiling symptoms and IR findings into concrete potential optimization points.
 Read [references/ascend-npu-architecture-notes.md](references/ascend-npu-architecture-notes.md) when the likely optimization point depends on chip differences such as A3 versus A5 buffer sizes, layout behavior, or cube/vector data handoff.
-Read [`../triton-npu-optimize-knowledge/references/symptom_index.md`](../triton-npu-optimize-knowledge/references/symptom_index.md) when structured profile or IR evidence is available and you need symptom cards to narrow likely pattern directions before returning to detailed pattern references.
+Read [`../triton-npu-optimize-knowledge/references/symptom_index.md`](../triton-npu-optimize-knowledge/references/symptom_index.md) when structured profile or IR evidence is available and you need Triton/kernel-oriented symptom cards to narrow likely pattern directions before returning to detailed pattern references.
+When the optimize target is `operator` and the evidence points to Torch NPU or framework-op behavior, also read [`../torch-npu-optimize-knowledge/references/pattern_index.md`](../torch-npu-optimize-knowledge/references/pattern_index.md) for operator-level pattern routing.
 
 Read the references in this order:
 
@@ -57,6 +58,7 @@ Read the references in this order:
    - Escalate into `.bin` when CSV-level evidence is still not explanatory enough.
 6. Use [`../triton-npu-optimize-knowledge/references/symptom_index.md`](../triton-npu-optimize-knowledge/references/symptom_index.md) and the matching symptom cards to narrow the current hypothesis.
    - Start from the symptom index, then read only the one or two symptom cards under [`../triton-npu-optimize-knowledge/references/symptoms/`](../triton-npu-optimize-knowledge/references/symptoms/) that best match the extracted evidence.
+   - When the optimize target is `operator` and the bottleneck looks Torch NPU or framework-op specific, also use [`../torch-npu-optimize-knowledge/references/pattern_index.md`](../torch-npu-optimize-knowledge/references/pattern_index.md) and the matching pattern cards under [`../torch-npu-optimize-knowledge/references/patterns/`](../torch-npu-optimize-knowledge/references/patterns/).
    - Use symptom cards as routing aids, not as a replacement for the underlying profile or IR evidence.
 7. Decide whether profiler evidence is already sufficient on its own.
    - If the layered profiler signals already explain the likely operator problem well enough, continue to diagnosis.

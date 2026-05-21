@@ -2,6 +2,7 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Optional
 
 
 def _load_guard_module():
@@ -75,7 +76,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
-    def test_blocks_python_one_liner_opening_protected_script(self) -> None:
+    def test_allows_python_one_liner_opening_protected_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             script = workspace / ".codex" / "skills" / "skill-a" / "scripts" / "helper.py"
@@ -88,7 +89,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
                 _payload(workspace, f"python3 -c \"print(open('{script}').read())\""),
             )
 
-            self.assertEqual(reason, _DENY_MESSAGE)
+            self.assertIsNone(reason)
 
     def test_allows_python_entrypoint_for_staged_helper_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -177,7 +178,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
-    def test_blocks_triton_agent_los_nested_script_read(self) -> None:
+    def test_allows_triton_agent_logs_nested_script_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             script = workspace / "triton-agent-logs" / "triton-agent" / "opt_kernel.py"
@@ -190,9 +191,9 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
                 _payload(workspace, f"python3 -c \"print(open('{script}').read())\""),
             )
 
-            self.assertEqual(reason, _DENY_MESSAGE)
+            self.assertIsNone(reason)
 
-    def test_blocks_python_one_liner_opening_relative_triton_agent_log(self) -> None:
+    def test_allows_python_one_liner_opening_relative_triton_agent_log(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
@@ -208,7 +209,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
                 ),
             )
 
-            self.assertEqual(reason, _DENY_MESSAGE)
+            self.assertIsNone(reason)
 
     def test_allows_read_outside_triton_agent_logs_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -221,6 +222,23 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             reason = guard.evaluate_payload(
                 _policy(workspace),
                 _payload(workspace, f"cat {readme}"),
+            )
+
+            self.assertIsNone(reason)
+
+    def test_allows_read_from_extra_allow_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            compiler_source = Path(tmp) / "compiler-sources" / "AscendNPU-IR"
+            source_file = compiler_source / "passes" / "lowering.cc"
+            source_file.parent.mkdir(parents=True)
+            source_file.write_text("pass\n", encoding="utf-8")
+            workspace.mkdir()
+            guard = _load_guard_module()
+
+            reason = guard.evaluate_payload(
+                _policy(workspace, extra_allow_roots=[compiler_source]),
+                _payload(workspace, f"sed -n '1,20p' {source_file}"),
             )
 
             self.assertIsNone(reason)
@@ -310,11 +328,14 @@ _DENY_MESSAGE = (
 )
 
 
-def _policy(workspace: Path) -> dict[str, object]:
+def _policy(workspace: Path, extra_allow_roots: Optional[list[Path]] = None) -> dict[str, object]:
     root = workspace.resolve()
+    allow_read_roots = [str(root)]
+    if extra_allow_roots is not None:
+        allow_read_roots.extend(str(path.resolve()) for path in extra_allow_roots)
     return {
         "workspace_root": str(root),
-        "allow_read_roots": [str(root)],
+        "allow_read_roots": allow_read_roots,
         "deny_read_globs": [
             str(root / "triton-agent-logs" / "**"),
             str(root / ".codex" / "skills" / "*" / "scripts" / "**"),

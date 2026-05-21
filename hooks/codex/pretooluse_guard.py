@@ -17,8 +17,6 @@ READ_COMMANDS = {
     "head",
     "less",
     "more",
-    "python",
-    "python3",
     "rg",
     "sed",
     "tail",
@@ -26,8 +24,6 @@ READ_COMMANDS = {
 READ_TOOL_PATH_KEYS = ("file_path", "filePath")
 SHELL_WRAPPER_FLAGS = {"-c", "-lc"}
 SHELL_WRAPPERS = {"bash", "sh", "zsh"}
-PYTHON_COMMANDS = {"python", "python3"}
-SHELL_CONTROL_OPERATORS = {"&&", "||", "|", ";", "&"}
 PROTECTED_RELATIVE_PATH_PREFIXES = ("triton-agent-logs/",)
 
 PATH_FRAGMENT_RE = re.compile(
@@ -151,21 +147,18 @@ def _candidate_paths_inner(command: str, *, seen_commands: set[str]) -> list[tup
     if not _contains_read_command(tokens):
         return candidates
 
-    python_entrypoint_indexes = _python_entrypoint_candidate_indexes(tokens)
-    python_entrypoint_values = {tokens[index] for index in python_entrypoint_indexes}
     explicit_path_tokens = {token for token in tokens if _looks_like_path(token)}
 
     for index, token in enumerate(tokens):
         if _is_read_command_token(token):
             continue
         if _looks_like_path(token):
-            candidates.append((token, index in python_entrypoint_indexes))
+            candidates.append((token, False))
 
     for match in PATH_FRAGMENT_RE.finditer(command):
         path = match.group("path")
         if (
             not _is_read_command_token(path)
-            and path not in python_entrypoint_values
             and not _is_nested_path_fragment(path, explicit_path_tokens)
         ):
             candidates.append((path, False))
@@ -201,38 +194,6 @@ def _is_read_command_token(token: str) -> bool:
     return Path(token).name in READ_COMMANDS
 
 
-def _is_python_command_token(token: str) -> bool:
-    return Path(token).name in PYTHON_COMMANDS
-
-
-def _python_entrypoint_candidate_indexes(tokens: list[str]) -> set[int]:
-    indexes: set[int] = set()
-    for index, token in enumerate(tokens):
-        if not _is_python_command_token(token):
-            continue
-        entrypoint_index = _python_entrypoint_candidate_index(tokens, index + 1)
-        if entrypoint_index is not None:
-            indexes.add(entrypoint_index)
-    return indexes
-
-
-def _python_entrypoint_candidate_index(tokens: list[str], start: int) -> int | None:
-    for index in range(start, len(tokens)):
-        token = tokens[index]
-        if token in SHELL_CONTROL_OPERATORS:
-            return None
-        if token in {"-c", "-m"}:
-            return None
-        if token == "--":
-            continue
-        if token.startswith("-"):
-            continue
-        if _looks_like_path(token):
-            return index
-        return None
-    return None
-
-
 def _looks_like_path(token: str) -> bool:
     return (
         token.startswith("/")
@@ -254,6 +215,7 @@ def _is_protected_script_path(path: Path, workspace_root: Path) -> bool:
         return False
     parts = relative.parts
     return len(parts) >= 5 and parts[0] == ".codex" and parts[1] == "skills" and parts[3] == "scripts"
+
 
 def build_denial_output(reason: str) -> dict[str, Any]:
     return {

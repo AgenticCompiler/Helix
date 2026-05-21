@@ -182,6 +182,48 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, r"\[DEBUG\] cmd_list"):
             module.extract_capture_details("Dumping intermediate results to /tmp/triton-dump")
 
+    def test_extract_capture_details_merges_pass_option_values_with_embedded_spaces(self) -> None:
+        module = _load_capture_ir_module()
+
+        details = module.extract_capture_details(
+            "\n".join(
+                [
+                    "Dumping intermediate results to /tmp/triton-dump",
+                    (
+                        "[DEBUG] cmd_list: "
+                        "/opt/bin/triton-adapter-opt /tmp/kernel.ttir.mlir "
+                        "--discrete-mask-access-conversion=compile-on-910-95=False "
+                        "force-simt-template=False "
+                        "--triton-to-annotation "
+                        "--triton-to-unstructure=compile-on-910-95=False "
+                        "force-simt-template=False "
+                        "--triton-to-linalg=global-kernel=false named-ops=True "
+                        "enable-nd2nz-on-vector=False enable-select-analysis=False "
+                        "compile-on-910-95=False "
+                        "-o /tmp/kernel.ttadapter.mlir"
+                    ),
+                ]
+            )
+        )
+
+        self.assertEqual(
+            details.compile_command,
+            [
+                "/opt/bin/triton-adapter-opt",
+                "/tmp/kernel.ttir.mlir",
+                "--discrete-mask-access-conversion=compile-on-910-95=False force-simt-template=False",
+                "--triton-to-annotation",
+                "--triton-to-unstructure=compile-on-910-95=False force-simt-template=False",
+                (
+                    "--triton-to-linalg=global-kernel=false named-ops=True "
+                    "enable-nd2nz-on-vector=False enable-select-analysis=False "
+                    "compile-on-910-95=False"
+                ),
+                "-o",
+                "/tmp/kernel.ttadapter.mlir",
+            ],
+        )
+
     def test_rewrite_compile_command_updates_ir_flags(self) -> None:
         module = _load_capture_ir_module()
 

@@ -10,7 +10,7 @@ Expected long-lived artifacts:
 - `bench_<operator-stem>.py` or the mode-specific generated benchmark artifact
 - `baseline/`
 - `baseline/state.json`
-- `baseline/perf.txt`
+- `baseline/<operator>_perf.txt`
 - `opt-note.md`
 - `learned_lessons.md`
 - `opt-round-1/`
@@ -32,8 +32,9 @@ The canonical optimize baseline lives under `baseline/`.
 Required baseline artifacts:
 
 - one baseline operator snapshot under `baseline/`
-- `baseline/perf.txt`
+- `baseline/<operator>_perf.txt`
 - `baseline/state.json`
+
 
 `baseline/state.json` must contain these fields:
 
@@ -96,12 +97,19 @@ Each completed round must also include `round-state.json`.
 - `correctness_status`
 - `benchmark_status`
 - `perf_artifact`
-- `canonical_baseline`
 - `comparison_target`
-- `perf_summary_source`
+- `effective_metric_source`
 - `summary_path`
 - `opt_note_updated`
 - `round_disposition`: `"continue"` when the round produced a meaningful improvement and the optimization session should continue, or `"stop"` when no further optimization direction is justified by current evidence. Do not use this field to write forward-looking optimization plans or predict what to try next—that must be determined by fresh profiling or benchmark evidence after the code changes.
+
+`effective_metric_source` records the resolved `compare-perf` basis used for the round conclusion:
+
+- `kernel`: kernel latency was the comparison basis
+- `total-op`: total-op aggregation was the comparison basis
+- `mixed`: kernel latency and total-op fallback were mixed across cases
+
+Record exactly one value. Do not add a second policy field for intended comparison mode.
 
 Treat these round-state fields as the authoritative artifact references for round validation:
 

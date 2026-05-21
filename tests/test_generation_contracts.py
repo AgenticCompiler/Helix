@@ -311,6 +311,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("triton-npu-profile-operator", optimize)
         self.assertIn("triton-npu-analyze-round-performance", optimize)
         self.assertIn("triton-npu-optimize-knowledge", optimize)
+        self.assertIn("torch-npu-optimize-knowledge", optimize)
         self.assertIn("classic-matmul.md", optimize)
         self.assertIn("`opt-round-N/perf-analysis.md`", optimize)
 
@@ -325,6 +326,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("does not define optimize workflow", knowledge)
         self.assertIn("pattern_index.md", knowledge)
         self.assertIn("classic-matmul", index)
+        self.assertNotIn("argsort-avoid-aicpu-fallback", index)
         self.assertIn("matmul-like", reference)
 
     def test_optimize_knowledge_skill_owns_generic_symptom_references(self) -> None:
@@ -338,8 +340,44 @@ class GenerationContractTests(unittest.TestCase):
 
         self.assertIn("symptom_index.md", knowledge)
         self.assertIn("weak-pipeline-overlap", symptom_index)
+        self.assertNotIn("unsupported-dtype-fallback", symptom_index)
         self.assertIn("## Evidence To Confirm", symptom)
         self.assertIn("## Candidate Pattern Directions", symptom)
+
+    def test_torch_npu_optimize_knowledge_skill_owns_operator_level_pattern_references(
+        self,
+    ) -> None:
+        knowledge = _read("skills/torch-npu-optimize-knowledge/SKILL.md")
+        pattern_index = _read("skills/torch-npu-optimize-knowledge/references/pattern_index.md")
+        pattern = _read(
+            "skills/torch-npu-optimize-knowledge/references/patterns/argsort-avoid-aicpu-fallback.md"
+        )
+
+        self.assertIn("reference-only", knowledge)
+        self.assertIn("Torch NPU", knowledge)
+        self.assertIn("pattern references", knowledge)
+        self.assertNotIn("symptom_index.md", knowledge)
+        self.assertIn("argsort-avoid-aicpu-fallback", pattern_index)
+        self.assertIn("torch.argsort()", pattern)
+        self.assertFalse(
+            (
+                REPO_ROOT
+                / "skills"
+                / "torch-npu-optimize-knowledge"
+                / "references"
+                / "symptom_index.md"
+            ).exists()
+        )
+        self.assertFalse(
+            (
+                REPO_ROOT
+                / "skills"
+                / "torch-npu-optimize-knowledge"
+                / "references"
+                / "symptoms"
+                / "unsupported-dtype-fallback.md"
+            ).exists()
+        )
 
     def test_optimize_pattern_library_includes_classic_tiled_matmul(self) -> None:
         index = _read("skills/triton-npu-optimize-knowledge/references/pattern_index.md")
@@ -528,8 +566,13 @@ class GenerationContractTests(unittest.TestCase):
         )
         self.assertIn("symptom cards", skill)
         self.assertIn("triton-npu-optimize-knowledge", skill)
+        self.assertIn("torch-npu-optimize-knowledge", skill)
         self.assertIn(
             "../triton-npu-optimize-knowledge/references/symptom_index.md",
+            skill,
+        )
+        self.assertIn(
+            "../torch-npu-optimize-knowledge/references/pattern_index.md",
             skill,
         )
         self.assertIn("weak-pipeline-overlap", symptom_index)
@@ -815,6 +858,21 @@ class GenerationContractTests(unittest.TestCase):
         optimize = _read("skills/triton-npu-optimize/SKILL.md")
         self.assertIn("use the `triton-npu-run-eval` skill to run `compare-perf`", optimize)
         self.assertIn("the `triton-npu-run-eval` skill's `compare-perf` flow", optimize)
+        self.assertIn("effective_metric_source", optimize)
+        self.assertIn("show both kernel and total-op comparison results", optimize)
+
+    def test_compare_perf_reference_documents_all_mode_and_optimize_target_usage(self) -> None:
+        compare_perf = _read("skills/triton-npu-run-eval/references/compare-perf.md")
+        self.assertIn("--metric-source auto|kernel|total-op|all", compare_perf)
+        self.assertIn("operator-target optimize rounds", compare_perf)
+        self.assertIn("effective_metric_source", compare_perf)
+
+    def test_optimize_artifacts_reference_documents_effective_metric_source(self) -> None:
+        artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
+        self.assertIn("effective_metric_source", artifacts)
+        self.assertIn("kernel", artifacts)
+        self.assertIn("total-op", artifacts)
+        self.assertIn("mixed", artifacts)
 
     def test_profiler_skill_documents_standalone_case_id_contract(self) -> None:
         profiler = _read("skills/triton-npu-profile-operator/SKILL.md")

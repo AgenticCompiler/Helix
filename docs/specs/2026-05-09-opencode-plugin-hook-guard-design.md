@@ -78,8 +78,9 @@ The guard should:
 
 - Ignore non-shell tool calls.
 - Inspect `output.args.command` when it is a string.
-- Detect common read-oriented commands: `cat`, `sed`, `head`, `tail`, `less`, `more`, `awk`, `rg`, `python`, and `python3`.
-- Extract path-like tokens from shell input and common Python one-liners.
+- Detect common read-oriented commands: `cat`, `sed`, `head`, `tail`, `less`, `more`, `awk`, and `rg`.
+- Extract path-like tokens from shell input.
+- Do not treat `python` or `python3` shell invocations as read commands.
 - Resolve relative paths against the tool call cwd when available, otherwise the policy workspace root.
 - Deny resolved paths outside `allow_read_roots`.
 - Deny resolved paths matching `deny_read_globs`.

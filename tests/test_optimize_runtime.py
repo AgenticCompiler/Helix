@@ -128,9 +128,8 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     "correctness_status": "passed",
                     "benchmark_status": "passed",
                     "perf_artifact": "opt_kernel_perf.txt",
-                    "canonical_baseline": "baseline",
                     "comparison_target": "baseline/perf.txt",
-                    "perf_summary_source": "compare-perf",
+                    "effective_metric_source": "kernel",
                     "summary_path": "summary.md",
                     "opt_note_updated": True,
                     "round_disposition": round_disposition,
@@ -414,6 +413,66 @@ class OptimizeRuntimeTests(unittest.TestCase):
             request = build_optimize_request(operator, workdir, options)
 
             self.assertIsNone(request.staged_skill_sources)
+
+    def test_build_optimize_request_defaults_optimize_target_to_kernel(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                optimize_target="kernel",
+            )
+
+            request = build_optimize_request(operator, workdir, options)
+
+            self.assertEqual(request.optimize_target, "kernel")
+
+    def test_build_optimize_request_preserves_operator_optimize_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                optimize_target="operator",
+            )
+
+            request = build_optimize_request(operator, workdir, options)
+
+            self.assertEqual(request.optimize_target, "operator")
+            self.assertIn(
+                "torch-npu-optimize-knowledge",
+                request.staged_skill_names or (),
+            )
 
     def test_build_optimize_request_maps_v2_knowledge_to_stable_staged_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -924,6 +983,63 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertEqual(session_entry["session_id"], "unknown")
             self.assertEqual(session_entry["agent"], "codex")
             mocked_prepare.assert_not_called()
+
+    def test_run_optimize_request_unsupervised_operator_target_guidance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=operator,
+                operator_path=operator,
+                output_path=workdir / "opt_kernel.py",
+                test_mode="differential",
+                bench_mode="standalone",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-optimize",
+                prompt="Optimize this operator",
+                workdir=workdir,
+                supervise="off",
+                optimize_target="operator",
+            )
+
+            class FakeRunner:
+                def __init__(self) -> None:
+                    self.guidance_content = ""
+
+                def run(
+                    self,
+                    request: AgentRequest,
+                    stdout: Optional[object] = None,
+                    stderr: Optional[object] = None,
+                ) -> AgentResult:
+                    del request, stdout, stderr
+                    self.guidance_content = (workdir / "AGENTS.md").read_text(encoding="utf-8")
+                    return AgentResult(return_code=0, stdout="ok", stderr="", session_id=None)
+
+                def resume(
+                    self,
+                    request: AgentRequest,
+                    summary: str,
+                    stdout: Optional[object] = None,
+                    stderr: Optional[object] = None,
+                ) -> AgentResult:
+                    del request, summary, stdout, stderr
+                    return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            runner = FakeRunner()
+            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
+                result = run_optimize_request(request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertIn("Target optimization scope: operator.", runner.guidance_content)
+            self.assertIn("Optimize end-to-end operator latency.", runner.guidance_content)
 
     def test_run_optimize_request_unsupervised_retries_with_resume(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

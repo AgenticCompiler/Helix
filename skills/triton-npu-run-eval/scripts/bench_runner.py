@@ -31,7 +31,9 @@ from perf_artifacts import (
     RequiredLatencyIds,
     compare_perf_files as _compare_perf_files,
     parse_perf_file as _parse_perf_file,
+    parse_perf_file_for_metric_source as _parse_perf_file_for_metric_source,
     parse_required_perf_file as _parse_required_perf_file,
+    parse_required_perf_file_for_metric_source as _parse_required_perf_file_for_metric_source,
     perf_output_path,
     render_perf_case_records,
     write_perf_lines,
@@ -440,6 +442,27 @@ def parse_perf_file(path: Path) -> dict[str, float]:
 
 def parse_required_perf_file(path: Path, required_latency_ids: RequiredLatencyIds) -> dict[str, float]:
     return _parse_required_perf_file(path, required_latency_ids)
+
+
+def parse_perf_file_for_metric_source(
+    path: Path,
+    *,
+    metric_source: MetricSource = "auto",
+) -> dict[str, float]:
+    return _parse_perf_file_for_metric_source(path, metric_source=metric_source)
+
+
+def parse_required_perf_file_for_metric_source(
+    path: Path,
+    required_latency_ids: RequiredLatencyIds,
+    *,
+    metric_source: MetricSource = "auto",
+) -> dict[str, float]:
+    return _parse_required_perf_file_for_metric_source(
+        path,
+        required_latency_ids,
+        metric_source=metric_source,
+    )
 
 
 def run_local_bench(

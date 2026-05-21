@@ -30,6 +30,7 @@ _BENCH_MODE_CHOICES = ("standalone", "msprof")
 _RESUME_CHOICES = ("auto", "continue", "fresh")
 _SUPERVISE_CHOICES = ("on", "off")
 _TARGET_CHIP_CHOICES = ("A3", "A5")
+_OPTIMIZE_TARGET_CHOICES = ("kernel", "operator")
 _OPTIMIZE_KNOWLEDGE_CHOICES = ("v1", "v2", "v3")
 _VERIFY_PHASE_CHOICES = ("all", "test", "bench")
 _TOP_LEVEL_DESCRIPTION = "Generate, run, verify, and optimize Triton NPU operator workflows."
@@ -419,6 +420,11 @@ def build_parser() -> argparse.ArgumentParser:
                 subparser.add_argument("--enable-agent-hooks", action="store_true")
             subparser.add_argument("--target-chip", default="A5", choices=_TARGET_CHIP_CHOICES)
             subparser.add_argument(
+                "--optimize-target",
+                default="kernel",
+                choices=_OPTIMIZE_TARGET_CHOICES,
+            )
+            subparser.add_argument(
                 "--optimize-knowledge",
                 default="v1",
                 choices=_OPTIMIZE_KNOWLEDGE_CHOICES,
@@ -518,7 +524,7 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument(
             "--metric-source",
             default="auto",
-            choices=("auto", "kernel", "total-op"),
+            choices=("auto", "kernel", "total-op", "all"),
         )
         return
     subparser.add_argument("-i", "--input", required=True)

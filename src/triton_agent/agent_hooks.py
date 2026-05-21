@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,12 +37,18 @@ class AgentHookManager:
     def __init__(self, hooks_root: Path) -> None:
         self.hooks_root = hooks_root
 
-    def prepare_hooks(self, backend: str, workdir: Path) -> AgentHookState:
+    def prepare_hooks(
+        self,
+        backend: str,
+        workdir: Path,
+        *,
+        extra_allowed_read_roots: Sequence[Path] = (),
+    ) -> AgentHookState:
         normalized_backend = backend.lower()
         if normalized_backend == "codex":
-            return self._prepare_codex_hooks(workdir)
+            return self._prepare_codex_hooks(workdir, extra_allowed_read_roots=extra_allowed_read_roots)
         if normalized_backend == "opencode":
-            return self._prepare_opencode_hooks(workdir)
+            return self._prepare_opencode_hooks(workdir, extra_allowed_read_roots=extra_allowed_read_roots)
         return AgentHookState(created_paths=[])
 
     def cleanup(self, state: AgentHookState) -> list[str]:
@@ -68,7 +75,12 @@ class AgentHookManager:
             return ["No backend-specific hooks to clean up."]
         return [f"Cleaning up staged agent hooks: {', '.join(str(path) for path in state.created_paths)}"]
 
-    def _prepare_codex_hooks(self, workdir: Path) -> AgentHookState:
+    def _prepare_codex_hooks(
+        self,
+        workdir: Path,
+        *,
+        extra_allowed_read_roots: Sequence[Path] = (),
+    ) -> AgentHookState:
         workspace = workdir.absolute()
         policy_workspace = workspace.resolve()
         template_dir = self.hooks_root / "codex"
@@ -92,14 +104,23 @@ class AgentHookManager:
             hook_dir.mkdir(parents=True)
             shutil.copy2(template_dir / "pretooluse_guard.py", hook_dir / "pretooluse_guard.py")
             created_paths.append(hook_dir)
-            self._write_codex_policy(hook_dir / "policy.json", policy_workspace)
+            self._write_codex_policy(
+                hook_dir / "policy.json",
+                policy_workspace,
+                extra_allowed_read_roots=extra_allowed_read_roots,
+            )
         except Exception:
             self.cleanup(state)
             raise
 
         return state
 
-    def _prepare_opencode_hooks(self, workdir: Path) -> AgentHookState:
+    def _prepare_opencode_hooks(
+        self,
+        workdir: Path,
+        *,
+        extra_allowed_read_roots: Sequence[Path] = (),
+    ) -> AgentHookState:
         workspace = workdir.absolute()
         policy_workspace = workspace.resolve()
         template_dir = self.hooks_root / "opencode"
@@ -122,27 +143,54 @@ class AgentHookManager:
 
             hook_dir.mkdir(parents=True)
             created_paths.append(hook_dir)
-            self._write_opencode_policy(hook_dir / "policy.json", policy_workspace)
+            self._write_opencode_policy(
+                hook_dir / "policy.json",
+                policy_workspace,
+                extra_allowed_read_roots=extra_allowed_read_roots,
+            )
         except Exception:
             self.cleanup(state)
             raise
 
         return state
 
-    def _write_codex_policy(self, policy_path: Path, workspace: Path) -> None:
+    def _write_codex_policy(
+        self,
+        policy_path: Path,
+        workspace: Path,
+        *,
+        extra_allowed_read_roots: Sequence[Path] = (),
+    ) -> None:
         policy = {
             "workspace_root": str(workspace),
-            "allow_read_roots": [str(workspace)],
+            "allow_read_roots": self._allow_read_roots(workspace, extra_allowed_read_roots),
             "deny_read_globs": [str(workspace / pattern) for pattern in _CODEX_DENY_READ_GLOBS],
             "deny_message": _CODEX_DENY_MESSAGE,
         }
         policy_path.write_text(json.dumps(policy, indent=2) + "\n", encoding="utf-8")
 
-    def _write_opencode_policy(self, policy_path: Path, workspace: Path) -> None:
+    def _write_opencode_policy(
+        self,
+        policy_path: Path,
+        workspace: Path,
+        *,
+        extra_allowed_read_roots: Sequence[Path] = (),
+    ) -> None:
         policy = {
             "workspace_root": str(workspace),
-            "allow_read_roots": [str(workspace)],
+            "allow_read_roots": self._allow_read_roots(workspace, extra_allowed_read_roots),
             "deny_read_globs": [str(workspace / pattern) for pattern in _OPENCODE_DENY_READ_GLOBS],
             "deny_message": _OPENCODE_DENY_MESSAGE,
         }
         policy_path.write_text(json.dumps(policy, indent=2) + "\n", encoding="utf-8")
+
+    def _allow_read_roots(self, workspace: Path, extra_allowed_read_roots: Sequence[Path]) -> list[str]:
+        roots = [str(workspace)]
+        seen = {workspace}
+        for root in extra_allowed_read_roots:
+            resolved_root = root.expanduser().resolve()
+            if resolved_root in seen:
+                continue
+            roots.append(str(resolved_root))
+            seen.add(resolved_root)
+        return roots
