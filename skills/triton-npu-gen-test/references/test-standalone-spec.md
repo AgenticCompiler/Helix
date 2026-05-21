@@ -106,7 +106,8 @@ If a `torch-module` entrypoint requires constructor arguments, fail explicitly w
   - different dtypes
 - Avoid empty tensors and invalid shapes.
 - All tensors must be created on device **`"npu"`**.
-- Set seeds where appropriate so the test data is reproducible.
+- Randomized input generation is allowed, but the harness must explicitly fix the seed during case construction so repeated runs of the same harness produce identical inputs.
+- Do not depend on ambient global RNG state or prior random draws to keep cases stable.
 
 ### 5. Reference correctness behavior
 

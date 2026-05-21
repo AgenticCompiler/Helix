@@ -250,6 +250,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Address expressions use modulo addressing (`%`) to wrap tail tiles or index boundaries.
   - `tl.where` masks all lanes except a single special position, or has exactly one false lane in a vector.
   - Integer elementwise arithmetic is done as scalar-looking `int64` work even though the value range is safely `int32`.
+  - `tl.cumsum` or `tl.associative_scan` runs on the last axis of a tensor and profiling or IR suggests scalar fallback instead of vector lowering.
   - `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
 
 ### `slice_coalesce`

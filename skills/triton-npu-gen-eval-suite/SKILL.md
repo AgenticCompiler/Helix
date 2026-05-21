@@ -64,6 +64,7 @@ If the successful fix is a new pattern not covered there, append a short entry t
 
 - Repair the original operator file when the operator is the source of failure.
 - Keep generated test and benchmark files aligned with the final operator API. They must follow **`triton-npu-gen-test` / `triton-npu-gen-bench`** norms: harnesses **run on Ascend NPU only**—no CUDA/CPU/other-device primary paths (see those skills’ specs).
+- If either generated harness uses randomized inputs, it must explicitly fix the seed during case construction so repeated runs of the same harness produce identical inputs.
 - Prefer targeted repairs over broad rewrites.
 - Stop with a short explicit explanation when the problem is a workspace or environment blocker that cannot be fixed from repository code alone.
 - When editing the operator, **preserve the Triton / NPU kernel path** as the delivered implementation. **Do not** replace it with a **pure PyTorch** reimplementation as a “fix,” and **do not** satisfy validation by weakening what the harness exercises.
