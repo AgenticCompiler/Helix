@@ -17,6 +17,7 @@ class TestParseTimestamp(unittest.TestCase):
     def test_iso_with_z_suffix(self) -> None:
         ts = _parse_timestamp("2026-05-17T10:29:18Z")
         self.assertIsNotNone(ts)
+        assert ts is not None
         self.assertEqual(ts.year, 2026)
         self.assertEqual(ts.month, 5)
         self.assertEqual(ts.day, 17)
@@ -73,6 +74,7 @@ class TestClaudeJsonLineParser(unittest.TestCase):
             "session_id": "session-uuid",
         })
         result = parser.parse_line(line + "\n")
+        assert result is not None
         self.assertIn("[tool] Read started:", result)
         self.assertIn("/abs/path/to/file", result)
         events = trace_path.read_text().splitlines()
@@ -130,6 +132,7 @@ class TestClaudeJsonLineParser(unittest.TestCase):
             },
         })
         result = parser.parse_line(end_line + "\n")
+        assert result is not None
         self.assertIn("[tool] Bash done in", result)
         events = trace_path.read_text().splitlines()
         # Should have: diagnostic(claude_native_json_active), tool_call start, tool_call end, command
@@ -340,6 +343,7 @@ class TestClaudeJsonLineParser(unittest.TestCase):
             "model": "claude-sonnet-4-6",
         })
         result = parser.parse_line(line + "\n")
+        assert result is not None
         self.assertIn("test-session-uuid", result)
         self.assertEqual(parser._session_id, "test-session-uuid")
 
@@ -355,6 +359,7 @@ class TestClaudeJsonLineParser(unittest.TestCase):
             "session_id": "uuid",
         })
         result = parser.parse_line(line + "\n")
+        assert result is not None
         self.assertIn("success", result)
         self.assertIn("8956ms", result)
         events = trace_path.read_text().splitlines()
