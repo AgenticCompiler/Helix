@@ -196,7 +196,7 @@ def build_parser() -> argparse.ArgumentParser:
     compare_perf.add_argument(
         "--metric-source",
         default="auto",
-        choices=["auto", "kernel", "total-op"],
+        choices=["auto", "kernel", "total-op", "all"],
     )
 
     return parser
