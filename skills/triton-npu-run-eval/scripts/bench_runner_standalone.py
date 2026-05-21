@@ -84,6 +84,8 @@ def run_local_bench_standalone_parallel(
     operator_file: Path,
     devices: tuple[str, ...],
     *,
+    source_root: Path,
+    json_search_root: Path,
     verbose: bool = False,
 ) -> tuple[ResultPayload, Path]:
     runtime = deps._load_standalone_runtime_module()
@@ -92,15 +94,24 @@ def run_local_bench_standalone_parallel(
     pool = NpuDevicePool(devices)
 
     def _worker(case_id: str) -> PerfCaseRecord:
-        case_workspace, cleanup = _create_local_standalone_case_workspace(deps, bench_file, operator_file, case_id)
+        case_workspace, cleanup = _create_local_standalone_case_workspace(
+            deps,
+            bench_file,
+            operator_file,
+            case_id,
+            source_root=source_root,
+            json_search_root=json_search_root,
+        )
         try:
             with pool.acquire() as device:
                 return _run_local_standalone_case_in_subprocess(
                     deps,
-                    case_workspace / bench_file.name,
-                    case_workspace / operator_file.name,
+                    case_workspace,
+                    bench_file,
+                    operator_file,
                     case_id,
                     device,
+                    source_root=source_root,
                 )
         finally:
             cleanup()
@@ -119,6 +130,8 @@ def run_remote_bench_standalone_parallel(
     operator_file: Path,
     devices: tuple[str, ...],
     *,
+    source_root: Path,
+    json_search_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[ResultPayload, Path, str]:
@@ -136,12 +149,14 @@ def run_remote_bench_standalone_parallel(
             verbose=verbose,
             stderr=stderr,
         )
-        _stage_remote_standalone_case_workspace(
+        workspace_root = _stage_remote_standalone_case_workspace(
             deps,
             spec,
             bench_file,
             operator_file,
             case_workspace,
+            source_root=source_root,
+            json_search_root=json_search_root,
             verbose=verbose,
             stderr=stderr,
         )
@@ -150,11 +165,12 @@ def run_remote_bench_standalone_parallel(
                 return _run_remote_standalone_case(
                     deps,
                     spec,
-                    case_workspace,
-                    bench_file.name,
-                    operator_file.name,
+                    workspace_root,
+                    bench_file,
+                    operator_file,
                     case_id,
                     device,
+                    source_root=source_root,
                     verbose=verbose,
                     stderr=stderr,
                 )
@@ -212,34 +228,42 @@ def _create_local_standalone_case_workspace(
     bench_file: Path,
     operator_file: Path,
     case_id: str,
+    *,
+    source_root: Path,
+    json_search_root: Path,
 ) -> tuple[Path, Any]:
     return deps._create_local_case_workspace(
         prefix=f"triton-agent-standalone-case-{case_id}-",
         input_paths=deps._bench_case_input_paths(
             bench_file,
             operator_file,
+            json_search_root=json_search_root,
             support_paths=deps._standalone_runtime_support_paths(),
         ),
+        source_root=source_root,
     )
 
 
 def _run_local_standalone_case_in_subprocess(
     deps: Any,
+    workspace_root: Path,
     bench_file: Path,
     operator_file: Path,
     case_id: str,
     device: str,
+    *,
+    source_root: Path,
 ) -> PerfCaseRecord:
     result = deps.run_buffered_process(
         [
             deps.local_python_executable(),
             "-c",
             _build_standalone_run_one_case_script(),
-            bench_file.name,
-            operator_file.name,
+            deps._case_workspace_command_path(bench_file, source_root=source_root),
+            deps._case_workspace_command_path(operator_file, source_root=source_root),
             case_id,
         ],
-        str(bench_file.parent),
+        str(workspace_root),
         stall_timeout_seconds=deps._bench_timeout(),
         extra_env=affinity_env_for_device(device),
     )
@@ -257,17 +281,21 @@ def _stage_remote_standalone_case_workspace(
     operator_file: Path,
     case_workspace: str,
     *,
+    source_root: Path,
+    json_search_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
-) -> None:
-    deps._stage_remote_case_workspace(
+) -> str:
+    return deps._stage_remote_case_workspace(
         spec,
         case_workspace,
         deps._bench_case_input_paths(
             bench_file,
             operator_file,
+            json_search_root=json_search_root,
             support_paths=deps._standalone_runtime_support_paths(),
         ),
+        source_root=source_root,
         verbose=verbose,
         stderr=stderr,
     )
@@ -277,11 +305,12 @@ def _run_remote_standalone_case(
     deps: Any,
     spec: RemoteSpec,
     case_workspace: str,
-    bench_filename: str,
-    operator_filename: str,
+    bench_file: Path,
+    operator_file: Path,
     case_id: str,
     device: str,
     *,
+    source_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> PerfCaseRecord:
@@ -292,8 +321,8 @@ def _run_remote_standalone_case(
             "python3",
             "-c",
             _build_standalone_run_one_case_script(),
-            bench_filename,
-            operator_filename,
+            deps._case_workspace_command_path(bench_file, source_root=source_root),
+            deps._case_workspace_command_path(operator_file, source_root=source_root),
             case_id,
         ],
         verbose=verbose,

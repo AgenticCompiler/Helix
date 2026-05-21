@@ -131,22 +131,37 @@ def run_local_bench(
     npu_devices: str | None = None,
     verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
+    invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
     with _local_bench_workdir(bench_file.parent):
         if bench_mode == "msprof":
             if devices is not None:
+                source_root, json_search_root = _resolve_case_workspace_roots(
+                    bench_file,
+                    operator_file,
+                    invocation_root=invocation_root,
+                )
                 return _run_local_bench_msprof_parallel(
                     bench_file,
                     operator_file,
                     devices,
+                    source_root=source_root,
+                    json_search_root=json_search_root,
                     verbose=verbose,
                 )
             return _run_local_bench_msprof(bench_file, operator_file, verbose=verbose)
         if devices is not None:
+            source_root, json_search_root = _resolve_case_workspace_roots(
+                bench_file,
+                operator_file,
+                invocation_root=invocation_root,
+            )
             return _run_local_bench_standalone_parallel(
                 bench_file,
                 operator_file,
                 devices,
+                source_root=source_root,
+                json_search_root=json_search_root,
                 verbose=verbose,
             )
         return _run_local_bench_standalone(bench_file, operator_file, verbose=verbose)
@@ -163,6 +178,7 @@ def run_remote_bench(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
+    invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
@@ -189,12 +205,19 @@ def run_remote_bench(
         )
         if bench_mode == "msprof":
             if devices is not None:
+                source_root, json_search_root = _resolve_case_workspace_roots(
+                    bench_file,
+                    operator_file,
+                    invocation_root=invocation_root,
+                )
                 return _run_remote_bench_msprof_parallel(
                     spec,
                     remote_workspace,
                     bench_file,
                     operator_file,
                     devices,
+                    source_root=source_root,
+                    json_search_root=json_search_root,
                     verbose=verbose,
                     stderr=stderr,
                 )
@@ -207,12 +230,19 @@ def run_remote_bench(
                 stderr=stderr,
             )
         if devices is not None:
+            source_root, json_search_root = _resolve_case_workspace_roots(
+                bench_file,
+                operator_file,
+                invocation_root=invocation_root,
+            )
             return _run_remote_bench_standalone_parallel(
                 spec,
                 remote_workspace,
                 bench_file,
                 operator_file,
                 devices,
+                source_root=source_root,
+                json_search_root=json_search_root,
                 verbose=verbose,
                 stderr=stderr,
             )
@@ -302,6 +332,8 @@ def _run_local_bench_standalone_parallel(
     operator_file: Path,
     devices: tuple[str, ...],
     *,
+    source_root: Path,
+    json_search_root: Path,
     verbose: bool = False,
 ) -> tuple[ResultPayload, Path]:
     return _standalone.run_local_bench_standalone_parallel(
@@ -309,6 +341,8 @@ def _run_local_bench_standalone_parallel(
         bench_file,
         operator_file,
         devices,
+        source_root=source_root,
+        json_search_root=json_search_root,
         verbose=verbose,
     )
 
@@ -320,6 +354,8 @@ def _run_remote_bench_standalone_parallel(
     operator_file: Path,
     devices: tuple[str, ...],
     *,
+    source_root: Path,
+    json_search_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[ResultPayload, Path, str]:
@@ -330,6 +366,8 @@ def _run_remote_bench_standalone_parallel(
         bench_file,
         operator_file,
         devices,
+        source_root=source_root,
+        json_search_root=json_search_root,
         verbose=verbose,
         stderr=stderr,
     )
@@ -378,6 +416,8 @@ def _run_local_bench_msprof_parallel(
     operator_file: Path,
     devices: tuple[str, ...],
     *,
+    source_root: Path,
+    json_search_root: Path,
     verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     return _msprof.run_local_bench_msprof_parallel(
@@ -385,6 +425,8 @@ def _run_local_bench_msprof_parallel(
         bench_file,
         operator_file,
         devices,
+        source_root=source_root,
+        json_search_root=json_search_root,
         verbose=verbose,
     )
 
@@ -415,6 +457,8 @@ def _run_remote_bench_msprof_parallel(
     operator_file: Path,
     devices: tuple[str, ...],
     *,
+    source_root: Path,
+    json_search_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
@@ -425,6 +469,8 @@ def _run_remote_bench_msprof_parallel(
         bench_file,
         operator_file,
         devices,
+        source_root=source_root,
+        json_search_root=json_search_root,
         verbose=verbose,
         stderr=stderr,
     )
@@ -477,13 +523,19 @@ def _bench_case_input_paths(
     bench_file: Path,
     operator_file: Path,
     *,
+    json_search_root: Path | None = None,
     support_paths: Sequence[Path] = (),
 ) -> list[Path]:
     input_paths: list[Path] = [bench_file]
-    discovered_json_paths = sorted(
-        path for path in bench_file.parent.glob("*.json") if path.is_file()
-    )
-    input_paths.extend(discovered_json_paths)
+    json_roots = [bench_file.parent.resolve()]
+    if json_search_root is not None:
+        resolved_json_root = json_search_root.resolve()
+        if resolved_json_root not in json_roots:
+            json_roots.insert(0, resolved_json_root)
+    for json_root in json_roots:
+        input_paths.extend(
+            sorted(path for path in json_root.glob("*.json") if path.is_file())
+        )
     input_paths.append(operator_file)
     input_paths.extend(support_paths)
 
@@ -498,26 +550,104 @@ def _bench_case_input_paths(
     return unique_paths
 
 
+def _path_is_within_root(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _resolve_case_workspace_roots(
+    bench_file: Path,
+    operator_file: Path,
+    *,
+    invocation_root: Path | None,
+) -> tuple[Path, Path]:
+    if invocation_root is not None:
+        resolved_invocation_root = invocation_root.resolve()
+        workspace_dirs = [bench_file.parent.resolve(), operator_file.parent.resolve()]
+        if all(_path_is_within_root(path, resolved_invocation_root) for path in workspace_dirs):
+            return resolved_invocation_root, resolved_invocation_root
+    source_root = Path(
+        os.path.commonpath(
+            [
+                str(bench_file.parent.resolve()),
+                str(operator_file.parent.resolve()),
+            ]
+        )
+    )
+    return source_root, bench_file.parent.resolve()
+
+
+def _case_workspace_root_name(source_root: Path) -> str:
+    return source_root.name or "workspace"
+
+
+def _case_workspace_root_relative_path(path: Path, *, source_root: Path) -> Path:
+    try:
+        return path.resolve().relative_to(source_root.resolve())
+    except ValueError:
+        return Path(path.name)
+
+
+def _case_workspace_command_path(path: Path, *, source_root: Path) -> str:
+    return _case_workspace_root_relative_path(path, source_root=source_root).as_posix()
+
+
+def _local_case_workspace_path(
+    workspace_root: Path,
+    source_path: Path,
+    *,
+    source_root: Path,
+) -> Path:
+    return workspace_root / _case_workspace_root_relative_path(source_path, source_root=source_root)
+
+
+def _remote_case_workspace_path(
+    workspace_root: str,
+    source_path: Path,
+    *,
+    source_root: Path,
+) -> str:
+    relative_path = _case_workspace_root_relative_path(source_path, source_root=source_root)
+    return f"{workspace_root}/{relative_path.as_posix()}"
+
+
 def _create_local_case_workspace(
     *,
     prefix: str,
     input_paths: Sequence[Path],
+    source_root: Path,
 ) -> tuple[Path, Callable[[], None]]:
     temp_dir = tempfile.TemporaryDirectory(prefix=prefix)
     workspace = Path(temp_dir.name)
+    workspace_root = workspace / _case_workspace_root_name(source_root)
+    workspace_root.mkdir(parents=True, exist_ok=True)
     for input_path in input_paths:
-        shutil.copyfile(input_path, workspace / input_path.name)
-    return workspace, temp_dir.cleanup
+        relative_path = _case_workspace_root_relative_path(input_path, source_root=source_root)
+        target_path = workspace_root / relative_path
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(input_path, target_path)
+    return workspace_root, temp_dir.cleanup
 
 
 def _create_local_msprof_case_workspace(
     bench_file: Path,
     operator_file: Path,
     case_idx: int,
+    *,
+    source_root: Path,
+    json_search_root: Path,
 ) -> tuple[Path, Callable[[], None]]:
     return _create_local_case_workspace(
         prefix=f"triton-agent-msprof-case-{case_idx}-",
-        input_paths=_bench_case_input_paths(bench_file, operator_file),
+        input_paths=_bench_case_input_paths(
+            bench_file,
+            operator_file,
+            json_search_root=json_search_root,
+        ),
+        source_root=source_root,
     )
 
 
@@ -525,18 +655,44 @@ def _stage_remote_case_workspace(
     spec: RemoteSpec,
     case_workspace: str,
     input_paths: Sequence[Path],
+    source_root: Path,
     *,
     verbose: bool = False,
     stderr: TextIO | None = None,
-) -> None:
+) -> str:
+    workspace_root = f"{case_workspace}/{_case_workspace_root_name(source_root)}"
+    run_remote_command_buffered(
+        spec,
+        case_workspace,
+        ["mkdir", "-p", workspace_root],
+        verbose=verbose,
+        stderr=stderr,
+    )
+    created_dirs = {workspace_root}
     for input_path in input_paths:
+        relative_path = _case_workspace_root_relative_path(input_path, source_root=source_root)
+        target_dir = (
+            workspace_root
+            if relative_path.parent == Path(".")
+            else f"{workspace_root}/{relative_path.parent.as_posix()}"
+        )
+        if target_dir not in created_dirs:
+            run_remote_command_buffered(
+                spec,
+                case_workspace,
+                ["mkdir", "-p", target_dir],
+                verbose=verbose,
+                stderr=stderr,
+            )
+            created_dirs.add(target_dir)
         copy_file_to_remote(
             spec,
             input_path,
-            f"{case_workspace}/{input_path.name}",
+            f"{workspace_root}/{relative_path.as_posix()}",
             verbose=verbose,
             stderr=stderr,
         )
+    return workspace_root
 
 
 def _stage_remote_msprof_case_workspace(
@@ -545,13 +701,20 @@ def _stage_remote_msprof_case_workspace(
     operator_file: Path,
     case_workspace: str,
     *,
+    source_root: Path,
+    json_search_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
-) -> None:
-    _stage_remote_case_workspace(
+) -> str:
+    return _stage_remote_case_workspace(
         spec,
         case_workspace,
-        _bench_case_input_paths(bench_file, operator_file),
+        _bench_case_input_paths(
+            bench_file,
+            operator_file,
+            json_search_root=json_search_root,
+        ),
+        source_root=source_root,
         verbose=verbose,
         stderr=stderr,
     )
