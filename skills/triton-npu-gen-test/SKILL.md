@@ -53,7 +53,7 @@ The generated test file must include a short metadata header near the top of the
 - `# kernels: <resolved_kernel_names>`
 
 - Always follow the selected spec file exactly. The spec is authoritative for the mode-specific runtime shape, hook surface, artifact layout, and validation behavior.
-- Keep the shared contract consistent across modes: use the metadata header, resolve the public entrypoint explicitly, generate deterministic NPU coverage, and avoid inventing extra runtime behavior that the spec does not require.
+- Keep the shared contract consistent across modes: use the metadata header, resolve the public entrypoint explicitly, generate deterministic NPU coverage, require explicit seed control whenever randomness is used so repeated runs of the same harness produce identical inputs, and avoid inventing extra runtime behavior that the spec does not require.
 
 ## Validation Commands
 
@@ -81,6 +81,7 @@ Use the `triton-npu-run-eval` skill to validate generated tests.
 - Keep the metadata header and resolve the public entrypoint explicitly.
 - Use `importlib` or import-only hooks only when the spec requires them.
 - Keep coverage deterministic and realistic.
+- Randomized input generation is allowed only when the generated harness explicitly fixes the seed so repeated runs of the same harness produce identical inputs.
 - Do not guess constructor arguments for `torch-module`.
 - Do not treat raw `@triton.jit` kernels as direct harness APIs.
 

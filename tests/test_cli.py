@@ -4409,6 +4409,7 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("After generating the artifact, execute the generated test case", prompt)
         self.assertIn("repair the generated artifact and retry automatically", prompt)
+        self.assertIn("repeated runs of the same harness produce identical inputs", prompt)
 
     def test_gen_bench_prompt_requires_execute_and_autofix(self) -> None:
         prompt = build_prompt(
@@ -4422,6 +4423,7 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("After generating the artifact, execute the generated benchmark case", prompt)
         self.assertIn("repair the generated artifact and retry automatically", prompt)
+        self.assertIn("repeated runs of the same harness produce identical inputs", prompt)
 
     def test_prompt_mentions_remote_execution_context(self) -> None:
         prompt = build_prompt(

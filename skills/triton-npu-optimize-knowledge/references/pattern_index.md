@@ -193,10 +193,10 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Summary: For **sliding-window spatial pooling** in **NCHW-style** layouts where **W** is the **innermost contiguous** dimension, load one **W slab** of length **`W_SLAB_LEN = STRIDE_W * (BLOCK_OW - 1) + KERNEL_W`** at **`w_abs_min = ow_pid * BLOCK_OW * STRIDE_W - PAD_W`**, then **`tl.gather(slab, STRIDE_W * arange(BLOCK_OW) + kw)`** per **`kw`** instead of many **`start_w + kw`** masked loads. **2D/3D+** differ only in outer **`kh`/`kd`** loops. **Adoption gate:** not applied unless the hot path shows **`W_SLAB_LEN` load + gather**; **interior/boundary splits** may **combine** but **do not replace** gather. Operator-agnostic—validate on your harness.
 - Source: [pooling-inner-w-slab-gather.md](patterns/pooling-inner-w-slab-gather.md)
 - Use When:
-  - The kernel is **AvgPool / MaxPool** (**values only**), or any **fixed `KERNEL_W`** reduction along **W** on a **contiguous** NCHW (or 5D) tensor,   with **`kw`** in a **`tl.constexpr`** loop and **`BLOCK_OW`** output columns per program.
-  - Profiling or IR shows **repeated narrow or predicate-heavy global loads** on **W** inside **`kw`**, while **`stride_w`** maps output columns to   **regularly strided** input columns.
-  - **`out_w`** is large enough that **vectorizing along `ow`** matters, and **`triton.cmotion.cdiv(out_w, BLOCK_OW)`** (launch count along W) stays  below a measured knee on the target NPU.
-  - You can prove **semantic equivalence** for the branches you enable (**padding**, **ceil**, **divisor** / **count_include_pad** for average,   **`-inf` / dtype** rules for max).
+  - The kernel is **AvgPool / MaxPool** (**values only**), or any **fixed `KERNEL_W`** reduction along **W** on a **contiguous** NCHW (or 5D) tensor, with **`kw`** in a **`tl.constexpr`** loop and **`BLOCK_OW`** output columns per program.
+  - Profiling or IR shows **repeated narrow or predicate-heavy global loads** on **W** inside **`kw`**, while **`stride_w`** maps output columns to **regularly strided** input columns.
+  - **`out_w`** is large enough that **vectorizing along `ow`** matters, and **`triton.cmotion.cdiv(out_w, BLOCK_OW)`** (launch count along W) stays below a measured knee on the target NPU.
+  - You can prove **semantic equivalence** for the branches you enable (**padding**, **ceil**, **divisor** / **count_include_pad** for average, **`-inf` / dtype** rules for max).
 
 ### `program-multiple-rows`
 
@@ -250,6 +250,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Address expressions use modulo addressing (`%`) to wrap tail tiles or index boundaries.
   - `tl.where` masks all lanes except a single special position, or has exactly one false lane in a vector.
   - Integer elementwise arithmetic is done as scalar-looking `int64` work even though the value range is safely `int32`.
+  - `tl.cumsum` or `tl.associative_scan` runs on the last axis of a tensor and profiling or IR suggests scalar fallback instead of vector lowering.
   - `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
 
 ### `slice_coalesce`

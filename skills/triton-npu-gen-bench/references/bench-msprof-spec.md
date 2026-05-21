@@ -117,6 +117,8 @@ If a `torch-module` entrypoint requires constructor arguments, fail explicitly w
 - **Execution device:** The harness **must** exercise the operator on **Ascend NPU only**. Do **not** generate benchmarks intended to run primarily on CUDA, CPU, or other accelerators, or that branch to a non-NPU device for the code under test.
 - Create the required tensor(s) for the kernel with the case’s dtype and shape(s).
 - **All tensors must be created on device `"npu"`** (not `"cuda"`).
+- Randomized input generation is allowed, but the harness must explicitly fix the seed during case construction so repeated runs of the same harness produce identical inputs.
+- Do not depend on ambient global RNG state or prior random draws to keep cases stable.
 - Declare fixed execution counts near the top of the file:
   - `MSPROF_WARMUP_ITERS = 5`
   - `MSPROF_REPEAT_ITERS = 50`
@@ -143,6 +145,7 @@ MSPROF_REPEAT_ITERS = 50
 CASES = [...]
 
 def make_inputs(case):
+    torch.manual_seed(case["seed"])
     ...
 
 def run_bench(operator_api, case):
