@@ -23,6 +23,7 @@
     "canonical_baseline",
     "comparison_target",
     "perf_summary_source",
+    "effective_metric_source",
     "summary_path",
     "opt_note_updated",
     "round_disposition"

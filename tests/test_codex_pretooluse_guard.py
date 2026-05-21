@@ -75,7 +75,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
-    def test_blocks_python_one_liner_opening_protected_script(self) -> None:
+    def test_allows_python_one_liner_opening_protected_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             script = workspace / ".codex" / "skills" / "skill-a" / "scripts" / "helper.py"
@@ -88,7 +88,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
                 _payload(workspace, f"python3 -c \"print(open('{script}').read())\""),
             )
 
-            self.assertEqual(reason, _DENY_MESSAGE)
+            self.assertIsNone(reason)
 
     def test_allows_python_entrypoint_for_staged_helper_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -177,7 +177,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
-    def test_blocks_triton_agent_los_nested_script_read(self) -> None:
+    def test_allows_triton_agent_logs_nested_script_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             script = workspace / "triton-agent-logs" / "triton-agent" / "opt_kernel.py"
@@ -190,9 +190,9 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
                 _payload(workspace, f"python3 -c \"print(open('{script}').read())\""),
             )
 
-            self.assertEqual(reason, _DENY_MESSAGE)
+            self.assertIsNone(reason)
 
-    def test_blocks_python_one_liner_opening_relative_triton_agent_log(self) -> None:
+    def test_allows_python_one_liner_opening_relative_triton_agent_log(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
@@ -208,7 +208,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
                 ),
             )
 
-            self.assertEqual(reason, _DENY_MESSAGE)
+            self.assertIsNone(reason)
 
     def test_allows_read_outside_triton_agent_logs_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

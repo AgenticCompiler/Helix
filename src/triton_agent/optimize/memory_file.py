@@ -9,6 +9,7 @@ from triton_agent.optimize.prompts import (
     cann_ext_api_lines,
     compiler_source_analysis_lines,
     layered_analysis_lines,
+    torch_npu_operator_knowledge_lines,
 )
 
 
@@ -29,6 +30,23 @@ def _render_line_block(lines: list[str]) -> str:
     if not lines:
         return ""
     return "\n".join(lines) + "\n"
+
+
+def _optimize_target_guidance_lines(*, optimize_target: str) -> list[str]:
+    if optimize_target == "operator":
+        return [
+            "Target optimization scope: operator.",
+            "Optimize end-to-end operator latency.",
+            "You may improve wrapper logic, data movement, scheduling, pre-processing, post-processing, and kernel code in this session.",
+            "Do not replace the Triton Ascend NPU computation path with a pure PyTorch rewrite.",
+            "When reviewing performance, keep both kernel and total-op `compare-perf` views visible and treat total-op as the canonical session conclusion.",
+        ]
+    return [
+        "Target optimization scope: kernel.",
+        "Optimize the Triton Ascend NPU kernel path itself.",
+        "Do not replace the Triton Ascend NPU computation path with a pure PyTorch rewrite.",
+        "When reviewing performance, prefer the kernel-oriented `compare-perf` view and record any fallback away from pure kernel results in `effective_metric_source`.",
+    ]
 
 
 _OPTIMIZE_GUIDANCE_RULES_BLOCK = dedent(
@@ -105,6 +123,7 @@ class MemoryFileManager:
         test_mode: str,
         bench_mode: str,
         agent_name: str,
+        optimize_target: str = "kernel",
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
@@ -118,6 +137,7 @@ class MemoryFileManager:
                 operator_path=operator_path,
                 test_mode=test_mode,
                 bench_mode=bench_mode,
+                optimize_target=optimize_target,
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
                 enable_cann_ext_api=enable_cann_ext_api,
@@ -129,6 +149,7 @@ class MemoryFileManager:
         workdir: Path,
         *,
         agent_name: str,
+        optimize_target: str = "kernel",
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
@@ -139,6 +160,7 @@ class MemoryFileManager:
             agent_name=agent_name,
             content=self._render_shared_guidance(
                 guidance_filename=self.guidance_filename(agent_name),
+                optimize_target=optimize_target,
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
                 enable_cann_ext_api=enable_cann_ext_api,
@@ -216,6 +238,7 @@ class MemoryFileManager:
         operator_path: Path,
         test_mode: str,
         bench_mode: str,
+        optimize_target: str = "kernel",
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
@@ -227,8 +250,12 @@ class MemoryFileManager:
             operator_name=operator_path.name,
             analysis_block=_render_bullet_block(
                 layered_analysis_lines(round_scope="each round")
+                + torch_npu_operator_knowledge_lines(optimize_target=optimize_target)
             ),
             compiler_source_block=_render_line_block(
+                _optimize_target_guidance_lines(optimize_target=optimize_target)
+            )
+            + _render_line_block(
                 compiler_source_analysis_lines(
                     compiler_source_path=compiler_source_path,
                     compiler_source_commit=compiler_source_commit,
@@ -243,6 +270,7 @@ class MemoryFileManager:
         self,
         *,
         guidance_filename: str,
+        optimize_target: str = "kernel",
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
@@ -251,8 +279,12 @@ class MemoryFileManager:
             guidance_filename=guidance_filename,
             analysis_block=_render_bullet_block(
                 layered_analysis_lines(round_scope="each round")
+                + torch_npu_operator_knowledge_lines(optimize_target=optimize_target)
             ),
             compiler_source_block=_render_line_block(
+                _optimize_target_guidance_lines(optimize_target=optimize_target)
+            )
+            + _render_line_block(
                 compiler_source_analysis_lines(
                     compiler_source_path=compiler_source_path,
                     compiler_source_commit=compiler_source_commit,

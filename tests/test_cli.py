@@ -1086,6 +1086,38 @@ class CliParserTests(unittest.TestCase):
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.optimize_knowledge, "v3")
 
+    def test_optimize_command_defaults_optimize_target_to_kernel(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py"])
+        self.assertEqual(args.optimize_target, "kernel")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.optimize_target, "kernel")
+
+    def test_optimize_command_accepts_operator_optimize_target(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["optimize", "-i", "kernel.py", "--optimize-target", "operator"]
+        )
+        self.assertEqual(args.optimize_target, "operator")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.optimize_target, "operator")
+
+    def test_optimize_batch_defaults_optimize_target_to_kernel(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-batch", "-i", "kernels"])
+        self.assertEqual(args.optimize_target, "kernel")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.optimize_target, "kernel")
+
+    def test_optimize_batch_accepts_operator_optimize_target(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["optimize-batch", "-i", "kernels", "--optimize-target", "operator"]
+        )
+        self.assertEqual(args.optimize_target, "operator")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.optimize_target, "operator")
+
     def test_optimize_command_defaults_target_chip_to_a5(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize", "-i", "kernel.py"])
@@ -4034,6 +4066,30 @@ class PromptTests(unittest.TestCase):
         self.assertIn("then IR evidence, then compiler source", prompt)
         self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", prompt)
 
+    def test_build_optimize_worker_prompt_mentions_operator_target_contract(self) -> None:
+        prompt = build_optimize_worker_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            optimize_target="operator",
+        )
+
+        self.assertIn("Target optimization scope for this optimize session: operator.", prompt)
+        self.assertIn("Optimize end-to-end operator latency.", prompt)
+        self.assertIn(
+            "wrapper logic, data movement, scheduling, pre-processing, post-processing, and kernel code",
+            prompt,
+        )
+        self.assertIn(
+            "Use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and operator-level pattern references.",
+            prompt,
+        )
+        self.assertIn("both kernel and total-op views are visible", prompt)
+        self.assertIn("effective_metric_source=total-op", prompt)
+        self.assertIn("pure PyTorch rewrite", prompt)
+        self.assertNotIn("must continue optimizing the Triton Ascend NPU kernel path itself", prompt)
+
     def test_build_optimize_worker_prompt_mentions_cann_ext_api_when_enabled(self) -> None:
         prompt = build_optimize_worker_prompt(
             Path("/tmp/op.py"),
@@ -4106,6 +4162,8 @@ class PromptTests(unittest.TestCase):
         self.assertIn("must continue optimizing the Triton Ascend NPU kernel path itself", prompt)
         self.assertIn("Do not replace the core computation with a pure PyTorch implementation", prompt)
         self.assertIn("does not count as a successful optimize round", prompt)
+        self.assertIn("prefer the kernel-oriented `compare-perf` view", prompt)
+        self.assertIn("record the resolved `effective_metric_source`", prompt)
         self.assertIn("Target chip for this optimize session: A5.", prompt)
         self.assertIn("prefer changes that fit A5", prompt)
 
@@ -4137,6 +4195,27 @@ class PromptTests(unittest.TestCase):
         self.assertIn("CANN Triton extension API pattern access is enabled for this optimize run.", prompt)
         self.assertIn("Use the staged `triton-npu-cann-ext-api-patterns` skill", prompt)
 
+    def test_build_optimize_unsupervised_prompt_mentions_operator_target_contract(self) -> None:
+        prompt = build_optimize_unsupervised_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            optimize_target="operator",
+        )
+
+        self.assertIn("Target optimization scope for this optimize session: operator.", prompt)
+        self.assertIn("Optimize end-to-end operator latency.", prompt)
+        self.assertIn(
+            "wrapper logic, data movement, scheduling, pre-processing, post-processing, and kernel code",
+            prompt,
+        )
+        self.assertIn(
+            "Use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and operator-level pattern references.",
+            prompt,
+        )
+        self.assertNotIn("must continue optimizing the Triton Ascend NPU kernel path itself", prompt)
+
     def test_build_optimize_resume_prompt_preserves_compiler_source_when_enabled(self) -> None:
         prompt = build_optimize_resume_prompt(
             "Round gate passed.",
@@ -4157,6 +4236,19 @@ class PromptTests(unittest.TestCase):
             prompt,
         )
         self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", prompt)
+
+    def test_build_optimize_resume_prompt_mentions_operator_target_contract(self) -> None:
+        prompt = build_optimize_resume_prompt(
+            "Round gate passed.",
+            optimize_target="operator",
+        )
+
+        self.assertIn("Target optimization scope for this optimize session: operator.", prompt)
+        self.assertIn("Optimize end-to-end operator latency.", prompt)
+        self.assertIn(
+            "Use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and operator-level pattern references.",
+            prompt,
+        )
 
     def test_build_optimize_unsupervised_prompt_mentions_min_rounds_when_requested(self) -> None:
         prompt = build_optimize_unsupervised_prompt(
@@ -4189,6 +4281,18 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Do not edit the operator implementation", prompt)
         self.assertIn("replace the Triton kernel path with pure PyTorch computation", prompt)
         self.assertNotIn("optimize-supervisor.md", prompt)
+
+    def test_build_optimize_supervisor_prompt_mentions_operator_target_contract(self) -> None:
+        prompt = build_optimize_supervisor_prompt(
+            Path("/tmp"),
+            latest_round_dir=Path("/tmp/opt-round-3"),
+            optimize_target="operator",
+        )
+
+        self.assertIn("Target optimization scope for this optimize session: operator.", prompt)
+        self.assertIn("whole-operator restructuring", prompt)
+        self.assertIn("total-op conclusion", prompt)
+        self.assertIn("pure PyTorch computation", prompt)
 
     def test_gen_eval_prompt_mentions_operator_repair_and_dual_outputs(self) -> None:
         prompt = build_prompt(
@@ -4462,6 +4566,7 @@ class PromptTests(unittest.TestCase):
             "Use the staged `triton-npu-optimize-knowledge` skill for generic pattern and symptom references.",
             prompt,
         )
+        self.assertNotIn("torch-npu-optimize-knowledge", prompt)
         self.assertIn(
             "Read the staged `triton-npu-optimize-knowledge` skill's generated `references/pattern_index.md` before detailed pattern references.",
             prompt,

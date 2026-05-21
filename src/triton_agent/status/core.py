@@ -11,6 +11,7 @@ from triton_agent.optimize.baseline import baseline_dir
 from triton_agent.optimize.batch import resolve_batch_optimize_operator_file
 from triton_agent.optimize.naming import resolve_round_perf_file
 from triton_agent.optimize.models import OptimizeStatusRound, OptimizeStatusWorkspace
+from triton_agent.optimize.round_contract import load_round_state
 from triton_agent.skill_loader import load_operator_eval_script_module
 
 
@@ -21,6 +22,21 @@ class BenchPerfParserModule(Protocol):
         self,
         path: Path,
         required_latency_ids: Iterable[str],
+    ) -> dict[str, float]: ...
+
+    def parse_perf_file_for_metric_source(
+        self,
+        path: Path,
+        *,
+        metric_source: str = "auto",
+    ) -> dict[str, float]: ...
+
+    def parse_required_perf_file_for_metric_source(
+        self,
+        path: Path,
+        required_latency_ids: Iterable[str],
+        *,
+        metric_source: str = "auto",
     ) -> dict[str, float]: ...
 
 
@@ -59,13 +75,14 @@ def inspect_optimize_status_workspace(
 
     warnings: list[str] = []
     baseline_path, baseline_selection_failed = select_baseline_perf_file(workspace, top_level_perf_files, warnings)
-    baseline_values: dict[str, float] | None = None
+    baseline_values_by_source: dict[str, dict[str, float]] = {}
     baseline_mean: float | None = None
+    has_any_baseline_values = False
     if baseline_path is not None:
         try:
             parsed_baseline_values = _load_bench_perf_parser().parse_perf_file(baseline_path)
-            baseline_values = parsed_baseline_values
             baseline_mean = mean_value(parsed_baseline_values.values())
+            has_any_baseline_values = True
         except ValueError as exc:
             warnings.append(str(exc))
 
@@ -91,16 +108,23 @@ def inspect_optimize_status_workspace(
     comparable_rounds: list[OptimizeStatusRound] = []
 
     for round_dir in round_dirs:
-        if baseline_values is None:
-            continue
         perf_path = find_round_perf_file(round_dir)
         if perf_path is None:
             warnings.append(f"missing perf artifact for {round_dir.name}")
             continue
+        metric_source = _metric_source_for_round_status(round_dir)
         try:
-            round_values = _load_bench_perf_parser().parse_required_perf_file(
+            baseline_values = baseline_values_by_source.get(metric_source)
+            if baseline_values is None:
+                baseline_values = _parse_baseline_values_for_metric_source(
+                    baseline_path,
+                    metric_source=metric_source,
+                )
+                baseline_values_by_source[metric_source] = baseline_values
+            round_values = _parse_round_values_for_metric_source(
                 perf_path,
                 baseline_values,
+                metric_source=metric_source,
             )
         except (ValueError, OSError) as exc:
             warnings.append(str(exc))
@@ -131,6 +155,7 @@ def inspect_optimize_status_workspace(
         comparable_rounds.append(
             OptimizeStatusRound(
                 round_name=f"round-{round_number(round_dir.name)}",
+                effective_metric_source=metric_source,
                 avg_improvement=mean_value(improvement_values),
                 geomean_speedup=geomean_value(speedup_values),
                 total_speedup=sum(valid_baseline_values) / sum(valid_round_values),
@@ -170,7 +195,7 @@ def inspect_optimize_status_workspace(
 
     if baseline_path is None and not baseline_selection_failed:
         warnings.append("missing baseline perf data")
-    elif baseline_values is not None and round_dirs:
+    elif (has_any_baseline_values or baseline_values_by_source) and round_dirs:
         warnings.append("missing comparable round perf data")
 
     return OptimizeStatusWorkspace(
@@ -327,6 +352,51 @@ def resolve_workspace_operator_perf_file(workspace: Path, paths: list[Path]) -> 
 
 def find_round_perf_file(round_dir: Path) -> Path | None:
     return resolve_round_perf_file(round_dir)
+
+
+def _metric_source_for_round_status(round_dir: Path) -> str:
+    try:
+        state = load_round_state(round_dir)
+    except ValueError:
+        return "auto"
+    effective_metric_source = state.effective_metric_source
+    if effective_metric_source == "kernel":
+        return "kernel"
+    if effective_metric_source == "total-op":
+        return "total-op"
+    return "auto"
+
+
+def _parse_baseline_values_for_metric_source(
+    baseline_path: Path | None,
+    *,
+    metric_source: str,
+) -> dict[str, float]:
+    if baseline_path is None:
+        raise ValueError("missing baseline perf data")
+    parser = _load_bench_perf_parser()
+    if metric_source == "auto":
+        return parser.parse_perf_file(baseline_path)
+    return parser.parse_perf_file_for_metric_source(
+        baseline_path,
+        metric_source=metric_source,
+    )
+
+
+def _parse_round_values_for_metric_source(
+    perf_path: Path,
+    baseline_values: dict[str, float],
+    *,
+    metric_source: str,
+) -> dict[str, float]:
+    parser = _load_bench_perf_parser()
+    if metric_source == "auto":
+        return parser.parse_required_perf_file(perf_path, baseline_values)
+    return parser.parse_required_perf_file_for_metric_source(
+        perf_path,
+        baseline_values,
+        metric_source=metric_source,
+    )
 
 
 def parse_logged_best_round(path: Path) -> str | None:

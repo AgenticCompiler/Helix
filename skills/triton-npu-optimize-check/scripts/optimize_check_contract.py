@@ -104,6 +104,7 @@ class RoundState:
     canonical_baseline: str
     comparison_target: str
     perf_summary_source: str
+    effective_metric_source: str
     summary_path: str
     opt_note_updated: bool
     round_disposition: str
@@ -252,6 +253,7 @@ def load_round_state(round_dir: Path) -> RoundState:
         canonical_baseline=str(data["canonical_baseline"]),
         comparison_target=str(data["comparison_target"]),
         perf_summary_source=str(data["perf_summary_source"]),
+        effective_metric_source=str(data["effective_metric_source"]),
         summary_path=str(data["summary_path"]),
         opt_note_updated=bool(data["opt_note_updated"]),
         round_disposition=str(data["round_disposition"]),
@@ -338,7 +340,12 @@ def _count_round_directories(workspace: Path) -> int:
     return sum(1 for path in workspace.glob("opt-round-*") if path.is_dir())
 
 
-def check_round(round_dir: Path, *, min_rounds: int | None = None) -> OptimizeCheckResult:
+def check_round(
+    round_dir: Path,
+    *,
+    min_rounds: int | None = None,
+    optimize_target: Literal["kernel", "operator"] | None = None,
+) -> OptimizeCheckResult:
     artifact_inspection = inspect_round_artifacts(round_dir)
     artifact_issues = artifact_inspection.issues
     if artifact_issues:
@@ -385,6 +392,10 @@ def check_round(round_dir: Path, *, min_rounds: int | None = None) -> OptimizeCh
         semantic_issues.append(f"comparison_target={round_state.comparison_target}")
     if round_state.perf_summary_source != "compare-perf":
         semantic_issues.append(f"perf_summary_source={round_state.perf_summary_source}")
+    if round_state.effective_metric_source not in {"kernel", "total-op", "mixed"}:
+        semantic_issues.append(
+            f"effective_metric_source={round_state.effective_metric_source}"
+        )
     if not round_state.evidence_sources:
         semantic_issues.append("missing supporting evidence sources")
 
@@ -412,6 +423,14 @@ def check_round(round_dir: Path, *, min_rounds: int | None = None) -> OptimizeCh
             issues=((continuity.reason or "round operator failed Triton continuity check"),),
         )
 
+    runtime_warnings: list[str] = []
+    if optimize_target == "kernel" and round_state.effective_metric_source in {"total-op", "mixed"}:
+        runtime_warnings.append(
+            "kernel optimize target fell back to "
+            f"effective_metric_source={round_state.effective_metric_source}; "
+            "the round may still participate in best-round selection, but review the comparison basis."
+        )
+
     cleaned: list[str] = []
     if ordinary_optimize_pt_cleanup_enabled():
         cleaned = cleanup_dir_pt_files(round_dir)
@@ -419,10 +438,13 @@ def check_round(round_dir: Path, *, min_rounds: int | None = None) -> OptimizeCh
         result = _build_result(
             kind="round",
             decision="pass",
-            issues=(f"cleaned up {len(cleaned)} unused pt file(s) in {round_dir.name}: {', '.join(cleaned)}",),
+            issues=(
+                *tuple(runtime_warnings),
+                f"cleaned up {len(cleaned)} unused pt file(s) in {round_dir.name}: {', '.join(cleaned)}",
+            ),
         )
     else:
-        result = _build_result(kind="round", decision="pass", issues=())
+        result = _build_result(kind="round", decision="pass", issues=tuple(runtime_warnings))
 
     if min_rounds is not None:
         completed = _count_round_directories(round_dir.parent)

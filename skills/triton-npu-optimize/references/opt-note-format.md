@@ -82,6 +82,7 @@ Next step: profile round-3 if more latency reduction is needed.
 - Put detailed reasoning, code snippets, and deeper analysis in the per-round summary instead of the top-level note.
 - Put initial hypotheses, evolving reasoning, and diagnosis pivots in `opt-round-N/attempts.md`, `summary.md`, or `perf-analysis.md`, not in the top-level note.
 - Keep the top-level note concise, but make sure a reader can still tell why the chosen round direction was reasonable.
-- Use `Geomean speedup` as the headline metric for the final best round and include `Total speedup` as the whole-workload view.
+- Use `Geomean speedup` as the headline metric for the final best round.
+- Keep `Total speedup` available as supporting whole-workload context when it is useful, but do not treat it as the default optimize-facing headline.
 - Use `Validated branches` to list non-best rounds that are still worth revisiting later.
 - Keep `Outcome` and `Next step` short enough that a reader can understand the session result in one screen.

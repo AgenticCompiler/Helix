@@ -273,6 +273,7 @@ class OptimizeCheckTests(unittest.TestCase):
                         "canonical_baseline": "baseline",
                         "comparison_target": "baseline/perf.txt",
                         "perf_summary_source": "compare-perf",
+                        "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,
                         "round_disposition": "continue",
@@ -286,6 +287,52 @@ class OptimizeCheckTests(unittest.TestCase):
             self.assertTrue(result.ok)
             self.assertEqual(result.kind, "round")
             self.assertEqual(result.decision, "pass")
+
+    def test_check_round_accepts_total_op_effective_metric_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            round_dir = self._write_round(
+                workdir,
+                "opt-round-1",
+                round_disposition="continue",
+            )
+            payload = json.loads((round_dir / "round-state.json").read_text(encoding="utf-8"))
+            payload["effective_metric_source"] = "total-op"
+            (round_dir / "round-state.json").write_text(json.dumps(payload), encoding="utf-8")
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertTrue(result.ok)
+            self.assertEqual(result.kind, "round")
+            self.assertEqual(result.decision, "pass")
+
+    def test_check_round_kernel_target_warns_when_effective_metric_source_falls_back(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            round_dir = self._write_round(
+                workdir,
+                "opt-round-1",
+                round_disposition="continue",
+            )
+            payload = json.loads((round_dir / "round-state.json").read_text(encoding="utf-8"))
+            payload["effective_metric_source"] = "mixed"
+            (round_dir / "round-state.json").write_text(json.dumps(payload), encoding="utf-8")
+
+            result = optimize_checks.check_round(round_dir, optimize_target="kernel")
+
+            self.assertTrue(result.ok)
+            self.assertEqual(result.kind, "round")
+            self.assertEqual(result.decision, "pass")
+            self.assertTrue(
+                any(
+                    issue.startswith(
+                        "kernel optimize target fell back to effective_metric_source=mixed"
+                    )
+                    for issue in result.issues
+                )
+            )
 
     def _write_baseline(self, workdir: Path) -> None:
         baseline_dir = workdir / "baseline"
@@ -339,6 +386,7 @@ class OptimizeCheckTests(unittest.TestCase):
             "canonical_baseline": "baseline",
             "comparison_target": "baseline/perf.txt",
             "perf_summary_source": "compare-perf",
+            "effective_metric_source": "kernel",
             "summary_path": "summary.md",
             "opt_note_updated": True,
             "round_disposition": round_disposition,

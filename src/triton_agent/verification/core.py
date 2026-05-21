@@ -16,7 +16,7 @@ from triton_agent.models import AgentResult
 from triton_agent.optimize.models import OptimizeStatusWorkspace
 from triton_agent.optimize.baseline import load_baseline_state
 from triton_agent.optimize.pt_cleanup import cleanup_dir_pt_files
-from triton_agent.optimize.round_contract import inspect_round_artifacts
+from triton_agent.optimize.round_contract import inspect_round_artifacts, load_round_state
 from triton_agent.status.core import inspect_optimize_status_workspace
 from triton_agent.skill_loader import load_operator_eval_script_module
 
@@ -32,6 +32,21 @@ class BenchPerfParserModule(Protocol):
         self,
         path: Path,
         required_latency_ids: Iterable[str],
+    ) -> dict[str, float]: ...
+
+    def parse_perf_file_for_metric_source(
+        self,
+        path: Path,
+        *,
+        metric_source: str = "auto",
+    ) -> dict[str, float]: ...
+
+    def parse_required_perf_file_for_metric_source(
+        self,
+        path: Path,
+        required_latency_ids: Iterable[str],
+        *,
+        metric_source: str = "auto",
     ) -> dict[str, float]: ...
 
 
@@ -51,6 +66,7 @@ class VerifyTarget:
     workspace: Path
     selected_round: str
     round_dir: Path
+    effective_metric_source: str
     source_operator: Path
     source_baseline_operator: Path
     verify_dir: Path
@@ -104,6 +120,7 @@ def prepare_verify_target(
     round_artifacts = inspect_round_artifacts(round_dir)
     if round_artifacts.operator_path is None:
         raise ValueError(f"Best round is missing round-local operator output: {round_dir}")
+    round_state = load_round_state(round_dir)
 
     verify_dir = _create_unique_verify_dir(workspace, timestamp_label=timestamp_label)
     copied_operator = verify_dir / round_artifacts.operator_path.name
@@ -117,6 +134,7 @@ def prepare_verify_target(
         workspace=workspace,
         selected_round=status.best_round,
         round_dir=round_dir,
+        effective_metric_source=round_state.effective_metric_source,
         source_operator=round_artifacts.operator_path,
         source_baseline_operator=source_baseline_operator,
         verify_dir=verify_dir,
@@ -211,7 +229,11 @@ def run_verify(
         if return_code == 0 and baseline_perf_path is not None and best_perf_path is not None:
             compare_output = io.StringIO()
             with contextlib.redirect_stdout(compare_output):
-                compare_code = compare_perf_files(baseline_perf_path, best_perf_path)
+                compare_code = compare_perf_files(
+                    baseline_perf_path,
+                    best_perf_path,
+                    metric_source=_metric_source_for_verification(target.effective_metric_source),
+                )
             compare_log = target.verify_dir / "compare-perf.txt"
             compare_log.write_text(compare_output.getvalue(), encoding="utf-8")
             compare_entry = {
@@ -424,11 +446,23 @@ def _build_speedup_state(
         parser = _load_bench_perf_parser()
         resolved_baseline_perf_path = cast(Path, baseline_perf_path)
         resolved_best_perf_path = cast(Path, best_perf_path)
-        baseline_values = parser.parse_perf_file(resolved_baseline_perf_path)
-        verify_values = parser.parse_required_perf_file(
-            resolved_best_perf_path,
-            baseline_values,
-        )
+        metric_source = _metric_source_for_verification(target.effective_metric_source)
+        if metric_source == "auto":
+            baseline_values = parser.parse_perf_file(resolved_baseline_perf_path)
+            verify_values = parser.parse_required_perf_file(
+                resolved_best_perf_path,
+                baseline_values,
+            )
+        else:
+            baseline_values = parser.parse_perf_file_for_metric_source(
+                resolved_baseline_perf_path,
+                metric_source=metric_source,
+            )
+            verify_values = parser.parse_required_perf_file_for_metric_source(
+                resolved_best_perf_path,
+                baseline_values,
+                metric_source=metric_source,
+            )
     except (OSError, ValueError) as exc:
         return (
             {
@@ -484,6 +518,14 @@ def _build_latency_state(perf_path: Path | None) -> dict[str, float] | None:
         return dict(parser.parse_perf_file(perf_path))
     except (OSError, ValueError):
         return None
+
+
+def _metric_source_for_verification(effective_metric_source: str) -> str:
+    if effective_metric_source == "kernel":
+        return "kernel"
+    if effective_metric_source == "total-op":
+        return "total-op"
+    return "auto"
 
 
 def _build_consistency_state(
@@ -566,7 +608,16 @@ def _copy_verify_input(source: Path, verify_dir: Path) -> Path:
     return target
 
 
-def compare_perf_files(baseline_perf: Path, compare_perf: Path) -> int:
+def compare_perf_files(
+    baseline_perf: Path,
+    compare_perf: Path,
+    *,
+    metric_source: str = "auto",
+) -> int:
     from triton_agent.commands.comparison import compare_perf_files as compare_perf_files_impl
 
-    return compare_perf_files_impl(baseline_perf, compare_perf)
+    return compare_perf_files_impl(
+        baseline_perf,
+        compare_perf,
+        metric_source=metric_source,
+    )

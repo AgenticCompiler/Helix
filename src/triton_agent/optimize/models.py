@@ -35,6 +35,7 @@ class OptimizeRunOptions:
     bench_mode: str | None
     prompt: str | None
     target_chip: Literal["A3", "A5"] = "A5"
+    optimize_target: Literal["kernel", "operator"] = "kernel"
     optimize_knowledge: Literal["v1", "v2", "v3"] = "v1"
     compiler_source_analysis: Literal["off", "auto"] = "off"
     enable_cann_ext_api: bool = False
@@ -61,6 +62,7 @@ class BatchOptimizeResult:
 @dataclass(frozen=True)
 class OptimizeStatusRound:
     round_name: str
+    effective_metric_source: str
     avg_improvement: float
     geomean_speedup: float
     total_speedup: float

@@ -7,14 +7,10 @@ const READ_COMMANDS = new Set([
   "head",
   "less",
   "more",
-  "python",
-  "python3",
   "rg",
   "sed",
   "tail",
 ]);
-const PYTHON_COMMANDS = new Set(["python", "python3"]);
-const SHELL_CONTROL_OPERATORS = new Set(["&&", "||", "|", ";", "&"]);
 const PROTECTED_RELATIVE_PATH_PREFIXES = ["triton-agent-logs/"];
 
 const PATH_FRAGMENT_RE =
@@ -202,18 +198,8 @@ function isReadCommandToken(token) {
   return READ_COMMANDS.has(path.basename(token));
 }
 
-function isPythonCommandToken(token) {
-  return PYTHON_COMMANDS.has(path.basename(token));
-}
-
 function candidatePaths(command, tokens) {
   const candidates = [];
-  const pythonEntrypointIndexes = pythonEntrypointCandidateIndexes(tokens);
-  const pythonEntrypointValues = new Set(
-    [...pythonEntrypointIndexes]
-      .filter((index) => index < tokens.length)
-      .map((index) => tokens[index]),
-  );
   const explicitPathTokens = new Set(tokens.filter((token) => looksLikePath(token)));
 
   for (const [index, token] of tokens.entries()) {
@@ -221,10 +207,7 @@ function candidatePaths(command, tokens) {
       continue;
     }
     if (looksLikePath(token)) {
-      candidates.push({
-        path: token,
-        allowProtectedScriptEntrypoint: pythonEntrypointIndexes.has(index),
-      });
+      candidates.push({ path: token, allowProtectedScriptEntrypoint: false });
     }
   }
 
@@ -233,53 +216,12 @@ function candidatePaths(command, tokens) {
     if (typeof candidate !== "string") {
       continue;
     }
-    if (
-      !isReadCommandToken(candidate) &&
-      !pythonEntrypointValues.has(candidate) &&
-      !isNestedPathFragment(candidate, explicitPathTokens)
-    ) {
+    if (!isReadCommandToken(candidate) && !isNestedPathFragment(candidate, explicitPathTokens)) {
       candidates.push({ path: candidate, allowProtectedScriptEntrypoint: false });
     }
   }
 
   return candidates;
-}
-
-function pythonEntrypointCandidateIndexes(tokens) {
-  const indexes = new Set();
-  for (const [index, token] of tokens.entries()) {
-    if (!isPythonCommandToken(token)) {
-      continue;
-    }
-    const entrypointIndex = pythonEntrypointCandidateIndex(tokens, index + 1);
-    if (entrypointIndex !== null) {
-      indexes.add(entrypointIndex);
-    }
-  }
-  return indexes;
-}
-
-function pythonEntrypointCandidateIndex(tokens, start) {
-  for (let index = start; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    if (SHELL_CONTROL_OPERATORS.has(token)) {
-      return null;
-    }
-    if (token === "-c" || token === "-m") {
-      return null;
-    }
-    if (token === "--") {
-      continue;
-    }
-    if (token.startsWith("-")) {
-      continue;
-    }
-    if (looksLikePath(token)) {
-      return index;
-    }
-    return null;
-  }
-  return null;
 }
 
 function looksLikePath(token) {

@@ -76,6 +76,7 @@ class AgentRunner(ABC):
             summary,
             base_prompt=request.prompt,
             supervise=request.supervise,
+            optimize_target=request.optimize_target,
         )
         return self.run(request.with_prompt(resumed_prompt), stdout=stdout, stderr=stderr)
 

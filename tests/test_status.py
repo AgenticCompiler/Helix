@@ -335,6 +335,105 @@ class OptimizeStatusTests(unittest.TestCase):
             self.assertAlmostEqual(status.geomean_speedup or 0.0, (1 / 0.5 * 100 / 100) ** 0.5)
             self.assertAlmostEqual(status.total_speedup or 0.0, 101 / 100.5)
 
+    def test_inspect_optimize_status_workspace_uses_total_op_basis_when_round_state_requests_it(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "perf.txt").write_text(
+                "\n".join(
+                    [
+                        "latency-a: 10",
+                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":50.0}]}',
+                        "latency-b: 20",
+                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":50.0}]}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "standalone",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+
+            round_one = workspace / "opt-round-1"
+            round_two = workspace / "opt-round-2"
+            round_one.mkdir()
+            round_two.mkdir()
+            (round_one / "opt_kernel_perf.txt").write_text(
+                "\n".join(
+                    [
+                        "latency-a: 8",
+                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":70.0}]}',
+                        "latency-b: 8",
+                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":70.0}]}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (round_two / "opt_kernel_perf.txt").write_text(
+                "\n".join(
+                    [
+                        "latency-a: 11",
+                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":40.0}]}',
+                        "latency-b: 11",
+                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":40.0}]}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            for round_dir in (round_one, round_two):
+                (round_dir / "round-state.json").write_text(
+                    json.dumps(
+                        {
+                            "round": round_dir.name,
+                            "parent_round": "baseline",
+                            "hypothesis": "reduce end-to-end overhead",
+                            "evidence_sources": ["benchmark"],
+                            "correctness_status": "passed",
+                            "benchmark_status": "passed",
+                            "perf_artifact": "opt_kernel_perf.txt",
+                            "canonical_baseline": "baseline",
+                            "comparison_target": "baseline/perf.txt",
+                            "perf_summary_source": "compare-perf",
+                            "effective_metric_source": "total-op",
+                            "summary_path": "summary.md",
+                            "opt_note_updated": True,
+                            "round_disposition": "continue",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+            status = inspect_optimize_status_workspace(workspace)
+
+            self.assertEqual(status.state, "ok")
+            self.assertEqual(status.best_round, "round-2")
+            self.assertAlmostEqual(status.geomean_speedup or 0.0, (50 / 40 * 50 / 40) ** 0.5)
+            self.assertAlmostEqual(status.total_speedup or 0.0, 100 / 80)
+            self.assertEqual(status.warnings, ())
+
     def test_inspect_optimize_status_workspace_prefers_baseline_directory_perf(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)

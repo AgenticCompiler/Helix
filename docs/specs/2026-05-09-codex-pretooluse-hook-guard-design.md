@@ -127,7 +127,6 @@ The guard should inspect the `PreToolUse` input JSON from stdin and evaluate onl
 - `less`
 - `more`
 - `awk`
-- `python` or `python3` one-liners that open protected files
 - `rg` commands that target protected implementation paths
 
 The first implementation should be conservative. It should block when a read-oriented command clearly targets a forbidden path, but it should not attempt to parse every possible shell construct. It should prefer clear, low-risk matches over broad command rejection.
@@ -165,7 +164,7 @@ Add focused unit tests rather than depending on a live Codex session.
 - Add hook staging tests that verify Codex hook assets are created under `.codex/`, tracked for cleanup, and removed without deleting user-owned directories.
 - Verify staging fails clearly when `.codex/hooks.json` already exists.
 - Verify non-Codex backends do not receive Codex hook files.
-- Add guard script tests for allowed in-workspace reads, blocked outside-workspace reads, blocked `.codex/skills/*/scripts/` reads, blocked Python one-liners, and malformed input fail-open behavior.
+- Add guard script tests for allowed in-workspace reads, blocked outside-workspace reads, blocked `.codex/skills/*/scripts/` reads, and malformed input fail-open behavior.
 - Add CLI and optimize orchestration coverage showing `optimize --enable-agent-hooks` maps to the agent request, while default optimize requests leave hooks disabled.
 - Add runner coverage showing enabled Codex requests prepare hooks before launch and clean them up afterward, while default requests skip hook staging.
 

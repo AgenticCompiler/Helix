@@ -72,6 +72,7 @@ class VerifyTests(unittest.TestCase):
                     "canonical_baseline": "baseline",
                     "comparison_target": "baseline/perf.txt",
                     "perf_summary_source": "compare-perf",
+                    "effective_metric_source": "kernel",
                     "summary_path": "summary.md",
                     "opt_note_updated": True,
                     "round_disposition": "stop",
@@ -152,6 +153,7 @@ class VerifyTests(unittest.TestCase):
                         "canonical_baseline": "baseline",
                         "comparison_target": "baseline/perf.txt",
                         "perf_summary_source": "compare-perf",
+                        "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,
                         "round_disposition": "stop",
@@ -224,7 +226,11 @@ class VerifyTests(unittest.TestCase):
                     ((target.bench_file, target.copied_operator, target.bench_mode), {}),
                 ],
             )
-            compare_perf.assert_called_once_with(baseline_perf_path, perf_path)
+            compare_perf.assert_called_once_with(
+                baseline_perf_path,
+                perf_path,
+                metric_source="kernel",
+            )
             self.assertEqual((target.verify_dir / "test.log").read_text(encoding="utf-8"), "test ok\n")
             self.assertEqual(
                 (target.verify_dir / "rerun-best-bench.log").read_text(encoding="utf-8"),
@@ -400,7 +406,76 @@ class VerifyTests(unittest.TestCase):
             self.assertEqual(result.return_code, 0)
             run_test.assert_not_called()
             self.assertEqual(run_bench.call_count, 2)
-            compare_perf.assert_called_once_with(baseline_perf_path, perf_path)
+            compare_perf.assert_called_once_with(
+                baseline_perf_path,
+                perf_path,
+                metric_source="kernel",
+            )
+
+    def test_run_verify_bench_phase_uses_total_op_metric_source_when_best_round_requests_it(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            self._write_baseline(workspace)
+            round_dir = self._write_round(
+                workspace,
+                1,
+                "\n".join(
+                    [
+                        "latency-a: 8",
+                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":8.0}]}',
+                        "latency-b: 18",
+                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":18.0}]}',
+                    ]
+                )
+                + "\n",
+            )
+            (workspace / "baseline" / "perf.txt").write_text(
+                "\n".join(
+                    [
+                        "latency-a: 10",
+                        '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":10.0}]}',
+                        "latency-b: 20",
+                        '# raw-op-statistic-b: {"ops":[{"op_type":"OpB","avg_time_us":20.0}]}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            payload = json.loads((round_dir / "round-state.json").read_text(encoding="utf-8"))
+            payload["effective_metric_source"] = "total-op"
+            (round_dir / "round-state.json").write_text(json.dumps(payload), encoding="utf-8")
+            target = prepare_verify_target(
+                workspace,
+                timestamp_label="20260420-153012",
+            )
+            baseline_perf_path = target.verify_dir / "baseline_kernel_perf.txt"
+            perf_path = target.verify_dir / "opt_kernel_perf.txt"
+
+            with patch("triton_agent.verification.core.run_local_test") as run_test:
+                with patch(
+                    "triton_agent.verification.core.run_local_bench",
+                    side_effect=[
+                        (AgentResult(return_code=0, stdout="", stderr=""), baseline_perf_path),
+                        (AgentResult(return_code=0, stdout="", stderr=""), perf_path),
+                    ],
+                ) as run_bench:
+                    with patch(
+                        "triton_agent.verification.core.compare_perf_files",
+                        return_value=0,
+                    ) as compare_perf:
+                        result = run_verify(
+                            target,
+                            VerifyOptions(phase="bench"),
+                        )
+
+            self.assertEqual(result.return_code, 0)
+            run_test.assert_not_called()
+            self.assertEqual(run_bench.call_count, 2)
+            compare_perf.assert_called_once_with(
+                baseline_perf_path,
+                perf_path,
+                metric_source="total-op",
+            )
 
     def test_run_verify_consistency_ignores_avg_improvement_and_uses_wide_tolerance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
