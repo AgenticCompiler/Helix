@@ -1,24 +1,18 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib
 import importlib.util
 import sys
 from pathlib import Path
-from typing import Protocol, TypedDict, cast
+from typing import Iterator, Protocol, cast
+
+from result_payload import ResultPayload
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 _RUN_BENCH_HINT = "Hint: use `compare-perf` to inspect this perf artifact instead of reading it directly."
 _RUN_TEST_HINT = "Hint: use `compare-result` to inspect this archived result instead of reading it directly."
-
-
-class ResultPayload(TypedDict):
-    return_code: int
-    stdout: str
-    stderr: str
-    stalled: bool
-    session_id: str | None
-
 
 class ParseMetadataFn(Protocol):
     def __call__(self, path: Path) -> dict[str, str]: ...
@@ -440,8 +434,8 @@ def _render_result(result: ResultPayload, show_output: bool) -> None:
 
 
 def _load_test_functions() -> tuple[ParseMetadataFn, RunLocalTestFn, RunRemoteTestFn]:
-    _ensure_script_dir_on_path()
-    module = importlib.import_module("test_runner")
+    with _script_dir_on_path():
+        module = importlib.import_module("test_runner")
 
     return (
         cast(ParseMetadataFn, getattr(module, "parse_test_metadata")),
@@ -451,9 +445,9 @@ def _load_test_functions() -> tuple[ParseMetadataFn, RunLocalTestFn, RunRemoteTe
 
 
 def _load_bench_functions() -> tuple[ParseMetadataFn, RunLocalBenchFn, RunRemoteBenchFn]:
-    _ensure_script_dir_on_path()
-    from bench_contract import parse_bench_metadata
-    from bench_runner import run_local_bench, run_remote_bench
+    with _script_dir_on_path():
+        from bench_contract import parse_bench_metadata
+        from bench_runner import run_local_bench, run_remote_bench
 
     return (
         cast(ParseMetadataFn, parse_bench_metadata),
@@ -463,8 +457,8 @@ def _load_bench_functions() -> tuple[ParseMetadataFn, RunLocalBenchFn, RunRemote
 
 
 def _load_compare_result_functions() -> tuple[CompareResultFn, CompareRemoteResultFn]:
-    _ensure_script_dir_on_path()
-    module = importlib.import_module("compare_result")
+    with _script_dir_on_path():
+        module = importlib.import_module("compare_result")
 
     return (
         cast(CompareResultFn, getattr(module, "compare_result_files")),
@@ -473,15 +467,15 @@ def _load_compare_result_functions() -> tuple[CompareResultFn, CompareRemoteResu
 
 
 def _load_compare_perf_function() -> ComparePerfFn:
-    _ensure_script_dir_on_path()
-    from perf_artifacts import compare_perf_files
+    with _script_dir_on_path():
+        from perf_artifacts import compare_perf_files
 
     return cast(ComparePerfFn, compare_perf_files)
 
 
 def _load_profile_functions() -> tuple[RunLocalProfileBenchFn, RunRemoteProfileBenchFn]:
-    _ensure_script_dir_on_path()
-    module = importlib.import_module("profile_runner")
+    with _script_dir_on_path():
+        module = importlib.import_module("profile_runner")
 
     return (
         cast(RunLocalProfileBenchFn, getattr(module, "run_local_profile_bench")),
@@ -496,14 +490,12 @@ def _build_profile_report(
     output_format: str = "markdown",
 ) -> str:
     script = SCRIPT_DIR.parents[1] / "triton-npu-profile-operator" / "scripts" / "reporter.py"
-    profile_scripts_dir = str(script.parent)
-    if profile_scripts_dir not in sys.path:
-        sys.path.insert(0, profile_scripts_dir)
-    spec = importlib.util.spec_from_file_location("profile_reporter_runtime", script)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load profile reporter script: {script}")
-    loaded_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(loaded_module)
+    with _temporary_sys_path_entry(str(script.parent)):
+        spec = importlib.util.spec_from_file_location("profile_reporter_runtime", script)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Unable to load profile reporter script: {script}")
+        loaded_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(loaded_module)
     module = cast(ProfileSummaryModule, loaded_module)
     return module.build_report(
         profile_dir,
@@ -513,10 +505,23 @@ def _build_profile_report(
     )
 
 
-def _ensure_script_dir_on_path() -> None:
-    script_dir = str(SCRIPT_DIR)
-    if script_dir not in sys.path:
-        sys.path.insert(0, script_dir)
+@contextlib.contextmanager
+def _temporary_sys_path_entry(path: str) -> Iterator[None]:
+    added = False
+    if path not in sys.path:
+        sys.path.insert(0, path)
+        added = True
+    try:
+        yield
+    finally:
+        if added:
+            sys.path.remove(path)
+
+
+@contextlib.contextmanager
+def _script_dir_on_path() -> Iterator[None]:
+    with _temporary_sys_path_entry(str(SCRIPT_DIR)):
+        yield
 
 
 if __name__ == "__main__":

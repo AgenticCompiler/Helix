@@ -1,13 +1,14 @@
 from __future__ import annotations
+# pyright: reportPrivateUsage=false
 
 import csv
 import os
 import tempfile
-import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO
+from typing import TextIO
 
+from bench_runner_deps import BenchRunnerDeps
 from bench_contract import KernelResolution
 from npu_affinity import NpuDevicePool, affinity_env_for_device
 from perf_artifacts import PerfCaseRecord, PerfMetrics, PerfOpRow
@@ -31,7 +32,7 @@ def _msprof_case_outcome_sort_key(outcome: _MsprofCaseOutcome) -> int:
 
 
 def run_local_bench_msprof(
-    deps: Any,
+    deps: BenchRunnerDeps,
     bench_file: Path,
     operator_file: Path,
     *,
@@ -69,7 +70,7 @@ def run_local_bench_msprof(
                 "--bench",
                 str(case_idx),
             ]
-            t0 = time.monotonic()
+            t0 = deps._now()
             with deps._stream_target_for_verbosity(verbose) as stream_target:
                 result = deps.run_streaming_process(
                     command,
@@ -77,7 +78,7 @@ def run_local_bench_msprof(
                     stall_timeout_seconds=deps._bench_timeout(),
                     stdout=stream_target,
                 )
-            elapsed = time.monotonic() - t0
+            elapsed = deps._now() - t0
             stdout_chunks.append(str(result["stdout"]))
             stderr_chunks.append(str(result["stderr"]))
             had_stalls = had_stalls or bool(result["stalled"])
@@ -139,7 +140,7 @@ def run_local_bench_msprof(
 
 
 def run_local_bench_msprof_parallel(
-    deps: Any,
+    deps: BenchRunnerDeps,
     bench_file: Path,
     operator_file: Path,
     devices: tuple[str, ...],
@@ -196,7 +197,7 @@ def run_local_bench_msprof_parallel(
 
 
 def run_remote_bench_msprof(
-    deps: Any,
+    deps: BenchRunnerDeps,
     spec: RemoteSpec,
     remote_workspace: str,
     bench_file: Path,
@@ -233,7 +234,7 @@ def run_remote_bench_msprof(
             stderr=stderr,
         )
         try:
-            t0 = time.monotonic()
+            t0 = deps._now()
             result = deps.run_remote_command_streaming(
                 spec,
                 remote_workspace,
@@ -251,7 +252,7 @@ def run_remote_bench_msprof(
                 stderr=stderr,
                 stall_timeout_seconds=deps._bench_timeout(),
             )
-            elapsed = time.monotonic() - t0
+            elapsed = deps._now() - t0
             stdout_chunks.append(str(result["stdout"]))
             stderr_chunks.append(str(result["stderr"]))
             had_stalls = had_stalls or bool(result["stalled"])
@@ -325,7 +326,7 @@ def run_remote_bench_msprof(
 
 
 def run_remote_bench_msprof_parallel(
-    deps: Any,
+    deps: BenchRunnerDeps,
     spec: RemoteSpec,
     remote_workspace: str,
     bench_file: Path,
@@ -385,7 +386,7 @@ def run_remote_bench_msprof_parallel(
 
 
 def _run_local_msprof_case_parallel(
-    deps: Any,
+    deps: BenchRunnerDeps,
     bench_file: Path,
     operator_file: Path,
     operator_arg: str,
@@ -418,7 +419,7 @@ def _run_local_msprof_case_parallel(
                 "--bench",
                 str(case_idx),
             ]
-            t0 = time.monotonic()
+            t0 = deps._now()
             with deps._stream_target_for_verbosity(verbose) as stream_target:
                 result = deps.run_streaming_process(
                     command,
@@ -427,7 +428,7 @@ def _run_local_msprof_case_parallel(
                     stdout=stream_target,
                     extra_env=affinity_env_for_device(device),
                 )
-            elapsed = time.monotonic() - t0
+            elapsed = deps._now() - t0
         return _build_local_msprof_case_outcome(deps, result, resolution, case_idx, output_dir, elapsed)
     finally:
         if temp_dir is not None:
@@ -437,7 +438,7 @@ def _run_local_msprof_case_parallel(
 
 
 def _run_remote_msprof_case_parallel(
-    deps: Any,
+    deps: BenchRunnerDeps,
     spec: RemoteSpec,
     remote_workspace: str,
     bench_file: Path,
@@ -473,7 +474,7 @@ def _run_remote_msprof_case_parallel(
     output_dir = f"{workspace_root}/msprof-output"
     try:
         with pool.acquire() as device:
-            t0 = time.monotonic()
+            t0 = deps._now()
             result = deps.run_remote_command_streaming(
                 spec,
                 workspace_root,
@@ -492,7 +493,7 @@ def _run_remote_msprof_case_parallel(
                 extra_env=affinity_env_for_device(device),
                 stall_timeout_seconds=deps._bench_timeout(),
             )
-            elapsed = time.monotonic() - t0
+            elapsed = deps._now() - t0
         return _build_remote_msprof_case_outcome(
             deps,
             spec,
@@ -516,7 +517,7 @@ def _run_remote_msprof_case_parallel(
 
 
 def _build_local_msprof_case_outcome(
-    deps: Any,
+    deps: BenchRunnerDeps,
     result: ResultPayload,
     resolution: KernelResolution,
     case_idx: int,
@@ -560,7 +561,7 @@ def _build_local_msprof_case_outcome(
 
 
 def _build_remote_msprof_case_outcome(
-    deps: Any,
+    deps: BenchRunnerDeps,
     spec: RemoteSpec,
     remote_workspace: str,
     result: ResultPayload,
@@ -629,7 +630,11 @@ def _build_msprof_result(
     )
 
 
-def _write_msprof_perf(deps: Any, operator_file: Path, case_records: list[PerfCaseRecord]) -> Path:
+def _write_msprof_perf(
+    deps: BenchRunnerDeps,
+    operator_file: Path,
+    case_records: list[PerfCaseRecord],
+) -> Path:
     return deps.write_perf_lines(
         deps.perf_output_path(operator_file),
         deps.render_perf_case_records(
@@ -709,7 +714,7 @@ def _read_local_msprof_metrics(output_dir: Path, kernel_names: list[str]) -> Per
     return _resolve_msprof_metrics(_load_msprof_avg_rows(output_dir), kernel_names)
 
 
-def _create_local_msprof_preserved_run_dir(deps: Any) -> Path | None:
+def _create_local_msprof_preserved_run_dir(deps: BenchRunnerDeps) -> Path | None:
     configured_root, configured_env = deps._resolve_local_bench_profile_output_root()
     if not configured_root:
         return None

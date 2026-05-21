@@ -38,7 +38,7 @@ from triton_agent.prompts import (
     build_optimize_worker_prompt,
     build_prompt,
 )
-from triton_agent.result_normalization import normalize_agent_result
+from triton_agent.execution import _normalize_agent_result as normalize_agent_result
 
 
 class CliParserTests(unittest.TestCase):
