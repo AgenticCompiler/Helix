@@ -153,6 +153,18 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Gather-like code has continuous destination rows but still stores one row at a time.
   - Scatter-weight-gradient-like code has repeated row loads that can be batched from continuous source rows.
 
+### `layout-materialization-elision`
+
+- Summary: Avoid materializing tensors whose only purpose is to change logical layout, such as `permute`, `transpose`, `movedim`, `reshape`, `squeeze`, or `unsqueeze`, when the next step immediately copies, stores, reduces, gathers, or otherwise consumes the data. Instead, express the desired logical layout in the consuming kernel's pointer math or block-pointer metadata and write directly to the final destination layout.
+- Source: [layout-materialization-elision.md](patterns/layout-materialization-elision.md)
+- Use When:
+  - The current implementation creates an intermediate tensor with `permute(...).contiguous()`, `transpose(...).contiguous()`, `movedim(...).contiguous()`, `clone()`, `copy_()`, or a Triton helper that exists only to produce a different physical layout.
+  - A later step immediately copies that intermediate into the final output, consumes it in a reduction, feeds it to a simple elementwise/gather/scatter kernel, or stores it in another layout.
+  - The layout transform is semantically just axis reordering, singleton-axis insertion/removal, reshape/view-compatible reindexing, or another affine mapping.
+  - The source and destination access pattern can be represented with explicit strides, 2D/3D tile offsets, or `tl.make_block_ptr`.
+  - Profiling shows `Transpose`, `Contiguous`, `DataCopy`, `Memcpy`, `copy_`, or a separate layout-conversion Triton kernel taking meaningful time.
+  - The output destination is known at dispatch time, so the optimized kernel can write the final layout directly.
+
 ### `loop-invariant-hoisting`
 
 - Summary: Apply **Loop-Invariant Code Motion (LICM)** to Triton kernels: move computations that do **not** depend on the loop induction variable out of the loop, so each iteration performs only the minimal work that truly varies.
