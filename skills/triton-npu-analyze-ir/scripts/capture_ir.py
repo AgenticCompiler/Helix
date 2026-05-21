@@ -17,11 +17,6 @@ from typing import TextIO
 from typing import TypedDict
 
 
-class CaptureDetails(NamedTuple):
-    dumped_ir_dir: str
-    compile_command: list[str]
-
-
 class ResultPayload(TypedDict):
     return_code: int
     stdout: str
@@ -45,6 +40,11 @@ def make_result(
         "stalled": stalled,
         "session_id": session_id,
     }
+
+
+class CaptureDetails(NamedTuple):
+    dumped_ir_dir: str
+    compile_command: list[str]
 
 
 def extract_capture_details(stdout: str) -> CaptureDetails:
@@ -508,14 +508,14 @@ def _stage_required_files(
         stderr=stderr,
     )
     if _resolve_bench_mode(bench_file) == "standalone":
-        helper_path = _standalone_runtime_script_path()
-        copy_file_to_remote(
-            spec,
-            helper_path,
-            f"{remote_source_dir}/{helper_path.name}",
-            verbose=verbose,
-            stderr=stderr,
-        )
+        for helper_path in _standalone_runtime_support_paths():
+            copy_file_to_remote(
+                spec,
+                helper_path,
+                f"{remote_source_dir}/{helper_path.name}",
+                verbose=verbose,
+                stderr=stderr,
+            )
 
 
 def _resolve_bench_mode(bench_file: Path) -> str:
@@ -538,6 +538,14 @@ def _standalone_runtime_script_path() -> Path:
         / "scripts"
         / "standalone_bench_runtime.py"
     )
+
+
+def _standalone_runtime_support_paths() -> list[Path]:
+    script_dir = _standalone_runtime_script_path().parent
+    return [
+        script_dir / "result_payload.py",
+        script_dir / "standalone_bench_runtime.py",
+    ]
 
 
 def _run_remote_debug_command(
@@ -603,7 +611,16 @@ def _load_runtime_helpers() -> dict[str, Any]:
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load shared runtime helpers from {script}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    script_dir = str(script.parent)
+    added = False
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
+        added = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        if added:
+            sys.path.remove(script_dir)
     return {
         "create_remote_workspace": module.create_remote_workspace,
         "cleanup_remote_workspace": module.cleanup_remote_workspace,

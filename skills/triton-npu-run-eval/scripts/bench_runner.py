@@ -12,10 +12,11 @@ import time
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, TextIO, TypeVar, cast
+from typing import TextIO, TypeVar, cast
 
 import bench_runner_msprof as _msprof
 import bench_runner_standalone as _standalone
+from bench_runner_deps import BenchRunnerDeps
 from bench_contract import (
     KernelResolution,
     parse_bench_metadata as _parse_bench_metadata,
@@ -54,29 +55,346 @@ from run_runtime import (
 _LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR"
 _T = TypeVar("_T")
 
-# Keep these facade-level aliases stable for submodule dependency injection and test patch points.
-_FACADE_COMPAT_EXPORTS = (
-    time,
-    copy_file_from_remote,
-    local_python_executable,
-    perf_output_path,
-    render_perf_case_records,
-    run_buffered_process,
-    run_remote_command_streaming,
-    run_streaming_process,
-    write_perf_lines,
-)
-
 
 class _BenchRunnerDeps:
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return globals()[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
+    def resolve_bench_kernel_resolution(
+        self,
+        bench_file: Path,
+        operator_file: Path | None = None,
+    ) -> KernelResolution:
+        return resolve_bench_kernel_resolution(bench_file, operator_file)
+
+    def run_buffered_process(
+        self,
+        command: list[str],
+        workdir: str,
+        stall_timeout_seconds: int,
+        extra_env: dict[str, str] | None = None,
+    ) -> ResultPayload:
+        return run_buffered_process(command, workdir, stall_timeout_seconds, extra_env=extra_env)
+
+    def local_python_executable(self) -> str:
+        return local_python_executable()
+
+    def _now(self) -> float:
+        return time.monotonic()
+
+    def _bench_timeout(self) -> int:
+        return _bench_timeout()
+
+    def _parse_case_count(self, stdout: str) -> int:
+        return _parse_case_count(stdout)
+
+    def _create_local_msprof_output_dir(
+        self,
+        case_idx: int,
+        preserved_run_dir: Path | None,
+    ) -> tuple[Path, tempfile.TemporaryDirectory[str] | None]:
+        return _create_local_msprof_output_dir(case_idx, preserved_run_dir)
+
+    def _stream_target_for_verbosity(self, verbose: bool) -> contextlib.AbstractContextManager[TextIO]:
+        return _stream_target_for_verbosity(verbose)
+
+    def run_streaming_process(
+        self,
+        command: list[str],
+        workdir: str,
+        stall_timeout_seconds: int,
+        stdout: TextIO | None = None,
+        extra_env: dict[str, str] | None = None,
+    ) -> ResultPayload:
+        return run_streaming_process(
+            command,
+            workdir,
+            stall_timeout_seconds,
+            stdout=stdout,
+            extra_env=extra_env,
+        )
+
+    def _format_msprof_command_failure(self, result: ResultPayload) -> str:
+        return _format_msprof_command_failure(result)
+
+    def _cleanup_local_bench_extra_info(self, workdir: Path) -> None:
+        _cleanup_local_bench_extra_info(workdir)
+
+    def _case_workspace_command_path(self, path: Path, *, source_root: Path) -> str:
+        return _case_workspace_command_path(path, source_root=source_root)
+
+    def _run_parallel_case_workers(
+        self,
+        case_keys: Sequence[str],
+        max_workers: int,
+        worker: Callable[[str], _T],
+    ) -> list[_T]:
+        return _run_parallel_case_workers(case_keys, max_workers, worker)
+
+    def run_remote_command_buffered(
+        self,
+        spec: RemoteSpec,
+        remote_workdir: str,
+        remote_command: str | Sequence[str],
+        verbose: bool = False,
+        stderr: TextIO | None = None,
+        stall_timeout_seconds: int | None = None,
+        extra_env: dict[str, str] | None = None,
+    ) -> ResultPayload:
+        return run_remote_command_buffered(
+            spec,
+            remote_workdir,
+            remote_command,
+            verbose=verbose,
+            stderr=stderr,
+            stall_timeout_seconds=stall_timeout_seconds,
+            extra_env=extra_env,
+        )
+
+    def _create_remote_msprof_output_dir(
+        self,
+        spec: RemoteSpec,
+        remote_workspace: str,
+        verbose: bool = False,
+        stderr: TextIO | None = None,
+    ) -> str:
+        return _create_remote_msprof_output_dir(
+            spec,
+            remote_workspace,
+            verbose=verbose,
+            stderr=stderr,
+        )
+
+    def run_remote_command_streaming(
+        self,
+        spec: RemoteSpec,
+        remote_workdir: str,
+        remote_command: str | Sequence[str],
+        stdout: TextIO | None = None,
+        verbose: bool = False,
+        stderr: TextIO | None = None,
+        stall_timeout_seconds: int | None = None,
+        extra_env: dict[str, str] | None = None,
+    ) -> ResultPayload:
+        return run_remote_command_streaming(
+            spec,
+            remote_workdir,
+            remote_command,
+            stdout=stdout,
+            verbose=verbose,
+            stderr=stderr,
+            stall_timeout_seconds=stall_timeout_seconds,
+            extra_env=extra_env,
+        )
+
+    def _read_remote_msprof_metrics(
+        self,
+        spec: RemoteSpec,
+        remote_workspace: str,
+        output_dir: str,
+        kernel_names: list[str],
+        verbose: bool = False,
+        stderr: TextIO | None = None,
+    ) -> PerfMetrics:
+        return _read_remote_msprof_metrics(
+            spec,
+            remote_workspace,
+            output_dir,
+            kernel_names,
+            verbose=verbose,
+            stderr=stderr,
+        )
+
+    def _cleanup_remote_msprof_output_dir(
+        self,
+        spec: RemoteSpec,
+        remote_workspace: str,
+        output_dir: str,
+        verbose: bool = False,
+        stderr: TextIO | None = None,
+    ) -> None:
+        _cleanup_remote_msprof_output_dir(
+            spec,
+            remote_workspace,
+            output_dir,
+            verbose=verbose,
+            stderr=stderr,
+        )
+
+    def _create_local_msprof_case_workspace(
+        self,
+        bench_file: Path,
+        operator_file: Path,
+        case_idx: int,
+        *,
+        source_root: Path,
+        json_search_root: Path,
+    ) -> tuple[Path, Callable[[], None]]:
+        return _create_local_msprof_case_workspace(
+            bench_file,
+            operator_file,
+            case_idx,
+            source_root=source_root,
+            json_search_root=json_search_root,
+        )
+
+    def _stage_remote_msprof_case_workspace(
+        self,
+        spec: RemoteSpec,
+        bench_file: Path,
+        operator_file: Path,
+        case_workspace: str,
+        *,
+        source_root: Path,
+        json_search_root: Path,
+        verbose: bool = False,
+        stderr: TextIO | None = None,
+    ) -> str:
+        return _stage_remote_msprof_case_workspace(
+            spec,
+            bench_file,
+            operator_file,
+            case_workspace,
+            source_root=source_root,
+            json_search_root=json_search_root,
+            verbose=verbose,
+            stderr=stderr,
+        )
+
+    def write_perf_lines(self, path: Path, lines: Sequence[str]) -> Path:
+        return write_perf_lines(path, list(lines))
+
+    def perf_output_path(self, operator_file: Path) -> Path:
+        return perf_output_path(operator_file)
+
+    def render_perf_case_records(
+        self,
+        case_records: list[PerfCaseRecord],
+        *,
+        latency_prefix: str,
+        raw_prefix: str,
+        resolved_kernels_prefix: str,
+        kernel_source_prefix: str,
+        latency_error_prefix: str,
+        missing_kernel_match_error: str,
+        elapsed_id_prefix: str | None = None,
+    ) -> list[str]:
+        kwargs: dict[str, str] = {
+            "latency_prefix": latency_prefix,
+            "raw_prefix": raw_prefix,
+            "resolved_kernels_prefix": resolved_kernels_prefix,
+            "kernel_source_prefix": kernel_source_prefix,
+            "latency_error_prefix": latency_error_prefix,
+            "missing_kernel_match_error": missing_kernel_match_error,
+        }
+        if elapsed_id_prefix is not None:
+            kwargs["elapsed_id_prefix"] = elapsed_id_prefix
+        return render_perf_case_records(case_records, **kwargs)
+
+    def _resolve_local_bench_profile_output_root(self) -> tuple[str | None, str]:
+        return _resolve_local_bench_profile_output_root()
+
+    def _set_directory_owner_only(self, path: Path) -> None:
+        _set_directory_owner_only(path)
+
+    def _standalone_runtime_support_paths(self) -> list[Path]:
+        return _standalone_runtime_support_paths()
+
+    def copy_file_to_remote(
+        self,
+        spec: RemoteSpec,
+        local_path: Path,
+        remote_path: str,
+        verbose: bool = False,
+        stderr: TextIO | None = None,
+    ) -> ResultPayload | None:
+        return copy_file_to_remote(
+            spec,
+            local_path,
+            remote_path,
+            verbose=verbose,
+            stderr=stderr,
+        )
+
+    def copy_file_from_remote(
+        self,
+        spec: RemoteSpec,
+        remote_path: str,
+        local_path: Path,
+        verbose: bool = False,
+        stderr: TextIO | None = None,
+    ) -> ResultPayload | None:
+        return copy_file_from_remote(
+            spec,
+            remote_path,
+            local_path,
+            verbose=verbose,
+            stderr=stderr,
+        )
+
+    def _load_standalone_runtime_module(self):
+        return _load_standalone_runtime_module()
+
+    def _sort_case_records(
+        self,
+        case_records: list[PerfCaseRecord],
+        ordered_case_labels: Sequence[str],
+    ) -> None:
+        _sort_case_records(case_records, ordered_case_labels)
+
+    def _create_local_case_workspace(
+        self,
+        *,
+        prefix: str,
+        input_paths: Sequence[Path],
+        source_root: Path,
+    ) -> tuple[Path, Callable[[], None]]:
+        return _create_local_case_workspace(
+            prefix=prefix,
+            input_paths=input_paths,
+            source_root=source_root,
+        )
+
+    def _bench_case_input_paths(
+        self,
+        bench_file: Path,
+        operator_file: Path,
+        *,
+        json_search_root: Path | None = None,
+        support_paths: Sequence[Path] = (),
+    ) -> list[Path]:
+        return _bench_case_input_paths(
+            bench_file,
+            operator_file,
+            json_search_root=json_search_root,
+            support_paths=support_paths,
+        )
+
+    def _stage_remote_case_workspace(
+        self,
+        spec: RemoteSpec,
+        case_workspace: str,
+        input_paths: Sequence[Path],
+        source_root: Path,
+        *,
+        verbose: bool = False,
+        stderr: TextIO | None = None,
+    ) -> str:
+        return _stage_remote_case_workspace(
+            spec,
+            case_workspace,
+            input_paths,
+            source_root,
+            verbose=verbose,
+            stderr=stderr,
+        )
+
+    def parse_required_perf_file(
+        self,
+        path: Path,
+        required_latency_ids: RequiredLatencyIds,
+    ) -> dict[str, float]:
+        return parse_required_perf_file(path, required_latency_ids)
 
 
-_DEPS = _BenchRunnerDeps()
+_DEPS = cast(BenchRunnerDeps, _BenchRunnerDeps())
 
 
 def _bench_timeout() -> int:

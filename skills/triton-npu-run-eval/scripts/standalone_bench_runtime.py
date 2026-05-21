@@ -12,7 +12,7 @@ import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, TypedDict, cast
+from typing import Any, Iterator, cast
 
 from bench_contract import KernelResolution, resolve_bench_kernel_resolution
 from perf_artifacts import (
@@ -24,6 +24,7 @@ from perf_artifacts import (
     render_perf_case_records,
     write_perf_lines,
 )
+from result_payload import ResultPayload, make_result
 
 
 WARMUP_DEFAULT = 5
@@ -31,39 +32,12 @@ REPEATS_DEFAULT = 50
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched profiler operator details"
 _LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR"
 
-
-class ResultPayload(TypedDict):
-    return_code: int
-    stdout: str
-    stderr: str
-    stalled: bool
-    session_id: str | None
-
-
 @dataclass(frozen=True)
 class StandaloneBenchCase:
     case_id: str
     fn: Callable[[], object]
     warmup: int
     repeats: int
-
-
-def make_result(
-    *,
-    return_code: int,
-    stdout: str,
-    stderr: str,
-    stalled: bool = False,
-    session_id: str | None = None,
-) -> ResultPayload:
-    return {
-        "return_code": return_code,
-        "stdout": stdout,
-        "stderr": stderr,
-        "stalled": stalled,
-        "session_id": session_id,
-    }
-
 
 def load_standalone_bench_cases(
     bench_file: Path,
@@ -162,6 +136,7 @@ def run_one_standalone_case_record(
 def runtime_support_paths() -> list[Path]:
     script_dir = Path(__file__).resolve().parent
     return [
+        script_dir / "result_payload.py",
         script_dir / "standalone_bench_runtime.py",
         script_dir / "bench_contract.py",
         script_dir / "perf_artifacts.py",

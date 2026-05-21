@@ -1,9 +1,12 @@
 from __future__ import annotations
+# pyright: reportPrivateUsage=false
 
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, TextIO, cast
+from typing import TextIO, cast
 
+from bench_runner_deps import BenchRunnerDeps
 from npu_affinity import NpuDevicePool, affinity_env_for_device
 from perf_artifacts import (
     PerfCaseRecord,
@@ -16,7 +19,7 @@ from run_runtime import RemoteSpec, ResultPayload, make_result, result_succeeded
 
 
 def run_remote_bench_standalone(
-    deps: Any,
+    deps: BenchRunnerDeps,
     spec: RemoteSpec,
     remote_workspace: str,
     bench_file: Path,
@@ -68,7 +71,7 @@ def run_remote_bench_standalone(
 
 
 def run_local_standalone_bench(
-    deps: Any,
+    deps: BenchRunnerDeps,
     bench_file: Path,
     operator_file: Path,
     *,
@@ -79,7 +82,7 @@ def run_local_standalone_bench(
 
 
 def run_local_bench_standalone_parallel(
-    deps: Any,
+    deps: BenchRunnerDeps,
     bench_file: Path,
     operator_file: Path,
     devices: tuple[str, ...],
@@ -123,7 +126,7 @@ def run_local_bench_standalone_parallel(
 
 
 def run_remote_bench_standalone_parallel(
-    deps: Any,
+    deps: BenchRunnerDeps,
     spec: RemoteSpec,
     remote_workspace: str,
     bench_file: Path,
@@ -224,14 +227,14 @@ def _build_standalone_run_one_case_script() -> str:
 
 
 def _create_local_standalone_case_workspace(
-    deps: Any,
+    deps: BenchRunnerDeps,
     bench_file: Path,
     operator_file: Path,
     case_id: str,
     *,
     source_root: Path,
     json_search_root: Path,
-) -> tuple[Path, Any]:
+) -> tuple[Path, Callable[[], None]]:
     return deps._create_local_case_workspace(
         prefix=f"triton-agent-standalone-case-{case_id}-",
         input_paths=deps._bench_case_input_paths(
@@ -245,7 +248,7 @@ def _create_local_standalone_case_workspace(
 
 
 def _run_local_standalone_case_in_subprocess(
-    deps: Any,
+    deps: BenchRunnerDeps,
     workspace_root: Path,
     bench_file: Path,
     operator_file: Path,
@@ -275,7 +278,7 @@ def _run_local_standalone_case_in_subprocess(
 
 
 def _stage_remote_standalone_case_workspace(
-    deps: Any,
+    deps: BenchRunnerDeps,
     spec: RemoteSpec,
     bench_file: Path,
     operator_file: Path,
@@ -302,7 +305,7 @@ def _stage_remote_standalone_case_workspace(
 
 
 def _run_remote_standalone_case(
-    deps: Any,
+    deps: BenchRunnerDeps,
     spec: RemoteSpec,
     case_workspace: str,
     bench_file: Path,

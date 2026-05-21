@@ -1,3 +1,4 @@
+import ast
 import importlib.util
 import sys
 import unittest
@@ -14,6 +15,15 @@ from triton_agent.skill_loader import (
 import triton_agent.optimize.naming as optimize_naming
 import triton_agent.optimize.pt_cleanup as optimize_pt_cleanup
 from triton_agent.optimize.models import BaselineState, OptimizeCheckResult, RoundState
+
+
+def _top_level_defined_names(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return {
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+    }
 
 
 class RunSkillLoaderTests(unittest.TestCase):
@@ -102,6 +112,28 @@ class RunSkillLoaderTests(unittest.TestCase):
         self.assertTrue(hasattr(module, "run_buffered_process"))
         self.assertFalse(hasattr(module, "run_process"))
         self.assertFalse(hasattr(module, "run_interactive_process"))
+
+    def test_run_command_and_runtime_use_shared_result_payload_helper(self) -> None:
+        scripts_dir = Path(__file__).resolve().parents[1] / "skills" / "triton-npu-run-eval" / "scripts"
+        self.assertTrue((scripts_dir / "result_payload.py").is_file())
+        self.assertNotIn("ResultPayload", _top_level_defined_names(scripts_dir / "run-command.py"))
+        self.assertNotIn("ResultPayload", _top_level_defined_names(scripts_dir / "run_runtime.py"))
+        self.assertNotIn("make_result", _top_level_defined_names(scripts_dir / "run_runtime.py"))
+
+    def test_bench_runner_no_longer_uses_globals_service_locator(self) -> None:
+        path = Path(__file__).resolve().parents[1] / "skills" / "triton-npu-run-eval" / "scripts" / "bench_runner.py"
+        content = path.read_text(encoding="utf-8")
+
+        self.assertNotIn("globals()[name]", content)
+        self.assertNotIn("_FACADE_COMPAT_EXPORTS", content)
+
+    def test_bench_runner_submodules_use_explicit_dependency_protocols(self) -> None:
+        scripts_dir = Path(__file__).resolve().parents[1] / "skills" / "triton-npu-run-eval" / "scripts"
+        msprof_content = (scripts_dir / "bench_runner_msprof.py").read_text(encoding="utf-8")
+        standalone_content = (scripts_dir / "bench_runner_standalone.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("deps: Any", msprof_content)
+        self.assertNotIn("deps: Any", standalone_content)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,24 @@ from typing import Optional
 from unittest.mock import patch
 
 class SkillCommandScriptTests(unittest.TestCase):
+    def test_loading_run_command_does_not_mutate_sys_path(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_sys_path", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+
+        before = list(sys.path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        self.assertEqual(sys.path, before)
+
     def test_run_bench_parser_accepts_npu_devices_flag(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
@@ -262,6 +280,27 @@ class SkillCommandScriptTests(unittest.TestCase):
 
         self.assertEqual(stdout.getvalue(), "skill stdout\n")
         self.assertEqual(stderr.getvalue(), "skill stderr\n")
+
+    def test_load_profile_functions_restores_sys_path_after_import(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_profile_path", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        before = list(sys.path)
+        run_local_profile_bench, run_remote_profile_bench = module._load_profile_functions()
+
+        self.assertEqual(sys.path, before)
+        self.assertTrue(callable(run_local_profile_bench))
+        self.assertTrue(callable(run_remote_profile_bench))
 
     def test_script_run_test_prints_hint_for_differential_result(self) -> None:
         script = (

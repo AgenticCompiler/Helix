@@ -342,7 +342,10 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
             stderr=None,
         )
         copied_names = [call.args[2].rsplit("/", 1)[-1] for call in copy_file.call_args_list]
-        self.assertEqual(copied_names, ["bench.py", "kernel.py", "standalone_bench_runtime.py"])
+        self.assertEqual(
+            copied_names,
+            ["bench.py", "kernel.py", "result_payload.py", "standalone_bench_runtime.py"],
+        )
         self.assertIn(
             "python3 standalone_bench_runtime.py run-one --bench-file bench.py --operator-file kernel.py",
             remote_run.call_args_list[1].args[2],
