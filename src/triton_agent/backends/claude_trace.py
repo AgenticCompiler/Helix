@@ -5,7 +5,8 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from collections.abc import Callable
+from typing import Any, cast
 
 from triton_agent.otel_trace import append_trace_event, utc_timestamp
 
@@ -67,6 +68,8 @@ class ClaudeJsonLineParser:
         if not isinstance(event, dict):
             return line
 
+        event = cast(dict[str, Any], event)
+
         if not self._first_event_received:
             self._first_event_received = True
             self._write_diagnostic("claude_native_json_active",
@@ -74,21 +77,20 @@ class ClaudeJsonLineParser:
 
         event_type = event.get("type", "")
         handler_name = self._ROUTE.get(event_type, "_handle_unknown")
-        handler = getattr(self, handler_name, self._handle_unknown)
+        handler = cast(Callable[[dict[str, Any]], str | None], getattr(self, handler_name, self._handle_unknown))
         return handler(event)
 
     # ── event handlers ──────────────────────────────────────────
 
     def _handle_assistant(self, event: dict[str, Any]) -> str | None:
-        message = event.get("message", {})
-        content = message.get("content", [])
-        if not isinstance(content, list):
-            return self._render_text_content(content)
+        message = cast(dict[str, Any], event.get("message", {}))
+        content = cast(list[Any], message.get("content", []))
 
         human_parts: list[str] = []
         for block in content:
             if not isinstance(block, dict):
                 continue
+            block = cast(dict[str, Any], block)
             block_type = block.get("type", "")
 
             if block_type == "tool_use":
@@ -137,18 +139,17 @@ class ClaudeJsonLineParser:
         return "\n".join(human_parts) if human_parts else None
 
     def _handle_user(self, event: dict[str, Any]) -> str | None:
-        message = event.get("message", {})
-        content = message.get("content", [])
-        if not isinstance(content, list):
-            return None
+        message = cast(dict[str, Any], event.get("message", {}))
+        content = cast(list[Any], message.get("content", []))
 
-        end_time = event.get("timestamp", utc_timestamp())
-        tool_use_result = event.get("tool_use_result", {})
+        end_time = cast(str, event.get("timestamp", utc_timestamp()))
+        tool_use_result = cast(dict[str, Any], event.get("tool_use_result", {}))
         human_parts: list[str] = []
 
         for block in content:
             if not isinstance(block, dict):
                 continue
+            block = cast(dict[str, Any], block)
             if block.get("type") != "tool_result":
                 continue
 
@@ -220,7 +221,7 @@ class ClaudeJsonLineParser:
         )
         return f"[result] {subtype}: {duration_ms}ms, {num_turns} turns"
 
-    def _handle_unknown(self, event: dict) -> str:
+    def _handle_unknown(self, event: dict[str, Any]) -> str:
         return json.dumps(event)
 
     # ── derived events ──────────────────────────────────────────
@@ -233,7 +234,7 @@ class ClaudeJsonLineParser:
         if tool not in self._COMMAND_TOOLS:
             return
 
-        raw_command = tool_input.get("command", "") if isinstance(tool_input, dict) else str(tool_input)
+        raw_command = tool_input.get("command", "")
         if not raw_command:
             return
 
@@ -274,7 +275,7 @@ class ClaudeJsonLineParser:
         file_path = (
             tool_input.get("file_path") or tool_input.get("path")
             or tool_input.get("pattern") or ""
-        ) if isinstance(tool_input, dict) else ""
+        )
 
         self._write_event({
             "schema_version": 1,
@@ -299,7 +300,7 @@ class ClaudeJsonLineParser:
         if tool not in self._EDIT_TOOLS:
             return
 
-        file_path = tool_input.get("file_path", "") if isinstance(tool_input, dict) else ""
+        file_path = tool_input.get("file_path", "")
 
         self._write_event({
             "schema_version": 1,
@@ -377,8 +378,6 @@ class ClaudeJsonLineParser:
         return text[:limit] + "\n<truncated>"
 
     def _summarize_input(self, tool: str, tool_input: dict[str, Any]) -> str:
-        if not isinstance(tool_input, dict):
-            return str(tool_input)[:80]
         if tool in self._COMMAND_TOOLS:
             cmd = tool_input.get("command", "")
             return cmd[:120] if cmd else "(no command)"
@@ -388,11 +387,6 @@ class ClaudeJsonLineParser:
             return tool_input.get("file_path", "(no file)")[:80]
         keys = list(tool_input.keys())[:3]
         return ", ".join(f"{k}={str(tool_input[k])[:40]}" for k in keys)
-
-    def _render_text_content(self, content: Any) -> str | None:
-        if isinstance(content, str):
-            return content
-        return json.dumps(content)
 
     # ── write helpers ───────────────────────────────────────────
 
