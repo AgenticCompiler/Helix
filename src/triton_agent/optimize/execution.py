@@ -13,6 +13,9 @@ from triton_agent.optimize.session_artifacts import (
     SharedOptimizeSessionArtifactsState,
 )
 from triton_agent.optimize.models import GateDecision, GateResult
+from triton_agent.optimize.pattern_reminders import (
+    resolve_generic_optimize_knowledge_skill_name,
+)
 from triton_agent.optimize.run_loop import OptimizeRunLoop
 from triton_agent.optimize.prompts import build_optimize_supervisor_prompt
 from triton_agent.optimize.pt_cleanup import cleanup_workspace_pt_files
@@ -21,6 +24,13 @@ from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 def _request_enables_cann_ext_api(request: AgentRequest) -> bool:
     return request.staged_skill_names is not None and "triton-npu-cann-ext-api-patterns" in request.staged_skill_names
+
+
+def _request_optimize_knowledge_skill_name(request: AgentRequest) -> str | None:
+    return resolve_generic_optimize_knowledge_skill_name(
+        request.staged_skill_names,
+        request.staged_skill_sources,
+    )
 
 
 class RecoveryRunnerAdapter:
@@ -281,6 +291,7 @@ def execute_supervised_optimize(
         compiler_source_path=request.compiler_source_path,
         compiler_source_commit=request.compiler_source_commit,
         enable_cann_ext_api=_request_enables_cann_ext_api(request),
+        optimize_knowledge_skill_name=_request_optimize_knowledge_skill_name(request),
     )
     if request.verbose:
         emit_verbose_lines(
@@ -334,6 +345,7 @@ def execute_unsupervised_optimize(
         compiler_source_path=request.compiler_source_path,
         compiler_source_commit=request.compiler_source_commit,
         enable_cann_ext_api=_request_enables_cann_ext_api(request),
+        optimize_knowledge_skill_name=_request_optimize_knowledge_skill_name(request),
     )
     if request.verbose:
         emit_verbose_lines(

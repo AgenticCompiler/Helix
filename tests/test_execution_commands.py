@@ -45,6 +45,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 test_file.resolve(),
                 operator.resolve(),
                 "differential",
+                verbose=False,
             )
 
     def test_handle_run_test_auto_compares_differential_result_when_oracle_provided(self) -> None:
@@ -87,11 +88,47 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 test_file.resolve(),
                 operator.resolve(),
                 "differential",
+                verbose=False,
             )
             compare_mock.assert_called_once_with(
                 oracle.resolve(),
                 archive,
                 "balanced",
+            )
+
+    def test_handle_run_test_threads_verbose_to_local_runner(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+
+            args = parser.parse_args(
+                [
+                    "run-test",
+                    "--test-file",
+                    str(test_file),
+                    "--operator-file",
+                    str(operator),
+                    "--verbose",
+                ]
+            )
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch(
+                "triton_agent.commands.execution.run_local_test",
+                return_value=(fake_result, None),
+            ) as mocked:
+                exit_code = handle_run_test(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                test_file.resolve(),
+                operator.resolve(),
+                "standalone",
+                verbose=True,
             )
 
     def test_handle_run_bench_prints_perf_file(self) -> None:

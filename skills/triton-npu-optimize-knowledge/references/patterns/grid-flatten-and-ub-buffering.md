@@ -1,3 +1,7 @@
+---
+priority: high
+---
+
 # Grid Flattening And UB Buffering Pattern
 
 ## Summary
@@ -32,6 +36,32 @@ Compute `TASKS_PER_CORE` on the host and pass it as `tl.constexpr` when it contr
 When `logical_tasks > num_cores`, launch `num_cores` programs and loop over logical tasks inside the kernel. Keep `NUM_TASKS` and `NUM_CORES` as explicit constants so the compiler can simplify loop bounds.
 
 This helps only when each physical program has enough work to amortize the internal loop. If the original grid is near the physical core count, the extra loop can be overhead.
+
+### Discover core counts and choose grid by task kind
+
+Use a best-effort runtime query before hardcoding one grid size:
+
+```python
+import torch
+
+print(torch.npu.device_count())
+device = torch.npu.current_device()
+props = torch.npu.get_device_properties(device)
+print(props)
+```
+
+If this query fails, if `torch.npu` is unavailable in the current environment, or if `props` does not expose explicit per-engine counts, fall back to:
+
+- cube cores: `24`
+- vector cores: `48`
+
+Do not turn one observed physical-core count into a universal launch rule. Pick the initial flattened grid from the operator task kind:
+
+- `cube`-like operators: start from the discovered Cube-core count and verify that the kernel really stays Cube-dominant.
+- `vector`-like operators: start from the discovered Vector-core count and retest after any major tiling or buffering rewrite.
+- `mix` operators: choose the starting point from the dominant bottleneck side, or test both cube-first and vector-first launch counts when the profile is ambiguous.
+
+Keep `NUM_CORES` aligned with the chosen task kind rather than hardcoding one global constant across unrelated operators.
 
 ### UB aggregate writes
 

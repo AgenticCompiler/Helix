@@ -24,6 +24,8 @@ class RunLocalTestFn(Protocol):
         test_file: Path,
         operator_file: Path,
         test_mode: str,
+        *,
+        verbose: bool = False,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -268,7 +270,12 @@ def main(argv: list[str] | None = None) -> int:
                     stderr=sys.stderr,
                 )
             else:
-                result, archived_result = run_local_test(test_file, operator_file, resolved_test_mode)
+                result, archived_result = run_local_test(
+                    test_file,
+                    operator_file,
+                    resolved_test_mode,
+                    verbose=args.verbose,
+                )
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
             return 1

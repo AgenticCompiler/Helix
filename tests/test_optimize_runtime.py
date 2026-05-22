@@ -1041,6 +1041,85 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIn("Target optimization scope: operator.", runner.guidance_content)
             self.assertIn("Optimize end-to-end operator latency.", runner.guidance_content)
 
+    def test_run_optimize_request_unsupervised_uses_selected_v3_pattern_reminders(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=operator,
+                operator_path=operator,
+                output_path=workdir / "opt_kernel.py",
+                test_mode="differential",
+                bench_mode="standalone",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-optimize",
+                prompt="Optimize this operator",
+                workdir=workdir,
+                supervise="off",
+                staged_skill_names=(
+                    "triton-npu-optimize",
+                    "triton-npu-optimize-knowledge",
+                ),
+                staged_skill_sources={
+                    "triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v3"
+                },
+            )
+
+            class FakeRunner:
+                def __init__(self) -> None:
+                    self.guidance_content = ""
+
+                def run(
+                    self,
+                    request: AgentRequest,
+                    stdout: Optional[object] = None,
+                    stderr: Optional[object] = None,
+                ) -> AgentResult:
+                    del request, stdout, stderr
+                    self.guidance_content = (workdir / "AGENTS.md").read_text(encoding="utf-8")
+                    return AgentResult(return_code=0, stdout="ok", stderr="", session_id=None)
+
+                def resume(
+                    self,
+                    request: AgentRequest,
+                    summary: str,
+                    stdout: Optional[object] = None,
+                    stderr: Optional[object] = None,
+                ) -> AgentResult:
+                    del request, summary, stdout, stderr
+                    return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            runner = FakeRunner()
+            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
+                result = run_optimize_request(request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertIn(
+                "High-priority generic pattern reminders for this run:",
+                runner.guidance_content,
+            )
+            self.assertIn(
+                "`grid-flatten-and-ub-buffering`: Use this pattern when latency is dominated by oversized logical grids, uneven per-core work, or tiny per-program transfers after gather/scatter-style rewrites.",
+                runner.guidance_content,
+            )
+            self.assertIn(
+                "`autotune`: **Autotune** here means Triton’s `@triton.autotune` decorator: runtime benchmarks a **small, bounded** set of launch/meta configurations and caches the fastest by key.",
+                runner.guidance_content,
+            )
+            self.assertNotIn(
+                "Use Triton-Ascend autotune as the default way to search split sizes, tile sizes, and selected compile options when the kernel structure is already reasonable and the main open question is parameter choice.",
+                runner.guidance_content,
+            )
+
     def test_run_optimize_request_unsupervised_retries_with_resume(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)

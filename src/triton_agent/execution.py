@@ -37,6 +37,8 @@ class TestRunnerModule(Protocol):
         test_file: Path,
         operator_file: Path,
         test_mode: str,
+        *,
+        verbose: bool = False,
     ) -> tuple[_RunSkillPayload, Path | None]: ...
 
     def run_remote_test(
@@ -88,8 +90,19 @@ def _load_bench_runner() -> BenchRunnerModule:
     return cast(BenchRunnerModule, load_operator_eval_script_module("bench_runner"))
 
 
-def run_local_test(test_file: Path, operator_file: Path, test_mode: str) -> tuple[AgentResult, Path | None]:
-    result, archived = _load_test_runner().run_local_test(test_file, operator_file, test_mode)
+def run_local_test(
+    test_file: Path,
+    operator_file: Path,
+    test_mode: str,
+    *,
+    verbose: bool = False,
+) -> tuple[AgentResult, Path | None]:
+    result, archived = _load_test_runner().run_local_test(
+        test_file,
+        operator_file,
+        test_mode,
+        verbose=verbose,
+    )
     return _normalize_agent_result(result), archived
 
 

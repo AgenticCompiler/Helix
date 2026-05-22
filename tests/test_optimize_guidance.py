@@ -405,6 +405,36 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             warnings = manager.cleanup_supervised_session(state)
             self.assertEqual(warnings, [])
 
+    def test_prepare_shared_guidance_includes_generated_high_priority_pattern_reminders(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+
+            manager = OptimizeSessionArtifactsManager()
+            state = manager.prepare_supervised_session(
+                workdir,
+                agent_name="codex",
+                optimize_knowledge_skill_name="triton-npu-optimize-knowledge-v2",
+            )
+
+            shared_content = state.guidance_path.read_text(encoding="utf-8")
+            self.assertIn(
+                "High-priority generic pattern reminders for this run:",
+                shared_content,
+            )
+            self.assertIn(
+                "`grid-flatten-and-ub-buffering`: Use this pattern when performance is limited by too many logical tasks, uneven per-core work, or tiny per-program transfers after a gather/scatter-style rewrite.",
+                shared_content,
+            )
+            self.assertIn(
+                "`autotune`: **Autotune** here means Triton’s `@triton.autotune` decorator: the runtime tries a **small, bounded** list of launch configurations (tile sizes, warp counts, pipeline stages, and other meta-parameters) and picks one that performs best on measured micro-benchmarks of the kernel.",
+                shared_content,
+            )
+
+            warnings = manager.cleanup_supervised_session(state)
+            self.assertEqual(warnings, [])
+
     def test_prepare_shared_guidance_mentions_torch_npu_knowledge_for_operator_target(
         self,
     ) -> None:
