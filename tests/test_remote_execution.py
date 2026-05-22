@@ -366,7 +366,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                 "copy_file_from_remote",
                 create=True,
                 side_effect=lambda _spec, _remote_path, local_path, **_kwargs: local_path.write_text(
-                    '{"case_label":"case-a","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":1.0,"total_op_avg_time_us":1.0,"error_message":null,"case_wall_clock_seconds":0.0}\n',
+                    '{"case_label":"case-a","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":1.0,"ops":[{"op_type":"k","avg_time_us":1.0}],"total_op_avg_time_us":1.0,"error_message":null,"case_wall_clock_seconds":0.0}\n',
                     encoding="utf-8",
                 ),
                 ) as copy_back, patch.object(module, "cleanup_remote_workspace") as cleanup:
@@ -623,8 +623,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"1","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":2.5,"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
-                    '{"case_label":"2","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"total_op_avg_time_us":8.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"1","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":2.5,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"2","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelA","avg_time_us":3.0},{"op_type":"KernelB","avg_time_us":5.0}],"total_op_avg_time_us":8.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
                 ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
@@ -1008,8 +1008,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"1","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":null,"total_op_avg_time_us":null,"error_message":"msprof command failed with return code 1","case_wall_clock_seconds":0.0}\n'
-                    '{"case_label":"2","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"total_op_avg_time_us":5.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"1","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":null,"total_op_avg_time_us":null,"error_message":"msprof command failed with return code 1","case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"2","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelB","avg_time_us":5.0}],"total_op_avg_time_us":5.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
                 ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
@@ -1078,7 +1078,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"1","kernel_names":["MissingKernel"],"kernel_source":"metadata","kernel_avg_time_us":null,"total_op_avg_time_us":4.0,"error_message":"no resolved kernels matched op_statistic csv","case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"1","kernel_names":["MissingKernel"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":"no resolved kernels matched op_statistic csv","case_wall_clock_seconds":0.0}\n'
                 ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
@@ -1147,7 +1147,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"1","kernel_names":["KernelA","KernelB"],"kernel_source":"metadata","kernel_avg_time_us":4.0,"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"1","kernel_names":["KernelA","KernelB"],"kernel_source":"metadata","kernel_avg_time_us":4.0,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
                 ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
@@ -1175,7 +1175,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                 "copy_file_from_remote",
                 create=True,
                 side_effect=lambda _spec, _remote_path, local_path, **_kwargs: local_path.write_text(
-                    '{"case_label":"case-a","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":1.0,"total_op_avg_time_us":1.0,"error_message":null,"case_wall_clock_seconds":0.0}\n',
+                    '{"case_label":"case-a","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":1.0,"ops":[{"op_type":"k","avg_time_us":1.0}],"total_op_avg_time_us":1.0,"error_message":null,"case_wall_clock_seconds":0.0}\n',
                     encoding="utf-8",
                 ),
             ), patch.object(module, "cleanup_remote_workspace"):

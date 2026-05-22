@@ -2,7 +2,7 @@
 
 ## Summary
 
-Replace current ad hoc line-plus-comment perf artifact format with JSONL records. Spec: `docs/specs/2026-05-21-run-bench-jsonl-perf-artifact-design.md`.
+Replace current ad hoc line-plus-comment perf artifact format with JSONL records while preserving case-level `ops` timing rows and an explicit `total_op_avg_time_us` aggregate. Spec: `docs/specs/2026-05-21-run-bench-jsonl-perf-artifact-design.md`.
 
 ## Files Changed
 
@@ -11,13 +11,15 @@ Replace current ad hoc line-plus-comment perf artifact format with JSONL records
 1. **Rename field**: `PerfCaseRecord.elapsed_seconds` → `case_wall_clock_seconds`
 2. **Add JSONL render**: `render_perf_case_records_jsonl()` → list of JSON strings
 3. **Add JSONL render single**: `render_perf_case_record_jsonl(record)` → one JSON string
-4. **Add JSONL parse**: `_parse_perf_entries_from_jsonl()` → PerfParseOutcome from JSONL
-5. **Auto-detect format**: Update `_parse_perf_entries_impl()` and `_parse_required_perf_entries_impl()` to check first non-empty line for `{` prefix → JSONL, else legacy text
+4. **JSONL schema**: include both `ops` and `total_op_avg_time_us`
+5. **Add JSONL parse**: `_parse_perf_entries_from_jsonl()` → PerfParseOutcome from JSONL
+6. **Auto-detect format**: Update `_parse_perf_entries_impl()` and `_parse_required_perf_entries_impl()` to check first non-empty line for `{` prefix → JSONL, else legacy text
 
 ### Producer: `skills/triton-npu-run-eval/scripts/bench_runner_msprof.py`
 
 1. Rename all `elapsed_seconds=` → `case_wall_clock_seconds=` in PerfCaseRecord constructions (12 sites)
 2. `_write_msprof_perf()` → use `render_perf_case_records_jsonl()` instead of `render_perf_case_records()`
+3. Preserve kernel-miss explanation in `error_message` even when `ops` and `total_op_avg_time_us` are available
 
 ### Producer: `skills/triton-npu-run-eval/scripts/bench_runner_standalone.py`
 
@@ -33,14 +35,13 @@ Replace current ad hoc line-plus-comment perf artifact format with JSONL records
 
 ### Test files updated
 
-- `tests/test_bench_runner.py` (elapsed_seconds references, perf content assertions)
+- `tests/test_bench_runner.py` (elapsed_seconds references, perf content assertions, `ops` + kernel-miss JSONL cases)
 - `tests/test_standalone_bench_runtime.py` (elapsed_seconds references, perf content assertions)
 - `tests/test_comparison_commands.py` (JSONL fixture data)
 - `tests/test_remote_execution.py` (elapsed_seconds in expected subprocess output)
-- `tests/test_verify.py` (perf artifact content assertions)
-- `tests/test_skill_command_script.py` (perf artifact fixtures)
+- `tests/test_verify.py` and status/comparison coverage that depends on total-op fallback semantics
 - Add JSONL-specific parser tests
 
 ## Implementation Order
 
-1. Rename field → 2. Add JSONL functions → 3. Update producers → 4. Update parsers → 5. Update tests → 6. Verify
+1. Rename field → 2. Add JSONL functions and schema → 3. Update producers → 4. Update parsers → 5. Restore kernel-miss diagnostics in JSONL → 6. Update tests → 7. Verify

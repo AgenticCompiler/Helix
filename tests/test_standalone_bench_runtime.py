@@ -133,7 +133,7 @@ def build_standalone_bench_cases(operator_api):
         self.assertEqual(
             perf_text,
             (
-                '{"case_label":"case-a","kernel_names":["KernelA","KernelB"],"kernel_source":"metadata","kernel_avg_time_us":11.0,"total_op_avg_time_us":11.0,"error_message":null,"case_wall_clock_seconds":1.5}\n'
+                '{"case_label":"case-a","kernel_names":["KernelA","KernelB"],"kernel_source":"metadata","kernel_avg_time_us":11.0,"ops":[{"op_type":"KernelA","avg_time_us":5.0},{"op_type":"KernelB","avg_time_us":6.0}],"total_op_avg_time_us":11.0,"error_message":null,"case_wall_clock_seconds":1.5}\n'
             ),
         )
 
