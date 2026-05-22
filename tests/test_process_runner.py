@@ -6,10 +6,11 @@ import multiprocessing
 from os import environ
 from pathlib import Path
 from queue import Empty
+import subprocess
 import tempfile
 import textwrap
 from typing import Any, Optional, cast
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import signal
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1] / "src"))
@@ -385,6 +386,49 @@ class StreamingProcessRunnerTests(unittest.TestCase):
         self.assertEqual(result.return_code, 0)
         self.assertEqual(result.stdout, "")
         self.assertEqual(stdout.getvalue(), "")
+
+    def test_treats_eio_before_poll_reports_exit_as_clean_eof(self) -> None:
+        stdout = StringIO()
+        process = _StreamingFakeProcess(wait_code=0, poll_values=[None])
+        process.wait = Mock(side_effect=[0, 0])
+        with patch("triton_agent.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+                with patch("triton_agent.process_runner.select.select", side_effect=[([11], [], [])]):
+                    with patch(
+                        "triton_agent.process_runner.os.read",
+                        side_effect=OSError(EIO, "Input/output error"),
+                    ):
+                        with patch("triton_agent.process_runner.os.close"):
+                            result = run_streaming_process(
+                                ["codex", "exec"],
+                                "/tmp",
+                                stall_timeout_seconds=10,
+                                stdout=stdout,
+                            )
+        self.assertEqual(result.return_code, 0)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(process.wait.call_count, 2)
+
+    def test_raises_eio_when_child_does_not_exit_within_grace_window(self) -> None:
+        stdout = StringIO()
+        process = _StreamingFakeProcess(wait_code=0, poll_values=[None], default_poll_return=None)
+        process.wait = Mock(side_effect=subprocess.TimeoutExpired(cmd=["codex", "exec"], timeout=0.1))
+        with patch("triton_agent.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+                with patch("triton_agent.process_runner.select.select", side_effect=[([11], [], [])]):
+                    with patch(
+                        "triton_agent.process_runner.os.read",
+                        side_effect=OSError(EIO, "Input/output error"),
+                    ):
+                        with patch("triton_agent.process_runner.os.close"):
+                            with self.assertRaises(OSError):
+                                run_streaming_process(
+                                    ["codex", "exec"],
+                                    "/tmp",
+                                    stall_timeout_seconds=10,
+                                    stdout=stdout,
+                                )
 
     def test_zero_timeout_disables_streaming_stall_detection(self) -> None:
         stdout = StringIO()
