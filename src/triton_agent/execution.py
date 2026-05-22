@@ -62,6 +62,7 @@ class BenchRunnerModule(Protocol):
         bench_mode: str,
         npu_devices: str | None = None,
         verbose: bool = False,
+        test_file: Path | None = None,
     ) -> tuple[_RunSkillPayload, Path | None]: ...
 
     def run_remote_bench(
@@ -135,9 +136,10 @@ def run_local_bench(
     bench_mode: str,
     npu_devices: str | None = None,
     verbose: bool = False,
+    test_file: Path | None = None,
 ) -> tuple[AgentResult, Path | None]:
     result, perf_path = _load_bench_runner().run_local_bench(
-        bench_file, operator_file, bench_mode, npu_devices, verbose=verbose
+        bench_file, operator_file, bench_mode, npu_devices, verbose=verbose, test_file=test_file
     )
     return _normalize_agent_result(result), perf_path
 
@@ -175,6 +177,6 @@ def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
 def resolve_bench_mode_from_metadata(bench_file: Path) -> str:
     metadata = parse_bench_metadata(bench_file)
     mode = metadata.get("bench-mode")
-    if mode not in {"standalone", "msprof"}:
+    if mode not in {"standalone", "msprof", "msprof-simulator"}:
         raise ValueError(f"Benchmark metadata is missing required 'bench-mode' entry: {bench_file}")
     return str(mode)
