@@ -337,9 +337,11 @@ def render_perf_case_record_jsonl(
 ) -> str:
     metrics = record.metrics
     kernel_avg_time_us: float | None = None
+    ops: list[PerfOpRow] | None = None
     total_op_avg_time_us: float | None = None
     if metrics is not None:
         kernel_avg_time_us = metrics["kernel_avg_time_us"]
+        ops = metrics["ops"]
         total_op_avg_time_us = sum(op["avg_time_us"] for op in metrics["ops"])
     error_message = record.error_message
     if error_message is None and metrics is not None and kernel_avg_time_us is None:
@@ -349,6 +351,7 @@ def render_perf_case_record_jsonl(
         "kernel_names": record.kernel_names,
         "kernel_source": record.kernel_source,
         "kernel_avg_time_us": kernel_avg_time_us,
+        "ops": ops,
         "total_op_avg_time_us": total_op_avg_time_us,
         "error_message": error_message,
         "case_wall_clock_seconds": record.case_wall_clock_seconds,
