@@ -12,7 +12,7 @@ from perf_artifacts import (
     PerfCaseRecord,
     PerfMetrics,
     perf_output_path,
-    render_perf_case_records,
+    render_perf_case_records_jsonl,
     write_perf_lines,
 )
 from run_runtime import RemoteSpec, ResultPayload, make_result, result_succeeded
@@ -220,7 +220,7 @@ def _build_standalone_run_one_case_script() -> str:
         "'kernel_source': record.kernel_source, "
         "'metrics': record.metrics, "
         "'error_message': record.error_message, "
-        "'elapsed_seconds': record.elapsed_seconds"
+        "'case_wall_clock_seconds': record.case_wall_clock_seconds"
         "}; "
         "print(json.dumps(payload, separators=(',', ':')))"
     )
@@ -352,7 +352,7 @@ def _parse_standalone_case_result_payload(
             kernel_names=[],
             kernel_source=fallback_kernel_source,
             error_message=_format_standalone_command_failure(result),
-            elapsed_seconds=None,
+            case_wall_clock_seconds=None,
         )
     stdout_text = str(result["stdout"]).strip()
     if not stdout_text:
@@ -361,7 +361,7 @@ def _parse_standalone_case_result_payload(
             kernel_names=[],
             kernel_source=fallback_kernel_source,
             error_message="standalone worker produced no JSON payload",
-            elapsed_seconds=None,
+            case_wall_clock_seconds=None,
         )
     try:
         payload = stdout_text.splitlines()[-1].strip()
@@ -372,7 +372,7 @@ def _parse_standalone_case_result_payload(
             kernel_names=[],
             kernel_source=fallback_kernel_source,
             error_message=f"failed to parse standalone worker payload: {exc}",
-            elapsed_seconds=None,
+            case_wall_clock_seconds=None,
         )
     metrics_payload = parsed["metrics"]
     return PerfCaseRecord(
@@ -381,7 +381,7 @@ def _parse_standalone_case_result_payload(
         kernel_source=str(parsed["kernel_source"]),
         metrics=None if metrics_payload is None else cast(PerfMetrics, metrics_payload),
         error_message=None if parsed["error_message"] is None else str(parsed["error_message"]),
-        elapsed_seconds=None if parsed["elapsed_seconds"] is None else float(parsed["elapsed_seconds"]),
+        case_wall_clock_seconds=None if parsed["case_wall_clock_seconds"] is None else float(parsed["case_wall_clock_seconds"]),
     )
 
 
@@ -394,13 +394,8 @@ def _format_standalone_command_failure(result: ResultPayload) -> str:
 def _write_standalone_perf(operator_file: Path, case_records: list[PerfCaseRecord]) -> Path:
     return write_perf_lines(
         perf_output_path(operator_file),
-        render_perf_case_records(
+        render_perf_case_records_jsonl(
             case_records,
-            latency_prefix="latency",
-            raw_prefix="raw-op-statistic",
-            resolved_kernels_prefix="resolved-kernels",
-            kernel_source_prefix="kernel-source",
-            latency_error_prefix="latency-error",
             missing_kernel_match_error="no resolved kernels matched profiler operator details",
         ),
     )

@@ -179,6 +179,13 @@ class BenchRunnerDeps(Protocol):
         elapsed_id_prefix: str | None = None,
     ) -> list[str]: ...
 
+    def render_perf_case_records_jsonl(
+        self,
+        case_records: list[PerfCaseRecord],
+        *,
+        missing_kernel_match_error: str | None = None,
+    ) -> list[str]: ...
+
     def _resolve_local_bench_profile_output_root(self) -> tuple[str | None, str]: ...
 
     def _set_directory_owner_only(self, path: Path) -> None: ...

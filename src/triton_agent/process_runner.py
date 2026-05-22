@@ -23,6 +23,9 @@ else:
     select = None
 
 
+_PTY_EIO_EXIT_GRACE_SECONDS = 0.1
+
+
 def _resolve_command(command: list[str]) -> list[str]:
     """On Windows, wrap .cmd/.bat executables with 'cmd /c' so they can be launched
     by subprocess.Popen without shell=True."""
@@ -372,7 +375,7 @@ def _run_streaming_process_pty(
                 try:
                     chunk = os.read(master_fd, 4096)
                 except OSError as error:
-                    if error.errno == errno.EIO and process.poll() is not None:
+                    if _is_clean_pty_eof(error, process):
                         break
                     raise
                 if chunk:
@@ -426,6 +429,18 @@ def _run_streaming_process_pty(
         )
     finally:
         os.close(master_fd)
+
+
+def _is_clean_pty_eof(error: OSError, process: Any) -> bool:
+    if error.errno != errno.EIO:
+        return False
+    if process.poll() is not None:
+        return True
+    try:
+        process.wait(timeout=_PTY_EIO_EXIT_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        return False
+    return True
 
 
 def _resolved_returncode(returncode: int | None) -> int:
