@@ -2191,6 +2191,7 @@ class PathResolutionTests(unittest.TestCase):
                 test_file.resolve(),
                 operator.resolve(),
                 "standalone",
+                verbose=False,
             )
 
     def test_main_run_test_reads_mode_from_metadata_when_flag_missing(self) -> None:
@@ -2218,6 +2219,7 @@ class PathResolutionTests(unittest.TestCase):
                 test_file.resolve(),
                 operator.resolve(),
                 "differential",
+                verbose=False,
             )
 
     def test_run_test_wrapper_calls_loaded_skill_module(self) -> None:

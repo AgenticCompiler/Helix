@@ -41,6 +41,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
                 test_file,
                 operator_file,
                 resolved_test_mode,
+                verbose=args.verbose,
             )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)

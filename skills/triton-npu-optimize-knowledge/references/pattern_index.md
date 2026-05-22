@@ -18,6 +18,11 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Summary: Use Triton-Ascend autotune as the default way to search split sizes, tile sizes, and selected compile options when the kernel structure is already reasonable and the main open question is parameter choice.
 - Source: [autotune.md](patterns/autotune.md)
 
+### `grid-flatten-and-ub-buffering`
+
+- Summary: Flatten logical work items onto physical cores and batch small row-wise memory transfers into wider UB stores to reduce launch overhead and improve per-core work density.
+- Source: [grid-flatten-and-ub-buffering.md](patterns/grid-flatten-and-ub-buffering.md)
+
 ## Generated Pattern Summaries
 
 ### `a5-force-simt-only-discrete-access`

@@ -1,3 +1,7 @@
+---
+priority: high
+---
+
 # Grid Flattening And UB Buffering Pattern
 
 ## Summary
@@ -53,6 +57,32 @@ Distribute logical tasks with host-computed work-per-core and mask the tail.
 ### Direct grid remap
 
 When natural axes exist (for example `(batch_head, row_block)`), prefer direct multidimensional grids over linearized pid decode.
+
+### Runtime core discovery and task-kind-aware grid choice
+
+Query runtime device properties before freezing one grid assumption:
+
+```python
+import torch
+
+print(torch.npu.device_count())
+device = torch.npu.current_device()
+props = torch.npu.get_device_properties(device)
+print(props)
+```
+
+If this path fails, if `torch.npu` is unavailable, or if the returned properties do not expose explicit counts, use:
+
+- cube cores: `24`
+- vector cores: `48`
+
+Do not assume one observed physical-core count should become the default grid for every optimized kernel. Match the flattened grid to task kind first:
+
+- `cube`-like operators: start from the available Cube-core count and validate with parent-vs-parent benchmarks.
+- `vector`-like operators: start from the available Vector-core count and re-check after major transfer/tiling changes.
+- `mix` operators: choose the first launch count from the dominant bottleneck side, and try both cube-first and vector-first counts if the profile is mixed.
+
+Treat these counts as starting points for experiments, not immutable rules.
 
 ### UB aggregate writes
 

@@ -5,6 +5,9 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Optional
 
+from triton_agent.optimize.pattern_reminders import (
+    build_high_priority_pattern_reminder_lines,
+)
 from triton_agent.optimize.prompts import (
     cann_ext_api_lines,
     compiler_source_analysis_lines,
@@ -30,6 +33,17 @@ def _render_line_block(lines: list[str]) -> str:
     if not lines:
         return ""
     return "\n".join(lines) + "\n"
+
+
+def _render_high_priority_pattern_block(*, optimize_knowledge_skill_name: str | None) -> str:
+    if optimize_knowledge_skill_name is None:
+        return ""
+    reminder_lines = build_high_priority_pattern_reminder_lines(optimize_knowledge_skill_name)
+    if not reminder_lines:
+        return ""
+    return _render_line_block(["High-priority generic pattern reminders for this run:"]) + (
+        _render_bullet_block(reminder_lines)
+    )
 
 
 def _optimize_target_guidance_lines(*, optimize_target: str) -> list[str]:
@@ -78,7 +92,7 @@ _UNSUPERVISED_GUIDANCE_TEMPLATE = (
         Use `{test_mode}` correctness validation for this optimize session.
         Use `{bench_mode}` benchmark validation for this optimize session.
         Optimize the operator at `{operator_name}`.
-        {analysis_block}{compiler_source_block}{cann_ext_api_block}"""
+        {analysis_block}{high_priority_pattern_block}{compiler_source_block}{cann_ext_api_block}"""
     )
 )
 
@@ -102,7 +116,7 @@ _SHARED_GUIDANCE_TEMPLATE = (
         Use `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md` as live handoff files.
         Treat `baseline/` as the canonical optimize baseline.
         Use `compare-perf` as the authoritative source for round performance summaries.
-        {analysis_block}{compiler_source_block}{cann_ext_api_block}"""
+        {analysis_block}{high_priority_pattern_block}{compiler_source_block}{cann_ext_api_block}"""
     )
 )
 
@@ -127,6 +141,7 @@ class MemoryFileManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        optimize_knowledge_skill_name: str | None = None,
     ) -> MemoryFileState:
         """Write the single-agent optimize memory file into the workspace root."""
         return self._prepare(
@@ -141,6 +156,7 @@ class MemoryFileManager:
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
                 enable_cann_ext_api=enable_cann_ext_api,
+                optimize_knowledge_skill_name=optimize_knowledge_skill_name,
             ),
         )
 
@@ -153,6 +169,7 @@ class MemoryFileManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        optimize_knowledge_skill_name: str | None = None,
     ) -> MemoryFileState:
         """Write the shared orchestration memory file used by supervised optimize."""
         return self._prepare(
@@ -164,6 +181,7 @@ class MemoryFileManager:
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
                 enable_cann_ext_api=enable_cann_ext_api,
+                optimize_knowledge_skill_name=optimize_knowledge_skill_name,
             ),
         )
 
@@ -242,6 +260,7 @@ class MemoryFileManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        optimize_knowledge_skill_name: str | None = None,
     ) -> str:
         return _UNSUPERVISED_GUIDANCE_TEMPLATE.format(
             guidance_filename=guidance_filename,
@@ -251,6 +270,9 @@ class MemoryFileManager:
             analysis_block=_render_bullet_block(
                 layered_analysis_lines(round_scope="each round")
                 + torch_npu_operator_knowledge_lines(optimize_target=optimize_target)
+            ),
+            high_priority_pattern_block=_render_high_priority_pattern_block(
+                optimize_knowledge_skill_name=optimize_knowledge_skill_name
             ),
             compiler_source_block=_render_line_block(
                 _optimize_target_guidance_lines(optimize_target=optimize_target)
@@ -274,12 +296,16 @@ class MemoryFileManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        optimize_knowledge_skill_name: str | None = None,
     ) -> str:
         return _SHARED_GUIDANCE_TEMPLATE.format(
             guidance_filename=guidance_filename,
             analysis_block=_render_bullet_block(
                 layered_analysis_lines(round_scope="each round")
                 + torch_npu_operator_knowledge_lines(optimize_target=optimize_target)
+            ),
+            high_priority_pattern_block=_render_high_priority_pattern_block(
+                optimize_knowledge_skill_name=optimize_knowledge_skill_name
             ),
             compiler_source_block=_render_line_block(
                 _optimize_target_guidance_lines(optimize_target=optimize_target)

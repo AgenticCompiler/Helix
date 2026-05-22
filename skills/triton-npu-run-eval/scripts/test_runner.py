@@ -37,6 +37,9 @@ class DifferentialTestCase:
     fn: Callable[[], object]
 
 
+_WARNING_PREFIX = "[WARNING]"
+
+
 def _differential_archive_path(operator_file: Path) -> Path:
     return operator_file.parent / f"{operator_file.stem}_result.pt"
 
@@ -45,13 +48,16 @@ def run_local_test(
     test_file: Path,
     operator_file: Path,
     test_mode: str,
+    *,
+    verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     if test_mode == "differential" and _has_differential_test_contract(test_file):
         archive_path = _differential_archive_path(operator_file)
         result = _run_declarative_differential_test(test_file, operator_file, archive_path)
         archived_result = archive_path if result_succeeded(result) else None
-        return result, archived_result
-    return _run_legacy_local_test(test_file, operator_file, test_mode)
+        return _filter_result_payload(result, verbose=verbose), archived_result
+    result, archived_result = _run_legacy_local_test(test_file, operator_file, test_mode)
+    return _filter_result_payload(result, verbose=verbose), archived_result
 
 
 def parse_test_metadata(test_file: Path) -> dict[str, str]:
@@ -200,6 +206,31 @@ def _run_legacy_remote_test(
     return result, archived_result, remote_workspace
 
 
+def _filter_result_payload(result: ResultPayload, *, verbose: bool) -> ResultPayload:
+    if verbose:
+        return result
+    filtered_stdout = _filter_known_warning_lines(str(result["stdout"]))
+    filtered_stderr = _filter_known_warning_lines(str(result["stderr"]))
+    if filtered_stdout == result["stdout"] and filtered_stderr == result["stderr"]:
+        return result
+    return make_result(
+        return_code=int(result["return_code"]),
+        stdout=filtered_stdout,
+        stderr=filtered_stderr,
+        stalled=bool(result["stalled"]),
+        session_id=result["session_id"],
+    )
+
+
+def _filter_known_warning_lines(text: str) -> str:
+    filtered_lines = [
+        line
+        for line in text.splitlines(keepends=True)
+        if not line.rstrip("\r\n").startswith(_WARNING_PREFIX)
+    ]
+    return "".join(filtered_lines)
+
+
 def _build_remote_differential_command(test_name: str, operator_name: str) -> list[str]:
     remote_script = f"""
 import importlib
@@ -335,8 +366,8 @@ def run_remote_test(
                     verbose=verbose,
                     stderr=stderr,
                 )
-            return result, archived_result, remote_workspace
-        return _run_legacy_remote_test(
+            return _filter_result_payload(result, verbose=verbose), archived_result, remote_workspace
+        result, archived_result, remote_workspace = _run_legacy_remote_test(
             spec,
             remote_workspace,
             test_file,
@@ -345,6 +376,7 @@ def run_remote_test(
             verbose=verbose,
             stderr=stderr,
         )
+        return _filter_result_payload(result, verbose=verbose), archived_result, remote_workspace
     finally:
         if not keep_remote_workdir:
             cleanup_remote_workspace(spec, remote_workspace, verbose=verbose, stderr=stderr)
