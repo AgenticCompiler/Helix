@@ -133,15 +133,11 @@ def build_standalone_bench_cases(operator_api):
         self.assertEqual(
             perf_text,
             (
-                'latency-case-a: 11.0\n'
-                '# elapsed-seconds-case-a: 1.500000\n'
-                '# raw-op-statistic-case-a: {"ops":[{"op_type":"KernelA","avg_time_us":5.0},{"op_type":"KernelB","avg_time_us":6.0}]}\n'
-                '# resolved-kernels-case-a: KernelA,KernelB\n'
-                '# kernel-source-case-a: metadata\n'
+                '{"case_label":"case-a","kernel_names":["KernelA","KernelB"],"kernel_source":"metadata","kernel_avg_time_us":11.0,"total_op_avg_time_us":11.0,"error_message":null,"case_wall_clock_seconds":1.5}\n'
             ),
         )
 
-    def test_run_local_standalone_bench_elapsed_seconds_on_failure(self) -> None:
+    def test_run_local_standalone_bench_case_wall_clock_seconds_on_failure(self) -> None:
         module = load_standalone_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -181,9 +177,12 @@ def build_standalone_bench_cases(operator_api):
         self.assertEqual(result, make_skill_result(1, "", "case-a: profiling failed"))
         if perf_path is None:
             self.fail("expected standalone perf path")
-        self.assertIn("latency-case-a: NA\n", perf_text)
-        self.assertIn("# elapsed-seconds-case-a: 2.500000\n", perf_text)
-        self.assertIn("# latency-error-case-a: profiling failed\n", perf_text)
+        self.assertIn('"kernel_avg_time_us":null', perf_text)
+        self.assertIn('"case_wall_clock_seconds":2.5', perf_text)
+        self.assertIn('"error_message":"profiling failed"', perf_text)
+        self.assertIn('"case_label":"case-a"', perf_text)
+        self.assertIn('"kernel_names":["KernelA"]', perf_text)
+        self.assertIn('"kernel_source":"metadata"', perf_text)
 
     def test_run_local_standalone_bench_keeps_profiler_artifacts_under_configured_output_root(self) -> None:
         module = load_standalone_bench_runtime_module()
@@ -357,7 +356,7 @@ def build_standalone_bench_cases(operator_api):
                         "kernel_avg_time_us": 7.5,
                         "ops": [{"op_type": "KernelA", "avg_time_us": 7.5}],
                     },
-                    elapsed_seconds=1.0,
+                    case_wall_clock_seconds=1.0,
                 )
 
             with patch.object(module, "_run_standalone_case", side_effect=_fake_run_case):
@@ -408,7 +407,7 @@ def build_standalone_bench_cases(operator_api):
                         "kernel_avg_time_us": 3.5,
                         "ops": [{"op_type": "KernelA", "avg_time_us": 3.5}],
                     },
-                    elapsed_seconds=2.0,
+                    case_wall_clock_seconds=2.0,
                 )
 
             with patch.object(module, "_run_standalone_case", side_effect=_fake_run_case):
