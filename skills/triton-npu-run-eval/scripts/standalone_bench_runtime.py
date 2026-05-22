@@ -21,7 +21,7 @@ from perf_artifacts import (
     PerfOpRow,
     format_latency_value,
     perf_output_path,
-    render_perf_case_records,
+    render_perf_case_records_jsonl,
     write_perf_lines,
 )
 from result_payload import ResultPayload, make_result
@@ -76,13 +76,8 @@ def run_local_standalone_bench(
     perf_path = perf_output_path(operator_file)
     write_perf_lines(
         perf_path,
-        render_perf_case_records(
+        render_perf_case_records_jsonl(
             case_records,
-            latency_prefix="latency",
-            raw_prefix="raw-op-statistic",
-            resolved_kernels_prefix="resolved-kernels",
-            kernel_source_prefix="kernel-source",
-            latency_error_prefix="latency-error",
             missing_kernel_match_error=_MISSING_KERNEL_MATCH_ERROR,
         ),
     )
@@ -319,14 +314,14 @@ def _run_standalone_case(
             kernel_names=resolution.kernel_names,
             kernel_source=resolution.kernel_source,
             error_message=error_message,
-            elapsed_seconds=elapsed,
+            case_wall_clock_seconds=elapsed,
         )
     return PerfCaseRecord(
         case_label=case.case_id,
         kernel_names=resolution.kernel_names,
         kernel_source=resolution.kernel_source,
         metrics=metrics,
-        elapsed_seconds=elapsed,
+        case_wall_clock_seconds=elapsed,
     )
 
 

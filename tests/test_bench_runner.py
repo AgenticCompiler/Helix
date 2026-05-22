@@ -231,7 +231,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                         + str(avg)
                         + ',"ops":[{"op_type":"KernelA","avg_time_us":'
                         + str(avg)
-                        + '}]},"error_message":null,"elapsed_seconds":0.0}\n'
+                        + '}]},"error_message":null,"case_wall_clock_seconds":0.0}\n'
                     ),
                     "",
                 )
@@ -275,7 +275,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             if perf_path is None:
                 self.fail("expected standalone perf path")
             perf_text = perf_path.read_text(encoding="utf-8")
-            self.assertLess(perf_text.index("latency-case-a"), perf_text.index("latency-case-b"))
+            self.assertLess(perf_text.index('"case_label":"case-a"'), perf_text.index('"case_label":"case-b"'))
 
     def test_run_remote_bench_standalone_uses_module_helper_files(self) -> None:
         module = load_bench_runner_module()
@@ -384,16 +384,8 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    'latency-case-1: 2.5\n'
-                    '# elapsed-seconds-case-1: 0.000000\n'
-                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":1.5},{"op_type":"OpB","avg_time_us":2.5}]}\n'
-                    '# resolved-kernels-case-1: OpB\n'
-                    '# kernel-source-case-1: metadata\n'
-                    'latency-case-2: 5.0\n'
-                    '# elapsed-seconds-case-2: 0.000000\n'
-                    '# raw-op-statistic-case-2: {"ops":[{"op_type":"OpA","avg_time_us":3.0},{"op_type":"OpB","avg_time_us":5.0}]}\n'
-                    '# resolved-kernels-case-2: OpB\n'
-                    '# kernel-source-case-2: metadata\n'
+                    '{"case_label":"1","kernel_names":["OpB"],"kernel_source":"metadata","kernel_avg_time_us":2.5,"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"2","kernel_names":["OpB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"total_op_avg_time_us":8.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
                 ),
             )
             self.assertEqual(mocked.call_count, 2)
@@ -464,7 +456,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             if perf_path is None:
                 self.fail("expected msprof perf path")
             perf_text = perf_path.read_text(encoding="utf-8")
-            self.assertLess(perf_text.index("latency-case-1"), perf_text.index("latency-case-2"))
+            self.assertLess(perf_text.index('"case_label":"1"'), perf_text.index('"case_label":"2"'))
 
     def test_run_local_bench_msprof_parallel_stages_discovered_case_json_files(self) -> None:
         module = load_bench_runner_module()
@@ -519,7 +511,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(len(observed_workdirs), 1)
             if perf_path is None:
                 self.fail("expected msprof perf path")
-            self.assertIn("latency-case-1: 5.0", perf_path.read_text(encoding="utf-8"))
+            self.assertIn('"kernel_avg_time_us":5.0', perf_path.read_text(encoding="utf-8"))
 
     def test_run_local_bench_msprof_parallel_preserves_relative_operator_layout(self) -> None:
         module = load_bench_runner_module()
@@ -768,11 +760,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    'latency-case-1: 4.0\n'
-                    '# elapsed-seconds-case-1: 0.000000\n'
-                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":1.5},{"op_type":"OpB","avg_time_us":2.5}]}\n'
-                    '# resolved-kernels-case-1: OpA,OpB\n'
-                    '# kernel-source-case-1: metadata\n'
+                    '{"case_label":"1","kernel_names":["OpA","OpB"],"kernel_source":"metadata","kernel_avg_time_us":4.0,"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
                 ),
             )
 
@@ -821,11 +809,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    'latency-case-1: 0.0\n'
-                    '# elapsed-seconds-case-1: 0.000000\n'
-                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"Zero","avg_time_us":0.0}]}\n'
-                    '# resolved-kernels-case-1: Zero\n'
-                    '# kernel-source-case-1: metadata\n'
+                    '{"case_label":"1","kernel_names":["Zero"],"kernel_source":"metadata","kernel_avg_time_us":0.0,"total_op_avg_time_us":0.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
                 ),
             )
 
@@ -882,11 +866,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    'latency-case-1: 4.5\n'
-                    '# elapsed-seconds-case-1: 0.000000\n'
-                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"KeepMe","avg_time_us":4.5}]}\n'
-                    '# resolved-kernels-case-1: KeepMe\n'
-                    '# kernel-source-case-1: metadata\n'
+                    '{"case_label":"1","kernel_names":["KeepMe"],"kernel_source":"metadata","kernel_avg_time_us":4.5,"total_op_avg_time_us":4.5,"error_message":null,"case_wall_clock_seconds":0.0}\n'
                 ),
             )
             self.assertTrue(keep_root.exists())
@@ -943,16 +923,8 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    "latency-case-1: NA\n"
-                    "# elapsed-seconds-case-1: 0.000000\n"
-                    "# latency-error-case-1: msprof command failed with return code 1\n"
-                    "# resolved-kernels-case-1: KernelB\n"
-                    "# kernel-source-case-1: metadata\n"
-                    "latency-case-2: 5.0\n"
-                    "# elapsed-seconds-case-2: 0.000000\n"
-                    '# raw-op-statistic-case-2: {"ops":[{"op_type":"KernelB","avg_time_us":5.0}]}\n'
-                    "# resolved-kernels-case-2: KernelB\n"
-                    "# kernel-source-case-2: metadata\n"
+                    '{"case_label":"1","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":null,"total_op_avg_time_us":null,"error_message":"msprof command failed with return code 1","case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"2","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"total_op_avg_time_us":5.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
                 ),
             )
 
@@ -1036,11 +1008,11 @@ class LocalBenchRunnerTests(unittest.TestCase):
             if perf_path is None:
                 self.fail("expected msprof perf path for csv parse failure")
             text = perf_path.read_text(encoding="utf-8")
-            self.assertIn("latency-case-1: NA\n", text)
-            self.assertIn("# elapsed-seconds-case-1: 0.000000\n", text)
-            self.assertIn("# latency-error-case-1: No op_statistic_*.csv found under", text)
-            self.assertIn("# resolved-kernels-case-1: OpB\n", text)
-            self.assertIn("# kernel-source-case-1: metadata\n", text)
+            self.assertIn('"kernel_avg_time_us":null', text)
+            self.assertIn('"case_wall_clock_seconds":0.0', text)
+            self.assertIn('"error_message":"No op_statistic_*.csv found under', text)
+            self.assertIn('"kernel_names":["OpB"]', text)
+            self.assertIn('"kernel_source":"metadata"', text)
 
     def test_run_local_bench_msprof_records_na_when_kernel_row_is_missing(self) -> None:
         module = load_bench_runner_module()
@@ -1083,16 +1055,11 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    'latency-case-1: NA\n'
-                    '# elapsed-seconds-case-1: 0.000000\n'
-                    '# raw-op-statistic-case-1: {"ops":[{"op_type":"OpA","avg_time_us":1.5},{"op_type":"OpB","avg_time_us":2.5}]}\n'
-                    '# latency-error-case-1: no resolved kernels matched op_statistic csv\n'
-                    '# resolved-kernels-case-1: MissingKernel\n'
-                    '# kernel-source-case-1: metadata\n'
+                    '{"case_label":"1","kernel_names":["MissingKernel"],"kernel_source":"metadata","kernel_avg_time_us":null,"total_op_avg_time_us":4.0,"error_message":"no resolved kernels matched op_statistic csv","case_wall_clock_seconds":0.0}\n'
                 ),
             )
 
-    def test_run_local_bench_msprof_elapsed_seconds_in_perf_output_success(self) -> None:
+    def test_run_local_bench_msprof_case_wall_clock_seconds_in_perf_output_success(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1133,10 +1100,11 @@ class LocalBenchRunnerTests(unittest.TestCase):
             if perf_path is None:
                 self.fail("expected msprof perf path")
             perf_text = perf_path.read_text(encoding="utf-8")
-            self.assertIn("latency-case-1: 3.0\n", perf_text)
-            self.assertIn("# elapsed-seconds-case-1: 1.500000\n", perf_text)
+            self.assertIn('"case_label":"1"', perf_text)
+            self.assertIn('"kernel_avg_time_us":3.0', perf_text)
+            self.assertIn('"case_wall_clock_seconds":1.5', perf_text)
 
-    def test_run_local_bench_msprof_elapsed_seconds_in_perf_output_failure(self) -> None:
+    def test_run_local_bench_msprof_case_wall_clock_seconds_in_perf_output_failure(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1167,8 +1135,8 @@ class LocalBenchRunnerTests(unittest.TestCase):
             if perf_path is None:
                 self.fail("expected msprof perf path for failed case")
             perf_text = perf_path.read_text(encoding="utf-8")
-            self.assertIn("latency-case-1: NA\n", perf_text)
-            self.assertIn("# elapsed-seconds-case-1: 2.500000\n", perf_text)
+            self.assertIn('"kernel_avg_time_us":null', perf_text)
+            self.assertIn('"case_wall_clock_seconds":2.5', perf_text)
 
     def test_resolve_bench_kernel_names_unions_metadata_and_operator_kernels(self) -> None:
         module = load_bench_runner_module()
