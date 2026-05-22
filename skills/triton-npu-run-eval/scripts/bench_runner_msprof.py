@@ -92,7 +92,7 @@ def run_local_bench_msprof(
                         kernel_names=resolution.kernel_names,
                         kernel_source=resolution.kernel_source,
                         error_message=deps._format_msprof_command_failure(result),
-                        elapsed_seconds=elapsed,
+                        case_wall_clock_seconds=elapsed,
                     ),
                 )
                 continue
@@ -107,7 +107,7 @@ def run_local_bench_msprof(
                         kernel_names=resolution.kernel_names,
                         kernel_source=resolution.kernel_source,
                         error_message=str(exc),
-                        elapsed_seconds=elapsed,
+                        case_wall_clock_seconds=elapsed,
                     )
                 )
                 continue
@@ -118,7 +118,7 @@ def run_local_bench_msprof(
                     kernel_names=resolution.kernel_names,
                     kernel_source=resolution.kernel_source,
                     metrics=metrics,
-                    elapsed_seconds=elapsed,
+                    case_wall_clock_seconds=elapsed,
                 )
             )
         finally:
@@ -266,7 +266,7 @@ def run_remote_bench_msprof(
                         kernel_names=resolution.kernel_names,
                         kernel_source=resolution.kernel_source,
                         error_message=deps._format_msprof_command_failure(result),
-                        elapsed_seconds=elapsed,
+                        case_wall_clock_seconds=elapsed,
                     ),
                 )
                 continue
@@ -288,7 +288,7 @@ def run_remote_bench_msprof(
                         kernel_names=resolution.kernel_names,
                         kernel_source=resolution.kernel_source,
                         error_message=str(exc),
-                        elapsed_seconds=elapsed,
+                        case_wall_clock_seconds=elapsed,
                     )
                 )
                 continue
@@ -299,7 +299,7 @@ def run_remote_bench_msprof(
                     kernel_names=resolution.kernel_names,
                     kernel_source=resolution.kernel_source,
                     metrics=metrics,
-                    elapsed_seconds=elapsed,
+                    case_wall_clock_seconds=elapsed,
                 )
             )
         finally:
@@ -530,7 +530,7 @@ def _build_local_msprof_case_outcome(
             kernel_names=resolution.kernel_names,
             kernel_source=resolution.kernel_source,
             error_message=deps._format_msprof_command_failure(result),
-            elapsed_seconds=elapsed,
+            case_wall_clock_seconds=elapsed,
         )
     else:
         try:
@@ -540,7 +540,7 @@ def _build_local_msprof_case_outcome(
                 kernel_names=resolution.kernel_names,
                 kernel_source=resolution.kernel_source,
                 metrics=metrics,
-                elapsed_seconds=elapsed,
+                case_wall_clock_seconds=elapsed,
             )
         except (FileNotFoundError, ValueError) as exc:
             record = PerfCaseRecord(
@@ -548,7 +548,7 @@ def _build_local_msprof_case_outcome(
                 kernel_names=resolution.kernel_names,
                 kernel_source=resolution.kernel_source,
                 error_message=str(exc),
-                elapsed_seconds=elapsed,
+                case_wall_clock_seconds=elapsed,
             )
     return _MsprofCaseOutcome(
         case_idx=case_idx,
@@ -579,7 +579,7 @@ def _build_remote_msprof_case_outcome(
             kernel_names=resolution.kernel_names,
             kernel_source=resolution.kernel_source,
             error_message=deps._format_msprof_command_failure(result),
-            elapsed_seconds=elapsed,
+            case_wall_clock_seconds=elapsed,
         )
     else:
         try:
@@ -596,7 +596,7 @@ def _build_remote_msprof_case_outcome(
                 kernel_names=resolution.kernel_names,
                 kernel_source=resolution.kernel_source,
                 metrics=metrics,
-                elapsed_seconds=elapsed,
+                case_wall_clock_seconds=elapsed,
             )
         except RuntimeError as exc:
             record = PerfCaseRecord(
@@ -604,7 +604,7 @@ def _build_remote_msprof_case_outcome(
                 kernel_names=resolution.kernel_names,
                 kernel_source=resolution.kernel_source,
                 error_message=str(exc),
-                elapsed_seconds=elapsed,
+                case_wall_clock_seconds=elapsed,
             )
     return _MsprofCaseOutcome(
         case_idx=case_idx,
@@ -637,15 +637,9 @@ def _write_msprof_perf(
 ) -> Path:
     return deps.write_perf_lines(
         deps.perf_output_path(operator_file),
-        deps.render_perf_case_records(
+        deps.render_perf_case_records_jsonl(
             case_records,
-            latency_prefix="latency-case",
-            raw_prefix="raw-op-statistic-case",
-            resolved_kernels_prefix="resolved-kernels-case",
-            kernel_source_prefix="kernel-source-case",
-            latency_error_prefix="latency-error-case",
             missing_kernel_match_error=_MISSING_KERNEL_MATCH_ERROR,
-            elapsed_id_prefix="case",
         ),
     )
 

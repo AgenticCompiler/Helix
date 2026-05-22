@@ -36,6 +36,7 @@ from perf_artifacts import (
     parse_required_perf_file_for_metric_source as _parse_required_perf_file_for_metric_source,
     perf_output_path,
     render_perf_case_records,
+    render_perf_case_records_jsonl,
     write_perf_lines,
 )
 from run_runtime import (
@@ -289,6 +290,17 @@ class _BenchRunnerDeps:
         if elapsed_id_prefix is not None:
             kwargs["elapsed_id_prefix"] = elapsed_id_prefix
         return render_perf_case_records(case_records, **kwargs)
+
+    def render_perf_case_records_jsonl(
+        self,
+        case_records: list[PerfCaseRecord],
+        *,
+        missing_kernel_match_error: str | None = None,
+    ) -> list[str]:
+        return render_perf_case_records_jsonl(
+            case_records,
+            missing_kernel_match_error=missing_kernel_match_error,
+        )
 
     def _resolve_local_bench_profile_output_root(self) -> tuple[str | None, str]:
         return _resolve_local_bench_profile_output_root()
