@@ -6,21 +6,21 @@ priority: high
 
 ## Summary
 
-Use this pattern as a code-first software-pipeline probe whenever the kernel contains `tl.load`; if `extracted_bin_data/report.txt` exists, this probe must be attempted before choosing another optimization direction. If `tl.load` is outside a loop, try constructing a steady-state loop to make compiler prefetch possible; if `tl.load` is already inside a loop, try bounded `num_stages` tuning, with manual prefetch only when stage tuning is flat.
+Use this pattern as the highest-priority candidate when `extracted_bin_data/report.txt` or equivalent profiling evidence suggests transfer, compute, and store are weakly overlapped, the kernel contains `tl.load`, and the kernel structure can be reorganized to improve overlap. Constructing a steady-state loop around `tl.load`, enabling compiler prefetch, and then tuning `num_stages` can improve performance when the hot path is regular enough to support these changes.
 
 ## Use When
 
+- `extracted_bin_data/report.txt` is available, or equivalent profiling evidence reports transfer/compute overlap.
+- Most active `core*.veccore*` blocks satisfy the highest-priority profile gate: very low `OverlapRatio(VECTOR/CUBE & MTE2)`, very low `OverlapRatio(VECTOR/CUBE & MTE3)`, very low `OverlapRatio(MTE2 & MTE3)`, and low or moderate `Ratio(VECTOR/CUBE)`.
 - The kernel contains `tl.load`.
-- If `tl.load` is not inside a loop, try constructing a steady-state loop to support compiler prefetch.
-- If `tl.load` is already inside a loop, try bounded `num_stages` tuning; if stage tuning is flat, try manual prefetch.
-- If `extracted_bin_data/report.txt` exists, this rule must be attempted. Use the report to judge whether most active `core*.veccore*` blocks show very low `OverlapRatio(VECTOR/CUBE & MTE2)`, very low `OverlapRatio(VECTOR/CUBE & MTE3)`, very low `OverlapRatio(MTE2 & MTE3)`, and low or moderate `Ratio(VECTOR/CUBE)`.
-- Correctness and representative benchmark checks are available before keeping the change.
+- `tl.load` is inside a loop, or `tl.load` is outside a loop but the kernel has a regular single-tile program shape; try constructing a steady-state loop to make compiler prefetch possible.
 
 ## Avoid When
 
 - `OverlapRatio(VECTOR/CUBE & MTE2)` is already high enough that load and compute overlap well.
 - `Ratio(VECTOR/CUBE)` is very high across most active cores; prefer compute-side optimization.
 - The kernel has no `tl.load` on the candidate path.
+- The `tl.load` mainly loads scalar/index/control data; prefer `scalar-latency-traps` related optimization first.
 - Prefetch or loop restructuring would move loads across true data dependencies.
 - UB/register pressure cannot safely hold extra live tiles.
 
@@ -50,8 +50,8 @@ Use the distribution across active cores, not a single core. Near-zero overlap, 
 ### Code
 
 - The kernel contains `tl.load`.
-- `tl.load` is not inside a loop: construct a steady-state loop to support compiler prefetch.
-- `tl.load` is inside a loop: tune `num_stages` first, then try manual prefetch if tuning is flat.
+- `tl.load` is not inside a loop, but the kernel has a regular single-tile program shape that can be safely converted into a steady-state loop.
+- `tl.load` is inside a loop, so `num_stages` tuning or manual prefetch can be tried directly.
 
 ## Dependency Features
 
@@ -65,7 +65,7 @@ Use the distribution across active cores, not a single core. Near-zero overlap, 
 
 3. [code] Load existence and placement.
 
-   Use this pattern when the kernel contains `tl.load`. Check whether `tl.load` is inside a loop. Loads outside a loop favor steady-state loop construction to support compiler prefetch. In-loop loads favor `num_stages` tuning first, then manual prefetch if tuning is flat.
+   Use this pattern when the kernel contains `tl.load`. Check whether `tl.load` is inside a loop. In-loop loads favor `num_stages` tuning first. Loads outside a loop favor steady-state loop construction when the original program shape is regular.
 
 4. [code] Manual prefetch state.
 
@@ -83,9 +83,10 @@ Use the distribution across active cores, not a single core. Near-zero overlap, 
 
 3. Choose the pipeline transformation.
 
-   - If `tl.load` is not inside a loop but tiles are independent, construct a steady-state tile loop to support compiler prefetch.
    - If `tl.load` is inside a loop, try bounded `num_stages` variants first.
    - If `num_stages` is flat and the first loop load is not already outside the loop, add manual prefetch.
+   - If `tl.load` is outside a loop, try constructing a steady-state tile loop to make compiler prefetch possible when tiles are independent.
+   - After constructing the steady-state loop, try a fixed grid sized to the target system's available core count.
    - If loop bounds are clear and the load is not protected by complex `if` logic, rely on compiler prefetch and tune `num_stages`.
    - Otherwise, use manual prefetch, then retune `num_stages`.
 
@@ -134,6 +135,15 @@ def elementwise_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 ```
 
 This probe is useful only when the bounded grid leaves enough loop work per program and does not reduce parallelism more than it improves overlap.
+
+### Fixed Grid Attempt
+
+Use this after a steady-state loop rewrite when the original grid is very large. Size the grid from the target system's available core count; `48` is only a 48-core example.
+
+```python
+def grid(meta):
+    return (48,)
+```
 
 ### Manual Prefetch
 
