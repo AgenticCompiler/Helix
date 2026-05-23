@@ -18,17 +18,14 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Summary: Use Triton-Ascend autotune as the default way to search split sizes, tile sizes, and selected compile options when the kernel structure is already reasonable and the main open question is parameter choice.
 - Source: [autotune.md](patterns/autotune.md)
 
-<<<<<<< HEAD:skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md
 ### `grid-flatten-and-ub-buffering`
 
 - Summary: Flatten logical work items onto physical cores and batch small row-wise memory transfers into wider UB stores to reduce launch overhead and improve per-core work density.
 - Source: [grid-flatten-and-ub-buffering.md](patterns/grid-flatten-and-ub-buffering.md)
-=======
 ### `software-pipeline-dependency-profiling`
 
-- Summary: Use this pattern as a code-first software-pipeline probe whenever the kernel contains `tl.load`; if `extracted_bin_data/report.txt` exists, this probe must be attempted before choosing another optimization direction. If `tl.load` is outside a loop, try constructing a steady-state loop to make compiler prefetch possible; if `tl.load` is already inside a loop, try bounded `num_stages` tuning, with manual prefetch only when stage tuning is flat.
+- Summary: Use this pattern as the highest-priority candidate when `extracted_bin_data/report.txt` or equivalent profiling evidence suggests transfer, compute, and store are weakly overlapped, the kernel contains `tl.load`, and the kernel structure can be reorganized to improve overlap. Constructing a steady-state loop around `tl.load`, enabling compiler prefetch, and then tuning `num_stages` can improve performance when the hot path is regular enough to support these changes.
 - Source: [software-pipeline-dependency-profiling.md](patterns/software-pipeline-dependency-profiling.md)
->>>>>>> 8f59765 (Add software pipeline dependency profiling pattern):skills/triton-npu-optimize-knowledge/references/pattern_index.md
 
 ## Generated Pattern Summaries
 
@@ -330,7 +327,6 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Intermediate tensors, rather than just inputs or outputs, are the main source of UB pressure.
   - The overall algorithm is still reasonable, but staged slice processing is needed to keep temporary values within on-chip memory limits.
 
-<<<<<<< HEAD:skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md
 ### `sliding-window-inner-w-slab-gather`
 
 - Summary: For **fixed-window reductions** along the **innermost contiguous spatial dimension** (NCHW-style: often **W**), load one **slab** of length **`W_SLAB_LEN = STRIDE_W * (BLOCK_OW - 1) + KERNEL_W`** at **`w_abs_min = ow_pid * BLOCK_OW * STRIDE_W - PAD_W`**, then **`tl.gather(slab, STRIDE_W * arange(BLOCK_OW) + kw)`** per **`kw`** instead of many **`start_w + kw`** masked loads. Higher rank differs only in outer loops over remaining spatial axes. **Adoption gate:** hot path must show **`W_SLAB_LEN` load + gather**.
@@ -340,18 +336,19 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Profiling or IR shows **repeated narrow or predicate-heavy global loads** on **W** inside **`kw`**, while **`stride_w`** maps output columns to **regularly strided** input columns.
   - **`out_w`** is large enough that **vectorizing along `ow`** matters, and **`triton.cmotion.cdiv(out_w, BLOCK_OW)`** (launch count along W) stays below a measured knee on the target NPU.
   - You can prove **semantic equivalence** for the branches you enable (**padding**, **ceil**, **divisor** / **count_include_pad** for average, **`-inf` / dtype** rules for max).
-=======
 ### `software-pipeline-dependency-profiling`
 
-- Summary: Use this pattern as a code-first software-pipeline probe whenever the kernel contains `tl.load`; if `extracted_bin_data/report.txt` exists, this probe must be attempted before choosing another optimization direction. If `tl.load` is outside a loop, try constructing a steady-state loop to make compiler prefetch possible; if `tl.load` is already inside a loop, try bounded `num_stages` tuning, with manual prefetch only when stage tuning is flat.
+- Summary: Use this pattern as the highest-priority candidate when `extracted_bin_data/report.txt` or equivalent profiling evidence suggests transfer, compute, and store are weakly overlapped, the kernel contains `tl.load`, and the kernel structure can be reorganized to improve overlap. Constructing a steady-state loop around `tl.load`, enabling compiler prefetch, and then tuning `num_stages` can improve performance when the hot path is regular enough to support these changes.
 - Source: [software-pipeline-dependency-profiling.md](patterns/software-pipeline-dependency-profiling.md)
 - Use When:
+  - `extracted_bin_data/report.txt` is available, or equivalent profiling evidence reports transfer/compute overlap.
+  - Most active `core*.veccore*` blocks satisfy the highest-priority profile gate: very low `OverlapRatio(VECTOR/CUBE & MTE2)`, very low `OverlapRatio(VECTOR/CUBE & MTE3)`, very low `OverlapRatio(MTE2 & MTE3)`, and low or moderate `Ratio(VECTOR/CUBE)`.
   - The kernel contains `tl.load`.
   - If `tl.load` is not inside a loop, try constructing a steady-state loop to support compiler prefetch.
   - If `tl.load` is already inside a loop, try bounded `num_stages` tuning; if stage tuning is flat, try manual prefetch.
   - If `extracted_bin_data/report.txt` exists, this rule must be attempted. Use the report to judge whether most active `core*.veccore*` blocks show very low `OverlapRatio(VECTOR/CUBE & MTE2)`, very low `OverlapRatio(VECTOR/CUBE & MTE3)`, very low `OverlapRatio(MTE2 & MTE3)`, and low or moderate `Ratio(VECTOR/CUBE)`.
   - Correctness and representative benchmark checks are available before keeping the change.
->>>>>>> 8f59765 (Add software pipeline dependency profiling pattern):skills/triton-npu-optimize-knowledge/references/pattern_index.md
+  - `tl.load` is inside a loop, or `tl.load` is outside a loop but the kernel has a regular single-tile program shape; try constructing a steady-state loop to make compiler prefetch possible.
 
 ### `software-pipeline`
 
