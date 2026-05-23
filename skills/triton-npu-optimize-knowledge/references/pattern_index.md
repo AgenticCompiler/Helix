@@ -18,6 +18,11 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Summary: Use Triton-Ascend autotune as the default way to search split sizes, tile sizes, and selected compile options when the kernel structure is already reasonable and the main open question is parameter choice.
 - Source: [autotune.md](patterns/autotune.md)
 
+### `software-pipeline-dependency-profiling`
+
+- Summary: Use this pattern as a code-first software-pipeline probe whenever the kernel contains `tl.load`; if `extracted_bin_data/report.txt` exists, this probe must be attempted before choosing another optimization direction. If `tl.load` is outside a loop, try constructing a steady-state loop to make compiler prefetch possible; if `tl.load` is already inside a loop, try bounded `num_stages` tuning, with manual prefetch only when stage tuning is flat.
+- Source: [software-pipeline-dependency-profiling.md](patterns/software-pipeline-dependency-profiling.md)
+
 ## Generated Pattern Summaries
 
 ### `a5-force-simt-only-discrete-access`
@@ -280,6 +285,17 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Use When:
   - Intermediate tensors, rather than just inputs or outputs, are the main source of UB pressure.
   - The overall algorithm is still reasonable, but staged slice processing is needed to keep temporary values within on-chip memory limits.
+
+### `software-pipeline-dependency-profiling`
+
+- Summary: Use this pattern as a code-first software-pipeline probe whenever the kernel contains `tl.load`; if `extracted_bin_data/report.txt` exists, this probe must be attempted before choosing another optimization direction. If `tl.load` is outside a loop, try constructing a steady-state loop to make compiler prefetch possible; if `tl.load` is already inside a loop, try bounded `num_stages` tuning, with manual prefetch only when stage tuning is flat.
+- Source: [software-pipeline-dependency-profiling.md](patterns/software-pipeline-dependency-profiling.md)
+- Use When:
+  - The kernel contains `tl.load`.
+  - If `tl.load` is not inside a loop, try constructing a steady-state loop to support compiler prefetch.
+  - If `tl.load` is already inside a loop, try bounded `num_stages` tuning; if stage tuning is flat, try manual prefetch.
+  - If `extracted_bin_data/report.txt` exists, this rule must be attempted. Use the report to judge whether most active `core*.veccore*` blocks show very low `OverlapRatio(VECTOR/CUBE & MTE2)`, very low `OverlapRatio(VECTOR/CUBE & MTE3)`, very low `OverlapRatio(MTE2 & MTE3)`, and low or moderate `Ratio(VECTOR/CUBE)`.
+  - Correctness and representative benchmark checks are available before keeping the change.
 
 ### `software-pipeline`
 
