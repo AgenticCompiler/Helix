@@ -76,6 +76,7 @@ Optimize analysis is layered.
 - Inspect current code structure and benchmark behavior before choosing a direction.
 - Use the sibling [`../triton-npu-optimize-knowledge/SKILL.md`](../triton-npu-optimize-knowledge/SKILL.md) as the generic optimize knowledge library.
 - When the optimize target is `operator`, also use the sibling [`../torch-npu-optimize-knowledge/SKILL.md`](../torch-npu-optimize-knowledge/SKILL.md) for Torch NPU and whole-operator pattern routing such as framework-op fallback, wrapper-level changes, or broader operator restructuring.
+- During pattern triage, check for `extracted_bin_data/report.txt` relative to the operator workspace root and the current `opt-round-N/` directory. If found, read it before selecting patterns.
 - Read [`../triton-npu-optimize-knowledge/references/pattern_index.md`](../triton-npu-optimize-knowledge/references/pattern_index.md) before detailed pattern references.
 - Read only the one or two most relevant detailed pattern files under [`../triton-npu-optimize-knowledge/references/patterns/`](../triton-npu-optimize-knowledge/references/patterns/) after the generated index has narrowed the candidate set.
 - When the optimize target is `operator` and the bottleneck looks Torch NPU or framework-op specific, read [`../torch-npu-optimize-knowledge/references/pattern_index.md`](../torch-npu-optimize-knowledge/references/pattern_index.md) before detailed Torch NPU pattern references.
