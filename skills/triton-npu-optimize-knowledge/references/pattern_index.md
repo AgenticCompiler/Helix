@@ -20,7 +20,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `software-pipeline-dependency-profiling`
 
-- Summary: Use this pattern as a code-first software-pipeline probe whenever the kernel contains `tl.load`; if `extracted_bin_data/report.txt` exists, this probe must be attempted before choosing another optimization direction. If `tl.load` is outside a loop, try constructing a steady-state loop to make compiler prefetch possible; if `tl.load` is already inside a loop, try bounded `num_stages` tuning, with manual prefetch only when stage tuning is flat.
+- Summary: Use this pattern as the highest-priority candidate when `extracted_bin_data/report.txt` or equivalent profiling evidence suggests transfer, compute, and store are weakly overlapped, the kernel contains `tl.load`, and the kernel structure can be reorganized to improve overlap. Constructing a steady-state loop around `tl.load`, enabling compiler prefetch, and then tuning `num_stages` can improve performance when the hot path is regular enough to support these changes.
 - Source: [software-pipeline-dependency-profiling.md](patterns/software-pipeline-dependency-profiling.md)
 
 ## Generated Pattern Summaries
@@ -288,14 +288,13 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `software-pipeline-dependency-profiling`
 
-- Summary: Use this pattern as a code-first software-pipeline probe whenever the kernel contains `tl.load`; if `extracted_bin_data/report.txt` exists, this probe must be attempted before choosing another optimization direction. If `tl.load` is outside a loop, try constructing a steady-state loop to make compiler prefetch possible; if `tl.load` is already inside a loop, try bounded `num_stages` tuning, with manual prefetch only when stage tuning is flat.
+- Summary: Use this pattern as the highest-priority candidate when `extracted_bin_data/report.txt` or equivalent profiling evidence suggests transfer, compute, and store are weakly overlapped, the kernel contains `tl.load`, and the kernel structure can be reorganized to improve overlap. Constructing a steady-state loop around `tl.load`, enabling compiler prefetch, and then tuning `num_stages` can improve performance when the hot path is regular enough to support these changes.
 - Source: [software-pipeline-dependency-profiling.md](patterns/software-pipeline-dependency-profiling.md)
 - Use When:
+  - `extracted_bin_data/report.txt` is available, or equivalent profiling evidence reports transfer/compute overlap.
+  - Most active `core*.veccore*` blocks satisfy the highest-priority profile gate: very low `OverlapRatio(VECTOR/CUBE & MTE2)`, very low `OverlapRatio(VECTOR/CUBE & MTE3)`, very low `OverlapRatio(MTE2 & MTE3)`, and low or moderate `Ratio(VECTOR/CUBE)`.
   - The kernel contains `tl.load`.
-  - If `tl.load` is not inside a loop, try constructing a steady-state loop to support compiler prefetch.
-  - If `tl.load` is already inside a loop, try bounded `num_stages` tuning; if stage tuning is flat, try manual prefetch.
-  - If `extracted_bin_data/report.txt` exists, this rule must be attempted. Use the report to judge whether most active `core*.veccore*` blocks show very low `OverlapRatio(VECTOR/CUBE & MTE2)`, very low `OverlapRatio(VECTOR/CUBE & MTE3)`, very low `OverlapRatio(MTE2 & MTE3)`, and low or moderate `Ratio(VECTOR/CUBE)`.
-  - Correctness and representative benchmark checks are available before keeping the change.
+  - `tl.load` is inside a loop, or `tl.load` is outside a loop but the kernel has a regular single-tile program shape; try constructing a steady-state loop to make compiler prefetch possible.
 
 ### `software-pipeline`
 
