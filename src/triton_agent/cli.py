@@ -55,6 +55,10 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
                 "Comma-separated Ascend NPU device pool for batch workspaces.",
             ),
             (
+                "TRITON_AGENT_BATCH_WORKERS_PER_NPU",
+                "Concurrent workers per NPU device in batch mode (positive int, default 1).",
+            ),
+            (
                 "TRITON_AGENT_CODE_AGENT_MAX_RETRIES",
                 "Retry limit for transient code-agent failures.",
             ),
@@ -411,7 +415,7 @@ def build_parser() -> argparse.ArgumentParser:
         if spec.has_npu_devices:
             subparser.add_argument("--npu-devices")
         if spec.has_optimize_options:
-            subparser.add_argument("--min-rounds", type=int)
+            subparser.add_argument("--min-rounds", type=int, default=5)
             subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES)
             subparser.add_argument("--reset-optimize", action="store_true")
             subparser.add_argument("--enable-compiler-source-analysis", action="store_true")

@@ -58,7 +58,8 @@ These are the environment variables that `triton-agent` reads directly at runtim
 | Variable | Required | Used by | Purpose |
 | --- | --- | --- | --- |
 | `TRITON_AGENT_HOME` | No | `optimize`, `optimize-batch` with `--enable-compiler-source-analysis` | Overrides the default Triton Agent home directory. The compiler-source checkout is stored under `<TRITON_AGENT_HOME>/compiler-sources/AscendNPU-IR/` instead of `~/.triton-agent/compiler-sources/AscendNPU-IR/`. |
-| `TRITON_AGENT_BATCH_NPU_DEVICES` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Comma-separated Ascend device list that also supports inclusive numeric ranges such as `0,3-5,8-9`. When set, concurrent batch workspaces are pinned to distinct devices, and `--max-concurrency` must not exceed the number of configured devices. |
+| `TRITON_AGENT_BATCH_NPU_DEVICES` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Comma-separated Ascend device list that also supports inclusive numeric ranges such as `0,3-5,8-9`. When set, concurrent batch workspaces are pinned to these devices. See also `TRITON_AGENT_BATCH_WORKERS_PER_NPU` to allow multiple workers per device. |
+| `TRITON_AGENT_BATCH_WORKERS_PER_NPU` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Positive integer that allows each configured NPU device to host multiple concurrent batch workers. Only effective when `TRITON_AGENT_BATCH_NPU_DEVICES` is set; defaults to `1`. Effective capacity is `device_count × workers_per_npu`. |
 | `TRITON_AGENT_CODE_AGENT_MAX_RETRIES` | No | Agent-backed commands | Non-negative integer retry budget for transient code-agent failures such as rate limits. Default is `2`. Set `0` to disable retries. |
 | `TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR` | No | Local `run-bench`, `verify`, and optimize benchmark validation | Preserves local benchmark profiler output directories under the given root instead of using auto-cleaned temporary directories. Applies to both `standalone` and `msprof` benchmark modes so you can inspect raw profiler artifacts after local benchmark runs. |
 | `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` | No | Ordinary `optimize`, `optimize-batch` PT cleanup | Opts back into deleting optimize-owned archived PT results during ordinary round and end-of-run cleanup. By default those PT files are preserved. This variable does not affect `check-baseline`, which never deletes PT files, or `--reset-optimize`, which still deletes known optimize PT artifacts. |
@@ -70,10 +71,11 @@ Examples:
 
 ```bash
 export TRITON_AGENT_BATCH_NPU_DEVICES=0,3-5,8-9
+export TRITON_AGENT_BATCH_WORKERS_PER_NPU=2
 export TRITON_AGENT_CODE_AGENT_MAX_RETRIES=4
 export TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES=1
 export TRITON_AGENT_HOME=$HOME/.triton-agent
-uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
+uv run triton-agent optimize-batch --input operators_root --max-concurrency 8
 ```
 
 ```bash
@@ -87,7 +89,7 @@ uv run triton-agent gen-test --input a.py --agent openhands
 
 These variables are normally set by `triton-agent` for child processes. You usually do not need to export them yourself:
 
-- `ASCEND_RT_VISIBLE_DEVICES`: set for each batch workspace when `TRITON_AGENT_BATCH_NPU_DEVICES` is configured.
+- `ASCEND_RT_VISIBLE_DEVICES`: set for each batch workspace when `TRITON_AGENT_BATCH_NPU_DEVICES` is configured. Multiple concurrent workspaces may receive the same device when `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is greater than `1`.
 
 ## Generate Tests
 
@@ -394,7 +396,7 @@ Use the batch commands when `--input` points to a directory of operator workspac
 
 ### Batch NPU Affinity
 
-Set `TRITON_AGENT_BATCH_NPU_DEVICES` to a comma-separated device list when you want concurrent batch workspaces to stay on distinct Ascend NPUs. The value supports explicit IDs and inclusive numeric ranges:
+Set `TRITON_AGENT_BATCH_NPU_DEVICES` to a comma-separated device list when you want concurrent batch workspaces to be pinned to specific Ascend NPUs. The value supports explicit IDs and inclusive numeric ranges:
 
 ```bash
 export TRITON_AGENT_BATCH_NPU_DEVICES=0,3-5,8-9
@@ -403,9 +405,24 @@ uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
 
 When this variable is set:
 
-- `gen-eval-batch`, `convert-batch`, and `optimize-batch` assign one configured device per running workspace.
+- `gen-eval-batch`, `convert-batch`, and `optimize-batch` assign one device per running workspace.
 - `--max-concurrency` must not exceed the number of configured devices.
-- the assigned device is exported as `ASCEND_RT_VISIBLE_DEVICES` for launched workspace processes.
+- The assigned device is exported as `ASCEND_RT_VISIBLE_DEVICES` for launched workspace processes.
+
+By default each device hosts at most one concurrent workspace. Set `TRITON_AGENT_BATCH_WORKERS_PER_NPU` to allow multiple workers to share the same device:
+
+```bash
+export TRITON_AGENT_BATCH_NPU_DEVICES=0,1
+export TRITON_AGENT_BATCH_WORKERS_PER_NPU=2
+uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
+```
+
+When `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is set:
+
+- Effective capacity is `device_count × workers_per_npu`.
+- `--max-concurrency` must not exceed the effective capacity.
+- Multiple concurrent workspaces may receive the same `ASCEND_RT_VISIBLE_DEVICES` value, up to the configured per-device limit.
+- This variable is ignored when `TRITON_AGENT_BATCH_NPU_DEVICES` is unset.
 
 ### Generate Evaluation Assets In Batch
 

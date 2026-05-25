@@ -1394,6 +1394,107 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         ),
                     )
 
+    def test_run_optimize_batch_allows_same_device_when_workers_per_npu_gt_1(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("alpha", "beta"):
+                workspace = root / name
+                workspace.mkdir()
+                (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+            )
+            seen_envs: list[dict[str, str]] = []
+
+            def fake_run_request(
+                request: AgentRequest,
+                stdout: Optional[object] = None,
+                stderr: Optional[object] = None,
+            ) -> AgentResult:
+                del stdout, stderr
+                seen_envs.append(request.extra_env or {})
+                return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            env_vars = {
+                "TRITON_AGENT_BATCH_NPU_DEVICES": "0",
+                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+            }
+            with patch.dict(os.environ, env_vars, clear=False):
+                with patch(
+                    "triton_agent.optimize.batch.render_batch_optimize_results",
+                    return_value=0,
+                ):
+                    exit_code = run_optimize_batch(
+                        root,
+                        options,
+                        max_concurrency=2,
+                        stdout=StringIO(),
+                        run_request=fake_run_request,
+                    )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(len(seen_envs), 2)
+            self.assertEqual(
+                {env["ASCEND_RT_VISIBLE_DEVICES"] for env in seen_envs},
+                {"0"},
+            )
+
+    def test_run_optimize_batch_rejects_concurrency_beyond_effective_capacity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "alpha"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+            )
+
+            env_vars = {
+                "TRITON_AGENT_BATCH_NPU_DEVICES": "0",
+                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+            }
+            with patch.dict(os.environ, env_vars, clear=False):
+                with self.assertRaisesRegex(ValueError, "TRITON_AGENT_BATCH_WORKERS_PER_NPU"):
+                    run_optimize_batch(
+                        root,
+                        options,
+                        max_concurrency=3,
+                        stdout=StringIO(),
+                        run_request=lambda request, stdout=None, stderr=None: AgentResult(
+                            return_code=0, stdout="ok", stderr=""
+                        ),
+                    )
+
     def test_run_optimize_batch_passes_compiler_source_settings_to_each_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

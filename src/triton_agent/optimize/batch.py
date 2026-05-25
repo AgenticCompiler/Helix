@@ -22,6 +22,7 @@ from triton_agent.npu_affinity import (
     BatchNpuAffinityPool,
     affinity_env_for_device,
     configured_batch_npu_devices,
+    configured_batch_npu_slots,
     validate_batch_affinity_capacity,
 )
 from triton_agent.optimize.models import BatchOptimizeResult, BatchOptimizeWorkspace, OptimizeRunOptions
@@ -92,7 +93,8 @@ def run_optimize_batch(
     stream = stdout or sys.stdout
     devices = configured_batch_npu_devices()
     validate_batch_affinity_capacity(devices, max_concurrency=max_concurrency)
-    pool = BatchNpuAffinityPool(devices) if devices is not None else None
+    slots = configured_batch_npu_slots()
+    pool = BatchNpuAffinityPool(slots) if slots is not None else None
 
     def _run_item(
         item: BatchOptimizeWorkspace,

@@ -31,6 +31,10 @@ def _msprof_case_outcome_sort_key(outcome: _MsprofCaseOutcome) -> int:
     return outcome.case_idx
 
 
+def _msprof_case_label(case_idx: int) -> str:
+    return f"case-{case_idx}"
+
+
 def run_local_bench_msprof(
     deps: BenchRunnerDeps,
     bench_file: Path,
@@ -88,7 +92,7 @@ def run_local_bench_msprof(
                 had_case_failures = True
                 case_records.append(
                     PerfCaseRecord(
-                        case_label=str(case_idx),
+                        case_label=_msprof_case_label(case_idx),
                         kernel_names=resolution.kernel_names,
                         kernel_source=resolution.kernel_source,
                         error_message=deps._format_msprof_command_failure(result),
@@ -103,7 +107,7 @@ def run_local_bench_msprof(
                 had_case_failures = True
                 case_records.append(
                     PerfCaseRecord(
-                        case_label=str(case_idx),
+                        case_label=_msprof_case_label(case_idx),
                         kernel_names=resolution.kernel_names,
                         kernel_source=resolution.kernel_source,
                         error_message=str(exc),
@@ -114,7 +118,7 @@ def run_local_bench_msprof(
 
             case_records.append(
                 PerfCaseRecord(
-                    case_label=str(case_idx),
+                    case_label=_msprof_case_label(case_idx),
                     kernel_names=resolution.kernel_names,
                     kernel_source=resolution.kernel_source,
                     metrics=metrics,
@@ -262,7 +266,7 @@ def run_remote_bench_msprof(
                 had_case_failures = True
                 case_records.append(
                     PerfCaseRecord(
-                        case_label=str(case_idx),
+                        case_label=_msprof_case_label(case_idx),
                         kernel_names=resolution.kernel_names,
                         kernel_source=resolution.kernel_source,
                         error_message=deps._format_msprof_command_failure(result),
@@ -284,7 +288,7 @@ def run_remote_bench_msprof(
                 had_case_failures = True
                 case_records.append(
                     PerfCaseRecord(
-                        case_label=str(case_idx),
+                        case_label=_msprof_case_label(case_idx),
                         kernel_names=resolution.kernel_names,
                         kernel_source=resolution.kernel_source,
                         error_message=str(exc),
@@ -295,7 +299,7 @@ def run_remote_bench_msprof(
 
             case_records.append(
                 PerfCaseRecord(
-                    case_label=str(case_idx),
+                    case_label=_msprof_case_label(case_idx),
                     kernel_names=resolution.kernel_names,
                     kernel_source=resolution.kernel_source,
                     metrics=metrics,
@@ -526,7 +530,7 @@ def _build_local_msprof_case_outcome(
 ) -> _MsprofCaseOutcome:
     if not result_succeeded(result):
         record = PerfCaseRecord(
-            case_label=str(case_idx),
+            case_label=_msprof_case_label(case_idx),
             kernel_names=resolution.kernel_names,
             kernel_source=resolution.kernel_source,
             error_message=deps._format_msprof_command_failure(result),
@@ -536,7 +540,7 @@ def _build_local_msprof_case_outcome(
         try:
             metrics = _read_local_msprof_metrics(output_dir, resolution.kernel_names)
             record = PerfCaseRecord(
-                case_label=str(case_idx),
+                case_label=_msprof_case_label(case_idx),
                 kernel_names=resolution.kernel_names,
                 kernel_source=resolution.kernel_source,
                 metrics=metrics,
@@ -544,7 +548,7 @@ def _build_local_msprof_case_outcome(
             )
         except (FileNotFoundError, ValueError) as exc:
             record = PerfCaseRecord(
-                case_label=str(case_idx),
+                case_label=_msprof_case_label(case_idx),
                 kernel_names=resolution.kernel_names,
                 kernel_source=resolution.kernel_source,
                 error_message=str(exc),
@@ -575,7 +579,7 @@ def _build_remote_msprof_case_outcome(
 ) -> _MsprofCaseOutcome:
     if not result_succeeded(result):
         record = PerfCaseRecord(
-            case_label=str(case_idx),
+            case_label=_msprof_case_label(case_idx),
             kernel_names=resolution.kernel_names,
             kernel_source=resolution.kernel_source,
             error_message=deps._format_msprof_command_failure(result),
@@ -592,7 +596,7 @@ def _build_remote_msprof_case_outcome(
                 stderr=stderr,
             )
             record = PerfCaseRecord(
-                case_label=str(case_idx),
+                case_label=_msprof_case_label(case_idx),
                 kernel_names=resolution.kernel_names,
                 kernel_source=resolution.kernel_source,
                 metrics=metrics,
@@ -600,7 +604,7 @@ def _build_remote_msprof_case_outcome(
             )
         except RuntimeError as exc:
             record = PerfCaseRecord(
-                case_label=str(case_idx),
+                case_label=_msprof_case_label(case_idx),
                 kernel_names=resolution.kernel_names,
                 kernel_source=resolution.kernel_source,
                 error_message=str(exc),

@@ -7,6 +7,7 @@ from contextlib import contextmanager
 
 
 _BATCH_NPU_DEVICES_ENV = "TRITON_AGENT_BATCH_NPU_DEVICES"
+_BATCH_WORKERS_PER_NPU_ENV = "TRITON_AGENT_BATCH_WORKERS_PER_NPU"
 
 
 def parse_batch_npu_devices(raw: str | None) -> tuple[str, ...] | None:
@@ -28,6 +29,43 @@ def configured_batch_npu_devices() -> tuple[str, ...] | None:
     return parse_batch_npu_devices(os.environ.get(_BATCH_NPU_DEVICES_ENV))
 
 
+def parse_batch_workers_per_npu(raw: str | None) -> int:
+    if raw is None:
+        return 1
+    stripped = raw.strip()
+    if stripped == "":
+        raise ValueError(
+            f"{_BATCH_WORKERS_PER_NPU_ENV} is set but empty; "
+            f"must be a positive integer when {_BATCH_NPU_DEVICES_ENV} is configured."
+        )
+    try:
+        value = int(stripped)
+    except ValueError:
+        raise ValueError(
+            f"{_BATCH_WORKERS_PER_NPU_ENV} must be a positive integer, got {raw!r}"
+        )
+    if value < 1:
+        raise ValueError(
+            f"{_BATCH_WORKERS_PER_NPU_ENV} must be a positive integer, got {value}"
+        )
+    return value
+
+
+def configured_batch_workers_per_npu() -> int:
+    return parse_batch_workers_per_npu(os.environ.get(_BATCH_WORKERS_PER_NPU_ENV))
+
+
+def configured_batch_npu_slots() -> tuple[str, ...] | None:
+    devices = configured_batch_npu_devices()
+    if devices is None:
+        return None
+    workers = configured_batch_workers_per_npu()
+    slots: list[str] = []
+    for device in devices:
+        slots.extend([device] * workers)
+    return tuple(slots)
+
+
 def validate_batch_affinity_capacity(
     devices: tuple[str, ...] | None,
     *,
@@ -35,10 +73,14 @@ def validate_batch_affinity_capacity(
 ) -> None:
     if devices is None:
         return
-    if max_concurrency > len(devices):
+    workers = configured_batch_workers_per_npu()
+    effective_capacity = len(devices) * workers
+    if max_concurrency > effective_capacity:
         raise ValueError(
-            "--max-concurrency must not exceed the number of devices configured by "
-            "TRITON_AGENT_BATCH_NPU_DEVICES."
+            f"--max-concurrency ({max_concurrency}) must not exceed the effective "
+            f"capacity ({effective_capacity}) derived from "
+            f"{_BATCH_NPU_DEVICES_ENV} ({len(devices)} device(s)) "
+            f"and {_BATCH_WORKERS_PER_NPU_ENV} ({workers})."
         )
 
 
