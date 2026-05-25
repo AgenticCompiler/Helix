@@ -547,25 +547,26 @@ def _parse_required_perf_entries_impl(
             continue
         key, value = line.split(":", 1)
         latency_id = key.strip()
-        if latency_id not in required_ids:
+        matched_latency_id = _resolve_required_latency_id_match(latency_id, required_ids)
+        if matched_latency_id is None:
             continue
         value_text = value.strip()
-        if latency_id in entries:
-            raise ValueError(f"{path}:{line_no} duplicates latency id '{latency_id}'")
+        if matched_latency_id in entries:
+            raise ValueError(f"{path}:{line_no} duplicates latency id '{matched_latency_id}'")
         uncomparable_error = _get_uncomparable_latency_error(
             path, line_no, latency_id, latency_errors
         )
         if uncomparable_error is not None:
             if tolerate_latency_errors:
-                skipped_latency_errors[latency_id] = uncomparable_error
+                skipped_latency_errors[matched_latency_id] = uncomparable_error
                 continue
             raise ValueError(uncomparable_error)
         effective_metric_source = (
             "total-op"
-            if metric_source == "auto" and comparison_modes[latency_id] == "total-op"
+            if metric_source == "auto" and comparison_modes[matched_latency_id] == "total-op"
             else metric_source
         )
-        entries[latency_id] = _build_perf_entry_for_source(
+        entries[matched_latency_id] = _build_perf_entry_for_source(
             path=path,
             line_no=line_no,
             latency_id=latency_id,
@@ -604,10 +605,14 @@ def _parse_perf_entries_from_jsonl(
         record = cast(dict[str, object], parsed)
         case_label = str(record["case_label"])
         latency_id = f"latency-{case_label}"
-        if required_ids is not None and latency_id not in required_ids:
-            continue
-        if latency_id in entries:
-            raise ValueError(f"{path}:{line_no} duplicates latency id '{latency_id}'")
+        matched_latency_id = latency_id
+        if required_ids is not None:
+            resolved_latency_id = _resolve_required_latency_id_match(latency_id, required_ids)
+            if resolved_latency_id is None:
+                continue
+            matched_latency_id = resolved_latency_id
+        if matched_latency_id in entries:
+            raise ValueError(f"{path}:{line_no} duplicates latency id '{matched_latency_id}'")
         kernel_avg_time_us_raw = record.get("kernel_avg_time_us")
         total_op_avg_time_us_raw = record.get("total_op_avg_time_us")
         error_message_raw = record.get("error_message")
@@ -616,7 +621,7 @@ def _parse_perf_entries_from_jsonl(
         error_text = str(error_message_raw) if error_message_raw is not None else None
         if error_text is not None and not error_text.startswith("no resolved kernels matched"):
             if tolerate_latency_errors:
-                skipped_latency_errors[latency_id] = (
+                skipped_latency_errors[matched_latency_id] = (
                     f"{path}:{line_no} cannot compare '{latency_id}' because "
                     f"'error_message: {error_text}' is present"
                 )
@@ -627,7 +632,7 @@ def _parse_perf_entries_from_jsonl(
             )
         effective_source = metric_source
         if metric_source == "auto" and comparison_modes is not None:
-            mode = comparison_modes.get(latency_id)
+            mode = comparison_modes.get(matched_latency_id)
             if mode == "total-op":
                 effective_source = "total-op"
         if kernel_avg_time_us_raw is not None:
@@ -638,14 +643,14 @@ def _parse_perf_entries_from_jsonl(
                         "under --metric-source total-op but total_op_avg_time_us is null"
                     )
                 value = float(cast("int | float | str", total_op_avg_time_us_raw))
-                entries[latency_id] = PerfEntry(
+                entries[matched_latency_id] = PerfEntry(
                     display_value=_format_total_op_display(value),
                     numeric_value=value,
                     comparison_mode="total-op",
                 )
             else:
                 value = float(cast("int | float | str", kernel_avg_time_us_raw))
-                entries[latency_id] = PerfEntry(
+                entries[matched_latency_id] = PerfEntry(
                     display_value=format_latency_value(value),
                     numeric_value=value,
                     comparison_mode="latency",
@@ -657,7 +662,7 @@ def _parse_perf_entries_from_jsonl(
                     "under --metric-source kernel"
                 )
             value = float(cast("int | float | str", total_op_avg_time_us_raw))
-            entries[latency_id] = PerfEntry(
+            entries[matched_latency_id] = PerfEntry(
                 display_value=f"NA ({_format_total_op_display(value)})",
                 numeric_value=value,
                 comparison_mode="total-op",
@@ -754,6 +759,33 @@ def _resolve_required_latency_requirements(
             if mode in ("latency", "total-op"):
                 comparison_modes[latency_id] = mode
     return required_ids, comparison_modes
+
+
+def _resolve_required_latency_id_match(
+    latency_id: str,
+    required_ids: set[str],
+) -> str | None:
+    if latency_id in required_ids:
+        return latency_id
+    alias = _legacy_msprof_latency_id_alias(latency_id)
+    if alias is not None and alias in required_ids:
+        return alias
+    return None
+
+
+def _legacy_msprof_latency_id_alias(latency_id: str) -> str | None:
+    case_prefix = "latency-case-"
+    if latency_id.startswith(case_prefix):
+        case_index = latency_id.removeprefix(case_prefix)
+        if case_index.isdigit():
+            return f"latency-{case_index}"
+        return None
+    latency_prefix = "latency-"
+    if latency_id.startswith(latency_prefix):
+        case_index = latency_id.removeprefix(latency_prefix)
+        if case_index.isdigit():
+            return f"latency-case-{case_index}"
+    return None
 
 
 def _require_raw_total(
