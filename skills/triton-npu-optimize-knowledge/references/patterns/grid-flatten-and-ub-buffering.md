@@ -37,6 +37,33 @@ When `logical_tasks > num_cores`, launch `num_cores` programs and loop over logi
 
 This helps only when each physical program has enough work to amortize the internal loop. If the original grid is near the physical core count, the extra loop can be overhead.
 
+### Collapse a lightweight batch/head grid axis into the program
+
+For chunked attention or recurrence kernels, a grid like `(NT, B * HV)` can create many small programs when each `(batch, head)` lane does modest work. If the per-lane work is independent and writes disjoint output regions, consider launching only over chunks and looping over `B * HV` inside each program:
+
+```python
+pid_t = tl.program_id(0)
+
+for i_bh in range(BH):
+    i_b = i_bh // HV
+    i_h = i_bh % HV
+    # Process one batch/head lane for this chunk.
+```
+
+Wrapper launch:
+
+```python
+kernel[(NT,)](..., BH=B * HV)
+```
+
+instead of:
+
+```python
+kernel[(NT, B * HV)](...)
+```
+
+This is a work-density variant of grid flattening. It is not a universal replacement for parallel batch/head execution. Use it when the original per-head programs are too thin and `BH` is small enough that serializing the axis does not underutilize the device.
+
 ### Discover core counts and choose grid by task kind
 
 Use a best-effort runtime query before hardcoding one grid size:
@@ -83,6 +110,8 @@ For row-wise reductions or gradient accumulation where several consecutive sourc
 
 - Flattening can erase useful multidimensional locality if offsets are decoded poorly.
 - Physical-grid loops can hurt small workloads.
+- Serializing a batch/head axis can under-parallelize large `B * HV` or Cube-heavy workloads.
+- Large compile-time `BH` values can increase code size or make one program too long.
 - UB staging can exceed UB capacity or reduce occupancy.
 - Gather and scatter have different address-continuity requirements; do not reuse aggregate-write logic for scattered stores.
 
@@ -92,6 +121,7 @@ For row-wise reductions or gradient accumulation where several consecutive sourc
 - Validate edge cases where `TOTAL_TASKS` is not divisible by `NUM_CORES`.
 - Benchmark small and large shapes if the operator supports both.
 - If the win depends on row continuity, add that condition to the round summary.
+- For batch/head-in-program loops, test several `B * HV` regimes and verify outputs are disjoint across the serial loop.
 
 ## Related Patterns
 
