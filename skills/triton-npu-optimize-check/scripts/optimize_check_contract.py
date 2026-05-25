@@ -1,18 +1,40 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
 
 from kernel_continuity_check import analyze_triton_kernel_continuity
-from triton_agent.optimize.naming import (
-    expected_round_operator_name,
-    expected_round_perf_name,
-    resolve_round_operator_file,
-    resolve_round_perf_file,
-)
-from triton_agent.optimize.pt_cleanup import cleanup_dir_pt_files
+
+_BATCH_OPTIMIZE_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")
+_BATCH_OPTIMIZE_EXCLUDED_NAMES = {"__init__.py"}
+_OPTIMIZE_DELETE_PT_FILES_ENV = "TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES"
+_TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def ordinary_optimize_pt_cleanup_enabled() -> bool:
+    raw_value = os.environ.get(_OPTIMIZE_DELETE_PT_FILES_ENV)
+    if raw_value is None:
+        return False
+    return raw_value.strip().lower() in _TRUTHY_ENV_VALUES
+
+
+def cleanup_dir_pt_files(directory: Path) -> list[str]:
+    cleaned: list[str] = []
+    for pt_file in sorted(directory.iterdir()):
+        if not pt_file.is_file():
+            continue
+        name_lower = pt_file.name.lower()
+        if not (name_lower == "test_result.pt" or name_lower.endswith("_result.pt")):
+            continue
+        try:
+            pt_file.unlink()
+            cleaned.append(pt_file.name)
+        except OSError:
+            pass
+    return cleaned
 
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "references" / "contract.json"
 CONTRACT_DATA = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
@@ -79,9 +101,8 @@ class RoundState:
     correctness_status: str
     benchmark_status: str
     perf_artifact: str
-    canonical_baseline: str
     comparison_target: str
-    perf_summary_source: str
+    effective_metric_source: str
     summary_path: str
     opt_note_updated: bool
     round_disposition: str
@@ -227,9 +248,8 @@ def load_round_state(round_dir: Path) -> RoundState:
         correctness_status=str(data["correctness_status"]),
         benchmark_status=str(data["benchmark_status"]),
         perf_artifact=str(data["perf_artifact"]),
-        canonical_baseline=str(data["canonical_baseline"]),
         comparison_target=str(data["comparison_target"]),
-        perf_summary_source=str(data["perf_summary_source"]),
+        effective_metric_source=str(data["effective_metric_source"]),
         summary_path=str(data["summary_path"]),
         opt_note_updated=bool(data["opt_note_updated"]),
         round_disposition=str(data["round_disposition"]),
@@ -309,19 +329,19 @@ def check_baseline(baseline_dir_path: Path) -> OptimizeCheckResult:
             decision="revise-required",
             issues=issues,
         )
-    workspace = baseline_dir_path.parent
-    cleaned = cleanup_dir_pt_files(baseline_dir_path)
-    cleaned.extend(cleanup_dir_pt_files(workspace))
-    if cleaned:
-        return _build_result(
-            kind="baseline",
-            decision="pass",
-            issues=(f"cleaned up {len(cleaned)} unused pt file(s): {', '.join(cleaned)}",),
-        )
     return _build_result(kind="baseline", decision="pass", issues=())
 
 
-def check_round(round_dir: Path) -> OptimizeCheckResult:
+def _count_round_directories(workspace: Path) -> int:
+    return sum(1 for path in workspace.glob("opt-round-*") if path.is_dir())
+
+
+def check_round(
+    round_dir: Path,
+    *,
+    min_rounds: int | None = None,
+    optimize_target: Literal["kernel", "operator"] | None = None,
+) -> OptimizeCheckResult:
     artifact_inspection = inspect_round_artifacts(round_dir)
     artifact_issues = artifact_inspection.issues
     if artifact_issues:
@@ -362,12 +382,19 @@ def check_round(round_dir: Path) -> OptimizeCheckResult:
         )
 
     semantic_issues: list[str] = []
-    if round_state.canonical_baseline != "baseline":
-        semantic_issues.append(f"canonical_baseline={round_state.canonical_baseline}")
-    if round_state.comparison_target != "baseline/perf.txt":
-        semantic_issues.append(f"comparison_target={round_state.comparison_target}")
-    if round_state.perf_summary_source != "compare-perf":
-        semantic_issues.append(f"perf_summary_source={round_state.perf_summary_source}")
+    try:
+        baseline = load_baseline_state(round_dir.parent)
+        if round_state.comparison_target != baseline.perf_artifact:
+            semantic_issues.append(
+                f"comparison_target={round_state.comparison_target} "
+                f"(expected {baseline.perf_artifact})"
+            )
+    except ValueError:
+        semantic_issues.append("cannot validate comparison_target: baseline state is invalid")
+    if round_state.effective_metric_source not in {"kernel", "total-op", "mixed"}:
+        semantic_issues.append(
+            f"effective_metric_source={round_state.effective_metric_source}"
+        )
     if not round_state.evidence_sources:
         semantic_issues.append("missing supporting evidence sources")
 
@@ -395,15 +422,55 @@ def check_round(round_dir: Path) -> OptimizeCheckResult:
             issues=((continuity.reason or "round operator failed Triton continuity check"),),
         )
 
-    cleaned = cleanup_dir_pt_files(round_dir)
-    if cleaned:
-        return _build_result(
-            kind="round",
-            decision="pass",
-            issues=(f"cleaned up {len(cleaned)} unused pt file(s) in {round_dir.name}: {', '.join(cleaned)}",),
+    runtime_warnings: list[str] = []
+    if optimize_target == "kernel" and round_state.effective_metric_source in {"total-op", "mixed"}:
+        runtime_warnings.append(
+            "kernel optimize target fell back to "
+            f"effective_metric_source={round_state.effective_metric_source}; "
+            "the round may still participate in best-round selection, but review the comparison basis."
         )
 
-    return _build_result(kind="round", decision="pass", issues=())
+    cleaned: list[str] = []
+    if ordinary_optimize_pt_cleanup_enabled():
+        cleaned = cleanup_dir_pt_files(round_dir)
+    if cleaned:
+        result = _build_result(
+            kind="round",
+            decision="pass",
+            issues=(
+                *tuple(runtime_warnings),
+                f"cleaned up {len(cleaned)} unused pt file(s) in {round_dir.name}: {', '.join(cleaned)}",
+            ),
+        )
+    else:
+        result = _build_result(kind="round", decision="pass", issues=tuple(runtime_warnings))
+
+    if min_rounds is not None:
+        completed = _count_round_directories(round_dir.parent)
+        if completed >= min_rounds:
+            result = _build_result(
+                kind="round",
+                decision="pass",
+                issues=result.issues,
+                summary=(
+                    f"round check passed. "
+                    f"Minimum round requirement satisfied ({completed}/{min_rounds}) — "
+                    f"the optimize session may stop after this round."
+                ),
+            )
+        else:
+            result = _build_result(
+                kind="round",
+                decision="pass",
+                issues=result.issues,
+                summary=(
+                    f"round check passed. "
+                    f"Round {completed}/{min_rounds} complete — "
+                    f"at least {min_rounds - completed} more round(s) required before stopping."
+                ),
+            )
+
+    return result
 
 
 def _load_json_object(path: Path, *, display_name: str) -> dict[str, Any]:
@@ -479,6 +546,95 @@ def _find_baseline_operator_snapshot(root: Path) -> Path | None:
     return None
 
 
+def _is_batch_optimize_operator_candidate(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    if path.suffix != ".py":
+        return False
+    if path.name in _BATCH_OPTIMIZE_EXCLUDED_NAMES:
+        return False
+    return not path.name.startswith(_BATCH_OPTIMIZE_EXCLUDED_PREFIXES)
+
+
+def _resolve_batch_optimize_operator_file(workspace: Path) -> Path:
+    candidates = [
+        path for path in sorted(workspace.iterdir()) if _is_batch_optimize_operator_candidate(path)
+    ]
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        raise ValueError(f"no candidate operator file found in workspace: {workspace}")
+    raise ValueError(f"multiple candidate operator files found in workspace: {workspace}")
+
+
+def expected_round_operator_name(workspace: Path) -> str:
+    operator_file = _resolve_batch_optimize_operator_file(workspace)
+    return f"opt_{operator_file.name}"
+
+
+def expected_round_perf_name(workspace: Path) -> str:
+    operator_file = _resolve_batch_optimize_operator_file(workspace)
+    return f"opt_{operator_file.stem}_perf.txt"
+
+
+def resolve_round_perf_file(round_dir: Path) -> Path | None:
+    workspace = round_dir.parent
+    try:
+        perf_name = expected_round_perf_name(workspace)
+    except ValueError:
+        perf_name = None
+    if perf_name is not None:
+        perf_path = round_dir / perf_name
+        if perf_path.is_file():
+            return perf_path
+
+    perf_txt = round_dir / "perf.txt"
+    if perf_txt.is_file():
+        return perf_txt
+
+    perf_files = sorted(path for path in round_dir.glob("*_perf.txt") if path.is_file())
+    if len(perf_files) == 1:
+        return perf_files[0]
+    return None
+
+
+def resolve_round_operator_file(round_dir: Path) -> Path | None:
+    workspace = round_dir.parent
+    try:
+        operator_name = expected_round_operator_name(workspace)
+    except ValueError:
+        operator_name = None
+    if operator_name is not None:
+        operator_path = round_dir / operator_name
+        if operator_path.is_file():
+            return operator_path
+
+    try:
+        legacy_operator_name = _resolve_batch_optimize_operator_file(workspace).name
+    except ValueError:
+        legacy_operator_name = None
+    if legacy_operator_name is not None:
+        legacy_operator_path = round_dir / legacy_operator_name
+        if legacy_operator_path.is_file():
+            return legacy_operator_path
+
+    candidates = [
+        path
+        for path in sorted(round_dir.iterdir())
+        if path.is_file()
+        and path.name not in _ROUND_METADATA_FILENAMES
+        and not path.name.endswith("_perf.txt")
+    ]
+    if len(candidates) == 1:
+        return candidates[0]
+    if candidates:
+        preferred_python = [path for path in candidates if path.suffix == ".py"]
+        if len(preferred_python) == 1:
+            return preferred_python[0]
+        return candidates[0]
+    return None
+
+
 def _expected_round_artifact_names(workspace: Path) -> tuple[str, str]:
     try:
         return expected_round_operator_name(workspace), expected_round_perf_name(workspace)
@@ -497,9 +653,11 @@ def _build_result(
     kind: Literal["baseline", "round"],
     decision: Literal["pass", "revise-required", "hard-fail"],
     issues: tuple[str, ...],
+    summary: str | None = None,
 ) -> OptimizeCheckResult:
     ok = decision == "pass"
-    summary = f"{kind} check passed" if ok else f"{kind} check requires fixes: {'; '.join(issues)}"
+    if summary is None:
+        summary = f"{kind} check passed" if ok else f"{kind} check requires fixes: {'; '.join(issues)}"
     return OptimizeCheckResult(
         ok=ok,
         kind=kind,

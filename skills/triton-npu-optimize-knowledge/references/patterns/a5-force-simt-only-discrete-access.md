@@ -1,10 +1,12 @@
+---
+priority: high
+---
+
 # A5 SIMT-Only Discrete Access Pattern
 
 ## Summary
 
-On A5, when profiler evidence shows a discrete-memory-access Triton kernel is dominated by AIV scalar work rather than vector or Cube work, try launching the kernel with `force_simt_only=True`, then retune launch parameters such as `num_warps` and grid decomposition.
-
-This is a profile-gated launch-mode experiment, not a default setting. Apply it only after code inspection or model analysis indicates the kernel is mostly discrete/index-driven memory access rather than regular vector arithmetic or Cube-heavy matmul.
+Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, then retune `num_warps` and grid decomposition. This profile-gated launch-mode experiment targets kernels whose hot path is primarily scalar/index-driven memory access.
 
 ## A5 Confirmation
 

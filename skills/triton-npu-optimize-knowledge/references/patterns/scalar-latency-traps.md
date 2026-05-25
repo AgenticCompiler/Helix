@@ -2,9 +2,7 @@
 
 ## Summary
 
-Remove scalarizing constructs that make an otherwise vector-friendly Ascend Triton kernel spend time on avoidable scalar control, address arithmetic, or long dependency chains.
-
-Use this as a trap-elimination pattern before larger rewrites. Apply one repair per round, then validate correctness and benchmark evidence through the normal optimize flow.
+Remove scalarizing constructs that block vector hardware utilization on Ascend NPU, including unnecessary scalar control flow, loop-carried pointer recurrences, modulo addressing, narrow masks, and int64 arithmetic on vector paths.
 
 ## Use When
 
@@ -13,17 +11,7 @@ Use this as a trap-elimination pattern before larger rewrites. Apply one repair 
 - Address expressions use modulo addressing (`%`) to wrap tail tiles or index boundaries.
 - `tl.where` masks all lanes except a single special position, or has exactly one false lane in a vector.
 - Integer elementwise arithmetic is done as scalar-looking `int64` work even though the value range is safely `int32`.
-- `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
-
-## Signals
-
-### Code
-
-- Runtime values that are shape constants are passed as normal arguments instead of `tl.constexpr`.
-- Pointer variables are updated with `+=` inside a loop, creating loop-carried address dependencies.
-- Address expressions use modulo addressing (`%`) to wrap tail tiles or index boundaries.
-- `tl.where` masks all lanes except a single special position, or has exactly one false lane in a vector.
-- Integer elementwise arithmetic is done as scalar-looking `int64` work even though the value range is safely `int32`.
+- `tl.cumsum` or `tl.associative_scan` runs on the last axis of a tensor and profiling or IR suggests scalar fallback instead of vector lowering.
 - `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
 
 ## Repairs
@@ -80,12 +68,30 @@ Do not use this for values that can overflow `int32`.
 
 For a long one-dimensional `tl.cumsum`, consider reshaping to a two-dimensional tile so cumsum runs on shorter axes, then combine block-local prefix totals. Tune the split size because both axes trade off against each other and can affect UB pressure.
 
+### Cumsum axis placement
+
+If `tl.cumsum` or `tl.associative_scan` is on the last axis and the backend lowers it to scalar loops, transpose or swap axes so the cumulative axis is no longer last before scanning. If the output layout needs the original axis order, transpose back after the scan.
+
+```python
+# Before: last-axis cumsum can fall back to scalar lowering.
+prefix = tl.cumsum(values, axis=1)
+
+# After: move the cumulative axis off the last position to unlock vector lowering.
+prefix = tl.trans(tl.cumsum(tl.trans(values), axis=0))
+```
+
 ## Risks
 
 - `tl.constexpr` changes specialization behavior and compile-cache cardinality.
 - Removing `%` is only safe when masks preserve the original boundary semantics.
 - Int32 conversion is a semantic promise about value range.
 - Cumsum decomposition must preserve prefix order exactly.
+- Axis swaps for cumsum can materialize a transpose; keep the temporary footprint within UB limits.
+
+## Related Patterns
+
+- `reduce-avoid-transpose-copy`
+- `tiling`
 
 ## What To Verify After Applying
 

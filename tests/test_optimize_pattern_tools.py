@@ -87,6 +87,289 @@ Extra prose that should stay in the source file but not become a first-line inde
         ).read_text(encoding="utf-8")
         self.assertEqual(generated, checked_in)
 
+    def test_checked_in_torch_npu_pattern_index_matches_generator(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+        )
+        patterns_dir = (
+            REPO_ROOT
+            / "skills"
+            / "torch-npu-optimize-knowledge"
+            / "references"
+            / "patterns"
+        )
+        generated = module.build_index_text(patterns_dir)
+        checked_in = (
+            REPO_ROOT
+            / "skills"
+            / "torch-npu-optimize-knowledge"
+            / "references"
+            / "pattern_index.md"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(generated, checked_in)
+
+    def test_v1_pattern_catalog_builds_high_priority_reminder_lines(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge/scripts/pattern_catalog.py"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            patterns_dir = Path(tmp)
+            (patterns_dir / "grid.md").write_text(
+                """---
+id: grid-flatten-and-ub-buffering
+priority: high
+---
+
+# Grid Flattening And UB Buffering Pattern
+
+## Summary
+
+Flatten logical work items onto physical cores.
+
+## Use When
+
+- Task count is much larger than core count.
+""",
+                encoding="utf-8",
+            )
+            (patterns_dir / "tiling.md").write_text(
+                """# Tiling Pattern
+
+## Summary
+
+Keep peak footprint bounded.
+
+## Use When
+
+- UB pressure is dominant.
+""",
+                encoding="utf-8",
+            )
+
+            cards = module.list_high_priority_pattern_cards(patterns_dir)
+            reminder_lines = module.build_high_priority_reminder_lines(patterns_dir)
+
+            self.assertEqual(
+                [card.identifier for card in cards],
+                ["grid-flatten-and-ub-buffering"],
+            )
+            self.assertEqual(
+                reminder_lines,
+                ["`grid-flatten-and-ub-buffering`: Flatten logical work items onto physical cores."],
+            )
+
+    def test_v2_pattern_catalog_renders_high_priority_section_before_full_summaries(
+        self,
+    ) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            patterns_dir = Path(tmp)
+            (patterns_dir / "autotune.md").write_text(
+                """---
+priority: high
+---
+
+# Autotune Pattern
+
+## Summary
+
+Use bounded config search when structure is already sound.
+
+## Use When
+
+- Kernel structure is already reasonable.
+""",
+                encoding="utf-8",
+            )
+
+            rendered = module.build_index_text(patterns_dir)
+
+            self.assertIn("## High Priority Patterns", rendered)
+            self.assertIn("### `autotune`", rendered)
+            self.assertLess(
+                rendered.index("## High Priority Patterns"),
+                rendered.index("## Generated Pattern Summaries"),
+            )
+
+    def test_v3_pattern_catalog_rejects_invalid_priority_value(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            patterns_dir = Path(tmp)
+            (patterns_dir / "demo.md").write_text(
+                """---
+priority: urgent
+---
+
+# Demo Pattern
+
+## Summary
+
+Short summary.
+
+## Use When
+
+- Stable trigger.
+""",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                ValueError, "demo.md has invalid priority 'urgent'"
+            ):
+                module.build_index_text(patterns_dir)
+
+    def test_build_index_rejects_invalid_priority_value(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            patterns_dir = Path(tmp)
+            (patterns_dir / "demo.md").write_text(
+                """---
+priority: urgent
+---
+
+# Demo Pattern
+
+## Summary
+
+Short summary.
+
+## Use When
+
+- Stable trigger.
+""",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                ValueError, "demo.md has invalid priority 'urgent'"
+            ):
+                module.build_index_text(patterns_dir)
+
+    def test_generated_index_lists_high_priority_patterns_before_full_summaries(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            patterns_dir = Path(tmp)
+            (patterns_dir / "high.md").write_text(
+                """---
+id: high-pattern
+priority: high
+---
+
+# High Pattern
+
+## Summary
+
+High summary.
+
+## Use When
+
+- High trigger.
+""",
+                encoding="utf-8",
+            )
+            (patterns_dir / "normal.md").write_text(
+                """# Normal Pattern
+
+## Summary
+
+Normal summary.
+
+## Use When
+
+- Normal trigger.
+""",
+                encoding="utf-8",
+            )
+
+            rendered = module.build_index_text(patterns_dir)
+
+            self.assertIn(
+                "Before scanning the full list, first analyze whether the operator matches any high-priority patterns below. If it does, try those directions first.",
+                rendered,
+            )
+            self.assertIn("## High Priority Patterns", rendered)
+            self.assertIn("### `high-pattern`", rendered)
+            self.assertIn("- Summary: High summary.", rendered)
+            self.assertIn("[high.md](patterns/high.md)", rendered)
+            self.assertLess(
+                rendered.index("## High Priority Patterns"),
+                rendered.index("## Generated Pattern Summaries"),
+            )
+
+    def test_generated_index_renders_none_when_no_patterns_are_high_priority(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            patterns_dir = Path(tmp)
+            (patterns_dir / "normal.md").write_text(
+                """# Normal Pattern
+
+## Summary
+
+Normal summary.
+
+## Use When
+
+- Normal trigger.
+""",
+                encoding="utf-8",
+            )
+
+            rendered = module.build_index_text(patterns_dir)
+
+            self.assertIn("## High Priority Patterns", rendered)
+            self.assertIn("- None.", rendered)
+
+    def test_checked_in_v2_pattern_index_matches_generator(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py"
+        )
+        patterns_dir = (
+            REPO_ROOT
+            / "skills"
+            / "triton-npu-optimize-knowledge-v2"
+            / "references"
+            / "patterns"
+        )
+        generated = module.build_index_text(patterns_dir)
+        checked_in = (
+            REPO_ROOT
+            / "skills"
+            / "triton-npu-optimize-knowledge-v2"
+            / "references"
+            / "pattern_index.md"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(generated, checked_in)
+
+    def test_checked_in_v3_pattern_index_matches_generator(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py"
+        )
+        patterns_dir = (
+            REPO_ROOT
+            / "skills"
+            / "triton-npu-optimize-knowledge-v3"
+            / "references"
+            / "patterns"
+        )
+        generated = module.build_index_text(patterns_dir)
+        checked_in = (
+            REPO_ROOT
+            / "skills"
+            / "triton-npu-optimize-knowledge-v3"
+            / "references"
+            / "pattern_index.md"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(generated, checked_in)
+
     def test_generated_index_links_to_pattern_subdirectory(self) -> None:
         module = _load_skill_script(
             "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
@@ -174,41 +457,24 @@ Short summary.
             self.assertIn("Short summary.", rendered)
             self.assertNotIn("Pattern Docs", rendered)
 
-    def test_build_symptom_index_requires_summary_evidence_and_candidates(self) -> None:
-        module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/build_symptom_index.py"
-        )
-        with tempfile.TemporaryDirectory() as tmp:
-            symptoms_dir = Path(tmp)
-            (symptoms_dir / "broken.md").write_text(
-                "# broken\n\n## Summary\n\nMissing evidence and pattern directions.\n",
-                encoding="utf-8",
-            )
-            with self.assertRaisesRegex(
-                ValueError, "Evidence To Confirm, Candidate Pattern Directions"
-            ):
-                module.build_index_text(symptoms_dir)
-
-    def test_checked_in_symptom_index_matches_generator(self) -> None:
-        module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/build_symptom_index.py"
-        )
-        symptoms_dir = (
-            REPO_ROOT
-            / "skills"
-            / "triton-npu-optimize-knowledge"
-            / "references"
-            / "symptoms"
-        )
-        generated = module.build_index_text(symptoms_dir)
+    def test_checked_in_pattern_index_high_priority_section_lists_expected_cards(
+        self,
+    ) -> None:
         checked_in = (
             REPO_ROOT
             / "skills"
             / "triton-npu-optimize-knowledge"
             / "references"
-            / "symptom_index.md"
+            / "pattern_index.md"
         ).read_text(encoding="utf-8")
-        self.assertEqual(generated, checked_in)
+
+        self.assertIn("## High Priority Patterns", checked_in)
+        self.assertIn("### `a5-force-simt-only-discrete-access`", checked_in)
+        self.assertIn("### `autotune`", checked_in)
+        self.assertNotIn(
+            "### `classic-matmul`",
+            checked_in.split("## Generated Pattern Summaries")[0],
+        )
 
 if __name__ == "__main__":
     unittest.main()

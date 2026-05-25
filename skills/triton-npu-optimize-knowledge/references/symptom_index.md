@@ -33,9 +33,12 @@ Read this generated index first. Then read only the one or two most relevant det
   - Code structure repeatedly reloads tensors, stages many intermediates, or performs gather/scatter-like movement.
 - Candidate Pattern Directions:
   - `tiling`
+  - `effective-extent-tiling`
   - `cache-use`
   - `algebraic-optimization`
+  - `discrete_memory_access`
   - `gather-load`
+  - `pooling-inner-w-slab-gather`
   - `slice-coalesce`
   - `slice-intermediate`
 - Common Non-Matches:
@@ -54,7 +57,7 @@ Read this generated index first. Then read only the one or two most relevant det
   - `cache-use`
   - `diagonal`
   - `slice-coalesce`
-  - `gather-load`
+  - `discrete_memory_access`
 - Common Non-Matches:
   - Poor locality is not the same as pure UB overflow; if the main issue is footprint size, prefer footprint-reduction patterns first.
   - Not every gather or scatter pattern is fixable through traversal order alone.

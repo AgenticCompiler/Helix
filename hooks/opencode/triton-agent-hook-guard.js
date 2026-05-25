@@ -15,12 +15,11 @@ const READ_COMMANDS = new Set([
   "head",
   "less",
   "more",
-  "python",
-  "python3",
   "rg",
   "sed",
   "tail",
 ]);
+const PROTECTED_RELATIVE_PATH_PREFIXES = ["triton-agent-logs/"];
 
 const PATH_FRAGMENT_RE = /(?:\/|\.\.?\/|\.opencode\/)[A-Za-z0-9_./*?{}+@%:,=-]+/g;
 const WINDOWS_PATH_FRAGMENT_RE = /[A-Za-z]:[\\/][A-Za-z0-9_ .\\/(){}+@%:,=-]+/g;
@@ -136,7 +135,14 @@ async function evaluateOutput(policy, input, output) {
   }
 
   for (const candidate of candidatePaths(command, tokens)) {
-    const reason = await evaluateCandidate(candidate, cwd, allowRoots, denyGlobs, denyMessage);
+    const reason = await evaluateCandidate(
+      candidate.path,
+      cwd,
+      allowRoots,
+      denyGlobs,
+      denyMessage,
+      candidate.allowProtectedScriptEntrypoint,
+    );
     if (reason) {
       return reason;
     }
@@ -417,6 +423,9 @@ async function evaluateCandidate(candidate, cwd, allowRoots, denyGlobs, denyMess
   if (!isUnderAnyRoot(resolved, allowRoots)) {
     return denyMessage;
   }
+  if (allowProtectedScriptEntrypoint && isProtectedScriptPath(resolved, allowRoots[0])) {
+    return null;
+  }
   if (matchesAnyGlob(resolved, denyGlobs)) {
     return denyMessage;
   }
@@ -477,19 +486,24 @@ function isReadCommandToken(token) {
 
 function candidatePaths(command, tokens) {
   const candidates = [];
-  for (const token of tokens) {
+  const explicitPathTokens = new Set(tokens.filter((token) => looksLikePath(token)));
+
+  for (const [index, token] of tokens.entries()) {
     if (isReadCommandToken(token)) {
       continue;
     }
     if (looksLikePath(token)) {
-      candidates.push(token);
+      candidates.push({ path: token, allowProtectedScriptEntrypoint: false });
     }
   }
 
   for (const match of command.matchAll(PATH_FRAGMENT_RE)) {
-    const candidate = match[0];
-    if (!isReadCommandToken(candidate)) {
-      candidates.push(candidate);
+    const candidate = match.groups?.path;
+    if (typeof candidate !== "string") {
+      continue;
+    }
+    if (!isReadCommandToken(candidate) && !isNestedPathFragment(candidate, explicitPathTokens)) {
+      candidates.push({ path: candidate, allowProtectedScriptEntrypoint: false });
     }
   }
   for (const match of command.matchAll(WINDOWS_PATH_FRAGMENT_RE)) {
@@ -512,6 +526,24 @@ function looksLikePath(token) {
     token.includes("\\") ||
     path.extname(token).length > 0
   );
+}
+
+function isNestedPathFragment(candidate, explicitPathTokens) {
+  for (const token of explicitPathTokens) {
+    if (candidate !== token && token.includes(candidate)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isProtectedScriptPath(candidate, workspaceRoot) {
+  const relative = path.relative(workspaceRoot, candidate);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    return false;
+  }
+  const parts = relative.split(path.sep);
+  return parts.length >= 5 && parts[0] === ".opencode" && parts[1] === "skills" && parts[3] === "scripts";
 }
 
 function resolvePolicyPath(value) {

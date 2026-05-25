@@ -53,21 +53,23 @@ The generated test file must include a short metadata header near the top of the
 - `# kernels: <resolved_kernel_names>`
 
 - Always follow the selected spec file exactly. The spec is authoritative for the mode-specific runtime shape, hook surface, artifact layout, and validation behavior.
-- Keep the shared contract consistent across modes: use the metadata header, resolve the public entrypoint explicitly, generate deterministic NPU coverage, and avoid inventing extra runtime behavior that the spec does not require.
+- Keep the shared contract consistent across modes: use the metadata header, resolve the public entrypoint explicitly, generate deterministic NPU coverage, require explicit seed control whenever randomness is used so repeated runs of the same harness produce identical inputs, and avoid inventing extra runtime behavior that the spec does not require.
 
 ## Validation Commands
 
 Use the `triton-npu-run-eval` skill to validate generated tests.
 
 - Standalone: run `run-test` with `--test-mode standalone`.
-- Differential: run `run-test` with `--test-mode differential`, then run `compare-result` on the archived payload when you need to compare against an oracle or optimized result.
-- If validation is remote, carry the same remote flags through both commands.
+- Differential: run `run-test` with `--test-mode differential`.
+- Differential one-command compare: when you already have an oracle payload, run `run-test` with `--oracle-result <oracle_result.pt>` so the command executes the test and archived-result comparison together.
+- Differential manual compare: keep `compare-result` for reruns or for cases where you already have both archived payloads.
+- If validation is remote, carry the same remote flags through the relevant command path.
 
 ## Workflow
 
 1. Read the operator code, resolve the supported public entrypoint, and read the selected spec.
 2. Generate the test file to match the selected spec exactly.
-3. Validate with `run-test`; if the task is differential, follow with `compare-result` when comparison is needed.
+3. Validate with `run-test`; if the task is differential and an oracle payload is already available, prefer the one-command `--oracle-result` flow.
 4. If validation fails, repair the test and repeat.
    - For Triton Ascend compile, JIT, launch, or kernel-side failures, consult the `triton-npu-repair-guide` skill as a diagnostic reference before deciding on the smallest safe test-side change.
    - This workflow still owns only the generated test file. Do not treat `triton-npu-repair-guide` as permission to edit the operator file here.
@@ -79,6 +81,7 @@ Use the `triton-npu-run-eval` skill to validate generated tests.
 - Keep the metadata header and resolve the public entrypoint explicitly.
 - Use `importlib` or import-only hooks only when the spec requires them.
 - Keep coverage deterministic and realistic.
+- Randomized input generation is allowed only when the generated harness explicitly fixes the seed so repeated runs of the same harness produce identical inputs.
 - Do not guess constructor arguments for `torch-module`.
 - Do not treat raw `@triton.jit` kernels as direct harness APIs.
 

@@ -13,9 +13,12 @@ The round looks dominated by data movement, staging cost, or transfer-heavy exec
 ## Candidate Pattern Directions
 
 - `tiling`
+- `effective-extent-tiling`
 - `cache-use`
 - `algebraic-optimization`
+- `discrete_memory_access`
 - `gather-load`
+- `pooling-inner-w-slab-gather`
 - `slice-coalesce`
 - `slice-intermediate`
 

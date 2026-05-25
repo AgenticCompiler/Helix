@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import csv
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_stdout
 import importlib
 import importlib.util
 import os
@@ -12,7 +12,7 @@ import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, TypedDict, cast
+from typing import Any, Iterator, cast
 
 from bench_contract import KernelResolution, resolve_bench_kernel_resolution
 from perf_artifacts import (
@@ -21,9 +21,10 @@ from perf_artifacts import (
     PerfOpRow,
     format_latency_value,
     perf_output_path,
-    render_perf_case_records,
+    render_perf_case_records_jsonl,
     write_perf_lines,
 )
+from result_payload import ResultPayload, make_result
 
 
 WARMUP_DEFAULT = 5
@@ -31,39 +32,12 @@ REPEATS_DEFAULT = 50
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched profiler operator details"
 _LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR"
 
-
-class ResultPayload(TypedDict):
-    return_code: int
-    stdout: str
-    stderr: str
-    stalled: bool
-    session_id: str | None
-
-
 @dataclass(frozen=True)
 class StandaloneBenchCase:
     case_id: str
     fn: Callable[[], object]
     warmup: int
     repeats: int
-
-
-def make_result(
-    *,
-    return_code: int,
-    stdout: str,
-    stderr: str,
-    stalled: bool = False,
-    session_id: str | None = None,
-) -> ResultPayload:
-    return {
-        "return_code": return_code,
-        "stdout": stdout,
-        "stderr": stderr,
-        "stalled": stalled,
-        "session_id": session_id,
-    }
-
 
 def load_standalone_bench_cases(
     bench_file: Path,
@@ -83,6 +57,8 @@ def load_standalone_bench_cases(
 def run_local_standalone_bench(
     bench_file: Path,
     operator_file: Path,
+    *,
+    verbose: bool = False,
 ) -> tuple[ResultPayload, Path]:
     cases, resolution = load_standalone_bench_cases(bench_file, operator_file)
     case_records: list[PerfCaseRecord] = []
@@ -91,48 +67,17 @@ def run_local_standalone_bench(
     preserved_run_dir = _create_local_preserved_profile_run_dir(prefix="triton-agent-standalone-bench-")
 
     for case in cases:
-        profile_root, temp_dir = _create_local_standalone_profile_dir(case.case_id, preserved_run_dir)
-        try:
-            metrics, error_message = _profile_case_with_profiler(
-                case,
-                resolution,
-                profile_root,
-            )
-        finally:
-            if temp_dir is not None:
-                temp_dir.cleanup()
-            _cleanup_local_bench_extra_info(bench_file.parent)
-        if error_message is not None:
+        record = _run_standalone_case(case, resolution, preserved_run_dir, bench_file.parent, verbose=verbose)
+        if record.error_message is not None:
             had_failures = True
-            stderr_chunks.append(f"{case.case_id}: {error_message}")
-            case_records.append(
-                PerfCaseRecord(
-                    case_label=case.case_id,
-                    kernel_names=resolution.kernel_names,
-                    kernel_source=resolution.kernel_source,
-                    error_message=error_message,
-                )
-            )
-            continue
-        case_records.append(
-            PerfCaseRecord(
-                case_label=case.case_id,
-                kernel_names=resolution.kernel_names,
-                kernel_source=resolution.kernel_source,
-                metrics=metrics,
-            )
-        )
+            stderr_chunks.append(f"{case.case_id}: {record.error_message}")
+        case_records.append(record)
 
     perf_path = perf_output_path(operator_file)
     write_perf_lines(
         perf_path,
-        render_perf_case_records(
+        render_perf_case_records_jsonl(
             case_records,
-            latency_prefix="latency",
-            raw_prefix="raw-op-statistic",
-            resolved_kernels_prefix="resolved-kernels",
-            kernel_source_prefix="kernel-source",
-            latency_error_prefix="latency-error",
             missing_kernel_match_error=_MISSING_KERNEL_MATCH_ERROR,
         ),
     )
@@ -171,9 +116,22 @@ def run_one_standalone_case(
     return make_result(return_code=0, stdout="", stderr="")
 
 
+def run_one_standalone_case_record(
+    bench_file: Path,
+    operator_file: Path,
+    case_id: str,
+    *,
+    verbose: bool = False,
+) -> PerfCaseRecord:
+    cases, resolution = load_standalone_bench_cases(bench_file, operator_file)
+    case = _select_case(cases, case_id)
+    return _run_standalone_case(case, resolution, None, bench_file.parent, verbose=verbose)
+
+
 def runtime_support_paths() -> list[Path]:
     script_dir = Path(__file__).resolve().parent
     return [
+        script_dir / "result_payload.py",
         script_dir / "standalone_bench_runtime.py",
         script_dir / "bench_contract.py",
         script_dir / "perf_artifacts.py",
@@ -263,6 +221,8 @@ def _profile_case_with_profiler(
     case: StandaloneBenchCase,
     resolution: KernelResolution,
     profile_root: Path,
+    *,
+    verbose: bool = False,
 ) -> tuple[PerfMetrics | None, str | None]:
     try:
         import torch
@@ -285,7 +245,8 @@ def _profile_case_with_profiler(
             data_simplification=False,
         )
 
-        with _suppress_output_streams():
+        _suppress_ctx = _suppress_output_streams() if not verbose else nullcontext()
+        with _suppress_ctx:
             case.fn()
             _synchronize(torch)
 
@@ -323,6 +284,45 @@ def _profile_case_with_profiler(
         return _read_profiler_metrics(profile_root, case.repeats, resolution.kernel_names), None
     except Exception as exc:
         return None, f"{type(exc).__name__}: {exc}"
+
+
+def _run_standalone_case(
+    case: StandaloneBenchCase,
+    resolution: KernelResolution,
+    preserved_run_dir: Path | None,
+    cleanup_workdir: Path,
+    *,
+    verbose: bool = False,
+) -> PerfCaseRecord:
+    profile_root, temp_dir = _create_local_standalone_profile_dir(case.case_id, preserved_run_dir)
+    try:
+        t0 = time.monotonic()
+        metrics, error_message = _profile_case_with_profiler(
+            case,
+            resolution,
+            profile_root,
+            verbose=verbose,
+        )
+        elapsed = time.monotonic() - t0
+    finally:
+        if temp_dir is not None:
+            temp_dir.cleanup()
+        _cleanup_local_bench_extra_info(cleanup_workdir)
+    if error_message is not None:
+        return PerfCaseRecord(
+            case_label=case.case_id,
+            kernel_names=resolution.kernel_names,
+            kernel_source=resolution.kernel_source,
+            error_message=error_message,
+            case_wall_clock_seconds=elapsed,
+        )
+    return PerfCaseRecord(
+        case_label=case.case_id,
+        kernel_names=resolution.kernel_names,
+        kernel_source=resolution.kernel_source,
+        metrics=metrics,
+        case_wall_clock_seconds=elapsed,
+    )
 
 
 @contextmanager

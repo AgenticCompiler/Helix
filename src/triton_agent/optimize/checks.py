@@ -12,9 +12,17 @@ def check_baseline(baseline_dir: Path) -> OptimizeCheckResult:
     return _normalize_result(module.check_baseline(baseline_dir))
 
 
-def check_round(round_dir: Path) -> OptimizeCheckResult:
+def check_round(
+    round_dir: Path,
+    *,
+    min_rounds: int | None = None,
+    optimize_target: Literal["kernel", "operator"] | None = None,
+) -> OptimizeCheckResult:
     module = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
-    return _normalize_result(module.check_round(round_dir))
+    kwargs: dict[str, object] = {"min_rounds": min_rounds}
+    if optimize_target is not None:
+        kwargs["optimize_target"] = optimize_target
+    return _normalize_result(module.check_round(round_dir, **kwargs))
 
 
 def _normalize_result(raw_result: object) -> OptimizeCheckResult:

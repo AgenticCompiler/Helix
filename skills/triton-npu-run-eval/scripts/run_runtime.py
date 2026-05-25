@@ -11,6 +11,8 @@ from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any, Optional, TextIO, TypedDict, cast
 
+from result_payload import ResultPayload, make_result
+
 _IS_WINDOWS = sys.platform == "win32"
 
 if not _IS_WINDOWS:
@@ -19,15 +21,6 @@ if not _IS_WINDOWS:
 else:
     pty = None
     select = None
-
-
-class ResultPayload(TypedDict):
-    return_code: int
-    stdout: str
-    stderr: str
-    stalled: bool
-    session_id: str | None
-
 
 class RemoteSpec(TypedDict):
     user_host: str
@@ -41,11 +34,6 @@ def local_python_executable() -> str:
     if getattr(sys, "frozen", False):
         return "python"
     return sys.executable
-
-
-def repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
 
 def env_int(name: str, default: int) -> int:
     raw = os.environ.get(name)
@@ -420,23 +408,6 @@ def _maybe_emit_remote_command(command: list[str], verbose: bool, stderr: TextIO
     if not verbose or stderr is None:
         return
     emit_verbose(stderr, "remote", f"command: {shlex.join(command)}")
-
-
-def make_result(
-    *,
-    return_code: int,
-    stdout: str,
-    stderr: str,
-    stalled: bool = False,
-    session_id: str | None = None,
-) -> ResultPayload:
-    return {
-        "return_code": return_code,
-        "stdout": stdout,
-        "stderr": stderr,
-        "stalled": stalled,
-        "session_id": session_id,
-    }
 
 
 def result_succeeded(result: ResultPayload) -> bool:

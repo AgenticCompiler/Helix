@@ -8,6 +8,10 @@ from unittest.mock import patch
 
 from tests.run_skill_test_utils import load_compare_result_module, load_test_runner_module
 
+_WARNING_LINE = "[WARNING] Please DO NOT tune args ['num_warps']!\n"
+_ANOTHER_WARNING_LINE = "[WARNING] autotune fallback was used\n"
+
+
 class LocalTestRunnerTests(unittest.TestCase):
     def test_run_local_test_executes_declarative_differential_cases(self) -> None:
         module = load_test_runner_module()
@@ -86,6 +90,53 @@ def build_differential_test_cases(operator_api):
         stream_mock.assert_called_once()
         archive_mock.assert_called_once_with(test_file, operator)
 
+    def test_run_local_test_filters_warning_prefix_lines_by_default(self) -> None:
+        module = load_test_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "abs.py"
+            test_file = root / "test_abs.py"
+            operator.write_text("def noop():\n    return 1\n", encoding="utf-8")
+            test_file.write_text("print('test')\n", encoding="utf-8")
+
+            fake_result = {
+                "return_code": 0,
+                "stdout": _WARNING_LINE + "useful stdout\n" + _ANOTHER_WARNING_LINE,
+                "stderr": _ANOTHER_WARNING_LINE + "useful stderr\n",
+                "stalled": False,
+                "session_id": None,
+            }
+
+            with patch.object(module, "run_streaming_process", return_value=fake_result):
+                result, archived = module.run_local_test(test_file, operator, "standalone", verbose=False)
+
+        self.assertEqual(result["stdout"], "useful stdout\n")
+        self.assertEqual(result["stderr"], "useful stderr\n")
+        self.assertIsNone(archived)
+
+    def test_run_local_test_preserves_warning_prefix_lines_in_verbose_mode(self) -> None:
+        module = load_test_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "abs.py"
+            test_file = root / "test_abs.py"
+            operator.write_text("def noop():\n    return 1\n", encoding="utf-8")
+            test_file.write_text("print('test')\n", encoding="utf-8")
+
+            fake_result = {
+                "return_code": 0,
+                "stdout": _WARNING_LINE + "useful stdout\n",
+                "stderr": _ANOTHER_WARNING_LINE,
+                "stalled": False,
+                "session_id": None,
+            }
+
+            with patch.object(module, "run_streaming_process", return_value=fake_result):
+                result, archived = module.run_local_test(test_file, operator, "standalone", verbose=True)
+
+        self.assertEqual(result, fake_result)
+        self.assertIsNone(archived)
+
     def test_run_remote_test_executes_declarative_differential_cases(self) -> None:
         module = load_test_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -146,6 +197,43 @@ def build_differential_test_cases(operator_api):
         self.assertIn("build_differential_test_cases", recorded_command[2])
         self.assertIn('f"{operator_file.stem}_result.pt"', recorded_command[2])
         self.assertNotIn("TEST_RESULT.pt", recorded_command[2])
+
+    def test_run_remote_test_filters_warning_prefix_lines_by_default(self) -> None:
+        module = load_test_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "abs.py"
+            test_file = root / "test_abs.py"
+            operator.write_text("def noop():\n    return 1\n", encoding="utf-8")
+            test_file.write_text("print('test')\n", encoding="utf-8")
+
+            fake_result = {
+                "return_code": 0,
+                "stdout": _WARNING_LINE + "remote stdout\n",
+                "stderr": _ANOTHER_WARNING_LINE + "remote stderr\n",
+                "stalled": False,
+                "session_id": None,
+            }
+
+            with patch.object(module, "create_remote_workspace", return_value=({"user_host": "user@host", "port": None}, "/tmp/remote")):
+                with patch.object(module, "copy_file_to_remote"):
+                    with patch.object(module, "run_remote_command_streaming", return_value=fake_result):
+                        with patch.object(module, "cleanup_remote_workspace"):
+                            result, archived, remote_workspace = module.run_remote_test(
+                                test_file,
+                                operator,
+                                "standalone",
+                                "user@host",
+                                None,
+                                keep_remote_workdir=False,
+                                verbose=False,
+                                stderr=None,
+                            )
+
+        self.assertEqual(result["stdout"], "remote stdout\n")
+        self.assertEqual(result["stderr"], "remote stderr\n")
+        self.assertIsNone(archived)
+        self.assertEqual(remote_workspace, "/tmp/remote")
 
     def test_find_case_insensitive_result_file_matches_lowercase_payload(self) -> None:
         module = load_test_runner_module()

@@ -58,6 +58,8 @@ For `standalone` mode, do **not** generate `main()`, `argparse`, or direct runti
 
 For `msprof` mode, keep the executable benchmark CLI shape with `--operator-file`, optional `--bench <N>`, and `--num-bench`.
 
+Across benchmark modes, keep case data reproducible: if the generated harness uses randomized inputs, explicitly fix the seed during case construction so repeated runs of the same harness produce identical inputs.
+
 ## Validation Commands
 
 Use the triton-npu-run-eval skill to execute generated benchmark cases.
@@ -78,6 +80,7 @@ If the outer task is marked for remote execution, carry the same remote flags in
 2. If the public entrypoint is missing, ambiguous, or unsafe to use, stop and report the problem instead of guessing.
 3. Select the requested benchmark mode and read the corresponding spec before generating code.
 4. Generate a benchmark harness that follows the selected spec, keeps setup separate from measurement when practical, and writes the required metadata header.
+   - If the harness uses randomized input generation, fix the seed inside case construction so repeated runs of the same harness produce identical inputs.
    - For `standalone`, implement `build_operator_api(operator_module)` and `build_standalone_bench_cases(operator_api)` instead of a directly executable timing script.
 5. If auto-fix is active, validate the generated benchmark with `run-bench` using one of the command patterns above instead of doing a separate syntax-only check.
 6. If validation fails, repair only the benchmark file according to the self-repair rules below, retry, and then return a runnable script plus a short assumptions summary.
@@ -90,6 +93,7 @@ If the outer task is marked for remote execution, carry the same remote flags in
 - Measure the operator body, not one-time setup.
 - Prefer stable repeated timing over a single run.
 - Keep generated code easy to edit by hand.
+- Randomized input generation is allowed only when the generated harness explicitly fixes the seed so repeated runs of the same harness produce identical inputs.
 - In `standalone` mode, do not embed timing or profiler logic in the benchmark file. The runner owns `torch_npu.profiler` execution and perf artifact generation.
 - Do not violate CLI, naming, warmup, artifact, or output rules from the selected spec.
 - Do not spend a separate step on syntax-only checking; rely on `run-bench` as the validation path.

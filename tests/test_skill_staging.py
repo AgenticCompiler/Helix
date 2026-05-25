@@ -83,6 +83,26 @@ class SkillStagingTests(unittest.TestCase):
         self.assertIn("triton-npu-cann-ext-api-patterns", names or ())
         self.assertIsNone(sources)
 
+    def test_resolve_staged_skills_for_optimize_kernel_target_omits_torch_npu_knowledge(
+        self,
+    ) -> None:
+        names, _ = resolve_staged_skills(
+            CommandKind.OPTIMIZE,
+            optimize_target="kernel",
+        )
+
+        self.assertNotIn("torch-npu-optimize-knowledge", names or ())
+
+    def test_resolve_staged_skills_for_optimize_operator_target_includes_torch_npu_knowledge(
+        self,
+    ) -> None:
+        names, _ = resolve_staged_skills(
+            CommandKind.OPTIMIZE,
+            optimize_target="operator",
+        )
+
+        self.assertIn("torch-npu-optimize-knowledge", names or ())
+
     def test_apply_stage_directives_supports_add_remove_and_full_copy(self) -> None:
         self.assertEqual(_apply_stage_directives(("+a", "+b", "-a", "+c")), ("b", "c"))
         self.assertIsNone(_apply_stage_directives(("*", "+a")))

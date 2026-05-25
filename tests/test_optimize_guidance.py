@@ -233,6 +233,30 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertTrue((state.run_archive_dir / "final" / "supervisor-report.md").exists())
             self.assertTrue((state.run_archive_dir / "history").exists())
 
+    def test_prepare_unsupervised_session_mentions_operator_target_when_selected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            manager = OptimizeSessionArtifactsManager()
+            state = manager.prepare_unsupervised_session(
+                workdir,
+                operator_path=operator,
+                agent_name="codex",
+                test_mode="differential",
+                bench_mode="standalone",
+                optimize_target="operator",
+            )
+
+            guidance_content = (workdir / "AGENTS.md").read_text(encoding="utf-8")
+            self.assertIn("Target optimization scope: operator.", guidance_content)
+            self.assertIn("Optimize end-to-end operator latency.", guidance_content)
+            self.assertIn("both kernel and total-op `compare-perf` views visible", guidance_content)
+
+            warnings = manager.cleanup_unsupervised_session(state)
+            self.assertEqual(warnings, [])
+
     def test_record_agent_session_appends_compact_jsonl(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
@@ -355,6 +379,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 "Use the staged `triton-npu-optimize-knowledge` skill for generic pattern and symptom references.",
                 shared_content,
             )
+            self.assertNotIn("torch-npu-optimize-knowledge", shared_content)
             self.assertIn(
                 "When pattern triage is used, record candidate patterns, the selected pattern if one is chosen, and why that pattern looks plausible in `opt-round-N/attempts.md`.",
                 shared_content,
@@ -376,6 +401,60 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 shared_content,
             )
             self.assertIn("Do not begin with blind tiling or launch-parameter search.", shared_content)
+
+            warnings = manager.cleanup_supervised_session(state)
+            self.assertEqual(warnings, [])
+
+    def test_prepare_shared_guidance_includes_generated_high_priority_pattern_reminders(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+
+            manager = OptimizeSessionArtifactsManager()
+            state = manager.prepare_supervised_session(
+                workdir,
+                agent_name="codex",
+                optimize_knowledge_skill_name="triton-npu-optimize-knowledge-v2",
+            )
+
+            shared_content = state.guidance_path.read_text(encoding="utf-8")
+            self.assertIn(
+                "High-priority generic pattern reminders for this run:",
+                shared_content,
+            )
+            self.assertIn(
+                "`grid-flatten-and-ub-buffering`: Use this pattern when performance is limited by too many logical tasks, uneven per-core work, or tiny per-program transfers after a gather/scatter-style rewrite.",
+                shared_content,
+            )
+            self.assertIn(
+                "`autotune`: **Autotune** here means Triton’s `@triton.autotune` decorator: the runtime tries a **small, bounded** list of launch configurations (tile sizes, warp counts, pipeline stages, and other meta-parameters) and picks one that performs best on measured micro-benchmarks of the kernel.",
+                shared_content,
+            )
+
+            warnings = manager.cleanup_supervised_session(state)
+            self.assertEqual(warnings, [])
+
+    def test_prepare_shared_guidance_mentions_torch_npu_knowledge_for_operator_target(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            manager = OptimizeSessionArtifactsManager()
+            state = manager.prepare_supervised_session(
+                workdir,
+                agent_name="codex",
+                optimize_target="operator",
+            )
+
+            shared_content = state.guidance_path.read_text(encoding="utf-8")
+            self.assertIn(
+                "Use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and operator-level pattern references.",
+                shared_content,
+            )
 
             warnings = manager.cleanup_supervised_session(state)
             self.assertEqual(warnings, [])

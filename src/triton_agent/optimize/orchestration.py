@@ -126,6 +126,7 @@ def build_optimize_request(
     staged_skill_names, staged_skill_sources = resolve_staged_skills(
         CommandKind.OPTIMIZE,
         optimize_knowledge=options.optimize_knowledge,
+        optimize_target=options.optimize_target,
         enable_cann_ext_api=options.enable_cann_ext_api,
     )
     return AgentRequest(
@@ -151,6 +152,7 @@ def build_optimize_request(
         staged_skill_sources=staged_skill_sources,
         optimize_role="worker" if options.supervise == "on" else None,
         target_chip=options.target_chip,
+        optimize_target=options.optimize_target,
         compiler_source_analysis=options.compiler_source_analysis,
         compiler_source_path=compiler_source.path if compiler_source is not None else None,
         compiler_source_commit=compiler_source.commit if compiler_source is not None else None,

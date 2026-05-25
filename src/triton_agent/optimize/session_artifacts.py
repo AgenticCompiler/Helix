@@ -108,9 +108,11 @@ class OptimizeSessionArtifactsManager:
         test_mode: str,
         bench_mode: str,
         agent_name: str,
+        optimize_target: str = "kernel",
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        optimize_knowledge_skill_name: str | None = None,
     ) -> SharedOptimizeSessionArtifactsState:
         """Prepare only the artifacts needed by a single-agent optimize session."""
         archive_state = self._archives.prepare(workdir)
@@ -120,9 +122,11 @@ class OptimizeSessionArtifactsManager:
             test_mode=test_mode,
             bench_mode=bench_mode,
             agent_name=agent_name,
+            optimize_target=optimize_target,
             compiler_source_path=compiler_source_path,
             compiler_source_commit=compiler_source_commit,
             enable_cann_ext_api=enable_cann_ext_api,
+            optimize_knowledge_skill_name=optimize_knowledge_skill_name,
         )
         return SharedOptimizeSessionArtifactsState(
             memory_file=memory_file_state,
@@ -133,9 +137,11 @@ class OptimizeSessionArtifactsManager:
         self,
         workdir: Path,
         agent_name: str,
+        optimize_target: str = "kernel",
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        optimize_knowledge_skill_name: str | None = None,
     ) -> OptimizeSessionArtifactsState:
         """Prepare the full artifact set used by worker/supervisor orchestration."""
         runtime_handoff_state = self._runtime_handoffs.prepare(workdir)
@@ -146,9 +152,11 @@ class OptimizeSessionArtifactsManager:
         memory_file_state = self._memory_files.prepare_shared(
             workdir,
             agent_name=agent_name,
+            optimize_target=optimize_target,
             compiler_source_path=compiler_source_path,
             compiler_source_commit=compiler_source_commit,
             enable_cann_ext_api=enable_cann_ext_api,
+            optimize_knowledge_skill_name=optimize_knowledge_skill_name,
         )
         return OptimizeSessionArtifactsState(
             memory_file=memory_file_state,

@@ -139,6 +139,7 @@ class OptimizeRunLoop:
                         request.prompt,
                         self._build_gate_summary(gate_result),
                         supervise=current_request.supervise,
+                        optimize_target=current_request.optimize_target,
                         compiler_source_path=current_request.compiler_source_path,
                         compiler_source_commit=current_request.compiler_source_commit,
                     ),
@@ -152,6 +153,7 @@ class OptimizeRunLoop:
                         request.prompt,
                         self._build_gate_summary(gate_result),
                         supervise=current_request.supervise,
+                        optimize_target=current_request.optimize_target,
                         compiler_source_path=current_request.compiler_source_path,
                         compiler_source_commit=current_request.compiler_source_commit,
                     ),
@@ -203,6 +205,7 @@ class OptimizeRunLoop:
         summary: str,
         *,
         supervise: str = "on",
+        optimize_target: str = "kernel",
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
     ) -> str:
@@ -210,6 +213,7 @@ class OptimizeRunLoop:
             summary,
             base_prompt=base_prompt,
             supervise="off" if supervise == "off" else "on",
+            optimize_target=optimize_target,
             compiler_source_path=compiler_source_path,
             compiler_source_commit=compiler_source_commit,
         )

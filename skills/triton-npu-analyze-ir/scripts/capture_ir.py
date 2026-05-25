@@ -17,11 +17,6 @@ from typing import TextIO
 from typing import TypedDict
 
 
-class CaptureDetails(NamedTuple):
-    dumped_ir_dir: str
-    compile_command: list[str]
-
-
 class ResultPayload(TypedDict):
     return_code: int
     stdout: str
@@ -45,6 +40,11 @@ def make_result(
         "stalled": stalled,
         "session_id": session_id,
     }
+
+
+class CaptureDetails(NamedTuple):
+    dumped_ir_dir: str
+    compile_command: list[str]
 
 
 def extract_capture_details(stdout: str) -> CaptureDetails:
@@ -142,6 +142,7 @@ def capture_local_archive(
     bench_file: Path,
     operator_file: Path,
     archive_dir: Path,
+    bench_case: int | None = None,
 ) -> Path:
     _prepare_empty_archive_dir(archive_dir)
     bench_mode = _resolve_bench_mode(bench_file)
@@ -149,6 +150,7 @@ def capture_local_archive(
         bench_file=bench_file,
         operator_file=operator_file,
         bench_mode=bench_mode,
+        bench_case=bench_case,
     )
     result = _run_local_command(command, cwd=bench_file.parent)
     if int(str(result["return_code"])) != 0:
@@ -185,6 +187,7 @@ def capture_remote_archive(
     remote: str,
     remote_workdir: str | None,
     keep_remote_workdir: bool,
+    bench_case: int | None = None,
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[Path, str]:
@@ -200,6 +203,7 @@ def capture_remote_archive(
         operator_file=remote_operator_file,
         python_executable="python3",
         bench_mode=bench_mode,
+        bench_case=bench_case,
     )
     try:
         run_remote_command_buffered(
@@ -295,10 +299,14 @@ def capture_remote_archive(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Capture Triton Ascend IR into an IR directory.")
+    parser = argparse.ArgumentParser(
+        description="Capture Triton Ascend IR into an IR directory.",
+        allow_abbrev=False,
+    )
     parser.add_argument("--ir-dir", required=True)
     parser.add_argument("--bench-file", required=True)
     parser.add_argument("--operator-file", required=True)
+    parser.add_argument("--bench", type=int)
     parser.add_argument("--remote")
     parser.add_argument("--remote-workdir")
     parser.add_argument("--keep-remote-workdir", action="store_true")
@@ -320,6 +328,7 @@ def main(argv: list[str] | None = None) -> int:
                 remote=args.remote,
                 remote_workdir=args.remote_workdir,
                 keep_remote_workdir=args.keep_remote_workdir,
+                bench_case=args.bench,
                 verbose=args.verbose,
                 stderr=sys.stderr,
             )
@@ -332,6 +341,7 @@ def main(argv: list[str] | None = None) -> int:
             bench_file=bench_file,
             operator_file=operator_file,
             archive_dir=archive_dir,
+            bench_case=args.bench,
         )
         print(f"Capture manifest: {manifest_path}")
         return 0
@@ -406,18 +416,44 @@ def _normalize_compile_command_tokens(tokens: list[str]) -> list[str]:
     index = 0
     while index < len(tokens):
         token = tokens[index]
-        if token.startswith("--append-bisheng-options="):
+        prefix = _space_separated_option_prefix(token)
+        if prefix is not None:
             value = token.split("=", 1)[1]
             merged: list[str] = [value] if value else []
             index += 1
-            while index < len(tokens) and not tokens[index].startswith("-"):
+            while index < len(tokens) and _should_merge_space_separated_option_value(prefix, tokens[index]):
                 merged.append(tokens[index])
                 index += 1
-            normalized.append(f"--append-bisheng-options={' '.join(merged).strip()}")
+            normalized.append(f"{prefix}{' '.join(merged)}")
             continue
         normalized.append(token)
         index += 1
     return normalized
+
+
+def _space_separated_option_prefix(token: str) -> str | None:
+    for prefix in (
+        "--append-bisheng-options=",
+        "--discrete-mask-access-conversion=",
+        "--triton-to-unstructure=",
+        "--triton-to-linalg=",
+    ):
+        if token.startswith(prefix):
+            return prefix
+    return None
+
+
+def _should_merge_space_separated_option_value(prefix: str, token: str) -> bool:
+    if token.startswith("-"):
+        return False
+    if prefix == "--append-bisheng-options=":
+        return True
+    return _looks_like_inline_option_assignment(token)
+
+
+def _looks_like_inline_option_assignment(token: str) -> bool:
+    name, separator, _value = token.partition("=")
+    return bool(separator) and bool(name) and all(character.isalnum() or character in "._-" for character in name)
 
 
 def _looks_like_ttadapter_input(token: str) -> bool:
@@ -430,6 +466,7 @@ def build_execution_command(
     operator_file: Path,
     python_executable: str | None = None,
     bench_mode: str | None = None,
+    bench_case: int | None = None,
 ) -> list[str]:
     operator_arg = operator_file.name
     if bench_file.parent != operator_file.parent:
@@ -437,6 +474,8 @@ def build_execution_command(
     interpreter = sys.executable if python_executable is None else python_executable
     resolved_bench_mode = bench_mode or _resolve_bench_mode(bench_file)
     if resolved_bench_mode == "standalone":
+        if bench_case is not None:
+            raise ValueError("--bench is only valid for msprof benchmark capture")
         helper_script = (
             _standalone_runtime_script_path() if python_executable is None else Path("standalone_bench_runtime.py")
         )
@@ -454,6 +493,7 @@ def build_execution_command(
         bench_file.name,
         "--operator-file",
         operator_arg,
+        *([] if bench_case is None else ["--bench", str(bench_case)]),
     ]
 
 
@@ -494,14 +534,14 @@ def _stage_required_files(
         stderr=stderr,
     )
     if _resolve_bench_mode(bench_file) == "standalone":
-        helper_path = _standalone_runtime_script_path()
-        copy_file_to_remote(
-            spec,
-            helper_path,
-            f"{remote_source_dir}/{helper_path.name}",
-            verbose=verbose,
-            stderr=stderr,
-        )
+        for helper_path in _standalone_runtime_support_paths():
+            copy_file_to_remote(
+                spec,
+                helper_path,
+                f"{remote_source_dir}/{helper_path.name}",
+                verbose=verbose,
+                stderr=stderr,
+            )
 
 
 def _resolve_bench_mode(bench_file: Path) -> str:
@@ -524,6 +564,14 @@ def _standalone_runtime_script_path() -> Path:
         / "scripts"
         / "standalone_bench_runtime.py"
     )
+
+
+def _standalone_runtime_support_paths() -> list[Path]:
+    script_dir = _standalone_runtime_script_path().parent
+    return [
+        script_dir / "result_payload.py",
+        script_dir / "standalone_bench_runtime.py",
+    ]
 
 
 def _run_remote_debug_command(
@@ -589,7 +637,16 @@ def _load_runtime_helpers() -> dict[str, Any]:
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load shared runtime helpers from {script}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    script_dir = str(script.parent)
+    added = False
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
+        added = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        if added:
+            sys.path.remove(script_dir)
     return {
         "create_remote_workspace": module.create_remote_workspace,
         "cleanup_remote_workspace": module.cleanup_remote_workspace,

@@ -110,6 +110,80 @@ In this kind of conversion:
 - the trailing `get_init_inputs()` / `get_inputs()` block is preserved in the converted output instead of being dropped
 - the original source operator remains the correctness oracle for differential validation
 
+## Forward Method Constraints
+
+The converted operator **must** be a pure Triton Ascend implementation. The `forward()` method may only allocate buffers and launch kernels — all computation must happen inside `@triton.jit` kernels.
+
+### Forbidden in forward()
+
+| Category | Examples | Reason |
+|----------|----------|--------|
+| `torch` compute functions | `torch.matmul(x, w)`, `torch.relu(x)`, `torch.sum(x)` | Must be inside a `@triton.jit` kernel |
+| `torch.nn.functional` | `F.softmax(x, dim=-1)`, `F.linear(x, w)`, `F.relu(x)` | Must be inside a `@triton.jit` kernel |
+| tensor method compute | `x.sum()`, `x.mean()`, `x.softmax(dim=-1)`, `x.relu()` | Must be inside a `@triton.jit` kernel |
+| tensor operators | `x @ w`, `x + y`, `x * y`, `x / y` | Must be inside a `@triton.jit` kernel |
+| `nn.Module` calls | `self.conv(x)`, `self.linear(x)`, `self.layer(x)` | Must be inside a `@triton.jit` kernel |
+
+### Allowed in forward()
+
+| Category | Examples | Purpose |
+|----------|----------|---------|
+| buffer alloc | `torch.empty(shape)`, `torch.zeros(shape)`, `torch.ones(shape)` | Allocate output for kernel |
+| shape ops | `x.view(...)`, `x.reshape(...)`, `x.permute(...)`, `x.transpose(...)` | No compute involved |
+| metadata | `x.shape`, `x.dtype`, `x.device`, `x.numel()` | Needed for grid calculation |
+| kernel launch | `kernel[grid](...args)` | Call a custom `@triton.jit` kernel |
+
+### Anti-Patterns (These Fail Conversion)
+
+**1. Fully PyTorch — no kernel at all**
+```python
+# Forbidden: pure PyTorch, no Triton kernel
+def forward(self, x, w):
+    return torch.matmul(x, w)
+```
+
+**2. Kernel defined but never called**
+```python
+@triton.jit
+def matmul_kernel(...):
+    pass
+
+def forward(self, x, w):
+    return torch.matmul(x, w)  # Forbidden: kernel defined but unused
+```
+
+**3. Mixed: partial kernel + partial torch**
+```python
+def forward(self, x, w):
+    y = self.kernel[grid](x, w)
+    return y.sum(dim=-1)  # Forbidden: tensor method compute after kernel
+```
+
+**4. Tensor operators in forward**
+```python
+def forward(self, x, w):
+    y = self.kernel[grid](x, w)
+    return y + 1  # Forbidden: + is a PyTorch operator
+```
+
+### Correct Pattern
+
+```python
+@triton.jit
+def add_kernel(x_ptr, y_ptr, output_ptr, n, BLOCK_SIZE: tl.constexpr):
+    idx = tl.arange(0, BLOCK_SIZE)
+    x = tl.load(x_ptr + idx)
+    y = tl.load(y_ptr + idx)
+    output = x + y  # compute inside kernel
+    tl.store(output_ptr + idx, output)
+
+class ModelNew(nn.Module):
+    def forward(self, x, y):
+        output = torch.empty_like(x)  # Allowed: buffer alloc
+        add_kernel[(1,)](x, y, output, x.numel(), BLOCK_SIZE=128)  # Allowed: kernel launch
+        return output  # Allowed: return kernel output
+```
+
 ## Quality Rules
 
 - Keep the original input operator file unchanged.
@@ -122,6 +196,7 @@ In this kind of conversion:
 - Keep the converted file runnable as a PyTorch-facing operator artifact.
 - Prefer targeted conversion over unrelated refactoring.
 - Use differential correctness validation instead of inventing a second validation workflow here.
+- Input validation in the converted operator must limit itself to zero-cost metadata checks (`.dtype`, `.ndim`, `.device`, `.shape`, `.numel()`). Never scan tensor data for bounds or value-range validation — calling `.min().item()`, `.max().item()`, or any reduction+`.item()` on input tensors forces a GPU→CPU synchronization on every forward call and destroys performance. The caller is responsible for providing valid inputs, just as it is for the original PyTorch operator.
 
 ## Do Not
 
@@ -133,4 +208,5 @@ In this kind of conversion:
 - Do not call `optimize` or create `opt-round-*` directories from this workflow.
 - Do not create `baseline/` or any optimize-session artifacts from this workflow.
 - Do not replace the converted Triton kernel path with pure PyTorch just to get validation green.
+- Do not create input-validation helpers (e.g., `_validate_index`, `_check_bounds`, `_assert_indices`, or similarly-named functions) that scan tensor data. Specifically, never call `.min().item()`, `.max().item()`, `.sum().item()`, or any reduction followed by `.item()` on GPU/NPU tensors before launching a kernel. These force a full-tensor GPU→CPU synchronization on every forward call. The converted operator inherits the same input contract as the original PyTorch operator — if the caller passes out-of-bounds indices, that is a caller bug, not something the conversion must guard against.
 - Do not submit a pure PyTorch rewrite as the converted result, even when the wrapper signature or differential outputs still look correct.

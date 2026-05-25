@@ -2,23 +2,19 @@
 
 ## Summary
 
-When loading discrete indices, rather than using `tl.load` to load the
-discrete set directly, use `tl.load` to load a continuous range first, then use `tl.gather` to select
-the target values.
-
-For fixed-channel AoS layouts such as `[N, 3]` coordinates, apply the same principle by passing a
-channel-first SoA buffer (`[3, N]`) into the kernel so each channel is loaded with contiguous
-`atom_idx` offsets instead of repeated stride-3 global loads.
+Stage a contiguous range into the Unified Buffer first, then use on-chip indexing (`tl.gather` or equivalent) to select target values, rather than loading directly from global memory through discrete indices. For fixed-channel AoS layouts, apply the same principle with channel-first SoA buffers to enable contiguous loads.
 
 ## Use When
 
 - The central bottleneck is discrete memory access that semantically looks like `out = x[idx]`.
 - Index-driven global loads dominate the hot path, and contiguous staging plus local selection is more plausible than direct scattered reads.
+- The gather source array is small or medium enough that contiguous staging in shared memory is plausible.
 - The hot loop repeatedly reads fixed fields from AoS records with stride-C offsets, such as `[N, 3]` coordinates loaded as `atom_idx * 3 + channel`, and the input is reused enough to amortize wrapper-side SoA materialization.
 
 ## Avoid When
 
 - The source range is too large to stage or transpose profitably for the active shape.
+- Memory access patterns are already sequential and contiguous.
 - The fixed field dimension is consumed as a whole and splitting it would require vector extraction.
 - The rewrite would introduce unsupported Ascend tensor indexing such as `vec[0]` on a loaded vector/tile.
 
@@ -27,20 +23,32 @@ channel-first SoA buffer (`[3, N]`) into the kernel so each channel is loaded wi
 ### Code
 
 - Channel-wise loads use stride-2/3/4 addressing in the hot vector path.
+- Direct global-memory gather reads dominate more than the surrounding arithmetic.
 - Attempts to coalesce fixed fields would require extracting scalar components from a vector.
 - A small fixed set of indexed setup values is used only for scalar frame/basis initialization.
 
+### Profile
+
+- Direct discrete global-memory reads appear as the dominant cost in the hot path.
+- MTE bandwidth utilization is low relative to the amount of data consumed, indicating poor coalescing.
+
+## Related Patterns
+
+- `effective-extent-tiling`
+- `slice_coalesce`
+- `tiling`
+
+## What To Verify After Applying
+
+- Verify the source array size is still reasonable for shared memory after the rewrite.
+- Verify the kernel stages the source array contiguously before the indexed selection step.
+- Verify boundary masking and semantic equivalence with the original gather behavior.
+
+---
+
 ## Detail
 
-This example shows how to load data efficiently for discrete-memory-access workloads.
-
-### Operation
-
-Implement the following Triton-style behavior:
-
-```python
-out = x[idx]
-```
+This pattern implements the Triton-style behavior `out = x[idx]`.
 
 Inputs:
 
@@ -55,14 +63,12 @@ Output:
 |-------|-------|
 | out   | (N,)  |
 
-### Key Difference Summary
+### Key Principle
 
 - GPU-style code reads discrete values directly from global memory.
 - NPU-style code first stages data from global memory into shared memory, then selects the target values from the staged buffer.
 
-### Detailed Difference
-
-Code diff of NPU and CUDA
+### Code Transformation
 
 ```diff
 @triton.jit
@@ -93,7 +99,19 @@ def pick_kernel(
 
 ```
 
-## AoS fixed-channel variant
+### Detection Pattern (Before)
+
+```python
+# Problematic: Direct discrete global memory access on NPU
+idx = tl.load(idx_ptr + rn * stride_idx)
+val = tl.load(x_ptr + idx * stride_x)  # Discrete access pattern
+
+# Problematic: Index-based memory access
+indices = compute_indices()
+data = tl.load(base_ptr + indices * stride)  # Scattered loading
+```
+
+## AoS Fixed-Channel Variant
 
 Before:
 
@@ -132,7 +150,7 @@ a1 = tl.load(coord1_ptr + idx0)
 a2 = tl.load(coord2_ptr + idx0)
 ```
 
-## Ascend vector-extract guardrail
+## Ascend Vector-Extract Guardrail
 
 Ascend Triton lowering does not reliably support vector extraction patterns such as `vec[0]` or
 tensor indexing to split a loaded vector/tile. Do not convert three scalar values into a vector only

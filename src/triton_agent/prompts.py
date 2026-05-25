@@ -64,6 +64,7 @@ def build_prompt(
     resume_existing_session: bool | None = None,
     supervise: Literal["on", "off"] = "off",
     target_chip: str | None = None,
+    optimize_target: str = "kernel",
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
     enable_cann_ext_api: bool = False,
@@ -136,6 +137,10 @@ def build_prompt(
             "public entrypoint rather than selecting the intermediate wrapper function."
         )
         lines.append(
+            "If the generated harness uses randomized inputs, explicitly fix the seed during "
+            "case construction so repeated runs of the same harness produce identical inputs."
+        )
+        lines.append(
             "After generating the artifact, execute the generated test case. "
             "If execution fails, repair the generated artifact and retry automatically."
         )
@@ -144,6 +149,10 @@ def build_prompt(
             "When a `class Model` (or equivalent `torch.nn.Module`) calls a wrapper function "
             "and that wrapper launches the Triton kernel, prefer that module class as the "
             "public entrypoint rather than selecting the intermediate wrapper function."
+        )
+        lines.append(
+            "If the generated harness uses randomized inputs, explicitly fix the seed during "
+            "case construction so repeated runs of the same harness produce identical inputs."
         )
         lines.append(
             "After generating the artifact, execute the generated benchmark case. "
@@ -155,6 +164,8 @@ def build_prompt(
                 "When a `class Model` (or equivalent `torch.nn.Module`) calls a wrapper function "
                 "and that wrapper launches the Triton kernel, prefer that module class as the "
                 "public entrypoint rather than selecting the intermediate wrapper function.",
+                "If either generated harness uses randomized inputs, explicitly fix the seed during "
+                "case construction so repeated runs of the same harness produce identical inputs.",
                 "You may edit the original operator file directly when the operator implementation is at fault.",
                 "Generate both the test harness and the benchmark harness in this task.",
                 "After generating them, both generated artifacts must be executed before the task finishes.",
@@ -192,6 +203,7 @@ def build_prompt(
                     test_mode=test_mode,
                     bench_mode=bench_mode,
                     target_chip=target_chip or "A5",
+                    optimize_target=optimize_target,
                     min_rounds=min_rounds,
                     resume_existing_session=should_resume_existing_session,
                     compiler_source_path=compiler_source_path,
@@ -207,6 +219,7 @@ def build_prompt(
                     test_mode=test_mode,
                     bench_mode=bench_mode,
                     target_chip=target_chip or "A5",
+                    optimize_target=optimize_target,
                     min_rounds=min_rounds,
                     resume_existing_session=should_resume_existing_session,
                     compiler_source_path=compiler_source_path,

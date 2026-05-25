@@ -123,7 +123,7 @@ def build_standalone_bench_cases(operator_api):
                     },
                     None,
                 ),
-            ):
+            ), patch.object(module.time, "monotonic", side_effect=[0.0, 1.5]):
                 result, perf_path = module.run_local_standalone_bench(bench_file, operator_file)
                 perf_text = perf_path.read_text(encoding="utf-8")
 
@@ -133,12 +133,56 @@ def build_standalone_bench_cases(operator_api):
         self.assertEqual(
             perf_text,
             (
-                'latency-case-a: 11.0\n'
-                '# raw-op-statistic-case-a: {"ops":[{"op_type":"KernelA","avg_time_us":5.0},{"op_type":"KernelB","avg_time_us":6.0}]}\n'
-                '# resolved-kernels-case-a: KernelA,KernelB\n'
-                '# kernel-source-case-a: metadata\n'
+                '{"case_label":"case-a","kernel_names":["KernelA","KernelB"],"kernel_source":"metadata","kernel_avg_time_us":11.0,"ops":[{"op_type":"KernelA","avg_time_us":5.0},{"op_type":"KernelB","avg_time_us":6.0}],"total_op_avg_time_us":11.0,"error_message":null,"case_wall_clock_seconds":1.5}\n'
             ),
         )
+
+    def test_run_local_standalone_bench_case_wall_clock_seconds_on_failure(self) -> None:
+        module = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            bench_file.write_text(
+                """# bench-mode: standalone
+# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_standalone_bench_cases(operator_api):
+    def run_case():
+        operator_api("case-a")
+    return [{"id": "case-a", "fn": run_case}]
+""",
+                encoding="utf-8",
+            )
+            operator_file.write_text(
+                """def build_api():
+    return lambda *_args, **_kwargs: None
+""",
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                module,
+                "_profile_case_with_profiler",
+                return_value=(None, "profiling failed"),
+            ), patch.object(module.time, "monotonic", side_effect=[0.0, 2.5]):
+                result, perf_path = module.run_local_standalone_bench(bench_file, operator_file)
+                perf_text = perf_path.read_text(encoding="utf-8")
+
+        self.assertEqual(result, make_skill_result(1, "", "case-a: profiling failed"))
+        if perf_path is None:
+            self.fail("expected standalone perf path")
+        self.assertIn('"kernel_avg_time_us":null', perf_text)
+        self.assertIn('"case_wall_clock_seconds":2.5', perf_text)
+        self.assertIn('"error_message":"profiling failed"', perf_text)
+        self.assertIn('"case_label":"case-a"', perf_text)
+        self.assertIn('"kernel_names":["KernelA"]', perf_text)
+        self.assertIn('"kernel_source":"metadata"', perf_text)
 
     def test_run_local_standalone_bench_keeps_profiler_artifacts_under_configured_output_root(self) -> None:
         module = load_standalone_bench_runtime_module()
@@ -174,8 +218,8 @@ def build_standalone_bench_cases(operator_api):
 
             created_output_dirs: list[Path] = []
 
-            def _fake_profile_case(case, resolution, profile_root):
-                del resolution
+            def _fake_profile_case(case, resolution, profile_root, *, verbose=False):
+                del resolution, verbose
                 created_output_dirs.append(profile_root)
                 profile_root.mkdir(parents=True, exist_ok=True)
                 (profile_root / f"{case.case_id}.txt").write_text("kept\n", encoding="utf-8")
@@ -242,8 +286,8 @@ def build_standalone_bench_cases(operator_api):
 
             seen_after_cleanup: list[bool] = []
 
-            def _fake_profile_case(case, resolution, profile_root):
-                del resolution, profile_root
+            def _fake_profile_case(case, resolution, profile_root, *, verbose=False):
+                del resolution, profile_root, verbose
                 seen_after_cleanup.append(extra_info.exists())
                 if case.case_id == "case-a":
                     if not extra_info.exists():
@@ -267,6 +311,110 @@ def build_standalone_bench_cases(operator_api):
             self.assertEqual(perf_path, root / "operator_case_perf.txt")
             self.assertEqual(seen_after_cleanup, [True, False])
             self.assertFalse(extra_info.exists())
+
+    def test_run_local_standalone_bench_reuses_single_case_helper(self) -> None:
+        module = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            bench_file.write_text(
+                """# bench-mode: standalone
+# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_standalone_bench_cases(operator_api):
+    def run_case_a():
+        operator_api("case-a")
+    def run_case_b():
+        operator_api("case-b")
+    return [{"id": "case-a", "fn": run_case_a}, {"id": "case-b", "fn": run_case_b}]
+""",
+                encoding="utf-8",
+            )
+            operator_file.write_text(
+                """def build_api():
+    return lambda *_args, **_kwargs: None
+""",
+                encoding="utf-8",
+            )
+
+            observed_case_ids: list[str] = []
+
+            def _fake_run_case(case, resolution, preserved_run_dir, cleanup_workdir, *, verbose=False):
+                del resolution, preserved_run_dir, cleanup_workdir, verbose
+                observed_case_ids.append(case.case_id)
+                return module.PerfCaseRecord(
+                    case_label=case.case_id,
+                    kernel_names=["KernelA"],
+                    kernel_source="metadata",
+                    metrics={
+                        "kernel_avg_time_us": 7.5,
+                        "ops": [{"op_type": "KernelA", "avg_time_us": 7.5}],
+                    },
+                    case_wall_clock_seconds=1.0,
+                )
+
+            with patch.object(module, "_run_standalone_case", side_effect=_fake_run_case):
+                result, perf_path = module.run_local_standalone_bench(bench_file, operator_file)
+
+            self.assertEqual(result, make_skill_result(0, "", ""))
+            self.assertEqual(observed_case_ids, ["case-a", "case-b"])
+            self.assertEqual(perf_path, root / "operator_case_perf.txt")
+
+    def test_run_one_standalone_case_record_returns_selected_case_record(self) -> None:
+        module = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            bench_file.write_text(
+                """# bench-mode: standalone
+# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_standalone_bench_cases(operator_api):
+    def run_case_a():
+        operator_api("case-a")
+    def run_case_b():
+        operator_api("case-b")
+    return [{"id": "case-a", "fn": run_case_a}, {"id": "case-b", "fn": run_case_b}]
+""",
+                encoding="utf-8",
+            )
+            operator_file.write_text(
+                """def build_api():
+    return lambda *_args, **_kwargs: None
+""",
+                encoding="utf-8",
+            )
+
+            def _fake_run_case(case, resolution, preserved_run_dir, cleanup_workdir, *, verbose=False):
+                del resolution, preserved_run_dir, cleanup_workdir, verbose
+                return module.PerfCaseRecord(
+                    case_label=case.case_id,
+                    kernel_names=["KernelA"],
+                    kernel_source="metadata",
+                    metrics={
+                        "kernel_avg_time_us": 3.5,
+                        "ops": [{"op_type": "KernelA", "avg_time_us": 3.5}],
+                    },
+                    case_wall_clock_seconds=2.0,
+                )
+
+            with patch.object(module, "_run_standalone_case", side_effect=_fake_run_case):
+                record = module.run_one_standalone_case_record(bench_file, operator_file, "case-b")
+
+            self.assertEqual(record.case_label, "case-b")
+            self.assertEqual(record.metrics["kernel_avg_time_us"], 3.5)
 
     def test_profile_case_with_profiler_suppresses_profiler_output(self) -> None:
         module = load_standalone_bench_runtime_module()

@@ -13,7 +13,6 @@ class OpenCodeRunner(AgentRunner):
             command = [
                 self.executable,
                 str(request.workdir),
-                "--thinking",
                 "--prompt",
                 request.prompt,
             ]
