@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 from typing import Iterator, TextIO
 
@@ -32,9 +33,12 @@ def write_show_output_attempt_start(
     if stream is None:
         return
     timestamp = _timestamp()
+    mode = _show_output_mode(request)
+    thinking = _show_output_thinking_mode(request)
     stream.write(
         f"\n===== triton-agent show-output start "
-        f"time={timestamp} command={request.command_kind.value} agent={request.agent_name} attempt={attempt_number} =====\n"
+        f"time={timestamp} command={request.command_kind.value} agent={request.agent_name} "
+        f"attempt={attempt_number} mode={mode} thinking={thinking} =====\n"
     )
     stream.flush()
 
@@ -51,14 +55,56 @@ def write_show_output_attempt_result(
         if not result.stdout.endswith("\n"):
             stream.write("\n")
     timestamp = _timestamp()
+    counts = _show_output_counts(result.stdout)
     stream.write(
         f"===== triton-agent show-output end "
         f"time={timestamp} return_code={result.return_code} stalled={result.stalled} "
-        f"session_id={result.session_id or 'unknown'} =====\n"
+        f"session_id={result.session_id or _extract_session_id(result.stdout) or 'unknown'} "
+        f"events={counts['events']} tools={counts['tools']} errors={counts['errors']} =====\n"
     )
     stream.flush()
 
 
 def _timestamp() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _show_output_mode(request: AgentRequest) -> str:
+    if request.agent_name == "claude" and not request.interact:
+        return "stream-json"
+    return "plain-stdout"
+
+
+def _show_output_thinking_mode(request: AgentRequest) -> str:
+    if request.agent_name != "claude" or request.interact:
+        return "none"
+    raw_value = os.environ.get("TRITON_AGENT_SHOW_OUTPUT_THINKING", "full")
+    normalized = raw_value.strip().lower()
+    if normalized in {"full", "excerpt", "summary", "presence", "off"}:
+        return normalized
+    return "full"
+
+
+def _show_output_counts(stdout: str) -> dict[str, int]:
+    events = 0
+    tools = 0
+    errors = 0
+    for line in stdout.splitlines():
+        if line.startswith("["):
+            events += 1
+        if line.startswith("[tool:start]"):
+            tools += 1
+        if line.startswith("[tool:end]") and " error " in line:
+            errors += 1
+    return {"events": events, "tools": tools, "errors": errors}
+
+
+def _extract_session_id(stdout: str) -> str | None:
+    prefix = "[system] Claude session "
+    for line in stdout.splitlines():
+        if line.startswith(prefix):
+            session_id = line[len(prefix):].strip()
+            if session_id and session_id != "unknown":
+                return session_id
+    return None
 
