@@ -75,7 +75,8 @@ class TestClaudeJsonLineParser(unittest.TestCase):
         })
         result = parser.parse_line(line + "\n")
         assert result is not None
-        self.assertIn("[tool] Read started:", result)
+        self.assertIn("[tool:start] Read call_00_abcd", result)
+        self.assertIn("file_path: /abs/path/to/file", result)
         self.assertIn("/abs/path/to/file", result)
         events = trace_path.read_text().splitlines()
         tool_events = [json.loads(e) for e in events if json.loads(e).get("type") == "tool_call"]
@@ -133,7 +134,9 @@ class TestClaudeJsonLineParser(unittest.TestCase):
         })
         result = parser.parse_line(end_line + "\n")
         assert result is not None
-        self.assertIn("[tool] Bash done in", result)
+        self.assertIn("[tool:end] Bash call_00_abcd ok in", result)
+        self.assertIn("rc=0", result)
+        self.assertIn("stdout: hello", result)
         events = trace_path.read_text().splitlines()
         # Should have: diagnostic(claude_native_json_active), tool_call start, tool_call end, command
         self.assertGreaterEqual(len(events), 3)
@@ -167,7 +170,7 @@ class TestClaudeJsonLineParser(unittest.TestCase):
         self.assertEqual(tool_starts[0]["tool_use_id"], "call_01")
         self.assertEqual(tool_starts[1]["tool_use_id"], "call_02")
 
-    def test_parse_thinking_block_skipped(self) -> None:
+    def test_parse_thinking_block_rendered(self) -> None:
         _, trace_path = self._make_trace_path()
         parser = self._make_parser(trace_path)
         line = json.dumps({
@@ -183,7 +186,10 @@ class TestClaudeJsonLineParser(unittest.TestCase):
             },
         })
         result = parser.parse_line(line + "\n")
-        self.assertEqual(result, "I will read the file.")
+        self.assertEqual(
+            result,
+            "[think:full]\nLet me think about this...\n\nI will read the file.\n\n",
+        )
         events = trace_path.read_text().splitlines()
         # Only diagnostic, no tool_call event
         tool_events = [json.loads(e) for e in events if json.loads(e).get("type") == "tool_call"]
@@ -204,7 +210,55 @@ class TestClaudeJsonLineParser(unittest.TestCase):
             },
         })
         result = parser.parse_line(line + "\n")
-        self.assertEqual(result, "Let me help you with that.")
+        self.assertEqual(result, "Let me help you with that.\n\n")
+
+    def test_unknown_json_event_does_not_render_raw_json(self) -> None:
+        _, trace_path = self._make_trace_path()
+        parser = self._make_parser(trace_path)
+        line = json.dumps({"type": "mystery", "payload": {"a": 1}})
+        result = parser.parse_line(line + "\n")
+        assert result is not None
+        self.assertIn("Skipped unsupported Claude stream-json event type: mystery", result)
+        self.assertNotIn('"payload"', result)
+
+    def test_tool_end_error_renders_exit_code_and_error_line(self) -> None:
+        _, trace_path = self._make_trace_path()
+        parser = self._make_parser(trace_path)
+        parser.parse_line(json.dumps({
+            "type": "assistant",
+            "message": {
+                "id": "msg-cmd-error",
+                "type": "message",
+                "role": "assistant",
+                "content": [
+                    {"type": "tool_use", "id": "call_error_01", "name": "Bash", "input": {"command": "python missing.py"}},
+                ],
+            },
+        }) + "\n")
+        result = parser.parse_line(json.dumps({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {
+                        "tool_use_id": "call_error_01",
+                        "type": "tool_result",
+                        "content": "Exit code 49\nModuleNotFoundError: No module named 'torch'",
+                        "is_error": True,
+                    },
+                ],
+            },
+            "timestamp": "2026-05-18T12:52:00Z",
+            "tool_use_result": {
+                "stdout": "",
+                "stderr": "Traceback (most recent call last):\nModuleNotFoundError: No module named 'torch'",
+            },
+        }) + "\n")
+        assert result is not None
+        self.assertIn("[tool:end] Bash call_error_01 error", result)
+        self.assertIn("rc=49", result)
+        self.assertIn("error: ModuleNotFoundError: No module named 'torch'", result)
+        self.assertIn("stderr excerpt:", result)
 
     def test_derive_command_event(self) -> None:
         _, trace_path = self._make_trace_path()
@@ -392,9 +446,25 @@ class TestClaudeJsonOutputFilter(unittest.TestCase):
                 ],
             },
         }) + "\n", flush=True)
-        self.assertIn("Read started", result)
+        self.assertIn("[tool:start] Read call-1", result)
+        self.assertIn("No Claude native thinking block was present in stdout.", result)
         self.assertTrue(trace_path.exists())
         self.assertGreater(len(trace_path.read_text()), 0)
+
+    def test_output_filter_can_render_without_trace_path(self) -> None:
+        filter_obj = ClaudeJsonOutputFilter(None, None)
+        result = filter_obj.feed(json.dumps({
+            "type": "assistant",
+            "message": {
+                "id": "msg-1",
+                "type": "message",
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "I will inspect the workspace."},
+                ],
+            },
+        }) + "\n", flush=True)
+        self.assertIn("I will inspect the workspace.", result)
 
     def test_non_json_lines_pass_through(self) -> None:
         _, trace_path = self._make_trace_path()
