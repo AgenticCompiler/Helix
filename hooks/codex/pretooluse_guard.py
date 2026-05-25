@@ -20,12 +20,14 @@ READ_COMMANDS = {
     "head",
     "less",
     "more",
-    "python",
-    "python3",
     "rg",
     "sed",
     "tail",
 }
+READ_TOOL_PATH_KEYS = ("file_path", "filePath")
+SHELL_WRAPPER_FLAGS = {"-c", "-lc"}
+SHELL_WRAPPERS = {"bash", "sh", "zsh"}
+PROTECTED_RELATIVE_PATH_PREFIXES = ("triton-agent-logs/",)
 
 PATH_FRAGMENT_RE = re.compile(
     r"(?P<path>(?:/|\.\.?/|\.codex/|\.opencode/)[A-Za-z0-9_./*?{}+@%:,=-]+)"
@@ -78,15 +80,7 @@ def evaluate_payload(policy: dict[str, Any], payload: dict[str, Any]) -> str | N
 
     tool_name = payload.get("tool_name")
     tool_input = payload.get("tool_input")
-    if tool_name != "Bash" or not isinstance(tool_input, dict):
-        return None
-
-    command = tool_input.get("command")
-    if not isinstance(command, str):
-        return None
-
-    tokens = _split_command(command)
-    if not _contains_read_command(tokens):
+    if not isinstance(tool_input, dict):
         return None
 
     workspace_root = _resolve_policy_path(policy.get("workspace_root"))
@@ -98,14 +92,31 @@ def evaluate_payload(policy: dict[str, Any], payload: dict[str, Any]) -> str | N
     deny_globs = [str(item) for item in guard_policy.get("deny_read_globs", []) if isinstance(item, str)]
     deny_message = str(guard_policy.get("deny_message") or "This read is blocked by workspace policy.")
 
-    for candidate in _candidate_paths(command, tokens):
-        resolved = _resolve_candidate(candidate, cwd, workspace_root)
-        if resolved is None:
-            continue
-        if not _is_under_any_root(resolved, allow_roots):
-            return deny_message
-        if _matches_any_glob(resolved, deny_globs):
-            return deny_message
+    if tool_name == "Read":
+        candidate = _read_tool_path(tool_input)
+        if candidate is None:
+            return None
+        return _evaluate_candidate(candidate, cwd, workspace_root, allow_roots, deny_globs, deny_message)
+
+    if tool_name != "Bash":
+        return None
+
+    command = tool_input.get("command")
+    if not isinstance(command, str):
+        return None
+
+    for candidate, allow_protected_script_entrypoint in _candidate_paths(command):
+        reason = _evaluate_candidate(
+            candidate,
+            cwd,
+            workspace_root,
+            allow_roots,
+            deny_globs,
+            deny_message,
+            allow_protected_script_entrypoint=allow_protected_script_entrypoint,
+        )
+        if reason is not None:
+            return reason
 
     return None
 

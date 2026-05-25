@@ -115,12 +115,11 @@ class OpenCodeRunnerTests(unittest.TestCase):
             self.assertEqual(command[0], "opencode")
             self.assertEqual(command[1], str(workspace))
             self.assertEqual(command[2], "--pure")
-            self.assertEqual(command[3], "--thinking")
-            self.assertEqual(command[4], "--prompt")
-            self.assertEqual(command[5], "Continue work")
+            self.assertEqual(command[3], "--prompt")
+            self.assertEqual(command[4], "Continue work")
             self.assertIn("--pure", command)
-            self.assertIn("--thinking", command)
             self.assertIn("--prompt", command)
+            self.assertNotIn("--thinking", command)
 
     def test_interactive_command_omits_pure_when_hooks_are_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -146,12 +145,11 @@ class OpenCodeRunnerTests(unittest.TestCase):
             command = runner.build_command(request)
             self.assertEqual(command[0], "opencode")
             self.assertEqual(command[1], str(workspace))
-            self.assertEqual(command[2], "--thinking")
-            self.assertEqual(command[3], "--prompt")
-            self.assertEqual(command[4], "Continue work")
+            self.assertEqual(command[2], "--prompt")
+            self.assertEqual(command[3], "Continue work")
             self.assertNotIn("--pure", command)
-            self.assertIn("--thinking", command)
             self.assertIn("--prompt", command)
+            self.assertNotIn("--thinking", command)
 
     def test_optimize_no_agent_session_is_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -226,7 +224,7 @@ class OpenCodeRunnerTests(unittest.TestCase):
             stderr = StringIO()
             with patch("triton_agent.backends.base.run_process", return_value=_ok_result()):
                 runner.run(request, stderr=stderr)
-            self.assertIn("[agent]", stderr.getvalue())
+            self.assertIn("[command]", stderr.getvalue())
             self.assertIn("opencode run", stderr.getvalue())
             self.assertIn("--pure", stderr.getvalue())
             self.assertIn("--thinking", stderr.getvalue())

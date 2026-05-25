@@ -78,6 +78,7 @@ def resolve_staged_skills(
     command_kind: CommandKind,
     *,
     optimize_knowledge: str | None = None,
+    optimize_target: str = "kernel",
     enable_cann_ext_api: bool = False,
 ) -> tuple[tuple[str, ...] | None, dict[str, str] | None]:
     rule = STAGE_RULES.get(command_kind)
@@ -85,6 +86,12 @@ def resolve_staged_skills(
         return None, None
 
     staged_skill_names = _apply_stage_directives(rule.directives)
+    if (
+        command_kind == CommandKind.OPTIMIZE
+        and staged_skill_names is not None
+        and optimize_target == "operator"
+    ):
+        staged_skill_names = staged_skill_names + ("torch-npu-optimize-knowledge",)
     if command_kind == CommandKind.OPTIMIZE and staged_skill_names is not None and enable_cann_ext_api:
         staged_skill_names = staged_skill_names + ("triton-npu-cann-ext-api-patterns",)
 

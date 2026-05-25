@@ -1,3 +1,4 @@
+import ast
 import importlib.util
 import sys
 import unittest
@@ -11,7 +12,18 @@ from triton_agent.skill_loader import (
     operator_eval_script_path,
     skill_script_path,
 )
+import triton_agent.optimize.naming as optimize_naming
+import triton_agent.optimize.pt_cleanup as optimize_pt_cleanup
 from triton_agent.optimize.models import BaselineState, OptimizeCheckResult, RoundState
+
+
+def _top_level_defined_names(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return {
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+    }
 
 
 class RunSkillLoaderTests(unittest.TestCase):
@@ -53,6 +65,19 @@ class RunSkillLoaderTests(unittest.TestCase):
         self.assertIs(module.BaselineState, BaselineState)
         self.assertIs(module.RoundState, RoundState)
 
+    def test_optimize_runtime_naming_helpers_reuse_skill_contract_functions(self) -> None:
+        module = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
+
+        self.assertIs(optimize_naming.expected_round_operator_name, module.expected_round_operator_name)
+        self.assertIs(optimize_naming.expected_round_perf_name, module.expected_round_perf_name)
+        self.assertIs(optimize_naming.resolve_round_operator_file, module.resolve_round_operator_file)
+        self.assertIs(optimize_naming.resolve_round_perf_file, module.resolve_round_perf_file)
+
+    def test_optimize_runtime_pt_cleanup_helpers_reuse_skill_contract_functions(self) -> None:
+        module = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
+
+        self.assertIs(optimize_pt_cleanup.cleanup_dir_pt_files, module.cleanup_dir_pt_files)
+
     def test_run_skill_scripts_do_not_import_triton_agent(self) -> None:
         scripts_dir = Path(__file__).resolve().parents[1] / "skills" / "triton-npu-run-eval" / "scripts"
         for path in sorted(scripts_dir.glob("*.py")):
@@ -67,6 +92,19 @@ class RunSkillLoaderTests(unittest.TestCase):
         self.assertNotIn("from src.", content)
         self.assertNotIn("import src.", content)
 
+    def test_optimize_check_skill_scripts_do_not_import_triton_agent(self) -> None:
+        scripts_dir = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-optimize-check"
+            / "scripts"
+        )
+        for path in sorted(scripts_dir.glob("*.py")):
+            with self.subTest(path=path.name):
+                content = path.read_text(encoding="utf-8")
+                self.assertNotIn("import triton_agent", content)
+                self.assertNotIn("from triton_agent", content)
+
     def test_run_runtime_only_exposes_skill_runtime_helpers(self) -> None:
         module = load_operator_eval_script_module("run_runtime")
 
@@ -74,6 +112,28 @@ class RunSkillLoaderTests(unittest.TestCase):
         self.assertTrue(hasattr(module, "run_buffered_process"))
         self.assertFalse(hasattr(module, "run_process"))
         self.assertFalse(hasattr(module, "run_interactive_process"))
+
+    def test_run_command_and_runtime_use_shared_result_payload_helper(self) -> None:
+        scripts_dir = Path(__file__).resolve().parents[1] / "skills" / "triton-npu-run-eval" / "scripts"
+        self.assertTrue((scripts_dir / "result_payload.py").is_file())
+        self.assertNotIn("ResultPayload", _top_level_defined_names(scripts_dir / "run-command.py"))
+        self.assertNotIn("ResultPayload", _top_level_defined_names(scripts_dir / "run_runtime.py"))
+        self.assertNotIn("make_result", _top_level_defined_names(scripts_dir / "run_runtime.py"))
+
+    def test_bench_runner_no_longer_uses_globals_service_locator(self) -> None:
+        path = Path(__file__).resolve().parents[1] / "skills" / "triton-npu-run-eval" / "scripts" / "bench_runner.py"
+        content = path.read_text(encoding="utf-8")
+
+        self.assertNotIn("globals()[name]", content)
+        self.assertNotIn("_FACADE_COMPAT_EXPORTS", content)
+
+    def test_bench_runner_submodules_use_explicit_dependency_protocols(self) -> None:
+        scripts_dir = Path(__file__).resolve().parents[1] / "skills" / "triton-npu-run-eval" / "scripts"
+        msprof_content = (scripts_dir / "bench_runner_msprof.py").read_text(encoding="utf-8")
+        standalone_content = (scripts_dir / "bench_runner_standalone.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("deps: Any", msprof_content)
+        self.assertNotIn("deps: Any", standalone_content)
 
 
 if __name__ == "__main__":

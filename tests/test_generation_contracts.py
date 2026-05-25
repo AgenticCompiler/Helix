@@ -135,6 +135,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("Keep the shared contract consistent across modes", content)
         self.assertIn("metadata header", content)
         self.assertIn("deterministic NPU coverage", content)
+        self.assertIn("repeated runs of the same harness produce identical inputs", content)
         self.assertNotIn("accept only `--operator-file` at runtime", content)
         self.assertNotIn("build_operator_api(operator_module)", content)
         self.assertNotIn("build_differential_test_cases(operator_api)", content)
@@ -148,6 +149,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("build_operator_api(operator_module)", content)
         self.assertIn("build_standalone_bench_cases(operator_api)", content)
         self.assertIn("import-only", content)
+        self.assertIn("repeated runs of the same harness produce identical inputs", content)
         self.assertNotIn("accept only `--operator-file` at runtime for standalone mode", content)
         self.assertNotIn("must accept `--operator-file` and `--api-name`", content)
 
@@ -183,7 +185,8 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("Use the `triton-npu-run-eval` skill to validate generated tests.", test_gen)
         self.assertIn("run `run-test` with `--test-mode standalone`", test_gen)
         self.assertIn("run `run-test` with `--test-mode differential`", test_gen)
-        self.assertIn("run `compare-result` on the archived payload", test_gen)
+        self.assertIn("run `run-test` with `--oracle-result <oracle_result.pt>`", test_gen)
+        self.assertIn("keep `compare-result` for reruns", test_gen)
 
         bench_gen = _read("skills/triton-npu-gen-bench/SKILL.md")
         self.assertIn("## Validation Commands", bench_gen)
@@ -219,6 +222,7 @@ class GenerationContractTests(unittest.TestCase):
 
         self.assertIn("Always pass both `--test-file` and `--operator-file`.", run_test)
         self.assertIn("--test-mode differential", run_test)
+        self.assertIn("--oracle-result", run_test)
         self.assertIn("--remote user@host:2222", run_test)
         self.assertIn("generated tests are import-only modules", run_test)
         self.assertIn("build_operator_api(operator_module)", run_test)
@@ -233,7 +237,8 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("do not pass kernel filter arguments", profile_bench)
         self.assertIn("--keep-remote-workdir", profile_bench)
 
-        self.assertIn("compare the archived result payloads after `run-test` succeeds", compare_result)
+        self.assertIn("rerun or inspect the comparison separately from `run-test`", compare_result)
+        self.assertIn("Prefer `run-test --oracle-result ...`", compare_result)
         self.assertIn("--compare-level balanced", compare_result)
 
         self.assertIn("Avg improvement", compare_perf)
@@ -308,6 +313,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("triton-npu-profile-operator", optimize)
         self.assertIn("triton-npu-analyze-round-performance", optimize)
         self.assertIn("triton-npu-optimize-knowledge", optimize)
+        self.assertIn("torch-npu-optimize-knowledge", optimize)
         self.assertIn("classic-matmul.md", optimize)
         self.assertIn("`opt-round-N/perf-analysis.md`", optimize)
 
@@ -322,6 +328,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("does not define optimize workflow", knowledge)
         self.assertIn("pattern_index.md", knowledge)
         self.assertIn("classic-matmul", index)
+        self.assertNotIn("argsort-avoid-aicpu-fallback", index)
         self.assertIn("matmul-like", reference)
 
     def test_optimize_knowledge_skill_owns_generic_symptom_references(self) -> None:
@@ -335,8 +342,44 @@ class GenerationContractTests(unittest.TestCase):
 
         self.assertIn("symptom_index.md", knowledge)
         self.assertIn("weak-pipeline-overlap", symptom_index)
+        self.assertNotIn("unsupported-dtype-fallback", symptom_index)
         self.assertIn("## Evidence To Confirm", symptom)
         self.assertIn("## Candidate Pattern Directions", symptom)
+
+    def test_torch_npu_optimize_knowledge_skill_owns_operator_level_pattern_references(
+        self,
+    ) -> None:
+        knowledge = _read("skills/torch-npu-optimize-knowledge/SKILL.md")
+        pattern_index = _read("skills/torch-npu-optimize-knowledge/references/pattern_index.md")
+        pattern = _read(
+            "skills/torch-npu-optimize-knowledge/references/patterns/argsort-avoid-aicpu-fallback.md"
+        )
+
+        self.assertIn("reference-only", knowledge)
+        self.assertIn("Torch NPU", knowledge)
+        self.assertIn("pattern references", knowledge)
+        self.assertNotIn("symptom_index.md", knowledge)
+        self.assertIn("argsort-avoid-aicpu-fallback", pattern_index)
+        self.assertIn("torch.argsort()", pattern)
+        self.assertFalse(
+            (
+                REPO_ROOT
+                / "skills"
+                / "torch-npu-optimize-knowledge"
+                / "references"
+                / "symptom_index.md"
+            ).exists()
+        )
+        self.assertFalse(
+            (
+                REPO_ROOT
+                / "skills"
+                / "torch-npu-optimize-knowledge"
+                / "references"
+                / "symptoms"
+                / "unsupported-dtype-fallback.md"
+            ).exists()
+        )
 
     def test_optimize_pattern_library_includes_classic_tiled_matmul(self) -> None:
         index = _read("skills/triton-npu-optimize-knowledge/references/pattern_index.md")
@@ -366,7 +409,7 @@ class GenerationContractTests(unittest.TestCase):
             "skills/triton-npu-optimize-knowledge/references/patterns/scalar-latency-traps.md"
         )
         layout = _read(
-            "skills/triton-npu-optimize-knowledge/references/patterns/layout-store-and-block-pointers.md"
+            "skills/triton-npu-optimize-knowledge/references/patterns/block-pointer-dimensionality.md"
         )
         grid = _read(
             "skills/triton-npu-optimize-knowledge/references/patterns/grid-flatten-and-ub-buffering.md"
@@ -376,25 +419,39 @@ class GenerationContractTests(unittest.TestCase):
         )
 
         self.assertIn("scalar-latency-traps", index)
-        self.assertIn("layout-store-and-block-pointers", index)
+        self.assertIn("merge-adjacent-stores", index)
         self.assertIn("grid-flatten-and-ub-buffering", index)
         self.assertIn("attention-cv-pipeline", index)
         self.assertIn("modulo addressing", index)
-        self.assertIn("physical-core load balance", index)
+        self.assertIn("grid-to-physical-core mapping", index)
 
         self.assertIn("tl.constexpr", scalar)
         self.assertIn("Loop pointer recurrences", scalar)
         self.assertIn("Modulo removal", scalar)
         self.assertIn("Cumsum axis splitting", scalar)
-        self.assertIn("store transpose degradation", layout)
-        self.assertIn("Raise block-pointer dimensionality", layout)
-        self.assertIn("tl.trans(x).to(dtype)", layout)
+        self.assertIn("flattened one-dimensional offsets", layout)
+        self.assertIn("tl.make_block_ptr", layout)
+        self.assertIn("boundary_check", layout)
         self.assertIn("physical cores", grid)
         self.assertIn("UB aggregate writes", grid)
         self.assertIn("UB bulk reads", grid)
         self.assertIn("Precompute repeated masks", attention)
         self.assertIn("scale and mask", attention)
         self.assertIn("A5", attention)
+
+    def test_grid_flatten_pattern_documents_runtime_query_and_core_count_fallbacks(
+        self,
+    ) -> None:
+        grid = _read(
+            "skills/triton-npu-optimize-knowledge/references/patterns/grid-flatten-and-ub-buffering.md"
+        )
+
+        self.assertIn("torch.npu.get_device_properties", grid)
+        self.assertIn("cube cores: `24`", grid)
+        self.assertIn("vector cores: `48`", grid)
+        self.assertIn("`cube`-like operators", grid)
+        self.assertIn("`vector`-like operators", grid)
+        self.assertIn("`mix` operators", grid)
 
     def test_optimize_pattern_cards_use_required_sections_and_generated_index(self) -> None:
         patterns_dir = (
@@ -408,8 +465,12 @@ class GenerationContractTests(unittest.TestCase):
             if path.name == "index.md":
                 continue
             content = path.read_text(encoding="utf-8")
+            normalized = content
+            if content.startswith("---\n"):
+                _, _, normalized = content.partition("\n---\n")
+                normalized = normalized.lstrip()
             with self.subTest(path=path.name):
-                self.assertTrue(content.startswith("# "))
+                self.assertTrue(normalized.startswith("# "))
                 self.assertIn("## Summary", content)
                 self.assertIn("## Use When", content)
 
@@ -432,8 +493,8 @@ class GenerationContractTests(unittest.TestCase):
         )
         tiling = _read("skills/triton-npu-optimize-knowledge/references/patterns/tiling.md")
         vec_cmp = _read("skills/triton-npu-optimize-knowledge/references/patterns/vec-cmp.md")
-        gather_load = _read(
-            "skills/triton-npu-optimize-knowledge/references/patterns/gather-load.md"
+        discrete_memory = _read(
+            "skills/triton-npu-optimize-knowledge/references/patterns/discrete_memory_access.md"
         )
         reorder_load = _read(
             "skills/triton-npu-optimize-knowledge/references/patterns/reorder-load.md"
@@ -448,7 +509,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertNotIn("## Verification checklist", program_rows)
         self.assertNotIn("## Relation to other patterns", program_rows)
 
-        for content in (software_pipeline, tiling, vec_cmp, gather_load, reorder_load):
+        for content in (software_pipeline, tiling, vec_cmp, discrete_memory, reorder_load):
             with self.subTest(card_preview=content.splitlines()[0]):
                 self.assertIn("## Signals", content)
                 self.assertIn("## What To Verify After Applying", content)
@@ -521,8 +582,13 @@ class GenerationContractTests(unittest.TestCase):
         )
         self.assertIn("symptom cards", skill)
         self.assertIn("triton-npu-optimize-knowledge", skill)
+        self.assertIn("torch-npu-optimize-knowledge", skill)
         self.assertIn(
             "../triton-npu-optimize-knowledge/references/symptom_index.md",
+            skill,
+        )
+        self.assertIn(
+            "../torch-npu-optimize-knowledge/references/pattern_index.md",
             skill,
         )
         self.assertIn("weak-pipeline-overlap", symptom_index)
@@ -543,6 +609,12 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("## Evidence To Confirm", agents)
         self.assertIn("## Candidate Pattern Directions", agents)
 
+    def test_agents_declares_pattern_priority_authoring_rule(self) -> None:
+        agents = _read("AGENTS.md")
+        self.assertIn("priority: high|normal", agents)
+        self.assertIn("default to `normal`", agents)
+        self.assertIn("## High Priority Patterns", agents)
+
     def test_pattern_and_symptom_authoring_notes_point_to_knowledge_skill(self) -> None:
         pattern_note = _read("docs/notes/2026-04-29-optimize-pattern-card-authoring.md")
         symptom_note = _read("docs/notes/2026-04-30-optimize-symptom-card-authoring.md")
@@ -560,6 +632,12 @@ class GenerationContractTests(unittest.TestCase):
             symptom_note,
         )
         self.assertIn("build_symptom_index.py", symptom_note)
+
+    def test_pattern_authoring_note_describes_priority_contract(self) -> None:
+        pattern_note = _read("docs/notes/2026-04-29-optimize-pattern-card-authoring.md")
+        self.assertIn("priority: high|normal", pattern_note)
+        self.assertIn("default to `normal`", pattern_note)
+        self.assertIn("## High Priority Patterns", pattern_note)
 
     def test_compiler_source_analysis_skill_focuses_on_performance_navigation_and_next_action(
         self,
@@ -796,6 +874,21 @@ class GenerationContractTests(unittest.TestCase):
         optimize = _read("skills/triton-npu-optimize/SKILL.md")
         self.assertIn("use the `triton-npu-run-eval` skill to run `compare-perf`", optimize)
         self.assertIn("the `triton-npu-run-eval` skill's `compare-perf` flow", optimize)
+        self.assertIn("effective_metric_source", optimize)
+        self.assertIn("show both kernel and total-op comparison results", optimize)
+
+    def test_compare_perf_reference_documents_all_mode_and_optimize_target_usage(self) -> None:
+        compare_perf = _read("skills/triton-npu-run-eval/references/compare-perf.md")
+        self.assertIn("--metric-source auto|kernel|total-op|all", compare_perf)
+        self.assertIn("operator-target optimize rounds", compare_perf)
+        self.assertIn("effective_metric_source", compare_perf)
+
+    def test_optimize_artifacts_reference_documents_effective_metric_source(self) -> None:
+        artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
+        self.assertIn("effective_metric_source", artifacts)
+        self.assertIn("kernel", artifacts)
+        self.assertIn("total-op", artifacts)
+        self.assertIn("mixed", artifacts)
 
     def test_profiler_skill_documents_standalone_case_id_contract(self) -> None:
         profiler = _read("skills/triton-npu-profile-operator/SKILL.md")
@@ -848,6 +941,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("# api-name: <resolved_entrypoint>", standalone)
         self.assertIn("# api-kind: <resolved_api_kind>", standalone)
         self.assertIn("# kernels: <resolved_kernel_names>", standalone)
+        self.assertIn("repeated runs of the same harness produce identical inputs", standalone)
         self.assertNotIn("| `--api-name <name>` | yes |", standalone)
         self.assertIn("build_operator_api(operator_module)", standalone)
         self.assertIn("build_standalone_bench_cases(operator_api)", standalone)
@@ -865,6 +959,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("# api-name: <resolved_entrypoint>", msprof)
         self.assertIn("# api-kind: <resolved_api_kind>", msprof)
         self.assertIn("# kernels: <resolved_kernel_names>", msprof)
+        self.assertIn("repeated runs of the same harness produce identical inputs", msprof)
         self.assertNotIn("--api-name <api-name>", msprof)
         self.assertIn("If `--bench N` is provided, then `--operator-file` is required.", msprof)
         self.assertIn("torch-function", msprof)
@@ -884,6 +979,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("# api-name:", test_spec)
         self.assertIn("# api-kind:", test_spec)
         self.assertIn("# kernels:", test_spec)
+        self.assertIn("repeated runs of the same harness produce identical inputs", test_spec)
         self.assertIn('parser.add_argument("--operator-file", required=True)', test_spec)
         self.assertNotIn('parser.add_argument("--api-name"', test_spec)
 
@@ -891,6 +987,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("# api-name:", bench_spec)
         self.assertIn("# api-kind:", bench_spec)
         self.assertIn("# kernels:", bench_spec)
+        self.assertIn("repeated runs of the same harness produce identical inputs", bench_spec)
         self.assertIn("build_operator_api(operator_module)", bench_spec)
         self.assertIn("build_standalone_bench_cases(operator_api)", bench_spec)
         self.assertNotIn('parser.add_argument("--operator-file"', bench_spec)

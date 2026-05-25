@@ -30,6 +30,7 @@ _BENCH_MODE_CHOICES = ("standalone", "msprof")
 _RESUME_CHOICES = ("auto", "continue", "fresh")
 _SUPERVISE_CHOICES = ("on", "off")
 _TARGET_CHIP_CHOICES = ("A3", "A5")
+_OPTIMIZE_TARGET_CHOICES = ("kernel", "operator")
 _OPTIMIZE_KNOWLEDGE_CHOICES = ("v1", "v2", "v3")
 _VERIFY_PHASE_CHOICES = ("all", "test", "bench")
 _TOP_LEVEL_DESCRIPTION = "Generate, run, verify, and optimize Triton NPU operator workflows."
@@ -60,6 +61,10 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
             (
                 "TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR",
                 "Directory used to keep local benchmark profiler output.",
+            ),
+            (
+                "TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES",
+                "Enable ordinary optimize PT cleanup; default keeps PT files and does not affect --reset-optimize.",
             ),
             (
                 "TRITON_AGENT_HOME",
@@ -130,6 +135,7 @@ class _CommandSpec:
     test_mode_choices: tuple[str, ...] | None = None
     has_bench_mode: bool = False
     bench_mode_default: str | None = None
+    has_npu_devices: bool = False
     has_optimize_options: bool = False
     has_prompt: bool = False
     max_concurrency_default: int | None = None
@@ -256,6 +262,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_remote=True,
         keep_remote_workdir=True,
         has_bench_mode=True,
+        has_npu_devices=True,
     ),
     CommandKind.COMPARE_RESULT: _CommandSpec(
         handler=handle_compare_result,
@@ -414,6 +421,8 @@ def build_parser() -> argparse.ArgumentParser:
                 default=spec.bench_mode_default,
                 choices=_BENCH_MODE_CHOICES,
             )
+        if spec.has_npu_devices:
+            subparser.add_argument("--npu-devices")
         if spec.has_optimize_options:
             subparser.add_argument("--min-rounds", type=int)
             subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES)
@@ -423,6 +432,11 @@ def build_parser() -> argparse.ArgumentParser:
             if command_kind == CommandKind.OPTIMIZE:
                 subparser.add_argument("--enable-agent-hooks", action="store_true")
             subparser.add_argument("--target-chip", default="A5", choices=_TARGET_CHIP_CHOICES)
+            subparser.add_argument(
+                "--optimize-target",
+                default="kernel",
+                choices=_OPTIMIZE_TARGET_CHOICES,
+            )
             subparser.add_argument(
                 "--optimize-knowledge",
                 default="v1",
@@ -504,6 +518,8 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
     if spec.input_mode == "run-test":
         subparser.add_argument("--test-file", required=True)
         subparser.add_argument("--operator-file", required=True)
+        subparser.add_argument("--oracle-result")
+        subparser.add_argument("--compare-level", choices=_COMPARE_LEVEL_CHOICES)
         return
     if spec.input_mode == "run-bench":
         subparser.add_argument("--bench-file", required=True)
@@ -517,6 +533,12 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
     if spec.input_mode == "compare-perf":
         subparser.add_argument("--baseline", required=True)
         subparser.add_argument("--compare", required=True)
+        subparser.add_argument("--skip-latency-errors", action="store_true")
+        subparser.add_argument(
+            "--metric-source",
+            default="auto",
+            choices=("auto", "kernel", "total-op", "all"),
+        )
         return
     subparser.add_argument("-i", "--input", required=True)
 

@@ -77,7 +77,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
-    def test_blocks_python_one_liner_opening_protected_script(self) -> None:
+    def test_allows_python_one_liner_opening_protected_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             script = workspace / ".codex" / "skills" / "skill-a" / "scripts" / "helper.py"
@@ -88,6 +88,63 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             reason = guard.evaluate_payload(
                 _policy(workspace),
                 _payload(workspace, f"python3 -c \"print(open('{script}').read())\""),
+            )
+
+            self.assertIsNone(reason)
+
+    def test_allows_python_entrypoint_for_staged_helper_script(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            script = workspace / ".codex" / "skills" / "triton-npu-run-eval" / "scripts" / "run-command.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("print('helper')\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.evaluate_payload(
+                _policy(workspace),
+                _payload(workspace, f"python3 {script} run-test --test-file differential_test_file.py"),
+            )
+
+            self.assertIsNone(reason)
+
+    def test_allows_relative_python_entrypoint_for_staged_helper_script_with_redirection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            script = workspace / ".codex" / "skills" / "triton-npu-run-eval" / "scripts" / "run-command.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("print('helper')\n", encoding="utf-8")
+            bench_file = workspace / "bench_triton_5_MoeInitRouting.py"
+            bench_file.write_text("pass\n", encoding="utf-8")
+            operator_dir = workspace / "baseline"
+            operator_dir.mkdir()
+            operator_file = operator_dir / "opt_triton_5_MoeInitRouting.py"
+            operator_file.write_text("pass\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.evaluate_payload(
+                _policy(workspace),
+                _payload(
+                    workspace,
+                    "python3 .codex/skills/triton-npu-run-eval/scripts/run-command.py "
+                    "run-bench --bench-file bench_triton_5_MoeInitRouting.py "
+                    "--operator-file baseline/opt_triton_5_MoeInitRouting.py "
+                    "--bench-mode msprof 2>&1",
+                ),
+            )
+
+            self.assertIsNone(reason)
+
+    def test_blocks_nested_bash_lc_read_of_protected_script(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            script = workspace / ".codex" / "skills" / "skill-a" / "scripts" / "helper.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("print('helper')\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.evaluate_payload(
+                _policy(workspace),
+                _payload(workspace, f"bash -lc \"sed -n '1,20p' {script}\""),
             )
 
             self.assertEqual(reason, _DENY_MESSAGE)
@@ -107,7 +164,22 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
-    def test_blocks_triton_agent_los_nested_script_read(self) -> None:
+    def test_blocks_triton_agent_logs_bare_relative_bash_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_file.parent.mkdir(parents=True)
+            log_file.write_text("log output\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.evaluate_payload(
+                _policy(workspace),
+                _payload(workspace, "cat triton-agent-logs/gen-test.show-output.log"),
+            )
+
+            self.assertEqual(reason, _DENY_MESSAGE)
+
+    def test_allows_triton_agent_logs_nested_script_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             script = workspace / "triton-agent-logs" / "triton-agent" / "opt_kernel.py"
@@ -120,7 +192,25 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
                 _payload(workspace, f"python3 -c \"print(open('{script}').read())\""),
             )
 
-            self.assertEqual(reason, _DENY_MESSAGE)
+            self.assertIsNone(reason)
+
+    def test_allows_python_one_liner_opening_relative_triton_agent_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            log_file = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            log_file.parent.mkdir(parents=True)
+            log_file.write_text("log output\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.evaluate_payload(
+                _policy(workspace),
+                _payload(
+                    workspace,
+                    'python3 -c "print(open(\'triton-agent-logs/gen-test.show-output.log\').read())"',
+                ),
+            )
+
+            self.assertIsNone(reason)
 
     def test_allows_read_outside_triton_agent_logs_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -137,17 +227,72 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             self.assertIsNone(reason)
 
-    def test_ignores_non_bash_tool_payloads(self) -> None:
+    def test_allows_read_from_extra_allow_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
+            compiler_source = Path(tmp) / "compiler-sources" / "AscendNPU-IR"
+            source_file = compiler_source / "passes" / "lowering.cc"
+            source_file.parent.mkdir(parents=True)
+            source_file.write_text("pass\n", encoding="utf-8")
             workspace.mkdir()
             guard = _load_guard_module()
-            payload = _payload(workspace, "cat /etc/passwd")
-            payload["tool_name"] = "Read"
+
+            reason = guard.evaluate_payload(
+                _policy(workspace, extra_allow_roots=[compiler_source]),
+                _payload(workspace, f"sed -n '1,20p' {source_file}"),
+            )
+
+            self.assertIsNone(reason)
+
+    def test_blocks_protected_read_tool_payload_with_file_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            guard = _load_guard_module()
+            script = workspace / ".codex" / "skills" / "skill-a" / "scripts" / "helper.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("print('helper')\n", encoding="utf-8")
+            payload = _read_payload(script)
 
             reason = guard.evaluate_payload(_policy(workspace), payload)
 
+            self.assertEqual(reason, _DENY_MESSAGE)
+
+    def test_blocks_read_tool_payload_outside_workspace_with_file_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            outside = Path(tmp) / "outside.txt"
+            outside.write_text("secret\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.evaluate_payload(_policy(workspace), _read_payload(outside))
+
+            self.assertEqual(reason, _DENY_MESSAGE)
+
+    def test_allows_in_workspace_read_tool_payload_with_file_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            readme = workspace / "README.md"
+            readme.write_text("hello\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.evaluate_payload(_policy(workspace), _read_payload(readme))
+
             self.assertIsNone(reason)
+
+    def test_blocks_protected_read_tool_payload_with_file_path_camel_case(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            guard = _load_guard_module()
+            script = workspace / ".codex" / "skills" / "skill-a" / "scripts" / "helper.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("print('helper')\n", encoding="utf-8")
+            payload = _read_payload(script, key="filePath")
+
+            reason = guard.evaluate_payload(_policy(workspace), payload)
+
+            self.assertEqual(reason, _DENY_MESSAGE)
 
     def test_malformed_payload_fails_open(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -326,11 +471,14 @@ _DENY_MESSAGE = (
 )
 
 
-def _policy(workspace: Path) -> dict[str, object]:
+def _policy(workspace: Path, extra_allow_roots: Optional[list[Path]] = None) -> dict[str, object]:
     root = workspace.resolve()
+    allow_read_roots = [str(root)]
+    if extra_allow_roots is not None:
+        allow_read_roots.extend(str(path.resolve()) for path in extra_allow_roots)
     return {
         "workspace_root": str(root),
-        "allow_read_roots": [str(root)],
+        "allow_read_roots": allow_read_roots,
         "deny_read_globs": [
             str(root / "triton-agent-logs" / "**"),
             str(root / ".codex" / "skills" / "*" / "scripts" / "**"),

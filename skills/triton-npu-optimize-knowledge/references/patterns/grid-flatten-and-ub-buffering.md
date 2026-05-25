@@ -1,10 +1,12 @@
+---
+priority: high
+---
+
 # Grid Flattening And UB Buffering Pattern
 
 ## Summary
 
-Change work distribution and UB staging when latency is dominated by too many logical tasks, uneven per-core work, physical-core load balance problems, or tiny row-wise memory transfers after a gather/scatter style rewrite.
-
-This pattern complements `program-multiple-rows`: that pattern widens row-wise work inside a program, while this one focuses on flattening logical work onto physical cores and then batching memory movement inside each core.
+Flatten logical work items onto physical cores and batch small row-wise memory transfers into wider UB stores to reduce launch overhead and improve per-core work density.
 
 ## Use When
 
@@ -13,18 +15,6 @@ This pattern complements `program-multiple-rows`: that pattern widens row-wise w
 - Each program processes many tiny rows after grid-to-physical-core mapping.
 - Gather-like code has continuous destination rows but still stores one row at a time.
 - Scatter-weight-gradient-like code has repeated row loads that can be batched from continuous source rows.
-
-## Signals
-
-### Code
-
-- The logical grid is much larger than the physical AICore or VectorCore count.
-- Work is partitioned by batch or sequence buckets that create visible load imbalance.
-- Each physical program still processes many tiny rows or row-at-a-time transfers after grid mapping.
-
-### Profile
-
-- Latency is dominated by too many logical tasks, uneven per-core work, or tiny row-wise memory transfers after a gather or scatter style rewrite.
 
 ## Repairs
 
@@ -46,6 +36,32 @@ Compute `TASKS_PER_CORE` on the host and pass it as `tl.constexpr` when it contr
 When `logical_tasks > num_cores`, launch `num_cores` programs and loop over logical tasks inside the kernel. Keep `NUM_TASKS` and `NUM_CORES` as explicit constants so the compiler can simplify loop bounds.
 
 This helps only when each physical program has enough work to amortize the internal loop. If the original grid is near the physical core count, the extra loop can be overhead.
+
+### Discover core counts and choose grid by task kind
+
+Use a best-effort runtime query before hardcoding one grid size:
+
+```python
+import torch
+
+print(torch.npu.device_count())
+device = torch.npu.current_device()
+props = torch.npu.get_device_properties(device)
+print(props)
+```
+
+If this query fails, if `torch.npu` is unavailable in the current environment, or if `props` does not expose explicit per-engine counts, fall back to:
+
+- cube cores: `24`
+- vector cores: `48`
+
+Do not turn one observed physical-core count into a universal launch rule. Pick the initial flattened grid from the operator task kind:
+
+- `cube`-like operators: start from the discovered Cube-core count and verify that the kernel really stays Cube-dominant.
+- `vector`-like operators: start from the discovered Vector-core count and retest after any major tiling or buffering rewrite.
+- `mix` operators: choose the starting point from the dominant bottleneck side, or test both cube-first and vector-first launch counts when the profile is ambiguous.
+
+Keep `NUM_CORES` aligned with the chosen task kind rather than hardcoding one global constant across unrelated operators.
 
 ### UB aggregate writes
 

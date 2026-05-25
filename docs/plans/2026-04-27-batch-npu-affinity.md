@@ -71,7 +71,6 @@ class BatchNpuAffinityTests(unittest.TestCase):
             affinity_env_for_device("3"),
             {
                 "ASCEND_RT_VISIBLE_DEVICES": "3",
-                "TRITON_AGENT_ASSIGNED_NPU": "3",
             },
         )
 
@@ -166,7 +165,7 @@ def test_run_gen_eval_batch_assigns_affinity_env_per_workspace(self) -> None:
 
         with patch.dict(os.environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0,1"}, clear=False):
             exit_code = run_gen_eval_batch(root, options, max_concurrency=2, run_request=fake_run)
-    self.assertEqual({env["TRITON_AGENT_ASSIGNED_NPU"] for env in seen_envs}, {"0", "1"})
+    self.assertEqual({env["ASCEND_RT_VISIBLE_DEVICES"] for env in seen_envs}, {"0", "1"})
 
 
 def test_run_convert_batch_assigns_affinity_env_per_workspace(self) -> None:
@@ -305,10 +304,7 @@ def configured_batch_npu_devices() -> tuple[str, ...] | None:
 
 
 def affinity_env_for_device(device: str) -> dict[str, str]:
-    return {
-        "ASCEND_RT_VISIBLE_DEVICES": device,
-        "TRITON_AGENT_ASSIGNED_NPU": device,
-    }
+    return {"ASCEND_RT_VISIBLE_DEVICES": device}
 
 
 class BatchNpuAffinityPool:
@@ -606,11 +602,10 @@ def test_run_remote_command_streaming_prefixes_env_assignments(self) -> None:
             {"user_host": "alice@example.com", "port": None},
             "/tmp/workspace",
             ["python3", "bench.py"],
-            extra_env={"ASCEND_RT_VISIBLE_DEVICES": "4", "TRITON_AGENT_ASSIGNED_NPU": "4"},
+            extra_env={"ASCEND_RT_VISIBLE_DEVICES": "4"},
         )
     ssh_command = mocked.call_args.args[0]
     self.assertIn("ASCEND_RT_VISIBLE_DEVICES=4", ssh_command[-1])
-    self.assertIn("TRITON_AGENT_ASSIGNED_NPU=4", ssh_command[-1])
 ```
 
 - [ ] **Step 3: Implement `extra_env` support in `skills/triton-npu-run-eval/scripts/run_runtime.py`**

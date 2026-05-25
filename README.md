@@ -61,6 +61,7 @@ These are the environment variables that `triton-agent` reads directly at runtim
 | `TRITON_AGENT_BATCH_NPU_DEVICES` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Comma-separated Ascend device list that also supports inclusive numeric ranges such as `0,3-5,8-9`. When set, concurrent batch workspaces are pinned to distinct devices, and `--max-concurrency` must not exceed the number of configured devices. |
 | `TRITON_AGENT_CODE_AGENT_MAX_RETRIES` | No | Agent-backed commands | Non-negative integer retry budget for transient code-agent failures such as rate limits. Default is `2`. Set `0` to disable retries. |
 | `TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR` | No | Local `run-bench`, `verify`, and optimize benchmark validation | Preserves local benchmark profiler output directories under the given root instead of using auto-cleaned temporary directories. Applies to both `standalone` and `msprof` benchmark modes so you can inspect raw profiler artifacts after local benchmark runs. |
+| `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` | No | Ordinary `optimize`, `optimize-batch` PT cleanup | Opts back into deleting optimize-owned archived PT results during ordinary round and end-of-run cleanup. By default those PT files are preserved. This variable does not affect `check-baseline`, which never deletes PT files, or `--reset-optimize`, which still deletes known optimize PT artifacts. |
 | `LLM_API_KEY` | Only for `--agent openhands` | OpenHands backend | API key forwarded to the OpenHands SDK LLM client. |
 | `LLM_MODEL` | Only for `--agent openhands` | OpenHands backend | Model name passed to the OpenHands SDK LLM client. |
 | `LLM_BASE_URL` | No | OpenHands backend | Optional custom base URL for the OpenHands SDK LLM client. |
@@ -70,6 +71,7 @@ Examples:
 ```bash
 export TRITON_AGENT_BATCH_NPU_DEVICES=0,3-5,8-9
 export TRITON_AGENT_CODE_AGENT_MAX_RETRIES=4
+export TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES=1
 export TRITON_AGENT_HOME=$HOME/.triton-agent
 uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
 ```
@@ -86,7 +88,6 @@ uv run triton-agent gen-test --input a.py --agent openhands
 These variables are normally set by `triton-agent` for child processes. You usually do not need to export them yourself:
 
 - `ASCEND_RT_VISIBLE_DEVICES`: set for each batch workspace when `TRITON_AGENT_BATCH_NPU_DEVICES` is configured.
-- `TRITON_AGENT_ASSIGNED_NPU`: companion variable that records the device chosen for the current workspace.
 
 ## Generate Tests
 
@@ -126,6 +127,8 @@ uv run triton-agent run-test --test-file test_a.py --operator-file a.py
 Common options:
 
 - `--test-mode standalone|differential`: override the mode recorded in the test file.
+- `--oracle-result <path>`: in `differential` mode, automatically compare the new archived result against an existing oracle payload.
+- `--compare-level strict|balanced|relaxed`: comparison tolerance to use with `--oracle-result`. Default is `balanced`.
 - `--remote user@host[:port]`: run through SSH on a remote machine.
 - `--remote-workdir <path>`: set the remote working root.
 - `--keep-remote-workdir`: keep the remote workspace for debugging.
@@ -135,6 +138,16 @@ Example:
 
 ```bash
 uv run triton-agent run-test --test-file differential_test_a.py --operator-file opt_a.py
+```
+
+If you already have an oracle payload from a baseline or source run, you can finish the differential check in one command:
+
+```bash
+uv run triton-agent run-test \
+  --test-file differential_test_a.py \
+  --operator-file opt_a.py \
+  --test-mode differential \
+  --oracle-result a_result.pt
 ```
 
 ## Generate Evaluation Assets
@@ -248,6 +261,7 @@ uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
 Common options:
 
 - `--bench-mode standalone|msprof`: override the mode recorded in the benchmark file.
+- `--npu-devices 0,1,4-7`: run benchmark cases concurrently across the listed Ascend devices. Supports inclusive numeric ranges and preserves current serial behavior when omitted.
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
 - `--keep-remote-workdir`
@@ -257,20 +271,27 @@ Example:
 
 ```bash
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py
+uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py --bench-mode msprof --npu-devices 0,1,2,3
 ```
 
 For `standalone` benchmarks:
 
 - the benchmark file is import-only and exports `build_operator_api(operator_module)` plus `build_standalone_bench_cases(operator_api)`
 - `run-bench` profiles each declared case with `torch_npu.profiler`
+- `run-bench --npu-devices ...` runs declared standalone cases in parallel through isolated case workers and assigns one visible device per case
 - `profile-bench` requires `--case-id <id>` for standalone profiling
 
 For `msprof` benchmarks:
 
 - `run-bench` aggregates the stable-order union of benchmark metadata kernels and `@triton.jit` kernels discovered from the runtime operator file.
+- `run-bench --npu-devices ...` runs benchmark cases in parallel through isolated case workspaces and assigns one visible device per case
 - a failed benchmark case does not stop later cases from running
 - the generated perf file is still written and includes `# latency-error-case-*` comments for failed cases
 - `profile-bench` profiles a selected benchmark case with `--bench <N>` and does not pass kernel filter arguments to `msprof`
+
+Remote note:
+
+- when `--remote` and `--npu-devices` are combined, the device list applies to the one remote target host named by `--remote`
 
 ## Optimize One Operator
 
@@ -289,6 +310,7 @@ Common options:
 - `--prompt "..."`: append extra worker instructions without replacing the built-in optimize contract.
 - `--test-mode standalone|differential`: default is `differential`
 - `--bench-mode standalone|msprof`: default is `standalone`. Sets the benchmark mode for fresh runs. With `--resume auto`, resumable workspaces keep the benchmark mode recorded in their existing benchmark harness.
+- `--optimize-target kernel|operator`: default is `kernel`. `kernel` keeps the session focused on optimizing the Triton Ascend NPU kernel path itself. `operator` broadens the target to end-to-end operator latency and allows coordinated wrapper/data-movement/scheduling/pre/post-processing/kernel changes while still requiring a real Triton Ascend NPU computation path.
 - `--resume auto|continue|fresh`: default is `auto`
 - `--reset-optimize`: only valid with `--resume fresh`; remove known optimize-session artifacts before starting a new run while keeping reusable test and benchmark harnesses.
 - `--optimize-knowledge v1|v2|v3`: default is `v1`. Select which optimize knowledge library is staged before the agent starts (`v3` uses `skills/triton-npu-optimize-knowledge-v3/`).
@@ -315,6 +337,7 @@ uv run triton-agent optimize --input a.py --enable-cann-ext-api --target-chip A5
 uv run triton-agent optimize --input a.py --log-tools --agent codex
 uv run triton-agent optimize --input a.py --enable-agent-hooks --agent codex
 uv run triton-agent optimize --input a.py --prompt "Prioritize memory-coalescing improvements."
+uv run triton-agent optimize --input a.py --optimize-target operator
 ```
 
 Optimize knowledge selection is explicit. `--optimize-knowledge v1` keeps the current default optimize knowledge library. `--optimize-knowledge v2` stages `triton-npu-optimize-knowledge-v2`. `--optimize-knowledge v3` stages `triton-npu-optimize-knowledge-v3` (working copy forked from `triton-npu-optimize-knowledge` for ongoing updates).
@@ -351,7 +374,14 @@ Resume modes:
 Optimize behavior:
 
 - Establish or reuse a canonical `baseline/` directory before treating `opt-round-1` as the first optimization round.
+- `compare-perf` remains the authority for round speedup claims.
+- In `--optimize-target kernel`, optimize prefers the kernel-oriented comparison view, but rounds may still resolve to `effective_metric_source=total-op` or `mixed` when kernel timing is unavailable for some cases.
+- In `--optimize-target operator`, optimize should inspect both kernel and total-op comparison views and use the total-op conclusion as the canonical round basis.
+- Each round records exactly one resolved comparison basis in `round-state.json` as `effective_metric_source`.
 - If `baseline/` is missing or invalid, baseline preparation is handled by `triton-npu-prepare-optimize-baseline` before round work begins.
+- `check-baseline` never deletes archived PT result files.
+- Ordinary optimize cleanup preserves archived PT result files by default. Set `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES=1` to re-enable round and end-of-run PT cleanup.
+- `--reset-optimize` still deletes known optimize PT artifacts, including workspace-root `*_result.pt` files.
 - Every optimize run follows the default layered analysis ladder: pattern triage -> profiling diagnosis -> IR attribution -> compiler-source escalation.
 - Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.
 - Use compiler source only as the deepest escalation, and only when `--enable-compiler-source-analysis` is set.
@@ -557,7 +587,7 @@ Batch rerun behavior:
 
 ## Compare Archived Outputs
 
-Use these commands after you already have archived result or performance files.
+Use these commands after you already have archived result or performance files, or when you want to rerun a comparison independently from `run-test`.
 
 ### Compare Correctness Results
 
@@ -584,6 +614,14 @@ uv run triton-agent compare-perf \
 
 The baseline file should stay in the standard `latency-<id>: <float>` format. The compare-side file may
 include extra summary fields, which are ignored unless they replace a required latency entry.
+Pass `--metric-source kernel` to require kernel-only comparison, or `--metric-source total-op`
+to force total-op aggregation for every case. Pass `--metric-source all` to print both the
+kernel and total-op sections in one command. The default `--metric-source auto` preserves the
+existing behavior of preferring kernel latency and falling back to total-op when kernel timing
+is unavailable.
+By default, `compare-perf` fails immediately when a case carries a non-recoverable
+`# latency-error-<id>:` marker. Pass `--skip-latency-errors` to keep comparing the
+remaining valid cases, then return failure after printing the skipped-case summary.
 The command prints:
 
 - one comparison line per latency id with baseline, compare, and delta

@@ -13,5 +13,5 @@ Treat PTY `EIO` on child shutdown as a normal end-of-stream for non-interactive 
 ## Implementation Notes
 
 - Keep the PTY-backed streaming path for readable live output.
-- In the streaming read loop, treat `OSError(errno.EIO)` as EOF only after the child process has already exited.
-- Add a regression test covering the shutdown path so future refactors preserve the clean exit behavior.
+- In the streaming read loop, treat `OSError(errno.EIO)` as EOF once the child exit is confirmed, either because `poll()` already reports termination or because a short `wait(timeout=...)` grace window observes the exit.
+- Add regression coverage for both the normal shutdown race and the path where a real PTY read failure must still surface.

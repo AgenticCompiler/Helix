@@ -97,6 +97,8 @@ Important behavior:
 
 - The benchmarked operator must run on **Ascend NPU**.
 - All generated benchmark inputs should target device `"npu"` for the code under test.
+- Randomized input generation is allowed, but the harness must explicitly fix the seed during case construction so repeated runs of the same harness produce identical inputs.
+- Do not depend on ambient global RNG state or prior random draws to keep cases stable.
 - Do not generate correctness checks in standalone benchmark files.
 - Do not put profiler logic, perf text rendering, or timing fallback logic inside the benchmark file.
 - Do not directly print latency lines from the benchmark file. The runner owns artifact generation.
@@ -131,6 +133,8 @@ def build_operator_api(operator_module):
 
 
 def build_standalone_bench_cases(operator_api):
+    seed = 0
+    torch.manual_seed(seed)
     lhs = torch.randn((1024, 1024), dtype=torch.float16, device="npu")
     rhs = torch.randn((1024, 1024), dtype=torch.float16, device="npu")
 

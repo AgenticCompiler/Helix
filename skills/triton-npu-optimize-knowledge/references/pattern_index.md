@@ -4,11 +4,30 @@ Use this file to choose optimization directions before reading any detailed patt
 
 Read this generated index first. Then read only the one or two most relevant detailed pattern files for the current bottleneck.
 
+Before scanning the full list, first analyze whether the operator matches any high-priority patterns below. If it does, try those directions first.
+
+## High Priority Patterns
+
+### `a5-force-simt-only-discrete-access`
+
+- Summary: Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, then retune `num_warps` and grid decomposition. This profile-gated launch-mode experiment targets kernels whose hot path is primarily scalar/index-driven memory access.
+- Source: [a5-force-simt-only-discrete-access.md](patterns/a5-force-simt-only-discrete-access.md)
+
+### `autotune`
+
+- Summary: Use Triton-Ascend autotune as the default way to search split sizes, tile sizes, and selected compile options when the kernel structure is already reasonable and the main open question is parameter choice.
+- Source: [autotune.md](patterns/autotune.md)
+
+### `grid-flatten-and-ub-buffering`
+
+- Summary: Flatten logical work items onto physical cores and batch small row-wise memory transfers into wider UB stores to reduce launch overhead and improve per-core work density.
+- Source: [grid-flatten-and-ub-buffering.md](patterns/grid-flatten-and-ub-buffering.md)
+
 ## Generated Pattern Summaries
 
 ### `a5-force-simt-only-discrete-access`
 
-- Summary: On A5, when profiler evidence shows a discrete-memory-access Triton kernel is dominated by AIV scalar work rather than vector or Cube work, try launching the kernel with `force_simt_only=True`, then retune launch parameters such as `num_warps` and grid decomposition.
+- Summary: Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, then retune `num_warps` and grid decomposition. This profile-gated launch-mode experiment targets kernels whose hot path is primarily scalar/index-driven memory access.
 - Source: [a5-force-simt-only-discrete-access.md](patterns/a5-force-simt-only-discrete-access.md)
 - Use When:
   - Target hardware is confirmed as A5 by user statement, profile metadata, runtime/compile logs, runtime device query, or environment/CANN target settings.
@@ -16,41 +35,25 @@ Read this generated index first. Then read only the one or two most relevant det
   - That row shows `aiv_scalar_ratio` clearly higher than `aiv_vec_ratio` and `cube_utilization`.
   - The kernel body is primarily discrete/index-driven memory access, gather/scatter-like movement, or scalar-heavy pointer/index computation.
   - Correctness validation and representative benchmark reruns are available after changing launch parameters.
-- Avoid When:
-  - The kernel is Cube-heavy, matmul-like, or already dominated by vector arithmetic.
-  - Profiling does not identify the target kernel row confidently by `opName`.
-  - The scalar ratio is only slightly higher or the bottleneck is host launch overhead, copy overhead, or another operator.
-  - The shape regime is not representative enough to justify architecture-specific launch-mode changes.
-- Signals / Code:
-  - Index arrays, indirect offsets, gather/scatter addresses, masks, or per-lane pointer reconstruction dominate the hot path.
-  - The computation has little dense arithmetic after each load.
-  - The kernel looks closer to sparse/discrete movement than SIMT-friendly dense vector math.
-- Signals / Profile:
-  - In `op_summary_*.csv`, `opName` equals or clearly contains the target kernel name.
-  - `aiv_scalar_ratio` is much larger than `aiv_vec_ratio`.
-  - `aiv_scalar_ratio` is much larger than `cube_utilization`.
-  - Low Cube utilization is expected from the kernel semantics, not an accidental symptom of a missed `tl.dot` rewrite.
+
+### `accumulator-layout-alignment`
+
+- Summary: Align accumulator shapes with output memory layout to avoid store-time transposes that degrade into scalar element writes on Ascend NPU.
+- Source: [accumulator-layout-alignment.md](patterns/accumulator-layout-alignment.md)
+- Use When:
+  - `tl.store` writes a transposed logical tensor and profiling or code inspection suggests the write degraded into scalar element stores.
+  - The accumulator shape differs from the output memory layout, forcing an implicit store-time transpose.
+  - The kernel performs a reduction that naturally produces the "wrong" shape order, and a simple axis swap in the reduction logic would avoid the store-side transpose entirely.
 
 ### `algebraic-optimization`
 
-- Summary: Look for **semantics-preserving** rewrites that reduce **memory passes**, **redundant full scans**, or **live ranges** before micro-tuning loads. The scope includes **floating-point identities** (for example single-pass mean/variance) and **operator-defined** equivalences (for example PyTorch **logical** ops with dtype-specific truthiness and broadcasting). Always validate against the reference; forms that are equivalent on paper can still **regress** after lowering to Ascend Triton (dependency chains, UB pressure, launch overhead).
+- Summary: Apply mathematical identities and semantics-preserving rewrites to reduce redundant memory passes, full data scans, or live ranges before micro-tuning loads. Covers floating-point identities (e.g., single-pass mean/variance), operator-defined equivalences (e.g., PyTorch logical ops under dtype-specific truthiness and broadcasting), and algebraic merge rules.
 - Source: [algebraic-optimization.md](patterns/algebraic-optimization.md)
 - Use When:
   - The hot path performs **two or more full traversals** of the same data for statistics, normalization, or mergeable closed-form subexpressions.
   - Profiler or IR suggests **duplicate MTE-heavy** phases that differ only by a scalar statistic of the same tensor.
   - Elementwise **logical** ops (`logical_or`, `logical_and`, …) use **broadcasting**, and truth tests (`ne`, `!= 0`) run on **fully expanded** numeric tensors.
   - You want fewer global passes or cheaper elementwise work **before** changing tile sizes, pipelines, or autotune grids.
-- Avoid When:
-  - The bottleneck is clearly **only** bad tile size or UB overflow with **no** redundant algorithmic passes (prefer `tiling` or footprint patterns first).
-  - Custom Triton fusion is attempted before a simpler **host/graph reorder** is proven correct and cheaper end-to-end.
-- Signals / Code:
-  - Two loops or kernels with nearly identical `tl.load(x)` tiling along the same axis.
-  - `broadcast_tensors(x, y)` followed by elementwise truth tests on **wide dtypes** over the full broadcast shape.
-- Signals / Profile:
-  - `NotEqual` / `BroadcastTo` (or equivalent ops) scale with **broadcast-expanded** `numel`, not with `numel(x) + numel(y)`.
-  - Repeated transfer-dense stages that could be merged if math structure were reorganized.
-- Signals / IR:
-  - Repeated load or reduction structure around the same logical axis where a single pass could feed multiple accumulators (case-dependent).
 
 ### `attention-cv-pipeline`
 
@@ -63,33 +66,27 @@ Read this generated index first. Then read only the one or two most relevant det
   - Scale and mask are separate operations before softmax.
   - The code stores log-sum-exp state in a base-2 representation solely because the forward path uses `exp2`.
   - The target is known to be an A5 device such as `ascend950PR` or `ascend950DT`.
-- Avoid When:
-  - The kernel is pure Vector work rather than Cube-plus-Vector fused work.
-  - Profiling shows memory transfer, not vector epilogue work, is the dominant bottleneck.
-  - Architecture-specific compile settings cannot be gated on verified target information.
-- Signals / Code:
-  - A `tl.dot` loop is followed by repeated mask, scale, softmax, dropout, or bias work on the vector side.
-  - The same mask tensor is recomputed inside a hot loop even though it depends only on host-known metadata.
-  - The forward path stores log-sum-exp state in base-2 form solely because it uses `exp2`.
-- Signals / Profile:
-  - Profiling suggests Cube and Vector work are close enough that vector-side instruction pressure is limiting overlap.
-  - The kernel is structurally sound, but the post-dot vector path still appears to dominate latency.
 
 ### `autotune`
 
-- Summary: Make use of autotune in Triton to optimize parameters automatically. Some analysis is still needed to set the possible values of parameters to try (limit the number of combinations to try to at most 20).
+- Summary: Use Triton-Ascend autotune as the default way to search split sizes, tile sizes, and selected compile options when the kernel structure is already reasonable and the main open question is parameter choice.
 - Source: [autotune.md](patterns/autotune.md)
 - Use When:
-  - The kernel already has several plausible tile or launch parameter choices, and the main structure looks reasonable.
-  - Manual parameter picking is likely leaving performance on the table, but the search space can still be kept small and bounded.
+  - The kernel structure already looks semantically correct, and the likely headroom is in `BLOCK_*` selection, split shape, or Ascend-specific compile options such as `multibuffer`.
+  - The current optimization loop is drifting toward repeated manual tiling edits without strong evidence that a structural rewrite is needed first.
+  - The hot path exposes one or more free `tl.constexpr` parameters that are not hard-coded at launch time.
+  - Bounds masks or loop structure still map cleanly back to runtime shape arguments, so a shape-keyed autotune cache is plausible.
+  - The operator is vector-like rather than a Cube-only kernel path that needs a different optimization route.
+  - You are not already in a launch-mode experiment that explicitly changes execution style; if you are applying the A5 SIMT-only discrete-access pattern, `num_warps` and grid decomposition are rechecked there after `force_simt_only=True`.
 
-### `cache_use`
+### `block-pointer-dimensionality`
 
-- Summary: Analyze memory access patterns, try to make use of cache and UB as much as possible. Make note of L2 cache (96MB, shared by all cores) and size of L1 and UB (512KB, 256KB, respectively).
-- Source: [cache_use.md](patterns/cache_use.md)
+- Summary: Use `tl.make_block_ptr` to model multidimensional contiguous tensor dimensions directly, enabling wider DMA transfers and reducing scalar address-generation overhead compared to flattened 1D offsets.
+- Source: [block-pointer-dimensionality.md](patterns/block-pointer-dimensionality.md)
 - Use When:
-  - The bottleneck looks memory-hierarchy bound rather than purely compute bound.
-  - Repeated reloads, weak reuse, or poor locality suggest that L2, L1, or UB usage can be improved through better data placement or tile sizing.
+  - A high-dimensional contiguous tensor is accessed through flattened one-dimensional offsets that stride through an inner dimension.
+  - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
+  - Profiling or IR suggests the 1D pointer path produces strided or non-coalesced loads across a dimension that is actually contiguous in memory.
 
 ### `classic-matmul`
 
@@ -101,48 +98,16 @@ Read this generated index first. Then read only the one or two most relevant det
   - profiling or IR suggests the hot loop is spending too much effort on scalar address generation or repeated reduction structure
   - a block-pointer rewrite reduced one scalar chain but the full loop is still not a regular matmul
   - dtype-specialized or shape-specialized paths are acceptable when one tiled regime is clearly better but a unified rewrite would change numerics too much
-- Avoid When:
-  - purely elementwise kernels
-  - gather/scatter dominated kernels
-  - tiny shapes where tile setup cost is unlikely to amortize
-  - should this manual reduction loop become a regular tiled matmul at all
 
 ### `compile_hint`
 
-- Summary: Try the following compile hints:
+- Summary: Use compiler hints to communicate layout facts the compiler cannot safely infer from pointer math alone.
 - Source: [compile_hint.md](patterns/compile_hint.md)
 - Use When:
-  - The kernel structure already looks close to good, but the compiler still lacks explicit alignment or contiguity information.
-  - `tl.dot` tiles, slices, or pointer math are known to satisfy stronger layout assumptions than the code currently expresses.
-- Signals / Code:
-  - `tl.dot` inputs are already aligned in `M` and `N`, so only the `K` direction still needs padding hints.
-  - Pointer slices are known contiguous or aligned, but the code does not yet communicate that with `tl.max_contiguous` or `tl.multiple_of`.
-
-### `constexpr-tile-discrete-access`
-
-- Summary: On **Ascend NPU**, Triton often lowers **masked “vector”** work into **scalar `scf.for`** loops whose **upper bound equals `tl.constexpr` tile sizes** (`BLOCK_SIZE`, `BLOCK_M`, `BLOCK_N`, …). When the **logical valid span** along that axis—**number of outputs**, **selected index length** (e.g. **index_select** / advanced indexing), **inner slice length**, etc.—is **smaller than the tile**, the lowered loop may still run the **full** trip count; correctness is restored with **masks** and **`arith.select`** against zeros, which is **wasted execution**. Choosing **smaller constexpr tiles on the host** and **recomputing grid / program counts** aligns loop bounds with the real workload. For **2D tiles**, **`min(hardware cap, live row/column extent)`** often removes masked padding along a narrow axis; **rounding up to the next power of two** is **not** universally faster—it can add **extra columns/rows** of masked work, so treat PO2 as a **JIT stability** option and **validate on device**. For **indexed writes** with **multiple launch shapes**, a common pattern is: choose an **inner** tile from **`cdiv(extent, b) * b`**, then if **`cdiv(inner, b) × (outer bundle)`** exceeds a **per-launch program limit**, **increase `b`** (fewer inner blocks) until under the cap or hit a max tile, else fall back to a **flat** kernel whose tile is chosen from the **flattened element count**—**flat** paths dominated by **`atomic_*`** may still see **little** gain from tile alone. MLIR **`{DiscreteMemAccess}`** and **`{ExtractedLoadOrStore}`** mark **per-lane** indexed **`memref.load`/`store`** (e.g. **`sizes [1]`**), not one coalesced DMA vector—**tile reduction cuts iterations**, it does not remove indexed semantics. **Profile the path that actually runs**.
-- Source: [constexpr-tile-discrete-access.md](patterns/constexpr-tile-discrete-access.md)
-- Use When:
-  - Any kernel where **`tl.arange` / 2D tile** size is **`tl.constexpr`** but a **mask** or **valid count** shows the **active outputs or indices** are **much smaller** than that tile (including **index_select**, **gather-like** `tl.load(ptr + f(index))`, **scatter-like** `tl.atomic_add` / indexed stores, and similar **output-sized < loop-sized** patterns).
-  - Simulator or profiler shows **hot loops** or **LD/ST `call_count`** scaling with **full tile area** or **2048-style** constants, not with the **logical `numel`** of the case.
-  - MLIR shows **`scf.for`** upper bound tied to tile constants while **`DiscreteMemAccess`** / **`ExtractedLoadOrStore`** appear on extracted load/store paths.
-- Avoid When:
-  - Dominant cost is **outside** the tiled indexed region (e.g. another op, host overhead).
-  - Shrinking tiles **multiplies programs** past a **launch or sync knee**—re-measure total time.
-  - Bottleneck is **atomic saturation** or **algorithmic random write** patterns where **tile width** does not reduce **atomic count** materially.
-  - You assume **next power-of-two** along a narrow 2D axis is always faster than **`min(cap, exact extent)`** without measuring—narrow shapes often favor **exact** tile width.
-- Signals / Code:
-  - **`BLOCK_SIZE`** or **`BLOCK_M`/`BLOCK_N`** are **large fixed constexprs** while **`mask = offsets < n_valid`** (or equivalent) has **`n_valid` ≪ tile** along that axis.
-  - **Multi-axis tiling**: product **`BLOCK_M * BLOCK_N`** dominates even when **one axis extent** (e.g. columns of the output slice) is smaller.
-  - **Host chooses different constexpr tiles** for **structured** (e.g. row × inner-block) vs **flat** one-dimensional launches when dispatch branches on **program count**.
-  - **Indexed globals**: **`tl.load` / `tl.store` / `tl.atomic_*`** with **dynamic byte offset** per lane, often paired with **per-lane masks**.
-- Signals / Profile:
-  - **`code_exe`**: time in **scalar loop bodies** or **indexed load/store** lines, not only in unrelated ops.
-  - **`instr_exe`**: **`LD_*` / `ST_*`** counts **≈ tile size per program** rather than **≈ valid element count**.
-- Signals / IR:
-  - **`scf.for %i = %c0 to %cN`** with **`N`** equal to a **tile constant** that does **not** shrink when the **logical extent** is smaller.
-  - **`tensor.extract`** / **`memref.load`** with **`DiscreteMemAccess`**, **`reinterpret_cast … sizes [1]`**.
-  - **`arith.select`** between computed values and **zero-filled** tensors along the tile (masked semantics).
+  - The hot kernel is already structurally good, but lowering still appears conservative.
+  - You can prove stronger alignment or contiguity facts than the current code expresses.
+  - `tl.dot` inputs are stable and only need targeted padding guidance on the active path.
+  - Parent comparisons are already close enough that small lowering changes can still matter.
 
 ### `diagonal`
 
@@ -151,49 +116,40 @@ Read this generated index first. Then read only the one or two most relevant det
 - Use When:
   - Large tiled matrix-style work shows poor locality or bank-conflict-like behavior even though the basic tiling is already reasonable.
   - Many programs touch the same cache regions at the same time, so changing block traversal order may improve effective L2 use.
-- Signals / Code:
-  - Traditional row-major or horizontal block assignment makes many cores touch the same left-matrix cache region at once.
-  - The matrix already spans many blocks along both `M` and `N`, so traversal order is a plausible performance lever rather than a cosmetic rewrite.
-  - The right-hand matrix is large enough that ordinary block traversal can churn L2 and lower reuse.
 
 ### `discrete_memory_access`
 
-- Summary: When loading discrete indices, rather than using `tl.load` to load the discrete set directly, use `tl.load` to load a continuous range first, then use `tl.gather` to select the target values.
+- Summary: Stage a contiguous range into the Unified Buffer first, then use on-chip indexing (`tl.gather` or equivalent) to select target values, rather than loading directly from global memory through discrete indices. For fixed-channel AoS layouts, apply the same principle with channel-first SoA buffers to enable contiguous loads.
 - Source: [discrete_memory_access.md](patterns/discrete_memory_access.md)
 - Use When:
   - The central bottleneck is discrete memory access that semantically looks like `out = x[idx]`.
   - Index-driven global loads dominate the hot path, and contiguous staging plus local selection is more plausible than direct scattered reads.
-  - The hot loop repeatedly reads fixed fields from AoS records with stride-C offsets, such as `[N, 3]` coordinates loaded as `atom_idx * 3 + channel`, and the input is reused enough to amortize wrapper-side SoA materialization.
-- Avoid When:
-  - The source range is too large to stage or transpose profitably for the active shape.
-  - The fixed field dimension is consumed as a whole and splitting it would require vector extraction.
-  - The rewrite would introduce unsupported Ascend tensor indexing such as `vec[0]` on a loaded vector/tile.
-- Signals / Code:
-  - Channel-wise loads use stride-2/3/4 addressing in the hot vector path.
-  - Attempts to coalesce fixed fields would require extracting scalar components from a vector.
-  - A small fixed set of indexed setup values is used only for scalar frame/basis initialization.
-
-### `gather-load`
-
-- Summary: Stage gather-like input through contiguous loads before selecting indexed values so the kernel reduces expensive discrete global-memory reads on Ascend NPU.
-- Source: [gather-load.md](patterns/gather-load.md)
-- Use When:
-  - **Discrete access patterns**: When using index arrays to access non-contiguous memory
-  - **Small to medium source arrays**: When the source array can fit in shared memory
-  - **Performance-critical sections**: Where gather operations are bottleneck
-- Avoid When:
-  - **Large source arrays**: When M is too large for shared memory capacity
-  - **Already contiguous access**: When memory access patterns are already sequential
-  - **GPU targets**: This optimization is NPU-specific and may not benefit GPU architectures
-  - **Single-element access**: When only accessing a few discrete elements
-- Signals / Code:
-  - Code uses index arrays to access non-contiguous memory locations on the hot path.
   - The gather source array is small or medium enough that contiguous staging in shared memory is plausible.
-  - Direct global-memory gather reads dominate more than the surrounding arithmetic.
+  - The hot loop repeatedly reads fixed fields from AoS records with stride-C offsets, such as `[N, 3]` coordinates loaded as `atom_idx * 3 + channel`, and the input is reused enough to amortize wrapper-side SoA materialization.
+
+### `effective-extent-tiling`
+
+- Summary: Choose tile widths from the live logical extent on each axis instead of a legacy maximum or blanket power-of-two rule, so masked lanes do not dominate loop trip counts, transfer work, or vector-path work.
+- Source: [effective-extent-tiling.md](patterns/effective-extent-tiling.md)
+- Use When:
+  - A **`BLOCK_*`** tile is much larger than the **valid extent** protected by a mask, so the kernel does visibly more padded lane work than useful work.
+  - The hot path is either **indexed / masked access** or a **copy-like contiguous axis** whose width does not participate in **`tl.dot`**, cube alignment, or reduction-tree structure.
+  - Profiling or IR suggests execution cost scales with the **tile width** more than with the **live element count**.
+  - The host already has shape information that could choose a smaller tile or a different launch branch.
+
+### `exact-tile-no-boundary-fast-path`
+
+- Summary: Split exact-tile hot paths from generic masked kernels when dispatch-time shape guards can prove there are no tail tiles, so Ascend lowering can avoid boundary-only masks, padding values, block-pointer `boundary_check`, and related control branches.
+- Source: [exact-tile-no-boundary-fast-path.md](patterns/exact-tile-no-boundary-fast-path.md)
+- Use When:
+  - A dominant benchmark shape is exactly tile-divisible, such as `M % BLOCK_M == 0` and `N % BLOCK_N == 0`.
+  - Python dispatch can guard the aligned branch before launch and keep the original masked kernel as fallback.
+  - MLIR, LLVM, or profiler traces still show boundary checks, masks, padding, or branch/control overhead on the exact-tile hot path.
+  - The kernel is already structurally reasonable, so a bounded control-overhead cleanup can matter.
 
 ### `grid-flatten-and-ub-buffering`
 
-- Summary: Change work distribution and UB staging when latency is dominated by too many logical tasks, uneven per-core work, physical-core load balance problems, or tiny row-wise memory transfers after a gather/scatter style rewrite.
+- Summary: Flatten logical work items onto physical cores and batch small row-wise memory transfers into wider UB stores to reduce launch overhead and improve per-core work density.
 - Source: [grid-flatten-and-ub-buffering.md](patterns/grid-flatten-and-ub-buffering.md)
 - Use When:
   - The logical grid is much larger than the physical AICore or VectorCore count.
@@ -201,29 +157,18 @@ Read this generated index first. Then read only the one or two most relevant det
   - Each program processes many tiny rows after grid-to-physical-core mapping.
   - Gather-like code has continuous destination rows but still stores one row at a time.
   - Scatter-weight-gradient-like code has repeated row loads that can be batched from continuous source rows.
-- Signals / Code:
-  - The logical grid is much larger than the physical AICore or VectorCore count.
-  - Work is partitioned by batch or sequence buckets that create visible load imbalance.
-  - Each physical program still processes many tiny rows or row-at-a-time transfers after grid mapping.
-- Signals / Profile:
-  - Latency is dominated by too many logical tasks, uneven per-core work, or tiny row-wise memory transfers after a gather or scatter style rewrite.
 
-### `layout-store-and-block-pointers`
+### `layout-materialization-elision`
 
-- Summary: Improve latency by reshaping memory layout, block-pointer dimensionality, and store granularity so the NPU sees continuous vector-friendly transfers instead of scalarized transpose or many tiny operations.
-- Source: [layout-store-and-block-pointers.md](patterns/layout-store-and-block-pointers.md)
+- Summary: Avoid materializing tensors whose only purpose is to change logical layout, such as `permute`, `transpose`, `movedim`, `reshape`, `squeeze`, or `unsqueeze`, when the next step immediately copies, stores, reduces, gathers, or otherwise consumes the data. Instead, express the desired logical layout in the consuming kernel's pointer math or block-pointer metadata and write directly to the final destination layout.
+- Source: [layout-materialization-elision.md](patterns/layout-materialization-elision.md)
 - Use When:
-  - Multiple stores target adjacent addresses but are emitted as separate small `tl.store` operations.
-  - `tl.store` writes a transposed logical tensor and appears to degrade into scalar element stores.
-  - A high-dimensional contiguous tensor is accessed through flattened one-dimensional offsets that stride through an inner dimension.
-  - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
-  - A `tl.dot` operand uses `tl.trans(x).to(dtype)` before entering Cube work.
-  - A matmul epilogue adds bias after `tl.dot` in a way that creates unnecessary broadcast or load ordering overhead.
-- Signals / Code:
-  - Multiple stores target adjacent addresses but are emitted as separate small `tl.store` operations.
-  - A store writes a transposed logical tensor and appears to degrade into scalar element stores.
-  - A high-dimensional contiguous tensor is accessed through flattened one-dimensional offsets that stride through an inner dimension.
-  - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
+  - The current implementation creates an intermediate tensor with `permute(...).contiguous()`, `transpose(...).contiguous()`, `movedim(...).contiguous()`, `clone()`, `copy_()`, or a Triton helper that exists only to produce a different physical layout.
+  - A later step immediately copies that intermediate into the final output, consumes it in a reduction, feeds it to a simple elementwise/gather/scatter kernel, or stores it in another layout.
+  - The layout transform is semantically just axis reordering, singleton-axis insertion/removal, reshape/view-compatible reindexing, or another affine mapping.
+  - The source and destination access pattern can be represented with explicit strides, 2D/3D tile offsets, or `tl.make_block_ptr`.
+  - Profiling shows `Transpose`, `Contiguous`, `DataCopy`, `Memcpy`, `copy_`, or a separate layout-conversion Triton kernel taking meaningful time.
+  - The output destination is known at dispatch time, so the optimized kernel can write the final layout directly.
 
 ### `loop-invariant-hoisting`
 
@@ -233,38 +178,24 @@ Read this generated index first. Then read only the one or two most relevant det
   - The kernel has a hot inner loop (often a K loop in GEMM-like kernels).
   - Each loop iteration repeats substantial pointer math, mask construction, type casts, or shape bookkeeping.
   - Profiling shows scalar/control work is disproportionately high relative to useful compute.
-- Signals / Code:
-  - Inner loop recomputes expressions of the form:
-  - `base(pid, offs) + delta(loop_var)`
-  - e.g. `a_ptr + offs_m*stride_am + k*stride_ak`
-  - Masks are rebuilt each iteration even when parts are invariant:
-  - e.g. `a_mask_m = offs_m < M` is invariant, but recomputed into `a_mask` each iter.
-- Signals / Profile:
-  - AIV scalar dominated by `LD_XD_XN_IMM`, `ST_XD_XN_IMM`, `ADD(_IMM)`, `CMP_IMM`.
-  - Timeline shows CUBE waiting on flags around the loop, while AIV performs control-heavy work.
-- Signals / IR:
-  - Repeated arithmetic chains (`muli/addi/index_cast`) inside `scf.while` / `scf.for` bodies.
-  - Loop bodies contain repeated `subi/minsi/maxsi` patterns for bounds handling.
+
+### `merge-adjacent-stores`
+
+- Summary: Combine separate small `tl.store` operations into one wider store when the destination addresses form a continuous interval, so the NPU emits a single vector-friendly DMA write instead of multiple tiny transactions.
+- Source: [merge-adjacent-stores.md](patterns/merge-adjacent-stores.md)
+- Use When:
+  - Multiple stores target adjacent addresses but are emitted as separate small `tl.store` operations.
+  - The destination addresses are provably continuous and the per-element masks are compatible.
+  - Profiling or code inspection shows store granularity, not load or compute, is limiting throughput.
 
 ### `padded_row_col_copy`
 
-- Summary: Optimize **constant pad** and similar **regular bounded copies** by rewriting a **flat 1D** kernel over `numel(out)` into **`out_rows` × `out_dim_last`**: grid over leading logical rows, **column blocks** on the last axis, and a **row-invariant input base** hoisted out of the column loop. Combine **`BLOCK_ROWS > 1`** when the last dim is small, **`NO_COL_PAD`** `constexpr` when the last axis has no pad, **host-side `BLOCK_COLS` refinement**, and optional **`NATIVE_MASKED_LOAD`** split by shape regime.
+- Summary: Rewrite flat 1D copy kernels over `numel(out)` into row–column tiled form to reduce scalar overhead from per-element coordinate reconstruction on the last dimension.
 - Source: [padded_row_col_copy.md](patterns/padded_row_col_copy.md)
 - Use When:
   - The operator is **constant pad**, **slice + pad**, or another **per-axis bounds** elementwise map (not gather).
   - The baseline uses **`pid * BLOCK + arange`** over **`numel(out)`** with **heavy div/mod** for **all** coordinates each iteration.
   - Profiling shows **high scalar** or **`tl.load` / mask** cost on **last-dim** pad boundaries.
-- Avoid When:
-  - The hot path is **gather/scatter** or **index-driven** discrete access (prefer `gather-load` / `discrete_memory_access`).
-  - **Dynamic `if`/`elif` on tile kind** inside the column loop is required without proof the backend lowers it safely—prefer a **uniform** column loop on Ascend unless validated.
-  - **Interior-only** fast paths that **omit `col_mask`** on `tl.store` without proof for **tail** blocks (`out_dim_last % BLOCK_COLS != 0`).
-- Signals / Code:
-  - Single linear `offsets` and repeated `//` / `%` on **large strides** to recover the **last** coordinate.
-  - One **global `valid`** merging every dimension on each lane of a large flat block.
-  - **Multi-phase** column loops (left / interior / right) with **different** `tl.store` masks.
-- Signals / Profile:
-  - Scalar or control overhead out of proportion to copy bandwidth.
-  - Hot path dominated by **masked load** or **compare** chains for pad bounds.
 
 ### `parallel`
 
@@ -273,13 +204,16 @@ Read this generated index first. Then read only the one or two most relevant det
 - Use When:
   - Two independent vector-side computations happen in sequence and can be split across vector cores.
   - The bottleneck is not primarily memory movement, so exposing more vector-core concurrency is more promising than reworking loads.
-- Avoid When:
-  - The candidate work items still share a real data dependency.
-  - The operation is mostly memory loading, where shared bandwidth is already the limiting factor.
-  - The operation is so small that `tl.parallel` overhead is likely larger than the gain.
-- Signals / Code:
-  - Independent type conversions, element-wise operations, or scaling steps already exist on the hot path.
-  - The candidate work split is compute-side and independent, rather than shared-bandwidth memory loading.
+
+### `pooling-inner-w-slab-gather`
+
+- Summary: For **sliding-window spatial pooling** in **NCHW-style** layouts where **W** is the **innermost contiguous** dimension, load one **W slab** of length **`W_SLAB_LEN = STRIDE_W * (BLOCK_OW - 1) + KERNEL_W`** at **`w_abs_min = ow_pid * BLOCK_OW * STRIDE_W - PAD_W`**, then **`tl.gather(slab, STRIDE_W * arange(BLOCK_OW) + kw)`** per **`kw`** instead of many **`start_w + kw`** masked loads. **2D/3D+** differ only in outer **`kh`/`kd`** loops. **Adoption gate:** not applied unless the hot path shows **`W_SLAB_LEN` load + gather**; **interior/boundary splits** may **combine** but **do not replace** gather. Operator-agnostic—validate on your harness.
+- Source: [pooling-inner-w-slab-gather.md](patterns/pooling-inner-w-slab-gather.md)
+- Use When:
+  - The kernel is **AvgPool / MaxPool** (**values only**), or any **fixed `KERNEL_W`** reduction along **W** on a **contiguous** NCHW (or 5D) tensor, with **`kw`** in a **`tl.constexpr`** loop and **`BLOCK_OW`** output columns per program.
+  - Profiling or IR shows **repeated narrow or predicate-heavy global loads** on **W** inside **`kw`**, while **`stride_w`** maps output columns to **regularly strided** input columns.
+  - **`out_w`** is large enough that **vectorizing along `ow`** matters, and **`triton.cmotion.cdiv(out_w, BLOCK_OW)`** (launch count along W) stays below a measured knee on the target NPU.
+  - You can prove **semantic equivalence** for the branches you enable (**padding**, **ceil**, **divisor** / **count_include_pad** for average, **`-inf` / dtype** rules for max).
 
 ### `program-multiple-rows`
 
@@ -289,38 +223,29 @@ Read this generated index first. Then read only the one or two most relevant det
   - The kernel is **naturally row-wise**: each output row depends mainly on one row of input (e.g. row-wise LogSumExp, row norms, row softmax statistics).
   - Profiling or timeline views suggest **high scalar/control overhead**, **under-filled vector work per program**, or **many tiny programs** relative to problem size `B` (batch / number of rows).
   - The row-wise math already uses **tile loops along `N`** (`BLOCK_N`); increasing **`BLOCK_M`** does not force an extra full pass over global memory if you keep a **single streaming pass** over `N` per program.
-- Avoid When:
-  - **Second full pass** over `x` for the same row (e.g. two-pass LSE) usually **increases global reads**; msprof often shows **more MTE / wait** unless the algorithm truly requires it. Prefer **single-pass streaming LSE** when numerically stable.
-  - **Ping-pong / multibuffer** without evidence of **MTE–vector overlap** can add **sync and UB** cost; treat as a **separate hypothesis** to validate.
-  - Do not conclude from **one** metric (e.g. `BAR` cycles) without **end-to-end** timing and comparable workload.
-- Signals / Code:
-  - `program_id(0)` indexes **rows 1:1** (`pid_m` is the row index), and the inner loop only tiles **`N`**.
-  - Scalar helpers (`program_id`, pointer arithmetic per row) run once **per row**; vector units see **narrow** tensors (e.g. `(1, BLOCK_N)` loads).
-- Signals / Profile:
-  - **`aiv_scalar_ratio`** or scalar-related time is **disproportionately high** compared to useful vector math, for workloads where `B` is large enough that vector throughput should dominate.
-  - **`op_statistic`** (per-kernel): **Avg** latency improves when the same logical work uses **fewer launches** (compare with care: **Count** and input shapes must be comparable across runs).
-  - If **`aiv_mte2_ratio`** is **not** the sole dominant bucket, pure “double-buffer the loads” may be the wrong first lever; **program batching** can still help by making each program’s inner loop **wider** along rows.
-  - Frequent **barrier / wait** patterns tied to **many short programs** or **thin** vector blocks.
-  - **Note:** High **`BAR`** cycle counts alone are **not** a success metric; correlate with **wall time**, **op_statistic Avg**, and correctness.
+
+### `reduce-avoid-transpose-copy`
+
+- Summary: Avoid implementing a non-last-dimension single-axis reduction by first doing `movedim(...).contiguous()` or an equivalent layout materialization. For contiguous row-major input, compute `[outer, reduce, inner]` from the original shape and reduce directly from the original layout with a strided/tiled kernel.
+- Source: [reduce-avoid-transpose-copy.md](patterns/reduce-avoid-transpose-copy.md)
+- Use When:
+  - The operator reduces exactly one logical axis.
+  - The reduce dimension is not the last dimension.
+  - The input tensor is contiguous in its original row-major layout.
+  - The current implementation uses `movedim(...).contiguous()`, `transpose(...).contiguous()`, `permute(...).contiguous()`, or another full layout materialization before reduction.
+  - Profiling shows `Transpose`, `Memcpy`, `DataCopy`, `Contiguous`, or similar layout-conversion work before the reduction kernel.
+  - The copy time is comparable to or larger than the reduction-kernel time.
+  - The suffix dimension after the reduced axis is large enough to provide reasonably coalesced loads along `inner`.
 
 ### `remove-implicit-transpose`
 
-- Summary: Eliminate **implicit transpose-style access** on Ascend NPU by **materializing the transposed operand on the host** (or by storing it in the preferred physical layout), instead of relying on stride tricks inside the kernel.
+- Summary: Eliminate implicit transpose-style access on Ascend NPU by ensuring operands are in the physical layout the kernel needs, avoiding compiler-injected layout transforms.
 - Source: [remove-implicit-transpose.md](patterns/remove-implicit-transpose.md)
 - Use When:
   - You implement GEMM / Linear-like kernels where one operand is stored as `[N, K]` but the math needs `[K, N]` (e.g. `y = x @ w.T`).
   - Kernel code accesses the operand with **transpose-like strides** (treats `[N, K]` as `[K, N]`).
+  - A `tl.dot` operand uses `tl.trans(x).to(dtype)` where the transpose is applied before the dtype conversion, and the result feeds directly into `tl.dot`.
   - Profiling shows high **scalar/control** and/or large **WAIT_FLAG** time around the matmul path.
-- Signals / Code:
-  - Weight is stored as `weight: [N, K]` (PyTorch `nn.Linear` default).
-  - Kernel computes `b_ptrs` like `b_ptr + k * stride_bk + n * stride_bn` and relies on strides to emulate `[K, N]`.
-- Signals / Profile:
-  - `WAIT_FLAG_DEVI` dominates the CUBE timeline around matmul.
-  - `MOV_OUT_TO_L1_MULTI_ND2NZ` / `nd2nz` and related fixpipe steps appear frequently.
-  - AIV shows large scalar `LD_XD_XN_IMM` / `ST_XD_XN_IMM` overhead tied to staging/reorder.
-- Signals / IR:
-  - `annotation.mark {MayImplicitTransposeWithLastAxis}`
-  - `memref.reinterpret_cast ... sizes: [*, *], strides: [1, ?]` on the B tile (common transpose-style view)
 
 ### `reorder-load`
 
@@ -331,20 +256,10 @@ Read this generated index first. Then read only the one or two most relevant det
   - **Multiple independent loads**: When several load operations have no data dependencies
   - **Memory-bound kernels**: Where memory latency is the performance bottleneck
   - **NPU targets**: Particularly beneficial for NPU's memory execution model
-- Avoid When:
-  - **Actual data dependencies**: When the load order affects semantic correctness
-  - **Very small kernels**: Where optimization overhead outweighs benefits
-  - **CPU targets**: CPUs typically have out-of-order execution and hardware scheduling
-  - **Complex dependency graphs**: Where reordering might create subtle race conditions
-- Signals / Code:
-  - Independent load operations are delayed behind unrelated computations or loop-carried dependencies.
-  - The hot loop contains several loads with no true dependency between them, but they are still issued serially.
-- Signals / Profile:
-  - The kernel behaves memory-bound, and reducing avoidable wait between independent loads looks more promising than changing arithmetic.
 
 ### `scalar-latency-traps`
 
-- Summary: Remove scalarizing constructs that make an otherwise vector-friendly Ascend Triton kernel spend time on avoidable scalar control, address arithmetic, or long dependency chains.
+- Summary: Remove scalarizing constructs that block vector hardware utilization on Ascend NPU, including unnecessary scalar control flow, loop-carried pointer recurrences, modulo addressing, narrow masks, and int64 arithmetic on vector paths.
 - Source: [scalar-latency-traps.md](patterns/scalar-latency-traps.md)
 - Use When:
   - Runtime values that are shape constants are passed as normal arguments instead of `tl.constexpr`.
@@ -352,13 +267,7 @@ Read this generated index first. Then read only the one or two most relevant det
   - Address expressions use modulo addressing (`%`) to wrap tail tiles or index boundaries.
   - `tl.where` masks all lanes except a single special position, or has exactly one false lane in a vector.
   - Integer elementwise arithmetic is done as scalar-looking `int64` work even though the value range is safely `int32`.
-  - `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
-- Signals / Code:
-  - Runtime values that are shape constants are passed as normal arguments instead of `tl.constexpr`.
-  - Pointer variables are updated with `+=` inside a loop, creating loop-carried address dependencies.
-  - Address expressions use modulo addressing (`%`) to wrap tail tiles or index boundaries.
-  - `tl.where` masks all lanes except a single special position, or has exactly one false lane in a vector.
-  - Integer elementwise arithmetic is done as scalar-looking `int64` work even though the value range is safely `int32`.
+  - `tl.cumsum` or `tl.associative_scan` runs on the last axis of a tensor and profiling or IR suggests scalar fallback instead of vector lowering.
   - `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
 
 ### `slice_coalesce`
@@ -384,34 +293,25 @@ Read this generated index first. Then read only the one or two most relevant det
 - Use When:
   - The hot loop already has a real tiled structure, but loads and computation still happen too serially.
   - Profiling suggests wait-heavy or overlap-poor behavior, and the next question is pipeline quality rather than basic kernel structure.
-- Avoid When:
-  - **Tiny Inner Loops**: If the loop only runs 1 or 2 times, the pre-fetch overhead might exceed the savings.
-  - **Extreme Memory Pressure**: If the tile size is so large that the Unified Buffer cannot hold two sets of tiles (current and next).
-  - **Dependency Chains**: If Tile `i+1` depends on the result of the computation of Tile `i`.
-  - **Pre-tiling rewrite still needed**: If the loop should first be rewritten into a regular tiled matmul or another clearer tile-based structure.
-- Signals / Code:
-  - The loop is already tiled, but each iteration still follows a mostly synchronous load-then-compute rhythm.
-  - Manual pointer arithmetic dominates the tiled loop, and block-pointer plus prefetch structure is still missing.
-- Signals / Profile:
-  - `msprof` timelines show Cube or Vector gaps while the MTE engines fetch the next tile.
-  - Wait-heavy behavior suggests insufficient memory/compute overlap rather than a missing tiled-kernel rewrite.
+
+### `stencil-resize-gm-to-ub-staging`
+
+- Summary: For 2D sampling kernels (resize, gather-stencil, pooling-like windows) whose hot path reads **multiple overlapping input samples per output point**, the core memory strategy is: **stage one contiguous input slab from global memory (GM) into on-chip buffer (UB) per program**, flatten it, then serve stencil reads via **UB-resident gather** and vector math. Secondary wins — often larger than tuning gather itself — are **eliminating UB internal densify copies**, **aligning slab row stride with gather indexing at allocation time**, **tightening slab bounds to the true input window**, and **enlarging the output tile to cut program count**. Prefer **2D output tiling** `(BLOCK_H, BLOCK_W)` over flattening the output plane onto a single 1D program axis.
+- Source: [stencil-resize-gm-to-ub-staging.md](patterns/stencil-resize-gm-to-ub-staging.md)
+- Use When:
+  - Kernel is memory-bound; input read count scales with `(output pixels × stencil footprint)`.
+  - IR shows `{DiscreteMemAccess}` / `{ExtractedLoadOrStore}` on per-lane GM loads in the stencil hot path.
+  - IR shows **`hivm.hir.copy` UB strided → UB dense** between slab load and gather.
+  - Source maps a **2D output tile** through a **1D linear program layout**, or uses **dynamic-index global loads** per stencil sample instead of a staged slab.
+  - msprof shows high **ST/LD** or inner **call_count** while **VGATHER share stays ~1%** — layout/launch issue, not gather-compute bound.
 
 ### `tiling`
 
-- Summary: Reduce per-program working-set size through hierarchical or sub-block tiling so large tiles, intermediates, or multi-tensor loads fit UB safely without collapsing overall task structure.
+- Summary: Reduce per-program working-set size through hierarchical or sub-block tiling, keeping live data within UB capacity.
 - Source: [tiling.md](patterns/tiling.md)
 - Use When:
   - Block sizes, live intermediates, or multi-tensor loads risk UB overflow or poor locality.
   - The main problem is working-set size and memory footprint, not the need for a completely different kernel structure.
-- Avoid When:
-  - **Small BLOCK_SIZE** No significant memory pressure
-  - **Simple operations** with single tensor - UB usage is minimal
-  - **Already optimized** with sub-blocking present
-  - **Structure is the real problem** - if the current kernel is really a manual matmul or reduction that should first become a regular tiled `tl.dot` loop
-- Signals / Code:
-  - Large `BLOCK_SIZE` values, multiple tensor loads, or heavy intermediates keep too much data live per program.
-  - The kernel already has a reasonable overall structure, but it still needs smaller sub-blocks to control UB usage.
-  - Runtime failures or memory access violations appear when block sizes increase on NPU.
 
 ### `vec-cmp`
 
@@ -420,11 +320,3 @@ Read this generated index first. Then read only the one or two most relevant det
 - Use When:
   - Explicit `i64` or `i32` comparisons appear on the hot path outside the compiler's normal fast load/store mask cases.
   - Comparison-heavy control flow or masking looks like a real vectorization blocker rather than just minor boundary handling.
-- Avoid When:
-  - **Comparisons in `tl.load`/`tl.store` masks** - already auto-optimized:
-  - **Already using fp32 comparisons** - no optimization needed:
-  - **Non-performance-critical code** - optimization overhead may not be justified
-- Signals / Code:
-  - Integer comparisons produce explicit boolean masks used in `tl.where`, conditional assignments, or similar hot-path logic.
-  - The comparison is written outside the compiler's normal `tl.load` or `tl.store` mask fast path.
-  - The code still compares integer operands directly even though vector-friendly `fp32` comparison would preserve semantics.

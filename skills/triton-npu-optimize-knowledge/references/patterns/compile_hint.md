@@ -1,32 +1,51 @@
-# Compiler Hint Pattern
+# Compiler And Lowering Hint Pattern
 
 ## Summary
 
-Try the following compile hints:
+Use compiler hints to communicate layout facts the compiler cannot safely infer from pointer math alone.
 
-  - Before call to `tl.dot` in matrices, use `tl.compile_hint(a, "dot_pad_only_k")` for matrices
-    involved in the product.
-  - Use `tl.multiple_of` (resp. `tl.max_contiguous`) to specify tensor slices that are known to be
-    aligned (resp. contiguous).
+This is a late-stage refinement pattern: apply `tl.compile_hint(..., "dot_pad_only_k")`, `tl.multiple_of(...)`, and `tl.max_contiguous(...)` only after the main kernel structure is already strong and the remaining opportunity is in lowering.
 
 ## Use When
 
-- The kernel structure already looks close to good, but the compiler still lacks explicit alignment or contiguity information.
-- `tl.dot` tiles, slices, or pointer math are known to satisfy stronger layout assumptions than the code currently expresses.
+- The hot kernel is already structurally good, but lowering still appears conservative.
+- You can prove stronger alignment or contiguity facts than the current code expresses.
+- `tl.dot` inputs are stable and only need targeted padding guidance on the active path.
+- Parent comparisons are already close enough that small lowering changes can still matter.
+
+## Avoid When
+
+- The dominant issue is still structural, such as wrong tiling, launch geometry, or algorithm shape.
+- Alignment or contiguity assumptions are shape-conditional and not yet guarded by dispatch.
+- Hints are being used to compensate for invalid pointer or index math.
 
 ## Signals
 
 ### Code
 
-- `tl.dot` inputs are already aligned in `M` and `N`, so only the `K` direction still needs padding hints.
+- `tl.dot` inputs already satisfy `M` and `N` alignment, so only the `K` direction still needs padding guidance.
 - Pointer slices are known contiguous or aligned, but the code does not yet communicate that with `tl.max_contiguous` or `tl.multiple_of`.
+
+### Profile
+
+- The parent kernel is already strong, and hint-only rounds produce small but plausible wins.
+- Some hint rounds regress despite beating historical baselines, which signals parent-vs-parent sensitivity.
 
 ## What To Verify After Applying
 
-- Verify the alignment or contiguity assumptions encoded in the hint are actually true for the rewritten slices.
-- Verify the compiler hints changed lowering or performance without changing the logical result.
+- Verify the asserted alignment or contiguity assumptions are actually true for every dispatched regime.
+- Verify boundary and tail behavior still works where masks and hints interact.
+- Verify the hints improved lowering or performance against the immediate parent, not just against older baselines.
 
 ## Detail
+
+Apply the smallest hint set that matches the proven hot path:
+
+- use `dot_pad_only_k` when `M` and `N` are already aligned and only `K` needs padding semantics
+- use `multiple_of` when alignment is guaranteed by the active branch contract
+- use `max_contiguous` when contiguous access width is guaranteed by the active branch contract
+
+If a hint only helps one dtype, shape, or dispatch branch, scope it there instead of applying it globally.
 
 ### dot_pad_only_k
 

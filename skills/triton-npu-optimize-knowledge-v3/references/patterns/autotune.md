@@ -1,3 +1,7 @@
+---
+priority: high
+---
+
 # Triton Autotune Pattern
 
 ## Summary

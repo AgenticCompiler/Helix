@@ -1,24 +1,18 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib
 import importlib.util
 import sys
 from pathlib import Path
-from typing import Protocol, TypedDict, cast
+from typing import Iterator, Protocol, cast
+
+from result_payload import ResultPayload
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 _RUN_BENCH_HINT = "Hint: use `compare-perf` to inspect this perf artifact instead of reading it directly."
 _RUN_TEST_HINT = "Hint: use `compare-result` to inspect this archived result instead of reading it directly."
-
-
-class ResultPayload(TypedDict):
-    return_code: int
-    stdout: str
-    stderr: str
-    stalled: bool
-    session_id: str | None
-
 
 class ParseMetadataFn(Protocol):
     def __call__(self, path: Path) -> dict[str, str]: ...
@@ -30,6 +24,8 @@ class RunLocalTestFn(Protocol):
         test_file: Path,
         operator_file: Path,
         test_mode: str,
+        *,
+        verbose: bool = False,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -53,6 +49,7 @@ class RunLocalBenchFn(Protocol):
         bench_file: Path,
         operator_file: Path,
         bench_mode: str,
+        npu_devices: str | None = None,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -64,6 +61,7 @@ class RunRemoteBenchFn(Protocol):
         bench_mode: str,
         remote: str,
         remote_workdir: str | None,
+        npu_devices: str | None = None,
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: object | None = None,
@@ -88,7 +86,14 @@ class CompareRemoteResultFn(Protocol):
 
 
 class ComparePerfFn(Protocol):
-    def __call__(self, baseline_perf: Path, compare_perf: Path) -> int: ...
+    def __call__(
+        self,
+        baseline_perf: Path,
+        compare_perf: Path,
+        *,
+        skip_latency_errors: bool = False,
+        metric_source: str = "auto",
+    ) -> int: ...
 
 
 class RunLocalProfileBenchFn(Protocol):
@@ -137,6 +142,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_test = subparsers.add_parser("run-test")
     run_test.add_argument("--test-file", required=True)
     run_test.add_argument("--operator-file", required=True)
+    run_test.add_argument("--oracle-result")
+    run_test.add_argument("--compare-level", choices=["strict", "balanced", "relaxed"])
     run_test.add_argument("--remote")
     run_test.add_argument("--remote-workdir")
     run_test.add_argument("--keep-remote-workdir", action="store_true")
@@ -151,6 +158,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_bench.add_argument("--keep-remote-workdir", action="store_true")
     run_bench.add_argument("--verbose", action="store_true")
     run_bench.add_argument("--bench-mode", choices=["standalone", "msprof"])
+    run_bench.add_argument("--npu-devices")
 
     profile_bench = subparsers.add_parser("profile-bench")
     profile_bench.add_argument("--bench-file", required=True)
@@ -186,6 +194,12 @@ def build_parser() -> argparse.ArgumentParser:
     compare_perf = subparsers.add_parser("compare-perf")
     compare_perf.add_argument("--baseline", required=True)
     compare_perf.add_argument("--compare", required=True)
+    compare_perf.add_argument("--skip-latency-errors", action="store_true")
+    compare_perf.add_argument(
+        "--metric-source",
+        default="auto",
+        choices=["auto", "kernel", "total-op", "all"],
+    )
 
     return parser
 
@@ -219,13 +233,29 @@ def main(argv: list[str] | None = None) -> int:
         compare_perf_files = _load_compare_perf_function()
         baseline_perf = _resolve_existing_path(parser, args.baseline, "Baseline perf")
         compare_perf = _resolve_existing_path(parser, args.compare, "Compare perf")
-        return compare_perf_files(baseline_perf, compare_perf)
+        return compare_perf_files(
+            baseline_perf,
+            compare_perf,
+            skip_latency_errors=args.skip_latency_errors,
+            metric_source=args.metric_source,
+        )
 
     if args.command == "run-test":
         _parse_test_metadata, run_local_test, run_remote_test = _load_test_functions()
         test_file = _resolve_existing_path(parser, args.test_file, "Test file")
         operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
+        oracle_result = (
+            _resolve_existing_path(parser, args.oracle_result, "Oracle result")
+            if args.oracle_result is not None
+            else None
+        )
         resolved_test_mode = args.test_mode or _resolve_test_mode_from_metadata(test_file)
+        compare_level = _resolve_run_test_compare_level(
+            parser,
+            args,
+            resolved_test_mode,
+            oracle_result,
+        )
         remote_workspace: str | None = None
         try:
             if args.remote:
@@ -240,18 +270,34 @@ def main(argv: list[str] | None = None) -> int:
                     stderr=sys.stderr,
                 )
             else:
-                result, archived_result = run_local_test(test_file, operator_file, resolved_test_mode)
+                result, archived_result = run_local_test(
+                    test_file,
+                    operator_file,
+                    resolved_test_mode,
+                    verbose=args.verbose,
+                )
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
             return 1
         _render_result(result, show_output=True)
         print(f"Return code: {result['return_code']}")
+        final_code = int(result["return_code"])
         if archived_result is not None:
             print(f"Archived result: {archived_result}")
-            print(_RUN_TEST_HINT)
+            if oracle_result is not None:
+                compare_result_files = _load_compare_result_functions()[0]
+                final_code = compare_result_files(oracle_result, archived_result, compare_level)
+            else:
+                print(_RUN_TEST_HINT)
+        elif oracle_result is not None:
+            print(
+                "Differential run-test did not produce an archived result required for automatic comparison.",
+                file=sys.stderr,
+            )
+            final_code = 1
         if args.remote and args.keep_remote_workdir and remote_workspace is not None:
             print(f"Remote workspace: {remote_workspace}")
-        return int(result["return_code"])
+        return final_code
 
     if args.command == "profile-bench":
         run_local_profile_bench, run_remote_profile_bench = _load_profile_functions()
@@ -318,12 +364,18 @@ def main(argv: list[str] | None = None) -> int:
                 resolved_bench_mode,
                 args.remote,
                 args.remote_workdir,
+                args.npu_devices,
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
             )
         else:
-            result, perf_path = run_local_bench(bench_file, operator_file, resolved_bench_mode)
+            result, perf_path = run_local_bench(
+                bench_file,
+                operator_file,
+                resolved_bench_mode,
+                args.npu_devices,
+            )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -357,6 +409,19 @@ def _resolve_test_mode_from_metadata(test_file: Path) -> str:
     return mode
 
 
+def _resolve_run_test_compare_level(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    resolved_test_mode: str,
+    oracle_result: Path | None,
+) -> str:
+    if args.compare_level is not None and oracle_result is None:
+        parser.error("--compare-level requires --oracle-result")
+    if oracle_result is not None and resolved_test_mode != "differential":
+        parser.error("--oracle-result is supported only with --test-mode differential")
+    return args.compare_level or "balanced"
+
+
 def _resolve_bench_mode_from_metadata(bench_file: Path) -> str:
     parse_bench_metadata = _load_bench_functions()[0]
     metadata = parse_bench_metadata(bench_file)
@@ -376,8 +441,8 @@ def _render_result(result: ResultPayload, show_output: bool) -> None:
 
 
 def _load_test_functions() -> tuple[ParseMetadataFn, RunLocalTestFn, RunRemoteTestFn]:
-    _ensure_script_dir_on_path()
-    module = importlib.import_module("test_runner")
+    with _script_dir_on_path():
+        module = importlib.import_module("test_runner")
 
     return (
         cast(ParseMetadataFn, getattr(module, "parse_test_metadata")),
@@ -387,9 +452,9 @@ def _load_test_functions() -> tuple[ParseMetadataFn, RunLocalTestFn, RunRemoteTe
 
 
 def _load_bench_functions() -> tuple[ParseMetadataFn, RunLocalBenchFn, RunRemoteBenchFn]:
-    _ensure_script_dir_on_path()
-    from bench_contract import parse_bench_metadata
-    from bench_runner import run_local_bench, run_remote_bench
+    with _script_dir_on_path():
+        from bench_contract import parse_bench_metadata
+        from bench_runner import run_local_bench, run_remote_bench
 
     return (
         cast(ParseMetadataFn, parse_bench_metadata),
@@ -399,8 +464,8 @@ def _load_bench_functions() -> tuple[ParseMetadataFn, RunLocalBenchFn, RunRemote
 
 
 def _load_compare_result_functions() -> tuple[CompareResultFn, CompareRemoteResultFn]:
-    _ensure_script_dir_on_path()
-    module = importlib.import_module("compare_result")
+    with _script_dir_on_path():
+        module = importlib.import_module("compare_result")
 
     return (
         cast(CompareResultFn, getattr(module, "compare_result_files")),
@@ -409,15 +474,15 @@ def _load_compare_result_functions() -> tuple[CompareResultFn, CompareRemoteResu
 
 
 def _load_compare_perf_function() -> ComparePerfFn:
-    _ensure_script_dir_on_path()
-    from perf_artifacts import compare_perf_files
+    with _script_dir_on_path():
+        from perf_artifacts import compare_perf_files
 
     return cast(ComparePerfFn, compare_perf_files)
 
 
 def _load_profile_functions() -> tuple[RunLocalProfileBenchFn, RunRemoteProfileBenchFn]:
-    _ensure_script_dir_on_path()
-    module = importlib.import_module("profile_runner")
+    with _script_dir_on_path():
+        module = importlib.import_module("profile_runner")
 
     return (
         cast(RunLocalProfileBenchFn, getattr(module, "run_local_profile_bench")),
@@ -432,14 +497,12 @@ def _build_profile_report(
     output_format: str = "markdown",
 ) -> str:
     script = SCRIPT_DIR.parents[1] / "triton-npu-profile-operator" / "scripts" / "reporter.py"
-    profile_scripts_dir = str(script.parent)
-    if profile_scripts_dir not in sys.path:
-        sys.path.insert(0, profile_scripts_dir)
-    spec = importlib.util.spec_from_file_location("profile_reporter_runtime", script)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load profile reporter script: {script}")
-    loaded_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(loaded_module)
+    with _temporary_sys_path_entry(str(script.parent)):
+        spec = importlib.util.spec_from_file_location("profile_reporter_runtime", script)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Unable to load profile reporter script: {script}")
+        loaded_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(loaded_module)
     module = cast(ProfileSummaryModule, loaded_module)
     return module.build_report(
         profile_dir,
@@ -449,10 +512,23 @@ def _build_profile_report(
     )
 
 
-def _ensure_script_dir_on_path() -> None:
-    script_dir = str(SCRIPT_DIR)
-    if script_dir not in sys.path:
-        sys.path.insert(0, script_dir)
+@contextlib.contextmanager
+def _temporary_sys_path_entry(path: str) -> Iterator[None]:
+    added = False
+    if path not in sys.path:
+        sys.path.insert(0, path)
+        added = True
+    try:
+        yield
+    finally:
+        if added:
+            sys.path.remove(path)
+
+
+@contextlib.contextmanager
+def _script_dir_on_path() -> Iterator[None]:
+    with _temporary_sys_path_entry(str(SCRIPT_DIR)):
+        yield
 
 
 if __name__ == "__main__":

@@ -2,9 +2,7 @@
 
 ## Summary
 
-Optimize **constant pad** and similar **regular bounded copies** by rewriting a **flat 1D** kernel over `numel(out)` into **`out_rows` × `out_dim_last`**: grid over leading logical rows, **column blocks** on the last axis, and a **row-invariant input base** hoisted out of the column loop. Combine **`BLOCK_ROWS > 1`** when the last dim is small, **`NO_COL_PAD`** `constexpr` when the last axis has no pad, **host-side `BLOCK_COLS` refinement**, and optional **`NATIVE_MASKED_LOAD`** split by shape regime.
-
-Adoption must pass **local correctness and benchmark gates**; this card does not reference a specific operator file.
+Rewrite flat 1D copy kernels over `numel(out)` into row–column tiled form to reduce scalar overhead from per-element coordinate reconstruction on the last dimension.
 
 ## Use When
 
@@ -27,7 +25,7 @@ Adoption must pass **local correctness and benchmark gates**; this card does not
 
 ## Avoid When
 
-- The hot path is **gather/scatter** or **index-driven** discrete access (prefer `gather-load` / `discrete_memory_access`).
+- The hot path is **gather/scatter** or **index-driven** discrete access (prefer `discrete_memory_access`).
 - **Dynamic `if`/`elif` on tile kind** inside the column loop is required without proof the backend lowers it safely—prefer a **uniform** column loop on Ascend unless validated.
 - **Interior-only** fast paths that **omit `col_mask`** on `tl.store` without proof for **tail** blocks (`out_dim_last % BLOCK_COLS != 0`).
 

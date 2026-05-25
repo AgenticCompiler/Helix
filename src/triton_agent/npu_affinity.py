@@ -43,10 +43,7 @@ def validate_batch_affinity_capacity(
 
 
 def affinity_env_for_device(device: str) -> dict[str, str]:
-    return {
-        "ASCEND_RT_VISIBLE_DEVICES": device,
-        "TRITON_AGENT_ASSIGNED_NPU": device,
-    }
+    return {"ASCEND_RT_VISIBLE_DEVICES": device}
 
 
 class BatchNpuAffinityPool:

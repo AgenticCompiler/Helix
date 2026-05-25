@@ -16,7 +16,7 @@ Use this skill when optimize work cannot yet start because baseline artifacts ar
 - reusable correctness and benchmark harnesses
 - `baseline/`
 - `baseline/state.json`
-- `baseline/perf.txt`
+- `baseline/<operator>_perf.txt`
 
 ## Workflow
 
@@ -38,7 +38,7 @@ Use this skill when optimize work cannot yet start because baseline artifacts ar
 - Read `../triton-npu-optimize/references/artifacts.md` before writing `baseline/state.json`.
 - Create `baseline/`.
 - Write `baseline/state.json`.
-- Write `baseline/perf.txt`.
+- Write `baseline/<operator>_perf.txt`.
 - Keep the canonical baseline artifacts anchored to the operator state that just passed correctness and benchmark validation.
 
 ### 4. Gate The Baseline
@@ -54,7 +54,7 @@ This skill is complete only when:
 - the workspace has reusable correctness and benchmark harnesses
 - `baseline/` exists
 - `baseline/state.json` exists and matches the optimize artifact contract
-- `baseline/perf.txt` exists
+- `baseline/<operator>_perf.txt` exists
 - `triton-npu-optimize-check` `check-baseline` passes
 
 ## Hard Rules

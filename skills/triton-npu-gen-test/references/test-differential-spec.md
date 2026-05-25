@@ -89,7 +89,8 @@ def build_operator_api(operator_module):
   - different dtypes
 - Avoid empty tensors and invalid shapes.
 - All tensors must be created on device **`"npu"`**.
-- Set seeds so the test data is reproducible.
+- Randomized input generation is allowed, but the harness must explicitly fix the seed during case construction so repeated runs of the same harness produce identical inputs.
+- Do not depend on ambient global RNG state or prior random draws to keep cases stable.
 
 ### 5. Differential output behavior
 

@@ -32,6 +32,7 @@
 - Clean up only the copied skill paths created by the current run.
 - Never delete or replace user-owned files or directories during cleanup.
 - Treat the top-level `workspace/` directory as a placeholder area for local experimentation, not as repository-owned source, fixture, or verification input.
+- Keep `skills/*/scripts/` self-contained: skill-side Python helpers must not import `triton_agent`. If runtime code needs to reuse a skill-script implementation, load it through the existing bridge layer in `src/triton_agent/skill_loader.py` instead of creating a reverse dependency from the skill back into `src/`.
 - When modifying Python files under `skills/*/scripts/`, always run the additional file-scoped `pyright` strict check via `bash scripts/run-skill-script-pyright.sh skills/path/to/script.py` before considering the change complete, even though the repository default keeps those scripts in basic mode.
 
 ## Agent Backends
@@ -54,14 +55,19 @@
 - Document behavior in terms of user-visible semantics first and implementation details second.
 - Use `AGENTS.md` for stable project rules and workflow expectations.
 - Keep human-facing contract prose in skills or focused references, and keep machine-readable contracts in one loadable source rather than duplicating field lists across prompts, checkers, and runtime code.
-- Use the standard repository verification commands documented in `README.md`.
-- Generic optimize pattern cards under `skills/triton-npu-optimize-knowledge/references/patterns/` are authored Markdown sources, while `skills/triton-npu-optimize-knowledge/references/pattern_index.md` is generated and must be regenerated after editing a pattern card instead of hand-edited.
-- Generic optimize symptom cards under `skills/triton-npu-optimize-knowledge/references/symptoms/` are authored Markdown sources, while `skills/triton-npu-optimize-knowledge/references/symptom_index.md` is generated and must be regenerated after editing a symptom card instead of hand-edited.
+- Use the standard repository verification commands documented in `README.md`: `uv run --group dev ruff check`, `uv run pyright`, and `uv run python -m unittest discover -s tests -v`.
+- When running tests with pytest (e.g. during agent workflows), always pass `-q --tb=short --no-header -p no:warnings` to avoid wasting context on per-test verbose output or progress dots. Example: `uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/`.
+- Generic optimize pattern cards under `skills/triton-npu-optimize-knowledge/references/patterns/` are authored Markdown sources, while `skills/triton-npu-optimize-knowledge/references/pattern_index.md` is generated and must be regenerated after editing a pattern card instead of hand-edited. Regenerate with: `uv run python skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py --patterns-dir skills/triton-npu-optimize-knowledge/references/patterns --output skills/triton-npu-optimize-knowledge/references/pattern_index.md`
+- Generic optimize symptom cards under `skills/triton-npu-optimize-knowledge/references/symptoms/` are authored Markdown sources, while `skills/triton-npu-optimize-knowledge/references/symptom_index.md` is generated and must be regenerated after editing a symptom card instead of hand-edited. Regenerate with: `uv run python skills/triton-npu-optimize-knowledge/scripts/build_symptom_index.py --symptoms-dir skills/triton-npu-optimize-knowledge/references/symptoms --output skills/triton-npu-optimize-knowledge/references/symptom_index.md`
 
 ## Optimization Patterns
 
 - Every optimize pattern card must begin with a top-level `# <Human Title>` heading before its structured sections.
 - Every generic optimize pattern card defined in `skills/triton-npu-optimize-knowledge/references/patterns/` must include `## Summary` and `## Use When`; it may additionally use `## Avoid When`, `## Signals`, `## Related Patterns`, and `## What To Verify After Applying`, with optional `### Code`, `### Profile`, and `### IR` under `## Signals`.
+- Pattern-card frontmatter may include `priority: high|normal`; omit it to default to `normal`.
+- `priority` is index-rendering metadata, not a replacement for structured sections in the card body.
+- The generated `pattern_index.md` must include a `## High Priority Patterns` section that lists cards marked `high`.
+- `## Summary` describes **what** the pattern is or does (1–2 sentences). `## Use When` describes **when** to apply it (detection conditions). Keep them orthogonal: the same information must not appear in both sections.
 - Every generic optimize symptom card defined in `skills/triton-npu-optimize-knowledge/references/symptoms/` must include `## Summary`, `## Evidence To Confirm`, and `## Candidate Pattern Directions`; it may additionally use `## Common Non-Matches`.
 - When existing pattern content already semantically belongs to one of those predefined sections, move it into that section instead of leaving it only in free-form prose.
 - Free-form sections are still allowed for examples, background, or architecture notes, but authors should preserve the predefined section names exactly so the pattern index generator can extract them reliably.

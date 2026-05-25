@@ -4,8 +4,6 @@
 
 Apply **Loop-Invariant Code Motion (LICM)** to Triton kernels: move computations that do **not** depend on the loop induction variable out of the loop, so each iteration performs only the minimal work that truly varies.
 
-On Ascend NPU, LICM most often reduces **AIV scalar/control** overhead (address generation, compares, index casts) and can indirectly reduce **CUBE starvation** (`WAIT_FLAG_DEVI`) by simplifying the loop body.
-
 ## Use When
 
 - The kernel has a hot inner loop (often a K loop in GEMM-like kernels).

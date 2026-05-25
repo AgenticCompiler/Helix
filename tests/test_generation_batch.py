@@ -149,7 +149,7 @@ class GenerationBatchHelpersTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(
-                {env["TRITON_AGENT_ASSIGNED_NPU"] for env in seen_envs},
+                {env["ASCEND_RT_VISIBLE_DEVICES"] for env in seen_envs},
                 {"0", "1"},
             )
 
