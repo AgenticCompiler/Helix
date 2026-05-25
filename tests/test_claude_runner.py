@@ -36,7 +36,57 @@ class ClaudeRunnerTests(unittest.TestCase):
             command = runner.build_command(request)
             self.assertEqual(command[:2], ["claude", "--print"])
             self.assertIn("--dangerously-skip-permissions", command)
+            self.assertNotIn("--output-format", command)
             self.assertEqual(command[-1], "Prompt body")
+
+    def test_show_output_enables_stream_json_without_log_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = ClaudeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=True,
+                force_overwrite=False,
+                agent_name="claude",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+                log_tools=False,
+            )
+            command = runner.build_command(request)
+            self.assertIn("--output-format", command)
+            self.assertIn("stream-json", command)
+            self.assertIn("--verbose", command)
+
+    def test_show_output_gets_json_output_filter_without_log_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = ClaudeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=True,
+                force_overwrite=False,
+                agent_name="claude",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+                log_tools=False,
+            )
+            self.assertIsNotNone(runner.output_filter(request))
 
     def test_interactive_command_uses_prompt_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
