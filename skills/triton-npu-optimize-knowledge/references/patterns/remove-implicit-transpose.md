@@ -61,6 +61,38 @@ acc = tl.dot(a, tl.trans(b))
 
 Only apply this when the transposed tensor is directly consumed by `tl.dot`. Pure Vector code or non-dot uses do not benefit from the Cube load path.
 
+### Strategy C: Time-axis coalescing for gate-like tensors
+
+For recurrent, attention, or chunked kernels, a host-side transpose can be worthwhile even though it materializes a new layout. Use it when the original layout is logically convenient for the framework but makes the kernel's hot time-axis access strided.
+
+Common FLA-style case:
+
+- source layout: `g` or `beta` is `[B, T, HV]`
+- kernel access pattern: fixed `(B, HV)` lane loads a contiguous `T` chunk
+- optimized wrapper layout: `g = g.transpose(1, 2).contiguous()` and `beta = beta.transpose(1, 2).contiguous()`
+- kernel block pointer: base `(i_b * HV + i_h) * T`, shape `(T,)`, stride `(1,)`
+
+This is a beneficial layout materialization, not a layout-copy deletion. The goal is to trade one wrapper-side transpose for contiguous vector/block-pointer loads in a heavier kernel path.
+
+```python
+# Wrapper side.
+g = g.transpose(1, 2).contiguous()
+beta = beta.transpose(1, 2).contiguous()
+
+# Kernel side: fixed batch/head lane, contiguous time vector.
+p_g = tl.make_block_ptr(
+    g + (i_b * HV + i_h) * T,
+    (T,),
+    (1,),
+    (chunk_off * BT,),
+    (BT,),
+    (0,),
+)
+b_g = tl.load(p_g, boundary_check=(0,))
+```
+
+Use this only when the conversion cost is amortized. If the next kernels need `[B, T, HV]` again, account for any restore path such as gradient reduction plus `permute(...).contiguous()`.
+
 ## Implementation Sketch (Strategy A)
 
 ### Before (implicit transpose-style access)
@@ -95,6 +127,7 @@ b_ptrs = b_kn_ptr + (k_offs[:, None] * stride_bk + offs_n[None, :] * stride_bn)
 
 - **Extra host-side work**: `weight.t().contiguous()` is a real transpose + copy.
   - Good when weights are **reused** (inference/training loops), less good if weights change every call.
+- **Time-axis coalescing cost**: `transpose(1, 2).contiguous()` for `[B, T, HV]` is also a real copy. It is only profitable when it removes enough strided hot-path traffic or can be shared by multiple kernels.
 - **Memory overhead**: storing both `[N, K]` and `[K, N]` can double weight storage if not managed carefully.
 - **Layout mismatch across kernels**: ensure downstream kernels expect the same layout; keep the original weight too if needed.
 - **Dot-operand reorder**: only valid when the final consumer is `tl.dot`. Reordering for a Vector-only consumer may not help.

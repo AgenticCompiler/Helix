@@ -24,6 +24,7 @@ This pattern is most valuable when the materialized layout tensor is large enoug
 - The intermediate layout is reused by multiple later kernels and materializing it once is cheaper than repeating strided access.
 - The transform is not a simple affine layout mapping, such as value-dependent indexing that needs a different gather/scatter strategy.
 - The consumer truly requires a physical contiguous layout for a backend-specific fast path, and direct strided access is slower than the one-time layout copy.
+- The layout copy intentionally converts a hot strided kernel access into contiguous time-axis loads, such as `[B, T, HV] -> [B, HV, T]` for repeated per-head chunk loads. In that case, treat the copy as an explicit layout optimization and verify it end-to-end instead of deleting it blindly.
 - The tensor is tiny and the extra branch, specialization, or kernel complexity costs more than the removed copy.
 - Non-contiguous inputs are allowed but the rewritten kernel only handles contiguous row-major strides.
 - The final output has aliasing or in-place semantics that make direct writes unsafe.

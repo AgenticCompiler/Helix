@@ -41,6 +41,34 @@ Split exact-tile hot paths from generic masked kernels when dispatch-time shape 
 4. Keep the generic masked kernel for all non-exact cases.
 5. Compare parent-vs-child performance on the exact case and verify fallback coverage.
 
+### Variant: chunk recurrence tail peeling
+
+For chunked recurrence kernels, the whole sequence may not be tile-divisible, but every chunk before the last one is still full. In that case, split the recurrence into a full-chunk hot loop plus one tail block:
+
+- hot loop: `for i_t in range(NT - 1)` with no per-iteration `min`, tail mask, or boundary-only `tl.where`
+- tail block: `i_t = NT - 1`, compute `last_idx = min(NT * BT, T) - 1`, and keep the masks needed for the partial final chunk
+
+This is a "mostly exact tile" fast path. It avoids paying tail-control cost in every recurrence iteration while preserving the generic final chunk behavior.
+
+```python
+# Full chunks: no scalar min/mask/where in the hot loop.
+for i_t in range(NT - 1):
+    last_idx = (i_t + 1) * BT - 1
+    b_g_last = tl.load(g_base + last_idx)
+    b_g = tl.load(p_g_full_chunk, boundary_check=(0,))
+    b_v = b_v * exp(b_g_last - b_g)[:, None]
+
+# Tail chunk: may be partial.
+i_t = NT - 1
+last_idx = min(NT * BT, T) - 1
+m_t = (i_t * BT + tl.arange(0, BT)) < T
+b_g_last = tl.load(g_base + last_idx)
+b_g = tl.load(p_g_tail, boundary_check=(0,))
+b_v = b_v * tl.where(m_t, exp(b_g_last - b_g), 0)[:, None]
+```
+
+Use this when only the final chunk can be partial. Avoid it if many chunks are irregular, or if the mask is algorithm semantics rather than boundary protection.
+
 ## Example
 
 ```python
@@ -69,6 +97,7 @@ NPUKernelBench `20_Gather` rank-2 `dim=0` used this on `bf16 x=(5120,27648), dim
 - Fallback still handles non-divisible shapes.
 - The aligned kernel IR no longer contains the targeted boundary checks or masks.
 - Parent-vs-child benchmark improves on the targeted case without broad regressions.
+- For chunk recurrence tail peeling, test `T < BT`, `T == BT`, `T % BT == 0`, `T % BT != 0`, and varlen branches if present.
 
 ## Related Patterns
 

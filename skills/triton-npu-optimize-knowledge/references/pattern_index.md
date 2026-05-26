@@ -53,6 +53,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - The hot path performs **two or more full traversals** of the same data for statistics, normalization, or mergeable closed-form subexpressions.
   - Profiler or IR suggests **duplicate MTE-heavy** phases that differ only by a scalar statistic of the same tensor.
   - Elementwise **logical** ops (`logical_or`, `logical_and`, …) use **broadcasting**, and truth tests (`ne`, `!= 0`) run on **fully expanded** numeric tensors.
+  - Pairwise gated tiles compute `exp(g_i - g_j)` only as a multiplicative factor and can use row/column broadcast factors instead.
   - You want fewer global passes or cheaper elementwise work **before** changing tile sizes, pipelines, or autotune grids.
 
 ### `attention-cv-pipeline`
@@ -108,6 +109,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - You can prove stronger alignment or contiguity facts than the current code expresses.
   - `tl.dot` inputs are stable and only need targeted padding guidance on the active path.
   - Parent comparisons are already close enough that small lowering changes can still matter.
+  - Existing related kernels use different Ascend launch hints, suggesting the choice is path-sensitive.
 
 ### `diagonal`
 
@@ -269,6 +271,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Integer elementwise arithmetic is done as scalar-looking `int64` work even though the value range is safely `int32`.
   - `tl.cumsum` or `tl.associative_scan` runs on the last axis of a tensor and profiling or IR suggests scalar fallback instead of vector lowering.
   - `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
+  - A boundary-only mask repeats validity conditions that earlier `tl.load(..., boundary_check=...)` or safe zero-padding already handled.
 
 ### `slice_coalesce`
 
