@@ -8,6 +8,7 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -56,6 +57,8 @@ from run_runtime import (
 )
 
 _LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR"
+_standalone_runtime_module_cache = None
+_standalone_runtime_module_lock = threading.Lock()
 _T = TypeVar("_T")
 
 
@@ -736,18 +739,30 @@ def _standalone_runtime_support_paths() -> list[Path]:
 
 
 def _load_standalone_runtime_module():
-    script_path = _standalone_runtime_script_path()
-    module_name = f"triton_agent_standalone_bench_runtime_{script_path.stem}"
-    spec = importlib.util.spec_from_file_location(module_name, script_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load standalone runtime helper: {script_path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    try:
-        spec.loader.exec_module(module)
-    finally:
-        sys.modules.pop(module_name, None)
-    return module
+    global _standalone_runtime_module_cache
+    cached_module = _standalone_runtime_module_cache
+    if cached_module is not None:
+        return cached_module
+
+    with _standalone_runtime_module_lock:
+        cached_module = _standalone_runtime_module_cache
+        if cached_module is not None:
+            return cached_module
+
+        script_path = _standalone_runtime_script_path()
+        module_name = f"triton_agent_standalone_bench_runtime_{script_path.stem}"
+        spec = importlib.util.spec_from_file_location(module_name, script_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Unable to load standalone runtime helper: {script_path}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            sys.modules.pop(module_name, None)
+            raise
+        _standalone_runtime_module_cache = module
+        return module
 
 
 def _run_local_bench_msprof(
