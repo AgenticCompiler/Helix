@@ -45,14 +45,17 @@ isProject: false
 - [src/triton_agent/optimize/batch.py](../../src/triton_agent/optimize/batch.py)：`optimize-batch-status.json`
 - [src/triton_agent/status/core.py](../../src/triton_agent/status/core.py)：`inspect_optimize_status_workspace`、best round、speedup
 - [src/triton_agent/verification/core.py](../../src/triton_agent/verification/core.py)：`verify-state.json`
-- [src/triton_agent/log_check/batch.py](../../src/triton_agent/log_check/batch.py)：`log_check_result.md` 解析
+- [src/triton_agent/log_check/batch.py](../../src/triton_agent/log_check/batch.py)：`log_check_result.json` 解析
+- [src/triton_agent/log_check/check_json.py](../../src/triton_agent/log_check/check_json.py)：JSON schema 校验与修复（计划中）
+- [src/triton_agent/log_check/check_markdown.py](../../src/triton_agent/log_check/check_markdown.py)：从 JSON 渲染 markdown（计划中）
 
 ---
 
 ## 1. 字段对齐原则
 
 - 路径：相对 `<batch-root>` 的 POSIX 路径
-- 状态枚举：小写短横线 `completed`、`incomplete`、`missing`、`passed`、`failed`、`skipped`、`unknown`
+- 状态枚举：小写短横线 `completed`、`incomplete`、`passed`、`failed`、`skipped`、`unknown`
+- `check.checks[].result` 直接取 `log_check_result.json` 中 `checks[].result` 的原值（小写 `pass` / `fail`），不做大小写转换
 - speedup：JSON 存 float 倍数（如 `1.23`）
 - `best_round`：统一 `round-N`
 
@@ -67,21 +70,21 @@ isProject: false
 | ------------------------------- | --------------------------------------------- | ---------------------------------------------------------- |
 | `workspace`                     | 目录扫描                                          | 相对 batch-root                                              |
 | `operator_file`                 | `optimize-batch-status.json`                  | 相对路径                                                       |
-| `status`                        | `optimize-batch-status.json` → `status`       | `completed` / `incomplete` / `missing` / `skipped`         |
+| `status`                        | `optimize-batch-status.json` → `status` + collector 推导 | `completed` / `incomplete` / `skipped`。`optimize-batch-status.json` 有记录则取其值；无记录且目录存在则推导为 `incomplete`
 | `optimize.status`               | `status.core.OptimizeStatusWorkspace.state`   | `ok` / `warning` / `no-session`                            |
 | `optimize.round_count`          | `opt-round-`* 目录计数                            | int                                                        |
 | `optimize.best_round`           | `status.core.best_round`                      | `round-N` 或 null                                           |
 | `optimize.best_geomean_speedup` | `status.core.geomean_speedup`                 | float 或 null                                               |
-| `verify.status`                 | `verify-state.json` 归一化                       | `passed` / `failed` / `missing` / `skipped`                |
+| `verify.status`                 | `verify-state.json` 归一化                       | 归一化规则见下方"verify.status 归一化"
 | `verify.geomean_speedup`        | `verify-result.speedup.geomean_speedup`       | float 或 null                                               |
-| `check.status`                  | `check.checks` 聚合                             | 全部 pass → `passed`、任一 fail → `failed`、batch 跳过 → `skipped` |
-| `check.checks[].id`             | `log_check_result.md` 检查项编号                   | `check-1` ~ `check-9`（无 check-5）                           |
-| `check.checks[].name`           | 检查项标题                                         | 如 `distinct strategies per round`                          |
-| `check.checks[].result`         | 该项检查结果                                        | `pass` / `fail` / `skip`                                   |
-| `check.checks[].detail`         | 失败时的详情                                        | 字符串，通过时 null                                               |
-| `pattern.known`                 | `pattern_analysis.md` — 直接使用参考目录中已有的 pattern  | `{name, rounds[], evidence}`                               |
-| `pattern.new`                   | `pattern_analysis.md` — 参考目录中不存在的全新策略         | `{name, rounds[]}`                                         |
-| `pattern.extended`              | `pattern_analysis.md` — 基于已有 pattern 的增量更新/增强 | `{name, rounds[], from}`                                   |
+| `check.status`                  | `log_check_result.json` → `overall` + collector 推导 | `"PASS"` → `passed`；`"FAIL"` → `failed`；JSON 文件不存在 → `skipped` |
+| `check.checks[].id`             | `log_check_result.json` → `checks[].id`          | `check-1` ~ `check-9`（无 check-5）                           |
+| `check.checks[].name`           | `log_check_result.json` → `checks[].name`        | 如 `distinct strategies per round`                          |
+| `check.checks[].result`         | `log_check_result.json` → `checks[].result`      | `pass` / `fail` / `skip`                                   |
+| `check.checks[].detail`         | `log_check_result.json` → `checks[].detail`      | 字符串，通过时 null                                               |
+| `pattern.known`                 | `pattern_analysis.json` → `summary.known`         | `{name, rounds[], evidence}`                               |
+| `pattern.new`                   | `pattern_analysis.json` → `summary.new`           | `{name, rounds[]}`                                         |
+| `pattern.extended`              | `pattern_analysis.json` → `summary.extended`      | `{name, rounds[], from}`                                   |
 
 
 ### 批级聚合 `summary`
@@ -90,10 +93,49 @@ isProject: false
 | 字段                                                      | 推导依据                         |
 | ------------------------------------------------------- | ---------------------------- |
 | `total_workspaces`                                      | batch-root 下 workspace 目录数   |
-| `optimize.process.completed/incomplete/missing/skipped` | `status` 计数（进程是否跑完）          |
+| `optimize.process.completed/incomplete/skipped`          | `status` 计数（进程是否跑完）          |
 | `optimize.health.ok/warning/no_session`                 | `optimize.status` 计数（产物是否健康） |
-| `verify.passed/failed/missing/skipped`                  | `verify.status` 计数           |
+| `verify.passed/failed/skipped`                          | `verify.status` 计数           |
 | `check.passed/failed/skipped`                           | `check.status` 计数            |
+
+
+### verify.status 归一化
+
+从 `verify-state.json` → `verify-result` 归一化到 `post-batch-state.json` 的 `verify.status`：
+
+| 条件 | `verify.status` 取值 |
+|---|---|
+| `verify-state.json` 不存在（`opt-verify/` 目录为空或不存在） | `skipped` |
+| 存在，且 `test.status` / `rerun_baseline_bench.status` / `rerun_best_bench.status` / `compare_perf.status` 全部为 `"passed"` | `passed` |
+| 存在，但任一 status 不是 `"passed"` | `failed` |
+
+### input_sources 说明
+
+`collector.input_sources` 列出所有参与数据采集的文件，其中：
+
+- **直接解析**（collector 直接 `json.load` 或 `path.read_text`）：`optimize-batch-status.json`、`log_check_result.json`、`pattern_analysis.json`
+- **间接依赖**（通过 status.core Python API 内部读取，collector 不直接解析）：`opt-note.md`、`opt-round-*/*_perf.txt`、`opt-round-*/round-state.json`、`opt-verify/verify-*/verify-state.json`
+
+### 字段 required / nullable
+
+| 字段路径 | required | nullable | 说明 |
+|---|---|---|---|
+| `workspace` | 是 | 否 | 始终存在 |
+| `operator_file` | 是 | 是 | 从 `optimize-batch-status.json` 获取，无记录时为 `null` |
+| `status` | 是 | 否 | — |
+| `optimize.status` | 是 | 否 | `no-session` 时仍为 `"no-session"` |
+| `optimize.round_count` | 是 | 否 | 无 round 目录时为 `0` |
+| `optimize.best_round` | 否 | 是 | 无可比较 round 时为 `null` |
+| `optimize.best_geomean_speedup` | 否 | 是 | 无可比较 round 时为 `null` |
+| `verify.status` | 是 | 否 | 未跑 verify 时为 `"skipped"` |
+| `verify.geomean_speedup` | 否 | 是 | verify 未通过或无 speedup 数据时为 `null` |
+| `check.status` | 是 | 否 | 未跑 log-check 时为 `"skipped"` |
+| `check.checks[]` | 否 | 是 | `check.status` 为 `"skipped"` 时数组为空 `[]` |
+| `check.checks[].id/name/result` | 是（条目存在时） | 否 | — |
+| `check.checks[].detail` | 否 | 是 | result 为 `"pass"` 时为 `null` |
+| `pattern.known/new/extended` | 否 | 否 | 未跑 log-check 时为空数组 `[]` |
+
+> **规则**：`skipped` 表示"未执行该步骤"，对应的子字段用空数组或 `null` 占位；`required=否` 的字段在 JSON 中始终输出，值为 `null` 时表示数据缺失。
 
 
 ---
@@ -113,8 +155,8 @@ isProject: false
       "opt-round-*/*_perf.txt",
       "opt-round-*/round-state.json",
       "opt-verify/verify-*/verify-state.json",
-      "log_check_result.md",
-      "pattern_analysis.md"
+      "log_check_result.json",
+      "pattern_analysis.json"
     ]
   },
   "summary": {
@@ -123,7 +165,6 @@ isProject: false
       "process": {
         "completed": 0,
         "incomplete": 0,
-        "missing": 0,
         "skipped": 0
       },
       "health": {
@@ -135,7 +176,6 @@ isProject: false
     "verify": {
       "passed": 0,
       "failed": 0,
-      "missing": 0,
       "skipped": 0
     },
     "check": {
