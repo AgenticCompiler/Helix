@@ -1,5 +1,7 @@
 # Optimize Analysis-Driven Design
 
+> **Superseded:** The `--require-analysis` flag proposed in this design was later removed by `docs/specs/2026-04-22-optimize-layered-analysis-default-design.md`, which made layered analysis the default optimize workflow instead. This document is retained as design history.
+
 ## Summary
 
 - Make `optimize` workflows hypothesis-driven instead of parameter-thrashing by default.
