@@ -450,21 +450,26 @@ class LocalBenchRunnerTests(unittest.TestCase):
                     side_effect=_fake_buffered_process,
                 ), patch.dict(
                     os.environ,
-                    {"TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR": str(kept_profile_root)},
+                    {"TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR": "./kept-profile"},
                     clear=False,
                 ):
-                    result, perf_path = module.run_local_bench(
-                        bench_file,
-                        operator_file,
-                        "standalone",
-                        npu_devices="0,2",
-                    )
+                    original_cwd = Path.cwd()
+                    os.chdir(root)
+                    try:
+                        result, perf_path = module.run_local_bench(
+                            bench_file,
+                            operator_file,
+                            "standalone",
+                            npu_devices="0,2",
+                        )
+                    finally:
+                        os.chdir(original_cwd)
 
             self.assertEqual(result["return_code"], 0)
             self.assertEqual(len(observed), 2)
             self.assertEqual(len({item[0] for item in observed}), 2)
             self.assertEqual({item[1] for item in observed}, {"0", "2"})
-            self.assertEqual({item[2] for item in observed}, {str(kept_profile_root)})
+            self.assertEqual({item[2] for item in observed}, {str(kept_profile_root.resolve())})
             if perf_path is None:
                 self.fail("expected standalone perf path")
             perf_text = perf_path.read_text(encoding="utf-8")

@@ -31,6 +31,7 @@ Fix two behavior gaps in local benchmark tooling:
 ### Standalone local run-bench output root
 
 - `TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR` remains the single local profiler retention control for benchmark profiling.
+- Resolve configured local profile output roots to absolute paths before creating preserved run directories or passing them to standalone case subprocesses.
 - Local parallel standalone `run-bench` case subprocesses should inherit the configured environment variable so each isolated runtime keeps artifacts under the same preserved root.
 - When the variable is unset, preserve existing temporary-directory cleanup behavior.
 

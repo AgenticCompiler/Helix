@@ -279,7 +279,7 @@ def _run_local_standalone_case_in_subprocess(
     extra_env = affinity_env_for_device(device)
     configured_profile_root, _configured_env = deps._resolve_local_bench_profile_output_root()
     if configured_profile_root:
-        extra_env[_LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV] = configured_profile_root
+        extra_env[_LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV] = str(Path(configured_profile_root).expanduser().resolve())
     result = deps.run_buffered_process(
         [
             deps.local_python_executable(),
