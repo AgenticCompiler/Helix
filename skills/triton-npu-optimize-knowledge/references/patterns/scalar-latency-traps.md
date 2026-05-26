@@ -45,15 +45,22 @@ This keeps each iteration's address computation derived from a stable base plus 
 
 ### Modulo removal
 
-Avoid `%` for tail handling when a mask can preserve continuous addresses:
+Apply this repair only when `%` is being used as a boundary guard for tail or edge handling. If removing `%` would change the kernel's intended index mapping, this repair does not apply.
+
+Problem shape:
+
+```python
+offs = (block_start + tl.arange(0, BLOCK)) % N
+vals = tl.load(x + offs)
+```
+
+Preferred rewrite:
 
 ```python
 offs = block_start + tl.arange(0, BLOCK)
 mask = offs < N
 vals = tl.load(x + offs, mask=mask, other=0.0)
 ```
-
-Use modulo only when wraparound is part of the mathematical semantics, not just a boundary workaround.
 
 ### Single-position `tl.where`
 
