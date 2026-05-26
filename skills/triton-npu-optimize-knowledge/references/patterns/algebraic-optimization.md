@@ -9,6 +9,7 @@ Apply mathematical identities and semantics-preserving rewrites to reduce redund
 - The hot path performs **two or more full traversals** of the same data for statistics, normalization, or mergeable closed-form subexpressions.
 - Profiler or IR suggests **duplicate MTE-heavy** phases that differ only by a scalar statistic of the same tensor.
 - Elementwise **logical** ops (`logical_or`, `logical_and`, …) use **broadcasting**, and truth tests (`ne`, `!= 0`) run on **fully expanded** numeric tensors.
+- Pairwise gated tiles compute `exp(g_i - g_j)` only as a multiplicative factor and can use row/column broadcast factors instead.
 - You want fewer global passes or cheaper elementwise work **before** changing tile sizes, pipelines, or autotune grids.
 
 ## Avoid When
@@ -59,6 +60,7 @@ Use this as a **grep-for-the-brain** over source and profiler hints. If **yes**,
 | F4 | **Block-wise** algorithms that **re-load** the same block to apply a global statistic | Merge blocks using **algebraic merge rules** (e.g. parallel prefix, Welford merge) so **one load** feeds merge |
 | F5 | **Symmetric** or **idempotent** math that suggests halving work (e.g. `min(a,b)+max(a,b)`) | Exploit identities to **cut evaluations** |
 | F6 | **Elementwise logical** after **broadcast** where truth tests run on **fully expanded** numeric tensors | **Truth map on original shapes**, then **broadcast bool masks**; **`bool` identity** short-circuit; **empty** `out_shape` early exit |
+| F7 | **Pairwise gated tiles** use `exp(g_i - g_j)` only as a multiplicative factor | Factor into row/column vector terms such as `exp(g_i) * exp(-g_j)` to avoid materializing the pairwise difference |
 
 **Profiler corroboration (Ascend / msprof-style):** duplicate hot `tl.load` regions, high `MOV_*` / `WAIT_FLAG` in phases that differ only by a scalar derived from the same data—the workload may be **memory- or sync-bound** and a good candidate for **fewer passes**.
 
@@ -170,9 +172,64 @@ Equivalent pipeline:
 
 ---
 
-### Case 3: (Reserved)
+### Case 3: Pairwise gated exponential factorization
 
-Add the next pure-math optimization here with the same subsection structure: *When*, *Signals*, *Rewrite*, *Why NPU*, *Risks*, *Verification*.
+**When to use**
+
+- A causal or pairwise tile multiplies by a gate term like `exp(g_i - g_j)`.
+- `g_i` and `g_j` come from the same one-dimensional time vector inside a chunk.
+- The pairwise difference matrix is only used as input to `exp` and then multiplied into another tile.
+- Broadcasted row/column factors can reduce live intermediates or dependency depth.
+
+**Signals**
+
+- Code builds `b_g_diff = b_g[:, None] - b_g[None, :]`.
+- The next operation is only `b_A *= exp(b_g_diff)` or equivalent.
+- The same tile already has a row-side factor, such as `beta[:, None]`, that can be merged with `exp(g_i)[:, None]`.
+
+**Rewrite (algebra)**
+
+For every pair `(i, j)`:
+
+\[
+\exp(g_i - g_j) = \exp(g_i) \cdot \exp(-g_j)
+\]
+
+Triton-style rewrite:
+
+```python
+# Before
+b_g_diff = b_g[:, None] - b_g[None, :]
+b_A *= exp(b_g_diff)
+
+# After
+b_A *= exp(b_g)[:, None] * exp(-b_g)[None, :]
+```
+
+If a row-side scale already exists, fold it into the row factor:
+
+```python
+b_A *= (b_beta * exp(b_g))[:, None] * exp(-b_g)[None, :]
+```
+
+**Why it can improve performance on NPU**
+
+- Avoids an explicit `[BT, BT]` pairwise difference intermediate.
+- Lets the compiler represent the gate as broadcasts from two `[BT]` vectors.
+- Can shorten the vector dependency chain around a `tl.dot`-produced attention or recurrence tile.
+
+**Risks**
+
+- The factored form may evaluate two vector exponentials instead of one matrix-shaped expression; benchmark the actual lowering.
+- Large positive/negative `g` values may expose different overflow/underflow timing even when the real-number identity is exact.
+- If `g_i - g_j` is reused by multiple downstream expressions, keeping the explicit difference can be cheaper.
+- Check NaN/inf propagation if the operator has strict edge-case semantics.
+
+**Verification**
+
+- Compare numerical outputs on representative gate ranges, including large magnitude values.
+- Confirm profiler/IR no longer shows the targeted pairwise diff materialization or that runtime improves despite equivalent IR.
+- Re-profile after adjacent layout or mask changes; this rewrite often interacts with tile live range.
 
 ---
 
