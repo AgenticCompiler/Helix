@@ -9,6 +9,7 @@ Apply mathematical identities and semantics-preserving rewrites to reduce redund
 - The hot path performs **two or more full traversals** of the same data for statistics, normalization, or mergeable closed-form subexpressions.
 - Profiler or IR suggests **duplicate MTE-heavy** phases that differ only by a scalar statistic of the same tensor.
 - Elementwise **logical** ops (`logical_or`, `logical_and`, …) use **broadcasting**, and truth tests (`ne`, `!= 0`) run on **fully expanded** numeric tensors.
+- Pairwise gated tiles compute `exp(g_i - g_j)` only as a multiplicative factor and can use row/column broadcast factors instead.
 - You want fewer global passes or cheaper elementwise work **before** changing tile sizes, pipelines, or autotune grids.
 
 ## Avoid When

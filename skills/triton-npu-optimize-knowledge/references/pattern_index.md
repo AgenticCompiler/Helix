@@ -99,7 +99,6 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - profiling or IR suggests the hot loop is spending too much effort on scalar address generation or repeated reduction structure
   - a block-pointer rewrite reduced one scalar chain but the full loop is still not a regular matmul
   - dtype-specialized or shape-specialized paths are acceptable when one tiled regime is clearly better but a unified rewrite would change numerics too much
-  - common `K` values such as 64 or 128 justify constexpr-specialized kernels that remove inactive branch trees from the hot path
 
 ### `compile_hint`
 
@@ -110,7 +109,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - You can prove stronger alignment or contiguity facts than the current code expresses.
   - `tl.dot` inputs are stable and only need targeted padding guidance on the active path.
   - Parent comparisons are already close enough that small lowering changes can still matter.
-  - Ascend launch hints such as `multibuffer`, workspace multibuffer, or auto sub-block binding need bounded per-kernel A/B validation.
+  - Existing related kernels use different Ascend launch hints, suggesting the choice is path-sensitive.
 
 ### `diagonal`
 
@@ -139,7 +138,6 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - The hot path is either **indexed / masked access** or a **copy-like contiguous axis** whose width does not participate in **`tl.dot`**, cube alignment, or reduction-tree structure.
   - Profiling or IR suggests execution cost scales with the **tile width** more than with the **live element count**.
   - The host already has shape information that could choose a smaller tile or a different launch branch.
-  - A few live extents such as `K == 64` or `K == 128` dominate and can justify extent-specialized dispatch.
 
 ### `exact-tile-no-boundary-fast-path`
 
@@ -147,7 +145,6 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Source: [exact-tile-no-boundary-fast-path.md](patterns/exact-tile-no-boundary-fast-path.md)
 - Use When:
   - A dominant benchmark shape is exactly tile-divisible, such as `M % BLOCK_M == 0` and `N % BLOCK_N == 0`.
-  - A chunked recurrence has full chunks before a single partial tail, so the hot `range(NT - 1)` loop can avoid boundary-only scalar control.
   - Python dispatch can guard the aligned branch before launch and keep the original masked kernel as fallback.
   - MLIR, LLVM, or profiler traces still show boundary checks, masks, padding, or branch/control overhead on the exact-tile hot path.
   - The kernel is already structurally reasonable, so a bounded control-overhead cleanup can matter.
@@ -162,7 +159,6 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Each program processes many tiny rows after grid-to-physical-core mapping.
   - Gather-like code has continuous destination rows but still stores one row at a time.
   - Scatter-weight-gradient-like code has repeated row loads that can be batched from continuous source rows.
-  - A chunked kernel launches `(NT, B * HV)` many thin programs, and `B * HV` is small enough to serialize inside each chunk program.
 
 ### `layout-materialization-elision`
 
@@ -251,7 +247,6 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - You implement GEMM / Linear-like kernels where one operand is stored as `[N, K]` but the math needs `[K, N]` (e.g. `y = x @ w.T`).
   - Kernel code accesses the operand with **transpose-like strides** (treats `[N, K]` as `[K, N]`).
   - A `tl.dot` operand uses `tl.trans(x).to(dtype)` where the transpose is applied before the dtype conversion, and the result feeds directly into `tl.dot`.
-  - Gate-like tensors are stored as `[B, T, HV]`, but the kernel repeatedly loads fixed batch/head lanes along `T` and benefits from `[B, HV, T]` contiguous layout.
   - Profiling shows high **scalar/control** and/or large **WAIT_FLAG** time around the matmul path.
 
 ### `reorder-load`
@@ -276,7 +271,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Integer elementwise arithmetic is done as scalar-looking `int64` work even though the value range is safely `int32`.
   - `tl.cumsum` or `tl.associative_scan` runs on the last axis of a tensor and profiling or IR suggests scalar fallback instead of vector lowering.
   - `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
-  - Boundary-only masks repeat validity already guaranteed by `boundary_check` or zero-padded prior loads.
+  - A boundary-only mask repeats validity conditions that earlier `tl.load(..., boundary_check=...)` or safe zero-padding already handled.
 
 ### `slice_coalesce`
 

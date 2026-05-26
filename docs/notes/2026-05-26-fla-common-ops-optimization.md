@@ -1,11 +1,11 @@
-# FLA Common Ops Optimization Draft
+# FLA Common Ops Optimization Review
 
-This is a review draft for extending the v1 `triton-npu-optimize-knowledge` references from the optimization differences between:
+This note captures reusable optimization knowledge found by comparing:
 
 - `src/kernels/fla/ops/common_origin/`
 - `src/kernels/fla/ops/common_ops/`
 
-It is intentionally not linked from `pattern_index.md` yet.
+The findings are review material for future `triton-npu-optimize-knowledge` pattern-card updates. They are intentionally not linked from `skills/triton-npu-optimize-knowledge/references/pattern_index.md` yet.
 
 ## Scope
 
@@ -66,7 +66,7 @@ p_g = tl.make_block_ptr(
 b_g = tl.load(p_g, boundary_check=(0,))
 ```
 
-### Risks / Verification
+### Verification
 
 - Include the wrapper transpose in the end-to-end operator benchmark when target mode is `operator`.
 - Check whether multiple kernels can share the transposed layout; otherwise, the conversion may only move cost around.
@@ -78,14 +78,14 @@ b_g = tl.load(p_g, boundary_check=(0,))
 Suggested target pattern:
 
 - Extend `exact-tile-no-boundary-fast-path.md`
-- Or create a new subpattern under `scalar-latency-traps.md` if we want to frame it as scalar-boundary-control removal
+- Or create a new subpattern under `scalar-latency-traps.md` if it should be framed as scalar boundary-control removal.
 
 ### Summary
 
 For chunked recurrence kernels where only the final chunk can be partial, split the loop into:
 
-- a hot loop over `range(NT - 1)` that assumes full chunks and avoids per-iteration `min`, `tl.where`, and tail masks;
-- a single tail block that handles `min(NT * BT, T) - 1` and boundary masks.
+- a hot loop over `range(NT - 1)` that assumes full chunks and avoids per-iteration `min`, `tl.where`, and tail masks
+- a single tail block that handles `min(NT * BT, T) - 1` and boundary masks
 
 This is a "mostly exact tile" variant of exact-tile fast path. It does not require the whole sequence length to be divisible by `BT`; it only requires all chunks before the last one to be full.
 
@@ -124,7 +124,7 @@ b_g = tl.load(...)
 b_v = b_v * tl.where(m_t, exp(b_g_last - b_g), 0)[:, None]
 ```
 
-### Risks / Verification
+### Verification
 
 - Test `T < BT`, `T == BT`, `T % BT == 0`, and `T % BT != 0`.
 - For varlen mode, verify each sequence still has the correct local `NT` and tail.
@@ -177,7 +177,7 @@ If another per-row factor exists, merge it into the row-side broadcast:
 b_A *= (b_beta * exp(b_g))[:, None] * exp(-b_g)[None, :]
 ```
 
-### Risks / Verification
+### Verification
 
 - Verify numerical tolerance on large positive/negative `g`.
 - Check NaN and inf propagation if the operator has strict semantics.
@@ -186,7 +186,7 @@ b_A *= (b_beta * exp(b_g))[:, None] * exp(-b_g)[None, :]
 
 ## Candidate 4: Batch-Head Serial Loop Inside A Chunk Program
 
-Suggested target pattern:
+Suggested target patterns:
 
 - Extend `grid-flatten-and-ub-buffering.md`
 - Possibly cross-reference `program-multiple-rows.md`
@@ -235,7 +235,7 @@ instead of:
 kernel[(NT, B * HV)](...)
 ```
 
-### Risks / Verification
+### Verification
 
 - Compare small and large `B * HV` regimes; this is likely shape-sensitive.
 - Check compile time and generated code size if `BH` is large.
@@ -281,7 +281,7 @@ else:
     kernel_generic[grid](...)
 ```
 
-### Risks / Verification
+### Verification
 
 - Validate every dispatch branch, including fallback.
 - Compare compile time and first-run overhead.
@@ -326,7 +326,7 @@ m_A = (o_t[:, None] > o_t[None, :]) & (m_t[:, None] & m_t)
 m_A = (o_t[:, None] > o_t[None, :]) & m_t[None, :]
 ```
 
-### Risks / Verification
+### Verification
 
 - Test partial chunks and exact chunks.
 - Verify invalid rows are truly zero before the final mask.
@@ -372,7 +372,7 @@ kernel[grid](
 )
 ```
 
-### Risks / Verification
+### Verification
 
 - Benchmark with enough warmup to exclude compile effects.
 - Record the exact option set in the optimization round summary.
