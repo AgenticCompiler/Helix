@@ -1,5 +1,7 @@
 # Backends Package Refactor Design
 
+> **Note:** This spec describes the initial backends package with five backends (`codex`, `opencode`, `pi`, `claude`). The package has since expanded to also include `openhands` and `traecli`. The package structure described here remains valid.
+
 ## Summary
 
 - Replace the flat backend runner modules with a `triton_agent/backends/` package.

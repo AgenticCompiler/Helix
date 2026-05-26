@@ -4,7 +4,7 @@
 
 - This repository provides a small `uv`-managed CLI for Triton Ascend NPU operator workflows.
 - The CLI is a wrapper around code agents plus local skills, not a replacement for the skills themselves.
-- The supported backends are `codex`, `opencode`, `pi`, and `claude`.
+- The supported backends are `codex`, `opencode`, `pi`, `claude`, `openhands`, and `traecli`.
 
 ## Core Principles
 

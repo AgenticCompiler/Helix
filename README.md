@@ -15,10 +15,12 @@ This README is organized by task so you can quickly find the right command for t
 - `gen-bench`: generate a benchmark for one operator.
 - `run-bench`: run an existing generated benchmark.
 - `optimize`: optimize one operator.
+- `optimize-batch`: optimize many operator workspaces.
+- `log-check`: run Codex log strategy validation for one workspace.
+- `log-check-batch`: run log strategy validation across multiple workspaces.
 - `status`: summarize optimization progress across many workspaces.
 - `verify`: rerun tests and benchmarks for the current best optimize round.
 - `verify-batch`: verify many optimize workspaces under one root.
-- `optimize-batch`: optimize many operator workspaces.
 - `compare-result`: compare two archived correctness result files.
 - `compare-perf`: compare two archived performance files.
 
@@ -49,6 +51,8 @@ uv run triton-agent status --input operators_root --format markdown
 uv run triton-agent verify --input .
 uv run triton-agent verify-batch --input operators_root
 uv run triton-agent optimize-batch --input operators_root
+uv run triton-agent log-check --input .
+uv run triton-agent log-check-batch --input operators_root
 ```
 
 ## Runtime Environment Variables
@@ -629,6 +633,28 @@ The command prints:
 - `Avg improvement` for case-equal percentage improvement
 - `Geomean speedup` for benchmark-style speedup aggregation
 - `Total speedup` for whole-workload elapsed-time aggregation
+
+## Run Log Strategy Validation
+
+Use `log-check` when you need to validate Codex agent log strategy for one operator workspace.
+
+```bash
+uv run triton-agent log-check --input .
+```
+
+For batch validation across many workspaces:
+
+```bash
+uv run triton-agent log-check-batch --input operators_root
+```
+
+Common options:
+
+- `--check-result-file <path>`: workspace-relative log check result file name (default: `log_check_result.md`).
+- `--summary-file <path>`: root-relative batch log check summary file name (default: `log_check_summary.md`, batch only).
+- `--agent codex|opencode|pi|claude|openhands|traecli`
+- `--show-output`: stream agent output live.
+- `--verbose`: print more execution detail.
 
 ## Shared Options
 
