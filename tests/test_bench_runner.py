@@ -1,10 +1,13 @@
 import os
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
+from types import ModuleType
 from typing import Optional
 from unittest.mock import patch
 
@@ -72,6 +75,75 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "range"):
             module.parse_npu_devices("1-3-5")
+
+    def test_load_standalone_runtime_module_concurrent_calls_share_one_initialized_module(self) -> None:
+        module = load_bench_runner_module()
+        module_name = "triton_agent_standalone_bench_runtime_fake_runtime"
+        cached_runtime = getattr(module, "_standalone_runtime_module_cache", None)
+        if hasattr(module, "_standalone_runtime_module_cache"):
+            module._standalone_runtime_module_cache = None
+
+        load_count = 0
+        load_count_lock = threading.Lock()
+
+        class _FakeLoader:
+            def exec_module(self, loaded_module: ModuleType) -> None:
+                nonlocal load_count
+                with load_count_lock:
+                    load_count += 1
+                time.sleep(0.05)
+                loaded_module.runtime_support_paths = lambda: []
+
+        class _FakeSpec:
+            def __init__(self, name: str) -> None:
+                self.name = name
+                self.loader = _FakeLoader()
+
+        def _fake_spec_from_file_location(name: str, _path: Path) -> _FakeSpec:
+            return _FakeSpec(name)
+
+        def _fake_module_from_spec(spec: _FakeSpec) -> ModuleType:
+            return ModuleType(spec.name)
+
+        start_barrier = threading.Barrier(8)
+        results: list[ModuleType] = []
+        errors: list[BaseException] = []
+
+        def _worker() -> None:
+            try:
+                start_barrier.wait(timeout=1.0)
+                results.append(module._load_standalone_runtime_module())
+            except BaseException as exc:  # pragma: no cover - assertion below surfaces details.
+                errors.append(exc)
+
+        try:
+            with patch.object(
+                module,
+                "_standalone_runtime_script_path",
+                return_value=Path("/tmp/fake_runtime.py"),
+            ), patch.object(
+                module.importlib.util,
+                "spec_from_file_location",
+                side_effect=_fake_spec_from_file_location,
+            ), patch.object(
+                module.importlib.util,
+                "module_from_spec",
+                side_effect=_fake_module_from_spec,
+            ):
+                threads = [threading.Thread(target=_worker) for _ in range(8)]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join()
+        finally:
+            if hasattr(module, "_standalone_runtime_module_cache"):
+                module._standalone_runtime_module_cache = cached_runtime
+            sys.modules.pop(module_name, None)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(load_count, 1)
+        self.assertEqual(len(results), 8)
+        self.assertTrue(all(result is results[0] for result in results))
 
     def test_run_local_bench_standalone_delegates_to_hook_runtime(self) -> None:
         module = load_bench_runner_module()
