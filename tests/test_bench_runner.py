@@ -4,7 +4,7 @@ import tempfile
 import threading
 import time
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 from types import ModuleType
@@ -237,6 +237,112 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(resolved_perf, perf_file)
             self.assertEqual(observed_cwds, [bench_dir.resolve()])
 
+    def test_create_local_case_workspace_flattens_support_files_and_logs_when_verbose(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            source_root = Path(tmp) / "7_MoeGatingTopKSoftmax"
+            source_root.mkdir()
+            bench_file = source_root / "bench_case.py"
+            operator_dir = source_root / "opt-round-13"
+            operator_dir.mkdir()
+            operator_file = operator_dir / "operator_case.py"
+            json_file = source_root / "5_MoeInitRouting.json"
+            support_dir = source_root / ".opencode" / "skills" / "triton-npu-run-eval" / "scripts"
+            support_dir.mkdir(parents=True)
+            support_file = support_dir / "standalone_bench_runtime.py"
+            bench_file.write_text("print('bench')\n", encoding="utf-8")
+            operator_file.write_text("print('operator')\n", encoding="utf-8")
+            json_file.write_text('{"cases":[1]}\n', encoding="utf-8")
+            support_file.write_text("print('support')\n", encoding="utf-8")
+
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                workspace_root, cleanup = module._create_local_case_workspace(
+                    prefix="triton-agent-case-test-",
+                    input_paths=[bench_file, json_file, operator_file],
+                    flat_input_paths=[support_file],
+                    source_root=source_root,
+                    verbose=True,
+                )
+            try:
+                self.assertTrue((workspace_root / "bench_case.py").exists())
+                self.assertTrue((workspace_root / "5_MoeInitRouting.json").exists())
+                self.assertTrue((workspace_root / "opt-round-13" / "operator_case.py").exists())
+                self.assertTrue((workspace_root / "standalone_bench_runtime.py").exists())
+                self.assertFalse((workspace_root / ".opencode").exists())
+            finally:
+                cleanup()
+
+            log_text = stderr.getvalue()
+            self.assertIn("created local case workspace", log_text)
+            self.assertIn(str(support_file), log_text)
+            self.assertIn(str(workspace_root / "standalone_bench_runtime.py"), log_text)
+
+    def test_stage_remote_case_workspace_flattens_support_files_and_logs_when_verbose(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            source_root = Path(tmp) / "7_MoeGatingTopKSoftmax"
+            source_root.mkdir()
+            bench_file = source_root / "bench_case.py"
+            operator_dir = source_root / "opt-round-13"
+            operator_dir.mkdir()
+            operator_file = operator_dir / "operator_case.py"
+            json_file = source_root / "5_MoeInitRouting.json"
+            support_dir = source_root / ".opencode" / "skills" / "triton-npu-run-eval" / "scripts"
+            support_dir.mkdir(parents=True)
+            support_file = support_dir / "standalone_bench_runtime.py"
+            bench_file.write_text("print('bench')\n", encoding="utf-8")
+            operator_file.write_text("print('operator')\n", encoding="utf-8")
+            json_file.write_text('{"cases":[1]}\n', encoding="utf-8")
+            support_file.write_text("print('support')\n", encoding="utf-8")
+
+            mkdir_commands: list[tuple[str, object]] = []
+            copied_targets: list[str] = []
+
+            def _fake_remote_buffered(spec, remote_workdir, remote_command, **kwargs):
+                del spec, kwargs
+                mkdir_commands.append((remote_workdir, remote_command))
+                return make_skill_result(0, "", "")
+
+            def _fake_copy_to_remote(spec, local_path, remote_path, **kwargs):
+                del spec, local_path, kwargs
+                copied_targets.append(remote_path)
+                return None
+
+            stderr = StringIO()
+            with patch.object(module, "run_remote_command_buffered", side_effect=_fake_remote_buffered), patch.object(
+                module,
+                "copy_file_to_remote",
+                side_effect=_fake_copy_to_remote,
+            ):
+                workspace_root = module._stage_remote_case_workspace(
+                    {"user_host": "alice@example.com", "port": None},
+                    "/tmp/case-case-a",
+                    [bench_file, json_file, operator_file],
+                    source_root,
+                    flat_input_paths=[support_file],
+                    verbose=True,
+                    stderr=stderr,
+                )
+
+            self.assertEqual(workspace_root, f"/tmp/case-case-a/{source_root.name}")
+            self.assertIn(f"{workspace_root}/bench_case.py", copied_targets)
+            self.assertIn(f"{workspace_root}/5_MoeInitRouting.json", copied_targets)
+            self.assertIn(f"{workspace_root}/opt-round-13/operator_case.py", copied_targets)
+            self.assertIn(f"{workspace_root}/standalone_bench_runtime.py", copied_targets)
+            self.assertFalse(any(".opencode/skills" in target for target in copied_targets))
+            self.assertFalse(
+                any(
+                    isinstance(command, list) and any(".opencode/skills" in part for part in command)
+                    for _, command in mkdir_commands
+                )
+            )
+
+            log_text = stderr.getvalue()
+            self.assertIn("created remote case workspace", log_text)
+            self.assertIn(str(support_file), log_text)
+            self.assertIn(f"{workspace_root}/standalone_bench_runtime.py", log_text)
+
     def test_run_local_bench_msprof_delegates_via_facade_helper(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -270,26 +376,33 @@ class LocalBenchRunnerTests(unittest.TestCase):
             root = Path(tmp)
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
+            runtime_script = root / "standalone_bench_runtime.py"
             bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
+            runtime_script.write_text("def run_one_standalone_case_record(*_args, **_kwargs):\n    return None\n", encoding="utf-8")
 
             observed: list[tuple[Path, Optional[str], str, list[str]]] = []
+            kept_profile_root = root / "kept-profile"
+            kept_run_dir = kept_profile_root / "run-123"
 
             def _fake_buffered_process(command, workdir, stall_timeout_seconds, extra_env=None):
                 del stall_timeout_seconds
                 workdir_path = Path(workdir)
-                case_id = command[-1]
+                case_id = command[5]
                 observed.append(
                     (
                         workdir_path,
                         None if extra_env is None else extra_env.get("ASCEND_RT_VISIBLE_DEVICES"),
+                        None
+                        if extra_env is None
+                        else extra_env.get("TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR"),
                         case_id,
                         command,
                     )
                 )
                 self.assertEqual(command[0:2], [module.local_python_executable(), "-c"])
                 self.assertIn("run_one_standalone_case_record", command[2])
-                self.assertEqual(command[3:], [bench_file.name, operator_file.name, case_id])
+                self.assertEqual(command[3:], [bench_file.name, operator_file.name, case_id, kept_run_dir.as_posix()])
                 self.assertNotEqual(workdir_path, root)
                 self.assertTrue((workdir_path / bench_file.name).exists())
                 self.assertTrue((workdir_path / operator_file.name).exists())
@@ -325,13 +438,20 @@ class LocalBenchRunnerTests(unittest.TestCase):
                                 type("_Resolution", (), {"kernel_names": ["KernelA"], "kernel_source": "metadata"})(),
                             )
                         ),
-                        "runtime_support_paths": staticmethod(lambda: []),
+                        "runtime_support_paths": staticmethod(lambda: [runtime_script]),
+                        "create_local_preserved_profile_run_dir": staticmethod(
+                            lambda prefix: kept_run_dir
+                        ),
                     },
                 )()
                 with patch.object(
                     module,
                     "run_buffered_process",
                     side_effect=_fake_buffered_process,
+                ), patch.dict(
+                    os.environ,
+                    {"TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR": str(kept_profile_root)},
+                    clear=False,
                 ):
                     result, perf_path = module.run_local_bench(
                         bench_file,
@@ -344,10 +464,71 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(len(observed), 2)
             self.assertEqual(len({item[0] for item in observed}), 2)
             self.assertEqual({item[1] for item in observed}, {"0", "2"})
+            self.assertEqual({item[2] for item in observed}, {str(kept_profile_root)})
             if perf_path is None:
                 self.fail("expected standalone perf path")
             perf_text = perf_path.read_text(encoding="utf-8")
             self.assertLess(perf_text.index('"case_label":"case-a"'), perf_text.index('"case_label":"case-b"'))
+
+    def test_run_local_bench_standalone_parallel_imports_nested_runtime_support_script(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            runtime_dir = root / ".opencode" / "skills" / "triton-npu-run-eval" / "scripts"
+            runtime_script = runtime_dir / "standalone_bench_runtime.py"
+            bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
+            operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
+            runtime_dir.mkdir(parents=True)
+            runtime_script.write_text(
+                """from types import SimpleNamespace
+
+def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved_run_dir=None):
+    del bench_file, operator_file, preserved_run_dir
+    return SimpleNamespace(
+        case_label=case_id,
+        kernel_names=["KernelA"],
+        kernel_source="metadata",
+        metrics={"kernel_avg_time_us": 1.0, "ops": [{"op_type": "KernelA", "avg_time_us": 1.0}]},
+        error_message=None,
+        case_wall_clock_seconds=0.0,
+    )
+""",
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                module,
+                "_load_standalone_runtime_module",
+            ) as load_runtime:
+                load_runtime.return_value = type(
+                    "_FakeRuntime",
+                    (),
+                    {
+                        "load_standalone_bench_cases": staticmethod(
+                            lambda *_args, **_kwargs: (
+                                [type("_Case", (), {"case_id": "case-a"})()],
+                                type("_Resolution", (), {"kernel_names": ["KernelA"], "kernel_source": "metadata"})(),
+                            )
+                        ),
+                        "runtime_support_paths": staticmethod(lambda: [runtime_script]),
+                    },
+                )()
+                result, perf_path = module.run_local_bench(
+                    bench_file,
+                    operator_file,
+                    "standalone",
+                    npu_devices="3",
+                )
+
+            self.assertEqual(result["return_code"], 0)
+            self.assertIsNotNone(perf_path)
+            if perf_path is None:
+                self.fail("expected standalone perf path")
+            perf_text = perf_path.read_text(encoding="utf-8")
+            self.assertIn('"case_label":"case-a"', perf_text)
+            self.assertIn('"kernel_avg_time_us":1.0', perf_text)
 
     def test_run_remote_bench_standalone_uses_module_helper_files(self) -> None:
         module = load_bench_runner_module()
@@ -1363,6 +1544,61 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertIn("FAIL: skipped 1 latency entries due to latency errors", output)
             self.assertIn("latency-case-1", output)
             self.assertIn("latency-error-case-1", output)
+
+    def test_compare_perf_files_fails_on_non_positive_latency_without_skip(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "compare_perf.txt"
+            baseline.write_text("latency-a: 10\nlatency-b: 0\n", encoding="utf-8")
+            compare.write_text("latency-a: 8\nlatency-b: 5\n", encoding="utf-8")
+
+            stdout_path = root / "stdout.txt"
+            original_stdout = sys.stdout
+            try:
+                with stdout_path.open("w", encoding="utf-8") as handle:
+                    sys.stdout = handle
+                    return_code = module.compare_perf_files(baseline, compare)
+            finally:
+                sys.stdout = original_stdout
+
+            output = stdout_path.read_text(encoding="utf-8")
+            self.assertEqual(return_code, 1)
+            self.assertIn("cannot compare 'latency-b'", output)
+            self.assertIn("must be > 0", output)
+            self.assertNotIn("Avg improvement: unknown", output)
+
+    def test_compare_perf_files_skips_non_positive_latency_when_requested(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "compare_perf.txt"
+            baseline.write_text("latency-a: 10\nlatency-b: 0\n", encoding="utf-8")
+            compare.write_text("latency-a: 8\nlatency-b: 5\n", encoding="utf-8")
+
+            stdout_path = root / "stdout.txt"
+            original_stdout = sys.stdout
+            try:
+                with stdout_path.open("w", encoding="utf-8") as handle:
+                    sys.stdout = handle
+                    return_code = module.compare_perf_files(
+                        baseline,
+                        compare,
+                        skip_latency_errors=True,
+                    )
+            finally:
+                sys.stdout = original_stdout
+
+            output = stdout_path.read_text(encoding="utf-8")
+            self.assertEqual(return_code, 1)
+            self.assertIn("latency-a: baseline=10, compare=8, delta=-20.00%", output)
+            self.assertIn("Avg improvement: +20.0%", output)
+            self.assertIn("Geomean speedup: 1.25x", output)
+            self.assertIn("FAIL: skipped 1 latency entries due to latency errors", output)
+            self.assertIn("cannot compare 'latency-b'", output)
+            self.assertIn("must be > 0", output)
 
     def test_compare_perf_files_fails_when_case_ids_do_not_match(self) -> None:
         module = load_bench_runner_module()

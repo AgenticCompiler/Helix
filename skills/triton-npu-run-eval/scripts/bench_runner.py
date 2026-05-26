@@ -47,6 +47,7 @@ from run_runtime import (
     copy_file_from_remote,
     copy_file_to_remote,
     create_remote_workspace,
+    emit_verbose,
     env_int,
     local_python_executable,
     result_succeeded,
@@ -232,6 +233,7 @@ class _BenchRunnerDeps:
         *,
         source_root: Path,
         json_search_root: Path,
+        verbose: bool = False,
     ) -> tuple[Path, Callable[[], None]]:
         return _create_local_msprof_case_workspace(
             bench_file,
@@ -239,6 +241,7 @@ class _BenchRunnerDeps:
             case_idx,
             source_root=source_root,
             json_search_root=json_search_root,
+            verbose=verbose,
         )
 
     def _stage_remote_msprof_case_workspace(
@@ -361,12 +364,16 @@ class _BenchRunnerDeps:
         *,
         prefix: str,
         input_paths: Sequence[Path],
+        flat_input_paths: Sequence[Path] = (),
         source_root: Path,
+        verbose: bool = False,
     ) -> tuple[Path, Callable[[], None]]:
         return _create_local_case_workspace(
             prefix=prefix,
             input_paths=input_paths,
+            flat_input_paths=flat_input_paths,
             source_root=source_root,
+            verbose=verbose,
         )
 
     def _bench_case_input_paths(
@@ -375,13 +382,11 @@ class _BenchRunnerDeps:
         operator_file: Path,
         *,
         json_search_root: Path | None = None,
-        support_paths: Sequence[Path] = (),
     ) -> list[Path]:
         return _bench_case_input_paths(
             bench_file,
             operator_file,
             json_search_root=json_search_root,
-            support_paths=support_paths,
         )
 
     def _stage_remote_case_workspace(
@@ -391,6 +396,7 @@ class _BenchRunnerDeps:
         input_paths: Sequence[Path],
         source_root: Path,
         *,
+        flat_input_paths: Sequence[Path] = (),
         verbose: bool = False,
         stderr: TextIO | None = None,
     ) -> str:
@@ -399,6 +405,7 @@ class _BenchRunnerDeps:
             case_workspace,
             input_paths,
             source_root,
+            flat_input_paths=flat_input_paths,
             verbose=verbose,
             stderr=stderr,
         )
@@ -892,7 +899,6 @@ def _bench_case_input_paths(
     operator_file: Path,
     *,
     json_search_root: Path | None = None,
-    support_paths: Sequence[Path] = (),
 ) -> list[Path]:
     input_paths: list[Path] = [bench_file]
     json_roots = [bench_file.parent.resolve(), operator_file.parent.resolve()]
@@ -905,8 +911,6 @@ def _bench_case_input_paths(
             sorted(path for path in json_root.glob("*.json") if path.is_file())
         )
     input_paths.append(operator_file)
-    input_paths.extend(support_paths)
-
     unique_paths: list[Path] = []
     seen: set[Path] = set()
     for input_path in input_paths:
@@ -982,21 +986,36 @@ def _remote_case_workspace_path(
     return f"{workspace_root}/{relative_path.as_posix()}"
 
 
+def _emit_case_workspace_verbose(message: str, *, stderr: TextIO | None = None) -> None:
+    emit_verbose(stderr or sys.stderr, "files", message)
+
+
 def _create_local_case_workspace(
     *,
     prefix: str,
     input_paths: Sequence[Path],
+    flat_input_paths: Sequence[Path] = (),
     source_root: Path,
+    verbose: bool = False,
 ) -> tuple[Path, Callable[[], None]]:
     temp_dir = tempfile.TemporaryDirectory(prefix=prefix)
     workspace = Path(temp_dir.name)
     workspace_root = workspace / _case_workspace_root_name(source_root)
     workspace_root.mkdir(parents=True, exist_ok=True)
+    if verbose:
+        _emit_case_workspace_verbose(f"created local case workspace: {workspace_root}")
     for input_path in input_paths:
         relative_path = _case_workspace_root_relative_path(input_path, source_root=source_root)
         target_path = workspace_root / relative_path
         target_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(input_path, target_path)
+        if verbose:
+            _emit_case_workspace_verbose(f"copied local case file: {input_path} -> {target_path}")
+    for input_path in flat_input_paths:
+        target_path = workspace_root / input_path.name
+        shutil.copyfile(input_path, target_path)
+        if verbose:
+            _emit_case_workspace_verbose(f"copied local case support file: {input_path} -> {target_path}")
     return workspace_root, temp_dir.cleanup
 
 
@@ -1007,6 +1026,7 @@ def _create_local_msprof_case_workspace(
     *,
     source_root: Path,
     json_search_root: Path,
+    verbose: bool = False,
 ) -> tuple[Path, Callable[[], None]]:
     return _create_local_case_workspace(
         prefix=f"triton-agent-msprof-case-{case_idx}-",
@@ -1016,6 +1036,7 @@ def _create_local_msprof_case_workspace(
             json_search_root=json_search_root,
         ),
         source_root=source_root,
+        verbose=verbose,
     )
 
 
@@ -1025,6 +1046,7 @@ def _stage_remote_case_workspace(
     input_paths: Sequence[Path],
     source_root: Path,
     *,
+    flat_input_paths: Sequence[Path] = (),
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> str:
@@ -1036,6 +1058,8 @@ def _stage_remote_case_workspace(
         verbose=verbose,
         stderr=stderr,
     )
+    if verbose:
+        _emit_case_workspace_verbose(f"created remote case workspace: {workspace_root}", stderr=stderr)
     created_dirs = {workspace_root}
     for input_path in input_paths:
         relative_path = _case_workspace_root_relative_path(input_path, source_root=source_root)
@@ -1060,6 +1084,25 @@ def _stage_remote_case_workspace(
             verbose=verbose,
             stderr=stderr,
         )
+        if verbose:
+            _emit_case_workspace_verbose(
+                f"copied remote case file: {input_path} -> {workspace_root}/{relative_path.as_posix()}",
+                stderr=stderr,
+            )
+    for input_path in flat_input_paths:
+        target_path = f"{workspace_root}/{input_path.name}"
+        copy_file_to_remote(
+            spec,
+            input_path,
+            target_path,
+            verbose=verbose,
+            stderr=stderr,
+        )
+        if verbose:
+            _emit_case_workspace_verbose(
+                f"copied remote case support file: {input_path} -> {target_path}",
+                stderr=stderr,
+            )
     return workspace_root
 
 

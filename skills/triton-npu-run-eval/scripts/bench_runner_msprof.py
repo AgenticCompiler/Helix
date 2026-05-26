@@ -409,6 +409,7 @@ def _run_local_msprof_case_parallel(
         case_idx,
         source_root=source_root,
         json_search_root=json_search_root,
+        verbose=verbose,
     )
     output_dir, temp_dir = deps._create_local_msprof_output_dir(case_idx, preserved_run_dir)
     try:

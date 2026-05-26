@@ -121,11 +121,18 @@ def run_one_standalone_case_record(
     operator_file: Path,
     case_id: str,
     *,
+    preserved_run_dir: Path | None = None,
     verbose: bool = False,
 ) -> PerfCaseRecord:
     cases, resolution = load_standalone_bench_cases(bench_file, operator_file)
     case = _select_case(cases, case_id)
-    return _run_standalone_case(case, resolution, None, bench_file.parent, verbose=verbose)
+    return _run_standalone_case(
+        case,
+        resolution,
+        preserved_run_dir,
+        bench_file.parent,
+        verbose=verbose,
+    )
 
 
 def runtime_support_paths() -> list[Path]:
@@ -452,6 +459,10 @@ def _create_local_preserved_profile_run_dir(prefix: str) -> Path | None:
     run_dir = Path(tempfile.mkdtemp(prefix=prefix, dir=str(root)))
     _set_directory_owner_only(run_dir)
     return run_dir
+
+
+def create_local_preserved_profile_run_dir(prefix: str) -> Path | None:
+    return _create_local_preserved_profile_run_dir(prefix)
 
 
 def _create_local_standalone_profile_dir(

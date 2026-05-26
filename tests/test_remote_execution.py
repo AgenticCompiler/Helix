@@ -468,7 +468,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                         command,
                     )
                 )
-                case_id = command[-1]
+                case_id = command[-2]
                 return make_skill_result(
                     0,
                     (
