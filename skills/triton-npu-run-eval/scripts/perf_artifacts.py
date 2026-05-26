@@ -97,6 +97,29 @@ def compare_perf_files(
         latency_id: compare_outcome.entries[latency_id].numeric_value
         for latency_id in comparable_ids
     }
+    invalid_metric_errors = _collect_invalid_metric_errors(
+        baseline,
+        compare,
+        baseline_perf=baseline_perf,
+        compare_perf=compare_perf,
+    )
+    if invalid_metric_errors:
+        if skip_latency_errors:
+            comparable_ids = [
+                latency_id for latency_id in comparable_ids if latency_id not in invalid_metric_errors
+            ]
+            baseline = {
+                latency_id: baseline_outcome.entries[latency_id].numeric_value
+                for latency_id in comparable_ids
+            }
+            compare = {
+                latency_id: compare_outcome.entries[latency_id].numeric_value
+                for latency_id in comparable_ids
+            }
+        else:
+            first_latency_id = sorted(invalid_metric_errors)[0]
+            print(f"FAIL: {invalid_metric_errors[first_latency_id]}")
+            return 1
     print("Perf comparison:")
     for latency_id in comparable_ids:
         baseline_value = baseline[latency_id]
@@ -118,6 +141,7 @@ def compare_perf_files(
     skipped_latency_errors = {
         **baseline_outcome.skipped_latency_errors,
         **compare_outcome.skipped_latency_errors,
+        **invalid_metric_errors,
     }
     if skipped_latency_errors:
         print(f"FAIL: skipped {len(skipped_latency_errors)} latency entries due to latency errors")
@@ -168,6 +192,36 @@ def _compare_perf_files_all(
             latency_id: compare_outcome.entries[latency_id].numeric_value
             for latency_id in comparable_ids
         }
+        invalid_metric_errors = _collect_invalid_metric_errors(
+            baseline,
+            compare,
+            baseline_perf=baseline_perf,
+            compare_perf=compare_perf,
+        )
+        if invalid_metric_errors:
+            if skip_latency_errors:
+                comparable_ids = [
+                    latency_id for latency_id in comparable_ids if latency_id not in invalid_metric_errors
+                ]
+                baseline = {
+                    latency_id: baseline_outcome.entries[latency_id].numeric_value
+                    for latency_id in comparable_ids
+                }
+                compare = {
+                    latency_id: compare_outcome.entries[latency_id].numeric_value
+                    for latency_id in comparable_ids
+                }
+            else:
+                first_latency_id = sorted(invalid_metric_errors)[0]
+                section_results.append(
+                    (
+                        section_metric_source,
+                        "Metric source section: "
+                        f"{section_metric_source}\nFAIL: {invalid_metric_errors[first_latency_id]}\n",
+                    )
+                )
+                exit_codes.append(1)
+                continue
         lines = [f"Metric source section: {section_metric_source}", "Perf comparison:"]
         for latency_id in comparable_ids:
             baseline_value = baseline[latency_id]
@@ -188,6 +242,7 @@ def _compare_perf_files_all(
         skipped_latency_errors = {
             **baseline_outcome.skipped_latency_errors,
             **compare_outcome.skipped_latency_errors,
+            **invalid_metric_errors,
         }
         if skipped_latency_errors:
             lines.append(
@@ -892,6 +947,31 @@ def _format_delta_percent(baseline: float, compare: float) -> str:
         return "inf"
     delta = ((compare - baseline) / baseline) * 100.0
     return f"{delta:.2f}%"
+
+
+def _collect_invalid_metric_errors(
+    baseline: dict[str, float],
+    compare: dict[str, float],
+    *,
+    baseline_perf: Path,
+    compare_perf: Path,
+) -> dict[str, str]:
+    errors: dict[str, str] = {}
+    for latency_id in sorted(set(baseline) & set(compare)):
+        baseline_value = baseline[latency_id]
+        compare_value = compare[latency_id]
+        if baseline_value <= 0:
+            errors[latency_id] = (
+                f"{baseline_perf} cannot compare '{latency_id}' because baseline timing "
+                f"{baseline_value} must be > 0"
+            )
+            continue
+        if compare_value <= 0:
+            errors[latency_id] = (
+                f"{compare_perf} cannot compare '{latency_id}' because compare timing "
+                f"{compare_value} must be > 0"
+            )
+    return errors
 
 
 def _summarize_perf_metrics(
