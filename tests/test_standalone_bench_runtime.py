@@ -483,6 +483,182 @@ def build_standalone_bench_cases(operator_api):
             self.assertEqual(record.case_label, "case-b")
             self.assertEqual(record.metrics["kernel_avg_time_us"], 3.5)
 
+    def test_read_profiler_metrics_filters_zero_duration_non_kernel_rows(self) -> None:
+        module = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            profile_root = Path(tmp)
+            (profile_root / "operator_details.csv").write_text(
+                "\n".join(
+                    [
+                        "Name,Device Self Duration(us)",
+                        "aten::view,0",
+                        "KernelA,10",
+                        "aten::empty,0",
+                        "KernelB,20",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            metrics = module._read_profiler_metrics(
+                profile_root,
+                active_count=5,
+                kernel_names=["KernelA", "KernelB"],
+            )
+
+        self.assertEqual(
+            metrics["ops"],
+            [
+                {"op_type": "KernelA", "avg_time_us": 2.0},
+                {"op_type": "KernelB", "avg_time_us": 4.0},
+            ],
+        )
+        self.assertEqual(metrics["kernel_avg_time_us"], 6.0)
+
+    def test_read_profiler_metrics_preserves_zero_duration_resolved_kernel_rows(self) -> None:
+        module = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            profile_root = Path(tmp)
+            (profile_root / "operator_details.csv").write_text(
+                "\n".join(
+                    [
+                        "Name,Device Self Duration(us)",
+                        "aten::view,0",
+                        "KernelZero,0",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            metrics = module._read_profiler_metrics(
+                profile_root,
+                active_count=5,
+                kernel_names=["KernelZero"],
+            )
+
+        self.assertEqual(
+            metrics["ops"],
+            [
+                {"op_type": "KernelZero", "avg_time_us": 0.0},
+            ],
+        )
+        self.assertEqual(metrics["kernel_avg_time_us"], 0.0)
+
+    def test_read_profiler_metrics_falls_back_to_op_statistic_when_operator_details_is_missing(self) -> None:
+        module = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            profile_root = Path(tmp)
+            (profile_root / "op_statistic.csv").write_text(
+                "\n".join(
+                    [
+                        "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                        "0,KernelA,AI_CORE,5,20,1,4.0,6,80",
+                        "0,KernelB,AI_VECTOR_CORE,5,5,0.5,1.0,2,20",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            metrics = module._read_profiler_metrics(
+                profile_root,
+                active_count=5,
+                kernel_names=["KernelB"],
+            )
+
+        self.assertEqual(
+            metrics["ops"],
+            [
+                {"op_type": "KernelA", "avg_time_us": 4.0},
+                {"op_type": "KernelB", "avg_time_us": 1.0},
+            ],
+        )
+        self.assertEqual(metrics["kernel_avg_time_us"], 1.0)
+
+    def test_read_profiler_metrics_falls_back_to_kernel_details_when_operator_details_is_missing(self) -> None:
+        module = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            profile_root = Path(tmp)
+            (profile_root / "kernel_details.csv").write_text(
+                "\n".join(
+                    [
+                        "Name,Duration(us),Wait Time(us),Block Dim",
+                        "KernelA,9.0,0,3",
+                        "KernelA,6.0,0,3",
+                        "KernelB,3.0,0,1",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            metrics = module._read_profiler_metrics(
+                profile_root,
+                active_count=3,
+                kernel_names=["KernelA"],
+            )
+
+        self.assertEqual(
+            metrics["ops"],
+            [
+                {"op_type": "KernelA", "avg_time_us": 5.0},
+                {"op_type": "KernelB", "avg_time_us": 1.0},
+            ],
+        )
+        self.assertEqual(metrics["kernel_avg_time_us"], 5.0)
+
+    def test_read_profiler_metrics_falls_back_to_kernel_details_when_operator_details_total_is_zero(self) -> None:
+        module = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            profile_root = Path(tmp)
+            (profile_root / "operator_details.csv").write_text(
+                "\n".join(
+                    [
+                        "Name,Device Self Duration(us)",
+                        "Wrapper,0",
+                        "KernelZero,0",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (profile_root / "kernel_details.csv").write_text(
+                "\n".join(
+                    [
+                        "Name,Duration(us),Wait Time(us),Block Dim",
+                        "KernelFromKernelDetails,15.0,0,3",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (profile_root / "op_statistic.csv").write_text(
+                "\n".join(
+                    [
+                        "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                        "0,KernelFromOpStatistic,AI_CORE,5,25,2,5.0,7,100",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            metrics = module._read_profiler_metrics(
+                profile_root,
+                active_count=3,
+                kernel_names=["KernelFromKernelDetails"],
+            )
+
+        self.assertEqual(
+            metrics["ops"],
+            [
+                {"op_type": "KernelFromKernelDetails", "avg_time_us": 5.0},
+            ],
+        )
+        self.assertEqual(metrics["kernel_avg_time_us"], 5.0)
+
     def test_profile_case_with_profiler_suppresses_profiler_output(self) -> None:
         module = load_standalone_bench_runtime_module()
 
