@@ -44,7 +44,7 @@ def run_log_check_batch(
             return BatchOptimizeResult(workspace=workspace, status="skipped", message="report already exists")
         rc = log_check_runner(
             target_path=workspace,
-            output_file=output_file,
+            output_json=f"{Path(output_file).stem}.json",
             agent_name=agent_name,
             verbose=verbose,
             show_output=show_output,
@@ -83,6 +83,16 @@ def run_log_check_batch(
 
 
 def summarize_log_check_output(path: Path) -> tuple[bool, str]:
+    """Summarize log_check result from JSON (preferred) or markdown (fallback).
+
+    *path* is the log_check_result.md file path. The corresponding JSON file is
+    derived by replacing the suffix.
+    """
+    json_path = path.with_name("log_check_result.json")
+    if json_path.is_file():
+        return _summarize_from_json(json_path)
+
+    # Fallback: parse legacy markdown
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
@@ -99,6 +109,24 @@ def summarize_log_check_output(path: Path) -> tuple[bool, str]:
     if "result: PASS" in text:
         return True, "missing overall summary; all visible results are PASS"
     return False, "missing overall summary"
+
+
+def _summarize_from_json(json_path: Path) -> tuple[bool, str]:
+    import json
+
+    try:
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return False, f"failed to read {json_path.name}: {exc}"
+    if not isinstance(data, dict):
+        return False, f"{json_path.name} is not a JSON object"
+    overall = data.get("overall")
+    if overall == "PASS":
+        return True, "overall PASS"
+    if overall == "FAIL":
+        failed_checks = data.get("failed_checks", "")
+        return False, str(failed_checks) or "overall FAIL"
+    return False, f"unexpected overall value: {overall!r}"
 
 
 def write_log_check_batch_summary(
