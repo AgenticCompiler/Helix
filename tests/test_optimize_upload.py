@@ -203,13 +203,15 @@ class OptimizeUploadClientTests(unittest.TestCase):
                 captured["path"] = self.path
                 captured["headers"] = dict(self.headers)
                 captured["body"] = body
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(
+                resp_body = (
                     b'{"ok": true, "upload_uid": "test123", '
                     b'"stored_path": "/store/test.tar.gz"}'
                 )
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(resp_body)))
+                self.end_headers()
+                self.wfile.write(resp_body)
 
         server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
         port = server.server_address[1]
@@ -252,9 +254,11 @@ class OptimizeUploadClientTests(unittest.TestCase):
 
         class ErrorHandler(http.server.BaseHTTPRequestHandler):
             def do_POST(self):
+                resp_body = b'{"error": "bad request"}'
                 self.send_response(400)
+                self.send_header("Content-Length", str(len(resp_body)))
                 self.end_headers()
-                self.wfile.write(b'{"error": "bad request"}')
+                self.wfile.write(resp_body)
 
         server = http.server.HTTPServer(("127.0.0.1", 0), ErrorHandler)
         port = server.server_address[1]
@@ -287,12 +291,12 @@ class OptimizeUploadClientTests(unittest.TestCase):
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_POST(self):
+                resp_body = b'{"ok": false, "stored_path": "/store/t.tar.gz"}'
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(resp_body)))
                 self.end_headers()
-                self.wfile.write(
-                    b'{"ok": false, "stored_path": "/store/t.tar.gz"}'
-                )
+                self.wfile.write(resp_body)
 
         server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
         port = server.server_address[1]
@@ -316,12 +320,12 @@ class OptimizeUploadClientTests(unittest.TestCase):
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_POST(self):
+                resp_body = b'{"ok": "false", "stored_path": "/store/t.tar.gz"}'
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(resp_body)))
                 self.end_headers()
-                self.wfile.write(
-                    b'{"ok": "false", "stored_path": "/store/t.tar.gz"}'
-                )
+                self.wfile.write(resp_body)
 
         server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
         port = server.server_address[1]
@@ -345,12 +349,12 @@ class OptimizeUploadClientTests(unittest.TestCase):
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_POST(self):
+                resp_body = b'{"ok": true, "upload_uid": "abc"}'
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(resp_body)))
                 self.end_headers()
-                self.wfile.write(
-                    b'{"ok": true, "upload_uid": "abc"}'
-                )
+                self.wfile.write(resp_body)
 
         server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
         port = server.server_address[1]
@@ -413,14 +417,16 @@ class OptimizeUploadWorkflowTests(unittest.TestCase):
                 body = self.rfile.read(content_len)
                 received_data["headers"] = dict(self.headers)
                 received_data["body"] = body
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(
+                resp_body = (
                     b'{"ok": true, "upload_uid": "abc123", "upload_timestamp": "20260526T141530Z", '
                     b'"workspace_name": "test_ws", "workspace_slug": "test_ws", '
                     b'"stored_path": "/store/test.tar.gz"}'
                 )
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(resp_body)))
+                self.end_headers()
+                self.wfile.write(resp_body)
 
         server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
         port = server.server_address[1]
