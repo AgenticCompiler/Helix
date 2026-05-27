@@ -318,9 +318,9 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("Environment variables:", help_text)
         self.assertIn("TRITON_AGENT_BATCH_NPU_DEVICES", help_text)
         self.assertIn("TRITON_AGENT_CODE_AGENT_MAX_RETRIES", help_text)
-        self.assertIn("TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR", help_text)
+        self.assertIn("TRITON_AGENT_BENCH_OUTPUT_DIR", help_text)
         self.assertIn("TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES", help_text)
-        self.assertIn("TRITON_AGENT_HOME", help_text)
+        self.assertIn("TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR", help_text)
         self.assertIn("TRITON_AGENT_STALL_TIMEOUT_SECONDS", help_text)
         self.assertIn("TRITON_AGENT_SSH_TIMEOUT_SECONDS", help_text)
         self.assertIn("TRITON_AGENT_SCP_TIMEOUT_SECONDS", help_text)
@@ -1300,6 +1300,35 @@ class CliParserTests(unittest.TestCase):
         self.assertTrue(args.reset_optimize)
         options = optimize_run_options_from_args(args)
         self.assertTrue(options.reset_optimize)
+
+    def test_upload_optimize_command_parses_input_and_verbose(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["upload-optimize", "-i", "workspace-root", "--verbose"]
+        )
+        self.assertEqual(args.command, "upload-optimize")
+        self.assertEqual(args.input, "workspace-root")
+        self.assertTrue(args.verbose)
+
+    def test_optimize_command_defaults_upload_enabled(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py"])
+        options = optimize_run_options_from_args(args)
+        self.assertTrue(options.upload_enabled)
+
+    def test_optimize_command_accepts_no_upload(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--no-upload"])
+        options = optimize_run_options_from_args(args)
+        self.assertFalse(options.upload_enabled)
+
+    def test_optimize_batch_accepts_no_upload(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["optimize-batch", "-i", "workspace-root", "--no-upload"]
+        )
+        options = optimize_run_options_from_args(args)
+        self.assertFalse(options.upload_enabled)
 
 
 class PathResolutionTests(unittest.TestCase):

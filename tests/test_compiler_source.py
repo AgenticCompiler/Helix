@@ -12,7 +12,7 @@ from triton_agent.optimize.compiler_source import (
 
 
 class CompilerSourceTests(unittest.TestCase):
-    def test_default_compiler_source_path_uses_triton_agent_home(self) -> None:
+    def test_default_compiler_source_path_uses_cache_dir(self) -> None:
         root = Path("/tmp/fake-home")
 
         path = default_compiler_source_path(root)
@@ -25,7 +25,7 @@ class CompilerSourceTests(unittest.TestCase):
 
             result = prepare_compiler_source(
                 mode="off",
-                triton_agent_home=Path(tmp),
+                cache_dir=Path(tmp),
                 run_git=lambda args, cwd=None: calls.append(args) or "",
             )
 
@@ -51,7 +51,7 @@ class CompilerSourceTests(unittest.TestCase):
 
             result = prepare_compiler_source(
                 mode="auto",
-                triton_agent_home=home,
+                cache_dir=home,
                 run_git=fake_run,
             )
 
@@ -91,7 +91,7 @@ class CompilerSourceTests(unittest.TestCase):
 
             result = prepare_compiler_source(
                 mode="auto",
-                triton_agent_home=home,
+                cache_dir=home,
                 run_git=fake_run,
             )
 
@@ -112,7 +112,7 @@ class CompilerSourceTests(unittest.TestCase):
             path.write_text("not a directory\n", encoding="utf-8")
 
             with self.assertRaisesRegex(ValueError, "not a directory"):
-                prepare_compiler_source(mode="auto", triton_agent_home=home)
+                prepare_compiler_source(mode="auto", cache_dir=home)
 
     def test_prepare_cloned_checkout_must_be_git_checkout(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -129,7 +129,7 @@ class CompilerSourceTests(unittest.TestCase):
                 raise AssertionError(args)
 
             with self.assertRaisesRegex(ValueError, "git checkout"):
-                prepare_compiler_source(mode="auto", triton_agent_home=home, run_git=fake_run)
+                prepare_compiler_source(mode="auto", cache_dir=home, run_git=fake_run)
 
             self.assertTrue(calls)
 
@@ -141,7 +141,7 @@ class CompilerSourceTests(unittest.TestCase):
             path.mkdir()
 
             with self.assertRaisesRegex(ValueError, "git checkout"):
-                prepare_compiler_source(mode="auto", triton_agent_home=home)
+                prepare_compiler_source(mode="auto", cache_dir=home)
 
 
 if __name__ == "__main__":

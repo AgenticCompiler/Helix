@@ -30,7 +30,7 @@ from result_payload import ResultPayload, make_result
 WARMUP_DEFAULT = 5
 REPEATS_DEFAULT = 50
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched profiler operator details"
-_LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR"
+_LOCAL_BENCH_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_OUTPUT_DIR"
 
 @dataclass(frozen=True)
 class StandaloneBenchCase:
@@ -440,10 +440,10 @@ def _profile_output_root(parent: Path, case_id: str) -> Path:
 
 
 def _resolve_local_bench_profile_output_root() -> tuple[str | None, str]:
-    configured_root = os.environ.get(_LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV)
+    configured_root = os.environ.get(_LOCAL_BENCH_OUTPUT_DIR_ENV)
     if configured_root:
-        return configured_root, _LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV
-    return None, _LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV
+        return configured_root, _LOCAL_BENCH_OUTPUT_DIR_ENV
+    return None, _LOCAL_BENCH_OUTPUT_DIR_ENV
 
 
 def _create_local_preserved_profile_run_dir(prefix: str) -> Path | None:

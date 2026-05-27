@@ -5,7 +5,7 @@
 Fix two behavior gaps in local benchmark tooling:
 
 - `compare-perf --skip-latency-errors` should treat non-positive numeric timings as skippable comparison errors instead of silently collapsing aggregate metrics to `unknown`.
-- Local standalone `run-bench` paths should consistently honor `TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR`, including parallel standalone case execution.
+- Local standalone `run-bench` paths should consistently honor `TRITON_AGENT_BENCH_OUTPUT_DIR`, including parallel standalone case execution.
 
 ## Goals
 
@@ -30,7 +30,7 @@ Fix two behavior gaps in local benchmark tooling:
 
 ### Standalone local run-bench output root
 
-- `TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR` remains the single local profiler retention control for benchmark profiling.
+- `TRITON_AGENT_BENCH_OUTPUT_DIR` remains the single local profiler retention control for benchmark profiling.
 - Resolve configured local profile output roots to absolute paths before creating preserved run directories or passing them to standalone case subprocesses.
 - Local parallel standalone `run-bench` case subprocesses should inherit the configured environment variable so each isolated runtime keeps artifacts under the same preserved root.
 - When the variable is unset, preserve existing temporary-directory cleanup behavior.

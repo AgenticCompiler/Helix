@@ -17,7 +17,7 @@ from perf_artifacts import (
 )
 from run_runtime import RemoteSpec, ResultPayload, make_result, result_succeeded
 
-_LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR"
+_LOCAL_BENCH_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_OUTPUT_DIR"
 _PRESERVED_RUN_DIR_NONE_SENTINEL = "__NONE__"
 
 
@@ -279,7 +279,7 @@ def _run_local_standalone_case_in_subprocess(
     extra_env = affinity_env_for_device(device)
     configured_profile_root, _configured_env = deps._resolve_local_bench_profile_output_root()
     if configured_profile_root:
-        extra_env[_LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV] = str(Path(configured_profile_root).expanduser().resolve())
+        extra_env[_LOCAL_BENCH_OUTPUT_DIR_ENV] = str(Path(configured_profile_root).expanduser().resolve())
     result = deps.run_buffered_process(
         [
             deps.local_python_executable(),

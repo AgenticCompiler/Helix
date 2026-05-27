@@ -18,6 +18,7 @@ from triton_agent.commands.optimize import (
     handle_optimize,
     handle_optimize_batch,
 )
+from triton_agent.commands.upload_optimize import handle_upload_optimize
 from triton_agent.models import CommandKind
 
 
@@ -63,7 +64,7 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
                 "Retry limit for transient code-agent failures.",
             ),
             (
-                "TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR",
+                "TRITON_AGENT_BENCH_OUTPUT_DIR",
                 "Directory used to keep local benchmark profiler output.",
             ),
             (
@@ -71,8 +72,14 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
                 "Enable ordinary optimize PT cleanup; default keeps PT files and does not affect --reset-optimize.",
             ),
             (
-                "TRITON_AGENT_HOME",
-                "Overrides the triton-agent home directory for cached artifacts.",
+                "TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR",
+                "Overrides the base directory for cached compiler source checkouts. "
+                "Defaults to ~/.triton-agent.",
+            ),
+            (
+                "TRITON_AGENT_OPTIMIZE_UPLOAD_URL",
+                "HTTP endpoint for the optimize upload server. "
+                "Required for the upload-optimize subcommand and auto-upload after optimize.",
             ),
         ),
     ),
@@ -357,6 +364,14 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_prompt=True,
         max_concurrency_default=1,
     ),
+    CommandKind.UPLOAD_OPTIMIZE: _CommandSpec(
+        handler=handle_upload_optimize,
+        help_group="Optimization",
+        help_summary="Upload one optimize workspace to an analysis server.",
+        description="Upload one optimize workspace to an analysis server.",
+        has_output=False,
+        has_verbose=True,
+    ),
 }
 
 
@@ -441,6 +456,7 @@ def build_parser() -> argparse.ArgumentParser:
                 default="off",
                 choices=_SUPERVISE_CHOICES,
             )
+            subparser.add_argument("--no-upload", action="store_true")
         if spec.has_prompt:
             subparser.add_argument("--prompt")
         if command_kind in {CommandKind.LOG_CHECK, CommandKind.LOG_CHECK_BATCH}:

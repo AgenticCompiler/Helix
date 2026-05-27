@@ -57,7 +57,7 @@ from run_runtime import (
     run_streaming_process,
 )
 
-_LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR"
+_LOCAL_BENCH_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_OUTPUT_DIR"
 _standalone_runtime_module_cache = None
 _standalone_runtime_module_lock = threading.Lock()
 _T = TypeVar("_T")
@@ -875,10 +875,10 @@ def _sort_case_records(case_records: list[PerfCaseRecord], ordered_case_labels: 
 
 
 def _resolve_local_bench_profile_output_root() -> tuple[str | None, str]:
-    configured_root = os.environ.get(_LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV)
+    configured_root = os.environ.get(_LOCAL_BENCH_OUTPUT_DIR_ENV)
     if configured_root:
-        return configured_root, _LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV
-    return None, _LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV
+        return configured_root, _LOCAL_BENCH_OUTPUT_DIR_ENV
+    return None, _LOCAL_BENCH_OUTPUT_DIR_ENV
 
 
 def _create_local_msprof_output_dir(

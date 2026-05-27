@@ -116,6 +116,126 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
             self.assertEqual(captured["input_path"], operator.resolve())
             self.assertEqual(captured["workdir"], workspace.resolve())
 
+    def test_handle_optimize_auto_upload_on_success(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh"])
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.commands.optimize.run_optimize_request", return_value=fake_result):
+                with patch("triton_agent.commands.optimize.upload_optimize_workspace") as mock_upload:
+                    exit_code = handle_optimize(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            mock_upload.assert_called_once()
+
+    def test_handle_optimize_no_auto_upload_on_failure(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh"])
+
+            fake_result = AgentResult(return_code=1, stdout="", stderr="error")
+
+            with patch("triton_agent.commands.optimize.run_optimize_request", return_value=fake_result):
+                with patch("triton_agent.commands.optimize.upload_optimize_workspace") as mock_upload:
+                    exit_code = handle_optimize(parser, args)
+
+            self.assertEqual(exit_code, 1)
+            mock_upload.assert_not_called()
+
+    def test_handle_optimize_no_auto_upload_when_disabled(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            args = parser.parse_args(
+                ["optimize", "-i", str(workspace), "--resume", "fresh", "--no-upload"]
+            )
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.commands.optimize.run_optimize_request", return_value=fake_result):
+                with patch("triton_agent.commands.optimize.upload_optimize_workspace") as mock_upload:
+                    exit_code = handle_optimize(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            mock_upload.assert_not_called()
+
+    def test_upload_optimize_rejects_missing_input(self) -> None:
+        from triton_agent.commands.upload_optimize import handle_upload_optimize
+        parser = build_parser()
+        args = parser.parse_args(["upload-optimize", "-i", "/nonexistent/path"])
+        with self.assertRaises(SystemExit) as exc:
+            handle_upload_optimize(parser, args)
+        self.assertEqual(exc.exception.code, 2)
+
+
+class OptimizeUploadCommandHandlerTests(unittest.TestCase):
+    def test_upload_optimize_success_calls_workflow(self) -> None:
+        from triton_agent.commands.upload_optimize import handle_upload_optimize
+        from triton_agent.optimize_upload.models import UploadResponse
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            (ws / "kernel.py").write_text("code", encoding="utf-8")
+            (ws / "baseline").mkdir()
+            (ws / "baseline" / "state.json").write_text("{}", encoding="utf-8")
+
+            expected_response = UploadResponse(
+                ok=True,
+                upload_uid="abc123",
+                upload_timestamp="20260526T141530Z",
+                workspace_name=ws.name,
+                workspace_slug=ws.name,
+                stored_path="/store/test.tar.gz",
+            )
+
+            with patch(
+                "triton_agent.commands.upload_optimize.upload_optimize_workspace",
+                return_value=expected_response,
+            ) as mock_upload:
+                parser = build_parser()
+                args = parser.parse_args(["upload-optimize", "-i", str(ws)])
+                exit_code = handle_upload_optimize(parser, args)
+                self.assertEqual(exit_code, 0)
+                mock_upload.assert_called_once()
+
+    def test_upload_optimize_failure_returns_nonzero(self) -> None:
+        from triton_agent.commands.upload_optimize import handle_upload_optimize
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ws = Path(tmp)
+            (ws / "kernel.py").write_text("code", encoding="utf-8")
+            (ws / "baseline").mkdir()
+            (ws / "baseline" / "state.json").write_text("{}", encoding="utf-8")
+
+            with patch(
+                "triton_agent.commands.upload_optimize.upload_optimize_workspace",
+                side_effect=ValueError("upload failed"),
+            ) as mock_upload:
+                parser = build_parser()
+                args = parser.parse_args(["upload-optimize", "-i", str(ws)])
+                exit_code = handle_upload_optimize(parser, args)
+                self.assertNotEqual(exit_code, 0)
+                mock_upload.assert_called_once()
+
+    def test_upload_optimize_rejects_missing_input(self) -> None:
+        from triton_agent.commands.upload_optimize import handle_upload_optimize
+
+        parser = build_parser()
+        args = parser.parse_args(["upload-optimize", "-i", "/nonexistent/path"])
+        with self.assertRaises(SystemExit) as exc:
+            handle_upload_optimize(parser, args)
+        self.assertEqual(exc.exception.code, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
