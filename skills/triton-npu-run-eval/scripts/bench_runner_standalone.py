@@ -288,7 +288,11 @@ def _run_local_standalone_case_in_subprocess(
             deps._case_workspace_command_path(bench_file, source_root=source_root),
             deps._case_workspace_command_path(operator_file, source_root=source_root),
             case_id,
-            _PRESERVED_RUN_DIR_NONE_SENTINEL if preserved_run_dir is None else preserved_run_dir.as_posix(),
+            (
+                _PRESERVED_RUN_DIR_NONE_SENTINEL
+                if preserved_run_dir is None
+                else preserved_run_dir.resolve().as_posix()
+            ),
         ],
         str(workspace_root),
         stall_timeout_seconds=deps._bench_timeout(),

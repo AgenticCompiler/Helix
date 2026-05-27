@@ -442,7 +442,7 @@ def _profile_output_root(parent: Path, case_id: str) -> Path:
 def _resolve_local_bench_profile_output_root() -> tuple[str | None, str]:
     configured_root = os.environ.get(_LOCAL_BENCH_OUTPUT_DIR_ENV)
     if configured_root:
-        return configured_root, _LOCAL_BENCH_OUTPUT_DIR_ENV
+        return str(Path(configured_root).expanduser().resolve()), _LOCAL_BENCH_OUTPUT_DIR_ENV
     return None, _LOCAL_BENCH_OUTPUT_DIR_ENV
 
 
@@ -472,7 +472,7 @@ def _create_local_standalone_profile_dir(
     if preserved_run_dir is None:
         temp_dir = tempfile.TemporaryDirectory(prefix=f"triton-agent-standalone-bench-{_sanitize_case_id(case_id)}-")
         return Path(temp_dir.name), temp_dir
-    profile_root = preserved_run_dir / f"case-{_sanitize_case_id(case_id)}"
+    profile_root = preserved_run_dir.resolve() / f"case-{_sanitize_case_id(case_id)}"
     profile_root.mkdir(parents=True, exist_ok=False)
     _set_directory_owner_only(profile_root)
     return profile_root, None

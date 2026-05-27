@@ -246,7 +246,7 @@ def build_standalone_bench_cases(operator_api):
             self.assertTrue(keep_root.exists())
             self.assertEqual(len(created_output_dirs), 2)
             self.assertTrue(all(path.exists() for path in created_output_dirs))
-            self.assertTrue(all(keep_root in path.parents for path in created_output_dirs))
+            self.assertTrue(all(keep_root.resolve() in path.resolve().parents for path in created_output_dirs))
             self.assertTrue((created_output_dirs[0] / "case-a.txt").exists())
             self.assertTrue((created_output_dirs[1] / "case-b.txt").exists())
             self.assertEqual(sorted(path.name for path in created_output_dirs), ["case-case-a", "case-case-b"])
