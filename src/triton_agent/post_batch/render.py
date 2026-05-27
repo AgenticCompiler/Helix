@@ -22,8 +22,8 @@ def render_post_batch_report(state: dict[str, Any]) -> str:
     lines.append("## Summary")
     lines.append("")
     total = summary.get("total_workspaces", 0)
-    lines.append(f"| Metric | Value |")
-    lines.append(f"|---|---|")
+    lines.append("| Metric | Value |")
+    lines.append("|---|---|")
     lines.append(f"| Total workspaces | {total} |")
 
     _append_process_summary(lines, summary)

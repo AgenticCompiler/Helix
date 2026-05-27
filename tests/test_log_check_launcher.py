@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -8,10 +9,57 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.log_check.batch import run_log_check_batch
-from triton_agent.log_check.log_check_launcher import build_log_check_prompt, run_log_check
+from triton_agent.log_check.log_check_launcher import (
+    _LOG_CHECK_JSON_FILENAME,
+    _PATTERN_ANALYSIS_JSON_FILENAME,
+    build_log_check_prompt,
+    run_log_check,
+)
 from triton_agent.models import AgentRequest, AgentResult
 from triton_agent.show_output_log import show_output_log_path
 from triton_agent.skills import SkillLinkSet
+
+
+def _make_log_check_json() -> str:
+    return json.dumps(
+        {
+            "schema_version": 1,
+            "overall": "PASS",
+            "failed_checks": "",
+            "overview_detail": "All checks passed.",
+            "checks": [
+                {"id": "check-1", "name": "distinct strategies per round", "result": "pass", "detail": "ok"},
+                {"id": "check-2", "name": "strategy novelty beyond patterns", "result": "pass", "detail": "ok"},
+                {"id": "check-3", "name": "repeated pattern failures", "result": "pass", "detail": "ok"},
+                {"id": "check-4", "name": "no code duplication or regression", "result": "pass", "detail": "ok"},
+                {"id": "check-6", "name": "code compiles", "result": "pass", "detail": "ok"},
+                {"id": "check-7", "name": "uses NPU-specific ops", "result": "pass", "detail": "ok"},
+                {"id": "check-8", "name": "safe memory access", "result": "pass", "detail": "ok"},
+                {"id": "check-9", "name": "no silent correctness issues", "result": "pass", "detail": "ok"},
+            ],
+        }
+    )
+
+
+def _make_pattern_analysis_json() -> str:
+    return json.dumps(
+        {
+            "schema_version": 1,
+            "rounds": [
+                {
+                    "round": "round-1",
+                    "patterns": [
+                        {"name": "tiling", "evidence": "explicit", "source": "round-1/attempts.md"},
+                    ],
+                },
+            ],
+            "summary": {
+                "known": [{"name": "tiling", "rounds": [1], "evidence": "explicit"}],
+                "new": [],
+                "extended": [],
+            },
+        }
+    )
 
 
 def _dummy_resolve_staged_skills(*args, **kwargs):
@@ -54,7 +102,12 @@ class LogCheckLauncherTests(unittest.TestCase):
             class DummyRunner:
                 def run(self, request: AgentRequest) -> AgentResult:
                     captured["request"] = request
-                    (target / "log_check_result.md").write_text("summary:\noverall: PASS\n", encoding="utf-8")
+                    (target / _LOG_CHECK_JSON_FILENAME).write_text(
+                        _make_log_check_json(), encoding="utf-8"
+                    )
+                    (target / _PATTERN_ANALYSIS_JSON_FILENAME).write_text(
+                        _make_pattern_analysis_json(), encoding="utf-8"
+                    )
                     return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch(
@@ -89,8 +142,12 @@ class LogCheckLauncherTests(unittest.TestCase):
             class DummyRunner:
                 def run(self, request: AgentRequest) -> AgentResult:
                     captured["request"] = request
-                    (request.workdir / "log_check_result.md").write_text(
-                        "summary:\noverall: PASS\n",
+                    (request.workdir / _LOG_CHECK_JSON_FILENAME).write_text(
+                        _make_log_check_json(),
+                        encoding="utf-8",
+                    )
+                    (request.workdir / _PATTERN_ANALYSIS_JSON_FILENAME).write_text(
+                        _make_pattern_analysis_json(),
                         encoding="utf-8",
                     )
                     return AgentResult(return_code=0, stdout="", stderr="")

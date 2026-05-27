@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from triton_agent.optimize.batch import load_optimize_batch_status, optimize_batch_workspace_key
 from triton_agent.status.core import inspect_optimize_status_workspace
