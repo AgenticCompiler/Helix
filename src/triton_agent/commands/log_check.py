@@ -15,7 +15,7 @@ def handle_log_check(parser: argparse.ArgumentParser, args: argparse.Namespace) 
         parser.error(f"Input path is not a directory: {target_path}")
     return run_log_check(
         target_path=target_path,
-        output_file=str(getattr(args, "check_result_file", "log_check_result.md")),
+        output_json=str(getattr(args, "check_result_file", "log_check_result.json")),
         agent_name=str(getattr(args, "agent", "codex")),
         verbose=bool(getattr(args, "verbose", False)),
         show_output=bool(getattr(args, "show_output", False)),

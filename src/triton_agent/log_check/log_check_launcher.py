@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -11,8 +12,75 @@ from triton_agent.skill_staging import resolve_staged_skills
 from triton_agent.skills import SkillLinkManager, staged_skill_dir
 from triton_agent.verbose import emit_verbose_lines
 
+from .check_json import (
+    repair_json,
+    validate_log_check_json,
+    validate_pattern_analysis_json,
+)
+from .check_markdown import (
+    render_log_check_markdown,
+    render_pattern_analysis_markdown,
+)
 
-def build_log_check_prompt(*, target_path: Path, output_file: str = "log_check_result.md", agent_name: str = "codex") -> str:
+_LOG_CHECK_JSON_FILENAME = "log_check_result.json"
+_PATTERN_ANALYSIS_JSON_FILENAME = "pattern_analysis.json"
+
+_LOG_CHECK_JSON_SCHEMA_EXAMPLE = r"""{
+  "schema_version": 1,
+  "overall": "PASS",
+  "failed_checks": "none",
+  "overview_detail": "A brief paragraph summarizing the overall conclusion and main risks.",
+  "checks": [
+    {
+      "id": "check-1",
+      "name": "distinct strategies per round",
+      "result": "pass",
+      "detail": "Each round used a different strategy: round-1 applied tiling, ..."
+    },
+    {
+      "id": "check-2",
+      "name": "strategy novelty beyond patterns",
+      "result": "fail",
+      "detail": "Only used patterns already in the reference directory..."
+    }
+  ]
+}"""
+
+_PATTERN_ANALYSIS_JSON_SCHEMA_EXAMPLE = r"""{
+  "schema_version": 1,
+  "rounds": [
+    {
+      "round": "round-1",
+      "patterns": [
+        {
+          "name": "tiling",
+          "evidence": "explicit",
+          "source": "round-1/attempts.md: 'applied tiling pattern to improve memory access'"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "known": [
+      { "name": "tiling", "rounds": [1, 2], "evidence": "explicit" }
+    ],
+    "new": [
+      { "name": "host-side shape dispatch", "rounds": [3] }
+    ],
+    "extended": [
+      { "name": "tile budget tuning", "rounds": [5], "from": "tiling" }
+    ]
+  }
+}"""
+
+
+def build_log_check_prompt(
+    *,
+    target_path: Path,
+    log_check_json_file: str = _LOG_CHECK_JSON_FILENAME,
+    pattern_analysis_json_file: str = _PATTERN_ANALYSIS_JSON_FILENAME,
+    agent_name: str = "codex",
+) -> str:
     normalized_target = target_path.resolve()
     backend_skills = staged_skill_dir(agent_name)
     patterns_path = backend_skills / "triton-npu-optimize-knowledge" / "references" / "patterns"
@@ -36,52 +104,36 @@ Also examine the patterns reference directory staged under your workspace:
 This directory contains the full set of optimization strategies provided to the
 agent. The pattern index file lists all available strategies.
 
-Perform the following checks and write the complete analysis results to the operator
-root directory file {output_file}.
+Perform the following checks and write the complete analysis results as structured
+JSON files.
+
+--- Check definitions ---
 
 check-1: Each optimization round uses a distinct strategy
 Analyze whether each optimization round attempts a different strategy. Compare the
 approaches used across all opt-round-i directories.
-result: PASS
-detail: If passing, list each round's strategy. If failing, mark which rounds reused
-the same strategy.
 
 check-2: Strategy novelty beyond provided patterns
 Analyze whether the optimization log contains strategies beyond those listed in the
 patterns reference directory.
-If new strategies are found:
-  result: PASS
-  detail: Which rounds used novel strategies
-If no new strategies are found:
-  result: FAIL
-  detail: Only the following patterns from the reference were used
+If new strategies are found: result pass. If no new strategies are found: result fail.
 
 check-3: Parameter tuning should use autotune instead of many manual rounds
 Check whether the optimization process spent many rounds only manually tuning
 parameters (block size, num_warps, num_stages, tile size, etc.) without using or
 attempting to use autotune. If there are consecutive or numerous rounds that only
-adjust these parameters manually, mark as FAIL.
-result: PASS
-detail: If passing, note which rounds used autotune or did not have excessive manual
-parameter tuning. If failing, list the rounds that repeatedly performed manual
-parameter tuning and suggest using autotune instead.
+adjust these parameters manually, mark as fail.
 
 check-4: Optimized code must not duplicate or regress to previous rounds
 Verify that the optimized code in each round does not duplicate or regress to code
 from earlier rounds. Compare the *.py files across opt-round-i directories and confirm
 that each round builds on the latest optimization, not copying the previous round,
 regressing to an earlier round, or making only meaningless formatting changes.
-result: PASS
-detail: If passing, describe the key change in each round relative to the previous
-one. If failing, mark which rounds duplicated, regressed, or had no substantive change.
 
 check-6: Triton invocation must remain in use
 Verify that each round still calls the Triton kernel path and has not replaced it with
 pure PyTorch implementation. The optimized code must not remove, bypass, or weaken the
 Triton invocation to pass tests or boost performance by avoiding Triton.
-result: PASS
-detail: If passing, describe the Triton call path preserved in each round. If failing,
-mark which rounds removed, bypassed, or weakened the Triton invocation.
 
 check-7: Baseline operator correctness and benchmark are valid
 The baseline directory under the operator root records the original operator version.
@@ -89,10 +141,6 @@ Verify based on baseline state, original operator snapshot, test results, benchm
 output, and perf records.
 Check that the baseline operator passes all tests and that benchmark results are
 correct and reasonable.
-result: PASS
-detail: If passing, describe the test status, benchmark status, and performance result
-source in the baseline. If failing, note missing or failed baseline files, test
-failures, benchmark failures, or unreasonable performance results.
 
 check-8: Best optimized version is valid and verified
 The opt-note file records the optimization process, including what the agent considers
@@ -101,11 +149,6 @@ related logs, then check its optimized code, test results, benchmark results, an
 records in the corresponding operator directory.
 Verify that the best version identified by the agent is obtainable, tests pass, and
 benchmark results are correct and reasonable.
-result: PASS
-detail: If passing, state which round is the best version, evidence source, test
-status, benchmark status, and performance results. If failing, note inability to
-confirm the best version, test failures, benchmark failures, or unreasonable
-performance results.
 
 check-9: Round logs and evidence files are complete
 Verify that each optimization round has saved all necessary log and evidence files.
@@ -113,33 +156,27 @@ Each round should ideally contain: optimization plan or attempt records, optimiz
 summary, optimized code, performance results, msprof output summary (if msprof was
 run), and records of compilation fixes and runtime error handling. Judge based on
 attempts/, summary.md, round-state.json, perf.txt, and profile/msprof-related files.
-result: PASS
-detail: If passing, describe per-round what logs and evidence were saved. If failing,
-mark which rounds are missing optimization plans, optimized code, msprof summaries,
-compilation fix records, or runtime error records.
 
 check-10: Optimization pattern usage analysis
 
 Analyze which optimization patterns from the staged pattern reference were applied in
 each optimization round. This check is informational — it reports findings without a
-PASS/FAIL result. Write the analysis to a separate file: pattern_analysis.md
+PASS/FAIL result. Write the analysis to a separate file: {pattern_analysis_json_file}
 
 For each round, use two-tier evidence in priority order:
 
 Tier 1 — Explicit (read artifacts first):
   - Search opt-round-N/attempts.md for pattern names, candidate pattern discussions,
-    and pattern triage records. The optimize workflow may record pattern choices here.
+    and pattern triage records.
   - Search opt-round-N/summary.md for named pattern direction records.
   - Also check opt-note.md at the operator root for overall pattern mentions.
 
 Tier 2 — Inferred (only when Tier 1 finds no pattern for a round):
   - Compare the operator .py file between this round and its immediate predecessor
-    (previous round or baseline/). Examine what was added, removed, or changed.
+    (previous round or baseline/).
   - Read each pattern's ## Signals section from the staged pattern references under
     {patterns_path.as_posix()}
-  - Match the nature of the code diff against pattern signals. Consider whether the
-    changes are structural (tiling, pipeline), parametric (autotune configs), or
-    algebraic (expression rewrites).
+  - Match the nature of the code diff against pattern signals.
 
 For each detected pattern, label its evidence level:
   - "explicit": pattern name directly stated in attempts.md, summary.md, or opt-note.md.
@@ -147,34 +184,56 @@ For each detected pattern, label its evidence level:
   - "inferred": determined from code diff analysis. Cite the key diff changes and
     which pattern signals matched.
 
-Output format for pattern_analysis.md:
-  - Per-round breakdown: round, pattern(s) used, evidence level per pattern, source
-  - For inferred entries: describe the key diff changes and matched pattern signals
-  - Summary: all patterns used across the entire optimization, with evidence level
-    distribution (how many explicit vs inferred)
-  - Note any strategies that appear novel (not matching any staged pattern reference)
+--- Output format ---
 
-Write the analysis to: pattern_analysis.md
+Write TWO JSON files (NOT markdown files):
 
-Output format requirements:
+1. {log_check_json_file} — check results for check-1 through check-9.
+   Schema:
+{_LOG_CHECK_JSON_SCHEMA_EXAMPLE}
 
-The file must begin with a check overview in the following format:
+   Rules:
+   - "schema_version" must be 1.
+   - "overall" is "PASS" ONLY when ALL eight check sections have result "pass".
+     If any check has result "fail", overall must be "FAIL".
+   - "failed_checks": when overall is "PASS", set to "none".
+     When overall is "FAIL", list the check ids and titles that failed, e.g.
+     "check-2: strategy novelty beyond patterns, check-4: no code duplication or regression".
+   - "overview_detail": a brief paragraph summarizing the overall conclusion and main risks.
+   - checks array: exactly 8 entries (check-1, check-2, check-3, check-4, check-6, check-7, check-8, check-9).
+     DO NOT include check-5 or check-10 in this file.
+   - checks[].id: the check identifier string, e.g. "check-1".
+   - checks[].name: the check title, e.g. "distinct strategies per round".
+   - checks[].result: "pass" or "fail" (lowercase).
+   - checks[].detail: string describing the evidence. Use null when there is nothing to say.
 
-summary:
-overall: PASS or FAIL
-failed_checks: none (if overall PASS) or list of check numbers and titles with result FAIL
-overview_detail: A brief paragraph summarizing the overall conclusion and main risks
+2. {pattern_analysis_json_file} — pattern usage analysis (check-10 only).
+   Schema:
+{_PATTERN_ANALYSIS_JSON_SCHEMA_EXAMPLE}
 
-Overall result rule: overall is PASS only when ALL check sections have result PASS.
-If any check is FAIL, overall must be FAIL.
+   Rules:
+   - "schema_version" must be 1.
+   - "rounds": per-round pattern detection (one entry per opt-round-N directory).
+   - "rounds[].patterns[].evidence": "explicit" or "inferred".
+   - "rounds[].patterns[].source": citation string for the evidence.
+   - "summary.known": all patterns matched against staged references, grouped by name
+     with the rounds they appeared in and their evidence level.
+   - "summary.new": any strategies that do not match ANY staged pattern reference.
+   - "summary.extended": strategies that build on a known pattern but add a new
+     variation. The "from" field names the base pattern.
 
-Must include all eight sections: check-1, check-2, check-3, check-4, check-6, check-7,
-check-8, and check-9.
-Each section must contain the check title, result, and detail.
-result must be exactly PASS or FAIL — no other casing or values are allowed.
-Organize detail by section; avoid single-sentence conclusions.
+CRITICAL — JSON formatting requirements:
+- Write valid JSON. Escape double quotes inside strings as \\\", escape newlines as \\n,
+  escape backslashes as \\\\.
+- Do NOT use trailing commas.
+- Do NOT wrap the JSON in markdown code fences (```json ... ```).
+- Write directly to the file using a write_file tool, not as displayed output.
+- Each file must be a single JSON object at the top level.
+- Ensure all strings are properly closed. Multi-paragraph detail strings are fine
+  as long as newlines are escaped.
 
-Write the final result directly to: {output_file}"""
+Write the check results directly to: {log_check_json_file}
+Write the pattern analysis directly to: {pattern_analysis_json_file}"""
 
 
 def build_log_check_request(
@@ -183,7 +242,8 @@ def build_log_check_request(
     agent_name: str = "codex",
     verbose: bool = False,
     show_output: bool = True,
-    output_file: str = "log_check_result.md",
+    output_json: str = _LOG_CHECK_JSON_FILENAME,
+    pattern_analysis_json: str = _PATTERN_ANALYSIS_JSON_FILENAME,
     staged_skill_names: tuple[str, ...] | None = None,
     staged_skill_sources: dict[str, str] | None = None,
 ) -> AgentRequest:
@@ -201,7 +261,12 @@ def build_log_check_request(
         force_overwrite=False,
         agent_name=agent_name,
         skill_name="triton-npu-optimize-check",
-        prompt=build_log_check_prompt(target_path=resolved_target, output_file=output_file, agent_name=agent_name),
+        prompt=build_log_check_prompt(
+            target_path=resolved_target,
+            log_check_json_file=output_json,
+            pattern_analysis_json_file=pattern_analysis_json,
+            agent_name=agent_name,
+        ),
         workdir=resolved_target,
         no_agent_session=True,
         staged_skill_names=staged_skill_names,
@@ -212,7 +277,7 @@ def build_log_check_request(
 def build_parser(*, prog_name: str | None = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=prog_name or Path(__file__).name,
-        description="Launch Codex log validation and write log_check_result.md.",
+        description="Launch Codex log validation and write structured JSON results.",
     )
     parser.add_argument(
         "--path",
@@ -220,9 +285,14 @@ def build_parser(*, prog_name: str | None = None) -> argparse.ArgumentParser:
         help="Operator workspace root path containing baseline and opt-round-* directories.",
     )
     parser.add_argument(
-        "--output-file",
-        default="log_check_result.md",
-        help="Output filename written in the target workspace (default: log_check_result.md).",
+        "--output-json",
+        default=_LOG_CHECK_JSON_FILENAME,
+        help=f"Output JSON filename for check results (default: {_LOG_CHECK_JSON_FILENAME}).",
+    )
+    parser.add_argument(
+        "--pattern-analysis-json",
+        default=_PATTERN_ANALYSIS_JSON_FILENAME,
+        help=f"Output JSON filename for pattern analysis (default: {_PATTERN_ANALYSIS_JSON_FILENAME}).",
     )
     return parser
 
@@ -230,7 +300,8 @@ def build_parser(*, prog_name: str | None = None) -> argparse.ArgumentParser:
 def run_log_check(
     *,
     target_path: Path,
-    output_file: str = "log_check_result.md",
+    output_json: str = _LOG_CHECK_JSON_FILENAME,
+    pattern_analysis_json: str = _PATTERN_ANALYSIS_JSON_FILENAME,
     agent_name: str = "codex",
     verbose: bool = False,
     show_output: bool = True,
@@ -244,7 +315,8 @@ def run_log_check(
         agent_name=agent_name,
         verbose=verbose,
         show_output=show_output,
-        output_file=output_file,
+        output_json=output_json,
+        pattern_analysis_json=pattern_analysis_json,
         staged_skill_names=staged_skill_names,
         staged_skill_sources=staged_skill_sources,
     )
@@ -268,7 +340,7 @@ def run_log_check(
         "[optimize-check] start log check: "
         + (
             f"path={normalized_target.as_posix()}, "
-            f"output={output_file}, agent={agent_name}"
+            f"output={output_json}, agent={agent_name}"
         ),
         file=sys.stderr,
         flush=True,
@@ -289,27 +361,160 @@ def run_log_check(
         cleanup_warnings = manager.cleanup(links)
         if cleanup_warnings:
             emit_verbose_lines(sys.stderr, "skills", cleanup_warnings)
+
     if not result.succeeded:
         detail = result.stderr.strip() or result.stdout.strip() or "agent execution failed"
         print(f"[optimize-check] log check failed: {detail}", file=sys.stderr, flush=True)
         return result.return_code if result.return_code != 0 else 1
 
-    output_path = normalized_target / output_file
-    if not output_path.is_file():
+    # --- Post-processing: validate JSON, repair if needed, render MD ---
+    exit_code = _post_process_log_check_output(
+        normalized_target,
+        log_check_json_file=output_json,
+        pattern_analysis_json_file=pattern_analysis_json,
+    )
+    return exit_code
+
+
+def _post_process_log_check_output(
+    workspace: Path,
+    *,
+    log_check_json_file: str,
+    pattern_analysis_json_file: str,
+) -> int:
+    """Validate agent-produced JSON files, repair if needed, and render markdown."""
+    log_check_json_path = workspace / log_check_json_file
+    pattern_json_path = workspace / pattern_analysis_json_file
+
+    # --- log_check_result.json ---
+    log_check_ok = _validate_and_render_log_check(workspace, log_check_json_path)
+    if not log_check_ok:
         print(
-            "[optimize-check] log check completed but output file was not created: "
-            + output_path.as_posix(),
+            "[optimize-check] log check completed but log_check_result.json is missing or invalid",
             file=sys.stderr,
             flush=True,
         )
         return 1
 
+    # --- pattern_analysis.json ---
+    _validate_and_render_pattern(workspace, pattern_json_path)
+
     print(
-        "[optimize-check] log check completed: " + output_path.as_posix(),
+        "[optimize-check] log check completed: " + log_check_json_path.as_posix(),
         file=sys.stderr,
         flush=True,
     )
     return 0
+
+
+def _validate_and_render_log_check(workspace: Path, json_path: Path) -> bool:
+    """Validate log_check_result.json. On success, render log_check_result.md.
+    On failure, attempt repair. Return False if unrecoverable."""
+    md_path = workspace / "log_check_result.md"
+
+    if not json_path.is_file():
+        print(
+            f"[optimize-check] warning: {json_path.name} was not created by agent",
+            file=sys.stderr,
+            flush=True,
+        )
+        return False
+
+    raw = json_path.read_text(encoding="utf-8", errors="replace")
+    data = _parse_json_with_repair(raw, json_path.name)
+    if data is None:
+        return False
+
+    errors = validate_log_check_json(data)
+    if errors:
+        print(
+            f"[optimize-check] warning: {json_path.name} validation errors:",
+            file=sys.stderr,
+            flush=True,
+        )
+        for err in errors:
+            print(f"  - {err}", file=sys.stderr, flush=True)
+        # Still render MD from whatever we have — best-effort
+        print(
+            f"[optimize-check] rendering {md_path.name} from partial JSON (best-effort)",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    md_content = render_log_check_markdown(data)
+    md_path.write_text(md_content, encoding="utf-8")
+    return True
+
+
+def _validate_and_render_pattern(workspace: Path, json_path: Path) -> bool:
+    """Validate pattern_analysis.json. On success, render pattern_analysis.md."""
+    md_path = workspace / "pattern_analysis.md"
+
+    if not json_path.is_file():
+        print(
+            f"[optimize-check] warning: {json_path.name} was not created by agent",
+            file=sys.stderr,
+            flush=True,
+        )
+        return False
+
+    raw = json_path.read_text(encoding="utf-8", errors="replace")
+    data = _parse_json_with_repair(raw, json_path.name)
+    if data is None:
+        return False
+
+    errors = validate_pattern_analysis_json(data)
+    if errors:
+        print(
+            f"[optimize-check] warning: {json_path.name} validation errors:",
+            file=sys.stderr,
+            flush=True,
+        )
+        for err in errors:
+            print(f"  - {err}", file=sys.stderr, flush=True)
+        print(
+            f"[optimize-check] rendering {md_path.name} from partial JSON (best-effort)",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    md_content = render_pattern_analysis_markdown(data)
+    md_path.write_text(md_content, encoding="utf-8")
+    return True
+
+
+def _parse_json_with_repair(raw: str, filename: str) -> dict | None:
+    """Parse JSON with repair fallback. Returns dict or None."""
+    try:
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            return data
+        print(
+            f"[optimize-check] warning: {filename} is not a JSON object",
+            file=sys.stderr,
+            flush=True,
+        )
+        return None
+    except json.JSONDecodeError as exc:
+        print(
+            f"[optimize-check] warning: {filename} is invalid JSON: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+        repaired = repair_json(raw)
+        if repaired is not None:
+            print(
+                f"[optimize-check] repaired {filename} successfully",
+                file=sys.stderr,
+                flush=True,
+            )
+            return repaired
+        print(
+            f"[optimize-check] could not repair {filename}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return None
 
 
 def main(argv: list[str] | None = None, *, prog_name: str | None = None) -> int:
@@ -317,7 +522,8 @@ def main(argv: list[str] | None = None, *, prog_name: str | None = None) -> int:
     args = parser.parse_args(argv)
     return run_log_check(
         target_path=Path(args.path),
-        output_file=str(args.output_file),
+        output_json=str(args.output_json),
+        pattern_analysis_json=str(args.pattern_analysis_json),
         verbose=False,
     )
 

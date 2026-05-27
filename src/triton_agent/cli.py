@@ -19,6 +19,7 @@ from triton_agent.commands.optimize import (
     handle_optimize_batch,
 )
 from triton_agent.commands.upload_optimize import handle_upload_optimize
+from triton_agent.commands.post_batch import handle_post_batch
 from triton_agent.models import CommandKind
 
 
@@ -46,6 +47,7 @@ _TOP_LEVEL_EXAMPLES = (
     "triton-agent log-check -i .",
     "triton-agent log-check-batch -i kernels",
     "triton-agent optimize -i kernel.py --agent codex",
+    "triton-agent post-batch -i kernels",
 )
 _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
     (
@@ -298,7 +300,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         handler=handle_log_check,
         help_group="Optimization",
         help_summary="Run Codex log strategy validation for one workspace.",
-        description="Run Codex log strategy validation and write log_check_result.md.",
+        description="Run Codex log validation and write structured JSON results.",
         has_output=False,
         has_agent=True,
         has_show_output=True,
@@ -371,6 +373,13 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         description="Upload one optimize workspace to an analysis server.",
         has_output=False,
         has_verbose=True,
+    ),
+    CommandKind.POST_BATCH: _CommandSpec(
+        handler=handle_post_batch,
+        help_group="Reporting",
+        help_summary="Collect post-batch state and generate report.",
+        description="Scan a batch root, collect results into post-batch-state.json, and render post-batch-report.md.",
+        has_output=False,
     ),
 }
 
@@ -462,8 +471,8 @@ def build_parser() -> argparse.ArgumentParser:
         if command_kind in {CommandKind.LOG_CHECK, CommandKind.LOG_CHECK_BATCH}:
             subparser.add_argument(
                 "--check-result-file",
-                default="log_check_result.md",
-                help="Workspace-relative log check result file name.",
+                default="log_check_result.json",
+                help="Workspace-relative log check result JSON file name.",
             )
         if command_kind == CommandKind.LOG_CHECK_BATCH:
             subparser.add_argument(
@@ -567,6 +576,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "optimize_batch": "optimize-batch",
         "log_check": "log-check",
         "log_check_batch": "log-check-batch",
+        "post_batch": "post-batch",
     }
     normalized = list(argv)
     normalized[0] = aliases.get(normalized[0], normalized[0])
