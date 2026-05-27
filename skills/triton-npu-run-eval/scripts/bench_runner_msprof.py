@@ -1,7 +1,6 @@
 from __future__ import annotations
 # pyright: reportPrivateUsage=false
 
-import csv
 import os
 import tempfile
 from dataclasses import dataclass
@@ -12,6 +11,11 @@ from bench_runner_deps import BenchRunnerDeps
 from bench_contract import KernelResolution
 from npu_affinity import NpuDevicePool, affinity_env_for_device
 from perf_artifacts import PerfCaseRecord, PerfMetrics, PerfOpRow
+from profile_csv_parser import (
+    find_latest_op_statistic_csv,
+    parse_op_statistic_csv,
+    resolve_perf_metrics,
+)
 from run_runtime import RemoteSpec, ResultPayload, make_result, result_succeeded
 
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched op_statistic csv"
@@ -650,63 +654,17 @@ def _write_msprof_perf(
 
 
 def _load_msprof_avg_rows(output_dir: Path) -> list[PerfOpRow]:
-    csv_path = _find_latest_msprof_statistic_csv(output_dir)
-    with csv_path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        fieldnames = reader.fieldnames or []
-        if "Avg Time(us)" not in fieldnames:
-            raise ValueError(f"Missing required column 'Avg Time(us)' in {csv_path}")
-        if "OP Type" not in fieldnames:
-            raise ValueError(f"Missing required column 'OP Type' in {csv_path}")
-        rows: list[PerfOpRow] = []
-        row_count = 0
-        for row in reader:
-            avg_time = (row.get("Avg Time(us)") or "").strip()
-            if not avg_time:
-                raise ValueError(f"Empty 'Avg Time(us)' value in {csv_path}")
-            op_type = (row.get("OP Type") or "").strip()
-            if not op_type:
-                raise ValueError(f"Empty 'OP Type' value in {csv_path}")
-            rows.append(
-                {
-                    "op_type": op_type,
-                    "avg_time_us": float(avg_time),
-                }
-            )
-            row_count += 1
-    if row_count == 0:
-        raise ValueError(f"No rows found in {csv_path}")
-    return rows
-
-
-def _find_latest_msprof_statistic_csv(output_dir: Path) -> Path:
-    matches = sorted(
-        path for path in output_dir.rglob("op_statistic_*.csv") if path.is_file()
-    )
-    if not matches:
+    csv_path = find_latest_op_statistic_csv(output_dir)
+    if csv_path is None:
         raise FileNotFoundError(f"No op_statistic_*.csv found under {output_dir}")
-    return max(matches, key=lambda path: path.stat().st_mtime_ns)
+    return parse_op_statistic_csv(csv_path).ops
 
 
 def _resolve_msprof_metrics(
     rows: list[PerfOpRow],
     kernel_names: list[str],
 ) -> PerfMetrics:
-    kernel_name_set = set(kernel_names)
-    matched_avg_times = [
-        float(row["avg_time_us"]) for row in rows if str(row["op_type"]) in kernel_name_set
-    ]
-    kernel_avg_time_us = sum(matched_avg_times) if matched_avg_times else None
-    return {
-        "kernel_avg_time_us": kernel_avg_time_us,
-        "ops": [
-            {
-                "op_type": row["op_type"],
-                "avg_time_us": row["avg_time_us"],
-            }
-            for row in rows
-        ],
-    }
+    return resolve_perf_metrics(rows, kernel_names)
 
 
 def _read_local_msprof_metrics(output_dir: Path, kernel_names: list[str]) -> PerfMetrics:
