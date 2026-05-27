@@ -137,15 +137,15 @@ def _append_workspace_detail(lines: list[str], ws: dict[str, Any]) -> None:
 
     # pattern summary
     pattern = ws.get("pattern", {}) or {}
-    known = pattern.get("known", []) or []
+    given = pattern.get("given", []) or []
     new = pattern.get("new", []) or []
     extended = pattern.get("extended", []) or []
-    if known or new or extended:
+    if given or new or extended:
         lines.append("**Patterns used:**")
         lines.append("")
-        if known:
-            lines.append("- Known:")
-            for k in known:
+        if given:
+            lines.append("- Given:")
+            for k in given:
                 kname = k.get("name", "")
                 kev = k.get("evidence", "")
                 krnds = k.get("rounds", [])
@@ -173,7 +173,7 @@ def _format_speedup(value: object) -> str:
     if value is None:
         return "-"
     try:
-        return f"{float(cast(float, value)):.2f}x"
+        return f"{float(value):.2f}x"
     except (ValueError, TypeError):
         return "-"
 

@@ -82,7 +82,7 @@ isProject: false
 | `check.checks[].name`           | `log_check_result.json` → `checks[].name`        | 如 `distinct strategies per round`                          |
 | `check.checks[].result`         | `log_check_result.json` → `checks[].result`      | `pass` / `fail` / `skip`                                   |
 | `check.checks[].detail`         | `log_check_result.json` → `checks[].detail`      | 字符串，通过时 null                                               |
-| `pattern.known`                 | `pattern_analysis.json` → `summary.known`         | `{name, rounds[], evidence}`                               |
+| `pattern.given`                 | `pattern_analysis.json` → `summary.given`         | `{name, rounds[], evidence}`                               |
 | `pattern.new`                   | `pattern_analysis.json` → `summary.new`           | `{name, rounds[]}`                                         |
 | `pattern.extended`              | `pattern_analysis.json` → `summary.extended`      | `{name, rounds[], from}`                                   |
 
@@ -133,7 +133,7 @@ isProject: false
 | `check.checks[]` | 否 | 是 | `check.status` 为 `"skipped"` 时数组为空 `[]` |
 | `check.checks[].id/name/result` | 是（条目存在时） | 否 | — |
 | `check.checks[].detail` | 否 | 是 | result 为 `"pass"` 时为 `null` |
-| `pattern.known/new/extended` | 否 | 否 | 未跑 log-check 时为空数组 `[]` |
+| `pattern.given/new/extended` | 否 | 否 | 未跑 log-check 时为空数组 `[]` |
 
 > **规则**：`skipped` 表示"未执行该步骤"，对应的子字段用空数组或 `null` 占位；`required=否` 的字段在 JSON 中始终输出，值为 `null` 时表示数据缺失。
 
@@ -253,7 +253,7 @@ isProject: false
         ]
       },
       "pattern": {
-        "known": [
+        "given": [
           { "name": "layout-store-and-block-pointers", "rounds": [1], "evidence": "explicit" },
           { "name": "tiling",                          "rounds": [1], "evidence": "inferred" },
           { "name": "program-multiple-rows",           "rounds": [2], "evidence": "explicit" },

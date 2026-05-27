@@ -9,10 +9,20 @@ from typing import Any, cast
 
 from triton_agent.optimize.batch import load_optimize_batch_status, optimize_batch_workspace_key
 from triton_agent.status.core import inspect_optimize_status_workspace
-from triton_agent.verification.core import find_latest_verify_state, inspect_verify_state_summary
+from triton_agent.status.core import find_latest_verify_state, inspect_verify_state_summary
 
 _POST_BATCH_STATE_FILENAME = "post-batch-state.json"
 _SCHEMA_VERSION = 1
+
+_SOURCE_FILES = [
+    "optimize-batch-status.json",
+    "opt-note.md",
+    "opt-round-*/*_perf.txt",
+    "opt-round-*/round-state.json",
+    "opt-verify/verify-*/verify-state.json",
+    "log_check_result.json",
+    "pattern_analysis.json",
+]
 
 
 def collect_post_batch_state(batch_root: Path) -> dict[str, Any]:
@@ -28,6 +38,7 @@ def collect_post_batch_state(batch_root: Path) -> dict[str, Any]:
         workspace_entries.append(entry)
 
     summary = _build_summary(workspace_entries)
+    input_sources = _build_input_sources(batch_root, workspaces)
 
     return {
         "schema_version": _SCHEMA_VERSION,
@@ -35,15 +46,7 @@ def collect_post_batch_state(batch_root: Path) -> dict[str, Any]:
         "batch_root": batch_root.as_posix(),
         "collector": {
             "name": "post-batch",
-            "input_sources": [
-                "optimize-batch-status.json",
-                "opt-note.md",
-                "opt-round-*/*_perf.txt",
-                "opt-round-*/round-state.json",
-                "opt-verify/verify-*/verify-state.json",
-                "log_check_result.json",
-                "pattern_analysis.json",
-            ],
+            "input_sources": input_sources,
         },
         "summary": summary,
         "workspaces": workspace_entries,
@@ -218,7 +221,7 @@ def _collect_check(ws_path: Path) -> dict[str, Any]:
 
 def _collect_pattern(ws_path: Path) -> dict[str, Any]:
     empty = {
-        "known": [],
+        "given": [],
         "new": [],
         "extended": [],
     }
@@ -236,12 +239,12 @@ def _collect_pattern(ws_path: Path) -> dict[str, Any]:
     if not isinstance(summary, dict):
         return empty
 
-    known: list[dict[str, Any]] = []
-    raw_known = summary.get("known")
-    if isinstance(raw_known, list):
-        for item in raw_known:
+    given: list[dict[str, Any]] = []
+    raw_given = summary.get("given")
+    if isinstance(raw_given, list):
+        for item in raw_given:
             if isinstance(item, dict) and isinstance(item.get("name"), str):
-                known.append({
+                given.append({
                     "name": item["name"],
                     "rounds": _int_list(item.get("rounds")),
                     "evidence": item.get("evidence", "inferred"),
@@ -269,7 +272,7 @@ def _collect_pattern(ws_path: Path) -> dict[str, Any]:
                 })
 
     return {
-        "known": known,
+        "given": given,
         "new": new,
         "extended": extended,
     }
@@ -288,6 +291,27 @@ def _int_list(value: object) -> list[int]:
             except (ValueError, TypeError):
                 pass
     return result
+
+
+def _build_input_sources(batch_root: Path, workspaces: list[Path]) -> list[dict[str, str]]:
+    result: list[dict[str, str]] = []
+    for source in _SOURCE_FILES:
+        present = _check_source_present(batch_root, source, workspaces)
+        result.append({
+            "file": source,
+            "status": "present" if present else "missing",
+        })
+    return result
+
+
+def _check_source_present(batch_root: Path, source: str, workspaces: list[Path]) -> bool:
+    if not any(c in source for c in "*?["):
+        if (batch_root / source).exists():
+            return True
+    for ws in workspaces:
+        if list(ws.glob(source)):
+            return True
+    return False
 
 
 # --- summary aggregation ---
