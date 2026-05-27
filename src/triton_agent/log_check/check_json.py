@@ -48,7 +48,7 @@ PATTERN_ANALYSIS_SCHEMA = {
         },
     ],
     "summary": {
-        "known": [
+        "given": [
             {"name": "<pattern name>", "rounds": [1], "evidence": "explicit"},
         ],
         "new": [
@@ -137,7 +137,7 @@ def validate_pattern_analysis_json(data: dict[str, Any]) -> list[str]:
     if not isinstance(summary, dict):
         errors.append("summary must be an object")
     else:
-        for key in ("known", "new", "extended"):
+        for key in ("given", "new", "extended"):
             items = summary.get(key)
             if not isinstance(items, list):
                 errors.append(f"summary.{key} must be an array")

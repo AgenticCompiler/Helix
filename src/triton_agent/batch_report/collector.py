@@ -1,4 +1,4 @@
-"""Post-batch-state collector: scan batch-root and produce post-batch-state.json."""
+"""Batch-report-state collector: scan batch-root and produce batch-report-state.json."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from triton_agent.optimize.batch import load_optimize_batch_status, optimize_bat
 from triton_agent.status.core import inspect_optimize_status_workspace
 from triton_agent.status.core import find_latest_verify_state, inspect_verify_state_summary
 
-_POST_BATCH_STATE_FILENAME = "post-batch-state.json"
+_BATCH_REPORT_STATE_FILENAME = "batch-report-state.json"
 _SCHEMA_VERSION = 1
 
 _SOURCE_FILES = [
@@ -25,8 +25,8 @@ _SOURCE_FILES = [
 ]
 
 
-def collect_post_batch_state(batch_root: Path) -> dict[str, Any]:
-    """Scan batch-root and return the normalized post-batch-state dict."""
+def collect_batch_report_state(batch_root: Path) -> dict[str, Any]:
+    """Scan batch-root and return the normalized batch-report-state dict."""
     batch_root = batch_root.resolve()
     now_iso = datetime.now(timezone.utc).isoformat()
     batch_status = load_optimize_batch_status(batch_root)
@@ -45,7 +45,7 @@ def collect_post_batch_state(batch_root: Path) -> dict[str, Any]:
         "generated_at": now_iso,
         "batch_root": batch_root.as_posix(),
         "collector": {
-            "name": "post-batch",
+            "name": "batch-report",
             "input_sources": input_sources,
         },
         "summary": summary,
@@ -53,10 +53,10 @@ def collect_post_batch_state(batch_root: Path) -> dict[str, Any]:
     }
 
 
-def write_post_batch_state(batch_root: Path, output_path: Path | None = None) -> Path:
-    """Collect and write post-batch-state.json. Returns the path written."""
-    state = collect_post_batch_state(batch_root)
-    target = output_path or (batch_root / _POST_BATCH_STATE_FILENAME)
+def write_batch_report_state(batch_root: Path, output_path: Path | None = None) -> Path:
+    """Collect and write batch-report-state.json. Returns the path written."""
+    state = collect_batch_report_state(batch_root)
+    target = output_path or (batch_root / _BATCH_REPORT_STATE_FILENAME)
     target.write_text(
         json.dumps(state, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
         encoding="utf-8",
@@ -412,6 +412,6 @@ def _build_summary(workspaces: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 __all__ = [
-    "collect_post_batch_state",
-    "write_post_batch_state",
+    "collect_batch_report_state",
+    "write_batch_report_state",
 ]

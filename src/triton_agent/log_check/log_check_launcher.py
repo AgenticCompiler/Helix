@@ -17,7 +17,7 @@ from .check_json import (
     validate_log_check_json,
     validate_pattern_analysis_json,
 )
-from .check_markdown import (
+from .render_markdown import (
     render_log_check_markdown,
     render_pattern_analysis_markdown,
 )
@@ -61,7 +61,7 @@ _PATTERN_ANALYSIS_JSON_SCHEMA_EXAMPLE = r"""{
     }
   ],
   "summary": {
-    "known": [
+    "given": [
       { "name": "tiling", "rounds": [1, 2], "evidence": "explicit" }
     ],
     "new": [
@@ -216,11 +216,11 @@ Write TWO JSON files (NOT markdown files):
    - "rounds": per-round pattern detection (one entry per opt-round-N directory).
    - "rounds[].patterns[].evidence": "explicit" or "inferred".
    - "rounds[].patterns[].source": citation string for the evidence.
-   - "summary.known": all patterns matched against staged references, grouped by name
-     with the rounds they appeared in and their evidence level.
+   - "summary.given": all patterns matched against staged references, grouped by name
+      with the rounds they appeared in and their evidence level.
    - "summary.new": any strategies that do not match ANY staged pattern reference.
-   - "summary.extended": strategies that build on a known pattern but add a new
-     variation. The "from" field names the base pattern.
+   - "summary.extended": strategies that build on a given pattern but add a new
+      variation. The "from" field names the base pattern.
 
 CRITICAL — JSON formatting requirements:
 - Write valid JSON. Escape double quotes inside strings as \\\", escape newlines as \\n,

@@ -1,18 +1,19 @@
-"""Render post-batch-report.md from post-batch-state.json."""
+"""Render batch-report.md from batch-report-state.json."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 
-def render_post_batch_report(state: dict[str, Any]) -> str:
-    """Render post-batch-report.md from a post-batch-state dict."""
+def render_batch_report(state: dict[str, Any]) -> str:
+    """Render batch-report.md from a batch-report-state dict."""
     lines: list[str] = []
     summary = state.get("summary", {})
     workspaces: list[dict[str, Any]] = state.get("workspaces", [])
 
-    lines.append("# Post-Batch Report")
+    lines.append("# Batch Report")
     lines.append("")
     lines.append(f"**Generated**: {state.get('generated_at', 'unknown')}")
     lines.append(f"**Batch root**: {state.get('batch_root', 'unknown')}")
@@ -178,20 +179,19 @@ def _format_speedup(value: object) -> str:
         return "-"
 
 
-def render_post_batch_report_file(
+def render_batch_report_file(
     state_path: Path,
     output_path: Path | None = None,
 ) -> Path:
-    """Read post-batch-state.json and write post-batch-report.md."""
-    import json
+    """Read batch-report-state.json and write batch-report.md."""
     data = json.loads(state_path.read_text(encoding="utf-8"))
-    target = output_path or (state_path.parent / "post-batch-report.md")
-    md = render_post_batch_report(data)
+    target = output_path or (state_path.parent / "batch-report.md")
+    md = render_batch_report(data)
     target.write_text(md, encoding="utf-8")
     return target
 
 
 __all__ = [
-    "render_post_batch_report",
-    "render_post_batch_report_file",
+    "render_batch_report",
+    "render_batch_report_file",
 ]

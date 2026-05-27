@@ -67,17 +67,17 @@ def render_pattern_analysis_markdown(data: dict[str, Any]) -> str:
     lines.append("## Summary")
     lines.append("")
 
-    known: list[dict[str, Any]] = summary.get("known", [])
+    given: list[dict[str, Any]] = summary.get("given", [])
     new: list[dict[str, Any]] = summary.get("new", [])
     extended: list[dict[str, Any]] = summary.get("extended", [])
 
-    lines.append("### Known Patterns (matched staged references)")
+    lines.append("### Given Patterns (matched staged references)")
     lines.append("")
-    if known:
-        for k in known:
-            name = k.get("name", "")
-            ev = k.get("evidence", "")
-            rnds = k.get("rounds", [])
+    if given:
+        for p in given:
+            name = p.get("name", "")
+            ev = p.get("evidence", "")
+            rnds = p.get("rounds", [])
             rnds_str = ", ".join(f"round-{n}" for n in rnds)
             lines.append(f"- **{name}**: rounds [{rnds_str}], evidence: {ev}")
     else:
@@ -111,10 +111,10 @@ def render_pattern_analysis_markdown(data: dict[str, Any]) -> str:
 
     # Evidence distribution
     all_explicit = sum(
-        1 for k in known if k.get("evidence") == "explicit"
+        1 for p in given if p.get("evidence") == "explicit"
     )
     all_inferred = sum(
-        1 for k in known if k.get("evidence") == "inferred"
+        1 for p in given if p.get("evidence") == "inferred"
     )
     lines.append("### Evidence Distribution")
     lines.append("")

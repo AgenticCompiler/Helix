@@ -4,7 +4,7 @@ from triton_agent.log_check.check_json import (
     validate_log_check_json,
     validate_pattern_analysis_json,
 )
-from triton_agent.log_check.check_markdown import (
+from triton_agent.log_check.render_markdown import (
     render_log_check_markdown,
     render_pattern_analysis_markdown,
 )
