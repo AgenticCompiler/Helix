@@ -1,4 +1,4 @@
-"""Render batch-report.md from batch-report-state.json."""
+"""Render report-batch.md from report-batch-state.json."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 
 
 def render_batch_report(state: dict[str, Any]) -> str:
-    """Render batch-report.md from a batch-report-state dict."""
+    """Render report-batch.md from a report-batch-state dict."""
     lines: list[str] = []
     summary = state.get("summary", {})
     workspaces: list[dict[str, Any]] = state.get("workspaces", [])
@@ -183,9 +183,9 @@ def render_batch_report_file(
     state_path: Path,
     output_path: Path | None = None,
 ) -> Path:
-    """Read batch-report-state.json and write batch-report.md."""
+    """Read report-batch-state.json and write report-batch.md."""
     data = json.loads(state_path.read_text(encoding="utf-8"))
-    target = output_path or (state_path.parent / "batch-report.md")
+    target = output_path or (state_path.parent / "report-batch.md")
     md = render_batch_report(data)
     target.write_text(md, encoding="utf-8")
     return target

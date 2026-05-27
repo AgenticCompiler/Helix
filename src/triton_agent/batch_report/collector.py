@@ -1,4 +1,4 @@
-"""Batch-report-state collector: scan batch-root and produce batch-report-state.json."""
+"""Report-batch-state collector: scan batch-root and produce report-batch-state.json."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from triton_agent.optimize.batch import load_optimize_batch_status, optimize_bat
 from triton_agent.status.core import inspect_optimize_status_workspace
 from triton_agent.status.core import find_latest_verify_state, inspect_verify_state_summary
 
-_BATCH_REPORT_STATE_FILENAME = "batch-report-state.json"
+_BATCH_REPORT_STATE_FILENAME = "report-batch-state.json"
 _SCHEMA_VERSION = 1
 
 _SOURCE_FILES = [
@@ -26,7 +26,7 @@ _SOURCE_FILES = [
 
 
 def collect_batch_report_state(batch_root: Path) -> dict[str, Any]:
-    """Scan batch-root and return the normalized batch-report-state dict."""
+    """Scan batch-root and return the normalized report-batch-state dict."""
     batch_root = batch_root.resolve()
     now_iso = datetime.now(timezone.utc).isoformat()
     batch_status = load_optimize_batch_status(batch_root)
@@ -45,7 +45,7 @@ def collect_batch_report_state(batch_root: Path) -> dict[str, Any]:
         "generated_at": now_iso,
         "batch_root": batch_root.as_posix(),
         "collector": {
-            "name": "batch-report",
+            "name": "report-batch",
             "input_sources": input_sources,
         },
         "summary": summary,
@@ -54,7 +54,7 @@ def collect_batch_report_state(batch_root: Path) -> dict[str, Any]:
 
 
 def write_batch_report_state(batch_root: Path, output_path: Path | None = None) -> Path:
-    """Collect and write batch-report-state.json. Returns the path written."""
+    """Collect and write report-batch-state.json. Returns the path written."""
     state = collect_batch_report_state(batch_root)
     target = output_path or (batch_root / _BATCH_REPORT_STATE_FILENAME)
     target.write_text(
