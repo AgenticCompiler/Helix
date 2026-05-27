@@ -392,10 +392,51 @@ class SharedRunnerBaseTests(unittest.TestCase):
             content = log_path.read_text(encoding="utf-8")
             self.assertIn("attempt=1", content)
             self.assertIn("attempt=2", content)
+            self.assertNotIn("mode=", content)
+            self.assertNotIn("thinking=", content)
             self.assertIn("first streamed output", content)
             self.assertIn("second streamed output", content)
             self.assertIn("session_id=session-1", content)
             self.assertIn("session_id=session-2", content)
+
+    def test_show_output_log_does_not_extract_session_id_from_readable_stdout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = _DummyRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=True,
+                force_overwrite=False,
+                agent_name="claude",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+            )
+            result = AgentResult(
+                return_code=0,
+                stdout="[system] Claude session rendered-session\nDone\n",
+                stderr="",
+                session_id=None,
+            )
+
+            with patch("triton_agent.backends.base.run_process", return_value=result):
+                runner.run(request, stdout=StringIO())
+
+            log_path = workspace / "triton-agent-logs" / "gen-test.show-output.log"
+            content = log_path.read_text(encoding="utf-8")
+            self.assertIn("agent=claude", content)
+            self.assertIn("[system] Claude session rendered-session", content)
+            self.assertIn("session_id=unknown", content)
+            self.assertNotIn("session_id=rendered-session", content)
+            self.assertNotIn("mode=stream-json", content)
+            self.assertNotIn("thinking=", content)
 
     def test_base_runner_honors_zero_retry_env_override(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
