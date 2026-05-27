@@ -11,7 +11,11 @@ from types import ModuleType
 from typing import Optional
 from unittest.mock import patch
 
-from tests.run_skill_test_utils import load_bench_runner_module, make_skill_result
+from tests.run_skill_test_utils import (
+    load_bench_runner_module,
+    load_standalone_bench_runtime_module,
+    make_skill_result,
+)
 
 
 class LocalBenchRunnerTests(unittest.TestCase):
@@ -402,7 +406,15 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 )
                 self.assertEqual(command[0:2], [module.local_python_executable(), "-c"])
                 self.assertIn("run_one_standalone_case_record", command[2])
-                self.assertEqual(command[3:], [bench_file.name, operator_file.name, case_id, kept_run_dir.as_posix()])
+                self.assertEqual(
+                    command[3:],
+                    [
+                        bench_file.name,
+                        operator_file.name,
+                        case_id,
+                        kept_run_dir.resolve().as_posix(),
+                    ],
+                )
                 self.assertNotEqual(workdir_path, root)
                 self.assertTrue((workdir_path / bench_file.name).exists())
                 self.assertTrue((workdir_path / operator_file.name).exists())
@@ -474,6 +486,157 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 self.fail("expected standalone perf path")
             perf_text = perf_path.read_text(encoding="utf-8")
             self.assertLess(perf_text.index('"case_label":"case-a"'), perf_text.index('"case_label":"case-b"'))
+
+    def test_run_local_bench_standalone_parallel_normalizes_relative_preserved_run_dir(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            keep_root = root / "kept-profile"
+            runtime_script = root / "standalone_bench_runtime.py"
+            relative_run_dir = Path("./kept-profile/run-123")
+            bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
+            operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
+            runtime_script.write_text("def run_one_standalone_case_record(*_args, **_kwargs):\n    return None\n", encoding="utf-8")
+
+            observed_preserved_run_dirs: list[Path] = []
+
+            def _fake_buffered_process(command, workdir, stall_timeout_seconds, extra_env=None):
+                del workdir, stall_timeout_seconds, extra_env
+                observed_preserved_run_dirs.append(Path(command[6]))
+                return make_skill_result(
+                    0,
+                    (
+                        '{"case_label":"case-a","kernel_names":["KernelA"],'
+                        '"kernel_source":"metadata","metrics":{"kernel_avg_time_us":1.0,'
+                        '"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},'
+                        '"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    ),
+                    "",
+                )
+
+            with patch.object(
+                module,
+                "_load_standalone_runtime_module",
+            ) as load_runtime, patch.object(
+                module,
+                "run_buffered_process",
+                side_effect=_fake_buffered_process,
+            ):
+                load_runtime.return_value = type(
+                    "_FakeRuntime",
+                    (),
+                    {
+                        "load_standalone_bench_cases": staticmethod(
+                            lambda *_args, **_kwargs: (
+                                [type("_Case", (), {"case_id": "case-a"})()],
+                                type("_Resolution", (), {"kernel_names": ["KernelA"], "kernel_source": "metadata"})(),
+                            )
+                        ),
+                        "runtime_support_paths": staticmethod(lambda: [runtime_script]),
+                        "create_local_preserved_profile_run_dir": staticmethod(
+                            lambda prefix: relative_run_dir
+                        ),
+                    },
+                )()
+                original_cwd = Path.cwd()
+                os.chdir(root)
+                try:
+                    result, perf_path = module.run_local_bench(
+                        bench_file,
+                        operator_file,
+                        "standalone",
+                        npu_devices="3",
+                    )
+                finally:
+                    os.chdir(original_cwd)
+
+            self.assertEqual(result["return_code"], 0)
+            if perf_path is None:
+                self.fail("expected standalone perf path")
+            self.assertEqual(len(observed_preserved_run_dirs), 1)
+            self.assertTrue(observed_preserved_run_dirs[0].is_absolute())
+            self.assertTrue(keep_root.resolve() in observed_preserved_run_dirs[0].parents)
+
+    def test_run_local_bench_standalone_parallel_uses_absolute_preserved_run_dir_for_relative_output_root(self) -> None:
+        module = load_bench_runner_module()
+        runtime = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            keep_root = root / "kept-profile"
+            bench_file.write_text(
+                """# bench-mode: standalone
+# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_standalone_bench_cases(operator_api):
+    def run_case_a():
+        operator_api("case-a")
+    return [{"id": "case-a", "fn": run_case_a}]
+""",
+                encoding="utf-8",
+            )
+            operator_file.write_text(
+                """def build_api():
+    return lambda *_args, **_kwargs: None
+""",
+                encoding="utf-8",
+            )
+
+            observed_preserved_run_dirs: list[Path] = []
+
+            def _fake_buffered_process(command, workdir, stall_timeout_seconds, extra_env=None):
+                del workdir, stall_timeout_seconds, extra_env
+                observed_preserved_run_dirs.append(Path(command[6]))
+                return make_skill_result(
+                    0,
+                    (
+                        '{"case_label":"case-a","kernel_names":["KernelA"],'
+                        '"kernel_source":"metadata","metrics":{"kernel_avg_time_us":1.0,'
+                        '"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},'
+                        '"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    ),
+                    "",
+                )
+
+            with patch.object(
+                module,
+                "_load_standalone_runtime_module",
+                return_value=runtime,
+            ), patch.object(
+                module,
+                "run_buffered_process",
+                side_effect=_fake_buffered_process,
+            ), patch.dict(
+                os.environ,
+                {"TRITON_AGENT_BENCH_OUTPUT_DIR": "./kept-profile"},
+                clear=False,
+            ):
+                original_cwd = Path.cwd()
+                os.chdir(root)
+                try:
+                    result, perf_path = module.run_local_bench(
+                        bench_file,
+                        operator_file,
+                        "standalone",
+                        npu_devices="3",
+                    )
+                finally:
+                    os.chdir(original_cwd)
+
+            self.assertEqual(result["return_code"], 0)
+            if perf_path is None:
+                self.fail("expected standalone perf path")
+            self.assertEqual(len(observed_preserved_run_dirs), 1)
+            self.assertTrue(observed_preserved_run_dirs[0].is_absolute())
+            self.assertTrue(keep_root.resolve() in observed_preserved_run_dirs[0].parents)
 
     def test_run_local_bench_standalone_parallel_imports_nested_runtime_support_script(self) -> None:
         module = load_bench_runner_module()
@@ -718,6 +881,70 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                 perf_text.index('"case_label":"case-1"'),
                 perf_text.index('"case_label":"case-2"'),
             )
+
+    def test_run_local_bench_msprof_parallel_uses_absolute_output_dir_for_relative_output_root(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            keep_root = root / "kept-msprof"
+            relative_run_dir = Path("./kept-msprof/run-123")
+            bench_file.write_text(
+                "# bench-mode: msprof\n# api-name: abs_\n# kernel: OpB\n",
+                encoding="utf-8",
+            )
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+
+            observed_output_dirs: list[Path] = []
+
+            def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
+                del workdir, stall_timeout_seconds, stdout, kwargs
+                output_dir = Path(command[1].split("=", 1)[1])
+                observed_output_dirs.append(output_dir)
+                (output_dir / "op_statistic_1.csv").write_text(
+                    "\n".join(
+                        [
+                            "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                            "0,OpB,AI_CORE,1,20,2,5.0,7,100",
+                        ]
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return make_skill_result(0, "profile 1\n", "")
+
+            with patch.object(
+                module._msprof,
+                "_create_local_msprof_preserved_run_dir",
+                return_value=relative_run_dir,
+            ), patch.object(
+                module,
+                "run_buffered_process",
+                return_value=make_skill_result(0, "1\n", ""),
+            ), patch.object(
+                module,
+                "run_streaming_process",
+                side_effect=_fake_streaming,
+            ):
+                original_cwd = Path.cwd()
+                os.chdir(root)
+                try:
+                    result, perf_path = module.run_local_bench(
+                        bench_file,
+                        operator_file,
+                        "msprof",
+                        npu_devices="0",
+                    )
+                finally:
+                    os.chdir(original_cwd)
+
+            self.assertEqual(result["return_code"], 0)
+            if perf_path is None:
+                self.fail("expected msprof perf path")
+            self.assertEqual(len(observed_output_dirs), 1)
+            self.assertTrue(observed_output_dirs[0].is_absolute())
+            self.assertTrue(keep_root.resolve() in observed_output_dirs[0].parents)
 
     def test_run_local_bench_msprof_parallel_stages_discovered_case_json_files(self) -> None:
         module = load_bench_runner_module()
@@ -1133,7 +1360,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertTrue(keep_root.exists())
             self.assertTrue(created_output_dirs)
             self.assertTrue(all(path.exists() for path in created_output_dirs))
-            self.assertTrue(all(keep_root in path.parents for path in created_output_dirs))
+            self.assertTrue(all(keep_root.resolve() in path.parents for path in created_output_dirs))
             self.assertTrue(all((path / "op_statistic_1.csv").exists() for path in created_output_dirs))
 
     def test_run_local_bench_msprof_continues_after_failed_case_and_persists_perf(self) -> None:

@@ -877,7 +877,7 @@ def _sort_case_records(case_records: list[PerfCaseRecord], ordered_case_labels: 
 def _resolve_local_bench_profile_output_root() -> tuple[str | None, str]:
     configured_root = os.environ.get(_LOCAL_BENCH_OUTPUT_DIR_ENV)
     if configured_root:
-        return configured_root, _LOCAL_BENCH_OUTPUT_DIR_ENV
+        return str(Path(configured_root).expanduser().resolve()), _LOCAL_BENCH_OUTPUT_DIR_ENV
     return None, _LOCAL_BENCH_OUTPUT_DIR_ENV
 
 
@@ -888,7 +888,7 @@ def _create_local_msprof_output_dir(
     if preserved_run_dir is None:
         temp_dir = tempfile.TemporaryDirectory(prefix="triton-agent-msprof-")
         return Path(temp_dir.name), temp_dir
-    output_dir = preserved_run_dir / f"case-{case_idx}"
+    output_dir = preserved_run_dir.resolve() / f"case-{case_idx}"
     output_dir.mkdir(parents=True, exist_ok=False)
     _set_directory_owner_only(output_dir)
     return output_dir, None
