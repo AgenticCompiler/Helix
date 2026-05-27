@@ -2390,6 +2390,144 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertEqual(latest.name, "opt-round-2")
             self.assertEqual(_count_round_directories(workdir), 1)
 
+    def test_run_optimize_batch_auto_upload_on_success(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "alpha"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('alpha')\n", encoding="utf-8")
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                upload_enabled=True,
+            )
+
+            with patch(
+                "triton_agent.optimize.batch.render_batch_optimize_results",
+                return_value=0,
+            ):
+                with patch("triton_agent.optimize.batch.upload_optimize_workspace") as mock_upload:
+                    exit_code = run_optimize_batch(
+                        root,
+                        options,
+                        max_concurrency=1,
+                        stdout=StringIO(),
+                        run_request=lambda request, stdout=None, stderr=None: AgentResult(
+                            return_code=0,
+                            stdout="ok",
+                            stderr="",
+                        ),
+                    )
+
+            self.assertEqual(exit_code, 0)
+            mock_upload.assert_called_once()
+
+    def test_run_optimize_batch_no_auto_upload_when_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "alpha"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('alpha')\n", encoding="utf-8")
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                upload_enabled=False,
+            )
+
+            with patch(
+                "triton_agent.optimize.batch.render_batch_optimize_results",
+                return_value=0,
+            ):
+                with patch("triton_agent.optimize.batch.upload_optimize_workspace") as mock_upload:
+                    exit_code = run_optimize_batch(
+                        root,
+                        options,
+                        max_concurrency=1,
+                        stdout=StringIO(),
+                        run_request=lambda request, stdout=None, stderr=None: AgentResult(
+                            return_code=0,
+                            stdout="ok",
+                            stderr="",
+                        ),
+                    )
+
+            self.assertEqual(exit_code, 0)
+            mock_upload.assert_not_called()
+
+    def test_run_optimize_batch_no_auto_upload_on_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "alpha"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('alpha')\n", encoding="utf-8")
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                supervise="off",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                upload_enabled=True,
+            )
+
+            with patch(
+                "triton_agent.optimize.batch.render_batch_optimize_results",
+                return_value=0,
+            ):
+                with patch("triton_agent.optimize.batch.upload_optimize_workspace") as mock_upload:
+                    exit_code = run_optimize_batch(
+                        root,
+                        options,
+                        max_concurrency=1,
+                        stdout=StringIO(),
+                        run_request=lambda request, stdout=None, stderr=None: AgentResult(
+                            return_code=1,
+                            stdout="",
+                            stderr="error",
+                        ),
+                    )
+
+            self.assertEqual(exit_code, 0)
+            mock_upload.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

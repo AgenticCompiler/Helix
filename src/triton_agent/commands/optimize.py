@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Literal, cast
 
@@ -10,6 +11,8 @@ from triton_agent.optimize.batch import resolve_batch_optimize_operator_file, ru
 from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
 from triton_agent.optimize.validation import validate_optimize_options
+from triton_agent.optimize_upload.client import UploadUrlMissingError
+from triton_agent.optimize_upload.workflow import upload_optimize_workspace
 from triton_agent.output import render_result
 
 
@@ -53,6 +56,23 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
             f"Make sure the '{options.agent_name}' CLI is installed and available in PATH."
         )
     render_result(result, show_output=request.show_output)
+
+    # Auto-upload after successful optimize
+    if result.return_code == 0 and options.upload_enabled:
+        try:
+            if options.verbose:
+                print("Auto-upload enabled. Uploading workspace...", file=sys.stderr)
+            upload_optimize_workspace(workdir, verbose=options.verbose)
+            if options.verbose:
+                print("Auto-upload completed successfully.", file=sys.stderr)
+        except UploadUrlMissingError:
+            if options.verbose:
+                print("Auto-upload skipped: TRITON_AGENT_OPTIMIZE_UPLOAD_URL not set.", file=sys.stderr)
+        except (ValueError, RuntimeError) as exc:
+            if options.verbose:
+                print(f"Auto-upload warning: {exc}", file=sys.stderr)
+        # Upload failure does NOT change the optimize exit code
+
     return result.return_code
 
 
@@ -104,6 +124,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
     compiler_source_enabled = bool(getattr(args, "enable_compiler_source_analysis", False))
     cann_ext_api_enabled = bool(getattr(args, "enable_cann_ext_api", False))
     agent_hooks_enabled = bool(getattr(args, "enable_agent_hooks", False))
+    upload_enabled = not bool(getattr(args, "no_upload", False))
     return OptimizeRunOptions(
         agent_name=args.agent,
         interact=bool(getattr(args, "interact", False)),
@@ -126,6 +147,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         compiler_source_analysis="auto" if compiler_source_enabled else "off",
         enable_cann_ext_api=cann_ext_api_enabled,
         enable_agent_hooks=agent_hooks_enabled,
+        upload_enabled=upload_enabled,
     )
 
 

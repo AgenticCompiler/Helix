@@ -7,6 +7,7 @@ from triton_agent.commands.optimize import (
     handle_optimize,
     handle_optimize_batch,
 )
+from triton_agent.commands.upload_optimize import handle_upload_optimize
 from triton_agent.commands.verification import handle_verify, handle_verify_batch
 
 __all__ = [
@@ -21,6 +22,7 @@ __all__ = [
     "handle_status",
     "handle_optimize",
     "handle_optimize_batch",
+    "handle_upload_optimize",
     "handle_verify",
     "handle_verify_batch",
 ]

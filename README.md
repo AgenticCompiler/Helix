@@ -16,6 +16,8 @@ This README is organized by task so you can quickly find the right command for t
 - `run-bench`: run an existing generated benchmark.
 - `optimize`: optimize one operator.
 - `optimize-batch`: optimize many operator workspaces.
+- `upload-optimize`: upload one optimize workspace to an analysis server.
+- `--no-upload`: skip automatic upload after optimize.
 - `log-check`: run Codex log strategy validation for one workspace.
 - `log-check-batch`: run log strategy validation across multiple workspaces.
 - `status`: summarize optimization progress across many workspaces.
@@ -55,18 +57,33 @@ uv run triton-agent log-check --input .
 uv run triton-agent log-check-batch --input operators_root
 ```
 
+### Upload Server
+
+An optional standalone HTTP server for receiving optimize workspace archives lives under the repository at `services/triton-agent-upload-server/`. The server runs separately from the main CLI:
+
+```bash
+cd services/triton-agent-upload-server
+uv sync
+uv run triton-agent-upload-server \
+  --storage-root /data/triton-agent/uploads \
+  --temp-root /data/triton-agent/uploads/.tmp
+```
+
+Uploads are stored as `<timestamp>-<workspace_slug>-<uid>.tar.gz` with a matching `<...>.receipt.json` sidecar. See `services/triton-agent-upload-server/README.md` for details.
+
 ## Runtime Environment Variables
 
 These are the environment variables that `triton-agent` reads directly at runtime.
 
 | Variable | Required | Used by | Purpose |
 | --- | --- | --- | --- |
-| `TRITON_AGENT_HOME` | No | `optimize`, `optimize-batch` with `--enable-compiler-source-analysis` | Overrides the default Triton Agent home directory. The compiler-source checkout is stored under `<TRITON_AGENT_HOME>/compiler-sources/AscendNPU-IR/` instead of `~/.triton-agent/compiler-sources/AscendNPU-IR/`. |
+| `TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR` | No | `optimize`, `optimize-batch` with `--enable-compiler-source-analysis` | Overrides the base directory for cached compiler source checkouts (default: `~/.triton-agent`). The checkout is stored under `<TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR>/compiler-sources/AscendNPU-IR/`. |
 | `TRITON_AGENT_BATCH_NPU_DEVICES` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Comma-separated Ascend device list that also supports inclusive numeric ranges such as `0,3-5,8-9`. When set, concurrent batch workspaces are pinned to these devices. See also `TRITON_AGENT_BATCH_WORKERS_PER_NPU` to allow multiple workers per device. |
 | `TRITON_AGENT_BATCH_WORKERS_PER_NPU` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Positive integer that allows each configured NPU device to host multiple concurrent batch workers. Only effective when `TRITON_AGENT_BATCH_NPU_DEVICES` is set; defaults to `1`. Effective capacity is `device_count × workers_per_npu`. |
 | `TRITON_AGENT_CODE_AGENT_MAX_RETRIES` | No | Agent-backed commands | Non-negative integer retry budget for transient code-agent failures such as rate limits. Default is `2`. Set `0` to disable retries. |
-| `TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR` | No | Local `run-bench`, `verify`, and optimize benchmark validation | Preserves local benchmark profiler output directories under the given root instead of using auto-cleaned temporary directories. Applies to both `standalone` and `msprof` benchmark modes so you can inspect raw profiler artifacts after local benchmark runs. |
+| `TRITON_AGENT_BENCH_OUTPUT_DIR` | No | Local `run-bench`, `verify`, and optimize benchmark validation | Preserves local benchmark profiler output directories under the given root instead of using auto-cleaned temporary directories. Applies to both `standalone` and `msprof` benchmark modes so you can inspect raw profiler artifacts after local benchmark runs. |
 | `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` | No | Ordinary `optimize`, `optimize-batch` PT cleanup | Opts back into deleting optimize-owned archived PT results during ordinary round and end-of-run cleanup. By default those PT files are preserved. This variable does not affect `check-baseline`, which never deletes PT files, or `--reset-optimize`, which still deletes known optimize PT artifacts. |
+| `TRITON_AGENT_OPTIMIZE_UPLOAD_URL` | No | `upload-optimize` | HTTP endpoint for optimize workspace uploads. |
 | `LLM_API_KEY` | Only for `--agent openhands` | OpenHands backend | API key forwarded to the OpenHands SDK LLM client. |
 | `LLM_MODEL` | Only for `--agent openhands` | OpenHands backend | Model name passed to the OpenHands SDK LLM client. |
 | `LLM_BASE_URL` | No | OpenHands backend | Optional custom base URL for the OpenHands SDK LLM client. |
@@ -78,7 +95,7 @@ export TRITON_AGENT_BATCH_NPU_DEVICES=0,3-5,8-9
 export TRITON_AGENT_BATCH_WORKERS_PER_NPU=2
 export TRITON_AGENT_CODE_AGENT_MAX_RETRIES=4
 export TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES=1
-export TRITON_AGENT_HOME=$HOME/.triton-agent
+export TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR=$HOME/.triton-agent
 uv run triton-agent optimize-batch --input operators_root --max-concurrency 8
 ```
 
@@ -346,7 +363,7 @@ uv run triton-agent optimize --input a.py --optimize-target operator
 
 Optimize knowledge selection is explicit. `--optimize-knowledge v1` keeps the current default optimize knowledge library. `--optimize-knowledge v2` stages `triton-npu-optimize-knowledge-v2`. `--optimize-knowledge v3` stages `triton-npu-optimize-knowledge-v3` (working copy forked from `triton-npu-optimize-knowledge` for ongoing updates).
 
-Compiler source analysis is opt-in. When enabled, the CLI prepares a shallow AscendNPU-IR checkout under `~/.triton-agent/compiler-sources/AscendNPU-IR/` before launching the agent, using the configured Triton Agent home when `TRITON_AGENT_HOME` is set. The launched agent receives only the local path and commit, treats the checkout as read-only, and must not clone, fetch, pull, or modify compiler source. This option enables an escalation path for difficult compiler-side explanations; it does not require compiler-source analysis in every round.
+Compiler source analysis is opt-in. When enabled, the CLI prepares a shallow AscendNPU-IR checkout under `~/.triton-agent/compiler-sources/AscendNPU-IR/` (or `<TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR>/compiler-sources/AscendNPU-IR/` if `TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR` is set) before launching the agent. The launched agent receives only the local path and commit, treats the checkout as read-only, and must not clone, fetch, pull, or modify compiler source. This option enables an escalation path for difficult compiler-side explanations; it does not require compiler-source analysis in every round.
 
 CANN extension API pattern access is also opt-in. When `--enable-cann-ext-api` is set, optimize stages a dedicated skill with specialized CANN Triton extension API guidance, including `sub_vec_id()`-based rewrite patterns. This option is valid only with `--target-chip A5`.
 

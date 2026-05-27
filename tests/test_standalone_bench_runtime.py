@@ -233,7 +233,7 @@ def build_standalone_bench_cases(operator_api):
 
             with patch.dict(
                 os.environ,
-                {"TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR": str(keep_root)},
+                {"TRITON_AGENT_BENCH_OUTPUT_DIR": str(keep_root)},
                 clear=False,
             ), patch.object(
                 module,
@@ -300,7 +300,7 @@ def build_standalone_bench_cases(operator_api):
                 os.chdir(root)
                 with patch.dict(
                     os.environ,
-                    {"TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR": "./relative-keep-root"},
+                    {"TRITON_AGENT_BENCH_OUTPUT_DIR": "./relative-keep-root"},
                     clear=False,
                 ), patch.object(
                     module,

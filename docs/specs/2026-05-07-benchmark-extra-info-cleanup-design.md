@@ -14,7 +14,7 @@ Local benchmark execution can leave an `extra-info/` directory behind in the ben
 
 - Do not change remote benchmark cleanup behavior beyond the existing remote workspace cleanup.
 - Do not delete any path other than a directory named `extra-info` in the benchmark working directory.
-- Do not remove profiler artifact directories that are intentionally preserved through `TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR`.
+- Do not remove profiler artifact directories that are intentionally preserved through `TRITON_AGENT_BENCH_OUTPUT_DIR`.
 
 ## Decision
 

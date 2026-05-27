@@ -19,22 +19,22 @@ class CompilerSourceInfo:
     commit: str
 
 
-def triton_agent_home() -> Path:
-    configured = os.environ.get("TRITON_AGENT_HOME")
+def _compiler_source_cache_dir() -> Path:
+    configured = os.environ.get("TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR")
     if configured:
         return Path(configured).expanduser().resolve()
     return (Path.home() / ".triton-agent").resolve()
 
 
-def default_compiler_source_path(home: Path | None = None) -> Path:
-    root = home or triton_agent_home()
+def default_compiler_source_path(cache_dir: Path | None = None) -> Path:
+    root = cache_dir or _compiler_source_cache_dir()
     return root / "compiler-sources" / COMPILER_SOURCE_DIR_NAME
 
 
 def prepare_compiler_source(
     *,
     mode: CompilerSourceMode,
-    triton_agent_home: Path | None = None,
+    cache_dir: Path | None = None,
     run_git: RunGit | None = None,
 ) -> CompilerSourceInfo | None:
     if mode == "off":
@@ -43,7 +43,7 @@ def prepare_compiler_source(
         raise ValueError(f"Unsupported compiler source analysis mode: {mode}")
 
     git_runner = run_git or _run_git
-    checkout = default_compiler_source_path(triton_agent_home)
+    checkout = default_compiler_source_path(cache_dir)
 
     if not checkout.exists():
         checkout.parent.mkdir(parents=True, exist_ok=True)

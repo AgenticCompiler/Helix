@@ -28,6 +28,8 @@ from triton_agent.npu_affinity import (
 from triton_agent.optimize.models import BatchOptimizeResult, BatchOptimizeWorkspace, OptimizeRunOptions
 from triton_agent.optimize.render import render_batch_optimize_results
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
+from triton_agent.optimize_upload.client import UploadUrlMissingError
+from triton_agent.optimize_upload.workflow import upload_optimize_workspace
 
 _BATCH_STATUS_FILENAME = "optimize-batch-status.json"
 _BATCH_STATUS_VERSION = 1
@@ -169,6 +171,21 @@ def run_optimize_batch(
                 )
                 continue
             if result.succeeded:
+                if options.upload_enabled:
+                    try:
+                        upload_optimize_workspace(item.workspace, verbose=options.verbose)
+                    except UploadUrlMissingError:
+                        if options.verbose:
+                            print(
+                                f"[{item.workspace.name}] Auto-upload skipped: URL not set.",
+                                file=sys.stderr,
+                            )
+                    except (ValueError, RuntimeError) as exc:
+                        if options.verbose:
+                            print(
+                                f"[{item.workspace.name}] Auto-upload warning: {exc}",
+                                file=sys.stderr,
+                            )
                 results.append(
                     BatchOptimizeResult(
                         workspace=item.workspace,
