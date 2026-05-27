@@ -25,6 +25,7 @@ from triton_agent.process_runner import (
 
 
 _USE_RETURNCODE = object()
+_SIGKILL = getattr(signal, "SIGKILL", signal.SIGTERM)
 
 
 class BufferedProcessRunnerTests(unittest.TestCase):
@@ -221,7 +222,7 @@ class BufferedProcessRunnerTests(unittest.TestCase):
             [
                 ((4321, signal.SIGINT),),
                 ((4321, signal.SIGINT),),
-                ((4321, signal.SIGKILL),),
+                ((4321, _SIGKILL),),
             ],
         )
 
@@ -484,7 +485,7 @@ class StreamingProcessRunnerTests(unittest.TestCase):
             [
                 ((1234, signal.SIGINT),),
                 ((1234, signal.SIGINT),),
-                ((1234, signal.SIGKILL),),
+                ((1234, _SIGKILL),),
             ],
         )
 

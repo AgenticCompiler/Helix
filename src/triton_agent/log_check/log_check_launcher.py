@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 from triton_agent.backends.factory import create_runner
 from triton_agent.models import AgentRequest, CommandKind
@@ -494,12 +495,12 @@ def _validate_and_render_pattern(workspace: Path, json_path: Path) -> bool:
     return True
 
 
-def _parse_json_with_repair(raw: str, filename: str) -> dict | None:
+def _parse_json_with_repair(raw: str, filename: str) -> dict[str, Any] | None:
     """Parse JSON with repair fallback. Returns dict or None."""
     try:
         data = json.loads(raw)
         if isinstance(data, dict):
-            return data
+            return cast(dict[str, Any], data)
         print(
             f"[optimize-check] warning: {filename} is not a JSON object",
             file=sys.stderr,

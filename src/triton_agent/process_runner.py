@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 import threading
-from typing import Any, Callable, Optional, Protocol, TextIO
+from typing import Any, Callable, Optional, Protocol, TextIO, cast
 
 from triton_agent.models import AgentResult
 
@@ -351,7 +351,12 @@ def _run_streaming_process_pty(
     """Unix PTY-backed streaming so the child sees a terminal and flushes incrementally."""
     if pty is None or select is None:
         raise RuntimeError("PTY streaming is unavailable on this platform")
-    master_fd, slave_fd = pty.openpty()
+    openpty = cast(Callable[[], tuple[int, int]], getattr(pty, "openpty"))
+    select_fn = cast(
+        Callable[[list[int], list[int], list[int], float], tuple[list[int], list[int], list[int]]],
+        getattr(select, "select"),
+    )
+    master_fd, slave_fd = openpty()
     output_chunks: list[str] = []
     process = subprocess.Popen(
         _resolve_command(command),
@@ -370,7 +375,7 @@ def _run_streaming_process_pty(
 
     try:
         while True:
-            ready, _, _ = select.select([master_fd], [], [], 0.1)
+            ready, _, _ = select_fn([master_fd], [], [], 0.1)
             if ready:
                 try:
                     chunk = os.read(master_fd, 4096)
@@ -535,14 +540,19 @@ def _interrupt_process_unix(process: subprocess.Popen[Any], policy: InterruptPol
     _signal_process_group(process, _signal.SIGINT)
     if _wait_for_process_exit(process, policy.second_sigint_grace_seconds):
         return
-    _signal_process_group(process, _signal.SIGKILL)
+    sigkill = cast(Any, getattr(_signal, "SIGKILL", _signal.SIGTERM))
+    _signal_process_group(process, sigkill)
 
 
 def _signal_process_group(process: subprocess.Popen[Any], sig: Any) -> None:
     if process.poll() is not None:
         return
+    killpg = cast(Callable[[int, Any], None] | None, getattr(os, "killpg", None))
+    if killpg is None:
+        process.kill()
+        return
     try:
-        os.killpg(process.pid, sig)
+        killpg(process.pid, sig)
     except ProcessLookupError:
         return
 

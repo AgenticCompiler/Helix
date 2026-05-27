@@ -85,7 +85,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
         module_name = "triton_agent_standalone_bench_runtime_fake_runtime"
         cached_runtime = getattr(module, "_standalone_runtime_module_cache", None)
         if hasattr(module, "_standalone_runtime_module_cache"):
-            module._standalone_runtime_module_cache = None
+            setattr(module, "_standalone_runtime_module_cache", None)
 
         load_count = 0
         load_count_lock = threading.Lock()
@@ -96,7 +96,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 with load_count_lock:
                     load_count += 1
                 time.sleep(0.05)
-                loaded_module.runtime_support_paths = lambda: []
+                setattr(loaded_module, "runtime_support_paths", lambda: [])
 
         class _FakeSpec:
             def __init__(self, name: str) -> None:
@@ -141,7 +141,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                     thread.join()
         finally:
             if hasattr(module, "_standalone_runtime_module_cache"):
-                module._standalone_runtime_module_cache = cached_runtime
+                setattr(module, "_standalone_runtime_module_cache", cached_runtime)
             sys.modules.pop(module_name, None)
 
         self.assertEqual(errors, [])
@@ -385,7 +385,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
             runtime_script.write_text("def run_one_standalone_case_record(*_args, **_kwargs):\n    return None\n", encoding="utf-8")
 
-            observed: list[tuple[Path, Optional[str], str, list[str]]] = []
+            observed: list[tuple[Path, Optional[str], Optional[str], str, list[str]]] = []
             kept_profile_root = root / "kept-profile"
             kept_run_dir = kept_profile_root / "run-123"
 
