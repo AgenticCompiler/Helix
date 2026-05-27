@@ -47,10 +47,12 @@ class AgentHookManagerTests(unittest.TestCase):
             hooks_json = workspace / ".codex" / "hooks.json"
             hook_dir = workspace / ".codex" / "triton-agent-hooks"
             policy_json = hook_dir / "policy.json"
-            guard_script = hook_dir / "tool_trace_hook.py"
+            guard_script = hook_dir / "pretooluse_guard.py"
+            trace_script = hook_dir / "tool_trace_hook.py"
             self.assertTrue(hooks_json.exists())
             self.assertTrue(policy_json.exists())
             self.assertTrue(guard_script.exists())
+            self.assertTrue(trace_script.exists())
             self.assertEqual(state.created_paths, [hooks_json, hook_dir])
 
             hooks_config = json.loads(hooks_json.read_text(encoding="utf-8"))
@@ -58,20 +60,11 @@ class AgentHookManagerTests(unittest.TestCase):
                 hooks_config["hooks"]["PreToolUse"],
                 [
                     {
-                        "matcher": "Bash",
+                        "matcher": "Bash|Read|Grep|Glob|Edit|MultiEdit|Write",
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": "python3 .codex/triton-agent-hooks/pretooluse_guard.py --policy .codex/triton-agent-hooks/policy.json",
-                            }
-                        ],
-                    },
-                    {
-                        "matcher": "Read",
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": "python3 .codex/triton-agent-hooks/pretooluse_guard.py --policy .codex/triton-agent-hooks/policy.json",
+                                "command": "python .codex/triton-agent-hooks/tool_trace_hook.py --policy .codex/triton-agent-hooks/policy.json --event PreToolUse",
                             }
                         ],
                     },
