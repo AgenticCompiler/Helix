@@ -47,7 +47,7 @@ _TOP_LEVEL_EXAMPLES = (
     "triton-agent log-check -i .",
     "triton-agent log-check-batch -i kernels",
     "triton-agent optimize -i kernel.py --agent codex",
-    "triton-agent batch-report -i kernels",
+    "triton-agent report-batch -i kernels",
 )
 _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
     (
@@ -377,8 +377,8 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
     CommandKind.BATCH_REPORT: _CommandSpec(
         handler=handle_batch_report,
         help_group="Reporting",
-        help_summary="Collect batch-report state and generate report.",
-        description="Scan a batch root, collect results into batch-report-state.json, and render batch-report.md.",
+        help_summary="Collect report-batch state and generate report.",
+        description="Scan a batch root, collect results into report-batch-state.json, and render report-batch.md.",
         has_output=False,
     ),
 }
@@ -577,7 +577,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "optimize_batch": "optimize-batch",
         "log_check": "log-check",
         "log_check_batch": "log-check-batch",
-        "batch_report": "batch-report",
+        "batch_report": "report-batch",
     }
     normalized = list(argv)
     normalized[0] = aliases.get(normalized[0], normalized[0])

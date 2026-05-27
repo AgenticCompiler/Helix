@@ -25,7 +25,7 @@ class CommandKind(str, Enum):
     OPTIMIZE = "optimize"
     OPTIMIZE_BATCH = "optimize-batch"
     UPLOAD_OPTIMIZE = "upload-optimize"
-    BATCH_REPORT = "batch-report"
+    BATCH_REPORT = "report-batch"
 
 
 COMMAND_TO_SKILL = {
