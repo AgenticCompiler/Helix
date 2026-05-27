@@ -33,8 +33,47 @@ Common levers:
 
 ### Profile
 
+Use this profile gate when `extracted_bin_data/report.txt` exists under `opt-round-*` or at the operator workspace root. Parse it as text blocks headed by `core*.veccore*:`. Metric lines may be indented.
+
+```text
+core0.veccore0:
+    OverlapRatio(VECTOR/CUBE & MTE2): 0.00%
+    OverlapRatio(VECTOR/CUBE & MTE3): 0.00%
+    OverlapRatio(MTE2 & MTE3): 99.90%
+    Ratio(VECTOR/CUBE): 0.35%
+```
+
+Interpret the fields as:
+
+- `OverlapRatio(VECTOR/CUBE & MTE2)`: compute/MTE2-load overlap. Near-zero values mean compute and MTE2 transfer are completely serialized.
+- `OverlapRatio(VECTOR/CUBE & MTE3)`: compute/MTE3-store overlap. Near-zero values mean compute and MTE3 transfer are completely serialized.
+- `OverlapRatio(MTE2 & MTE3)`: MTE2/MTE3 transfer overlap. Near-maximum values mean both DMA engines are active but contending — characteristic of scattered 1D access that prevents efficient pipelining.
+- `Ratio(VECTOR/CUBE)`: Vector/Cube compute share of total execution or total active time. This metric is not a primary trigger for this pattern; focus on the three overlap ratios above.
+
+Use the distribution across active cores, not a single core.
+
+- Very low `OverlapRatio(VECTOR/CUBE & MTE2)` and `OverlapRatio(VECTOR/CUBE & MTE3)` — compute and DMA are fully serialized.
+- Very high `OverlapRatio(MTE2 & MTE3)` — DMA engines contend with each other, characteristic of flattened 1D scalar access preventing contiguous data pipelining.
 - Transfer overhead remains high after first-order tiling.
 - Gains plateau until layout/store representation changes.
+
+## Dependency Features
+
+1. [profiling] Compute-DMA serialization.
+
+   Read `OverlapRatio(VECTOR/CUBE & MTE2)` and `OverlapRatio(VECTOR/CUBE & MTE3)` from each active `core*.veccore*` block. Very low values across most active cores mean compute and both DMA engines are fully serialized — data movement completes before computation begins.
+
+2. [profiling] DMA-engine contention.
+
+   Read `OverlapRatio(MTE2 & MTE3)` from each active `core*.veccore*` block. Very high values mean both DMA engines are active simultaneously but contending — characteristic of scattered 1D access where neither engine can transfer efficiently, and the signature of flattened scalar address decode chains.
+
+3. [code] Flattened 1D scalar address decode chains.
+
+   The kernel reconstructs multi-dimensional coordinates from a flat `program_id` using integer division `//` and modulo `%` (for example `row = offsets // half_dim`, `pair = offsets % half_dim`). These scalar operations produce scattered memory access patterns that the DMA engines cannot pipeline efficiently.
+
+4. [code] Contiguous inner dimension.
+
+   The tensor has at least one contiguous dimension (stride=1) that can be encoded as a block-pointer axis with `order=(1, 0)`. Verify the inner dimension is contiguous in memory before raising block-pointer dimensionality.
 
 ## Repairs
 

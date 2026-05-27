@@ -66,6 +66,7 @@ Each section is retrieval-focused: when to try, what to look for, and what not t
 ## layout-store-and-block-pointers
 - Use when transfer shape/layout expression, not math, is limiting latency.
 - Strong signal: many tiny stores, transpose-at-store penalties, or flattened pointer decode chains.
+- Strong signal (Ascend NPU profiling): when `extracted_bin_data/report.txt` exists under `opt-round-*` or operator workspace root, very low `OverlapRatio(VECTOR/CUBE & MTE2)` and `OverlapRatio(VECTOR/CUBE & MTE3)` near **0%**, with very high `OverlapRatio(MTE2 & MTE3)` near **100%** — compute-DMA serialization plus DMA-engine contention from flattened 1D scalar access.
 - Avoid when continuity is unproven or bottleneck is still algorithm/launch/scalar control first.
 - First move: merge contiguous stores, raise block-pointer dimensionality, and fix transpose ordering.
 
