@@ -15,10 +15,10 @@ def handle_batch_report(parser: argparse.ArgumentParser, args: argparse.Namespac
         parser.error(f"Input path is not a directory: {root}")
 
     state_path = write_batch_report_state(root)
-    print(f"Batch-report state written to: {state_path}", flush=True)
+    print(f"Report-batch state written to: {state_path}", flush=True)
 
     report_path = render_batch_report_file(state_path)
-    print(f"Batch report written to: {report_path}", flush=True)
+    print(f"Report-batch written to: {report_path}", flush=True)
 
     return 0
 
