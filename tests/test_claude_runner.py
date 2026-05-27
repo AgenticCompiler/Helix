@@ -88,6 +88,32 @@ class ClaudeRunnerTests(unittest.TestCase):
             )
             self.assertIsNotNone(runner.output_filter(request))
 
+    def test_log_tools_enables_stream_json_without_show_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = ClaudeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="claude",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+                log_tools=True,
+            )
+            command = runner.build_command(request)
+            self.assertIn("--output-format", command)
+            self.assertIn("stream-json", command)
+            self.assertIn("--verbose", command)
+
     def test_interactive_command_uses_prompt_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
