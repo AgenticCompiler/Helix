@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -36,7 +37,142 @@ class ClaudeRunnerTests(unittest.TestCase):
             command = runner.build_command(request)
             self.assertEqual(command[:2], ["claude", "--print"])
             self.assertIn("--dangerously-skip-permissions", command)
+            self.assertIn("--output-format", command)
+            self.assertIn("stream-json", command)
+            self.assertIn("--verbose", command)
             self.assertEqual(command[-1], "Prompt body")
+
+    def test_plain_non_interactive_gets_json_output_filter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = ClaudeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="claude",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+                log_tools=False,
+            )
+            output_filter = runner.output_filter(request)
+            self.assertIsNotNone(output_filter)
+            assert output_filter is not None
+            rendered = output_filter.feed(json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "text", "text": "Created test_op.py."},
+                    ],
+                },
+            }) + "\n", flush=True)
+            self.assertIn("Created test_op.py.", rendered)
+            self.assertNotIn('"type":"assistant"', rendered)
+
+    def test_show_output_enables_stream_json_without_log_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = ClaudeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=True,
+                force_overwrite=False,
+                agent_name="claude",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+                log_tools=False,
+            )
+            command = runner.build_command(request)
+            self.assertIn("--output-format", command)
+            self.assertIn("stream-json", command)
+            self.assertIn("--verbose", command)
+
+    def test_show_output_gets_json_output_filter_without_log_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = ClaudeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=True,
+                force_overwrite=False,
+                agent_name="claude",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+                log_tools=False,
+            )
+            self.assertIsNotNone(runner.output_filter(request))
+
+    def test_log_tools_enables_stream_json_without_show_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = ClaudeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="claude",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+                log_tools=True,
+            )
+            command = runner.build_command(request)
+            self.assertIn("--output-format", command)
+            self.assertIn("stream-json", command)
+            self.assertIn("--verbose", command)
+
+    def test_interactive_output_filter_is_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = ClaudeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=True,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="claude",
+                skill_name="triton-npu-optimize",
+                prompt="Continue work",
+                workdir=workspace,
+            )
+            self.assertIsNone(runner.output_filter(request))
 
     def test_interactive_command_uses_prompt_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -135,6 +271,7 @@ class ClaudeRunnerTests(unittest.TestCase):
             with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.run(request)
             mocked.assert_called_once()
+            self.assertIsNotNone(mocked.call_args.kwargs["output_filter"])
 
     def test_verbose_logging_prints_launch_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

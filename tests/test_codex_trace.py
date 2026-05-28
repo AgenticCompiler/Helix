@@ -55,11 +55,12 @@ class TestCodexJsonLineParser(unittest.TestCase):
         trace_path = tmpdir / "trace.jsonl"
         return tmpdir, trace_path
 
-    def _make_parser(self, trace_path: Path, run_id: str = "test-run-id", role: str = "worker") -> CodexJsonLineParser:
+    def _make_parser(self, trace_path: Path | None, run_id: str = "test-run-id", role: str = "worker") -> CodexJsonLineParser:
+        workspace_root = trace_path.parent if trace_path is not None else Path(tempfile.mkdtemp())
         extra_env = {
             "TRITON_AGENT_OTEL_RUN_ID": run_id,
             "TRITON_AGENT_OTEL_ROLE": role,
-            "TRITON_AGENT_WORKSPACE_ROOT": str(trace_path.parent),
+            "TRITON_AGENT_WORKSPACE_ROOT": str(workspace_root),
         }
         return CodexJsonLineParser(trace_path, extra_env)
 
@@ -74,7 +75,10 @@ class TestCodexJsonLineParser(unittest.TestCase):
         parser = self._make_parser(trace_path)
         line = json.dumps({"type": "tool_start", "tool": "Read", "tool_use_id": "call-123", "timestamp": "2026-05-17T10:29:18Z"})
         result = parser.parse_line(line + "\n")
-        self.assertEqual(result, "[tool] Read started")
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertIn("[system] Codex native JSON event stream is active", result)
+        self.assertIn("[tool:start] Read call-123", result)
         events = trace_path.read_text().splitlines()
         # First event is diagnostic (codex_native_json_active), second is tool_call
         self.assertGreaterEqual(len(events), 2)
@@ -99,6 +103,7 @@ class TestCodexJsonLineParser(unittest.TestCase):
         self.assertIsNotNone(result)
         assert result is not None
         self.assertIn("ok", result)
+        self.assertIn("[tool:end] Bash call-123", result)
         self.assertIn("rc=0", result)
         events = trace_path.read_text().splitlines()
         # tool_start + tool_end = 2 events, plus diagnostic
@@ -178,7 +183,8 @@ class TestCodexJsonLineParser(unittest.TestCase):
 
         self.assertIsNotNone(result)
         assert result is not None
-        self.assertIn("succeeded", result)
+        self.assertIn("[tool:end] exec item_1 ok", result)
+        self.assertIn("rc=0", result)
         events = [json.loads(line) for line in trace_path.read_text().splitlines()]
         tool_events = [event for event in events if event.get("type") == "tool_call"]
         command_events = [event for event in events if event.get("type") == "command"]
@@ -222,7 +228,7 @@ class TestCodexJsonLineParser(unittest.TestCase):
 
         self.assertIsNotNone(result)
         assert result is not None
-        self.assertIn("edit ok", result)
+        self.assertIn("[tool:end] file_change item_2 ok", result)
         events = [json.loads(line) for line in trace_path.read_text().splitlines()]
         edit_events = [event for event in events if event.get("type") == "edit"]
         self.assertEqual(len(edit_events), 1)
@@ -241,7 +247,10 @@ class TestCodexJsonLineParser(unittest.TestCase):
                 "text": "done",
             },
         }) + "\n")
-        self.assertEqual(result, "done\n")
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertIn("done", result)
+        self.assertIn("[system] Codex native JSON event stream is active", result)
 
 
 class TestCodexJsonOutputFilter(unittest.TestCase):
@@ -260,9 +269,57 @@ class TestCodexJsonOutputFilter(unittest.TestCase):
         filter_obj = CodexJsonOutputFilter(trace_path, extra_env)
         result = filter_obj.feed('{"type":"tool_start","tool":"Read","tool_use_id":"call-1","timestamp":"2026-05-17T10:29:18Z"}\n', flush=True)
         # parse_line returns human text without trailing newline (newline consumed by line split)
-        self.assertEqual(result.strip(), "[tool] Read started")
+        self.assertIn("[tool:start] Read call-1", result)
         self.assertTrue(trace_path.exists())
         self.assertGreater(len(trace_path.read_text()), 0)
+
+    def test_feed_with_none_trace_path_returns_human_without_trace(self) -> None:
+        workspace = Path(tempfile.mkdtemp())
+        trace_path = workspace / "trace.jsonl"
+        extra_env = {
+            "TRITON_AGENT_OTEL_RUN_ID": "test-run",
+            "TRITON_AGENT_OTEL_ROLE": "worker",
+            "TRITON_AGENT_WORKSPACE_ROOT": str(workspace),
+        }
+        filter_obj = CodexJsonOutputFilter(None, extra_env)
+
+        result = filter_obj.feed(
+            '{"type":"tool_start","tool":"Read","tool_use_id":"call-1","timestamp":"2026-05-17T10:29:18Z"}\n',
+            flush=True,
+        )
+
+        self.assertIn("[tool:start] Read call-1", result)
+        self.assertFalse(trace_path.exists())
+
+    def test_item_start_and_completed_render_tool_timeline(self) -> None:
+        _, trace_path = self._make_trace_path()
+        filter_obj = CodexJsonOutputFilter(trace_path)
+
+        start = filter_obj.feed(json.dumps({
+            "type": "item.started",
+            "item": {
+                "id": "item_1",
+                "type": "command_execution",
+                "command": "uv run python -m unittest tests/test_codex_runner.py -v",
+                "status": "in_progress",
+            },
+        }) + "\n")
+        end = filter_obj.feed(json.dumps({
+            "type": "item.completed",
+            "item": {
+                "id": "item_1",
+                "type": "command_execution",
+                "command": "uv run python -m unittest tests/test_codex_runner.py -v",
+                "aggregated_output": "Ran 12 tests in 0.31s\n",
+                "exit_code": 0,
+                "status": "completed",
+            },
+        }) + "\n", flush=True)
+
+        self.assertIn("[tool:start] exec item_1", start)
+        self.assertIn("command: uv run python -m unittest tests/test_codex_runner.py -v", start)
+        self.assertIn("[tool:end] exec item_1 ok", end)
+        self.assertIn("stdout: Ran 12 tests in 0.31s", end)
 
     def test_non_json_lines_pass_through(self) -> None:
         _, trace_path = self._make_trace_path()
