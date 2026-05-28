@@ -25,7 +25,7 @@ class CommandKind(str, Enum):
     OPTIMIZE = "optimize"
     OPTIMIZE_BATCH = "optimize-batch"
     UPLOAD_OPTIMIZE = "upload-optimize"
-    OPERATOR_REPORT = "report"
+    REPORT = "report"
     REPORT_BATCH = "report-batch"
 
 
@@ -48,7 +48,7 @@ COMMAND_TO_SKILL = {
     CommandKind.OPTIMIZE: "triton-npu-optimize",
     CommandKind.OPTIMIZE_BATCH: "",
     CommandKind.UPLOAD_OPTIMIZE: "",
-    CommandKind.OPERATOR_REPORT: "",
+    CommandKind.REPORT: "",
     CommandKind.REPORT_BATCH: "",
 }
 

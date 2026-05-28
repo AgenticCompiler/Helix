@@ -33,7 +33,7 @@ PROMPT_INTROS = {
     CommandKind.GEN_BENCH: "Generate a benchmark for the operator file.",
     CommandKind.RUN_BENCH: "Run the generated benchmark for the operator file.",
     CommandKind.OPTIMIZE: "Optimize the operator implementation.",
-    CommandKind.OPERATOR_REPORT: "Read the optimize workspace and generate a Chinese optimization report.",
+    CommandKind.REPORT: "Read the optimize workspace and generate a Chinese optimization report.",
 }
 
 

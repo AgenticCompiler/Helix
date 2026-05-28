@@ -26,7 +26,7 @@ def handle_operator_report(parser: argparse.ArgumentParser, args: argparse.Names
     user_prompt = getattr(args, "prompt", None)
 
     built_prompt = build_prompt(
-        CommandKind.OPERATOR_REPORT,
+        CommandKind.REPORT,
         workspace,
         None,
         None,
@@ -39,11 +39,11 @@ def handle_operator_report(parser: argparse.ArgumentParser, args: argparse.Names
     built_prompt = _append_report_instructions(built_prompt, workspace)
 
     staged_skill_names, staged_skill_sources = resolve_staged_skills(
-        CommandKind.OPERATOR_REPORT,
+        CommandKind.REPORT,
     )
 
     request = AgentRequest(
-        command_kind=CommandKind.OPERATOR_REPORT,
+        command_kind=CommandKind.REPORT,
         input_path=workspace,
         operator_path=None,
         output_path=None,
