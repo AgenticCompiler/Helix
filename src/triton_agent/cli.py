@@ -20,6 +20,7 @@ from triton_agent.commands.optimize import (
 )
 from triton_agent.commands.upload_optimize import handle_upload_optimize
 from triton_agent.commands.batch_report import handle_batch_report
+from triton_agent.commands.operator_report import handle_operator_report
 from triton_agent.models import CommandKind
 
 
@@ -152,6 +153,7 @@ class _CommandSpec:
     has_optimize_options: bool = False
     has_prompt: bool = False
     max_concurrency_default: int | None = None
+    report_workers_default: int | None = None
     has_force_overwrite: bool = False
     has_format: bool = False
     has_verify_phase: bool = False
@@ -385,12 +387,27 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_output=False,
         has_verbose=True,
     ),
+    CommandKind.OPERATOR_REPORT: _CommandSpec(
+        handler=handle_operator_report,
+        help_group="Reporting",
+        help_summary="Generate operator-level optimization report.",
+        description="Launch an agent to read workspace artifacts and render report.md.",
+        has_output=False,
+        has_agent=True,
+        has_interact=True,
+        has_show_output=True,
+        has_prompt=True,
+    ),
     CommandKind.REPORT_BATCH: _CommandSpec(
         handler=handle_batch_report,
         help_group="Reporting",
-        help_summary="Collect report-batch state and generate report.",
-        description="Scan a batch root, collect results into report-batch-state.json, and render report-batch.md.",
+        help_summary="Collect report-batch state and generate batch and per-workspace reports.",
+        description="Scan a batch root, collect results into report-batch-state.json, render report-batch.md, "
+                    "and generate per-workspace report.md via agent.",
         has_output=False,
+        has_agent=True,
+        has_show_output=True,
+        report_workers_default=4,
     ),
 }
 
@@ -493,6 +510,8 @@ def build_parser() -> argparse.ArgumentParser:
             )
         if spec.max_concurrency_default is not None:
             subparser.add_argument("--max-concurrency", type=int, default=spec.max_concurrency_default)
+        if spec.report_workers_default is not None:
+            subparser.add_argument("--report-workers", type=int, default=spec.report_workers_default)
         if spec.has_force_overwrite:
             subparser.add_argument("--force-overwrite", action="store_true")
 
@@ -589,6 +608,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "log_check": "log-check",
         "log_check_batch": "log-check-batch",
         "batch_report": "report-batch",
+        "operator_report": "report",
     }
     normalized = list(argv)
     normalized[0] = aliases.get(normalized[0], normalized[0])
