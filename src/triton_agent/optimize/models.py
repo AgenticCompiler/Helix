@@ -41,6 +41,7 @@ class OptimizeRunOptions:
     enable_cann_ext_api: bool = False
     enable_agent_hooks: bool = False
     upload_enabled: bool = True
+    report: bool = True
     log_tools: bool = False
 
 
