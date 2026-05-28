@@ -8,7 +8,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 from types import ModuleType
-from typing import Optional
+from typing import Optional, Union
 from unittest.mock import patch
 
 from tests.run_skill_test_utils import (
@@ -389,7 +389,12 @@ class LocalBenchRunnerTests(unittest.TestCase):
             kept_profile_root = root / "kept-profile"
             kept_run_dir = kept_profile_root / "run-123"
 
-            def _fake_buffered_process(command, workdir, stall_timeout_seconds, extra_env=None):
+            def _fake_buffered_process(
+                command: list[str],
+                workdir: Union[str, Path],
+                stall_timeout_seconds: float,
+                extra_env: Optional[dict[str, str]] = None,
+            ):
                 del stall_timeout_seconds
                 workdir_path = Path(workdir)
                 case_id = command[5]

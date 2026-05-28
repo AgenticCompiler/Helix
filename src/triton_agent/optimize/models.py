@@ -25,11 +25,11 @@ class OptimizeRunOptions:
     show_output: bool
     remote: str | None
     remote_workdir: str | None
-    min_rounds: int | None
+    min_rounds: int
     resume_mode: str
     reset_optimize: bool
     no_agent_session: bool
-    supervise: Literal["on", "off"]
+    round_mode: Literal["continuous", "checked", "supervised"]
     output: str | None
     test_mode: str | None
     bench_mode: str | None
@@ -100,3 +100,15 @@ class GateResult:
     next_parent_round: str | None = None
     next_hypothesis: str | None = None
     required_evidence_for_next_round: tuple[str, ...] = ()
+
+
+class BaselinePreflightState(str, Enum):
+    READY = "ready"
+    NEEDS_PREPARE = "needs-prepare"
+    NEEDS_REPAIR = "needs-repair"
+
+
+@dataclass(frozen=True)
+class BaselinePreflightResult:
+    state: BaselinePreflightState
+    issues: tuple[str, ...]

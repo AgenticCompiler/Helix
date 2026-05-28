@@ -32,10 +32,10 @@ from triton_agent.paths import (
 )
 from triton_agent.prompts import (
     append_additional_user_instructions,
+    build_optimize_baseline_prompt,
+    build_optimize_continuous_prompt,
     build_optimize_resume_prompt,
     build_optimize_supervisor_prompt,
-    build_optimize_unsupervised_prompt,
-    build_optimize_worker_prompt,
     build_prompt,
 )
 from triton_agent.execution import _normalize_agent_result as normalize_agent_result
@@ -976,6 +976,13 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["optimize", "-i", "kernel.py", "--min-rounds", "3"])
         self.assertEqual(args.min_rounds, 3)
 
+    def test_optimize_command_defaults_min_rounds(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py"])
+        self.assertEqual(args.min_rounds, 5)
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.min_rounds, 5)
+
     def test_optimize_command_defaults_resume_to_auto(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize", "-i", "kernel.py"])
@@ -1177,19 +1184,12 @@ class CliParserTests(unittest.TestCase):
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.target_chip, "A3")
 
-    def test_optimize_command_accepts_supervise_modes(self) -> None:
+    def test_optimize_command_accepts_round_modes(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize", "-i", "kernel.py", "--supervise", "on"])
-        self.assertEqual(args.supervise, "on")
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--round-mode", "checked"])
+        self.assertEqual(args.round_mode, "checked")
         options = optimize_run_options_from_args(args)
-        self.assertEqual(options.supervise, "on")
-
-    def test_optimize_command_accepts_supervisor_alias(self) -> None:
-        parser = build_parser()
-        args = parser.parse_args(["optimize", "-i", "kernel.py", "--supervisor", "on"])
-        self.assertEqual(args.supervise, "on")
-        options = optimize_run_options_from_args(args)
-        self.assertEqual(options.supervise, "on")
+        self.assertEqual(options.round_mode, "checked")
 
     def test_optimize_command_accepts_user_prompt(self) -> None:
         parser = build_parser()
@@ -1198,14 +1198,14 @@ class CliParserTests(unittest.TestCase):
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.prompt, "Focus on memory access.")
 
-    def test_optimize_command_defaults_supervise_off(self) -> None:
+    def test_optimize_command_defaults_round_mode_continuous(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize", "-i", "kernel.py"])
-        self.assertEqual(args.supervise, "off")
+        self.assertEqual(args.round_mode, "continuous")
         options = optimize_run_options_from_args(args)
-        self.assertEqual(options.supervise, "off")
+        self.assertEqual(options.round_mode, "continuous")
 
-    def test_optimize_run_options_rejects_invalid_supervise(self) -> None:
+    def test_optimize_run_options_rejects_invalid_round_mode(self) -> None:
         args = argparse.Namespace(
             agent="codex",
             interact=False,
@@ -1213,11 +1213,11 @@ class CliParserTests(unittest.TestCase):
             show_output=False,
             remote=None,
             remote_workdir=None,
-            min_rounds=None,
+            min_rounds=5,
             resume="auto",
             reset_optimize=False,
             no_agent_session=False,
-            supervise="maybe",
+            round_mode="invalid",
             output=None,
             test_mode=None,
             bench_mode=None,
@@ -1235,19 +1235,12 @@ class CliParserTests(unittest.TestCase):
         self.assertFalse(hasattr(args, "interact"))
         self.assertFalse(args.show_output)
 
-    def test_optimize_batch_accepts_supervise_modes(self) -> None:
+    def test_optimize_batch_accepts_round_modes(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize-batch", "-i", "kernels", "--supervise", "on"])
-        self.assertEqual(args.supervise, "on")
+        args = parser.parse_args(["optimize-batch", "-i", "kernels", "--round-mode", "supervised"])
+        self.assertEqual(args.round_mode, "supervised")
         options = optimize_run_options_from_args(args)
-        self.assertEqual(options.supervise, "on")
-
-    def test_optimize_batch_accepts_supervisor_alias(self) -> None:
-        parser = build_parser()
-        args = parser.parse_args(["optimize-batch", "-i", "kernels", "--supervisor", "on"])
-        self.assertEqual(args.supervise, "on")
-        options = optimize_run_options_from_args(args)
-        self.assertEqual(options.supervise, "on")
+        self.assertEqual(options.round_mode, "supervised")
 
     def test_optimize_batch_accepts_user_prompt(self) -> None:
         parser = build_parser()
@@ -1258,12 +1251,12 @@ class CliParserTests(unittest.TestCase):
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.prompt, "Avoid numerics changes.")
 
-    def test_optimize_batch_defaults_supervise_off(self) -> None:
+    def test_optimize_batch_defaults_round_mode_continuous(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize-batch", "-i", "kernels"])
-        self.assertEqual(args.supervise, "off")
+        self.assertEqual(args.round_mode, "continuous")
         options = optimize_run_options_from_args(args)
-        self.assertEqual(options.supervise, "off")
+        self.assertEqual(options.round_mode, "continuous")
         self.assertEqual(args.target_chip, "A5")
         self.assertEqual(options.target_chip, "A5")
 
@@ -1829,15 +1822,15 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("found multiple candidate operator files", stdout.getvalue())
             self.assertIn("Summary: 1 succeeded, 1 failed", stdout.getvalue())
 
-    def test_main_optimize_batch_ignores_triton_agent_tooling_dir(self) -> None:
+    def test_main_optimize_batch_ignores_hidden_triton_agent_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             good = root / "good"
-            tooling = root / ".triton-agent"
+            hidden_triton_agent_dir = root / ".triton-agent"
             good.mkdir()
-            tooling.mkdir()
+            hidden_triton_agent_dir.mkdir()
             (good / "kernel.py").write_text("print('ok')\n", encoding="utf-8")
-            (tooling / "round-brief.md").write_text("Pending\n", encoding="utf-8")
+            (hidden_triton_agent_dir / "round-brief.md").write_text("Pending\n", encoding="utf-8")
 
             stdout = StringIO()
             seen_inputs: list[Path] = []
@@ -2344,7 +2337,7 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 continue_optimize,
-                supervise="off",
+                round_mode="continuous",
                 target_chip=None,
             ):
                 captured["output_path"] = output_path
@@ -2509,7 +2502,7 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 resume_existing_session,
-                supervise="off",
+                round_mode="continuous",
                 target_chip=None,
             ):
                 captured["test_mode"] = test_mode
@@ -2583,7 +2576,7 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 resume_existing_session,
-                supervise="off",
+                round_mode="continuous",
                 target_chip=None,
             ):
                 captured["test_mode"] = test_mode
@@ -2658,7 +2651,7 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 resume_existing_session,
-                supervise="off",
+                round_mode="continuous",
                 target_chip=None,
             ):
                 captured["test_mode"] = test_mode
@@ -2911,7 +2904,7 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 resume_existing_session,
-                supervise="off",
+                round_mode="continuous",
                 target_chip=None,
             ):
                 captured["test_mode"] = test_mode
@@ -2999,7 +2992,7 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 resume_existing_session,
-                supervise="off",
+                round_mode="continuous",
                 target_chip=None,
             ):
                 captured["test_mode"] = test_mode
@@ -3094,7 +3087,7 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 resume_existing_session,
-                supervise="off",
+                round_mode="continuous",
                 target_chip=None,
             ):
                 captured["resume_existing_session"] = resume_existing_session
@@ -3216,7 +3209,7 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(exc.exception.code, 2)
             self.assertIn("--require-analysis", stderr.getvalue())
 
-    def test_main_optimize_passes_supervise_mode_to_prompt_and_request(self) -> None:
+    def test_main_optimize_passes_round_mode_to_prompt_and_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
@@ -3237,16 +3230,16 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 resume_existing_session,
-                supervise="off",
+                round_mode="continuous",
                 target_chip=None,
             ):
-                captured["supervise"] = supervise
+                captured["round_mode"] = round_mode
                 captured["target_chip"] = target_chip
                 return "Prompt body"
 
             with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
                 with patch(
-                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
+                    "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
                     return_value=fake_result,
                 ) as mocked:
                     with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
@@ -3259,14 +3252,14 @@ class PathResolutionTests(unittest.TestCase):
                                 return_value=[],
                             ):
                                 exit_code = main(
-                                    ["optimize", "-i", str(operator), "--supervise", "on"]
+                                    ["optimize", "-i", str(operator), "--round-mode", "checked"]
                                 )
 
             self.assertEqual(exit_code, 0)
-            self.assertEqual(captured["supervise"], "on")
+            self.assertEqual(captured["round_mode"], "checked")
             self.assertEqual(captured["target_chip"], "A5")
-            request = mocked.call_args.args[1]
-            self.assertEqual(request.supervise, "on")
+            request = mocked.call_args.args[2]
+            self.assertEqual(request.round_mode, "checked")
             self.assertEqual(request.optimize_role, "worker")
             self.assertEqual(request.target_chip, "A5")
 
@@ -3291,7 +3284,7 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 resume_existing_session,
-                supervise="off",
+                round_mode="continuous",
                 target_chip=None,
             ):
                 captured["target_chip"] = target_chip
@@ -4052,17 +4045,14 @@ class PathResolutionTests(unittest.TestCase):
 
 
 class PromptTests(unittest.TestCase):
-    def test_build_optimize_worker_prompt_mentions_single_round_boundary(self) -> None:
-        prompt = build_optimize_worker_prompt(
+    def test_build_optimize_continuous_prompt_mentions_baseline_state_contract(self) -> None:
+        prompt = build_optimize_continuous_prompt(
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
             bench_mode="standalone",
         )
-        self.assertIn("This invocation is the optimize worker role.", prompt)
-        self.assertIn("This invocation owns exactly one round.", prompt)
-        self.assertIn("Read `.triton-agent/round-brief.md`", prompt)
-        self.assertNotIn("optimize-worker.md", prompt)
+        self.assertIn("This invocation is a continuous optimize run.", prompt)
         self.assertIn("Use the staged `triton-npu-prepare-optimize-baseline` skill", prompt)
         self.assertIn("Use the staged `triton-npu-optimize-check` skill", prompt)
         self.assertIn(
@@ -4074,136 +4064,7 @@ class PromptTests(unittest.TestCase):
             prompt.lower(),
         )
         self.assertIn(
-            "use the staged `triton-npu-optimize-check` skill to run `check-round`",
-            prompt.lower(),
-        )
-        self.assertIn(
-            "must pass `check-round` through `triton-npu-optimize-check` before the invocation ends",
-            prompt,
-        )
-        self.assertIn("Establish or reuse `baseline/` before creating `opt-round-1`.", prompt)
-        self.assertIn("Use `baseline/<operator>_perf.txt` for canonical performance comparisons.", prompt)
-        self.assertIn("Use `compare-perf` as the only authority for claimed speedups or benchmark deltas.", prompt)
-        self.assertIn("Use the staged `triton-npu-analyze-round-performance` skill", prompt)
-        self.assertIn("write `opt-round-n/perf-analysis.md`", prompt.lower())
-        self.assertIn(
-            "When pattern triage is used, record candidate patterns, the selected pattern if one is chosen, and why that pattern looks plausible in `opt-round-N/attempts.md`.",
-            prompt,
-        )
-        self.assertIn(
-            "When a named pattern guides the round, record the final selected pattern direction in `opt-round-N/summary.md`.",
-            prompt,
-        )
-        self.assertIn(
-            "`learned_lessons.md` is only for reusable, evidence-backed optimization or profiling rules",
-            prompt,
-        )
-        self.assertIn("Do not put round narrative, command failures, or operator-specific details", prompt)
-        self.assertIn("Write `baseline/state.json` with these required fields:", prompt)
-        self.assertIn("`baseline_kind`", prompt)
-        self.assertIn("`source_operator`", prompt)
-        self.assertIn("`baseline_operator`", prompt)
-        self.assertIn("`test_file`", prompt)
-        self.assertIn("`test_mode`", prompt)
-        self.assertIn("`bench_file`", prompt)
-        self.assertIn("`bench_mode`", prompt)
-        self.assertIn("`perf_artifact`", prompt)
-        self.assertIn("`correctness_status`", prompt)
-        self.assertIn("`benchmark_status`", prompt)
-        self.assertIn("`baseline_established`", prompt)
-        self.assertIn("Set `baseline_established` to `true` only after", prompt)
-        self.assertIn("PyTorch-facing public API may remain as a wrapper", prompt)
-        self.assertIn("must continue optimizing the Triton Ascend NPU kernel path itself", prompt)
-        self.assertIn("Do not replace the core computation with a pure PyTorch implementation", prompt)
-        self.assertIn("does not count as a successful optimize round", prompt)
-        self.assertIn("Target chip for this optimize session: A5.", prompt)
-        self.assertIn("prefer changes that fit A5", prompt)
-
-    def test_build_optimize_worker_prompt_mentions_compiler_source_when_enabled(self) -> None:
-        prompt = build_optimize_worker_prompt(
-            Path("/tmp/op.py"),
-            Path("/tmp/opt_op.py"),
-            test_mode="differential",
-            bench_mode="standalone",
-            compiler_source_path=Path("/tmp/AscendNPU-IR"),
-            compiler_source_commit="abc123",
-        )
-
-        self.assertIn("Compiler source analysis is enabled", prompt)
-        self.assertIn("Compiler source path: /tmp/AscendNPU-IR", prompt)
-        self.assertIn("Compiler source commit: abc123.", prompt)
-        self.assertIn("Treat the compiler source checkout as read-only.", prompt)
-        self.assertIn("Do not run git clone, git fetch, git pull", prompt)
-        self.assertIn("then IR evidence, then compiler source", prompt)
-        self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", prompt)
-
-    def test_build_optimize_worker_prompt_mentions_operator_target_contract(self) -> None:
-        prompt = build_optimize_worker_prompt(
-            Path("/tmp/op.py"),
-            Path("/tmp/opt_op.py"),
-            test_mode="differential",
-            bench_mode="standalone",
-            optimize_target="operator",
-        )
-
-        self.assertIn("Target optimization scope for this optimize session: operator.", prompt)
-        self.assertIn("Optimize end-to-end operator latency.", prompt)
-        self.assertIn(
-            "wrapper logic, data movement, scheduling, pre-processing, post-processing, and kernel code",
-            prompt,
-        )
-        self.assertIn(
-            "Use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and operator-level pattern references.",
-            prompt,
-        )
-        self.assertIn("both kernel and total-op views are visible", prompt)
-        self.assertIn("effective_metric_source=total-op", prompt)
-        self.assertIn("pure PyTorch rewrite", prompt)
-        self.assertNotIn("must continue optimizing the Triton Ascend NPU kernel path itself", prompt)
-
-    def test_build_optimize_worker_prompt_mentions_cann_ext_api_when_enabled(self) -> None:
-        prompt = build_optimize_worker_prompt(
-            Path("/tmp/op.py"),
-            Path("/tmp/opt_op.py"),
-            test_mode="differential",
-            bench_mode="standalone",
-            enable_cann_ext_api=True,
-        )
-
-        self.assertIn("CANN Triton extension API pattern access is enabled for this optimize run.", prompt)
-        self.assertIn("Use the staged `triton-npu-cann-ext-api-patterns` skill", prompt)
-
-    def test_build_optimize_worker_prompt_omits_cann_ext_api_when_disabled(self) -> None:
-        prompt = build_optimize_worker_prompt(
-            Path("/tmp/op.py"),
-            Path("/tmp/opt_op.py"),
-            test_mode="differential",
-            bench_mode="standalone",
-        )
-
-        self.assertNotIn("CANN Triton extension API pattern access is enabled", prompt)
-        self.assertNotIn("triton-npu-cann-ext-api-patterns", prompt)
-
-    def test_build_optimize_unsupervised_prompt_mentions_baseline_state_contract(self) -> None:
-        prompt = build_optimize_unsupervised_prompt(
-            Path("/tmp/op.py"),
-            Path("/tmp/opt_op.py"),
-            test_mode="differential",
-            bench_mode="standalone",
-        )
-        self.assertIn("This invocation is an unsupervised optimize run.", prompt)
-        self.assertIn("Use the staged `triton-npu-prepare-optimize-baseline` skill", prompt)
-        self.assertIn("Use the staged `triton-npu-optimize-check` skill", prompt)
-        self.assertIn(
-            "baseline preparation is needed, use the staged `triton-npu-prepare-optimize-baseline` skill",
-            prompt.lower(),
-        )
-        self.assertNotIn(
-            "use the staged `triton-npu-optimize-check` skill to run `check-baseline`",
-            prompt.lower(),
-        )
-        self.assertIn(
-            "use the staged `triton-npu-optimize-check` skill to run `check-round`",
+            "use the staged `triton-npu-optimize-check` skill to run `check-round --round-dir opt-round-n --min-rounds 5`",
             prompt.lower(),
         )
         self.assertIn("continue optimizing until the session should stop", prompt)
@@ -4238,8 +4099,8 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Target chip for this optimize session: A5.", prompt)
         self.assertIn("prefer changes that fit A5", prompt)
 
-    def test_build_optimize_unsupervised_prompt_mentions_compiler_source_when_enabled(self) -> None:
-        prompt = build_optimize_unsupervised_prompt(
+    def test_build_optimize_continuous_prompt_mentions_compiler_source_when_enabled(self) -> None:
+        prompt = build_optimize_continuous_prompt(
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
@@ -4254,8 +4115,8 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Use the staged `triton-npu-analyze-compiler-source` skill", prompt)
         self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", prompt)
 
-    def test_build_optimize_unsupervised_prompt_mentions_cann_ext_api_when_enabled(self) -> None:
-        prompt = build_optimize_unsupervised_prompt(
+    def test_build_optimize_continuous_prompt_mentions_cann_ext_api_when_enabled(self) -> None:
+        prompt = build_optimize_continuous_prompt(
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
@@ -4266,8 +4127,8 @@ class PromptTests(unittest.TestCase):
         self.assertIn("CANN Triton extension API pattern access is enabled for this optimize run.", prompt)
         self.assertIn("Use the staged `triton-npu-cann-ext-api-patterns` skill", prompt)
 
-    def test_build_optimize_unsupervised_prompt_mentions_operator_target_contract(self) -> None:
-        prompt = build_optimize_unsupervised_prompt(
+    def test_build_optimize_continuous_prompt_mentions_operator_target_contract(self) -> None:
+        prompt = build_optimize_continuous_prompt(
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
@@ -4321,8 +4182,8 @@ class PromptTests(unittest.TestCase):
             prompt,
         )
 
-    def test_build_optimize_unsupervised_prompt_mentions_min_rounds_when_requested(self) -> None:
-        prompt = build_optimize_unsupervised_prompt(
+    def test_build_optimize_continuous_prompt_mentions_min_rounds_when_requested(self) -> None:
+        prompt = build_optimize_continuous_prompt(
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
@@ -4348,7 +4209,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("`triton-npu-prepare-optimize-baseline`", prompt)
         self.assertIn("`triton-npu-optimize-check`", prompt)
         self.assertIn("Write `.triton-agent/supervisor-report.md`", prompt)
-        self.assertIn("Write `.triton-agent/round-brief.md`", prompt)
+        self.assertIn("The CLI will read that supervisor report", prompt)
         self.assertIn("Do not edit the operator implementation", prompt)
         self.assertIn("replace the Triton kernel path with pure PyTorch computation", prompt)
         self.assertNotIn("optimize-supervisor.md", prompt)
@@ -4364,6 +4225,37 @@ class PromptTests(unittest.TestCase):
         self.assertIn("whole-operator restructuring", prompt)
         self.assertIn("total-op conclusion", prompt)
         self.assertIn("pure PyTorch computation", prompt)
+
+    def test_build_optimize_baseline_prompt_uses_explicit_context_parameters(self) -> None:
+        prompt = build_optimize_baseline_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            target_chip="A5",
+            optimize_target="operator",
+            compiler_source_path=Path("/tmp/AscendNPU-IR"),
+            compiler_source_commit="abc123",
+            enable_cann_ext_api=True,
+            baseline_state="missing",
+            base_prompt="Focus only on baseline establishment.",
+            remote="alice@example.com:2200",
+            remote_workdir="/tmp/remote",
+        )
+        self.assertIn("Operator input: /tmp/op.py", prompt)
+        self.assertIn("Requested output: /tmp/opt_op.py", prompt)
+        self.assertIn("Requested test mode: differential", prompt)
+        self.assertIn("Requested bench mode: standalone", prompt)
+        self.assertIn("Remote execution target: alice@example.com:2200", prompt)
+        self.assertIn("Remote execution root: /tmp/remote", prompt)
+        self.assertIn("Target optimization scope for this optimize session: operator.", prompt)
+        self.assertIn("Target chip for this optimize session: A5.", prompt)
+        self.assertIn("Compiler source analysis is enabled for this optimize run.", prompt)
+        self.assertIn("Compiler source path: /tmp/AscendNPU-IR", prompt)
+        self.assertIn("Compiler source commit: abc123.", prompt)
+        self.assertIn("CANN Triton extension API pattern access is enabled for this optimize run.", prompt)
+        self.assertIn("Additional user instructions:", prompt)
+        self.assertIn("Focus only on baseline establishment.", prompt)
 
     def test_gen_eval_prompt_mentions_operator_repair_and_dual_outputs(self) -> None:
         prompt = build_prompt(
@@ -4570,9 +4462,8 @@ class PromptTests(unittest.TestCase):
             test_mode="differential",
             bench_mode="standalone",
             force_overwrite=False,
-            supervise="on",
+            round_mode="checked",
         )
-        self.assertIn("This invocation is the optimize worker role.", prompt)
         self.assertIn("This invocation owns exactly one round.", prompt)
         self.assertIn("Requested test mode: differential", prompt)
         self.assertIn("Requested bench mode: standalone", prompt)
@@ -4580,6 +4471,19 @@ class PromptTests(unittest.TestCase):
         self.assertIn("State the optimization hypothesis and why it may help", prompt)
         self.assertIn("Explain what evidence supports the change", prompt)
         self.assertIn("If you skip profiling or IR capture", prompt)
+
+    def test_optimize_prompt_defaults_min_rounds_to_five(self) -> None:
+        prompt = build_prompt(
+            CommandKind.OPTIMIZE,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            force_overwrite=False,
+        )
+        self.assertIn("Complete at least 5 optimization rounds", prompt)
+        self.assertIn("Once 5 optimization rounds are complete", prompt)
 
     def test_optimize_prompt_keeps_min_rounds_out_of_worker_prompt(self) -> None:
         prompt = build_prompt(
@@ -4591,10 +4495,25 @@ class PromptTests(unittest.TestCase):
             bench_mode="standalone",
             force_overwrite=False,
             min_rounds=4,
-            supervise="on",
+            round_mode="checked",
         )
         self.assertNotIn("Complete at least 4 optimization rounds", prompt)
         self.assertIn("This invocation owns exactly one round.", prompt)
+
+    def test_optimize_prompt_supervised_worker_does_not_mention_audit_pass(self) -> None:
+        prompt = build_prompt(
+            CommandKind.OPTIMIZE,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            force_overwrite=False,
+            round_mode="supervised",
+        )
+        self.assertIn("This invocation owns exactly one round.", prompt)
+        self.assertNotIn("supervisor audit pass", prompt)
+        self.assertNotIn("will review it", prompt)
 
     def test_optimize_prompt_mentions_continue_mode_for_resolved_resume(self) -> None:
         prompt = build_prompt(
@@ -4606,7 +4525,7 @@ class PromptTests(unittest.TestCase):
             bench_mode="standalone",
             force_overwrite=False,
             resume_existing_session=True,
-            supervise="on",
+            round_mode="checked",
         )
         self.assertIn("Continue the existing optimization session", prompt)
         self.assertIn("Read `opt-note.md`", prompt)
@@ -4620,7 +4539,7 @@ class PromptTests(unittest.TestCase):
             test_mode="differential",
             bench_mode="standalone",
             force_overwrite=False,
-            supervise="on",
+            round_mode="checked",
         )
         self.assertIn("Choose the analysis level for the round before editing code.", prompt)
         self.assertIn(
@@ -4654,7 +4573,7 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("Do not begin with blind tiling or launch-parameter search", prompt)
 
-    def test_optimize_prompt_defaults_to_unsupervised_mode(self) -> None:
+    def test_optimize_prompt_defaults_to_continuous_mode(self) -> None:
         prompt = build_prompt(
             CommandKind.OPTIMIZE,
             Path("/tmp/op.py"),
@@ -4664,10 +4583,10 @@ class PromptTests(unittest.TestCase):
             bench_mode="standalone",
             force_overwrite=False,
         )
-        self.assertIn("This invocation is an unsupervised optimize run.", prompt)
+        self.assertIn("This invocation is a continuous optimize run.", prompt)
         self.assertNotIn("This invocation is the optimize worker role.", prompt)
 
-    def test_optimize_prompt_unsupervised_avoids_role_brief_artifacts(self) -> None:
+    def test_optimize_prompt_continuous_avoids_role_brief_artifacts(self) -> None:
         prompt = build_prompt(
             CommandKind.OPTIMIZE,
             Path("/tmp/op.py"),
@@ -4676,9 +4595,9 @@ class PromptTests(unittest.TestCase):
             test_mode="differential",
             bench_mode="standalone",
             force_overwrite=False,
-            supervise="off",
+            round_mode="continuous",
         )
-        self.assertIn("This invocation is an unsupervised optimize run.", prompt)
+        self.assertIn("This invocation is a continuous optimize run.", prompt)
         self.assertIn("Own the end-to-end optimize session", prompt)
         self.assertNotIn("optimize worker role", prompt)
         self.assertNotIn("owns exactly one round", prompt)

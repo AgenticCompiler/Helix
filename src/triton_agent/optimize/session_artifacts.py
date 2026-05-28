@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 
 from triton_agent.log_analysis import write_agent_audit
 from triton_agent.optimize.archive import ArchiveManager, ArchiveState
 from triton_agent.optimize.memory_file import MemoryFileManager, MemoryFileState
-from triton_agent.optimize.runtime_handoff import RuntimeHandoffManager, RuntimeHandoffState
 
 
 @dataclass
 class SharedOptimizeSessionArtifactsState:
-    """Session-scoped artifacts shared by supervised and unsupervised optimize runs."""
+    """Session-scoped artifacts shared by supervised and continuous optimize runs."""
 
     memory_file: MemoryFileState
     archive: ArchiveState
@@ -56,26 +56,11 @@ class SharedOptimizeSessionArtifactsState:
 
 @dataclass
 class OptimizeSessionArtifactsState(SharedOptimizeSessionArtifactsState):
-    """Full artifact bundle for supervised optimize runs."""
+    """Full artifact bundle for multi-invocation optimize runs."""
 
-    runtime_handoff: RuntimeHandoffState
-
-    @property
-    def runtime_root(self) -> Path:
-        """Root of the live `.triton-agent/` handoff tree."""
-        return self.runtime_handoff.runtime_root
-
-    @property
-    def round_brief_path(self) -> Path:
-        return self.runtime_handoff.round_brief_path
-
-    @property
-    def supervisor_report_path(self) -> Path:
-        return self.runtime_handoff.supervisor_report_path
-
-    @property
-    def history_dir(self) -> Path:
-        return self.runtime_handoff.history_dir
+    hidden_triton_agent_dir: Path | None = None
+    supervisor_report_path: Path | None = None
+    supervisor_history_dir: Path | None = None
 
     @property
     def shared_guidance_snapshot_path(self) -> Path | None:
@@ -84,23 +69,24 @@ class OptimizeSessionArtifactsState(SharedOptimizeSessionArtifactsState):
 
     @property
     def created_paths(self) -> tuple[Path, ...]:
-        return self.runtime_handoff.created_paths
+        created: list[Path] = []
+        if self.supervisor_report_path is not None:
+            created.append(self.supervisor_report_path)
+        return tuple(created)
 
 
 class OptimizeSessionArtifactsManager:
-    """Thin facade that coordinates memory-file, runtime-handoff, and archive artifacts."""
+    """Thin facade that coordinates memory-file, supervised runtime files, and archive artifacts."""
 
     def __init__(
         self,
         memory_files: MemoryFileManager | None = None,
-        runtime_handoffs: RuntimeHandoffManager | None = None,
         archives: ArchiveManager | None = None,
     ) -> None:
         self._memory_files = memory_files or MemoryFileManager()
-        self._runtime_handoffs = runtime_handoffs or RuntimeHandoffManager()
         self._archives = archives or ArchiveManager()
 
-    def prepare_unsupervised_session(
+    def prepare_continuous_session(
         self,
         workdir: Path,
         *,
@@ -116,7 +102,7 @@ class OptimizeSessionArtifactsManager:
     ) -> SharedOptimizeSessionArtifactsState:
         """Prepare only the artifacts needed by a single-agent optimize session."""
         archive_state = self._archives.prepare(workdir)
-        memory_file_state = self._memory_files.prepare_unsupervised(
+        memory_file_state = self._memory_files.prepare_continuous(
             workdir,
             operator_path=operator_path,
             test_mode=test_mode,
@@ -133,6 +119,33 @@ class OptimizeSessionArtifactsManager:
             archive=archive_state,
         )
 
+    def prepare_checked_session(
+        self,
+        workdir: Path,
+        agent_name: str,
+        optimize_target: str = "kernel",
+        compiler_source_path: Path | None = None,
+        compiler_source_commit: str | None = None,
+        enable_cann_ext_api: bool = False,
+        optimize_knowledge_skill_name: str | None = None,
+    ) -> OptimizeSessionArtifactsState:
+        """Prepare artifacts for checked optimize without a live handoff file."""
+        archive_state = self._archives.prepare(workdir, include_shared_guidance_snapshot=True)
+        memory_file_state = self._memory_files.prepare_round_gated(
+            workdir,
+            agent_name=agent_name,
+            optimize_target=optimize_target,
+            include_supervisor_handoff=False,
+            compiler_source_path=compiler_source_path,
+            compiler_source_commit=compiler_source_commit,
+            enable_cann_ext_api=enable_cann_ext_api,
+            optimize_knowledge_skill_name=optimize_knowledge_skill_name,
+        )
+        return OptimizeSessionArtifactsState(
+            memory_file=memory_file_state,
+            archive=archive_state,
+        )
+
     def prepare_supervised_session(
         self,
         workdir: Path,
@@ -144,7 +157,14 @@ class OptimizeSessionArtifactsManager:
         optimize_knowledge_skill_name: str | None = None,
     ) -> OptimizeSessionArtifactsState:
         """Prepare the full artifact set used by worker/supervisor orchestration."""
-        runtime_handoff_state = self._runtime_handoffs.prepare(workdir)
+        hidden_triton_agent_dir = self._prepare_hidden_triton_agent_dir(workdir)
+        supervisor_report_path = hidden_triton_agent_dir / "supervisor-report.md"
+        supervisor_history_dir = hidden_triton_agent_dir / "supervisor-history"
+        supervisor_history_dir.mkdir(parents=True, exist_ok=True)
+        supervisor_report_path.write_text(
+            "# Optimize Supervisor Report\n\nPending first supervisor pass.\n",
+            encoding="utf-8",
+        )
         archive_state = self._archives.prepare(
             workdir,
             include_shared_guidance_snapshot=True,
@@ -161,20 +181,21 @@ class OptimizeSessionArtifactsManager:
         return OptimizeSessionArtifactsState(
             memory_file=memory_file_state,
             archive=archive_state,
-            runtime_handoff=runtime_handoff_state,
+            hidden_triton_agent_dir=hidden_triton_agent_dir,
+            supervisor_report_path=supervisor_report_path,
+            supervisor_history_dir=supervisor_history_dir,
         )
 
     def archive(self, state: OptimizeSessionArtifactsState) -> list[str]:
-        """Persist the final supervised handoff files and history into the run archive."""
+        """Persist the final multi-invocation outputs into the run archive."""
         return self._archives.archive(
             state.archive,
             guidance_path=state.guidance_path,
-            round_brief_path=state.round_brief_path,
             supervisor_report_path=state.supervisor_report_path,
-            history_dir=state.history_dir,
+            history_dir=state.supervisor_history_dir,
         )
 
-    def cleanup_unsupervised_session(
+    def cleanup_continuous_session(
         self,
         state: SharedOptimizeSessionArtifactsState,
     ) -> list[str]:
@@ -207,21 +228,32 @@ class OptimizeSessionArtifactsManager:
         except Exception as exc:
             warnings.append(f"Failed to archive optimize supervised logs: {exc}")
 
-        warnings.extend(self._runtime_handoffs.cleanup(state.runtime_handoff))
-        warnings.extend(self.cleanup_unsupervised_session(state))
+        warnings.extend(self._cleanup_hidden_triton_agent_dir(state.hidden_triton_agent_dir))
+        warnings.extend(self.cleanup_continuous_session(state))
         return warnings
 
     def _write_agent_audit(self, state: SharedOptimizeSessionArtifactsState) -> list[str]:
         workdir = state.archive.log_root.parent
         return write_agent_audit(workdir=workdir, archive=state.archive)
 
-    def describe_prepare_unsupervised_session(
+    def cleanup_checked_session(self, state: OptimizeSessionArtifactsState) -> list[str]:
+        """Archive checked-mode artifacts, then tear down the live runtime files."""
+        warnings: list[str] = []
+        try:
+            warnings.extend(self.archive(state))
+        except Exception as exc:
+            warnings.append(f"Failed to archive optimize checked logs: {exc}")
+
+        warnings.extend(self.cleanup_continuous_session(state))
+        return warnings
+
+    def describe_prepare_continuous_session(
         self,
         state: SharedOptimizeSessionArtifactsState,
     ) -> list[str]:
         return self._memory_files.describe_prepare(
             state.memory_file,
-            description="unsupervised optimize guidance file",
+            description="continuous optimize guidance file",
         )
 
     def describe_prepare_supervised_session(
@@ -232,10 +264,20 @@ class OptimizeSessionArtifactsManager:
             state.memory_file,
             description="supervised optimize guidance file",
         )
-        messages.extend(self._runtime_handoffs.describe_prepare(state.runtime_handoff))
+        if state.supervisor_report_path is not None:
+            messages.append(f"wrote optimize supervisor report {state.supervisor_report_path}")
         return messages
 
-    def describe_cleanup_unsupervised_session(
+    def describe_prepare_checked_session(
+        self,
+        state: OptimizeSessionArtifactsState,
+    ) -> list[str]:
+        return self._memory_files.describe_prepare(
+            state.memory_file,
+            description="checked optimize guidance file",
+        )
+
+    def describe_cleanup_continuous_session(
         self,
         state: SharedOptimizeSessionArtifactsState,
     ) -> list[str]:
@@ -246,6 +288,71 @@ class OptimizeSessionArtifactsManager:
         state: OptimizeSessionArtifactsState,
     ) -> list[str]:
         messages = [f"archiving supervised optimize logs to {state.run_archive_dir}"]
-        messages.extend(self._runtime_handoffs.describe_cleanup(state.runtime_handoff))
-        messages.extend(self.describe_cleanup_unsupervised_session(state))
+        if state.supervisor_report_path is not None:
+            messages.append(f"removing temporary optimize file {state.supervisor_report_path}")
+        if state.hidden_triton_agent_dir is not None:
+            messages.append(
+                "removing temporary optimize runtime directory tree "
+                f"{state.hidden_triton_agent_dir}"
+            )
+        messages.extend(self.describe_cleanup_continuous_session(state))
         return messages
+
+    def describe_cleanup_checked_session(
+        self,
+        state: OptimizeSessionArtifactsState,
+    ) -> list[str]:
+        messages = [f"archiving checked optimize logs to {state.run_archive_dir}"]
+        messages.extend(self.describe_cleanup_continuous_session(state))
+        return messages
+
+    def _prepare_hidden_triton_agent_dir(self, workdir: Path) -> Path:
+        hidden_triton_agent_dir = workdir / ".triton-agent"
+        if hidden_triton_agent_dir.exists() and any(hidden_triton_agent_dir.iterdir()):
+            raise RuntimeError(
+                "Existing .triton-agent/ directory contains data; remove it before starting optimize."
+            )
+        hidden_triton_agent_dir.mkdir(parents=True, exist_ok=True)
+        return hidden_triton_agent_dir
+
+    def _cleanup_hidden_triton_agent_dir(self, hidden_triton_agent_dir: Path | None) -> list[str]:
+        if hidden_triton_agent_dir is None:
+            return []
+        warnings: list[str] = []
+        if hidden_triton_agent_dir.name != ".triton-agent":
+            return [
+                "Refusing to remove unexpected optimize runtime directory "
+                f"{hidden_triton_agent_dir}"
+            ]
+        try:
+            for root, dirs, files in os.walk(
+                hidden_triton_agent_dir,
+                topdown=False,
+                followlinks=False,
+            ):
+                root_path = Path(root)
+                for filename in files:
+                    path = root_path / filename
+                    try:
+                        path.unlink()
+                    except OSError as exc:
+                        warnings.append(f"Failed to remove temporary optimize file {path}: {exc}")
+                for dirname in dirs:
+                    path = root_path / dirname
+                    try:
+                        path.rmdir()
+                    except OSError as exc:
+                        warnings.append(f"Failed to remove temporary optimize directory {path}: {exc}")
+            try:
+                hidden_triton_agent_dir.rmdir()
+            except OSError as exc:
+                warnings.append(
+                    "Failed to remove temporary optimize directory "
+                    f"{hidden_triton_agent_dir}: {exc}"
+                )
+        except OSError as exc:
+            warnings.append(
+                "Failed to remove temporary optimize directory "
+                f"{hidden_triton_agent_dir}: {exc}"
+            )
+        return warnings
