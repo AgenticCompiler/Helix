@@ -33,7 +33,7 @@ class CodexJsonLineParser:
 
     def __init__(
         self,
-        trace_path: Path,
+        trace_path: Path | None,
         extra_env: dict[str, str] | None = None,
     ) -> None:
         self._trace_path = trace_path
@@ -72,16 +72,19 @@ class CodexJsonLineParser:
         event = cast(dict[str, Any], loaded)
 
         # Mark that we received at least one JSON event
+        prefix = ""
         if not self._first_event_received:
             self._first_event_received = True
             # Write diagnostic: native JSON events are being received
             self._write_diagnostic("codex_native_json_active", "Codex native JSON event stream is active")
+            prefix = _block("[system] Codex native JSON event stream is active")
 
         # Route by event type - try multiple candidate field names
         event_type = self._get_event_type(event)
         handler_name = self._ROUTE.get(event_type, "_handle_unknown")
         handler = cast(Callable[[dict[str, Any]], str | None], getattr(self, handler_name, self._handle_unknown))
-        return handler(event)
+        rendered = handler(event)
+        return prefix + rendered if rendered else prefix or None
 
     def _get_event_type(self, event: dict[str, Any]) -> str:
         # Try multiple candidate field names for event type
@@ -92,8 +95,8 @@ class CodexJsonLineParser:
         return ""
 
     def _handle_unknown(self, event: dict[str, Any]) -> str:
-        # Unknown event type - pass through as human-readable JSON
-        return json.dumps(event) + "\n"
+        event_type = self._get_event_type(event) or "unknown"
+        return _block(f"[system] Skipped unsupported Codex JSON event type: {event_type}")
 
     def _handle_item_started(self, event: dict[str, Any]) -> str | None:
         item = _event_item(event)
@@ -128,7 +131,10 @@ class CodexJsonLineParser:
                 "run_id": self._run_id,
                 "role": self._role,
             })
-            return f"exec\n{raw_command}\n"
+            return _block(
+                f"[tool:start] exec {item_id or 'unknown'}",
+                f"  command: {_one_line_excerpt(raw_command, limit=1000)}",
+            )
 
         if item_type == "file_change":
             changes = _item_changes(item)
@@ -155,7 +161,10 @@ class CodexJsonLineParser:
                 "run_id": self._run_id,
                 "role": self._role,
             })
-            return f"edit\n{self._summarize_changes(changes)}\n"
+            return _block(
+                f"[tool:start] file_change {item_id or 'unknown'}",
+                f"  changes: {self._summarize_changes(changes)}",
+            )
 
         return self._render_item_message(item)
 
@@ -216,7 +225,14 @@ class CodexJsonLineParser:
                 duration_ms=duration_ms,
                 status=status,
             )
-            return self._render_completed_command(raw_command, status, duration_ms, output)
+            return self._render_completed_command(
+                raw_command,
+                status,
+                duration_ms,
+                output,
+                tool_use_id=item_id,
+                return_code=return_code if isinstance(return_code, int) else None,
+            )
 
         if item_type == "file_change":
             pending = self._pending.pop(item_id, None) if item_id else None
@@ -251,7 +267,11 @@ class CodexJsonLineParser:
                 duration_ms=duration_ms,
                 status=normalized_status,
             )
-            return f"edit {normalized_status} in {duration_ms}ms\n{self._summarize_changes(changes)}\n"
+            return _block(
+                f"[tool:end] file_change {item_id or 'unknown'} {normalized_status} "
+                f"in {duration_ms}ms rc=unknown",
+                f"  changes: {self._summarize_changes(changes)}",
+            )
 
         return self._render_item_message(item)
 
@@ -261,7 +281,10 @@ class CodexJsonLineParser:
         text = item.get("text")
         if not isinstance(text, str) or not text:
             return None
-        return text if text.endswith("\n") else text + "\n"
+        text = text.strip()
+        if not text:
+            return None
+        return _block(text)
 
     def _buffer_tool_start(
         self,
@@ -288,7 +311,7 @@ class CodexJsonLineParser:
         tool = self._get_field(event, "tool", "tool_name", "name") or "unknown"
         timestamp = self._get_timestamp(event)
 
-        human = f"[tool] {tool} started"
+        human = _block(f"[tool:start] {tool} {tool_use_id or 'unknown'}")
 
         if tool_use_id:
             self._buffer_tool_start(
@@ -329,11 +352,11 @@ class CodexJsonLineParser:
             duration_ms = self._duration_ms(timestamp, pending.start_time)
             start_time = pending.start_time
 
-        human = f"[tool] {tool} {status}"
-        if return_code is not None:
-            human += f" (rc={return_code})"
-        if duration_ms > 0:
-            human += f" in {duration_ms}ms"
+        rc_text = str(return_code) if return_code is not None else "unknown"
+        human = _block(
+            f"[tool:end] {tool} {tool_use_id or 'unknown'} "
+            f"{status} in {duration_ms}ms rc={rc_text}"
+        )
 
         # Write end event to trace
         self._write_trace_event({
@@ -375,14 +398,24 @@ class CodexJsonLineParser:
             return status
         return "unknown"
 
-    def _render_completed_command(self, raw_command: str, status: str, duration_ms: int, output: str) -> str:
-        status_word = "succeeded" if status == "ok" else status
+    def _render_completed_command(
+        self,
+        raw_command: str,
+        status: str,
+        duration_ms: int,
+        output: str,
+        *,
+        tool_use_id: str,
+        return_code: int | None,
+    ) -> str:
+        del raw_command
+        rc_text = str(return_code) if return_code is not None else "unknown"
         lines: list[str] = [
-            f" {status_word} in {duration_ms}ms:",
+            f"[tool:end] exec {tool_use_id or 'unknown'} {status} in {duration_ms}ms rc={rc_text}",
         ]
         if output:
-            lines.append(output if output.endswith("\n") else output + "\n")
-        return "\n".join(lines)
+            lines.extend(_excerpt_lines("stdout", output))
+        return _block(*lines)
 
     def _maybe_derive_command_event(
         self,
@@ -740,6 +773,8 @@ class CodexJsonLineParser:
 
     def _write_trace_event(self, event: dict[str, Any]) -> None:
         """Write trace event, deduplicating if already seen."""
+        if self._trace_path is None:
+            return
         key = (
             str(event.get("tool_use_id", "")),
             str(event.get("phase", "")),
@@ -755,6 +790,8 @@ class CodexJsonLineParser:
 
     def _write_diagnostic(self, code: str, detail: str) -> None:
         """Write a diagnostic event to the trace."""
+        if self._trace_path is None:
+            return
         append_trace_event(self._trace_path, {
             "schema_version": 1,
             "type": "diagnostic",
@@ -862,6 +899,35 @@ def _strip_shell_quotes(value: str) -> str:
     return stripped
 
 
+def _block(*lines: str) -> str:
+    return "\n".join(lines).rstrip() + "\n\n"
+
+
+def _excerpt_lines(label: str, text: str, limit: int = 2000) -> list[str]:
+    excerpt = _excerpt_text(text, limit=limit)
+    if not excerpt:
+        return []
+    if "\n" not in excerpt:
+        return [f"  {label}: {excerpt}"]
+    lines = [f"  {label} excerpt:"]
+    lines.extend(f"    {line}" for line in excerpt.splitlines())
+    return lines
+
+
+def _excerpt_text(text: str, limit: int = 2000) -> str:
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n").rstrip()
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: max(1, limit - 15)].rstrip() + "\n<truncated>"
+
+
+def _one_line_excerpt(text: str, *, limit: int) -> str:
+    compact = " ".join(text.replace("\r", "\n").split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: max(1, limit - 15)].rstrip() + " ... <truncated>"
+
+
 def _dedupe(values: list[str]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
@@ -883,7 +949,7 @@ class CodexJsonOutputFilter:
 
     def __init__(
         self,
-        trace_path: Path,
+        trace_path: Path | None,
         extra_env: dict[str, str] | None = None,
     ) -> None:
         self._parser = CodexJsonLineParser(trace_path, extra_env)
@@ -903,11 +969,12 @@ class CodexJsonOutputFilter:
             if result:
                 emitted.append(result)
 
-        if flush and self._buffer:
-            result = self._parser.parse_line(self._buffer)
-            self._buffer = ""
-            if result:
-                emitted.append(result)
+        if flush:
+            if self._buffer:
+                result = self._parser.parse_line(self._buffer)
+                self._buffer = ""
+                if result:
+                    emitted.append(result)
             self._parser.flush()
 
         return "".join(emitted)
