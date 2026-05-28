@@ -55,6 +55,11 @@ STAGE_RULES: dict[CommandKind, StageRule] = {
             "+triton-npu-optimize-check",
         ),
     ),
+    CommandKind.OPERATOR_REPORT: StageRule(
+        directives=(
+            "+triton-npu-report",
+        ),
+    ),
     CommandKind.OPTIMIZE: StageRule(
         directives=(
             "+triton-npu-optimize",
