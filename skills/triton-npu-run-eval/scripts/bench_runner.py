@@ -484,15 +484,12 @@ def run_local_bench(
     bench_mode: str,
     npu_devices: str | None = None,
     verbose: bool = False,
-    test_file: Path | None = None,
 ) -> tuple[ResultPayload, Path | None]:
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
     with _local_bench_workdir(bench_file.parent):
         if bench_mode == "msprof-simulator":
-            if test_file is None:
-                raise ValueError("test_file is required for msprof-simulator bench mode")
-            _run_local_bench_msprof_simulator(test_file, operator_file)
+            _run_local_bench_msprof_simulator(bench_file, operator_file)
             return _run_local_bench_msprof(bench_file, operator_file, verbose=verbose)
         if bench_mode == "msprof":
             if devices is not None:
@@ -1102,6 +1099,7 @@ def _set_directory_owner_only(path: Path) -> None:
 
 
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched op_statistic csv"
+_TIMEOUT_MESSAGE = "[INFO]  The timeout has reached and the application will be forcibly killed."
 
 
 def _find_latest_visualize_data_bin(output_dir: Path) -> Path | None:
@@ -1113,7 +1111,7 @@ def _find_latest_visualize_data_bin(output_dir: Path) -> Path | None:
     return max(matches, key=lambda path: path.stat().st_mtime_ns)
 
 
-def _run_extract_and_copy(output_dir: Path, test_file: Path) -> None:
+def _run_extract_and_copy(output_dir: Path, bench_file: Path, isTimeOut: bool = False) -> None:
     bin_file = _find_latest_visualize_data_bin(output_dir)
     if bin_file is None:
         return
@@ -1124,17 +1122,17 @@ def _run_extract_and_copy(output_dir: Path, test_file: Path) -> None:
 
     extracted_dir = bin_file.parent / "extracted_bin_data"
     if extracted_dir.exists():
-        tmp_dir = test_file.parent / "extracted_bin_data"
+        tmp_dir = bench_file.parent / "extracted_bin_data"
         if tmp_dir.exists():
             shutil.rmtree(tmp_dir)
         shutil.copytree(extracted_dir, tmp_dir)
 
 
 def _run_local_bench_msprof_simulator(
-    test_file: Path,
+    bench_file: Path,
     operator_file: Path,
 ) -> tuple[ResultPayload, Path | None]:
-    resolution = resolve_bench_kernel_resolution(test_file, operator_file)
+    resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
     stdout_chunks: list[str] = []
     stderr_chunks: list[str] = []
     preserved_run_dir = _create_local_msprof_preserved_run_dir()
@@ -1147,17 +1145,19 @@ def _run_local_bench_msprof_simulator(
             "msprof",
             "op",
             "simulator",
+            "--timeout=5",
             f"--output={output_dir}",
             local_python_executable(),
-            str(test_file),
+            str(bench_file),
             "--operator-file",
             str(operator_file),
+            "--bench", "1",
         ]
         t0 = time.monotonic()
         with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
             result = run_streaming_process(
                 command,
-                str(test_file.parent),
+                str(bench_file.parent),
                 stall_timeout_seconds=_bench_timeout(),
                 stdout=quiet_stdout,
             )
@@ -1167,6 +1167,11 @@ def _run_local_bench_msprof_simulator(
         had_stalls = had_stalls or bool(result["stalled"])
         if result["session_id"] is not None:
             session_id = result["session_id"]
+
+        isTimeOut = (
+            _TIMEOUT_MESSAGE in str(result["stdout"])
+            or _TIMEOUT_MESSAGE in str(result["stderr"])
+        )
 
         if not result_succeeded(result):
             case_record = PerfCaseRecord(
@@ -1200,7 +1205,7 @@ def _run_local_bench_msprof_simulator(
                 perf_path,
             )
 
-        _run_extract_and_copy(output_dir, test_file)
+        _run_extract_and_copy(output_dir, bench_file, isTimeOut)
 
         return (
             make_result(
@@ -1216,7 +1221,7 @@ def _run_local_bench_msprof_simulator(
     finally:
         if temp_dir is not None:
             temp_dir.cleanup()
-        _cleanup_local_bench_extra_info(test_file.parent)
+        _cleanup_local_bench_extra_info(bench_file.parent)
 
 
 def _format_msprof_command_failure(result: ResultPayload) -> str:
