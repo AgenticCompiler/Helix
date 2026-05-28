@@ -194,6 +194,42 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
         self.assertEqual(mocked.call_args.kwargs["env"]["ASCEND_RT_VISIBLE_DEVICES"], "4")
         self.assertEqual(mocked.call_args.kwargs["env"]["EXISTING_ENV"], "base")
 
+    def test_run_runtime_buffered_process_closes_pipe_streams(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        class _FakeStream:
+            def __init__(self, text: str = "") -> None:
+                self._text = text
+                self.closed = False
+
+            def readline(self) -> str:
+                return ""
+
+            def read(self) -> str:
+                text = self._text
+                self._text = ""
+                return text
+
+            def close(self) -> None:
+                self.closed = True
+
+        class _FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = _FakeStream()
+                self.stderr = _FakeStream()
+                self.returncode = 0
+
+            def poll(self):
+                return 0
+
+        process = _FakeProcess()
+        with patch.object(module.subprocess, "Popen", return_value=process):
+            result = module.run_buffered_process(["python3", "bench.py"], ".", 10)
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertTrue(process.stdout.closed)
+        self.assertTrue(process.stderr.closed)
+
     def test_run_remote_command_streaming_shell_joins_sequence_args(self) -> None:
         module = load_operator_eval_script_module("run_runtime")
 

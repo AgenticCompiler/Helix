@@ -498,9 +498,9 @@ def _validate_and_render_pattern(workspace: Path, json_path: Path) -> bool:
 def _parse_json_with_repair(raw: str, filename: str) -> dict[str, Any] | None:
     """Parse JSON with repair fallback. Returns dict or None."""
     try:
-        data = json.loads(raw)
-        if isinstance(data, dict):
-            return cast(dict[str, Any], data)
+        payload = json.loads(raw)
+        if isinstance(payload, dict):
+            return cast(dict[str, Any], payload)
         print(
             f"[optimize-check] warning: {filename} is not a JSON object",
             file=sys.stderr,

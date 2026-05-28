@@ -70,11 +70,11 @@ class OptimizeSessionArtifactsState(SharedOptimizeSessionArtifactsState):
         return self.runtime_handoff.round_brief_path
 
     @property
-    def supervisor_report_path(self) -> Path:
+    def supervisor_report_path(self) -> Path | None:
         return self.runtime_handoff.supervisor_report_path
 
     @property
-    def history_dir(self) -> Path:
+    def history_dir(self) -> Path | None:
         return self.runtime_handoff.history_dir
 
     @property
@@ -133,6 +133,35 @@ class OptimizeSessionArtifactsManager:
             archive=archive_state,
         )
 
+    def prepare_checked_session(
+        self,
+        workdir: Path,
+        agent_name: str,
+        optimize_target: str = "kernel",
+        compiler_source_path: Path | None = None,
+        compiler_source_commit: str | None = None,
+        enable_cann_ext_api: bool = False,
+        optimize_knowledge_skill_name: str | None = None,
+    ) -> OptimizeSessionArtifactsState:
+        """Prepare artifacts for checked optimize: handoff without supervisor files."""
+        runtime_handoff_state = self._runtime_handoffs.prepare(workdir, include_supervisor=False)
+        archive_state = self._archives.prepare(workdir, include_shared_guidance_snapshot=True)
+        memory_file_state = self._memory_files.prepare_round_gated(
+            workdir,
+            agent_name=agent_name,
+            optimize_target=optimize_target,
+            include_supervisor_handoff=False,
+            compiler_source_path=compiler_source_path,
+            compiler_source_commit=compiler_source_commit,
+            enable_cann_ext_api=enable_cann_ext_api,
+            optimize_knowledge_skill_name=optimize_knowledge_skill_name,
+        )
+        return OptimizeSessionArtifactsState(
+            memory_file=memory_file_state,
+            archive=archive_state,
+            runtime_handoff=runtime_handoff_state,
+        )
+
     def prepare_supervised_session(
         self,
         workdir: Path,
@@ -144,7 +173,7 @@ class OptimizeSessionArtifactsManager:
         optimize_knowledge_skill_name: str | None = None,
     ) -> OptimizeSessionArtifactsState:
         """Prepare the full artifact set used by worker/supervisor orchestration."""
-        runtime_handoff_state = self._runtime_handoffs.prepare(workdir)
+        runtime_handoff_state = self._runtime_handoffs.prepare(workdir, include_supervisor=True)
         archive_state = self._archives.prepare(
             workdir,
             include_shared_guidance_snapshot=True,
@@ -165,7 +194,7 @@ class OptimizeSessionArtifactsManager:
         )
 
     def archive(self, state: OptimizeSessionArtifactsState) -> list[str]:
-        """Persist the final supervised handoff files and history into the run archive."""
+        """Persist the final round-gated handoff files into the run archive."""
         return self._archives.archive(
             state.archive,
             guidance_path=state.guidance_path,
@@ -215,6 +244,18 @@ class OptimizeSessionArtifactsManager:
         workdir = state.archive.log_root.parent
         return write_agent_audit(workdir=workdir, archive=state.archive)
 
+    def cleanup_checked_session(self, state: OptimizeSessionArtifactsState) -> list[str]:
+        """Archive checked-mode artifacts, then tear down the live runtime files."""
+        warnings: list[str] = []
+        try:
+            warnings.extend(self.archive(state))
+        except Exception as exc:
+            warnings.append(f"Failed to archive optimize checked logs: {exc}")
+
+        warnings.extend(self._runtime_handoffs.cleanup(state.runtime_handoff))
+        warnings.extend(self.cleanup_unsupervised_session(state))
+        return warnings
+
     def describe_prepare_unsupervised_session(
         self,
         state: SharedOptimizeSessionArtifactsState,
@@ -235,6 +276,17 @@ class OptimizeSessionArtifactsManager:
         messages.extend(self._runtime_handoffs.describe_prepare(state.runtime_handoff))
         return messages
 
+    def describe_prepare_checked_session(
+        self,
+        state: OptimizeSessionArtifactsState,
+    ) -> list[str]:
+        messages = self._memory_files.describe_prepare(
+            state.memory_file,
+            description="checked optimize guidance file",
+        )
+        messages.extend(self._runtime_handoffs.describe_prepare(state.runtime_handoff))
+        return messages
+
     def describe_cleanup_unsupervised_session(
         self,
         state: SharedOptimizeSessionArtifactsState,
@@ -246,6 +298,15 @@ class OptimizeSessionArtifactsManager:
         state: OptimizeSessionArtifactsState,
     ) -> list[str]:
         messages = [f"archiving supervised optimize logs to {state.run_archive_dir}"]
+        messages.extend(self._runtime_handoffs.describe_cleanup(state.runtime_handoff))
+        messages.extend(self.describe_cleanup_unsupervised_session(state))
+        return messages
+
+    def describe_cleanup_checked_session(
+        self,
+        state: OptimizeSessionArtifactsState,
+    ) -> list[str]:
+        messages = [f"archiving checked optimize logs to {state.run_archive_dir}"]
         messages.extend(self._runtime_handoffs.describe_cleanup(state.runtime_handoff))
         messages.extend(self.describe_cleanup_unsupervised_session(state))
         return messages

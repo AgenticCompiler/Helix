@@ -67,10 +67,10 @@ class ArchiveManager:
         *,
         guidance_path: Path,
         round_brief_path: Path,
-        supervisor_report_path: Path,
-        history_dir: Path,
+        supervisor_report_path: Path | None,
+        history_dir: Path | None,
     ) -> list[str]:
-        """Copy final supervised outputs into the per-run archive directory."""
+        """Copy final round-gated outputs into the per-run archive directory."""
         warnings: list[str] = []
         archive_dir = state.run_archive_dir
         if archive_dir.exists():
@@ -96,10 +96,13 @@ class ArchiveManager:
             except OSError as exc:
                 warnings.append(f"Failed to write shared guidance archive snapshot: {exc}")
 
-        final_sources = (
+        final_sources = [
             (round_brief_path, archive_dir / "final" / "round-brief.md"),
-            (supervisor_report_path, archive_dir / "final" / "supervisor-report.md"),
-        )
+        ]
+        if supervisor_report_path is not None:
+            final_sources.append(
+                (supervisor_report_path, archive_dir / "final" / "supervisor-report.md")
+            )
         for src, dest in final_sources:
             if not src.exists():
                 warnings.append(f"Missing expected optimize handoff file at {src}")
@@ -109,7 +112,7 @@ class ArchiveManager:
             except OSError as exc:
                 warnings.append(f"Failed to archive optimize handoff file {src}: {exc}")
 
-        if history_dir.exists():
+        if history_dir is not None and history_dir.exists():
             for src in sorted(history_dir.iterdir()):
                 if not src.is_file():
                     continue

@@ -30,7 +30,7 @@ _FORMAT_CHOICES = ("text", "markdown")
 _TEST_MODE_CHOICES = ("standalone", "differential")
 _BENCH_MODE_CHOICES = ("standalone", "msprof")
 _RESUME_CHOICES = ("auto", "continue", "fresh")
-_SUPERVISE_CHOICES = ("on", "off")
+_ROUND_MODE_CHOICES = ("continuous", "checked", "supervised")
 _TARGET_CHIP_CHOICES = ("A3", "A5")
 _OPTIMIZE_TARGET_CHOICES = ("kernel", "operator")
 _OPTIMIZE_KNOWLEDGE_CHOICES = ("v1", "v2", "v3")
@@ -472,11 +472,9 @@ def build_parser() -> argparse.ArgumentParser:
             )
             subparser.add_argument("--no-agent-session", action="store_true")
             subparser.add_argument(
-                "--supervise",
-                "--supervisor",
-                dest="supervise",
-                default="off",
-                choices=_SUPERVISE_CHOICES,
+                "--round-mode",
+                default="continuous",
+                choices=_ROUND_MODE_CHOICES,
             )
             subparser.add_argument("--no-upload", action="store_true")
         if spec.has_prompt:

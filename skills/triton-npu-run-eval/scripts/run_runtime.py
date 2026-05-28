@@ -78,32 +78,44 @@ def run_buffered_process(
         text=True,
         env=_merged_env(extra_env),
     )
+    stdout_pipe = process.stdout
+    stderr_pipe = process.stderr
     stdout_lines: list[str] = []
     start = time.monotonic()
 
-    while True:
-        line = process.stdout.readline() if process.stdout is not None else ""
-        if line:
-            stdout_lines.append(line)
-            start = time.monotonic()
-        elif process.poll() is not None:
-            break
-        elif time.monotonic() - start > stall_timeout_seconds:
-            process.terminate()
-            stderr_text = process.stderr.read() if process.stderr is not None else ""
-            return make_result(
-                return_code=1,
-                stdout="".join(stdout_lines),
-                stderr=stderr_text,
-                stalled=True,
-            )
+    try:
+        while True:
+            line = stdout_pipe.readline() if stdout_pipe is not None else ""
+            if line:
+                stdout_lines.append(line)
+                start = time.monotonic()
+            elif process.poll() is not None:
+                break
+            elif time.monotonic() - start > stall_timeout_seconds:
+                process.terminate()
+                stderr_text = stderr_pipe.read() if stderr_pipe is not None else ""
+                return make_result(
+                    return_code=1,
+                    stdout="".join(stdout_lines),
+                    stderr=stderr_text,
+                    stalled=True,
+                )
 
-    stderr_text = process.stderr.read() if process.stderr is not None else ""
-    return make_result(
-        return_code=_resolved_returncode(process.returncode),
-        stdout="".join(stdout_lines),
-        stderr=stderr_text,
-    )
+        stderr_text = stderr_pipe.read() if stderr_pipe is not None else ""
+        return make_result(
+            return_code=_resolved_returncode(process.returncode),
+            stdout="".join(stdout_lines),
+            stderr=stderr_text,
+        )
+    finally:
+        if stdout_pipe is not None:
+            close_stdout = getattr(stdout_pipe, "close", None)
+            if callable(close_stdout):
+                close_stdout()
+        if stderr_pipe is not None:
+            close_stderr = getattr(stderr_pipe, "close", None)
+            if callable(close_stderr):
+                close_stderr()
 
 
 def run_streaming_process(

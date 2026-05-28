@@ -455,17 +455,17 @@ class CodexRunnerTests(unittest.TestCase):
                     False,
                     remote="alice@example.com:2200",
                     remote_workdir="/tmp/remote",
-                    supervise="on",
+                    round_mode="checked",
                 ),
                 workdir=workspace,
                 min_rounds=3,
-                supervise="on",
+                round_mode="checked",
             )
             with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.resume(request, "one round done")
 
             resumed_request = mocked.call_args.args[0][-1]
-            self.assertIn("This invocation is the optimize worker role.", resumed_request)
+            self.assertIn("This invocation owns exactly one round.", resumed_request)
             self.assertIn("Continue the existing optimize task", resumed_request)
             self.assertIn("Read `opt-note.md`", resumed_request)
             self.assertIn("existing `opt-round-*` directories", resumed_request)

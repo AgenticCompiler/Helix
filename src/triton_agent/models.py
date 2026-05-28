@@ -67,11 +67,13 @@ class AgentRequest:
     skill_name: str
     prompt: str
     workdir: Path
+    remote: Optional[str] = None
+    remote_workdir: Optional[str] = None
     extra_env: dict[str, str] | None = None
     min_rounds: Optional[int] = None
     continue_optimize: bool = False
     no_agent_session: bool = False
-    supervise: Literal["on", "off"] = "off"
+    round_mode: Literal["continuous", "checked", "supervised"] = "continuous"
     staged_skill_names: tuple[str, ...] | None = None
     staged_skill_sources: dict[str, str] | None = None
     optimize_role: str | None = None

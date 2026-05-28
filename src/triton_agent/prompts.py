@@ -5,20 +5,22 @@ from typing import Literal
 
 from triton_agent.models import COMMAND_TO_SKILL, CommandKind
 from triton_agent.optimize.prompts import (
+    build_optimize_baseline_prompt,
+    build_optimize_continuous_prompt,
     build_optimize_resume_prompt,
+    build_optimize_round_prompt,
     build_optimize_supervisor_prompt,
-    build_optimize_unsupervised_prompt,
-    build_optimize_worker_prompt,
 )
 from triton_agent.paths import default_generated_output_path
 
 __all__ = [
     "PROMPT_INTROS",
     "append_additional_user_instructions",
+    "build_optimize_baseline_prompt",
+    "build_optimize_continuous_prompt",
     "build_optimize_resume_prompt",
+    "build_optimize_round_prompt",
     "build_optimize_supervisor_prompt",
-    "build_optimize_unsupervised_prompt",
-    "build_optimize_worker_prompt",
     "build_prompt",
 ]
 
@@ -59,10 +61,10 @@ def build_prompt(
     force_overwrite: bool,
     remote: str | None = None,
     remote_workdir: str | None = None,
-    min_rounds: int | None = None,
+    min_rounds: int | None = 5,
     continue_optimize: bool = False,
     resume_existing_session: bool | None = None,
-    supervise: Literal["on", "off"] = "off",
+    round_mode: Literal["continuous", "checked", "supervised"] = "continuous",
     target_chip: str | None = None,
     optimize_target: str = "kernel",
     compiler_source_path: Path | None = None,
@@ -72,6 +74,7 @@ def build_prompt(
     should_resume_existing_session = (
         continue_optimize if resume_existing_session is None else resume_existing_session
     )
+    resolved_min_rounds = 5 if min_rounds is None else min_rounds
     skill_name = COMMAND_TO_SKILL[command_kind]
     lines = [PROMPT_INTROS[command_kind]]
     if skill_name:
@@ -195,16 +198,16 @@ def build_prompt(
         )
 
     if command_kind == CommandKind.OPTIMIZE:
-        if supervise == "on":
+        if round_mode == "continuous":
             lines.extend(
-                build_optimize_worker_prompt(
+                build_optimize_continuous_prompt(
                     input_path,
                     output_path,
                     test_mode=test_mode,
                     bench_mode=bench_mode,
                     target_chip=target_chip or "A5",
                     optimize_target=optimize_target,
-                    min_rounds=min_rounds,
+                    min_rounds=resolved_min_rounds,
                     resume_existing_session=should_resume_existing_session,
                     compiler_source_path=compiler_source_path,
                     compiler_source_commit=compiler_source_commit,
@@ -213,18 +216,19 @@ def build_prompt(
             )
         else:
             lines.extend(
-                build_optimize_unsupervised_prompt(
+                build_optimize_round_prompt(
                     input_path,
                     output_path,
                     test_mode=test_mode,
                     bench_mode=bench_mode,
                     target_chip=target_chip or "A5",
                     optimize_target=optimize_target,
-                    min_rounds=min_rounds,
                     resume_existing_session=should_resume_existing_session,
                     compiler_source_path=compiler_source_path,
                     compiler_source_commit=compiler_source_commit,
                     enable_cann_ext_api=enable_cann_ext_api,
+                    round_mode=round_mode,
+                    baseline_ready=True,
                 ).splitlines()
             )
     else:

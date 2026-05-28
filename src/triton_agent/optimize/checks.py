@@ -15,7 +15,7 @@ def check_baseline(baseline_dir: Path) -> OptimizeCheckResult:
 def check_round(
     round_dir: Path,
     *,
-    min_rounds: int | None = None,
+    min_rounds: int = 5,
     optimize_target: Literal["kernel", "operator"] | None = None,
 ) -> OptimizeCheckResult:
     module = load_skill_script_module("triton-npu-optimize-check", "optimize_check")

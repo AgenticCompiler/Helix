@@ -341,6 +341,11 @@ Common options:
 - `--enable-cann-ext-api`: allow A5-only CANN Triton extension API optimization patterns during optimize runs.
 - `--enable-agent-hooks`: enable the workspace-local Codex hook guard for this optimize run. Agent hooks are disabled by default.
 - `--min-rounds <N>`: require at least N optimization rounds.
+- `--round-mode continuous|checked|supervised`: default is `continuous`. Controls how the optimize session is structured:
+  - `continuous`: one long-running optimize agent owns multiple rounds end-to-end.
+  - `checked`: one round per invocation; the CLI validates each round and decides whether to continue, stop, or fail.
+  - `supervised`: one round per invocation; the CLI validates each round, then a supervisor audit pass reviews it and decides whether to continue, stop, or fail.
+  For `checked` and `supervised`, optimize runs a baseline preflight before the round loop and repairs `baseline/` when needed.
 - `--no-agent-session`: disable persistent agent sessions when supported.
 - `--interact`
 - `--show-output`
