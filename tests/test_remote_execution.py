@@ -122,9 +122,9 @@ record = module._standalone._parse_standalone_case_result_payload(
     fallback_kernel_source="metadata",
 )
 print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.metrics["kernel_avg_time_us"]}))
-"""
+        """
         completed = subprocess.run(
-            ["python3", "-c", script],
+            [sys.executable, "-c", script],
             cwd=str(Path(__file__).resolve().parents[1]),
             capture_output=True,
             text=True,

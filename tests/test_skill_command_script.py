@@ -242,13 +242,11 @@ class SkillCommandScriptTests(unittest.TestCase):
 
     @unittest.skipIf(shutil.which("bash") is None, "requires bash")
     def test_skill_script_pyright_wrapper_requires_exactly_one_target(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "scripts"
-            / "run-skill-script-pyright.sh"
-        )
+        repo_root = Path(__file__).resolve().parents[1]
+        script = "scripts/run-skill-script-pyright.sh"
         completed = subprocess.run(
-            ["bash", str(script)],
+            ["bash", script],
+            cwd=repo_root,
             capture_output=True,
             text=True,
             check=False,
@@ -259,18 +257,16 @@ class SkillCommandScriptTests(unittest.TestCase):
 
     @unittest.skipIf(shutil.which("bash") is None, "requires bash")
     def test_skill_script_pyright_wrapper_rejects_multiple_targets(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "scripts"
-            / "run-skill-script-pyright.sh"
-        )
+        repo_root = Path(__file__).resolve().parents[1]
+        script = "scripts/run-skill-script-pyright.sh"
         completed = subprocess.run(
             [
                 "bash",
-                str(script),
+                script,
                 "skills/triton-npu-run-eval/scripts/bench_runner.py",
                 "skills/triton-npu-run-eval/scripts/profile_runner.py",
             ],
+            cwd=repo_root,
             capture_output=True,
             text=True,
             check=False,

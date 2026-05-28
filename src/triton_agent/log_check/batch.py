@@ -5,7 +5,7 @@ import threading
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO, cast
 
 from triton_agent.optimize.models import BatchOptimizeResult
 from triton_agent.optimize.render import render_batch_optimize_results
@@ -22,6 +22,7 @@ def run_log_check_batch(
     agent_name: str = "codex",
     verbose: bool = False,
     show_output: bool = False,
+    log_tools: bool = False,
     max_concurrency: int = 1,
     stdout: TextIO | None = None,
     run_one: Callable[..., int] | None = None,
@@ -48,6 +49,7 @@ def run_log_check_batch(
             agent_name=agent_name,
             verbose=verbose,
             show_output=show_output,
+            log_tools=log_tools,
         )
         if rc != 0:
             return BatchOptimizeResult(workspace=workspace, status="failed", message=f"log check exited with return code {rc}")
@@ -120,6 +122,7 @@ def _summarize_from_json(json_path: Path) -> tuple[bool, str]:
         return False, f"failed to read {json_path.name}: {exc}"
     if not isinstance(data, dict):
         return False, f"{json_path.name} is not a JSON object"
+    data = cast(dict[str, Any], data)
     overall = data.get("overall")
     if overall == "PASS":
         return True, "overall PASS"

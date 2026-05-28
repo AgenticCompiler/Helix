@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -17,6 +18,7 @@ from triton_agent.generation.outputs import (
 )
 from triton_agent.generation.orchestration import build_generation_request
 from triton_agent.models import AgentResult, CommandKind
+from triton_agent.otel_trace import TRACE_PATH_ENV
 
 
 class GenerationHelpersTests(unittest.TestCase):
@@ -275,6 +277,39 @@ class GenerationHelpersTests(unittest.TestCase):
         self.assertIn("When a `class Model` (or equivalent `torch.nn.Module`) calls a wrapper", request.prompt)
         self.assertIn("prefer that module class as the public entrypoint", request.prompt)
 
+    def test_build_generation_request_enables_tool_trace_when_requested(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            request = build_generation_request(
+                CommandKind.GEN_TEST,
+                workdir / "kernel.py",
+                workdir / "kernel.py",
+                workdir,
+                GenerationOptions(
+                    interact=False,
+                    verbose=False,
+                    show_output=False,
+                    force_overwrite=False,
+                    agent_name="codex",
+                    remote=None,
+                    remote_workdir=None,
+                    min_rounds=None,
+                    continue_optimize=False,
+                    output=None,
+                    test_mode="standalone",
+                    bench_mode=None,
+                    prompt=None,
+                    log_tools=True,
+                ),
+            )
+
+            self.assertTrue(request.log_tools)
+            self.assertIsNotNone(request.extra_env)
+            assert request.extra_env is not None
+            trace_path = Path(request.extra_env[TRACE_PATH_ENV])
+            self.assertEqual(trace_path.parent.parent, workdir / "triton-agent-logs" / "tool-traces")
+            self.assertEqual(trace_path.name, "trace.jsonl")
+
 class GenerationCommandHandlerTests(unittest.TestCase):
     def test_handle_gen_test_rejects_openhands_interactive_mode(self) -> None:
         parser = build_parser()
@@ -482,6 +517,65 @@ class GenerationCommandHandlerTests(unittest.TestCase):
             self.assertFalse(existing_bench.exists())
             self.assertFalse(existing_result.exists())
             self.assertFalse(existing_perf.exists())
+
+    def test_run_generation_request_writes_tool_trace_summary(self) -> None:
+        from triton_agent.generation.orchestration import run_generation_request
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            trace_path = workdir / "triton-agent-logs" / "tool-traces" / "run-001" / "trace.jsonl"
+            request = build_generation_request(
+                CommandKind.GEN_TEST,
+                workdir / "kernel.py",
+                workdir / "kernel.py",
+                workdir,
+                GenerationOptions(
+                    interact=False,
+                    verbose=False,
+                    show_output=False,
+                    force_overwrite=False,
+                    agent_name="codex",
+                    remote=None,
+                    remote_workdir=None,
+                    min_rounds=None,
+                    continue_optimize=False,
+                    output=None,
+                    test_mode="standalone",
+                    bench_mode=None,
+                    prompt=None,
+                    log_tools=True,
+                ),
+            )
+            assert request.extra_env is not None
+            request.extra_env[TRACE_PATH_ENV] = str(trace_path)
+
+            class DummyRunner:
+                def run(self, request):
+                    del request
+                    trace_path.parent.mkdir(parents=True, exist_ok=True)
+                    trace_path.write_text(
+                        json.dumps(
+                            {
+                                "schema_version": 1,
+                                "type": "agent_invocation",
+                                "phase": "end",
+                                "command_kind": "gen-test",
+                            }
+                        )
+                        + "\n",
+                        encoding="utf-8",
+                    )
+                    return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.generation.orchestration.SkillLinkManager.prepare_skills", return_value=()):
+                with patch("triton_agent.generation.orchestration.SkillLinkManager.cleanup", return_value=[]):
+                    with patch("triton_agent.generation.orchestration.create_runner", return_value=DummyRunner()):
+                        result = run_generation_request(request)
+
+            self.assertEqual(result.return_code, 0)
+            summary = json.loads((trace_path.parent / "summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["command_kind"], "gen-test")
+            self.assertEqual(summary["tool_trace_capability"], "agent_invocation_only")
 
 
 if __name__ == "__main__":
