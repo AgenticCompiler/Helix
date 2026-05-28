@@ -25,22 +25,24 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
 
         self.assertEqual(manager.guidance_filename("claude"), "CLAUDE.md")
 
-    def test_runtime_handoff_manager_creates_and_cleans_runtime_tree(self) -> None:
-        from triton_agent.optimize.runtime_handoff import RuntimeHandoffManager
-
+    def test_supervised_session_creates_and_cleans_runtime_tree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            manager = RuntimeHandoffManager()
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            manager = OptimizeSessionArtifactsManager()
 
-            state = manager.prepare(workdir)
+            state = manager.prepare_supervised_session(
+                workdir,
+                agent_name="codex",
+            )
 
-            self.assertTrue(state.round_brief_path.exists())
             assert state.supervisor_report_path is not None
-            assert state.history_dir is not None
+            assert state.supervisor_history_dir is not None
             self.assertTrue(state.supervisor_report_path.exists())
-            self.assertTrue(state.history_dir.exists())
+            self.assertTrue(state.supervisor_history_dir.exists())
 
-            warnings = manager.cleanup(state)
+            warnings = manager.cleanup_supervised_session(state)
 
             self.assertEqual(warnings, [])
             self.assertFalse((workdir / ".triton-agent").exists())
@@ -205,11 +207,10 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertTrue(agents_path.exists())
             self.assertEqual(state.guidance_path, agents_path)
             self.assertIsNone(state.backup_path)
-            self.assertTrue(state.round_brief_path.exists())
             assert state.supervisor_report_path is not None
-            assert state.history_dir is not None
+            assert state.supervisor_history_dir is not None
             self.assertTrue(state.supervisor_report_path.exists())
-            self.assertTrue(state.history_dir.exists())
+            self.assertTrue(state.supervisor_history_dir.exists())
             self.assertEqual(state.archive_root, workdir / "triton-agent-logs" / "triton-agent")
             self.assertTrue(state.run_archive_dir.parent == state.archive_root)
             self.assertEqual(state.agent_sessions_path, state.run_archive_dir / "agent-sessions.jsonl")
@@ -219,7 +220,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertIn("Use the staged workspace skills as the workflow source of truth.", shared_content)
             self.assertIn("Role-specific behavior comes from the launch prompt.", shared_content)
             self.assertIn(
-                "Use `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md` as live handoff files.",
+                "Use `.triton-agent/supervisor-report.md` as the supervisor audit report file when supervised mode is active.",
                 shared_content,
             )
             self.assertIn("Treat `baseline/` as the canonical optimize baseline", shared_content)
@@ -233,7 +234,6 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertFalse((workdir / ".triton-agent").exists())
             self.assertTrue(state.run_archive_dir.exists())
             self.assertTrue((state.run_archive_dir / "shared-guidance.md").exists())
-            self.assertTrue((state.run_archive_dir / "final" / "round-brief.md").exists())
             self.assertTrue((state.run_archive_dir / "final" / "supervisor-report.md").exists())
             self.assertTrue((state.run_archive_dir / "history").exists())
 
@@ -593,7 +593,6 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             messages = manager.describe_cleanup_supervised_session(state)
 
             self.assertTrue(any("archiving supervised optimize logs" in message for message in messages))
-            self.assertTrue(any("round-brief.md" in message for message in messages))
             self.assertTrue(any("supervisor-report.md" in message for message in messages))
             self.assertTrue(
                 any("removing temporary optimize runtime directory tree" in message for message in messages)

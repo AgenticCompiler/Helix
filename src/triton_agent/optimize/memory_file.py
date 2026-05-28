@@ -112,7 +112,7 @@ _SHARED_GUIDANCE_TEMPLATE = (
         """\
         Use the staged workspace skills as the workflow source of truth.
         Role-specific behavior comes from the launch prompt.
-        Use `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md` as live handoff files.
+        Use `.triton-agent/supervisor-report.md` as the supervisor audit report file when supervised mode is active.
         Treat `baseline/` as the canonical optimize baseline.
         Use `compare-perf` as the authoritative source for round performance summaries.
         {analysis_block}{high_priority_pattern_block}{compiler_source_block}{cann_ext_api_block}"""
@@ -136,7 +136,7 @@ _ROUND_GATED_GUIDANCE_TEMPLATE = (
         """\
         Use the staged workspace skills as the workflow source of truth.
         Role-specific behavior comes from the launch prompt.
-        Use `.triton-agent/round-brief.md` as the live handoff file.
+        The CLI will inject previous round validation results directly into the next worker prompt when another round is needed.
         Treat `baseline/` as the canonical optimize baseline.
         Use `compare-perf` as the authoritative source for round performance summaries.
         {analysis_block}{high_priority_pattern_block}{compiler_source_block}{cann_ext_api_block}"""
@@ -425,6 +425,6 @@ class MemoryFileManager:
         )
         if include_supervisor_handoff:
             base += (
-                "\nUse `.triton-agent/supervisor-report.md` as the supervisor handoff file.\n"
+                "\nUse `.triton-agent/supervisor-report.md` as the supervisor audit report file.\n"
             )
         return base

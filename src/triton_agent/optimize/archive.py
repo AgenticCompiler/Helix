@@ -66,11 +66,10 @@ class ArchiveManager:
         state: ArchiveState,
         *,
         guidance_path: Path,
-        round_brief_path: Path,
         supervisor_report_path: Path | None,
         history_dir: Path | None,
     ) -> list[str]:
-        """Copy final round-gated outputs into the per-run archive directory."""
+        """Copy final multi-invocation outputs into the per-run archive directory."""
         warnings: list[str] = []
         archive_dir = state.run_archive_dir
         if archive_dir.exists():
@@ -96,9 +95,7 @@ class ArchiveManager:
             except OSError as exc:
                 warnings.append(f"Failed to write shared guidance archive snapshot: {exc}")
 
-        final_sources = [
-            (round_brief_path, archive_dir / "final" / "round-brief.md"),
-        ]
+        final_sources: list[tuple[Path, Path]] = []
         if supervisor_report_path is not None:
             final_sources.append(
                 (supervisor_report_path, archive_dir / "final" / "supervisor-report.md")

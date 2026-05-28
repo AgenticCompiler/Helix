@@ -77,7 +77,6 @@ class AgentRequest:
     staged_skill_names: tuple[str, ...] | None = None
     staged_skill_sources: dict[str, str] | None = None
     optimize_role: str | None = None
-    round_brief_path: Optional[Path] = None
     supervisor_report_path: Optional[Path] = None
     target_chip: Literal["A3", "A5"] = "A5"
     optimize_target: Literal["kernel", "operator"] = "kernel"

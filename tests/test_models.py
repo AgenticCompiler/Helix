@@ -8,7 +8,7 @@ from triton_agent.models import AgentRequest, CommandKind
 
 
 class AgentRequestTests(unittest.TestCase):
-    def test_round_mode_defaults_to_off(self) -> None:
+    def test_round_mode_defaults_to_continuous(self) -> None:
         request = AgentRequest(
             command_kind=CommandKind.OPTIMIZE,
             input_path=Path("/tmp/op.py"),
@@ -58,7 +58,6 @@ class AgentRequestTests(unittest.TestCase):
                 "triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v2",
             },
             optimize_role="worker",
-            round_brief_path=Path("/tmp/.triton-agent/round-brief.md"),
             supervisor_report_path=Path("/tmp/.triton-agent/supervisor-report.md"),
             target_chip="A3",
             optimize_target="operator",
@@ -82,7 +81,6 @@ class AgentRequestTests(unittest.TestCase):
         self.assertEqual(updated.staged_skill_names, request.staged_skill_names)
         self.assertEqual(updated.staged_skill_sources, request.staged_skill_sources)
         self.assertEqual(updated.optimize_role, request.optimize_role)
-        self.assertEqual(updated.round_brief_path, request.round_brief_path)
         self.assertEqual(updated.supervisor_report_path, request.supervisor_report_path)
         self.assertEqual(updated.target_chip, request.target_chip)
         self.assertEqual(updated.optimize_target, request.optimize_target)

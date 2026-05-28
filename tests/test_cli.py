@@ -1822,15 +1822,15 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("found multiple candidate operator files", stdout.getvalue())
             self.assertIn("Summary: 1 succeeded, 1 failed", stdout.getvalue())
 
-    def test_main_optimize_batch_ignores_triton_agent_tooling_dir(self) -> None:
+    def test_main_optimize_batch_ignores_hidden_triton_agent_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             good = root / "good"
-            tooling = root / ".triton-agent"
+            hidden_triton_agent_dir = root / ".triton-agent"
             good.mkdir()
-            tooling.mkdir()
+            hidden_triton_agent_dir.mkdir()
             (good / "kernel.py").write_text("print('ok')\n", encoding="utf-8")
-            (tooling / "round-brief.md").write_text("Pending\n", encoding="utf-8")
+            (hidden_triton_agent_dir / "round-brief.md").write_text("Pending\n", encoding="utf-8")
 
             stdout = StringIO()
             seen_inputs: list[Path] = []
@@ -4209,7 +4209,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("`triton-npu-prepare-optimize-baseline`", prompt)
         self.assertIn("`triton-npu-optimize-check`", prompt)
         self.assertIn("Write `.triton-agent/supervisor-report.md`", prompt)
-        self.assertIn("Write `.triton-agent/round-brief.md`", prompt)
+        self.assertIn("The CLI will read that supervisor report", prompt)
         self.assertIn("Do not edit the operator implementation", prompt)
         self.assertIn("replace the Triton kernel path with pure PyTorch computation", prompt)
         self.assertNotIn("optimize-supervisor.md", prompt)

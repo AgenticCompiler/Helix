@@ -120,7 +120,6 @@ class OptimizeSupervisorTests(unittest.TestCase):
             self.assertEqual(len(runner.resume_requests), 1)
             prompt = runner.resume_requests[0].prompt
             self.assertIn("This invocation owns exactly one round.", prompt)
-            self.assertIn("Read `.triton-agent/round-brief.md` before acting.", prompt)
             self.assertIn("Do not self-approve whether the optimize session should continue.", prompt)
             self.assertNotIn("optimize-worker.md", prompt)
 

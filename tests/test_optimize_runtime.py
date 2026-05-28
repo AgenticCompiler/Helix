@@ -25,7 +25,6 @@ from triton_agent.optimize.pt_cleanup import cleanup_workspace_pt_files
 from triton_agent.optimize.archive import ArchiveState
 from triton_agent.optimize.memory_file import MemoryFileState
 from triton_agent.optimize.resume import reset_optimize_workspace
-from triton_agent.optimize.runtime_handoff import RuntimeHandoffState
 from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsState
 
 
@@ -48,15 +47,13 @@ class OptimizeRuntimeTests(unittest.TestCase):
         self.assertFalse(hasattr(execution_module, "execute_supervised_optimize"))
 
     def _build_guidance_state(self, workdir: Path) -> OptimizeSessionArtifactsState:
-        runtime_root = workdir / ".triton-agent"
-        runtime_root.mkdir(parents=True, exist_ok=True)
+        hidden_triton_agent_dir = workdir / ".triton-agent"
+        hidden_triton_agent_dir.mkdir(parents=True, exist_ok=True)
         guidance_path = workdir / "AGENTS.md"
         guidance_path.write_text("shared guidance\n", encoding="utf-8")
-        history_dir = runtime_root / "history"
+        history_dir = hidden_triton_agent_dir / "history"
         history_dir.mkdir(parents=True, exist_ok=True)
-        round_brief_path = runtime_root / "round-brief.md"
-        supervisor_report_path = runtime_root / "supervisor-report.md"
-        round_brief_path.write_text("brief\n", encoding="utf-8")
+        supervisor_report_path = hidden_triton_agent_dir / "supervisor-report.md"
         supervisor_report_path.write_text("report\n", encoding="utf-8")
         archive_root = workdir / "triton-agent-logs" / "triton-agent"
         run_archive_dir = archive_root / "run-001"
@@ -73,22 +70,14 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_sessions_path=run_archive_dir / "agent-sessions.jsonl",
                 shared_guidance_snapshot_path=shared_guidance_snapshot_path,
             ),
-            runtime_handoff=RuntimeHandoffState(
-                runtime_root=runtime_root,
-                round_brief_path=round_brief_path,
-                supervisor_report_path=supervisor_report_path,
-                history_dir=history_dir,
-                created_paths=(round_brief_path, supervisor_report_path),
-            ),
+            hidden_triton_agent_dir=hidden_triton_agent_dir,
+            supervisor_report_path=supervisor_report_path,
+            supervisor_history_dir=history_dir,
         )
 
     def _build_checked_guidance_state(self, workdir: Path) -> OptimizeSessionArtifactsState:
-        runtime_root = workdir / ".triton-agent"
-        runtime_root.mkdir(parents=True, exist_ok=True)
         guidance_path = workdir / "AGENTS.md"
         guidance_path.write_text("shared guidance\n", encoding="utf-8")
-        round_brief_path = runtime_root / "round-brief.md"
-        round_brief_path.write_text("brief\n", encoding="utf-8")
         archive_root = workdir / "triton-agent-logs" / "triton-agent"
         run_archive_dir = archive_root / "run-checked"
         shared_guidance_snapshot_path = run_archive_dir / "shared-guidance.md"
@@ -103,13 +92,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 run_archive_dir=run_archive_dir,
                 agent_sessions_path=run_archive_dir / "agent-sessions.jsonl",
                 shared_guidance_snapshot_path=shared_guidance_snapshot_path,
-            ),
-            runtime_handoff=RuntimeHandoffState(
-                runtime_root=runtime_root,
-                round_brief_path=round_brief_path,
-                supervisor_report_path=None,
-                history_dir=None,
-                created_paths=(round_brief_path,),
             ),
         )
 
@@ -191,7 +173,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
         *,
         decision: str,
         issues: tuple[str, ...] = (),
-        brief_lines: tuple[str, ...] = (),
         latest_round: Optional[str] = None,
     ) -> None:
         report_lines = [
@@ -207,12 +188,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
             "\n".join(report_lines) + "\n",
             encoding="utf-8",
         )
-        brief_content = "# Optimize Round Brief\n\n"
-        if brief_lines:
-            brief_content += "\n".join(brief_lines) + "\n"
-        else:
-            brief_content += "No additional guidance.\n"
-        guidance_state.round_brief_path.write_text(brief_content, encoding="utf-8")
 
     def test_run_optimize_request_delegates_multi_invocation_flow_to_helper(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -869,7 +844,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             guidance_state,
                             decision="pass-stop",
                             latest_round="opt-round-1",
-                            brief_lines=("Stop after auditing opt-round-1.",),
                         )
                     session_id = (
                         "019da9c2-dfcb-7c71-a2f9-7a90bab2e0f5"
@@ -894,13 +868,11 @@ class OptimizeRuntimeTests(unittest.TestCase):
             worker_request, supervisor_request = runner.requests
             self.assertEqual(worker_request.optimize_role, "worker")
             self.assertTrue(worker_request.no_agent_session)
-            self.assertIsNotNone(worker_request.round_brief_path)
             self.assertIsNotNone(worker_request.supervisor_report_path)
             self.assertEqual(supervisor_request.optimize_role, "supervisor")
             self.assertEqual(supervisor_request.skill_name, "triton-npu-optimize")
             self.assertFalse(supervisor_request.interact)
             self.assertTrue(supervisor_request.no_agent_session)
-            self.assertEqual(supervisor_request.round_brief_path, worker_request.round_brief_path)
             self.assertEqual(
                 supervisor_request.supervisor_report_path,
                 worker_request.supervisor_report_path,
@@ -912,7 +884,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertEqual(len(run_archives), 1)
             run_archive = run_archives[0]
             self.assertTrue((run_archive / "shared-guidance.md").exists())
-            self.assertTrue((run_archive / "final" / "round-brief.md").exists())
             self.assertTrue((run_archive / "final" / "supervisor-report.md").exists())
             self.assertTrue((run_archive / "history").exists())
             session_lines = (run_archive / "agent-sessions.jsonl").read_text(encoding="utf-8").splitlines()
@@ -1073,7 +1044,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertTrue(runner.saw_guidance_file)
             self.assertIn("Own the end-to-end optimize session.", runner.guidance_content)
             self.assertNotIn("Read the role brief", runner.guidance_content)
-            self.assertIsNone(runner.calls[0].round_brief_path)
             self.assertIsNone(runner.calls[0].supervisor_report_path)
             self.assertFalse((workdir / "AGENTS.md").exists())
             self.assertFalse((workdir / ".triton-agent").exists())
@@ -2081,12 +2051,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             round_disposition="stop",
                         )
                     else:
-                        assert request.round_brief_path is not None
                         assert request.supervisor_report_path is not None
-                        request.round_brief_path.write_text(
-                            "# Optimize Round Brief\n\nStop after verifying opt-round-1.\n",
-                            encoding="utf-8",
-                        )
                         request.supervisor_report_path.write_text(
                             "# Optimize Supervisor Report\n\n"
                             "Decision: pass-stop\n"
@@ -2163,12 +2128,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             round_disposition="stop",
                         )
                     else:
-                        assert request.round_brief_path is not None
                         assert request.supervisor_report_path is not None
-                        request.round_brief_path.write_text(
-                            "# Optimize Round Brief\n\nStop after verifying opt-round-1.\n",
-                            encoding="utf-8",
-                        )
                         request.supervisor_report_path.write_text(
                             "# Optimize Supervisor Report\n\n"
                             "Decision: pass-stop\n"
@@ -2251,7 +2211,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         decision="revise-metadata",
                         latest_round="opt-round-1",
                         issues=("round summary is missing the compare-perf conclusion",),
-                        brief_lines=("Repair opt-round-1 metadata before starting a new round.",),
                     )
                     return AgentResult(return_code=0, stdout="supervisor ok", stderr="")
 
@@ -2271,7 +2230,8 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertEqual(runner.requests[0].optimize_role, "worker")
             self.assertEqual(runner.requests[1].optimize_role, "supervisor")
             self.assertEqual(runner.requests[2].optimize_role, "worker")
-            self.assertIn("Gate decision: revise-metadata", runner.requests[2].prompt)
+            self.assertIn("Supervisor report from the previous round:", runner.requests[2].prompt)
+            self.assertIn("Decision: revise-metadata", runner.requests[2].prompt)
             self.assertIn("round summary is missing the compare-perf conclusion", runner.requests[2].prompt)
 
     def test_multi_invocation_controller_checked_continue_writes_handoff_and_resume_prompt(
@@ -2356,9 +2316,10 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIn("Remote execution target: alice@example.com:2200", runner.requests[1].prompt)
             self.assertIn("Focus on occupancy.", runner.requests[1].prompt)
             self.assertIn(
-                "Previous gate decision: pass-continue",
-                guidance_state.round_brief_path.read_text(encoding="utf-8"),
+                "CLI validation from the previous round:",
+                runner.requests[1].prompt,
             )
+            self.assertIn("- Decision: pass-continue", runner.requests[1].prompt)
 
     def test_run_optimize_request_bounds_repair_loop_when_round_never_passes_gate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2540,10 +2501,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         "# Optimize Supervisor Report\n\nBlocking issues: missing decision line\n",
                         encoding="utf-8",
                     )
-                    guidance_state.round_brief_path.write_text(
-                        "# Optimize Round Brief\n\nRepair metadata before the next round.\n",
-                        encoding="utf-8",
-                    )
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
             controller = execution_module.MultiInvocationOptimizeController(
@@ -2603,12 +2560,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     stderr: Optional[object] = None,
                 ) -> AgentResult:
                     del stdout, stderr
-                    assert request.round_brief_path is not None
                     assert request.supervisor_report_path is not None
-                    request.round_brief_path.write_text(
-                        "# Optimize Round Brief\n\nStop after auditing opt-round-1.\n",
-                        encoding="utf-8",
-                    )
                     request.supervisor_report_path.write_text(
                         "# Optimize Supervisor Report\n\n"
                         "Decision: pass-stop\n"
@@ -2631,15 +2583,9 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             self.assertEqual(gate_result.decision, GateDecision.PASS_STOP)
-            assert guidance_state.history_dir is not None
-            brief_snapshot = guidance_state.history_dir / "round-001-brief.md"
-            report_snapshot = guidance_state.history_dir / "round-001-supervisor-report.md"
-            self.assertTrue(brief_snapshot.exists())
+            assert guidance_state.supervisor_history_dir is not None
+            report_snapshot = guidance_state.supervisor_history_dir / "round-001-supervisor-report.md"
             self.assertTrue(report_snapshot.exists())
-            self.assertEqual(
-                guidance_state.round_brief_path.read_text(encoding="utf-8"),
-                brief_snapshot.read_text(encoding="utf-8"),
-            )
             assert guidance_state.supervisor_report_path is not None
             self.assertEqual(
                 guidance_state.supervisor_report_path.read_text(encoding="utf-8"),

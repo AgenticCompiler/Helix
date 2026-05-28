@@ -398,16 +398,14 @@ class MultiInvocationOptimizeController:
                         stdout=round_result.stdout,
                         stderr=self._build_repair_exhausted_message(gate, repair_attempts),
                     )
-                self._write_round_brief(
-                    gate.decision,
-                    gate.blocking_issues,
-                    latest_round_name=latest_round_name,
-                )
                 current_request = replace(
                     current_request,
                     prompt=self._build_continue_prompt(
                         request.prompt,
-                        self._build_gate_summary(gate),
+                        self._build_cli_continuation_summary(
+                            gate,
+                            latest_round_name=latest_round_name,
+                        ),
                         round_mode=current_request.round_mode,
                         optimize_target=current_request.optimize_target,
                         compiler_source_path=current_request.compiler_source_path,
@@ -452,11 +450,12 @@ class MultiInvocationOptimizeController:
                     GateDecision.REVISE_METADATA,
                     GateDecision.REVISE_REQUIRED,
                 }:
+                    supervisor_summary = self._read_supervisor_report_summary()
                     current_request = replace(
                         current_request,
                         prompt=self._build_continue_prompt(
                             request.prompt,
-                            self._build_gate_summary(supervisor_gate),
+                            supervisor_summary,
                             round_mode=current_request.round_mode,
                             optimize_target=current_request.optimize_target,
                             compiler_source_path=current_request.compiler_source_path,
@@ -471,16 +470,14 @@ class MultiInvocationOptimizeController:
                 return round_result
 
             if gate.decision == GateDecision.PASS_CONTINUE:
-                self._write_round_brief(
-                    gate.decision,
-                    gate.blocking_issues,
-                    latest_round_name=latest_round_name,
-                )
                 current_request = replace(
                     current_request,
                     prompt=self._build_continue_prompt(
                         request.prompt,
-                        self._build_gate_summary(gate),
+                        self._build_cli_continuation_summary(
+                            gate,
+                            latest_round_name=latest_round_name,
+                        ),
                         round_mode=current_request.round_mode,
                         optimize_target=current_request.optimize_target,
                         compiler_source_path=current_request.compiler_source_path,
@@ -598,7 +595,6 @@ class MultiInvocationOptimizeController:
         request = replace(
             request,
             no_agent_session=True,
-            round_brief_path=self._artifacts_state.round_brief_path,
             supervisor_report_path=self._artifacts_state.supervisor_report_path,
         )
         if self._stdout is None and self._stderr is None:
@@ -625,9 +621,36 @@ class MultiInvocationOptimizeController:
             return 1, latest_round_name
         return repair_attempts + 1, active_repair_round
 
-    def _build_gate_summary(self, gate_result: GateResult) -> str:
-        issues = "; ".join(gate_result.blocking_issues) if gate_result.blocking_issues else "none"
-        return f"Gate decision: {gate_result.decision.value}. Blocking issues: {issues}"
+    def _build_cli_continuation_summary(
+        self,
+        gate_result: GateResult,
+        *,
+        latest_round_name: str | None,
+    ) -> str:
+        lines = [
+            "CLI validation from the previous round:",
+            f"- Decision: {gate_result.decision.value}",
+        ]
+        if latest_round_name is not None:
+            lines.append(f"- Latest round: {latest_round_name}")
+        if gate_result.blocking_issues:
+            lines.append("- Blocking issues:")
+            lines.extend(f"  - {issue}" for issue in gate_result.blocking_issues)
+        else:
+            lines.append("- Blocking issues: none")
+        return "\n".join(lines)
+
+    def _read_supervisor_report_summary(self) -> str:
+        supervisor_report_path = self._artifacts_state.supervisor_report_path
+        if supervisor_report_path is None:
+            return "Supervisor report from the previous round:\n(supervisor report path is unavailable)"
+        try:
+            report_content = supervisor_report_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return "Supervisor report from the previous round:\n(failed to read supervisor report)"
+        if not report_content:
+            return "Supervisor report from the previous round:\n(empty supervisor report)"
+        return f"Supervisor report from the previous round:\n{report_content}"
 
     def _build_continue_prompt(
         self,
@@ -660,42 +683,14 @@ class MultiInvocationOptimizeController:
             f"{issues}"
         )
 
-    def _write_round_brief(
-        self,
-        decision: GateDecision,
-        blocking_issues: tuple[str, ...],
-        *,
-        latest_round_name: str | None,
-    ) -> None:
-        lines = [
-            "# Optimize Round Brief",
-            "",
-            f"Previous gate decision: {decision.value}",
-        ]
-        if blocking_issues:
-            lines.append(f"Required focus: {'; '.join(blocking_issues)}")
-        elif latest_round_name is not None:
-            if decision == GateDecision.PASS_CONTINUE:
-                lines.append(f"Continue from `{latest_round_name}`.")
-            elif decision == GateDecision.PASS_STOP:
-                lines.append(f"Stop after validating `{latest_round_name}`.")
-            else:
-                lines.append(f"Repair `{latest_round_name}` before continuing.")
-        self._artifacts_state.round_brief_path.write_text(
-            "\n".join(lines) + "\n",
-            encoding="utf-8",
-        )
-
     def _snapshot_live_handoff_files(self) -> None:
-        history_dir = self._artifacts_state.history_dir
+        history_dir = self._artifacts_state.supervisor_history_dir
         supervisor_report_path = self._artifacts_state.supervisor_report_path
         if history_dir is None or supervisor_report_path is None:
             return
         history_dir.mkdir(parents=True, exist_ok=True)
         round_label = self._next_history_round_label(history_dir)
-        brief_content = self._artifacts_state.round_brief_path.read_text(encoding="utf-8")
         report_content = supervisor_report_path.read_text(encoding="utf-8")
-        (history_dir / f"{round_label}-brief.md").write_text(brief_content, encoding="utf-8")
         (history_dir / f"{round_label}-supervisor-report.md").write_text(
             report_content,
             encoding="utf-8",

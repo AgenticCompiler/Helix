@@ -203,7 +203,7 @@ def build_optimize_supervisor_prompt(
                 ),
                 "Reject rounds that preserve only the public API shape but replace the Triton kernel path with pure PyTorch computation.",
                 "Write `.triton-agent/supervisor-report.md` with a `Decision:` line and a `Blocking issues:` line.",
-                "Write `.triton-agent/round-brief.md` with the next-worker handoff; when continuation is not allowed, record the stop or repair reason there.",
+                "The CLI will read that supervisor report and pass the relevant continuation context into any later worker invocation.",
                 "Do not edit the operator implementation.",
                 "Do not perform open-ended optimization work.",
                 "Do not fabricate missing correctness, benchmark, profiler, or IR evidence.",
@@ -232,7 +232,6 @@ def build_optimize_resume_prompt(
                 [
                     "This invocation is the optimize worker role.",
                     "This invocation owns exactly one round.",
-                    "Read `.triton-agent/round-brief.md` before acting.",
                     "Treat this as a long-running task.",
                     "Keep making progress until the current round is complete.",
                     "Do not self-approve whether the optimize session should continue.",
@@ -353,11 +352,10 @@ def build_optimize_round_prompt(
     del input_path, output_path, test_mode, bench_mode
     lines = [
         "This invocation owns exactly one round.",
-        "Read `.triton-agent/round-brief.md` before acting.",
         "The baseline has already been validated before this round.",
         "Produce all required round artifacts before stopping.",
         "The CLI will validate this round after the invocation exits.",
-        "If the round needs repairs, a later invocation will return with a repair brief.",
+        "If the round needs repairs or continuation, a later invocation will return with direct CLI guidance in the prompt.",
     ]
     lines.extend(
         _shared_optimize_prompt_lines(
