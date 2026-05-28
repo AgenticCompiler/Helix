@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
+import re
 import sys
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, cast
 
 from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest
@@ -19,12 +22,11 @@ class ClaudeRunner(AgentRunner):
         command = [self.executable]
         if not request.interact:
             command.extend(["--print", "--dangerously-skip-permissions"])
-            if request.log_tools:
-                command.extend(["--output-format", "stream-json", "--verbose"])
-                if sys.platform == "win32":
-                    command.extend(["--debug-file", "NUL"])
-                else:
-                    command.extend(["--debug-file", "/dev/null"])
+            command.extend(["--output-format", "stream-json", "--verbose"])
+            if sys.platform == "win32":
+                command.extend(["--debug-file", "NUL"])
+            else:
+                command.extend(["--debug-file", "/dev/null"])
             if request.command_kind == request.command_kind.OPTIMIZE and request.no_agent_session:
                 command.append("--no-session-persistence")
         command.append(request.prompt)
@@ -34,11 +36,12 @@ class ClaudeRunner(AgentRunner):
         if request.interact:
             return None
         trace_path = trace_path_from_request(request)
+        from triton_agent.backends.claude_trace import (
+            ClaudeJsonOutputFilter,
+            build_claude_trace_env,
+        )
+
         if request.log_tools and trace_path is not None:
-            from triton_agent.backends.claude_trace import (
-                ClaudeJsonOutputFilter,
-                build_claude_trace_env,
-            )
             extra_env = build_claude_trace_env(
                 request.extra_env,
                 trace_path=trace_path,
@@ -46,5 +49,27 @@ class ClaudeRunner(AgentRunner):
                 role=request.optimize_role or "worker",
                 workspace_root=request.workdir,
             )
-            return ClaudeJsonOutputFilter(trace_path, extra_env)
-        return None
+        else:
+            extra_env = request.extra_env
+        return ClaudeJsonOutputFilter(trace_path, extra_env)
+
+    def session_id_extractor(self) -> Callable[[str], str | None]:
+        return _extract_claude_session_id
+
+
+def _extract_claude_session_id(text: str) -> str | None:
+    match = re.search(r'"session_id"\s*:\s*"([^"]+)"', text)
+    if match:
+        return match.group(1)
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("{"):
+            continue
+        try:
+            event = cast(dict[str, Any], json.loads(stripped))
+        except json.JSONDecodeError:
+            continue
+        session_id = event.get("session_id")
+        if isinstance(session_id, str) and session_id:
+            return session_id
+    return None
