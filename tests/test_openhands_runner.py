@@ -208,7 +208,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
                     "differential",
                     "standalone",
                     False,
-                    supervise="on",
+                    round_mode="checked",
                 ),
             )
 
@@ -217,7 +217,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
 
             resumed_request = mocked.call_args.args[0]
             self.assertIn("Continue the existing optimize task", resumed_request.prompt)
-            self.assertIn("This invocation is the optimize worker role.", resumed_request.prompt)
+            self.assertIn("This invocation owns exactly one round.", resumed_request.prompt)
 
     def test_run_does_not_inject_repo_agents_file_into_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

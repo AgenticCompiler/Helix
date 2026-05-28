@@ -565,10 +565,10 @@ class SharedRunnerBaseTests(unittest.TestCase):
                     "differential",
                     "standalone",
                     False,
-                    supervise="on",
+                    round_mode="checked",
                 ),
                 workdir=workspace,
-                supervise="on",
+                round_mode="checked",
             )
 
             with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
@@ -576,7 +576,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
 
             resumed_prompt = mocked.call_args.args[0][-1]
             self.assertIn("Continue the existing optimize task", resumed_prompt)
-            self.assertIn("This invocation is the optimize worker role.", resumed_prompt)
+            self.assertIn("This invocation owns exactly one round.", resumed_prompt)
             self.assertIn(
                 "Escalate analysis in this order: pattern triage, profiling diagnosis, IR attribution, compiler-source escalation.",
                 resumed_prompt,

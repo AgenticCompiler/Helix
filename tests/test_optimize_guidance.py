@@ -25,20 +25,24 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
 
         self.assertEqual(manager.guidance_filename("claude"), "CLAUDE.md")
 
-    def test_runtime_handoff_manager_creates_and_cleans_runtime_tree(self) -> None:
-        from triton_agent.optimize.runtime_handoff import RuntimeHandoffManager
-
+    def test_supervised_session_creates_and_cleans_runtime_tree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            manager = RuntimeHandoffManager()
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            manager = OptimizeSessionArtifactsManager()
 
-            state = manager.prepare(workdir)
+            state = manager.prepare_supervised_session(
+                workdir,
+                agent_name="codex",
+            )
 
-            self.assertTrue(state.round_brief_path.exists())
+            assert state.supervisor_report_path is not None
+            assert state.supervisor_history_dir is not None
             self.assertTrue(state.supervisor_report_path.exists())
-            self.assertTrue(state.history_dir.exists())
+            self.assertTrue(state.supervisor_history_dir.exists())
 
-            warnings = manager.cleanup(state)
+            warnings = manager.cleanup_supervised_session(state)
 
             self.assertEqual(warnings, [])
             self.assertFalse((workdir / ".triton-agent").exists())
@@ -114,8 +118,8 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
         )
         self.assertEqual(optimize_memory_file._render_line_block([]), "")
 
-    def test_unsupervised_guidance_template_inlines_shared_rule_block(self) -> None:
-        template = optimize_memory_file._UNSUPERVISED_GUIDANCE_TEMPLATE
+    def test_continuous_guidance_template_inlines_shared_rule_block(self) -> None:
+        template = optimize_memory_file._CONTINUOUS_GUIDANCE_TEMPLATE
 
         self.assertIn("{guidance_filename}", template)
         self.assertIn("{test_mode}", template)
@@ -141,14 +145,14 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
         )
         self.assertNotIn("{guidance_rules_block}", template)
 
-    def test_prepare_unsupervised_session_creates_self_contained_guidance_file_only(self) -> None:
+    def test_prepare_continuous_session_creates_self_contained_guidance_file_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
 
             manager = OptimizeSessionArtifactsManager()
-            state = manager.prepare_unsupervised_session(
+            state = manager.prepare_continuous_session(
                 workdir,
                 operator_path=operator,
                 agent_name="codex",
@@ -164,7 +168,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertIsNone(state.backup_path)
             self.assertTrue(state.created_guidance)
             self.assertIn("## Triton Agent Optimize Session", guidance_content)
-            self.assertIn("This workspace is under an unsupervised optimize run.", guidance_content)
+            self.assertIn("This workspace is under a continuous optimize run.", guidance_content)
             self.assertIn("Own the end-to-end optimize session.", guidance_content)
             self.assertIn(
                 "Read files cautiously. Do not read unrelated files speculatively or just in case.",
@@ -181,7 +185,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertNotIn("Worker and supervisor roles", guidance_content)
             self.assertNotIn(".triton-agent/roles/", guidance_content)
 
-            warnings = manager.cleanup_unsupervised_session(state)
+            warnings = manager.cleanup_continuous_session(state)
             self.assertEqual(warnings, [])
             self.assertFalse(agents_path.exists())
             self.assertFalse((workdir / ".triton-agent").exists())
@@ -203,9 +207,10 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertTrue(agents_path.exists())
             self.assertEqual(state.guidance_path, agents_path)
             self.assertIsNone(state.backup_path)
-            self.assertTrue(state.round_brief_path.exists())
+            assert state.supervisor_report_path is not None
+            assert state.supervisor_history_dir is not None
             self.assertTrue(state.supervisor_report_path.exists())
-            self.assertTrue(state.history_dir.exists())
+            self.assertTrue(state.supervisor_history_dir.exists())
             self.assertEqual(state.archive_root, workdir / "triton-agent-logs" / "triton-agent")
             self.assertTrue(state.run_archive_dir.parent == state.archive_root)
             self.assertEqual(state.agent_sessions_path, state.run_archive_dir / "agent-sessions.jsonl")
@@ -215,7 +220,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertIn("Use the staged workspace skills as the workflow source of truth.", shared_content)
             self.assertIn("Role-specific behavior comes from the launch prompt.", shared_content)
             self.assertIn(
-                "Use `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md` as live handoff files.",
+                "Use `.triton-agent/supervisor-report.md` as the supervisor audit report file when supervised mode is active.",
                 shared_content,
             )
             self.assertIn("Treat `baseline/` as the canonical optimize baseline", shared_content)
@@ -229,18 +234,17 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertFalse((workdir / ".triton-agent").exists())
             self.assertTrue(state.run_archive_dir.exists())
             self.assertTrue((state.run_archive_dir / "shared-guidance.md").exists())
-            self.assertTrue((state.run_archive_dir / "final" / "round-brief.md").exists())
             self.assertTrue((state.run_archive_dir / "final" / "supervisor-report.md").exists())
             self.assertTrue((state.run_archive_dir / "history").exists())
 
-    def test_prepare_unsupervised_session_mentions_operator_target_when_selected(self) -> None:
+    def test_prepare_continuous_session_mentions_operator_target_when_selected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
 
             manager = OptimizeSessionArtifactsManager()
-            state = manager.prepare_unsupervised_session(
+            state = manager.prepare_continuous_session(
                 workdir,
                 operator_path=operator,
                 agent_name="codex",
@@ -254,14 +258,14 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertIn("Optimize end-to-end operator latency.", guidance_content)
             self.assertIn("both kernel and total-op `compare-perf` views visible", guidance_content)
 
-            warnings = manager.cleanup_unsupervised_session(state)
+            warnings = manager.cleanup_continuous_session(state)
             self.assertEqual(warnings, [])
 
     def test_record_agent_session_appends_compact_jsonl(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             manager = OptimizeSessionArtifactsManager()
-            state = manager.prepare_unsupervised_session(
+            state = manager.prepare_continuous_session(
                 workdir,
                 operator_path=workdir / "kernel.py",
                 agent_name="codex",
@@ -284,7 +288,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertEqual(payload["session_id"], "019da9c2-dfcb-7c71-a2f9-7a90bab2e0f5")
             self.assertEqual(payload["agent"], "codex")
 
-            warnings = manager.cleanup_unsupervised_session(state)
+            warnings = manager.cleanup_continuous_session(state)
             self.assertEqual(warnings, [])
             self.assertTrue(state.agent_sessions_path.exists())
 
@@ -292,7 +296,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             manager = OptimizeSessionArtifactsManager()
-            state = manager.prepare_unsupervised_session(
+            state = manager.prepare_continuous_session(
                 workdir,
                 operator_path=workdir / "kernel.py",
                 agent_name="codex",
@@ -459,7 +463,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             warnings = manager.cleanup_supervised_session(state)
             self.assertEqual(warnings, [])
 
-    def test_prepare_unsupervised_mentions_compiler_source_when_enabled(self) -> None:
+    def test_prepare_continuous_mentions_compiler_source_when_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             source_path = workdir / "AscendNPU-IR"
@@ -467,7 +471,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             operator.write_text("print('x')\n", encoding="utf-8")
 
             manager = OptimizeSessionArtifactsManager()
-            state = manager.prepare_unsupervised_session(
+            state = manager.prepare_continuous_session(
                 workdir,
                 operator_path=operator,
                 agent_name="codex",
@@ -485,17 +489,17 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertIn("Do not run git clone, git fetch, git pull", guidance_content)
             self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", guidance_content)
 
-            warnings = manager.cleanup_unsupervised_session(state)
+            warnings = manager.cleanup_continuous_session(state)
             self.assertEqual(warnings, [])
 
-    def test_prepare_unsupervised_mentions_cann_ext_api_when_enabled(self) -> None:
+    def test_prepare_continuous_mentions_cann_ext_api_when_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
 
             manager = OptimizeSessionArtifactsManager()
-            state = manager.prepare_unsupervised_session(
+            state = manager.prepare_continuous_session(
                 workdir,
                 operator_path=operator,
                 agent_name="codex",
@@ -510,7 +514,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertIn("high-value optimization direction", guidance_content)
             self.assertIn("Give serious attention", guidance_content)
 
-            warnings = manager.cleanup_unsupervised_session(state)
+            warnings = manager.cleanup_continuous_session(state)
             self.assertEqual(warnings, [])
 
     def test_prepare_supervised_mentions_compiler_source_when_enabled(self) -> None:
@@ -589,7 +593,6 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             messages = manager.describe_cleanup_supervised_session(state)
 
             self.assertTrue(any("archiving supervised optimize logs" in message for message in messages))
-            self.assertTrue(any("round-brief.md" in message for message in messages))
             self.assertTrue(any("supervisor-report.md" in message for message in messages))
             self.assertTrue(
                 any("removing temporary optimize runtime directory tree" in message for message in messages)

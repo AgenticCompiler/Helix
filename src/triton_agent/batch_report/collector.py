@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from triton_agent.optimize.batch import load_optimize_batch_status, optimize_batch_workspace_key
 from triton_agent.status.core import inspect_optimize_status_workspace
@@ -23,6 +23,18 @@ _SOURCE_FILES = [
     "log_check_result.json",
     "pattern_analysis.json",
 ]
+
+
+def _as_json_object(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    return cast(dict[str, Any], value)
+
+
+def _as_json_list(value: object) -> list[object] | None:
+    if not isinstance(value, list):
+        return None
+    return cast(list[object], value)
 
 
 def collect_batch_report_state(batch_root: Path) -> dict[str, Any]:
@@ -168,13 +180,14 @@ def _collect_check(ws_path: Path) -> dict[str, Any]:
             "checks": [],
         }
     try:
-        data = json.loads(json_path.read_text(encoding="utf-8"))
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {
             "status": "skipped",
             "checks": [],
         }
-    if not isinstance(data, dict):
+    data = _as_json_object(payload)
+    if data is None:
         return {
             "status": "skipped",
             "checks": [],
@@ -188,28 +201,33 @@ def _collect_check(ws_path: Path) -> dict[str, Any]:
     else:
         check_status = "skipped"
 
-    raw_checks: list[dict[str, Any]] = data.get("checks", [])
-    if not isinstance(raw_checks, list):
-        raw_checks = []
+    raw_check_items = _as_json_list(data.get("checks"))
+    if raw_check_items is None:
+        raw_check_items = []
 
     checks: list[dict[str, Any]] = []
-    for c in raw_checks:
-        if not isinstance(c, dict):
+    for check_value in raw_check_items:
+        c = _as_json_object(check_value)
+        if c is None:
             continue
         cid = c.get("id")
         if not isinstance(cid, str):
             continue
-        result = c.get("result")
-        detail = c.get("detail")
+        result_value = c.get("result")
+        result = result_value if result_value in ("pass", "fail") else "fail"
+        detail_value = c.get("detail")
         # Normalize: null detail for pass, keep detail for fail
         if result == "pass":
-            detail = None
-        elif detail is None:
+            detail: str | None = None
+        elif detail_value is None:
             detail = ""
+        else:
+            detail = str(detail_value)
+        name = c.get("name")
         checks.append({
             "id": cid,
-            "name": c.get("name", ""),
-            "result": result if result in ("pass", "fail") else "fail",
+            "name": name if isinstance(name, str) else "",
+            "result": result,
             "detail": detail,
         })
 
@@ -220,7 +238,7 @@ def _collect_check(ws_path: Path) -> dict[str, Any]:
 
 
 def _collect_pattern(ws_path: Path) -> dict[str, Any]:
-    empty = {
+    empty: dict[str, list[dict[str, Any]]] = {
         "given": [],
         "new": [],
         "extended": [],
@@ -229,46 +247,52 @@ def _collect_pattern(ws_path: Path) -> dict[str, Any]:
     if not json_path.is_file():
         return empty
     try:
-        data = json.loads(json_path.read_text(encoding="utf-8"))
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return empty
-    if not isinstance(data, dict):
+    data = _as_json_object(payload)
+    if data is None:
         return empty
 
-    summary = data.get("summary")
-    if not isinstance(summary, dict):
+    summary = _as_json_object(data.get("summary"))
+    if summary is None:
         return empty
 
     given: list[dict[str, Any]] = []
-    raw_given = summary.get("given")
-    if isinstance(raw_given, list):
-        for item in raw_given:
-            if isinstance(item, dict) and isinstance(item.get("name"), str):
+    raw_given = _as_json_list(summary.get("given"))
+    if raw_given is not None:
+        for item_value in raw_given:
+            item = _as_json_object(item_value)
+            if item is not None and isinstance(item.get("name"), str):
+                evidence = item.get("evidence")
                 given.append({
                     "name": item["name"],
                     "rounds": _int_list(item.get("rounds")),
-                    "evidence": item.get("evidence", "inferred"),
+                    "evidence": evidence if evidence in ("explicit", "inferred") else "inferred",
                 })
 
     new: list[dict[str, Any]] = []
-    raw_new = summary.get("new")
-    if isinstance(raw_new, list):
-        for item in raw_new:
-            if isinstance(item, dict) and isinstance(item.get("name"), str):
+    raw_new = _as_json_list(summary.get("new"))
+    if raw_new is not None:
+        for item_value in raw_new:
+            item = _as_json_object(item_value)
+            if item is not None and isinstance(item.get("name"), str):
                 new.append({
                     "name": item["name"],
                     "rounds": _int_list(item.get("rounds")),
                 })
 
     extended: list[dict[str, Any]] = []
-    raw_ext = summary.get("extended")
-    if isinstance(raw_ext, list):
-        for item in raw_ext:
-            if isinstance(item, dict) and isinstance(item.get("name"), str):
+    raw_ext = _as_json_list(summary.get("extended"))
+    if raw_ext is not None:
+        for item_value in raw_ext:
+            item = _as_json_object(item_value)
+            if item is not None and isinstance(item.get("name"), str):
+                from_value = item.get("from")
                 extended.append({
                     "name": item["name"],
                     "rounds": _int_list(item.get("rounds")),
-                    "from": item.get("from", ""),
+                    "from": from_value if isinstance(from_value, str) else "",
                 })
 
     return {
@@ -279,10 +303,11 @@ def _collect_pattern(ws_path: Path) -> dict[str, Any]:
 
 
 def _int_list(value: object) -> list[int]:
-    if not isinstance(value, list):
+    items = _as_json_list(value)
+    if items is None:
         return []
     result: list[int] = []
-    for item in value:
+    for item in items:
         if isinstance(item, int):
             result.append(item)
         elif isinstance(item, (str, float)):
@@ -347,8 +372,9 @@ def _build_summary(workspaces: list[dict[str, Any]]) -> dict[str, Any]:
 
         # health
         opt = ws.get("optimize", {})
-        if isinstance(opt, dict):
-            hs = opt.get("status", "no-session")
+        opt_obj = _as_json_object(opt)
+        if opt_obj is not None:
+            hs = opt_obj.get("status", "no-session")
             if hs == "ok":
                 health_ok += 1
             elif hs == "warning":
@@ -360,8 +386,9 @@ def _build_summary(workspaces: list[dict[str, Any]]) -> dict[str, Any]:
 
         # verify
         vfy = ws.get("verify", {})
-        if isinstance(vfy, dict):
-            vs = vfy.get("status", "skipped")
+        vfy_obj = _as_json_object(vfy)
+        if vfy_obj is not None:
+            vs = vfy_obj.get("status", "skipped")
             if vs == "passed":
                 verify_passed += 1
             elif vs == "failed":
@@ -373,8 +400,9 @@ def _build_summary(workspaces: list[dict[str, Any]]) -> dict[str, Any]:
 
         # check
         chk = ws.get("check", {})
-        if isinstance(chk, dict):
-            cs = chk.get("status", "skipped")
+        chk_obj = _as_json_object(chk)
+        if chk_obj is not None:
+            cs = chk_obj.get("status", "skipped")
             if cs == "passed":
                 check_passed += 1
             elif cs == "failed":

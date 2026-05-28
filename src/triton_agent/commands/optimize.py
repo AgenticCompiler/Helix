@@ -101,14 +101,12 @@ def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
     return run_optimize_batch(root, options, max_concurrency=args.max_concurrency)
 
 
-def _validate_supervise_mode(args: argparse.Namespace) -> Literal["on", "off"]:
-    value = getattr(args, "supervise", "off")
-    supervise = str(value)
-    if supervise == "on":
-        return "on"
-    if supervise == "off":
-        return "off"
-    raise ValueError(f"--supervise must be 'on' or 'off', got {value!r}")
+def _validate_round_mode(args: argparse.Namespace) -> Literal["continuous", "checked", "supervised"]:
+    value = getattr(args, "round_mode", "continuous")
+    round_mode = str(value)
+    if round_mode not in {"continuous", "checked", "supervised"}:
+        raise ValueError(f"--round-mode must be one of 'continuous', 'checked', or 'supervised', got {value!r}")
+    return cast(Literal["continuous", "checked", "supervised"], round_mode)
 
 
 def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptions:
@@ -133,11 +131,11 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         show_output=bool(getattr(args, "show_output", False)),
         remote=getattr(args, "remote", None),
         remote_workdir=getattr(args, "remote_workdir", None),
-        min_rounds=getattr(args, "min_rounds", None),
+        min_rounds=getattr(args, "min_rounds", 5),
         resume_mode=str(getattr(args, "resume", "auto")),
         reset_optimize=bool(getattr(args, "reset_optimize", False)),
         no_agent_session=bool(getattr(args, "no_agent_session", False)),
-        supervise=_validate_supervise_mode(args),
+        round_mode=_validate_round_mode(args),
         output=getattr(args, "output", None),
         test_mode=getattr(args, "test_mode", None),
         bench_mode=getattr(args, "bench_mode", None),

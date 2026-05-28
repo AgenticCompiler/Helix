@@ -89,7 +89,7 @@ class AgentRunner(ABC):
         resumed_prompt = build_optimize_resume_prompt(
             summary,
             base_prompt=request.prompt,
-            supervise=request.supervise,
+            round_mode=request.round_mode,
             optimize_target=request.optimize_target,
         )
         return self.run(request.with_prompt(resumed_prompt), stdout=stdout, stderr=stderr)

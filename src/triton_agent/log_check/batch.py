@@ -117,12 +117,12 @@ def _summarize_from_json(json_path: Path) -> tuple[bool, str]:
     import json
 
     try:
-        data = json.loads(json_path.read_text(encoding="utf-8"))
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return False, f"failed to read {json_path.name}: {exc}"
-    if not isinstance(data, dict):
+    if not isinstance(payload, dict):
         return False, f"{json_path.name} is not a JSON object"
-    data = cast(dict[str, Any], data)
+    data = cast(dict[str, Any], payload)
     overall = data.get("overall")
     if overall == "PASS":
         return True, "overall PASS"
