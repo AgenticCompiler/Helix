@@ -494,6 +494,7 @@ def build_parser() -> argparse.ArgumentParser:
                 choices=_ROUND_MODE_CHOICES,
             )
             subparser.add_argument("--no-upload", action="store_true")
+            subparser.add_argument("--report", action="store_true", default=True)
         if spec.has_prompt:
             subparser.add_argument("--prompt")
         if command_kind in {CommandKind.LOG_CHECK, CommandKind.LOG_CHECK_BATCH}:
