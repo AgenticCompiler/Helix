@@ -60,7 +60,7 @@ def _rounds_string(value: object) -> str:
     return ", ".join(labels)
 
 
-def render_batch_report(state: dict[str, Any]) -> str:
+def render_report_batch(state: dict[str, Any]) -> str:
     """Render report-batch.md from a report-batch-state dict."""
     lines: list[str] = []
     summary = _as_json_object(state.get("summary"))
@@ -232,7 +232,7 @@ def _format_speedup(value: object) -> str:
         return "-"
 
 
-def render_batch_report_file(
+def render_report_batch_file(
     state_path: Path,
     output_path: Path | None = None,
 ) -> Path:
@@ -242,12 +242,12 @@ def render_batch_report_file(
     if data is None:
         raise ValueError(f"{state_path.name} did not contain a JSON object")
     target = output_path or (state_path.parent / "report-batch.md")
-    md = render_batch_report(data)
+    md = render_report_batch(data)
     target.write_text(md, encoding="utf-8")
     return target
 
 
 __all__ = [
-    "render_batch_report",
-    "render_batch_report_file",
+    "render_report_batch",
+    "render_report_batch_file",
 ]
