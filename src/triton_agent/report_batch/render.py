@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-def render_batch_report(state: dict[str, Any]) -> str:
+def render_report_batch(state: dict[str, Any]) -> str:
     """Render report-batch.md from a report-batch-state dict."""
     lines: list[str] = []
     summary = state.get("summary", {})
@@ -179,19 +179,19 @@ def _format_speedup(value: object) -> str:
         return "-"
 
 
-def render_batch_report_file(
+def render_report_batch_file(
     state_path: Path,
     output_path: Path | None = None,
 ) -> Path:
     """Read report-batch-state.json and write report-batch.md."""
     data = json.loads(state_path.read_text(encoding="utf-8"))
     target = output_path or (state_path.parent / "report-batch.md")
-    md = render_batch_report(data)
+    md = render_report_batch(data)
     target.write_text(md, encoding="utf-8")
     return target
 
 
 __all__ = [
-    "render_batch_report",
-    "render_batch_report_file",
+    "render_report_batch",
+    "render_report_batch_file",
 ]

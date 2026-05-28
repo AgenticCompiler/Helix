@@ -6,17 +6,16 @@ import sys
 from pathlib import Path
 
 from triton_agent.backends.factory import create_runner
-from triton_agent.batch_report.collector import write_batch_report_state
-from triton_agent.batch_report.render import render_batch_report_file
+from triton_agent.report_batch.collector import write_report_batch_state
+from triton_agent.report_batch.render import render_report_batch_file
 from triton_agent.models import AgentRequest, CommandKind
-from triton_agent.output import render_result
 from triton_agent.prompts import build_prompt
 from triton_agent.resources import skills_root
 from triton_agent.skill_staging import resolve_staged_skills
 from triton_agent.skills import SkillLinkManager
 
 
-def handle_batch_report(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+def handle_report_batch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     root = Path(args.input).expanduser().resolve()
     if not root.exists():
         parser.error(f"Input path does not exist: {root}")
@@ -34,10 +33,10 @@ def handle_batch_report(parser: argparse.ArgumentParser, args: argparse.Namespac
     )
 
     # Phase 1: Existing batch-level report
-    state_path = write_batch_report_state(root)
+    state_path = write_report_batch_state(root)
     print(f"Report-batch state written to: {state_path}", flush=True)
 
-    report_path = render_batch_report_file(state_path)
+    report_path = render_report_batch_file(state_path)
     print(f"Report-batch written to: {report_path}", flush=True)
 
     # Phase 2: Per-workspace agent-driven report.md generation
@@ -100,7 +99,7 @@ def _generate_workspace_report(
     show_output: bool,
 ) -> tuple[bool, str]:
     built_prompt = build_prompt(
-        CommandKind.OPERATOR_REPORT,
+        CommandKind.REPORT,
         ws_path,
         None,
         None,
@@ -111,11 +110,11 @@ def _generate_workspace_report(
     built_prompt = _append_report_instructions(built_prompt, ws_path)
 
     staged_skill_names, staged_skill_sources = resolve_staged_skills(
-        CommandKind.OPERATOR_REPORT,
+        CommandKind.REPORT,
     )
 
     request = AgentRequest(
-        command_kind=CommandKind.OPERATOR_REPORT,
+        command_kind=CommandKind.REPORT,
         input_path=ws_path,
         operator_path=None,
         output_path=None,
@@ -187,4 +186,4 @@ def _append_report_instructions(prompt: str, workspace: Path) -> str:
     )
 
 
-__all__ = ["handle_batch_report"]
+__all__ = ["handle_report_batch"]

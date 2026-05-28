@@ -25,7 +25,7 @@ _SOURCE_FILES = [
 ]
 
 
-def collect_batch_report_state(batch_root: Path) -> dict[str, Any]:
+def collect_report_batch_state(batch_root: Path) -> dict[str, Any]:
     """Scan batch-root and return the normalized report-batch-state dict."""
     batch_root = batch_root.resolve()
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -53,9 +53,9 @@ def collect_batch_report_state(batch_root: Path) -> dict[str, Any]:
     }
 
 
-def write_batch_report_state(batch_root: Path, output_path: Path | None = None) -> Path:
+def write_report_batch_state(batch_root: Path, output_path: Path | None = None) -> Path:
     """Collect and write report-batch-state.json. Returns the path written."""
-    state = collect_batch_report_state(batch_root)
+    state = collect_report_batch_state(batch_root)
     target = output_path or (batch_root / _BATCH_REPORT_STATE_FILENAME)
     target.write_text(
         json.dumps(state, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
@@ -412,6 +412,6 @@ def _build_summary(workspaces: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 __all__ = [
-    "collect_batch_report_state",
-    "write_batch_report_state",
+    "collect_report_batch_state",
+    "write_report_batch_state",
 ]
