@@ -20,7 +20,7 @@ from triton_agent.commands.optimize import (
 )
 from triton_agent.commands.upload_optimize import handle_upload_optimize
 from triton_agent.commands.report_batch import handle_report_batch
-from triton_agent.commands.operator_report import handle_operator_report
+from triton_agent.commands.report import handle_report
 from triton_agent.models import CommandKind
 
 
@@ -388,7 +388,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_verbose=True,
     ),
     CommandKind.REPORT: _CommandSpec(
-        handler=handle_operator_report,
+        handler=handle_report,
         help_group="Reporting",
         help_summary="Generate operator-level optimization report.",
         description="Launch an agent to read workspace artifacts and render report.md.",
@@ -608,7 +608,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "log_check": "log-check",
         "log_check_batch": "log-check-batch",
         "report_batch": "report-batch",
-        "operator_report": "report",
+        "report": "report",
     }
     normalized = list(argv)
     normalized[0] = aliases.get(normalized[0], normalized[0])

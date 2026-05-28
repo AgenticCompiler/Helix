@@ -2,7 +2,7 @@ from triton_agent.commands.comparison import handle_compare_perf, handle_compare
 from triton_agent.commands.execution import handle_run_bench, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
 from triton_agent.commands.log_check import handle_log_check, handle_log_check_batch
-from triton_agent.commands.operator_report import handle_operator_report
+from triton_agent.commands.report import handle_report
 from triton_agent.commands.status import handle_status
 from triton_agent.commands.optimize import (
     handle_optimize,
@@ -18,7 +18,7 @@ __all__ = [
     "handle_gen_test",
     "handle_log_check",
     "handle_log_check_batch",
-    "handle_operator_report",
+    "handle_report",
     "handle_run_bench",
     "handle_run_test",
     "handle_status",

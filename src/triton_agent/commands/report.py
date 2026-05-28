@@ -14,7 +14,7 @@ from triton_agent.skills import SkillLinkManager
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
-def handle_operator_report(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+def handle_report(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     workspace = Path(args.input).expanduser().resolve()
     if not workspace.is_dir():
         parser.error(f"Not a directory: {workspace}")
@@ -131,4 +131,4 @@ def _append_report_instructions(prompt: str, workspace: Path) -> str:
     )
 
 
-__all__ = ["handle_operator_report"]
+__all__ = ["handle_report"]

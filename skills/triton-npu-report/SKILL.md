@@ -1,3 +1,8 @@
+---
+name: triton-npu-report
+description: Generate a Chinese optimization report from an existing optimize workspace. Use when an optimize session needs a human-readable summary that synthesizes environment info, round history, performance data, and pattern analysis into a structured report.
+---
+
 # triton-npu-report
 
 ## Purpose
