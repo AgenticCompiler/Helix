@@ -265,7 +265,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
             self.assertIn("Additional user instructions:", prompt)
             self.assertIn("Keep launch geometry unchanged unless evidence says otherwise.", prompt)
 
-    def test_unsupervised_recovery_resume_prompt_is_not_double_wrapped(self) -> None:
+    def test_continuous_recovery_resume_prompt_is_not_double_wrapped(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             (workdir / "opt-round-1").mkdir()
@@ -329,7 +329,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
                 resume_prompt.count("Continue the existing optimize task instead of restarting from scratch."),
                 1,
             )
-            self.assertIn("This invocation continues an unsupervised optimize task.", resume_prompt)
+            self.assertIn("This invocation continues a continuous optimize task.", resume_prompt)
             self.assertIn("Progress summary:\nstalled once", resume_prompt)
 
     def test_retries_with_progress_summary_after_stall(self) -> None:
@@ -377,7 +377,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
             self.assertEqual(len(runner.prompts), 2)
             self.assertIn("working...", runner.prompts[1])
 
-    def test_unsupervised_does_not_retry_non_stalled_agent_failure(self) -> None:
+    def test_continuous_does_not_retry_non_stalled_agent_failure(self) -> None:
         request = AgentRequest(
             command_kind=CommandKind.OPTIMIZE,
             input_path=Path("/tmp/op.py"),
@@ -595,7 +595,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
                 runner.resume_prompts[0],
             )
 
-    def test_unsupervised_min_rounds_fails_when_resume_makes_no_progress(self) -> None:
+    def test_continuous_min_rounds_fails_when_resume_makes_no_progress(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             (workspace / "opt-round-1").mkdir()
@@ -641,7 +641,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
             self.assertIn("opt-round-*", result.stderr)
             self.assertEqual(runner.resume_calls, 1)
 
-    def test_unsupervised_min_rounds_resume_prompt_is_not_double_wrapped(self) -> None:
+    def test_continuous_min_rounds_resume_prompt_is_not_double_wrapped(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             (workspace / "opt-round-1").mkdir()

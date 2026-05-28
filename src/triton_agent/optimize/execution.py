@@ -107,7 +107,7 @@ class RecoveryRunnerAdapter:
         )
 
 
-def execute_unsupervised_optimize(
+def execute_continuous_optimize(
     runner: AgentRunner,
     artifacts_manager: OptimizeSessionArtifactsManager,
     request: AgentRequest,
@@ -116,7 +116,7 @@ def execute_unsupervised_optimize(
     stderr: TextIO | None = None,
     verbose_stream: TextIO,
 ) -> AgentResult:
-    shared_artifacts_state = artifacts_manager.prepare_unsupervised_session(
+    shared_artifacts_state = artifacts_manager.prepare_continuous_session(
         request.workdir,
         operator_path=request.input_path,
         test_mode=request.test_mode or "differential",
@@ -132,7 +132,7 @@ def execute_unsupervised_optimize(
         emit_verbose_lines(
             verbose_stream,
             "agents",
-            artifacts_manager.describe_prepare_unsupervised_session(shared_artifacts_state),
+            artifacts_manager.describe_prepare_continuous_session(shared_artifacts_state),
         )
     try:
         return OptimizeRunLoop().run(
@@ -150,9 +150,9 @@ def execute_unsupervised_optimize(
             emit_verbose_lines(
                 verbose_stream,
                 "agents",
-                artifacts_manager.describe_cleanup_unsupervised_session(shared_artifacts_state),
+                artifacts_manager.describe_cleanup_continuous_session(shared_artifacts_state),
             )
-        warnings = artifacts_manager.cleanup_unsupervised_session(shared_artifacts_state)
+        warnings = artifacts_manager.cleanup_continuous_session(shared_artifacts_state)
         for warning in warnings:
             emit_verbose(verbose_stream, "agents", warning)
         try:

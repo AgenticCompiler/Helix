@@ -72,14 +72,14 @@ _OPTIMIZE_GUIDANCE_RULES_BLOCK = dedent(
 )
 
 
-_UNSUPERVISED_GUIDANCE_TEMPLATE = (
+_CONTINUOUS_GUIDANCE_TEMPLATE = (
     dedent(
         """\
         # {guidance_filename}
 
         ## Triton Agent Optimize Session
 
-        This workspace is under an unsupervised optimize run.
+        This workspace is under a continuous optimize run.
 
         """
     )
@@ -152,7 +152,7 @@ class MemoryFileManager:
             return "CLAUDE.md"
         return "AGENTS.md"
 
-    def prepare_unsupervised(
+    def prepare_continuous(
         self,
         workdir: Path,
         *,
@@ -170,7 +170,7 @@ class MemoryFileManager:
         return self._prepare(
             workdir,
             agent_name=agent_name,
-            content=self._render_unsupervised_guidance(
+            content=self._render_continuous_guidance(
                 guidance_filename=self.guidance_filename(agent_name),
                 operator_path=operator_path,
                 test_mode=test_mode,
@@ -300,7 +300,7 @@ class MemoryFileManager:
             counter += 1
         return candidate
 
-    def _render_unsupervised_guidance(
+    def _render_continuous_guidance(
         self,
         *,
         guidance_filename: str,
@@ -313,7 +313,7 @@ class MemoryFileManager:
         enable_cann_ext_api: bool = False,
         optimize_knowledge_skill_name: str | None = None,
     ) -> str:
-        return _UNSUPERVISED_GUIDANCE_TEMPLATE.format(
+        return _CONTINUOUS_GUIDANCE_TEMPLATE.format(
             guidance_filename=guidance_filename,
             test_mode=test_mode,
             bench_mode=bench_mode,

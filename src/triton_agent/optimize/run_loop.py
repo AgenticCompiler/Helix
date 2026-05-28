@@ -29,14 +29,14 @@ class OptimizeRunLoop:
             raise TypeError("runner does not implement optimize recovery")
         recovery_runner = cast(SupportsOptimizeRecovery, runner)
 
-        return self._run_unsupervised_loop(
+        return self._run_continuous_loop(
             recovery_runner,
             current_request,
             attempt=attempt,
             resume_summary=resume_summary,
         )
 
-    def _run_unsupervised_loop(
+    def _run_continuous_loop(
         self,
         runner: SupportsOptimizeRecovery,
         current_request: AgentRequest,

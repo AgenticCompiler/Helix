@@ -182,7 +182,7 @@ def run_optimize_request(
         runner = create_runner(request.agent_name)
         artifacts_manager = OptimizeSessionArtifactsManager()
         if request.round_mode == "continuous":
-            return optimize_execution.execute_unsupervised_optimize(
+            return optimize_execution.execute_continuous_optimize(
                 runner,
                 artifacts_manager,
                 request,

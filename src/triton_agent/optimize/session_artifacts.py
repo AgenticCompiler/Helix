@@ -11,7 +11,7 @@ from triton_agent.optimize.runtime_handoff import RuntimeHandoffManager, Runtime
 
 @dataclass
 class SharedOptimizeSessionArtifactsState:
-    """Session-scoped artifacts shared by supervised and unsupervised optimize runs."""
+    """Session-scoped artifacts shared by supervised and continuous optimize runs."""
 
     memory_file: MemoryFileState
     archive: ArchiveState
@@ -100,7 +100,7 @@ class OptimizeSessionArtifactsManager:
         self._runtime_handoffs = runtime_handoffs or RuntimeHandoffManager()
         self._archives = archives or ArchiveManager()
 
-    def prepare_unsupervised_session(
+    def prepare_continuous_session(
         self,
         workdir: Path,
         *,
@@ -116,7 +116,7 @@ class OptimizeSessionArtifactsManager:
     ) -> SharedOptimizeSessionArtifactsState:
         """Prepare only the artifacts needed by a single-agent optimize session."""
         archive_state = self._archives.prepare(workdir)
-        memory_file_state = self._memory_files.prepare_unsupervised(
+        memory_file_state = self._memory_files.prepare_continuous(
             workdir,
             operator_path=operator_path,
             test_mode=test_mode,
@@ -203,7 +203,7 @@ class OptimizeSessionArtifactsManager:
             history_dir=state.history_dir,
         )
 
-    def cleanup_unsupervised_session(
+    def cleanup_continuous_session(
         self,
         state: SharedOptimizeSessionArtifactsState,
     ) -> list[str]:
@@ -237,7 +237,7 @@ class OptimizeSessionArtifactsManager:
             warnings.append(f"Failed to archive optimize supervised logs: {exc}")
 
         warnings.extend(self._runtime_handoffs.cleanup(state.runtime_handoff))
-        warnings.extend(self.cleanup_unsupervised_session(state))
+        warnings.extend(self.cleanup_continuous_session(state))
         return warnings
 
     def _write_agent_audit(self, state: SharedOptimizeSessionArtifactsState) -> list[str]:
@@ -253,16 +253,16 @@ class OptimizeSessionArtifactsManager:
             warnings.append(f"Failed to archive optimize checked logs: {exc}")
 
         warnings.extend(self._runtime_handoffs.cleanup(state.runtime_handoff))
-        warnings.extend(self.cleanup_unsupervised_session(state))
+        warnings.extend(self.cleanup_continuous_session(state))
         return warnings
 
-    def describe_prepare_unsupervised_session(
+    def describe_prepare_continuous_session(
         self,
         state: SharedOptimizeSessionArtifactsState,
     ) -> list[str]:
         return self._memory_files.describe_prepare(
             state.memory_file,
-            description="unsupervised optimize guidance file",
+            description="continuous optimize guidance file",
         )
 
     def describe_prepare_supervised_session(
@@ -287,7 +287,7 @@ class OptimizeSessionArtifactsManager:
         messages.extend(self._runtime_handoffs.describe_prepare(state.runtime_handoff))
         return messages
 
-    def describe_cleanup_unsupervised_session(
+    def describe_cleanup_continuous_session(
         self,
         state: SharedOptimizeSessionArtifactsState,
     ) -> list[str]:
@@ -299,7 +299,7 @@ class OptimizeSessionArtifactsManager:
     ) -> list[str]:
         messages = [f"archiving supervised optimize logs to {state.run_archive_dir}"]
         messages.extend(self._runtime_handoffs.describe_cleanup(state.runtime_handoff))
-        messages.extend(self.describe_cleanup_unsupervised_session(state))
+        messages.extend(self.describe_cleanup_continuous_session(state))
         return messages
 
     def describe_cleanup_checked_session(
@@ -308,5 +308,5 @@ class OptimizeSessionArtifactsManager:
     ) -> list[str]:
         messages = [f"archiving checked optimize logs to {state.run_archive_dir}"]
         messages.extend(self._runtime_handoffs.describe_cleanup(state.runtime_handoff))
-        messages.extend(self.describe_cleanup_unsupervised_session(state))
+        messages.extend(self.describe_cleanup_continuous_session(state))
         return messages

@@ -257,7 +257,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIs(result, expected)
             mocked.assert_called_once()
 
-    def test_run_optimize_request_delegates_unsupervised_flow_to_helper(self) -> None:
+    def test_run_optimize_request_delegates_continuous_flow_to_helper(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
@@ -291,7 +291,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     with patch("triton_agent.optimize.orchestration.SkillLinkManager.cleanup", return_value=[]):
                         with patch.object(
                             execution_module,
-                            "execute_unsupervised_optimize",
+                            "execute_continuous_optimize",
                             return_value=expected,
                         ) as mocked:
                             result = run_optimize_request(request)
@@ -1004,7 +1004,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIn("Focus on occupancy.", baseline_request.prompt)
             self.assertIn("Do not open a new optimization round yet.", baseline_request.prompt)
 
-    def test_run_optimize_request_unsupervised_uses_single_agent_path(self) -> None:
+    def test_run_optimize_request_continuous_uses_single_agent_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
@@ -1088,7 +1088,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertEqual(session_entry["agent"], "codex")
             mocked_prepare.assert_not_called()
 
-    def test_run_optimize_request_unsupervised_operator_target_guidance(self) -> None:
+    def test_run_optimize_request_continuous_operator_target_guidance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
@@ -1147,7 +1147,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIn("Target optimization scope: operator.", runner.guidance_content)
             self.assertIn("Optimize end-to-end operator latency.", runner.guidance_content)
 
-    def test_run_optimize_request_unsupervised_uses_selected_v3_pattern_reminders(
+    def test_run_optimize_request_continuous_uses_selected_v3_pattern_reminders(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1228,7 +1228,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 runner.guidance_content,
             )
 
-    def test_run_optimize_request_unsupervised_retries_with_resume(self) -> None:
+    def test_run_optimize_request_continuous_retries_with_resume(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"

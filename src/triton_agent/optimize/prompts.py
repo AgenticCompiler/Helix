@@ -242,7 +242,7 @@ def build_optimize_resume_prompt(
         else:
             lines.extend(
                 [
-                    "This invocation continues an unsupervised optimize task.",
+                    "This invocation continues a continuous optimize task.",
                     "",
                 ]
             )
@@ -269,7 +269,7 @@ def build_optimize_resume_prompt(
         *strict_learned_lessons_lines(),
     ]
     if round_mode == "continuous" and base_prompt:
-        continuation_lines.insert(0, "This invocation continues an unsupervised optimize task.")
+        continuation_lines.insert(0, "This invocation continues a continuous optimize task.")
     lines.extend(continuation_lines)
     lines.extend(
         compiler_source_analysis_lines(
