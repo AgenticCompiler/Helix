@@ -37,6 +37,7 @@ def reset_optimize_workspace(input_path: Path, workdir: Path) -> None:
     artifact_paths = [
         workdir / "opt-note.md",
         workdir / "learned_lessons.md",
+        workdir / "env-info.json",
         baseline_dir(workdir),
         workdir / ".triton-agent",
         workdir / "triton-agent-logs",

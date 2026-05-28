@@ -47,6 +47,9 @@ Avg improvement: <value or unknown>
 Geomean speedup: <value or unknown>
 Validated branches: <comma-separated round names or none>
 Outcome: <plain-English optimization result>
+Key optimization points:
+  1. <optimization point>: <improvement> (round N)
+  2. ...
 ```
 
 ## Example
@@ -66,6 +69,9 @@ Avg improvement: +13.7%
 Geomean speedup: 1.16x
 Validated branches: round-1
 Outcome: round-3 is the fastest validated candidate and preserves correctness.
+Key optimization points:
+  1. reorder independent loads before dependent reads: -13.7% latency (round-3)
+  2. apply vectorized mask load: -5.2% latency (round-2)
 Next step: profile round-3 if more latency reduction is needed.
 ```
 
@@ -76,6 +82,7 @@ Next step: profile round-3 if more latency reduction is needed.
 - Put detailed reasoning, code snippets, and deeper analysis in the per-round summary instead of the top-level note.
 - Put initial hypotheses, evolving reasoning, and diagnosis pivots in `opt-round-N/attempts.md`, `summary.md`, or `perf-analysis.md`, not in the top-level note.
 - Keep the top-level note concise, but make sure a reader can still tell why the chosen round direction was reasonable.
+- Use `Key optimization points` to list the main optimization actions and their impact, with the round where each was applied. This checklist is consumed by automated report generation.
 - Use `Geomean speedup` as the headline metric for the final best round.
 - Use `Validated branches` to list non-best rounds that are still worth revisiting later.
 - Keep `Outcome` and `Next step` short enough that a reader can understand the session result in one screen.
