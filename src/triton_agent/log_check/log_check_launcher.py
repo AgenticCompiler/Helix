@@ -4,11 +4,14 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 from triton_agent.backends.factory import create_runner
 from triton_agent.models import AgentRequest, CommandKind
+from triton_agent.otel_trace import build_tool_trace_env, trace_path_from_request, write_tool_trace_summary
 from triton_agent.resources import skills_root
 from triton_agent.skill_staging import resolve_staged_skills
+from triton_agent.show_output_log import show_output_log_path
 from triton_agent.skills import SkillLinkManager, staged_skill_dir
 from triton_agent.verbose import emit_verbose_lines
 
@@ -246,8 +249,12 @@ def build_log_check_request(
     pattern_analysis_json: str = _PATTERN_ANALYSIS_JSON_FILENAME,
     staged_skill_names: tuple[str, ...] | None = None,
     staged_skill_sources: dict[str, str] | None = None,
+    log_tools: bool = False,
 ) -> AgentRequest:
     resolved_target = target_path.resolve()
+    extra_env = None
+    if log_tools:
+        extra_env, _trace_path = build_tool_trace_env(None, workdir=resolved_target)
     return AgentRequest(
         command_kind=CommandKind.LOG_CHECK,
         input_path=resolved_target,
@@ -268,9 +275,11 @@ def build_log_check_request(
             agent_name=agent_name,
         ),
         workdir=resolved_target,
+        extra_env=extra_env,
         no_agent_session=True,
         staged_skill_names=staged_skill_names,
         staged_skill_sources=staged_skill_sources,
+        log_tools=log_tools,
     )
 
 
@@ -305,6 +314,7 @@ def run_log_check(
     agent_name: str = "codex",
     verbose: bool = False,
     show_output: bool = True,
+    log_tools: bool = False,
 ) -> int:
     normalized_target = target_path.expanduser().resolve()
     staged_skill_names, staged_skill_sources = resolve_staged_skills(
@@ -319,6 +329,7 @@ def run_log_check(
         pattern_analysis_json=pattern_analysis_json,
         staged_skill_names=staged_skill_names,
         staged_skill_sources=staged_skill_sources,
+        log_tools=log_tools,
     )
     try:
         runner = create_runner(agent_name)
@@ -356,6 +367,7 @@ def run_log_check(
         )
         return 1
     finally:
+        _write_log_check_trace_summary(request)
         if verbose:
             emit_verbose_lines(sys.stderr, "skills", manager.describe_cleanup(links))
         cleanup_warnings = manager.cleanup(links)
@@ -483,12 +495,12 @@ def _validate_and_render_pattern(workspace: Path, json_path: Path) -> bool:
     return True
 
 
-def _parse_json_with_repair(raw: str, filename: str) -> dict | None:
+def _parse_json_with_repair(raw: str, filename: str) -> dict[str, Any] | None:
     """Parse JSON with repair fallback. Returns dict or None."""
     try:
         data = json.loads(raw)
         if isinstance(data, dict):
-            return data
+            return cast(dict[str, Any], data)
         print(
             f"[optimize-check] warning: {filename} is not a JSON object",
             file=sys.stderr,
@@ -515,6 +527,21 @@ def _parse_json_with_repair(raw: str, filename: str) -> dict | None:
             flush=True,
         )
         return None
+
+
+def _write_log_check_trace_summary(request: AgentRequest) -> None:
+    if not request.log_tools:
+        return
+    trace_path = trace_path_from_request(request)
+    if trace_path is None:
+        return
+    warnings = write_tool_trace_summary(
+        trace_path=trace_path,
+        command_kind=request.command_kind.value,
+        show_output_path=show_output_log_path(request),
+    )
+    if request.verbose and warnings:
+        emit_verbose_lines(sys.stderr, "trace", warnings)
 
 
 def main(argv: list[str] | None = None, *, prog_name: str | None = None) -> int:

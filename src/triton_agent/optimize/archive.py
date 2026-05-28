@@ -16,6 +16,30 @@ class ArchiveState:
     agent_sessions_path: Path
     shared_guidance_snapshot_path: Optional[Path] = None
 
+    @property
+    def run_id(self) -> str:
+        return self.run_archive_dir.name
+
+    @property
+    def log_root(self) -> Path:
+        return self.archive_root.parent
+
+    @property
+    def otel_run_dir(self) -> Path:
+        return self.log_root / "otel" / self.run_id
+
+    @property
+    def otel_trace_path(self) -> Path:
+        return self.otel_run_dir / "trace.jsonl"
+
+    @property
+    def otel_summary_path(self) -> Path:
+        return self.otel_run_dir / "summary.json"
+
+    @property
+    def agent_audit_path(self) -> Path:
+        return self.otel_run_dir / "agent-audit.md"
+
 
 class ArchiveManager:
     """Owns run archive layout, handoff snapshots, and session-id recording."""

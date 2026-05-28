@@ -125,6 +125,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
     cann_ext_api_enabled = bool(getattr(args, "enable_cann_ext_api", False))
     agent_hooks_enabled = bool(getattr(args, "enable_agent_hooks", False))
     upload_enabled = not bool(getattr(args, "no_upload", False))
+    log_tools_enabled = bool(getattr(args, "log_tools", False))
     return OptimizeRunOptions(
         agent_name=args.agent,
         interact=bool(getattr(args, "interact", False)),
@@ -148,6 +149,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         enable_cann_ext_api=cann_ext_api_enabled,
         enable_agent_hooks=agent_hooks_enabled,
         upload_enabled=upload_enabled,
+        log_tools=log_tools_enabled,
     )
 
 

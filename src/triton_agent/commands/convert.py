@@ -87,4 +87,5 @@ def convert_options_from_args(args: argparse.Namespace) -> ConvertOptions:
         output=getattr(args, "output", None),
         test_mode=getattr(args, "test_mode", None),
         prompt=getattr(args, "prompt", None),
+        log_tools=bool(getattr(args, "log_tools", False)),
     )
