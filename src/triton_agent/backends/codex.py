@@ -36,7 +36,7 @@ class CodexRunner(AgentRunner):
         ]
         if request.command_kind != request.command_kind.OPTIMIZE or request.no_agent_session:
             command.append("--ephemeral")
-        if request.log_tools:
+        if request.show_output or request.log_tools:
             command.append("--json")
         command.append(request.prompt)
         return command
@@ -48,16 +48,21 @@ class CodexRunner(AgentRunner):
         if request.interact:
             return None
         trace_path = trace_path_from_request(request)
-        if request.log_tools and trace_path is not None:
+        if request.show_output or request.log_tools:
             from triton_agent.backends.codex_trace import CodexJsonOutputFilter, build_codex_trace_env
-            extra_env = build_codex_trace_env(
-                request.extra_env,
-                trace_path=trace_path,
-                run_id=trace_path.parent.name,
-                role=request.optimize_role or "worker",
-                workspace_root=request.workdir,
-            )
-            return CodexJsonOutputFilter(trace_path, extra_env)
+            if request.log_tools and trace_path is not None:
+                extra_env = build_codex_trace_env(
+                    request.extra_env,
+                    trace_path=trace_path,
+                    run_id=trace_path.parent.name,
+                    role=request.optimize_role or "worker",
+                    workspace_root=request.workdir,
+                )
+                return CodexJsonOutputFilter(trace_path, extra_env)
+            extra_env = dict(request.extra_env or {})
+            extra_env.setdefault("TRITON_AGENT_OTEL_ROLE", request.optimize_role or "worker")
+            extra_env.setdefault("TRITON_AGENT_WORKSPACE_ROOT", str(request.workdir))
+            return CodexJsonOutputFilter(None, extra_env)
         return _UnifiedDiffFilter()
 
 
