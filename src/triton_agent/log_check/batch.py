@@ -5,7 +5,7 @@ import threading
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO, cast
 
 from triton_agent.optimize.models import BatchOptimizeResult
 from triton_agent.optimize.render import render_batch_optimize_results
@@ -122,6 +122,7 @@ def _summarize_from_json(json_path: Path) -> tuple[bool, str]:
         return False, f"failed to read {json_path.name}: {exc}"
     if not isinstance(data, dict):
         return False, f"{json_path.name} is not a JSON object"
+    data = cast(dict[str, Any], data)
     overall = data.get("overall")
     if overall == "PASS":
         return True, "overall PASS"
