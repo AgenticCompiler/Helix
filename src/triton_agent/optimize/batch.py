@@ -13,6 +13,7 @@ from triton_agent.batch_utils import (
     PrefixedTextStream,
     discover_batch_workspaces,
 )
+from triton_agent.commands.report import generate_workspace_report
 from triton_agent.models import AgentResult
 from triton_agent.optimize.naming import (
     is_batch_optimize_operator_candidate,
@@ -187,6 +188,30 @@ def run_optimize_batch(
                         if options.verbose:
                             print(
                                 f"[{item.workspace.name}] Auto-upload warning: {exc}",
+                                file=sys.stderr,
+                            )
+                if options.report:
+                    try:
+                        if options.verbose:
+                            print(
+                                f"[{item.workspace.name}] Auto-report: generating report.md...",
+                                file=sys.stderr,
+                            )
+                        report_ok, report_msg = generate_workspace_report(
+                            workspace=item.workspace,
+                            agent_name=options.agent_name,
+                            show_output=options.show_output,
+                        )
+                        if options.verbose:
+                            status = "completed" if report_ok else f"warning: {report_msg}"
+                            print(
+                                f"[{item.workspace.name}] Auto-report: {status}",
+                                file=sys.stderr,
+                            )
+                    except Exception as exc:
+                        if options.verbose:
+                            print(
+                                f"[{item.workspace.name}] Auto-report warning: {exc}",
                                 file=sys.stderr,
                             )
                 results.append(

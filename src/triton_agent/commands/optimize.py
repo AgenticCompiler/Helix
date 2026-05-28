@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Literal, cast
 
 from triton_agent.commands.input_resolution import resolve_single_operator_input
+from triton_agent.commands.report import generate_workspace_report
 from triton_agent.models import CommandKind
 from triton_agent.optimize.batch import resolve_batch_optimize_operator_file, run_optimize_batch
 from triton_agent.optimize.models import OptimizeRunOptions
@@ -72,6 +73,25 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
             if options.verbose:
                 print(f"Auto-upload warning: {exc}", file=sys.stderr)
         # Upload failure does NOT change the optimize exit code
+
+    # Auto-report after successful optimize
+    if result.return_code == 0 and options.report:
+        try:
+            if options.verbose:
+                print("Auto-report enabled. Generating report.md...", file=sys.stderr)
+            report_ok, report_msg = generate_workspace_report(
+                workspace=workdir,
+                agent_name=options.agent_name,
+                show_output=options.show_output,
+            )
+            if options.verbose:
+                if report_ok:
+                    print(f"Auto-report completed: {report_msg}", file=sys.stderr)
+                else:
+                    print(f"Auto-report warning: {report_msg}", file=sys.stderr)
+        except Exception as exc:
+            if options.verbose:
+                print(f"Auto-report warning: {exc}", file=sys.stderr)
 
     return result.return_code
 
@@ -147,6 +167,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         enable_cann_ext_api=cann_ext_api_enabled,
         enable_agent_hooks=agent_hooks_enabled,
         upload_enabled=upload_enabled,
+        report=not bool(getattr(args, "no_report", False)),
         log_tools=log_tools_enabled,
     )
 
