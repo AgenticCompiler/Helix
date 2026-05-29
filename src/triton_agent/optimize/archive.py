@@ -6,12 +6,13 @@ import json
 from pathlib import Path
 from typing import Callable, Optional
 
+from triton_agent.otel_trace import new_trace_run_id
+
 
 @dataclass
 class ArchiveState:
-    """Paths for one optimize run archive under `triton-agent-logs/triton-agent/`."""
+    """Paths for one optimize run archive under `triton-agent-logs/{run_id}/`."""
 
-    archive_root: Path
     run_archive_dir: Path
     agent_sessions_path: Path
     shared_guidance_snapshot_path: Optional[Path] = None
@@ -21,24 +22,28 @@ class ArchiveState:
         return self.run_archive_dir.name
 
     @property
-    def log_root(self) -> Path:
-        return self.archive_root.parent
+    def workdir(self) -> Path:
+        return self.run_archive_dir.parent.parent
 
     @property
-    def otel_run_dir(self) -> Path:
-        return self.log_root / "otel" / self.run_id
+    def otel_dir(self) -> Path:
+        return self.run_archive_dir / "otel"
 
     @property
     def otel_trace_path(self) -> Path:
-        return self.otel_run_dir / "trace.jsonl"
+        return self.otel_dir / "trace.jsonl"
 
     @property
     def otel_summary_path(self) -> Path:
-        return self.otel_run_dir / "summary.json"
+        return self.otel_dir / "summary.json"
 
     @property
     def agent_audit_path(self) -> Path:
-        return self.otel_run_dir / "agent-audit.md"
+        return self.otel_dir / "agent-audit.md"
+
+    @property
+    def show_output_path(self) -> Path:
+        return self.run_archive_dir / "show-output.log"
 
 
 class ArchiveManager:
@@ -49,13 +54,11 @@ class ArchiveManager:
 
     def prepare(self, workdir: Path, *, include_shared_guidance_snapshot: bool = False) -> ArchiveState:
         """Describe where this optimize run will archive logs and metadata."""
-        archive_root = workdir / "triton-agent-logs" / "triton-agent"
-        run_archive_dir = archive_root / self._run_id_factory()
+        run_archive_dir = workdir / "triton-agent-logs" / self._run_id_factory()
         shared_guidance_snapshot_path = None
         if include_shared_guidance_snapshot:
             shared_guidance_snapshot_path = run_archive_dir / "shared-guidance.md"
         return ArchiveState(
-            archive_root=archive_root,
             run_archive_dir=run_archive_dir,
             agent_sessions_path=run_archive_dir / "agent-sessions.jsonl",
             shared_guidance_snapshot_path=shared_guidance_snapshot_path,
@@ -72,16 +75,25 @@ class ArchiveManager:
         """Copy final multi-invocation outputs into the per-run archive directory."""
         warnings: list[str] = []
         archive_dir = state.run_archive_dir
+        # Runtime files created during checked/supervised phases (show-output,
+        # otel traces, tool-traces) are expected to already exist in the run
+        # directory. Only treat truly unexpected children as a stale archive.
+        _EXPECTED_NAMES = frozenset({
+            "agent-sessions.jsonl", "show-output.log", "tool-traces.jsonl",
+            "otel", "history", "shared-guidance.md", "supervisor-report.md",
+        })
         if archive_dir.exists():
             unexpected_paths = [
-                path for path in archive_dir.iterdir() if path != state.agent_sessions_path
+                path for path in archive_dir.iterdir()
+                if path != state.agent_sessions_path
+                and path.name not in _EXPECTED_NAMES
+                and not path.name.startswith("show-output-")
             ]
             if unexpected_paths:
                 warnings.append(f"Refusing to overwrite existing optimize log archive at {archive_dir}")
                 return warnings
 
         try:
-            (archive_dir / "final").mkdir(parents=True, exist_ok=True)
             (archive_dir / "history").mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             return [f"Failed to create optimize log archive directories under {archive_dir}: {exc}"]
@@ -95,19 +107,15 @@ class ArchiveManager:
             except OSError as exc:
                 warnings.append(f"Failed to write shared guidance archive snapshot: {exc}")
 
-        final_sources: list[tuple[Path, Path]] = []
         if supervisor_report_path is not None:
-            final_sources.append(
-                (supervisor_report_path, archive_dir / "final" / "supervisor-report.md")
-            )
-        for src, dest in final_sources:
-            if not src.exists():
-                warnings.append(f"Missing expected optimize handoff file at {src}")
-                continue
-            try:
-                dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
-            except OSError as exc:
-                warnings.append(f"Failed to archive optimize handoff file {src}: {exc}")
+            dest = archive_dir / "supervisor-report.md"
+            if supervisor_report_path.exists():
+                try:
+                    dest.write_text(supervisor_report_path.read_text(encoding="utf-8"), encoding="utf-8")
+                except OSError as exc:
+                    warnings.append(f"Failed to archive optimize handoff file {supervisor_report_path}: {exc}")
+            else:
+                warnings.append(f"Missing expected optimize handoff file at {supervisor_report_path}")
 
         if history_dir is not None and history_dir.exists():
             for src in sorted(history_dir.iterdir()):
@@ -147,4 +155,4 @@ class ArchiveManager:
         return None
 
     def _new_run_id(self) -> str:
-        return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+        return new_trace_run_id(prefix="optimize")

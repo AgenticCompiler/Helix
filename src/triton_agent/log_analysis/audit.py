@@ -22,8 +22,9 @@ def write_agent_audit(*, workdir: Path, archive: ArchiveState) -> list[str]:
         summary = build_summary(
             events,
             workdir=workdir,
+            run_id=archive.run_id,
             trace_path=trace_path,
-            show_output_path=workdir / "triton-agent-logs" / "optimize.show-output.log",
+            show_output_dir=archive.run_archive_dir,
             agent_sessions_path=archive.agent_sessions_path,
         )
         summary_path.write_text(
@@ -32,7 +33,7 @@ def write_agent_audit(*, workdir: Path, archive: ArchiveState) -> list[str]:
         )
         audit_path.write_text(render_audit_markdown(summary), encoding="utf-8")
     except OSError as exc:
-        warnings.append(f"Failed to write optimize agent audit under {archive.otel_run_dir}: {exc}")
+        warnings.append(f"Failed to write optimize agent audit under {archive.otel_dir}: {exc}")
     except ValueError as exc:
         warnings.append(f"Failed to parse optimize agent trace at {trace_path}: {exc}")
     return warnings
@@ -42,8 +43,9 @@ def build_summary(
     events: list[dict[str, Any]],
     *,
     workdir: Path,
+    run_id: str,
     trace_path: Path,
-    show_output_path: Path,
+    show_output_dir: Path,
     agent_sessions_path: Path,
 ) -> dict[str, Any]:
     file_events = [event for event in events if event.get("type") == "file_access"]
@@ -102,7 +104,7 @@ def build_summary(
 
     artifact_presence = {
         "trace": trace_path.is_file(),
-        "show_output": show_output_path.is_file(),
+        "show_output": any(show_output_dir.glob("show-output*.log")),
         "agent_sessions": agent_sessions_path.is_file(),
         "baseline": (workdir / "baseline").is_dir(),
         "round_count": sum(1 for path in workdir.glob("opt-round-*") if path.is_dir()),
@@ -129,7 +131,7 @@ def build_summary(
     evidence_gaps.extend(_round_evidence_gaps(worker_timeline))
 
     return {
-        "run_id": trace_path.parent.name,
+        "run_id": run_id,
         "tool_trace_enabled": bool(events),
         "tool_trace_capability": _capability_label(capabilities),
         "tool_trace_source": _detect_trace_source(events),
@@ -138,7 +140,7 @@ def build_summary(
             "trace": trace_path.as_posix(),
             "summary": (trace_path.parent / "summary.json").as_posix(),
             "agent_audit": (trace_path.parent / "agent-audit.md").as_posix(),
-            "show_output": show_output_path.as_posix(),
+            "show_output": [p.as_posix() for p in sorted(show_output_dir.glob("show-output*.log"))],
             "agent_sessions": agent_sessions_path.as_posix(),
         },
         "event_counts": {

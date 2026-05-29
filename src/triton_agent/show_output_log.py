@@ -9,6 +9,13 @@ from triton_agent.models import AgentRequest, AgentResult
 
 
 def show_output_log_path(request: AgentRequest) -> Path:
+    run_id = request.run_id
+    label = request.show_output_label
+    if run_id:
+        base = request.workdir / "triton-agent-logs" / run_id
+        if label:
+            return base / f"show-output-{label}.log"
+        return base / "show-output.log"
     return request.workdir / "triton-agent-logs" / f"{request.command_kind.value}.show-output.log"
 
 

@@ -190,12 +190,20 @@ class ClaudeJsonLineParser:
         "result": "_handle_result",
     }
 
-    def __init__(self, trace_path: Path | None, extra_env: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        trace_path: Path | None,
+        extra_env: dict[str, str] | None = None,
+        *,
+        run_id: str = "",
+        role: str = "worker",
+        workspace_root: str = "",
+    ) -> None:
         self._trace_path = trace_path
         self._extra_env = extra_env or {}
-        self._run_id = self._extra_env.get("TRITON_AGENT_OTEL_RUN_ID", "")
-        self._role = self._extra_env.get("TRITON_AGENT_OTEL_ROLE", "worker")
-        self._workspace_root = self._extra_env.get("TRITON_AGENT_WORKSPACE_ROOT", "")
+        self._run_id = run_id
+        self._role = role
+        self._workspace_root = workspace_root
         self._pending: dict[str, _ClaudeToolLifecycle] = {}
         self._seen: set[tuple[str, str, str]] = set()
         self._session_id: str | None = None
@@ -608,8 +616,18 @@ class ClaudeJsonLineParser:
 class ClaudeJsonOutputFilter:
     """OutputFilter that turns Claude stream-json into readable show-output text."""
 
-    def __init__(self, trace_path: Path | None, extra_env: dict[str, str] | None = None) -> None:
-        self._parser = ClaudeJsonLineParser(trace_path, extra_env)
+    def __init__(
+        self,
+        trace_path: Path | None,
+        extra_env: dict[str, str] | None = None,
+        *,
+        run_id: str = "",
+        role: str = "worker",
+        workspace_root: str = "",
+    ) -> None:
+        self._parser = ClaudeJsonLineParser(
+            trace_path, extra_env, run_id=run_id, role=role, workspace_root=workspace_root
+        )
         self._buffer = ""
 
     def feed(self, text: str, *, flush: bool = False) -> str:

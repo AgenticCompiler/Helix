@@ -30,10 +30,6 @@ class SharedOptimizeSessionArtifactsState:
         return self.memory_file.created_guidance
 
     @property
-    def archive_root(self) -> Path:
-        return self.archive.archive_root
-
-    @property
     def run_archive_dir(self) -> Path:
         return self.archive.run_archive_dir
 
@@ -233,7 +229,7 @@ class OptimizeSessionArtifactsManager:
         return warnings
 
     def _write_agent_audit(self, state: SharedOptimizeSessionArtifactsState) -> list[str]:
-        workdir = state.archive.log_root.parent
+        workdir = state.archive.workdir
         return write_agent_audit(workdir=workdir, archive=state.archive)
 
     def cleanup_checked_session(self, state: OptimizeSessionArtifactsState) -> list[str]:

@@ -307,8 +307,9 @@ class GenerationHelpersTests(unittest.TestCase):
             self.assertIsNotNone(request.extra_env)
             assert request.extra_env is not None
             trace_path = Path(request.extra_env[TRACE_PATH_ENV])
-            self.assertEqual(trace_path.parent.parent, workdir / "triton-agent-logs" / "tool-traces")
-            self.assertEqual(trace_path.name, "trace.jsonl")
+            self.assertEqual(trace_path.parent.parent, workdir / "triton-agent-logs")
+            self.assertTrue(trace_path.parent.name.startswith("generate-"))
+            self.assertEqual(trace_path.name, "tool-traces.jsonl")
 
 class GenerationCommandHandlerTests(unittest.TestCase):
     def test_handle_gen_test_rejects_openhands_interactive_mode(self) -> None:
@@ -523,7 +524,7 @@ class GenerationCommandHandlerTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            trace_path = workdir / "triton-agent-logs" / "tool-traces" / "run-001" / "trace.jsonl"
+            trace_path = workdir / "triton-agent-logs" / "run-001" / "tool-traces.jsonl"
             request = build_generation_request(
                 CommandKind.GEN_TEST,
                 workdir / "kernel.py",

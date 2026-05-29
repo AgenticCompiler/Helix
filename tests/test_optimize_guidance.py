@@ -56,11 +56,8 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
 
             state = manager.prepare(workdir, include_shared_guidance_snapshot=True)
 
-            self.assertEqual(state.archive_root, workdir / "triton-agent-logs" / "triton-agent")
-            self.assertEqual(
-                state.run_archive_dir,
-                state.archive_root / "20260423-123456-000000",
-            )
+            expected_run_dir = workdir / "triton-agent-logs" / "20260423-123456-000000"
+            self.assertEqual(state.run_archive_dir, expected_run_dir)
             self.assertEqual(
                 state.agent_sessions_path,
                 state.run_archive_dir / "agent-sessions.jsonl",
@@ -211,8 +208,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             assert state.supervisor_history_dir is not None
             self.assertTrue(state.supervisor_report_path.exists())
             self.assertTrue(state.supervisor_history_dir.exists())
-            self.assertEqual(state.archive_root, workdir / "triton-agent-logs" / "triton-agent")
-            self.assertTrue(state.run_archive_dir.parent == state.archive_root)
+            self.assertEqual(state.run_archive_dir.parent, workdir / "triton-agent-logs")
             self.assertEqual(state.agent_sessions_path, state.run_archive_dir / "agent-sessions.jsonl")
 
             self.assertIn("## Triton Agent Optimize Orchestration", shared_content)
@@ -234,7 +230,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertFalse((workdir / ".triton-agent").exists())
             self.assertTrue(state.run_archive_dir.exists())
             self.assertTrue((state.run_archive_dir / "shared-guidance.md").exists())
-            self.assertTrue((state.run_archive_dir / "final" / "supervisor-report.md").exists())
+            self.assertTrue((state.run_archive_dir / "supervisor-report.md").exists())
             self.assertTrue((state.run_archive_dir / "history").exists())
 
     def test_prepare_continuous_session_mentions_operator_target_when_selected(self) -> None:

@@ -29,7 +29,12 @@ from triton_agent.optimize.prompts import (
     build_optimize_supervisor_prompt,
 )
 from triton_agent.optimize.pt_cleanup import cleanup_workspace_pt_files
-from triton_agent.otel_trace import build_trace_env
+from triton_agent.otel_trace import (
+    TRACE_PATH_ENV,
+    TRACE_RUN_ID_ENV,
+    TRACE_ROLE_ENV,
+    TRACE_WORKSPACE_ROOT_ENV,
+)
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
@@ -83,19 +88,15 @@ class RecoveryRunnerAdapter:
         return result
 
     def _with_trace_env(self, request: AgentRequest) -> AgentRequest:
-        if not request.log_tools:
-            return request
         role = request.optimize_role or "worker"
-        return replace(
-            request,
-            extra_env=build_trace_env(
-                request.extra_env,
-                trace_path=self._artifacts_state.otel_trace_path,
-                run_id=self._artifacts_state.archive.run_id,
-                role=role,
-                workspace_root=request.workdir,
-            ),
-        )
+        run_id = self._artifacts_state.archive.run_id
+        env = dict(request.extra_env or {})
+        env[TRACE_RUN_ID_ENV] = run_id
+        env[TRACE_ROLE_ENV] = role
+        env[TRACE_WORKSPACE_ROOT_ENV] = str(request.workdir)
+        if request.log_tools:
+            env[TRACE_PATH_ENV] = str(self._artifacts_state.otel_trace_path)
+        return replace(request, run_id=run_id, extra_env=env)
 
     def _record_session(self, request: AgentRequest, result: AgentResult) -> None:
         self._artifacts_manager.record_agent_session(
@@ -376,18 +377,20 @@ class MultiInvocationOptimizeController:
             optimize_role="baseline",
             interact=False,
         )
-        return self._run_request(baseline_request)
+        return self._run_request(baseline_request, show_output_label="baseline")
 
     def run_round_loop(self, request: AgentRequest) -> AgentResult:
         current_request = request
         active_repair_round: str | None = None
         repair_attempts = 0
+        round_index = 0
         while True:
+            round_index += 1
             round_request = replace(
                 current_request,
                 optimize_role="worker",
             )
-            round_result = self._run_request(round_request)
+            round_result = self._run_request(round_request, show_output_label=f"round-{round_index}")
             if not round_result.succeeded:
                 return round_result
 
@@ -533,7 +536,7 @@ class MultiInvocationOptimizeController:
             interact=False,
             no_agent_session=True,
         )
-        supervisor_result = self._run_request(supervisor_request)
+        supervisor_result = self._run_request(supervisor_request, show_output_label="supervisor")
         if not supervisor_result.succeeded:
             return GateResult(
                 decision=GateDecision.HARD_FAIL,
@@ -654,9 +657,19 @@ class MultiInvocationOptimizeController:
             continue_immediately=False,
         )
 
-    def _run_request(self, request: AgentRequest) -> AgentResult:
+    def _run_request(self, request: AgentRequest, *, show_output_label: str = "") -> AgentResult:
+        run_id = self._artifacts_state.archive.run_id
+        env = dict(request.extra_env or {})
+        env[TRACE_RUN_ID_ENV] = run_id
+        env[TRACE_ROLE_ENV] = request.optimize_role or "worker"
+        env[TRACE_WORKSPACE_ROOT_ENV] = str(request.workdir)
+        if request.log_tools:
+            env[TRACE_PATH_ENV] = str(self._artifacts_state.archive.otel_trace_path)
         request = replace(
             request,
+            run_id=run_id,
+            extra_env=env,
+            show_output_label=show_output_label,
             no_agent_session=True,
             supervisor_report_path=self._artifacts_state.supervisor_report_path,
         )
