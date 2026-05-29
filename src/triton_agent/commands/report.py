@@ -131,4 +131,84 @@ def _append_report_instructions(prompt: str, workspace: Path) -> str:
     )
 
 
-__all__ = ["handle_report"]
+def generate_workspace_report(
+    workspace: Path,
+    agent_name: str,
+    show_output: bool = False,
+) -> tuple[bool, str]:
+    built_prompt = build_prompt(
+        CommandKind.REPORT,
+        workspace,
+        None,
+        None,
+        None,
+        None,
+        False,
+    )
+    built_prompt = _append_report_instructions(built_prompt, workspace)
+
+    staged_skill_names, staged_skill_sources = resolve_staged_skills(
+        CommandKind.REPORT,
+    )
+
+    request = AgentRequest(
+        command_kind=CommandKind.REPORT,
+        input_path=workspace,
+        operator_path=None,
+        output_path=None,
+        test_mode=None,
+        bench_mode=None,
+        interact=False,
+        verbose=False,
+        show_output=show_output,
+        force_overwrite=False,
+        agent_name=agent_name,
+        skill_name="triton-npu-report",
+        prompt=built_prompt,
+        workdir=workspace,
+        no_agent_session=True,
+        staged_skill_names=staged_skill_names,
+        staged_skill_sources=staged_skill_sources,
+    )
+
+    print(
+        f"[report] start: {workspace.name}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+    manager = SkillLinkManager(skills_root())
+    links = manager.prepare_skills(
+        agent_name,
+        workspace,
+        skill_names=staged_skill_names,
+        skill_sources=staged_skill_sources,
+    )
+    try:
+        runner = create_runner(agent_name)
+    except ValueError as exc:
+        manager.cleanup(links)
+        return False, f"invalid agent: {exc}"
+
+    try:
+        result = runner.run(request)
+    except FileNotFoundError as exc:
+        manager.cleanup(links)
+        return False, f"agent executable not found: {exc}"
+    except Exception as exc:
+        manager.cleanup(links)
+        return False, str(exc)
+    finally:
+        manager.cleanup(links)
+
+    if not result.succeeded:
+        detail = result.stderr.strip() or result.stdout.strip() or "agent execution failed"
+        return False, detail[:120]
+
+    report_path = workspace / "report.md"
+    if report_path.exists():
+        return True, "report.md written"
+    return False, "agent completed but report.md was not created"
+
+
+__all__ = ["generate_workspace_report", "handle_report"]
