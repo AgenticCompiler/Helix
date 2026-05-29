@@ -48,6 +48,7 @@ class RunLocalBenchFn(Protocol):
         operator_file: Path,
         bench_mode: str,
         npu_devices: str | None = None,
+        extract_dest_dir: Path | None = None,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -157,6 +158,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_bench.add_argument("--verbose", action="store_true")
     run_bench.add_argument("--bench-mode", choices=["standalone", "msprof", "msprof-simulator"])
     run_bench.add_argument("--npu-devices")
+    run_bench.add_argument("--extract-dest-dir")
 
     profile_bench = subparsers.add_parser("profile-bench")
     profile_bench.add_argument("--bench-file", required=True)
@@ -363,8 +365,9 @@ def main(argv: list[str] | None = None) -> int:
                 stderr=sys.stderr,
             )
         else:
+            extract_dest_dir = Path(args.extract_dest_dir).resolve() if getattr(args, "extract_dest_dir", None) else None
             result, perf_path = run_local_bench(
-                bench_file, operator_file, resolved_bench_mode, args.npu_devices
+                bench_file, operator_file, resolved_bench_mode, args.npu_devices, extract_dest_dir=extract_dest_dir
             )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)

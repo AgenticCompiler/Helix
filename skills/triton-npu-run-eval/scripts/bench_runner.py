@@ -484,12 +484,13 @@ def run_local_bench(
     bench_mode: str,
     npu_devices: str | None = None,
     verbose: bool = False,
+    extract_dest_dir: Path | None = None,
 ) -> tuple[ResultPayload, Path | None]:
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
     with _local_bench_workdir(bench_file.parent):
         if bench_mode == "msprof-simulator":
-            _run_local_bench_msprof_simulator(bench_file, operator_file)
+            _run_local_bench_msprof_simulator(bench_file, operator_file, extract_dest_dir=extract_dest_dir)
             return _run_local_bench_msprof(bench_file, operator_file, verbose=verbose)
         if bench_mode == "msprof":
             if devices is not None:
@@ -1111,7 +1112,7 @@ def _find_latest_visualize_data_bin(output_dir: Path) -> Path | None:
     return max(matches, key=lambda path: path.stat().st_mtime_ns)
 
 
-def _run_extract_and_copy(output_dir: Path, bench_file: Path, isTimeOut: bool = False) -> None:
+def _run_extract_and_copy(output_dir: Path, bench_file: Path, isTimeOut: bool = False, dest_dir: Path | None = None) -> None:
     bin_file = _find_latest_visualize_data_bin(output_dir)
     if bin_file is None:
         return
@@ -1122,7 +1123,7 @@ def _run_extract_and_copy(output_dir: Path, bench_file: Path, isTimeOut: bool = 
 
     extracted_dir = bin_file.parent / "extracted_bin_data"
     if extracted_dir.exists():
-        tmp_dir = bench_file.parent / "extracted_bin_data"
+        tmp_dir = (dest_dir or bench_file.parent) / "extracted_bin_data"
         if tmp_dir.exists():
             shutil.rmtree(tmp_dir)
         shutil.copytree(extracted_dir, tmp_dir)
@@ -1131,6 +1132,7 @@ def _run_extract_and_copy(output_dir: Path, bench_file: Path, isTimeOut: bool = 
 def _run_local_bench_msprof_simulator(
     bench_file: Path,
     operator_file: Path,
+    extract_dest_dir: Path | None = None,
 ) -> tuple[ResultPayload, Path | None]:
     resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
     stdout_chunks: list[str] = []
@@ -1205,7 +1207,7 @@ def _run_local_bench_msprof_simulator(
                 perf_path,
             )
 
-        _run_extract_and_copy(output_dir, bench_file, isTimeOut)
+        _run_extract_and_copy(output_dir, bench_file, isTimeOut, dest_dir=extract_dest_dir)
 
         return (
             make_result(
