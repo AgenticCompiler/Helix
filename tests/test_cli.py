@@ -349,6 +349,8 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("TRITON_AGENT_CODE_AGENT_MAX_RETRIES", help_text)
         self.assertIn("TRITON_AGENT_BENCH_OUTPUT_DIR", help_text)
         self.assertIn("TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES", help_text)
+        self.assertIn("TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW", help_text)
+        self.assertIn("TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN", help_text)
         self.assertIn("TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR", help_text)
         self.assertIn("TRITON_AGENT_STALL_TIMEOUT_SECONDS", help_text)
         self.assertIn("TRITON_AGENT_SSH_TIMEOUT_SECONDS", help_text)

@@ -75,6 +75,14 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
                 "Enable ordinary optimize PT cleanup; default keeps PT files and does not affect --reset-optimize.",
             ),
             (
+                "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW",
+                "Recent comparable round count for advisory local-optimum warnings in check-round (default: 3).",
+            ),
+            (
+                "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN",
+                "Maximum adjacent baseline-relative geomean gain that still counts as flat for local-optimum warnings (default: 0.02).",
+            ),
+            (
                 "TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR",
                 "Overrides the base directory for cached compiler source checkouts. "
                 "Defaults to ~/.triton-agent.",
