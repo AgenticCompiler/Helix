@@ -253,8 +253,9 @@ def build_log_check_request(
 ) -> AgentRequest:
     resolved_target = target_path.resolve()
     extra_env = None
+    run_id = ""
     if log_tools:
-        extra_env, _trace_path = build_tool_trace_env(None, workdir=resolved_target, run_id_prefix="log-check")
+        extra_env, _trace_path, run_id = build_tool_trace_env(None, workdir=resolved_target, run_id_prefix="log-check")
     return AgentRequest(
         command_kind=CommandKind.LOG_CHECK,
         input_path=resolved_target,
@@ -276,6 +277,7 @@ def build_log_check_request(
         ),
         workdir=resolved_target,
         extra_env=extra_env,
+        run_id=run_id,
         no_agent_session=True,
         staged_skill_names=staged_skill_names,
         staged_skill_sources=staged_skill_sources,

@@ -42,8 +42,9 @@ def build_convert_request(
         options.prompt,
     )
     extra_env = None
+    run_id = ""
     if options.log_tools:
-        extra_env, _trace_path = build_tool_trace_env(None, workdir=workdir, run_id_prefix="convert")
+        extra_env, _trace_path, run_id = build_tool_trace_env(None, workdir=workdir, run_id_prefix="convert")
 
     return AgentRequest(
         command_kind=CommandKind.CONVERT,
@@ -61,6 +62,7 @@ def build_convert_request(
         prompt=prompt,
         workdir=workdir,
         extra_env=extra_env,
+        run_id=run_id,
         min_rounds=None,
         continue_optimize=False,
         no_agent_session=False,

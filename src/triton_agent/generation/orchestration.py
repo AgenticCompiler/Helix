@@ -48,8 +48,9 @@ def build_generation_request(
         options.prompt,
     )
     extra_env = None
+    run_id = ""
     if options.log_tools:
-        extra_env, _trace_path = build_tool_trace_env(None, workdir=workdir, run_id_prefix="generate")
+        extra_env, _trace_path, run_id = build_tool_trace_env(None, workdir=workdir, run_id_prefix="generate")
 
     return AgentRequest(
         command_kind=command_kind,
@@ -67,6 +68,7 @@ def build_generation_request(
         prompt=prompt,
         workdir=workdir,
         extra_env=extra_env,
+        run_id=run_id,
         min_rounds=options.min_rounds,
         continue_optimize=options.continue_optimize,
         no_agent_session=False,

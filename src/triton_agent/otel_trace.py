@@ -16,7 +16,6 @@ TRACE_PATH_ENV = "TRITON_AGENT_OTEL_TRACE_PATH"
 TRACE_RUN_ID_ENV = "TRITON_AGENT_OTEL_RUN_ID"
 TRACE_ROLE_ENV = "TRITON_AGENT_OTEL_ROLE"
 TRACE_WORKSPACE_ROOT_ENV = "TRITON_AGENT_WORKSPACE_ROOT"
-SHOW_OUTPUT_LABEL_ENV = "TRITON_AGENT_SHOW_OUTPUT_LABEL"
 _EXCERPT_LIMIT = 2000
 
 
@@ -54,10 +53,6 @@ def tool_trace_path(run_dir: Path) -> Path:
 
 
 def trace_role_from_request(request: AgentRequest) -> str:
-    if request.extra_env is not None:
-        role = request.extra_env.get(TRACE_ROLE_ENV)
-        if role:
-            return role
     return request.optimize_role or "worker"
 
 
@@ -84,7 +79,7 @@ def build_tool_trace_env(
     role: str = "worker",
     run_id: str | None = None,
     run_id_prefix: str = "",
-) -> tuple[dict[str, str], Path]:
+) -> tuple[dict[str, str], Path, str]:
     resolved_run_id = run_id or new_trace_run_id(prefix=run_id_prefix)
     run_dir = workdir / "triton-agent-logs" / resolved_run_id
     trace_path = tool_trace_path(run_dir)
@@ -97,6 +92,7 @@ def build_tool_trace_env(
             workspace_root=workdir,
         ),
         trace_path,
+        resolved_run_id,
     )
 
 

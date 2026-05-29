@@ -11,7 +11,6 @@ from triton_agent.agent_hooks import AgentHookManager, AgentHookOptions
 from triton_agent.models import AgentRequest, AgentResult
 from triton_agent.optimize.prompts import build_optimize_resume_prompt
 from triton_agent.otel_trace import (
-    TRACE_RUN_ID_ENV,
     append_trace_event,
     build_code_agent_event,
     trace_path_from_request,
@@ -111,7 +110,7 @@ class AgentRunner(ABC):
 
     def _hook_options(self, request: AgentRequest) -> AgentHookOptions:
         trace_path = trace_path_from_request(request)
-        run_id = (request.extra_env or {}).get(TRACE_RUN_ID_ENV) if trace_path is not None else None
+        run_id = request.run_id if trace_path is not None else None
         return AgentHookOptions(
             trace_enabled=request.log_tools and trace_path is not None,
             guard_enabled=request.enable_agent_hooks,

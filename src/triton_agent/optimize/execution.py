@@ -34,7 +34,6 @@ from triton_agent.otel_trace import (
     TRACE_RUN_ID_ENV,
     TRACE_ROLE_ENV,
     TRACE_WORKSPACE_ROOT_ENV,
-    SHOW_OUTPUT_LABEL_ENV,
 )
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
@@ -97,7 +96,7 @@ class RecoveryRunnerAdapter:
         env[TRACE_WORKSPACE_ROOT_ENV] = str(request.workdir)
         if request.log_tools:
             env[TRACE_PATH_ENV] = str(self._artifacts_state.otel_trace_path)
-        return replace(request, extra_env=env)
+        return replace(request, run_id=run_id, extra_env=env)
 
     def _record_session(self, request: AgentRequest, result: AgentResult) -> None:
         self._artifacts_manager.record_agent_session(
@@ -659,17 +658,18 @@ class MultiInvocationOptimizeController:
         )
 
     def _run_request(self, request: AgentRequest, *, show_output_label: str = "") -> AgentResult:
+        run_id = self._artifacts_state.archive.run_id
         env = dict(request.extra_env or {})
-        env[TRACE_RUN_ID_ENV] = self._artifacts_state.archive.run_id
+        env[TRACE_RUN_ID_ENV] = run_id
         env[TRACE_ROLE_ENV] = request.optimize_role or "worker"
         env[TRACE_WORKSPACE_ROOT_ENV] = str(request.workdir)
-        if show_output_label:
-            env[SHOW_OUTPUT_LABEL_ENV] = show_output_label
         if request.log_tools:
             env[TRACE_PATH_ENV] = str(self._artifacts_state.archive.otel_trace_path)
         request = replace(
             request,
+            run_id=run_id,
             extra_env=env,
+            show_output_label=show_output_label,
             no_agent_session=True,
             supervisor_report_path=self._artifacts_state.supervisor_report_path,
         )

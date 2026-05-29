@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Callable, Optional, cast
 
 from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest
-from triton_agent.otel_trace import TRACE_RUN_ID_ENV, trace_path_from_request
+from triton_agent.otel_trace import trace_path_from_request
 
 if TYPE_CHECKING:
     from triton_agent.backends.codex_trace import CodexJsonOutputFilter
@@ -54,7 +54,7 @@ class CodexRunner(AgentRunner):
                 extra_env = build_codex_trace_env(
                     request.extra_env,
                     trace_path=trace_path,
-                    run_id=(request.extra_env or {}).get(TRACE_RUN_ID_ENV, ""),
+                    run_id=request.run_id,
                     role=request.optimize_role or "worker",
                     workspace_root=request.workdir,
                 )
