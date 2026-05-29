@@ -9,7 +9,7 @@ from typing import Any, cast
 from triton_agent.optimize.archive import ArchiveState
 
 
-def write_agent_audit(*, workdir: Path, archive: ArchiveState) -> list[str]:
+def write_agent_audit(*, workdir: Path, archive: ArchiveState, show_output_path: Path) -> list[str]:
     warnings: list[str] = []
     trace_path = archive.otel_trace_path
     summary_path = archive.otel_summary_path
@@ -22,8 +22,9 @@ def write_agent_audit(*, workdir: Path, archive: ArchiveState) -> list[str]:
         summary = build_summary(
             events,
             workdir=workdir,
+            run_id=archive.run_id,
             trace_path=trace_path,
-            show_output_path=workdir / "triton-agent-logs" / "optimize.show-output.log",
+            show_output_path=show_output_path,
             agent_sessions_path=archive.agent_sessions_path,
         )
         summary_path.write_text(
@@ -32,7 +33,7 @@ def write_agent_audit(*, workdir: Path, archive: ArchiveState) -> list[str]:
         )
         audit_path.write_text(render_audit_markdown(summary), encoding="utf-8")
     except OSError as exc:
-        warnings.append(f"Failed to write optimize agent audit under {archive.otel_run_dir}: {exc}")
+        warnings.append(f"Failed to write optimize agent audit under {archive.otel_dir}: {exc}")
     except ValueError as exc:
         warnings.append(f"Failed to parse optimize agent trace at {trace_path}: {exc}")
     return warnings
@@ -42,6 +43,7 @@ def build_summary(
     events: list[dict[str, Any]],
     *,
     workdir: Path,
+    run_id: str,
     trace_path: Path,
     show_output_path: Path,
     agent_sessions_path: Path,
@@ -129,7 +131,7 @@ def build_summary(
     evidence_gaps.extend(_round_evidence_gaps(worker_timeline))
 
     return {
-        "run_id": trace_path.parent.name,
+        "run_id": run_id,
         "tool_trace_enabled": bool(events),
         "tool_trace_capability": _capability_label(capabilities),
         "tool_trace_source": _detect_trace_source(events),

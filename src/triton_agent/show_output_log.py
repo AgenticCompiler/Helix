@@ -6,9 +6,13 @@ from pathlib import Path
 from typing import Iterator, TextIO
 
 from triton_agent.models import AgentRequest, AgentResult
+from triton_agent.otel_trace import TRACE_RUN_ID_ENV
 
 
 def show_output_log_path(request: AgentRequest) -> Path:
+    run_id = (request.extra_env or {}).get(TRACE_RUN_ID_ENV)
+    if run_id:
+        return request.workdir / "triton-agent-logs" / run_id / "show-output.log"
     return request.workdir / "triton-agent-logs" / f"{request.command_kind.value}.show-output.log"
 
 
