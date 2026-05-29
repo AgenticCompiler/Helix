@@ -107,8 +107,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
             workspace = Path(tmp)
             operator = workspace / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
-            args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh"])
-
+            args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh", "--no-report"])
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             captured: dict[str, Path] = {}
 
@@ -130,8 +129,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
             workspace = Path(tmp)
             operator = workspace / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
-            args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh"])
-
+            args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh", "--no-report"])
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
             with patch("triton_agent.commands.optimize.run_optimize_request", return_value=fake_result):
@@ -147,8 +145,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
             workspace = Path(tmp)
             operator = workspace / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
-            args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh"])
-
+            args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh", "--no-report"])
             fake_result = AgentResult(return_code=1, stdout="", stderr="error")
 
             with patch("triton_agent.commands.optimize.run_optimize_request", return_value=fake_result):
@@ -165,7 +162,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
             operator = workspace / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
             args = parser.parse_args(
-                ["optimize", "-i", str(workspace), "--resume", "fresh", "--no-upload"]
+                ["optimize", "-i", str(workspace), "--resume", "fresh", "--no-upload", "--no-report"]
             )
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")

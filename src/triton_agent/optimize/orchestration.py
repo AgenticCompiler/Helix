@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TextIO
 
 from triton_agent.backends.factory import create_runner
-from triton_agent.hardware_info import write_env_info
+
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
 from triton_agent.optimize import execution as optimize_execution
 from triton_agent.optimize.compiler_source import prepare_compiler_source
@@ -37,10 +37,6 @@ def build_optimize_request(
     )
     test_mode = resolution.test_mode or "differential"
     bench_mode = resolution.bench_mode or "standalone"
-
-    env_info_path = workdir / "env-info.json"
-    if not env_info_path.exists():
-        write_env_info(workdir, options.target_chip)
 
     output_path = (
         Path(options.output).expanduser().resolve()

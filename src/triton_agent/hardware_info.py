@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import json
 import os
 import subprocess
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 
-def capture_hardware_info(target_chip: str) -> dict[str, Any]:
+def capture_hardware_info() -> dict[str, Any]:
     chip_name = _query_npu_smi_chip_name()
     cann_version = _query_cann_version()
     driver_version = _query_driver_version()
@@ -17,21 +15,6 @@ def capture_hardware_info(target_chip: str) -> dict[str, Any]:
         "cann_version": cann_version,
         "driver_version": driver_version,
     }
-
-
-def write_env_info(workdir: Path, target_chip: str) -> Path:
-    hardware = capture_hardware_info(target_chip)
-    info: dict[str, Any] = {
-        "target_chip": target_chip,
-        "hardware": hardware,
-        "started_at": datetime.now(timezone.utc).isoformat(),
-    }
-    output_path = workdir / "env-info.json"
-    output_path.write_text(
-        json.dumps(info, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    return output_path
 
 
 def _query_npu_smi_chip_name() -> str:
@@ -137,4 +120,4 @@ def _query_driver_version() -> str:
     return "unknown"
 
 
-__all__ = ["capture_hardware_info", "write_env_info"]
+__all__ = ["capture_hardware_info"]
