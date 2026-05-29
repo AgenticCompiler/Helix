@@ -34,13 +34,15 @@ class CodexJsonLineParser:
     def __init__(
         self,
         trace_path: Path | None,
-        extra_env: dict[str, str] | None = None,
+        *,
+        run_id: str = "",
+        role: str = "worker",
+        workspace_root: str = "",
     ) -> None:
         self._trace_path = trace_path
-        self._extra_env = extra_env or {}
-        self._run_id = self._extra_env.get("TRITON_AGENT_OTEL_RUN_ID", "")
-        self._role = self._extra_env.get("TRITON_AGENT_OTEL_ROLE", "worker")
-        self._workspace_root = self._extra_env.get("TRITON_AGENT_WORKSPACE_ROOT", "")
+        self._run_id = run_id
+        self._role = role
+        self._workspace_root = workspace_root
 
         # tool_use_id -> ToolLifecycle buffer for join
         self._pending: dict[str, _ToolLifecycle] = {}
@@ -951,8 +953,14 @@ class CodexJsonOutputFilter:
         self,
         trace_path: Path | None,
         extra_env: dict[str, str] | None = None,
+        *,
+        run_id: str = "",
+        role: str = "worker",
+        workspace_root: str = "",
     ) -> None:
-        self._parser = CodexJsonLineParser(trace_path, extra_env)
+        self._parser = CodexJsonLineParser(
+            trace_path, run_id=run_id, role=role, workspace_root=workspace_root
+        )
         self._buffer = ""
 
     def feed(self, text: str, *, flush: bool = False) -> str:

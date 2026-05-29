@@ -57,12 +57,7 @@ class TestCodexJsonLineParser(unittest.TestCase):
 
     def _make_parser(self, trace_path: Path | None, run_id: str = "test-run-id", role: str = "worker") -> CodexJsonLineParser:
         workspace_root = trace_path.parent if trace_path is not None else Path(tempfile.mkdtemp())
-        extra_env = {
-            "TRITON_AGENT_OTEL_RUN_ID": run_id,
-            "TRITON_AGENT_OTEL_ROLE": role,
-            "TRITON_AGENT_WORKSPACE_ROOT": str(workspace_root),
-        }
-        return CodexJsonLineParser(trace_path, extra_env)
+        return CodexJsonLineParser(trace_path, run_id=run_id, role=role, workspace_root=str(workspace_root))
 
     def test_non_json_line_passed_through(self) -> None:
         _, trace_path = self._make_trace_path()
@@ -266,7 +261,7 @@ class TestCodexJsonOutputFilter(unittest.TestCase):
             "TRITON_AGENT_OTEL_ROLE": "worker",
             "TRITON_AGENT_WORKSPACE_ROOT": str(trace_path.parent.parent),
         }
-        filter_obj = CodexJsonOutputFilter(trace_path, extra_env)
+        filter_obj = CodexJsonOutputFilter(trace_path, extra_env, run_id="test-run", role="worker", workspace_root=str(trace_path.parent.parent))
         result = filter_obj.feed('{"type":"tool_start","tool":"Read","tool_use_id":"call-1","timestamp":"2026-05-17T10:29:18Z"}\n', flush=True)
         # parse_line returns human text without trailing newline (newline consumed by line split)
         self.assertIn("[tool:start] Read call-1", result)
@@ -328,7 +323,7 @@ class TestCodexJsonOutputFilter(unittest.TestCase):
             "TRITON_AGENT_OTEL_ROLE": "worker",
             "TRITON_AGENT_WORKSPACE_ROOT": str(trace_path.parent.parent),
         }
-        filter_obj = CodexJsonOutputFilter(trace_path, extra_env)
+        filter_obj = CodexJsonOutputFilter(trace_path, extra_env, run_id="test-run", role="worker", workspace_root=str(trace_path.parent.parent))
         result = filter_obj.feed("Hello world\n", flush=True)
         self.assertEqual(result, "Hello world\n")
 

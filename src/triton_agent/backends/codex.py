@@ -50,6 +50,7 @@ class CodexRunner(AgentRunner):
         trace_path = trace_path_from_request(request)
         if request.show_output or request.log_tools:
             from triton_agent.backends.codex_trace import CodexJsonOutputFilter, build_codex_trace_env
+            extra_env = request.extra_env
             if request.log_tools and trace_path is not None:
                 extra_env = build_codex_trace_env(
                     request.extra_env,
@@ -58,11 +59,13 @@ class CodexRunner(AgentRunner):
                     role=request.optimize_role or "worker",
                     workspace_root=request.workdir,
                 )
-                return CodexJsonOutputFilter(trace_path, extra_env)
-            extra_env = dict(request.extra_env or {})
-            extra_env.setdefault("TRITON_AGENT_OTEL_ROLE", request.optimize_role or "worker")
-            extra_env.setdefault("TRITON_AGENT_WORKSPACE_ROOT", str(request.workdir))
-            return CodexJsonOutputFilter(None, extra_env)
+            return CodexJsonOutputFilter(
+                trace_path if request.log_tools else None,
+                extra_env,
+                run_id=request.run_id,
+                role=request.optimize_role or "worker",
+                workspace_root=str(request.workdir),
+            )
         return _UnifiedDiffFilter()
 
 

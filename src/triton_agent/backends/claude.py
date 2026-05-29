@@ -51,7 +51,13 @@ class ClaudeRunner(AgentRunner):
             )
         else:
             extra_env = request.extra_env
-        return ClaudeJsonOutputFilter(trace_path, extra_env)
+        return ClaudeJsonOutputFilter(
+            trace_path if request.log_tools else None,
+            extra_env,
+            run_id=request.run_id,
+            role=request.optimize_role or "worker",
+            workspace_root=str(request.workdir),
+        )
 
     def session_id_extractor(self) -> Callable[[str], str | None]:
         return _extract_claude_session_id
