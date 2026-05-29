@@ -1749,7 +1749,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
-                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
+                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh", "--no-report"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(
@@ -1772,7 +1772,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
-                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
+                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh", "--no-report"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(seen_inputs, [(root / "operator.py").resolve()])
@@ -1791,7 +1791,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
-                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
+                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh", "--no-report"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(seen_inputs, [(root / "operator.py").resolve()])
@@ -1816,7 +1816,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
-                    exit_code = main(["optimize-batch", "-i", str(root)])
+                    exit_code = main(["optimize-batch", "-i", str(root), "--no-report"])
 
             self.assertEqual(exit_code, 1)
             self.assertEqual(seen_inputs, [(good / "kernel.py").resolve()])
@@ -1843,7 +1843,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
-                    exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
+                    exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh", "--no-report"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(seen_inputs, [(good / "kernel.py").resolve()])
@@ -1873,7 +1873,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
-                    exit_code = main(["optimize-batch", "-i", str(root)])
+                    exit_code = main(["optimize-batch", "-i", str(root), "--no-report"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual([path.parent.name for path in seen_inputs], ["beta"])
@@ -1911,7 +1911,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 exit_code = main(
-                    ["optimize-batch", "-i", str(root), "--max-concurrency", "2"]
+                    ["optimize-batch", "-i", str(root), "--max-concurrency", "2", "--no-report"]
                 )
 
             self.assertEqual(exit_code, 0)
@@ -1936,7 +1936,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
-                    exit_code = main(["optimize-batch", "-i", str(root), "--show-output"])
+                    exit_code = main(["optimize-batch", "-i", str(root), "--show-output", "--no-report"])
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()
@@ -2006,6 +2006,7 @@ class PathResolutionTests(unittest.TestCase):
                         "auto",
                         "--bench-mode",
                         "msprof",
+                        "--no-report",
                     ]
                 )
 
@@ -2020,7 +2021,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with redirect_stderr(stderr):
                 with self.assertRaises(SystemExit) as exc:
-                    main(["optimize-batch", "-i", str(root), "--max-concurrency", "0"])
+                    main(["optimize-batch", "-i", str(root), "--max-concurrency", "0", "--no-report"])
 
             self.assertEqual(exc.exception.code, 2)
             self.assertIn("--max-concurrency must be at least 1", stderr.getvalue())
@@ -2538,6 +2539,7 @@ class PathResolutionTests(unittest.TestCase):
                                         "standalone",
                                         "--bench-mode",
                                         "msprof",
+                                        "--no-report",
                                     ]
                                 )
 
@@ -2601,7 +2603,7 @@ class PathResolutionTests(unittest.TestCase):
                                 "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                                 return_value=[],
                             ):
-                                exit_code = main(["optimize", "-i", str(operator), "--resume", "auto"])
+                                exit_code = main(["optimize", "-i", str(operator), "--resume", "auto", "--no-report"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(captured["test_mode"], "differential")
@@ -2676,7 +2678,7 @@ class PathResolutionTests(unittest.TestCase):
                                 "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                                 return_value=[],
                             ):
-                                exit_code = main(["optimize", "-i", str(operator), "--resume", "auto"])
+                                exit_code = main(["optimize", "-i", str(operator), "--resume", "auto", "--no-report"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(captured["test_mode"], "differential")
@@ -2838,6 +2840,7 @@ class PathResolutionTests(unittest.TestCase):
                                     "--resume",
                                     "fresh",
                                     "--reset-optimize",
+                                    "--no-report",
                                 ]
                             )
 
@@ -2930,7 +2933,7 @@ class PathResolutionTests(unittest.TestCase):
                                 return_value=[],
                             ):
                                 exit_code = main(
-                                    ["optimize", "-i", str(operator), "--resume", "auto"]
+                                    ["optimize", "-i", str(operator), "--resume", "auto", "--no-report"]
                                 )
 
             self.assertEqual(exit_code, 0)
@@ -3026,6 +3029,7 @@ class PathResolutionTests(unittest.TestCase):
                                         "auto",
                                         "--bench-mode",
                                         "standalone",
+                                        "--no-report",
                                     ]
                                 )
 
@@ -3113,7 +3117,7 @@ class PathResolutionTests(unittest.TestCase):
                                 return_value=[],
                             ):
                                 exit_code = main(
-                                    ["optimize", "-i", str(operator), "--resume", "auto"]
+                                    ["optimize", "-i", str(operator), "--resume", "auto", "--no-report"]
                                 )
 
             self.assertEqual(exit_code, 0)
@@ -3142,7 +3146,7 @@ class PathResolutionTests(unittest.TestCase):
                                 "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                                 return_value=[],
                             ):
-                                exit_code = main(["optimize", "-i", str(root)])
+                                exit_code = main(["optimize", "-i", str(root), "--no-report"])
 
             self.assertEqual(exit_code, 0)
             request = mocked.call_args.args[1]
@@ -3174,7 +3178,7 @@ class PathResolutionTests(unittest.TestCase):
                                     "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                                     return_value=[],
                                 ):
-                                    exit_code = main(["optimize", "-i", "."])
+                                    exit_code = main(["optimize", "-i", ".", "--no-report"])
             finally:
                 os.chdir(original_cwd)
 
@@ -3254,7 +3258,7 @@ class PathResolutionTests(unittest.TestCase):
                                 return_value=[],
                             ):
                                 exit_code = main(
-                                    ["optimize", "-i", str(operator), "--round-mode", "checked"]
+                                    ["optimize", "-i", str(operator), "--round-mode", "checked", "--no-report"]
                                 )
 
             self.assertEqual(exit_code, 0)
@@ -3307,7 +3311,7 @@ class PathResolutionTests(unittest.TestCase):
                                 return_value=[],
                             ):
                                 exit_code = main(
-                                    ["optimize", "-i", str(operator), "--target-chip", "A3"]
+                                    ["optimize", "-i", str(operator), "--target-chip", "A3", "--no-report"]
                                 )
 
             self.assertEqual(exit_code, 0)
@@ -3337,7 +3341,7 @@ class PathResolutionTests(unittest.TestCase):
                                 return_value=[],
                             ):
                                 exit_code = main(
-                                    ["optimize", "-i", str(operator), "--no-agent-session"]
+                                    ["optimize", "-i", str(operator), "--no-agent-session", "--no-report"]
                                 )
 
             self.assertEqual(exit_code, 0)
@@ -3373,6 +3377,7 @@ class PathResolutionTests(unittest.TestCase):
                                         str(operator),
                                         "--prompt",
                                         "Focus on memory coalescing.",
+                                        "--no-report",
                                     ]
                                 )
 

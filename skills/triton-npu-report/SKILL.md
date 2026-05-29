@@ -16,13 +16,15 @@ into a structured report.
 
 ### Step 1: Read hardware environment info
 
-Read `env-info.json` at the root of the workspace to obtain:
+The invocation prompt includes a `Hardware environment information` section with:
 
 - `target_chip` — target chip series (A3 or A5)
-- `hardware.chip_name` — full chip model name
-- `hardware.cann_version` — CANN toolkit version
-- `hardware.driver_version` — Ascend driver version
-- `started_at` — optimize session start timestamp
+- `chip_name` — full chip model name
+- `cann_version` — CANN toolkit version
+- `driver_version` — Ascend driver version
+
+If the hardware information section is absent from the prompt, note "未记录" for
+the verification info section.
 
 ### Step 2: Read optimization note
 
@@ -85,7 +87,7 @@ Write the completed report to `report.md` in the workspace root.
 - If the `Key optimization points` list is missing or incomplete from the Overall
   Summary of `opt-note.md`, display "未记录" (not recorded) in the performance
   decomposition section.
-- If `env-info.json` is missing, note "未记录" for the verification info section.
+- If the hardware environment information is not provided in the prompt, note "未记录" for the verification info section.
 - Do **not** modify any existing artifacts. Only write `report.md`.
 - In the final code structure section, annotate the source code with `# -- <comment> --` inline comments that explain each optimization change, its origin round, reason, and effect. Do not just dump raw uncommented code.
 - Keep the report professional and suitable for external review.

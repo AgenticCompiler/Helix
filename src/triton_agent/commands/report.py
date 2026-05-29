@@ -14,6 +14,20 @@ from triton_agent.skills import SkillLinkManager
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
+def _build_hardware_info_text() -> str:
+    from triton_agent.hardware_info import capture_hardware_info
+
+    hardware = capture_hardware_info()
+    hw_info_lines: list[str] = []
+    if hardware.get("chip_name"):
+        hw_info_lines.append(f"- chip_name: {hardware['chip_name']}")
+    if hardware.get("cann_version"):
+        hw_info_lines.append(f"- cann_version: {hardware['cann_version']}")
+    if hardware.get("driver_version"):
+        hw_info_lines.append(f"- driver_version: {hardware['driver_version']}")
+    return "\n".join(hw_info_lines)
+
+
 def handle_report(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     workspace = Path(args.input).expanduser().resolve()
     if not workspace.is_dir():
@@ -35,8 +49,9 @@ def handle_report(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         False,
     )
     built_prompt = append_additional_user_instructions(built_prompt, user_prompt)
+    hardware_info = _build_hardware_info_text()
     # Explicitly instruct the agent to write report.md in the workspace.
-    built_prompt = _append_report_instructions(built_prompt, workspace)
+    built_prompt = _append_report_instructions(built_prompt, workspace, hardware_info)
 
     staged_skill_names, staged_skill_sources = resolve_staged_skills(
         CommandKind.REPORT,
@@ -118,14 +133,18 @@ def handle_report(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
     return result.return_code
 
 
-def _append_report_instructions(prompt: str, workspace: Path) -> str:
+def _append_report_instructions(prompt: str, workspace: Path, hardware_info: str = "") -> str:
+    hw_section = ""
+    if hardware_info:
+        hw_section = f"\nHardware environment information:\n{hardware_info}\n"
     return (
         f"{prompt}\n\n"
+        f"{hw_section}"
         f"Your working directory is the operator workspace:\n\n"
         f"  {workspace.as_posix()}\n\n"
         f"Read the local skill `triton-npu-report` from the workspace skills directory "
         f"as the primary workflow contract. Follow its steps to read the workspace "
-        f"artifacts (env-info.json, opt-note.md, opt-round-*/summary.md, operator source, "
+        f"artifacts (opt-note.md, opt-round-*/summary.md, operator source, "
         f"round-state.json, etc.) and generate report.md in this directory.\n\n"
         f"The report must be in Chinese and follow the template in the skill's references/report-format.md."
     )
@@ -136,6 +155,8 @@ def generate_workspace_report(
     agent_name: str,
     show_output: bool = False,
 ) -> tuple[bool, str]:
+    hw_info = _build_hardware_info_text()
+
     built_prompt = build_prompt(
         CommandKind.REPORT,
         workspace,
@@ -145,7 +166,7 @@ def generate_workspace_report(
         None,
         False,
     )
-    built_prompt = _append_report_instructions(built_prompt, workspace)
+    built_prompt = _append_report_instructions(built_prompt, workspace, hw_info)
 
     staged_skill_names, staged_skill_sources = resolve_staged_skills(
         CommandKind.REPORT,

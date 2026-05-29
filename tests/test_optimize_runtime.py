@@ -30,6 +30,18 @@ from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsStat
 
 
 class OptimizeRuntimeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self._report_patcher = patch(
+            "triton_agent.commands.report.generate_workspace_report",
+            return_value=(True, "ok"),
+        )
+        self._report_patcher.start()
+
+    def tearDown(self) -> None:
+        self._report_patcher.stop()
+        super().tearDown()
+
     def test_optimize_orchestration_module_replaces_runtime_module(self) -> None:
         self.assertIsNotNone(importlib.util.find_spec("triton_agent.optimize.orchestration"))
         self.assertIsNone(importlib.util.find_spec("triton_agent.optimize.runtime"))

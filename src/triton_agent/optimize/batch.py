@@ -13,7 +13,6 @@ from triton_agent.batch_utils import (
     PrefixedTextStream,
     discover_batch_workspaces,
 )
-from triton_agent.commands.report import generate_workspace_report
 from triton_agent.models import AgentResult
 from triton_agent.optimize.naming import (
     is_batch_optimize_operator_candidate,
@@ -191,6 +190,8 @@ def run_optimize_batch(
                                 file=sys.stderr,
                             )
                 if options.report:
+                    from triton_agent.commands.report import generate_workspace_report
+
                     try:
                         if options.verbose:
                             print(
