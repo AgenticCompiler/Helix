@@ -567,11 +567,33 @@ def _standalone_runtime_script_path() -> Path:
 
 
 def _standalone_runtime_support_paths() -> list[Path]:
-    script_dir = _standalone_runtime_script_path().parent
-    return [
-        script_dir / "result_payload.py",
-        script_dir / "standalone_bench_runtime.py",
-    ]
+    runtime = _load_standalone_runtime_module()
+    return list(runtime.runtime_support_paths())
+
+
+def _load_standalone_runtime_module() -> Any:
+    script_path = _standalone_runtime_script_path()
+    spec = importlib.util.spec_from_file_location("capture_ir_standalone_runtime", script_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load standalone runtime helper: {script_path}")
+    module = importlib.util.module_from_spec(spec)
+    script_dir = str(script_path.parent)
+    added_path = False
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
+        added_path = True
+    previous_module = sys.modules.get(spec.name)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        if previous_module is None:
+            sys.modules.pop(spec.name, None)
+        else:
+            sys.modules[spec.name] = previous_module
+        if added_path:
+            sys.path.remove(script_dir)
+    return module
 
 
 def _run_remote_debug_command(

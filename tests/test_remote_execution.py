@@ -421,6 +421,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
         self.assertIsNotNone(remote_run.call_args.kwargs.get("stdout"))
         copy_targets = [call.args[2].rsplit("/", 1)[-1] for call in copy_to_remote.call_args_list]
         self.assertIn("standalone_bench_runtime.py", copy_targets)
+        self.assertIn("profile_csv_parser.py", copy_targets)
         self.assertEqual(
             remote_run.call_args.args[2],
             [
@@ -493,6 +494,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                     or remote_path.endswith("/standalone_bench_runtime.py")
                     or remote_path.endswith("/bench_contract.py")
                     or remote_path.endswith("/perf_artifacts.py")
+                    or remote_path.endswith("/profile_csv_parser.py")
                 )
 
             def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
