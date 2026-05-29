@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import re
 from pathlib import Path
 from typing import Any, TextIO, cast
@@ -8,7 +8,6 @@ from typing import Any, TextIO, cast
 from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult
 from triton_agent.optimize.checks import check_baseline, check_round
-from triton_agent.optimize.round_contract import load_round_state
 from triton_agent.optimize.session_artifacts import (
     OptimizeSessionArtifactsManager,
     OptimizeSessionArtifactsState,
@@ -188,6 +187,12 @@ def _parse_supervisor_decision_from_report(report_content: str) -> str | None:
     return match.group(1)
 
 
+def _normalize_supervisor_decision_value(parsed_decision: str) -> str:
+    if parsed_decision in {"pass-stop", "pass-continue"}:
+        return GateDecision.PASS.value
+    return parsed_decision
+
+
 def _parse_supervisor_blocking_issues_from_report(report_content: str) -> tuple[str, ...]:
     match = re.search(r"^Blocking issues:\s*(.+?)\s*$", report_content, re.MULTILINE)
     if match is None:
@@ -204,6 +209,15 @@ def _iter_numeric_round_dirs(workdir: Path) -> list[Path]:
         for path in workdir.glob("opt-round-*")
         if path.is_dir() and re.match(r"opt-round-\d+$", path.name)
     ]
+
+
+@dataclass(frozen=True)
+class _SupervisedPassOutcome:
+    terminal_result: AgentResult | None
+    continuation_summary: str
+    repair_attempts: int
+    active_repair_round: str | None
+    continue_immediately: bool
 
 
 def execute_multi_invocation_optimize(
@@ -377,16 +391,20 @@ class MultiInvocationOptimizeController:
             if not round_result.succeeded:
                 return round_result
 
-            gate = self.technical_gate(current_request)
+            round_followup = self._determine_round_followup(current_request)
             latest_round_dir = _latest_round_dir(request.workdir)
             latest_round_name = latest_round_dir.name if latest_round_dir is not None else None
-            if gate.decision == GateDecision.HARD_FAIL:
+            cli_followup_summary = self._build_cli_followup_summary(
+                round_followup,
+                latest_round_name=latest_round_name,
+            )
+            if round_followup.decision == GateDecision.HARD_FAIL:
                 return AgentResult(
                     return_code=1,
                     stdout=round_result.stdout,
-                    stderr="\n".join(gate.blocking_issues),
+                    stderr="\n".join(round_followup.blocking_issues),
                 )
-            if gate.decision == GateDecision.REVISE_REQUIRED:
+            if round_followup.decision == GateDecision.REVISE_REQUIRED:
                 repair_attempts, active_repair_round = self._advance_repair_attempts(
                     repair_attempts,
                     active_repair_round,
@@ -396,104 +414,59 @@ class MultiInvocationOptimizeController:
                     return AgentResult(
                         return_code=1,
                         stdout=round_result.stdout,
-                        stderr=self._build_repair_exhausted_message(gate, repair_attempts),
+                        stderr=self._build_repair_exhausted_message(round_followup, repair_attempts),
                     )
-                current_request = replace(
+                current_request = self._request_with_continue_prompt(
                     current_request,
-                    prompt=self._build_continue_prompt(
-                        request.prompt,
-                        self._build_cli_continuation_summary(
-                            gate,
-                            latest_round_name=latest_round_name,
-                        ),
-                        round_mode=current_request.round_mode,
-                        optimize_target=current_request.optimize_target,
-                        compiler_source_path=current_request.compiler_source_path,
-                        compiler_source_commit=current_request.compiler_source_commit,
-                    ),
+                    request.prompt,
+                    cli_followup_summary,
                 )
                 continue
 
-            if request.round_mode == "supervised" and gate.decision in {
-                GateDecision.PASS_CONTINUE,
-                GateDecision.PASS_STOP,
-            }:
-                supervisor_gate = self._run_supervisor_pass(current_request, round_result)
-                if supervisor_gate.decision == GateDecision.PASS_STOP:
-                    return round_result
-                if supervisor_gate.decision == GateDecision.HARD_FAIL:
-                    return AgentResult(
-                        return_code=1,
-                        stdout=round_result.stdout,
-                        stderr="\n".join(supervisor_gate.blocking_issues),
-                    )
-                if supervisor_gate.decision in {
-                    GateDecision.REVISE_METADATA,
-                    GateDecision.REVISE_REQUIRED,
-                }:
-                    repair_attempts, active_repair_round = self._advance_repair_attempts(
-                        repair_attempts,
-                        active_repair_round,
-                        latest_round_name,
-                    )
-                    if repair_attempts > self._max_repair_attempts:
-                        return AgentResult(
-                            return_code=1,
-                            stdout=round_result.stdout,
-                            stderr=self._build_repair_exhausted_message(
-                                supervisor_gate,
-                                repair_attempts,
-                            ),
-                        )
-                if supervisor_gate.decision in {
-                    GateDecision.PASS_CONTINUE,
-                    GateDecision.REVISE_METADATA,
-                    GateDecision.REVISE_REQUIRED,
-                }:
-                    supervisor_summary = self._read_supervisor_report_summary()
-                    current_request = replace(
+            continuation_summary = cli_followup_summary
+            if request.round_mode == "supervised":
+                supervised_outcome = self._handle_supervised_pass(
+                    current_request,
+                    round_result,
+                    cli_followup_summary=cli_followup_summary,
+                    latest_round_name=latest_round_name,
+                    repair_attempts=repair_attempts,
+                    active_repair_round=active_repair_round,
+                )
+                if supervised_outcome.terminal_result is not None:
+                    return supervised_outcome.terminal_result
+                continuation_summary = supervised_outcome.continuation_summary
+                repair_attempts = supervised_outcome.repair_attempts
+                active_repair_round = supervised_outcome.active_repair_round
+                if supervised_outcome.continue_immediately:
+                    current_request = self._request_with_continue_prompt(
                         current_request,
-                        prompt=self._build_continue_prompt(
-                            request.prompt,
-                            supervisor_summary,
-                            round_mode=current_request.round_mode,
-                            optimize_target=current_request.optimize_target,
-                            compiler_source_path=current_request.compiler_source_path,
-                            compiler_source_commit=current_request.compiler_source_commit,
-                        ),
+                        request.prompt,
+                        continuation_summary,
                     )
                     continue
+            else:
+                repair_attempts = 0
+                active_repair_round = None
 
-            repair_attempts = 0
-            active_repair_round = None
-            if gate.decision == GateDecision.PASS_STOP:
-                return round_result
-
-            if gate.decision == GateDecision.PASS_CONTINUE:
-                current_request = replace(
+            if round_followup.continue_required:
+                current_request = self._request_with_continue_prompt(
                     current_request,
-                    prompt=self._build_continue_prompt(
-                        request.prompt,
-                        self._build_cli_continuation_summary(
-                            gate,
-                            latest_round_name=latest_round_name,
-                        ),
-                        round_mode=current_request.round_mode,
-                        optimize_target=current_request.optimize_target,
-                        compiler_source_path=current_request.compiler_source_path,
-                        compiler_source_commit=current_request.compiler_source_commit,
-                    ),
+                    request.prompt,
+                    continuation_summary,
                 )
                 continue
 
             return round_result
 
-    def technical_gate(self, request: AgentRequest) -> GateResult:
+    def _determine_round_followup(self, request: AgentRequest) -> GateResult:
+        """Translate a completed worker round into loop follow-up state."""
         latest_round_dir = _latest_round_dir(request.workdir)
         if latest_round_dir is None:
             return GateResult(
                 decision=GateDecision.REVISE_REQUIRED,
                 blocking_issues=("missing opt-round-* directory after round run",),
+                continue_required=False,
             )
 
         min_rounds = cast(int, request.min_rounds)
@@ -506,31 +479,38 @@ class MultiInvocationOptimizeController:
             return GateResult(
                 decision=GateDecision.HARD_FAIL,
                 blocking_issues=check_result.issues,
+                continue_required=False,
             )
         if check_result.decision == "revise-required":
             return GateResult(
                 decision=GateDecision.REVISE_REQUIRED,
                 blocking_issues=check_result.issues,
+                continue_required=False,
             )
 
-        round_state = load_round_state(latest_round_dir)
         round_count = _count_round_directories(request.workdir)
         if round_count < min_rounds:
-            return GateResult(
-                decision=GateDecision.PASS_CONTINUE,
-                blocking_issues=(
-                    f"minimum round requirement not yet satisfied: {round_count}/{min_rounds}",
-                ),
+            issues = list(check_result.issues)
+            issues.append(
+                f"minimum round requirement not yet satisfied: {round_count}/{min_rounds}"
             )
-        decision = (
-            GateDecision.PASS_STOP
-            if round_state.round_disposition == "stop"
-            else GateDecision.PASS_CONTINUE
+            return GateResult(
+                decision=GateDecision.PASS,
+                blocking_issues=tuple(issues),
+                continue_required=True,
+            )
+        return GateResult(
+            decision=GateDecision.PASS,
+            blocking_issues=check_result.issues,
+            continue_required=False,
         )
-        return GateResult(decision=decision, blocking_issues=check_result.issues)
 
     def _run_supervisor_pass(
-        self, request: AgentRequest, worker_result: AgentResult
+        self,
+        request: AgentRequest,
+        worker_result: AgentResult,
+        *,
+        cli_followup_summary: str | None = None,
     ) -> GateResult:
         del worker_result
         latest_round_dir = _latest_round_dir(request.workdir)
@@ -538,6 +518,7 @@ class MultiInvocationOptimizeController:
             return GateResult(
                 decision=GateDecision.REVISE_REQUIRED,
                 blocking_issues=("missing opt-round-* directory after worker run",),
+                continue_required=False,
             )
 
         supervisor_request = replace(
@@ -545,6 +526,7 @@ class MultiInvocationOptimizeController:
             prompt=build_optimize_supervisor_prompt(
                 request.workdir,
                 latest_round_dir=latest_round_dir,
+                cli_followup_summary=cli_followup_summary,
             ),
             skill_name="triton-npu-optimize",
             optimize_role="supervisor",
@@ -556,6 +538,7 @@ class MultiInvocationOptimizeController:
             return GateResult(
                 decision=GateDecision.HARD_FAIL,
                 blocking_issues=(supervisor_result.stdout.strip() or supervisor_result.stderr.strip() or "supervisor run failed",),
+                continue_required=False,
             )
 
         supervisor_report_path = self._artifacts_state.supervisor_report_path
@@ -563,6 +546,7 @@ class MultiInvocationOptimizeController:
             return GateResult(
                 decision=GateDecision.REVISE_METADATA,
                 blocking_issues=("supervisor report path is not configured for this optimize session",),
+                continue_required=False,
             )
         try:
             report_content = supervisor_report_path.read_text(encoding="utf-8")
@@ -570,6 +554,7 @@ class MultiInvocationOptimizeController:
             return GateResult(
                 decision=GateDecision.REVISE_METADATA,
                 blocking_issues=("failed to read supervisor report",),
+                continue_required=False,
             )
         self._snapshot_live_handoff_files()
 
@@ -578,17 +563,95 @@ class MultiInvocationOptimizeController:
             return GateResult(
                 decision=GateDecision.REVISE_METADATA,
                 blocking_issues=("missing supervisor decision line in supervisor-report.md",),
+                continue_required=False,
             )
+        normalized_decision = _normalize_supervisor_decision_value(parsed_decision)
         try:
-            decision = GateDecision(parsed_decision)
+            decision = GateDecision(normalized_decision)
         except ValueError:
             return GateResult(
                 decision=GateDecision.REVISE_METADATA,
                 blocking_issues=(f"invalid supervisor decision `{parsed_decision}` in supervisor-report.md",),
+                continue_required=False,
             )
         return GateResult(
             decision=decision,
             blocking_issues=_parse_supervisor_blocking_issues_from_report(report_content),
+            continue_required=False,
+        )
+
+    def _handle_supervised_pass(
+        self,
+        current_request: AgentRequest,
+        round_result: AgentResult,
+        *,
+        cli_followup_summary: str,
+        latest_round_name: str | None,
+        repair_attempts: int,
+        active_repair_round: str | None,
+    ) -> _SupervisedPassOutcome:
+        supervisor_gate = self._run_supervisor_pass(
+            current_request,
+            round_result,
+            cli_followup_summary=cli_followup_summary,
+        )
+        if supervisor_gate.decision == GateDecision.HARD_FAIL:
+            return _SupervisedPassOutcome(
+                terminal_result=AgentResult(
+                    return_code=1,
+                    stdout=round_result.stdout,
+                    stderr="\n".join(supervisor_gate.blocking_issues),
+                ),
+                continuation_summary=cli_followup_summary,
+                repair_attempts=repair_attempts,
+                active_repair_round=active_repair_round,
+                continue_immediately=False,
+            )
+
+        supervisor_summary = self._combine_continue_summaries(
+            cli_followup_summary,
+            self._read_supervisor_report_summary(),
+        )
+        if supervisor_gate.decision in {
+            GateDecision.REVISE_METADATA,
+            GateDecision.REVISE_REQUIRED,
+        }:
+            next_repair_attempts, next_active_repair_round = self._advance_repair_attempts(
+                repair_attempts,
+                active_repair_round,
+                latest_round_name,
+            )
+            if next_repair_attempts > self._max_repair_attempts:
+                return _SupervisedPassOutcome(
+                    terminal_result=AgentResult(
+                        return_code=1,
+                        stdout=round_result.stdout,
+                        stderr=self._build_repair_exhausted_message(
+                            supervisor_gate,
+                            next_repair_attempts,
+                        ),
+                    ),
+                    continuation_summary=supervisor_summary,
+                    repair_attempts=next_repair_attempts,
+                    active_repair_round=next_active_repair_round,
+                    continue_immediately=False,
+                )
+            # The supervisor accepted the technical facts but requires a
+            # metadata or workflow repair before the next worker round.
+            return _SupervisedPassOutcome(
+                terminal_result=None,
+                continuation_summary=supervisor_summary,
+                repair_attempts=next_repair_attempts,
+                active_repair_round=next_active_repair_round,
+                continue_immediately=True,
+            )
+
+        return _SupervisedPassOutcome(
+            terminal_result=None,
+            continuation_summary=supervisor_summary,
+            repair_attempts=0,
+            active_repair_round=None,
+            continue_immediately=False,
         )
 
     def _run_request(self, request: AgentRequest) -> AgentResult:
@@ -621,23 +684,26 @@ class MultiInvocationOptimizeController:
             return 1, latest_round_name
         return repair_attempts + 1, active_repair_round
 
-    def _build_cli_continuation_summary(
+    def _build_cli_followup_summary(
         self,
         gate_result: GateResult,
         *,
         latest_round_name: str | None,
     ) -> str:
         lines = [
-            "CLI validation from the previous round:",
+            "CLI round follow-up from the previous round:",
             f"- Decision: {gate_result.decision.value}",
         ]
         if latest_round_name is not None:
             lines.append(f"- Latest round: {latest_round_name}")
+        lines.append(
+            f"- Continue required: {'yes' if gate_result.continue_required else 'no'}"
+        )
         if gate_result.blocking_issues:
-            lines.append("- Blocking issues:")
+            lines.append("- Issues:")
             lines.extend(f"  - {issue}" for issue in gate_result.blocking_issues)
         else:
-            lines.append("- Blocking issues: none")
+            lines.append("- Issues: none")
         return "\n".join(lines)
 
     def _read_supervisor_report_summary(self) -> str:
@@ -651,6 +717,13 @@ class MultiInvocationOptimizeController:
         if not report_content:
             return "Supervisor report from the previous round:\n(empty supervisor report)"
         return f"Supervisor report from the previous round:\n{report_content}"
+
+    def _combine_continue_summaries(
+        self,
+        cli_followup_summary: str,
+        supervisor_summary: str,
+    ) -> str:
+        return f"{cli_followup_summary}\n\n{supervisor_summary}"
 
     def _build_continue_prompt(
         self,
@@ -669,6 +742,24 @@ class MultiInvocationOptimizeController:
             optimize_target=optimize_target,
             compiler_source_path=compiler_source_path,
             compiler_source_commit=compiler_source_commit,
+        )
+
+    def _request_with_continue_prompt(
+        self,
+        current_request: AgentRequest,
+        base_prompt: str,
+        summary: str,
+    ) -> AgentRequest:
+        return replace(
+            current_request,
+            prompt=self._build_continue_prompt(
+                base_prompt,
+                summary,
+                round_mode=current_request.round_mode,
+                optimize_target=current_request.optimize_target,
+                compiler_source_path=current_request.compiler_source_path,
+                compiler_source_commit=current_request.compiler_source_commit,
+            ),
         )
 
     def _build_repair_exhausted_message(

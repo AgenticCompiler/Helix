@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from kernel_continuity_check import analyze_triton_kernel_continuity
+from local_optimum_check import collect_local_optimum_warnings
 
 _BATCH_OPTIMIZE_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")
 _BATCH_OPTIMIZE_EXCLUDED_NAMES = {"__init__.py"}
@@ -382,6 +383,7 @@ def check_round(
         )
 
     semantic_issues: list[str] = []
+    baseline_perf_path: Path | None = None
     try:
         baseline = load_baseline_state(round_dir.parent)
         if round_state.comparison_target != baseline.perf_artifact:
@@ -389,6 +391,7 @@ def check_round(
                 f"comparison_target={round_state.comparison_target} "
                 f"(expected {baseline.perf_artifact})"
             )
+        baseline_perf_path = _declared_workspace_file(round_dir.parent, baseline.perf_artifact)
     except ValueError:
         semantic_issues.append("cannot validate comparison_target: baseline state is invalid")
     if round_state.effective_metric_source not in {"kernel", "total-op", "mixed"}:
@@ -433,17 +436,28 @@ def check_round(
     cleaned: list[str] = []
     if ordinary_optimize_pt_cleanup_enabled():
         cleaned = cleanup_dir_pt_files(round_dir)
+    local_optimum_warnings: tuple[str, ...] = ()
+    if baseline_perf_path is not None:
+        local_optimum_warnings = collect_local_optimum_warnings(
+            round_dir,
+            baseline_perf_path=baseline_perf_path,
+        )
     if cleaned:
         result = _build_result(
             kind="round",
             decision="pass",
             issues=(
                 *tuple(runtime_warnings),
+                *local_optimum_warnings,
                 f"cleaned up {len(cleaned)} unused pt file(s) in {round_dir.name}: {', '.join(cleaned)}",
             ),
         )
     else:
-        result = _build_result(kind="round", decision="pass", issues=tuple(runtime_warnings))
+        result = _build_result(
+            kind="round",
+            decision="pass",
+            issues=(*tuple(runtime_warnings), *local_optimum_warnings),
+        )
 
     if min_rounds is not None:
         completed = _count_round_directories(round_dir.parent)
@@ -452,10 +466,11 @@ def check_round(
                 kind="round",
                 decision="pass",
                 issues=result.issues,
-                summary=(
+                summary=_append_pass_issues_to_summary(
                     f"round check passed. "
                     f"Minimum round requirement satisfied ({completed}/{min_rounds}) — "
-                    f"the optimize session may stop after this round."
+                    f"the optimize session may stop after this round.",
+                    result.issues,
                 ),
             )
         else:
@@ -463,10 +478,11 @@ def check_round(
                 kind="round",
                 decision="pass",
                 issues=result.issues,
-                summary=(
+                summary=_append_pass_issues_to_summary(
                     f"round check passed. "
                     f"Round {completed}/{min_rounds} complete — "
-                    f"at least {min_rounds - completed} more round(s) required before stopping."
+                    f"at least {min_rounds - completed} more round(s) required before stopping.",
+                    result.issues,
                 ),
             )
 
@@ -657,7 +673,11 @@ def _build_result(
 ) -> OptimizeCheckResult:
     ok = decision == "pass"
     if summary is None:
-        summary = f"{kind} check passed" if ok else f"{kind} check requires fixes: {'; '.join(issues)}"
+        summary = (
+            _append_pass_issues_to_summary(f"{kind} check passed", issues)
+            if ok
+            else f"{kind} check requires fixes: {'; '.join(issues)}"
+        )
     return OptimizeCheckResult(
         ok=ok,
         kind=kind,
@@ -665,3 +685,9 @@ def _build_result(
         issues=issues,
         summary=summary,
     )
+
+
+def _append_pass_issues_to_summary(summary: str, issues: tuple[str, ...]) -> str:
+    if not issues:
+        return summary
+    return f"{summary} Notes: {'; '.join(issues)}"

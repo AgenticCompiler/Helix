@@ -173,6 +173,7 @@ def build_optimize_supervisor_prompt(
     *,
     latest_round_dir: Path | None = None,
     optimize_target: str = "kernel",
+    cli_followup_summary: str | None = None,
 ) -> str:
     lines = [
         "This invocation is the optimize supervisor role.",
@@ -182,6 +183,13 @@ def build_optimize_supervisor_prompt(
     ]
     if latest_round_dir is not None:
         lines.append(f"Read `{_display_path(latest_round_dir)}` before acting.")
+        if cli_followup_summary is not None:
+            lines.extend(
+                [
+                    "Read this CLI round follow-up summary before auditing the round:",
+                    cli_followup_summary,
+                ]
+            )
         lines.extend(
             [
                 "Apply only metadata repairs derived from existing facts.",
@@ -203,7 +211,9 @@ def build_optimize_supervisor_prompt(
                 ),
                 "Reject rounds that preserve only the public API shape but replace the Triton kernel path with pure PyTorch computation.",
                 "Write `.triton-agent/supervisor-report.md` with a `Decision:` line and a `Blocking issues:` line.",
+                "Use only these supervisor decisions: `pass`, `revise-metadata`, `revise-required`, or `hard-fail`.",
                 "The CLI will read that supervisor report and pass the relevant continuation context into any later worker invocation.",
+                "The CLI decides whether another round is required from the round-loop policy; do not encode stop-versus-continue in the supervisor decision.",
                 "Do not edit the operator implementation.",
                 "Do not perform open-ended optimization work.",
                 "Do not fabricate missing correctness, benchmark, profiler, or IR evidence.",
@@ -318,6 +328,11 @@ def build_optimize_continuous_prompt(
         f"After finishing each round, use the staged `triton-npu-optimize-check` skill to run "
         f"`check-round --round-dir opt-round-N --min-rounds {min_rounds}` and repair the round "
         f"until it passes. Read the summary for the exit signal."
+    )
+    lines.append(
+        "If `check-round` passes with a warning that recent baseline-relative gains are nearly flat "
+        "or may be stuck in a local optimum, review earlier rounds and consider resuming from "
+        "before that flat sequence to explore a different optimization path."
     )
     lines.extend(
         [
