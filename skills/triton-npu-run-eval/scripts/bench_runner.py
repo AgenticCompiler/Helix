@@ -1118,6 +1118,8 @@ def _run_extract_and_copy(output_dir: Path, bench_file: Path, isTimeOut: bool = 
 
     extract_script = Path(__file__).resolve().parent / "extract_profile_bin_data.py"
     cmd = [sys.executable, str(extract_script), str(bin_file)]
+    if isTimeOut:
+        cmd.append("--isTimeOut")
     run_buffered_process(cmd, str(bin_file.parent), stall_timeout_seconds=_bench_timeout())
 
     extracted_dir = bin_file.parent / "extracted_bin_data"
