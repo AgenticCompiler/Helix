@@ -1,3 +1,57 @@
+---
+id: al-sync
+---
+
+# al.sync_block_set/wait Pipeline Protocol
+
+## Summary
+
+Add explicit producer-consumer synchronization between cube and vector `al.scope` blocks using `al.sync_block_set` and `al.sync_block_wait`, covering single-buffer, ping-pong, and triple-buffer (task-ring) pipeline depths.
+
+## Use When
+
+- A kernel uses separate `al.scope(core_mode="cube")` and `al.scope(core_mode="vector")` blocks that share buffer data across the boundary.
+- Data races, hangs, or incorrect results appear between cube and vector scope handoff points.
+- The kernel needs throughput improvement by adding ping-pong buffering (`PIPE_STAGES=2`).
+- The kernel uses preload or task-ring patterns (`PIPE_STAGES >= 3`) requiring doubled sync events.
+- L0C result buffers are bound before `al.fixpipe` transfer and need synchronization with vector UB consumption.
+
+## Avoid When
+
+- The kernel does not cross-scope buffer handoff (single scope, no cube/vector split).
+- Synchronization is entirely handled by the compiler with `disable_auto_inject_block_sync=False`.
+
+## Signals
+
+### Code
+
+- `al.scope(core_mode="cube")` and `al.scope(core_mode="vector")` blocks exist but no `al.sync_block_set` or `al.sync_block_wait` calls are present.
+- `bl.alloc` buffers are written in one scope and read in the other without explicit sync.
+- `al.fixpipe` or `al.copy` is used without corresponding sync set/wait pairs.
+
+### Profile
+
+- Kernel exhibits intermittent wrong results or hangs that vary with tile size.
+- Performance is lower than expected for multi-buffer configurations, suggesting sync stalls.
+
+## Related Patterns
+
+- [al-scope](al_scope.md) — sync events are always needed between cube and vector scopes.
+- [al-copy-fractal](al_copy_fractal.md) — `al.fixpipe` and `al.copy` are the data movements that sync protects.
+- [sub-vec-id-1to2](sub_vec_id_1to2.md) — sub_vec_id lane split uses L1 subview handoff that requires sync.
+
+## What To Verify After Applying
+
+- Every `al.sync_block_set` has a matching `al.sync_block_wait` with identical `(producer, consumer, event_id, src_pipe, dst_pipe)`.
+- Producer/consumer strings are not swapped: set is called by the producer, wait is called by the consumer.
+- Pre-loop credit initialization (`cube_prefree_p_l1`, `vec_prefree_s_ub`, `vec_prefree_pv_ub`) is present for ping-pong protocols.
+- Post-loop drain is present for ping-pong protocols.
+- Event IDs are unique per (producer→consumer, buffer resource) pair within the same pipeline stage.
+- `is_mem_unique=True` is set on L0C allocations and on UB buffers that must not alias.
+- For PIPE_STAGES >= 3, each sync call is issued twice.
+
+---
+
 # Ascend affinity API: sync reference
 
 ## API

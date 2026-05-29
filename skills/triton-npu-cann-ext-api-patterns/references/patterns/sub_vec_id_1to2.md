@@ -1,4 +1,55 @@
+---
+id: sub-vec-id-1to2
+---
+
 # 1:2 `sub_vec_id` Rewrite Pattern
+
+## Summary
+
+Split vector work across the two `sub_vec_id()` lanes so each lane handles half of the chosen tile axis, while keeping cube math on full tiles with full `tl.dot` semantics, using explicit staging and synchronization for lane handoff.
+
+## Use When
+
+- A kernel mixes vector work and `tl.dot` (cube) work in a structure where vector work can be split without changing cube math.
+- The kernel still needs full-tile `tl.dot` semantics — partial-dot approximations are not acceptable.
+- Vector utilization is below what the A5 mixed vector-plus-cube structure can support.
+- The kernel is hitting UB/CBUF/register pressure that limits tile size in a vanilla implementation.
+
+## Avoid When
+
+- The kernel is purely element-wise (no `tl.dot`).
+- There is no real vector/cube handoff boundary to split.
+- The rewrite would depend on lane-0-only compute fallback (one lane does real work, the other stays idle).
+- Partial-dot approximations are used in place of authoritative full-dot math.
+
+## Signals
+
+### Code
+
+- A kernel function contains both `tl.dot` calls and element-wise vector operations in the same loop body.
+- Vector-heavy staging or epilogue work follows a full-tile cube path.
+- The kernel allocates large UB buffers or shows register pressure that prevents larger tile sizes.
+
+### Profile
+
+- Profiling shows vector-unit utilization below cube-unit utilization for mixed kernels.
+- Larger tile configurations fail during compilation due to buffer or register limits.
+
+## Related Patterns
+
+- [al-sync](al_sync.md) — `al.sync_block_set/wait` for L1 handoff between lanes and cube.
+- [al-copy-fractal](al_copy_fractal.md) — fixpipe `ROW_SPLIT` for cube→vector half-tile transfer; `bl.subview` for L1 subview handoff.
+
+## What To Verify After Applying
+
+- Lane ownership is disjoint and symmetric (each lane owns a distinct half).
+- No lane-0-only computational fallback exists.
+- Full-tile `tl.dot` semantics are preserved where required.
+- Handoff synchronization (`tl.debug_barrier()` or `al.sync_block_set/wait`) is explicit and correct.
+- Accuracy passes against the same golden reference as the vanilla baseline.
+- Before/after benchmark data is recorded with tile parameters.
+
+---
 
 ## Goal
 
@@ -251,7 +302,7 @@ Right: `b_a_full = tl.dot(b_k_full, tl.trans(b_k_full))`, then split rows with f
 - [ ] lane ownership is disjoint and symmetric
 - [ ] no lane-0-only computational fallback
 - [ ] full-tile `tl.dot` semantics preserved where required
-- [ ] vanilla `make_block_ptr` regions remain `make_block_ptr` in `_sub_vec`
+- [ ] vanilla `make_block_ptr` regions remain `make_block_ptr` in `sub_vec`
 - [ ] all split stores use disjoint half-tile ownership (no overlap races)
 - [ ] hidden vector ops (`+=`, `tl.trans`) are decomposed where needed
 - [ ] handoff synchronization is explicit and correct

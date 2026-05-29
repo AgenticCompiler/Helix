@@ -1,3 +1,56 @@
+---
+id: al-copy-fractal
+---
+
+# NZ Fractal Layout and Buffer Copy
+
+## Summary
+
+Handle the Ascend NZ (fractal) tensor layout for cube operands, allocate UB/L1/L0C buffers with `bl.alloc`, transfer data between cube and vector using `al.fixpipe` (L0C→UB) and `al.copy` (UB→L1), and choose the correct NZ conversion strategy for fp16 vs fp32.
+
+## Use When
+
+- A kernel uses `tl.dot` and the result must be consumed by vector code (requires NZ→ND conversion via fixpipe).
+- Softmax output (the P matrix) needs to move from UB to L1 for a subsequent cube PV matmul via `al.copy`.
+- The kernel uses `sub_vec_id` lane split with L1 subview handoff.
+- Cube operands or intermediates are in NZ format and need correct allocation sizing.
+
+## Avoid When
+
+- The kernel is entirely element-wise (no `tl.dot`, no cube involvement).
+- The kernel uses only global memory (HBM) without UB/L1 staging.
+
+## Signals
+
+### Code
+
+- `tl.dot` appears but no `al.fixpipe` follows to move the NZ result to a UB buffer for vector consumption.
+- Softmax output is written directly to global memory instead of being staged to L1 for a cube matmul.
+- `bl.alloc` is called without specifying the correct address space (`UB`, `L1`, or `L0C`).
+- NZ-shaped tensor allocations use incorrect fractal sizing (e.g., `N0=16` for fp32 or `N0=8` for fp16).
+
+### Profile
+
+- Kernel performance is limited by unnecessary global-memory round-trips between cube and vector work.
+- Buffer-related compiler errors mention `AnalyzeDataLayout` or incorrect NZ shape.
+
+## Related Patterns
+
+- [al-scope](al_scope.md) — `al.fixpipe` and `al.copy` bridge cube and vector scopes.
+- [al-sync](al_sync.md) — every `al.fixpipe` or `al.copy` transfer needs matching sync events.
+- [al-scope-args](al_scope_args.md) — fp32 NZ conversion inside outlined VF scopes requires the ND staging workaround.
+- [sub-vec-id-1to2](sub_vec_id_1to2.md) — `bl.subview` with `sub_vec_id` for lane-split L1 handoff.
+
+## What To Verify After Applying
+
+- Fractal `N0` and `M0` match the dtype (`N0=8` for fp32, `N0=16` for fp16/bf16; `M0=16` always).
+- `al.fixpipe` destination is a UB buffer with correct ND shape.
+- `al.copy` source is a UB buffer and destination is an L1 (sub)buffer.
+- `is_mem_unique=True` is set on all L0C allocations and on UB buffers that must not alias.
+- For fp32 within outlined VF scopes: ND staging (`p_temp`) is used instead of direct NZ `insert_slice`.
+
+---
+
 # Ascend affinity API: copy and fractal format reference
 
 ## NZ (fractal NZ) layout

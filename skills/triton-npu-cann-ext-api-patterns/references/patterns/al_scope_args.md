@@ -1,3 +1,52 @@
+---
+id: al-scope-args
+---
+
+# Outlined VF Scope Argument Workarounds
+
+## Summary
+
+Work around the Bishengir `AnalyzeDataLayout` compiler assertion that triggers when an NZ-shaped fp32 tensor (`FRACTAL_N0=8`) is used as a block argument inside an outlined `al.scope(vector_mode="simd", outline=True)`.
+
+## Use When
+
+- An outlined VF scope triggers a compiler crash mentioning `AnalyzeDataLayout` or `collapse_shape` during compilation.
+- The kernel passes an NZ-shaped fp32 tensor (e.g., the softmax P matrix in NZ format) into an `al.scope(vector_mode="simd", outline=True)` block.
+- A single-loop (one-pass) softmax inside an outlined scope fails to compile for fp32.
+
+## Avoid When
+
+- The kernel uses fp16 or bf16 exclusively (N0=16 is safe; the assertion does not trigger).
+- The vector scope is **not** outlined (i.e., `outline=False` or default — block-arg restrictions do not apply).
+- The kernel does not use VF scopes at all.
+
+## Signals
+
+### Code
+
+- A tensor with NZ shape `[N1, M, N0]` where `N0=8` is passed into `al.scope(vector_mode="simd", outline=True)`.
+- `reshape` on a block-arg tensor inside a VF scope produces a dimension reduction (collapse).
+- The pattern `p_loop.reshape(N1, 1, 1, N0)` or similar collapse on an fp32 block arg appears inside an outlined scope.
+
+### Profile
+
+- Bishengir compiler exits with an `AnalyzeDataLayout` error during kernel compilation.
+- The error traces to a reshape or insert_slice operation on an NZ-shaped fp32 block argument.
+
+## Related Patterns
+
+- [al-scope](al_scope.md) — VF scopes are the context where this assertion occurs.
+- [al-copy-fractal](al_copy_fractal.md) — NZ layout conversion strategies for fp16 vs fp32.
+
+## What To Verify After Applying
+
+- The ND staging buffer (`p_temp`) has correct shape `[BLOCK_M//2, BLOCK_N]` and is allocated before the scope.
+- NZ conversion (`tl.permute(reshape(...), (2,0,1,3))`) happens **outside** the outlined scope.
+- For BLOCK_N=128, the manual unroll splits into two 64-element halves before NZ conversion.
+- The two-pass softmax structure is used instead of single-pass for fp32.
+
+---
+
 # Ascend affinity API: scope arguments and workarounds
 
 ## The problem

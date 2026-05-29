@@ -1,3 +1,50 @@
+---
+id: al-scope
+---
+
+# al.scope Cube/Vector Scope Split
+
+## Summary
+
+Split a CV-fusion kernel body into `core_mode="cube"` and `core_mode="vector"` `al.scope` blocks, and dispatch softmax or element-wise work to the VF unit via `al.scope(vector_mode="simd", outline=True)`.
+
+## Use When
+
+- A kernel mixes `tl.dot` (cube) operations with element-wise math, softmax, or other vector work in the same loop body.
+- The vector softmax or element-wise computation could benefit from dedicated VF unit dispatch.
+- You need explicit control over cube/vector synchronization boundaries (`disable_auto_inject_block_sync`).
+- You are adding pipeline stages (`PIPE_STAGES > 1`) via `al.parallel` and need cube/vector scope separation.
+
+## Avoid When
+
+- The kernel is pure cube work without vector operations.
+- The kernel is pure vector work without `tl.dot`.
+- No cross-scope buffer handoff is needed (single execution path without staged data movement).
+
+## Signals
+
+### Code
+
+- A kernel function mixes `tl.dot` calls and element-wise operations (exp, max, multiply-add) in the same loop without any scope boundary.
+- Buffer allocations (`bl.alloc`) appear without corresponding `al.scope` blocks.
+- The kernel uses `tl.load` / `tl.store` for cube-related data without scope separation.
+
+## Related Patterns
+
+- [al-sync](al_sync.md) — every `al.scope` boundary requires explicit sync events for cross-scope data handoff.
+- [al-scope-args](al_scope_args.md) — fp32 NZ tensors passed as block arguments into outlined VF scopes trigger a compiler assertion.
+- [al-copy-fractal](al_copy_fractal.md) — NZ layout conversion and buffer copy between scopes.
+
+## What To Verify After Applying
+
+- Both cube and vector scopes cover the same iteration space.
+- Buffer allocations (`bl.alloc`) are hoisted before both scopes so they are visible in both.
+- `tl.full` / `tl.zeros` initial values for vector-side state (`m_i`, `l_i`, `acc`) are placed in the vector scope.
+- `disable_auto_inject_block_sync=True` is set when manual `al.sync_block_set/wait` is used.
+- Ping/pong alpha scopes use `no_inline=True` with distinct variable names.
+
+---
+
 # Ascend affinity API: `al.scope` reference
 
 ## Imports
