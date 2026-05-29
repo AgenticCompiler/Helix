@@ -75,9 +75,19 @@ class ArchiveManager:
         """Copy final multi-invocation outputs into the per-run archive directory."""
         warnings: list[str] = []
         archive_dir = state.run_archive_dir
+        # Runtime files created during checked/supervised phases (show-output,
+        # otel traces, tool-traces) are expected to already exist in the run
+        # directory. Only treat truly unexpected children as a stale archive.
+        _EXPECTED_NAMES = frozenset({
+            "agent-sessions.jsonl", "show-output.log", "tool-traces.jsonl",
+            "otel", "history", "shared-guidance.md", "supervisor-report.md",
+        })
         if archive_dir.exists():
             unexpected_paths = [
-                path for path in archive_dir.iterdir() if path != state.agent_sessions_path
+                path for path in archive_dir.iterdir()
+                if path != state.agent_sessions_path
+                and path.name not in _EXPECTED_NAMES
+                and not path.name.startswith("show-output-")
             ]
             if unexpected_paths:
                 warnings.append(f"Refusing to overwrite existing optimize log archive at {archive_dir}")
