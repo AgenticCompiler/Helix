@@ -14,6 +14,83 @@ Read this index first. Then read only the one or two most relevant detailed patt
 
 ## Pattern Selection Table
 
+### `al-scope`
+
+- Use when:
+  - the kernel needs to split work into cube and vector `al.scope` blocks
+  - the kernel uses (or should use) `al.scope(vector_mode="simd", outline=True)` for VF dispatch
+  - you need to understand `al.parallel`, `no_inline`, or kernel launch flags
+- Signals:
+  - mixed cube+vector kernel without explicit scope boundaries
+  - vector softmax or element-wise math that could benefit from VF dispatch
+  - need for explicit sync with `disable_auto_inject_block_sync`
+- Expected benefit:
+  - correct cube/vector split and VF scope usage
+  - ability to add pipeline stages via `al.parallel`
+- Main risk:
+  - missing `no_inline` on ping/pong alpha scopes causes live-range conflicts
+  - forgetting `disable_auto_inject_block_sync` when using manual sync
+- Read next:
+  - [al_scope.md](al_scope.md)
+
+### `al-sync`
+
+- Use when:
+  - the kernel uses (or should use) `al.sync_block_set` / `al.sync_block_wait` for cube-vector handoff
+  - you need to add ping-pong or triple-buffer pipeline stages
+  - L0C binding and fixpipe chain sync is needed
+- Signals:
+  - data races or deadlocks between cube and vector scopes
+  - single-buffer kernel that needs throughput improvement via ping-pong
+  - preload kernel with PIPE_STAGES > 2
+- Expected benefit:
+  - correct and complete sync protocol for any pipeline depth
+  - elimination of data races and deadlocks
+- Main risk:
+  - swapped producer/consumer strings in set/wait
+  - omitted pre-loop credit initialization
+  - duplicate event IDs for the same pipeline stage
+- Read next:
+  - [al_sync.md](al_sync.md)
+
+### `al-copy-fractal`
+
+- Use when:
+  - the kernel works with NZ (fractal) format tensors on Ascend
+  - you need to use `al.fixpipe` (cube→UB), `al.copy` (UB→L1), or `bl.subview`
+  - NZ layout conversion strategy needs to be chosen (fp16 vs fp32)
+- Signals:
+  - `tl.dot` output consumed by vector code (needs fixpipe)
+  - softmax P matrix needs to move from UB to L1 for cube PV matmul
+  - `sub_vec_id` lane split with L1 subview handoff
+- Expected benefit:
+  - correct NZ allocation, conversion, and transfer
+  - proper handling of fp32 NZ restrictions
+- Main risk:
+  - fp32 NZ reshape inside outlined VF scope triggers compiler assertion
+  - incorrect fractal sizing (N0=8 vs N0=16)
+  - missing `is_mem_unique=True` on L0C buffers
+- Read next:
+  - [al_copy_fractal.md](al_copy_fractal.md)
+
+### `al-scope-args`
+
+- Use when:
+  - an outlined VF scope (`al.scope(vector_mode="simd", outline=True)`) triggers a compiler assertion
+  - the assertion message mentions `AnalyzeDataLayout` or `collapse_shape`
+  - fp32 NZ-shaped tensors are passed into an outlined scope
+- Signals:
+  - Bishengir compiler crash during compilation of a kernel using outlined VF scopes
+  - shape mismatch errors that trace to NZ reshape inside a VF scope
+- Expected benefit:
+  - understanding of what triggers the assertion
+  - correct workaround (ND staging or two-scope structure)
+- Main risk:
+  - attempting single-pass softmax with fp32 inside an outlined scope
+  - using `reshape` that generates `collapse_shape` on a block arg
+- Read next:
+  - [al_scope_args.md](al_scope_args.md)
+
 ### `sub-vec-id-1to2`
 
 - Use when:

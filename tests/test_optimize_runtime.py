@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, List, Optional, cast
 from unittest.mock import patch
 
@@ -842,7 +843,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         self.supervisor_calls += 1
                         self_outer._write_supervisor_handoff(
                             guidance_state,
-                            decision="pass-stop",
+                            decision="pass",
                             latest_round="opt-round-1",
                         )
                     session_id = (
@@ -896,6 +897,89 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     ("supervisor", "119da9c2-dfcb-7c71-a2f9-7a90bab2e0f5", "codex"),
                 ],
             )
+
+    def test_run_optimize_request_supervised_loop_keeps_running_until_min_rounds_are_satisfied(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            self._write_baseline(workdir)
+
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=operator,
+                operator_path=operator,
+                output_path=workdir / "opt_kernel.py",
+                test_mode="differential",
+                bench_mode="standalone",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-optimize",
+                prompt="Optimize this operator",
+                workdir=workdir,
+                min_rounds=2,
+                round_mode="supervised",
+                optimize_role="worker",
+            )
+
+            class FakeRunner:
+                def __init__(self) -> None:
+                    self.requests: list[AgentRequest] = []
+                    self.worker_calls = 0
+
+                def run(
+                    self,
+                    request: AgentRequest,
+                    stdout: Optional[object] = None,
+                    stderr: Optional[object] = None,
+                ) -> AgentResult:
+                    del stdout, stderr
+                    self.requests.append(request)
+                    if request.optimize_role == "worker":
+                        self.worker_calls += 1
+                        if self.worker_calls == 1:
+                            self_outer._write_round(
+                                workdir,
+                                "opt-round-1",
+                                parent_round="round-0",
+                                round_disposition="stop",
+                            )
+                            return AgentResult(return_code=0, stdout="worker ok", stderr="")
+                        return AgentResult(return_code=1, stdout="", stderr="stop after second prompt for test")
+                    self_outer._write_supervisor_handoff(
+                        guidance_state,
+                        decision="pass",
+                        latest_round="opt-round-1",
+                    )
+                    return AgentResult(return_code=0, stdout="supervisor ok", stderr="")
+
+            self_outer = self
+            runner = FakeRunner()
+            guidance_state = self._build_guidance_state(workdir)
+
+            with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
+                with patch(
+                    "triton_agent.optimize.orchestration.OptimizeSessionArtifactsManager.prepare_supervised_session",
+                    return_value=guidance_state,
+                ):
+                    result = run_optimize_request(request)
+
+            self.assertEqual(result.return_code, 1)
+            self.assertEqual(len(runner.requests), 3)
+            self.assertEqual(runner.requests[0].optimize_role, "worker")
+            self.assertEqual(runner.requests[1].optimize_role, "supervisor")
+            self.assertEqual(runner.requests[2].optimize_role, "worker")
+            self.assertIn("CLI round follow-up from the previous round:", runner.requests[2].prompt)
+            self.assertIn("- Decision: pass", runner.requests[2].prompt)
+            self.assertIn("- Continue required: yes", runner.requests[2].prompt)
+            self.assertIn("minimum round requirement not yet satisfied: 1/2", runner.requests[2].prompt)
+            self.assertIn("Supervisor report from the previous round:", runner.requests[2].prompt)
+            self.assertIn("Decision: pass", runner.requests[2].prompt)
 
     def test_multi_invocation_controller_baseline_phase_preserves_request_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2054,7 +2138,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         assert request.supervisor_report_path is not None
                         request.supervisor_report_path.write_text(
                             "# Optimize Supervisor Report\n\n"
-                            "Decision: pass-stop\n"
+                            "Decision: pass\n"
                             "Blocking issues: none\n"
                             "Latest round: opt-round-1\n",
                             encoding="utf-8",
@@ -2131,7 +2215,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         assert request.supervisor_report_path is not None
                         request.supervisor_report_path.write_text(
                             "# Optimize Supervisor Report\n\n"
-                            "Decision: pass-stop\n"
+                            "Decision: pass\n"
                             "Blocking issues: none\n"
                             "Latest round: opt-round-1\n",
                             encoding="utf-8",
@@ -2175,7 +2259,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 skill_name="triton-npu-optimize",
                 prompt="Optimize this operator",
                 workdir=workdir,
-                min_rounds=1,
+                min_rounds=2,
                 round_mode="supervised",
                 optimize_role="worker",
             )
@@ -2223,13 +2307,31 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     "triton_agent.optimize.orchestration.OptimizeSessionArtifactsManager.prepare_supervised_session",
                     return_value=guidance_state,
                 ):
-                    result = run_optimize_request(request)
+                    with patch(
+                        "triton_agent.optimize.execution.check_round",
+                        return_value=SimpleNamespace(
+                            ok=True,
+                            kind="round",
+                            decision="pass",
+                            issues=(
+                                "recent rounds show only marginal baseline-relative geomean speedup gains; optimization may be stagnating in the current direction and may be stuck in a local optimum.",
+                            ),
+                            summary="round check passed",
+                        ),
+                    ):
+                        result = run_optimize_request(request)
 
             self.assertEqual(result.return_code, 1)
             self.assertEqual(len(runner.requests), 3)
             self.assertEqual(runner.requests[0].optimize_role, "worker")
             self.assertEqual(runner.requests[1].optimize_role, "supervisor")
             self.assertEqual(runner.requests[2].optimize_role, "worker")
+            self.assertIn("CLI round follow-up from the previous round:", runner.requests[1].prompt)
+            self.assertIn("minimum round requirement not yet satisfied: 1/2", runner.requests[1].prompt)
+            self.assertIn("may be stuck in a local optimum", runner.requests[1].prompt)
+            self.assertIn("CLI round follow-up from the previous round:", runner.requests[2].prompt)
+            self.assertIn("minimum round requirement not yet satisfied: 1/2", runner.requests[2].prompt)
+            self.assertIn("may be stuck in a local optimum", runner.requests[2].prompt)
             self.assertIn("Supervisor report from the previous round:", runner.requests[2].prompt)
             self.assertIn("Decision: revise-metadata", runner.requests[2].prompt)
             self.assertIn("round summary is missing the compare-perf conclusion", runner.requests[2].prompt)
@@ -2265,7 +2367,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     "Focus on occupancy.\n"
                 ),
                 workdir=workdir,
-                min_rounds=1,
+                min_rounds=2,
                 round_mode="checked",
                 optimize_role="worker",
             )
@@ -2316,10 +2418,95 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIn("Remote execution target: alice@example.com:2200", runner.requests[1].prompt)
             self.assertIn("Focus on occupancy.", runner.requests[1].prompt)
             self.assertIn(
-                "CLI validation from the previous round:",
+                "CLI round follow-up from the previous round:",
                 runner.requests[1].prompt,
             )
-            self.assertIn("- Decision: pass-continue", runner.requests[1].prompt)
+            self.assertIn("- Decision: pass", runner.requests[1].prompt)
+            self.assertIn("- Continue required: yes", runner.requests[1].prompt)
+
+    def test_multi_invocation_controller_checked_continue_carries_local_optimum_warning(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            self._write_baseline(workdir)
+            guidance_state = self._build_checked_guidance_state(workdir)
+
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=operator,
+                operator_path=operator,
+                output_path=workdir / "opt_kernel.py",
+                test_mode="differential",
+                bench_mode="standalone",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-optimize",
+                prompt="Optimize this operator",
+                workdir=workdir,
+                min_rounds=2,
+                round_mode="checked",
+                optimize_role="worker",
+            )
+
+            class FakeRunner:
+                def __init__(self) -> None:
+                    self.requests: list[AgentRequest] = []
+                    self.worker_calls = 0
+
+                def run(
+                    self,
+                    request: AgentRequest,
+                    stdout: Optional[object] = None,
+                    stderr: Optional[object] = None,
+                ) -> AgentResult:
+                    del stdout, stderr
+                    self.requests.append(request)
+                    self.worker_calls += 1
+                    if self.worker_calls == 1:
+                        self_outer._write_round(
+                            workdir,
+                            "opt-round-1",
+                            parent_round="round-0",
+                            round_disposition="continue",
+                        )
+                        return AgentResult(return_code=0, stdout="worker ok", stderr="")
+                    return AgentResult(return_code=1, stdout="", stderr="stop after second prompt for test")
+
+            self_outer = self
+            runner = FakeRunner()
+            controller = execution_module.MultiInvocationOptimizeController(
+                cast(Any, runner),
+                execution_module.OptimizeSessionArtifactsManager(),
+                guidance_state,
+                verbose_stream=StringIO(),
+            )
+
+            with patch(
+                "triton_agent.optimize.execution.check_round",
+                return_value=SimpleNamespace(
+                    ok=True,
+                    kind="round",
+                    decision="pass",
+                    issues=(
+                        "recent rounds show only marginal baseline-relative geomean speedup gains; optimization may be stagnating in the current direction and may be stuck in a local optimum.",
+                    ),
+                    summary="round check passed",
+                ),
+            ):
+                result = controller.run_round_loop(request)
+
+            self.assertEqual(result.return_code, 1)
+            self.assertEqual(len(runner.requests), 2)
+            self.assertIn("CLI round follow-up from the previous round:", runner.requests[1].prompt)
+            self.assertIn("- Decision: pass", runner.requests[1].prompt)
+            self.assertIn("- Continue required: yes", runner.requests[1].prompt)
+            self.assertIn("may be stuck in a local optimum", runner.requests[1].prompt)
 
     def test_run_optimize_request_bounds_repair_loop_when_round_never_passes_gate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2582,7 +2769,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 AgentResult(return_code=0, stdout="worker ok", stderr=""),
             )
 
-            self.assertEqual(gate_result.decision, GateDecision.PASS_STOP)
+            self.assertEqual(gate_result.decision, GateDecision.PASS)
             assert guidance_state.supervisor_history_dir is not None
             report_snapshot = guidance_state.supervisor_history_dir / "round-001-supervisor-report.md"
             self.assertTrue(report_snapshot.exists())

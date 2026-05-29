@@ -70,7 +70,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
                 self, request: AgentRequest, result: AgentResult
             ) -> GateResult:
                 del request, result
-                return GateResult(decision=GateDecision.PASS_STOP, blocking_issues=())
+                return GateResult(decision=GateDecision.PASS, blocking_issues=())
 
         with self.assertRaisesRegex(TypeError, "runner does not implement optimize recovery"):
             OptimizeRunLoop().run(LegacyLoopRunner(), request)
