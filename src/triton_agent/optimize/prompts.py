@@ -17,6 +17,15 @@ def strict_learned_lessons_lines() -> list[str]:
     ]
 
 
+def continuous_round_serialization_lines() -> list[str]:
+    return [
+        "Complete optimize rounds strictly one at a time in sequence.",
+        "Only one optimize round may be active at a time.",
+        "Do not use subagents to implement or advance multiple optimize rounds in parallel.",
+        "Subagents may help with supporting analysis, but they must not create, repair, or progress a different optimize round while the current round is still in flight.",
+    ]
+
+
 def layered_analysis_lines(*, round_scope: str) -> list[str]:
     return [
         f"Choose the analysis level for {round_scope} before editing code.",
@@ -267,6 +276,7 @@ def build_optimize_resume_prompt(
         "Reuse the established `baseline/` directory instead of redefining the canonical baseline.",
         "Keep the optimize workflow hypothesis-driven: explain why each next change may help and what evidence supports it.",
         "Use `compare-perf` output as the only source for performance deltas and speedup metrics.",
+        *(continuous_round_serialization_lines() if round_mode == "continuous" else []),
         *(
             [
                 "Use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and operator-level pattern references.",
@@ -317,6 +327,7 @@ def build_optimize_continuous_prompt(
     elif baseline_ready is False:
         lines.append("Repair or establish `baseline/` before opening round 1.")
     lines.append("Treat this as a long-running task.")
+    lines.extend(continuous_round_serialization_lines())
     lines.extend(
         _shared_optimize_prompt_lines(
             target_chip=target_chip,
