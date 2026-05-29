@@ -349,6 +349,8 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("TRITON_AGENT_CODE_AGENT_MAX_RETRIES", help_text)
         self.assertIn("TRITON_AGENT_BENCH_OUTPUT_DIR", help_text)
         self.assertIn("TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES", help_text)
+        self.assertIn("TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW", help_text)
+        self.assertIn("TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN", help_text)
         self.assertIn("TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR", help_text)
         self.assertIn("TRITON_AGENT_STALL_TIMEOUT_SECONDS", help_text)
         self.assertIn("TRITON_AGENT_SSH_TIMEOUT_SECONDS", help_text)
@@ -4197,6 +4199,21 @@ class PromptTests(unittest.TestCase):
             prompt,
         )
 
+    def test_build_optimize_continuous_prompt_mentions_local_optimum_followup(self) -> None:
+        prompt = build_optimize_continuous_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+        )
+
+        self.assertIn("If `check-round` passes with a warning", prompt)
+        self.assertIn("may be stuck in a local optimum", prompt)
+        self.assertIn(
+            "review earlier rounds and consider resuming from before that flat sequence",
+            prompt,
+        )
+
     def test_build_optimize_supervisor_prompt_mentions_audit_role(self) -> None:
         prompt = build_optimize_supervisor_prompt(
             Path("/tmp"),
@@ -4225,6 +4242,23 @@ class PromptTests(unittest.TestCase):
         self.assertIn("whole-operator restructuring", prompt)
         self.assertIn("total-op conclusion", prompt)
         self.assertIn("pure PyTorch computation", prompt)
+
+    def test_build_optimize_supervisor_prompt_includes_cli_followup_summary_when_provided(self) -> None:
+        prompt = build_optimize_supervisor_prompt(
+            Path("/tmp"),
+            latest_round_dir=Path("/tmp/opt-round-3"),
+            cli_followup_summary=(
+                "CLI round follow-up from the previous round:\n"
+                "- Decision: pass\n"
+                "- Continue required: yes\n"
+                "- Issues: none"
+            ),
+        )
+
+        self.assertIn("Read this CLI round follow-up summary before auditing the round:", prompt)
+        self.assertIn("CLI round follow-up from the previous round:", prompt)
+        self.assertIn("- Decision: pass", prompt)
+        self.assertIn("- Continue required: yes", prompt)
 
     def test_build_optimize_baseline_prompt_uses_explicit_context_parameters(self) -> None:
         prompt = build_optimize_baseline_prompt(

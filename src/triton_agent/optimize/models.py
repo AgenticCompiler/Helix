@@ -86,8 +86,7 @@ class OptimizeStatusWorkspace:
 
 
 class GateDecision(str, Enum):
-    PASS_CONTINUE = "pass-continue"
-    PASS_STOP = "pass-stop"
+    PASS = "pass"
     REVISE_METADATA = "revise-metadata"
     REVISE_REQUIRED = "revise-required"
     HARD_FAIL = "hard-fail"
@@ -97,6 +96,7 @@ class GateDecision(str, Enum):
 class GateResult:
     decision: GateDecision
     blocking_issues: tuple[str, ...]
+    continue_required: bool = False
     auto_repairs_applied: tuple[str, ...] = ()
     next_parent_round: str | None = None
     next_hypothesis: str | None = None
