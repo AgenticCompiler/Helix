@@ -8,7 +8,7 @@ from triton_agent.backends.factory import create_runner
 from triton_agent.generation.models import GenerationOptions
 from triton_agent.generation.outputs import resolve_generation_output_path
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
-from triton_agent.otel_trace import build_tool_trace_env, trace_path_from_request, write_tool_trace_summary
+from triton_agent.otel_trace import build_tool_trace_env, new_trace_run_id, trace_path_from_request, write_tool_trace_summary
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
 from triton_agent.resources import skills_root
 from triton_agent.skill_staging import resolve_staged_skills
@@ -48,8 +48,9 @@ def build_generation_request(
         options.prompt,
     )
     extra_env = None
+    run_id = new_trace_run_id(prefix="generate")
     if options.log_tools:
-        extra_env, _trace_path = build_tool_trace_env(None, workdir=workdir)
+        extra_env, _trace_path, _ = build_tool_trace_env(None, workdir=workdir, run_id=run_id)
 
     return AgentRequest(
         command_kind=command_kind,
@@ -67,6 +68,7 @@ def build_generation_request(
         prompt=prompt,
         workdir=workdir,
         extra_env=extra_env,
+        run_id=run_id,
         min_rounds=options.min_rounds,
         continue_optimize=options.continue_optimize,
         no_agent_session=False,

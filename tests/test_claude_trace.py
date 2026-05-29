@@ -38,12 +38,7 @@ class TestClaudeJsonLineParser(unittest.TestCase):
         return tmpdir, trace_path
 
     def _make_parser(self, trace_path: Path, run_id: str = "test-run-id", role: str = "worker") -> ClaudeJsonLineParser:
-        extra_env = {
-            "TRITON_AGENT_OTEL_RUN_ID": run_id,
-            "TRITON_AGENT_OTEL_ROLE": role,
-            "TRITON_AGENT_WORKSPACE_ROOT": str(trace_path.parent.parent),
-        }
-        return ClaudeJsonLineParser(trace_path, extra_env)
+        return ClaudeJsonLineParser(trace_path, run_id=run_id, role=role, workspace_root=str(trace_path.parent.parent))
 
     def test_non_json_line_passed_through(self) -> None:
         _, trace_path = self._make_trace_path()

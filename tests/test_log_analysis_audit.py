@@ -13,14 +13,15 @@ class LogAnalysisAuditTests(unittest.TestCase):
     def test_build_summary_detects_redundant_reads_and_msprof_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            trace_path = workdir / "triton-agent-logs" / "otel" / "run-001" / "trace.jsonl"
-            show_output_path = workdir / "triton-agent-logs" / "optimize.show-output.log"
+            trace_path = workdir / "triton-agent-logs" / "run-001" / "otel" / "trace.jsonl"
+            show_output_dir = workdir / "triton-agent-logs" / "run-001"
+            show_output_path = show_output_dir / "show-output.log"
             agent_sessions_path = (
-                workdir / "triton-agent-logs" / "triton-agent" / "run-001" / "agent-sessions.jsonl"
+                workdir / "triton-agent-logs" / "run-001" / "agent-sessions.jsonl"
             )
             show_output_path.parent.mkdir(parents=True)
             show_output_path.write_text("output\n", encoding="utf-8")
-            agent_sessions_path.parent.mkdir(parents=True)
+            agent_sessions_path.parent.mkdir(parents=True, exist_ok=True)
             agent_sessions_path.write_text(
                 json.dumps({"role": "worker", "session_id": "unknown", "agent": "codex"}) + "\n",
                 encoding="utf-8",
@@ -74,8 +75,9 @@ class LogAnalysisAuditTests(unittest.TestCase):
             summary = build_summary(
                 events,
                 workdir=workdir,
+                run_id="run-001",
                 trace_path=trace_path,
-                show_output_path=show_output_path,
+                show_output_dir=show_output_dir,
                 agent_sessions_path=agent_sessions_path,
             )
             audit = render_audit_markdown(summary)
@@ -105,18 +107,19 @@ class LogAnalysisAuditTests(unittest.TestCase):
     def test_build_summary_reports_round_artifact_evidence_gaps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            trace_path = workdir / "triton-agent-logs" / "otel" / "run-001" / "trace.jsonl"
-            show_output_path = workdir / "triton-agent-logs" / "optimize.show-output.log"
+            trace_path = workdir / "triton-agent-logs" / "run-001" / "otel" / "trace.jsonl"
+            show_output_dir = workdir / "triton-agent-logs" / "run-001"
             agent_sessions_path = (
-                workdir / "triton-agent-logs" / "triton-agent" / "run-001" / "agent-sessions.jsonl"
+                workdir / "triton-agent-logs" / "run-001" / "agent-sessions.jsonl"
             )
             (workdir / "opt-round-1").mkdir()
 
             summary = build_summary(
                 [],
                 workdir=workdir,
+                run_id="run-001",
                 trace_path=trace_path,
-                show_output_path=show_output_path,
+                show_output_dir=show_output_dir,
                 agent_sessions_path=agent_sessions_path,
             )
 

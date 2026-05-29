@@ -87,6 +87,8 @@ class AgentRequest:
     compiler_source_commit: Optional[str] = None
     enable_agent_hooks: bool = False
     log_tools: bool = False
+    show_output_label: str = ""
+    run_id: str = ""
 
     def with_prompt(self, prompt: str) -> "AgentRequest":
         return replace(self, prompt=prompt)

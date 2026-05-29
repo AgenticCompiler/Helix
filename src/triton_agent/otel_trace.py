@@ -23,8 +23,9 @@ def utc_timestamp() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def new_trace_run_id() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+def new_trace_run_id(prefix: str = "") -> str:
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+    return f"{prefix}-{ts}" if prefix else ts
 
 
 def append_trace_event(trace_path: Path | str | None, event: Mapping[str, Any]) -> None:
@@ -47,15 +48,11 @@ def trace_path_from_request(request: AgentRequest) -> Path | None:
     return Path(raw_path)
 
 
-def tool_trace_path(workdir: Path, run_id: str) -> Path:
-    return workdir / "triton-agent-logs" / "tool-traces" / run_id / "trace.jsonl"
+def tool_trace_path(run_dir: Path) -> Path:
+    return run_dir / "tool-traces.jsonl"
 
 
 def trace_role_from_request(request: AgentRequest) -> str:
-    if request.extra_env is not None:
-        role = request.extra_env.get(TRACE_ROLE_ENV)
-        if role:
-            return role
     return request.optimize_role or "worker"
 
 
@@ -81,9 +78,11 @@ def build_tool_trace_env(
     workdir: Path,
     role: str = "worker",
     run_id: str | None = None,
-) -> tuple[dict[str, str], Path]:
-    resolved_run_id = run_id or new_trace_run_id()
-    trace_path = tool_trace_path(workdir, resolved_run_id)
+    run_id_prefix: str = "",
+) -> tuple[dict[str, str], Path, str]:
+    resolved_run_id = run_id or new_trace_run_id(prefix=run_id_prefix)
+    run_dir = workdir / "triton-agent-logs" / resolved_run_id
+    trace_path = tool_trace_path(run_dir)
     return (
         build_trace_env(
             existing,
@@ -93,6 +92,7 @@ def build_tool_trace_env(
             workspace_root=workdir,
         ),
         trace_path,
+        resolved_run_id,
     )
 
 
