@@ -8,7 +8,7 @@ from triton_agent.backends.factory import create_runner
 from triton_agent.convert.models import ConvertOptions
 from triton_agent.convert.outputs import resolve_convert_output_path
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
-from triton_agent.otel_trace import build_tool_trace_env, trace_path_from_request, write_tool_trace_summary
+from triton_agent.otel_trace import build_tool_trace_env, new_trace_run_id, trace_path_from_request, write_tool_trace_summary
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
 from triton_agent.resources import skills_root
 from triton_agent.skill_staging import resolve_staged_skills
@@ -42,9 +42,9 @@ def build_convert_request(
         options.prompt,
     )
     extra_env = None
-    run_id = ""
+    run_id = new_trace_run_id(prefix="convert")
     if options.log_tools:
-        extra_env, _trace_path, run_id = build_tool_trace_env(None, workdir=workdir, run_id_prefix="convert")
+        extra_env, _trace_path, _ = build_tool_trace_env(None, workdir=workdir, run_id=run_id)
 
     return AgentRequest(
         command_kind=CommandKind.CONVERT,

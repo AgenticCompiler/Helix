@@ -8,7 +8,7 @@ from typing import Any, cast
 
 from triton_agent.backends.factory import create_runner
 from triton_agent.models import AgentRequest, CommandKind
-from triton_agent.otel_trace import build_tool_trace_env, trace_path_from_request, write_tool_trace_summary
+from triton_agent.otel_trace import build_tool_trace_env, new_trace_run_id, trace_path_from_request, write_tool_trace_summary
 from triton_agent.resources import skills_root
 from triton_agent.skill_staging import resolve_staged_skills
 from triton_agent.show_output_log import show_output_log_path
@@ -253,9 +253,9 @@ def build_log_check_request(
 ) -> AgentRequest:
     resolved_target = target_path.resolve()
     extra_env = None
-    run_id = ""
+    run_id = new_trace_run_id(prefix="log-check")
     if log_tools:
-        extra_env, _trace_path, run_id = build_tool_trace_env(None, workdir=resolved_target, run_id_prefix="log-check")
+        extra_env, _trace_path, _ = build_tool_trace_env(None, workdir=resolved_target, run_id=run_id)
     return AgentRequest(
         command_kind=CommandKind.LOG_CHECK,
         input_path=resolved_target,
