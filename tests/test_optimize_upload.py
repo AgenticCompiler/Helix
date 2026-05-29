@@ -66,7 +66,8 @@ class OptimizeUploadCollectorTests(unittest.TestCase):
         (tmp / "opt-round-1" / "compiler-analysis.md").write_text("", encoding="utf-8")
         # triton-agent-logs
         (tmp / "triton-agent-logs").mkdir()
-        (tmp / "triton-agent-logs" / "optimize.show-output.log").write_text("", encoding="utf-8")
+        (tmp / "triton-agent-logs" / "run-001").mkdir()
+        (tmp / "triton-agent-logs" / "run-001" / "show-output.log").write_text("", encoding="utf-8")
         # Excluded paths
         (tmp / "opt-round-1" / "ir").mkdir()
         (tmp / "opt-round-1" / "ir" / "dummy.txt").write_text("", encoding="utf-8")
@@ -92,7 +93,7 @@ class OptimizeUploadCollectorTests(unittest.TestCase):
         self.assertIn("learned_lessons.md", included_names)
         self.assertIn("state.json", included_names)  # baseline
         self.assertIn("opt_kernel_perf.txt", included_names)  # round perf
-        self.assertIn("optimize.show-output.log", included_names)
+        self.assertIn("show-output.log", included_names)
 
     def test_collect_excludes_forbidden_paths(self) -> None:
         workspace = self._create_test_workspace()

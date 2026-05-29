@@ -142,8 +142,9 @@ class ConvertRuntimeTests(unittest.TestCase):
             self.assertIsNotNone(request.extra_env)
             assert request.extra_env is not None
             trace_path = Path(request.extra_env[TRACE_PATH_ENV])
-            self.assertEqual(trace_path.parent.parent, workdir / "triton-agent-logs" / "tool-traces")
-            self.assertEqual(trace_path.name, "trace.jsonl")
+            self.assertEqual(trace_path.parent.parent, workdir / "triton-agent-logs")
+            self.assertTrue(trace_path.parent.name.startswith("convert-"))
+            self.assertEqual(trace_path.name, "tool-traces.jsonl")
 
     def test_handle_convert_builds_request_with_default_output(self) -> None:
         from triton_agent.commands.convert import handle_convert
@@ -227,7 +228,7 @@ class ConvertRuntimeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            trace_path = workdir / "triton-agent-logs" / "tool-traces" / "run-001" / "trace.jsonl"
+            trace_path = workdir / "triton-agent-logs" / "run-001" / "tool-traces.jsonl"
             request = build_convert_request(
                 workdir / "kernel.py",
                 workdir / "kernel.py",

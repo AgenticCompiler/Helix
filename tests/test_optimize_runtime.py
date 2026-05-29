@@ -56,8 +56,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
         history_dir.mkdir(parents=True, exist_ok=True)
         supervisor_report_path = hidden_triton_agent_dir / "supervisor-report.md"
         supervisor_report_path.write_text("report\n", encoding="utf-8")
-        archive_root = workdir / "triton-agent-logs" / "triton-agent"
-        run_archive_dir = archive_root / "run-001"
+        run_archive_dir = workdir / "triton-agent-logs" / "run-001"
         shared_guidance_snapshot_path = run_archive_dir / "shared-guidance.md"
         return OptimizeSessionArtifactsState(
             memory_file=MemoryFileState(
@@ -66,7 +65,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 created_guidance=False,
             ),
             archive=ArchiveState(
-                archive_root=archive_root,
                 run_archive_dir=run_archive_dir,
                 agent_sessions_path=run_archive_dir / "agent-sessions.jsonl",
                 shared_guidance_snapshot_path=shared_guidance_snapshot_path,
@@ -79,8 +77,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
     def _build_checked_guidance_state(self, workdir: Path) -> OptimizeSessionArtifactsState:
         guidance_path = workdir / "AGENTS.md"
         guidance_path.write_text("shared guidance\n", encoding="utf-8")
-        archive_root = workdir / "triton-agent-logs" / "triton-agent"
-        run_archive_dir = archive_root / "run-checked"
+        run_archive_dir = workdir / "triton-agent-logs" / "run-checked"
         shared_guidance_snapshot_path = run_archive_dir / "shared-guidance.md"
         return OptimizeSessionArtifactsState(
             memory_file=MemoryFileState(
@@ -89,7 +86,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 created_guidance=False,
             ),
             archive=ArchiveState(
-                archive_root=archive_root,
                 run_archive_dir=run_archive_dir,
                 agent_sessions_path=run_archive_dir / "agent-sessions.jsonl",
                 shared_guidance_snapshot_path=shared_guidance_snapshot_path,
@@ -879,13 +875,13 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 worker_request.supervisor_report_path,
             )
             self.assertFalse((workdir / ".triton-agent").exists())
-            archive_root = workdir / "triton-agent-logs" / "triton-agent"
+            archive_root = workdir / "triton-agent-logs"
             self.assertTrue(archive_root.exists())
             run_archives = [path for path in archive_root.iterdir() if path.is_dir()]
             self.assertEqual(len(run_archives), 1)
             run_archive = run_archives[0]
             self.assertTrue((run_archive / "shared-guidance.md").exists())
-            self.assertTrue((run_archive / "final" / "supervisor-report.md").exists())
+            self.assertTrue((run_archive / "supervisor-report.md").exists())
             self.assertTrue((run_archive / "history").exists())
             session_lines = (run_archive / "agent-sessions.jsonl").read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(session_lines), 2)
@@ -1131,7 +1127,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIsNone(runner.calls[0].supervisor_report_path)
             self.assertFalse((workdir / "AGENTS.md").exists())
             self.assertFalse((workdir / ".triton-agent").exists())
-            archive_root = workdir / "triton-agent-logs" / "triton-agent"
+            archive_root = workdir / "triton-agent-logs"
             run_archives = [path for path in archive_root.iterdir() if path.is_dir()]
             self.assertEqual(len(run_archives), 1)
             session_lines = (run_archives[0] / "agent-sessions.jsonl").read_text(encoding="utf-8").splitlines()

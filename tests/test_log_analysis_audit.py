@@ -74,6 +74,7 @@ class LogAnalysisAuditTests(unittest.TestCase):
             summary = build_summary(
                 events,
                 workdir=workdir,
+                run_id="run-001",
                 trace_path=trace_path,
                 show_output_path=show_output_path,
                 agent_sessions_path=agent_sessions_path,
@@ -115,6 +116,7 @@ class LogAnalysisAuditTests(unittest.TestCase):
             summary = build_summary(
                 [],
                 workdir=workdir,
+                run_id="run-001",
                 trace_path=trace_path,
                 show_output_path=show_output_path,
                 agent_sessions_path=agent_sessions_path,

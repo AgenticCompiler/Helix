@@ -143,8 +143,9 @@ class LogCheckLauncherTests(unittest.TestCase):
             self.assertIsNotNone(request.extra_env)
             assert request.extra_env is not None
             trace_path = Path(request.extra_env[TRACE_PATH_ENV])
-            self.assertEqual(trace_path.parent.parent, target.resolve() / "triton-agent-logs" / "tool-traces")
-            self.assertEqual(trace_path.name, "trace.jsonl")
+            self.assertEqual(trace_path.parent.parent, target.resolve() / "triton-agent-logs")
+            self.assertTrue(trace_path.parent.name.startswith("log-check-"))
+            self.assertEqual(trace_path.name, "tool-traces.jsonl")
 
     def test_run_log_check_writes_tool_trace_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
