@@ -1,6 +1,7 @@
 import sys
 import tempfile
 import unittest
+import json
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -200,6 +201,79 @@ class OpenCodeRunnerTests(unittest.TestCase):
             with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.run(request)
             mocked.assert_called_once()
+
+    def test_run_stages_general_subagent_deny_config_and_cleans_it_up(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = OpenCodeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="opencode",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+            )
+
+            def _inspect_config(*args, **kwargs):
+                del args, kwargs
+                config_path = workspace / ".opencode" / "opencode.json"
+                self.assertTrue(config_path.exists())
+                config = json.loads(config_path.read_text(encoding="utf-8"))
+                self.assertEqual(config["$schema"], "https://opencode.ai/config.json")
+                self.assertEqual(config["agent"]["build"]["mode"], "primary")
+                self.assertEqual(config["agent"]["plan"]["mode"], "primary")
+                self.assertEqual(config["agent"]["build"]["permission"]["task"]["general"], "deny")
+                self.assertEqual(config["agent"]["plan"]["permission"]["task"]["general"], "deny")
+                return _ok_result()
+
+            with patch("triton_agent.backends.base.run_process", side_effect=_inspect_config):
+                result = runner.run(request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertFalse((workspace / ".opencode" / "opencode.json").exists())
+
+    def test_run_warns_and_skips_existing_opencode_workspace_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            config_path = workspace / ".opencode" / "opencode.json"
+            config_path.parent.mkdir(parents=True)
+            config_path.write_text("{}\n", encoding="utf-8")
+            runner = OpenCodeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="opencode",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+            )
+
+            stderr = StringIO()
+            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
+                result = runner.run(request, stderr=stderr)
+
+            self.assertEqual(result.return_code, 0)
+            mocked.assert_called_once()
+            self.assertIn("Warning:", stderr.getvalue())
+            self.assertIn("Existing OpenCode workspace config", stderr.getvalue())
+            self.assertEqual(config_path.read_text(encoding="utf-8"), "{}\n")
 
     def test_verbose_logging_prints_launch_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -4175,6 +4175,8 @@ class PromptTests(unittest.TestCase):
             prompt,
         )
         self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", prompt)
+        self.assertIn("Complete optimize rounds strictly one at a time in sequence.", prompt)
+        self.assertIn("Do not use subagents to implement or advance multiple optimize rounds in parallel.", prompt)
 
     def test_build_optimize_resume_prompt_mentions_operator_target_contract(self) -> None:
         prompt = build_optimize_resume_prompt(
@@ -4218,6 +4220,19 @@ class PromptTests(unittest.TestCase):
             "review earlier rounds and consider resuming from before that flat sequence",
             prompt,
         )
+
+    def test_build_optimize_continuous_prompt_requires_sequential_rounds_without_parallel_subagents(
+        self,
+    ) -> None:
+        prompt = build_optimize_continuous_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+        )
+
+        self.assertIn("Complete optimize rounds strictly one at a time in sequence.", prompt)
+        self.assertIn("Do not use subagents to implement or advance multiple optimize rounds in parallel.", prompt)
 
     def test_build_optimize_supervisor_prompt_mentions_audit_role(self) -> None:
         prompt = build_optimize_supervisor_prompt(
