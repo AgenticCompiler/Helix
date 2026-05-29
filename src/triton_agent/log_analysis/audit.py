@@ -9,7 +9,7 @@ from typing import Any, cast
 from triton_agent.optimize.archive import ArchiveState
 
 
-def write_agent_audit(*, workdir: Path, archive: ArchiveState, show_output_path: Path) -> list[str]:
+def write_agent_audit(*, workdir: Path, archive: ArchiveState) -> list[str]:
     warnings: list[str] = []
     trace_path = archive.otel_trace_path
     summary_path = archive.otel_summary_path
@@ -24,7 +24,7 @@ def write_agent_audit(*, workdir: Path, archive: ArchiveState, show_output_path:
             workdir=workdir,
             run_id=archive.run_id,
             trace_path=trace_path,
-            show_output_path=show_output_path,
+            show_output_dir=archive.run_archive_dir,
             agent_sessions_path=archive.agent_sessions_path,
         )
         summary_path.write_text(
@@ -45,7 +45,7 @@ def build_summary(
     workdir: Path,
     run_id: str,
     trace_path: Path,
-    show_output_path: Path,
+    show_output_dir: Path,
     agent_sessions_path: Path,
 ) -> dict[str, Any]:
     file_events = [event for event in events if event.get("type") == "file_access"]
@@ -104,7 +104,7 @@ def build_summary(
 
     artifact_presence = {
         "trace": trace_path.is_file(),
-        "show_output": show_output_path.is_file(),
+        "show_output": any(show_output_dir.glob("show-output*.log")),
         "agent_sessions": agent_sessions_path.is_file(),
         "baseline": (workdir / "baseline").is_dir(),
         "round_count": sum(1 for path in workdir.glob("opt-round-*") if path.is_dir()),
@@ -140,7 +140,7 @@ def build_summary(
             "trace": trace_path.as_posix(),
             "summary": (trace_path.parent / "summary.json").as_posix(),
             "agent_audit": (trace_path.parent / "agent-audit.md").as_posix(),
-            "show_output": show_output_path.as_posix(),
+            "show_output": [p.as_posix() for p in sorted(show_output_dir.glob("show-output*.log"))],
             "agent_sessions": agent_sessions_path.as_posix(),
         },
         "event_counts": {

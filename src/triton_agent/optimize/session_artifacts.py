@@ -230,7 +230,7 @@ class OptimizeSessionArtifactsManager:
 
     def _write_agent_audit(self, state: SharedOptimizeSessionArtifactsState) -> list[str]:
         workdir = state.archive.workdir
-        return write_agent_audit(workdir=workdir, archive=state.archive, show_output_path=state.archive.show_output_path)
+        return write_agent_audit(workdir=workdir, archive=state.archive)
 
     def cleanup_checked_session(self, state: OptimizeSessionArtifactsState) -> list[str]:
         """Archive checked-mode artifacts, then tear down the live runtime files."""

@@ -18,7 +18,7 @@ _EXCLUDED_DIRS = frozenset({
 _EXCLUDED_EXTENSIONS = frozenset({".pt", ".tar", ".tar.gz", ".tgz", ".zip"})
 
 _ROOT_WHITELIST_GLOBS = ("*.py", "opt-note.md", "learned_lessons.md")
-_OPTIMIZE_LOG_PATTERN = "**/show-output.log"
+_OPTIMIZE_LOG_PATTERN = "**/show-output*.log"
 
 
 def _path_matches_excluded_dir(path: Path, workspace: Path) -> bool:
