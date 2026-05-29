@@ -8,6 +8,7 @@ from triton_agent.backends.factory import create_runner
 from triton_agent.models import AgentRequest, CommandKind
 from triton_agent.output import render_result
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
+from triton_agent.otel_trace import new_trace_run_id
 from triton_agent.resources import skills_root
 from triton_agent.skill_staging import resolve_staged_skills
 from triton_agent.skills import SkillLinkManager
@@ -42,22 +43,13 @@ def handle_report(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         CommandKind.REPORT,
     )
 
-    request = AgentRequest(
-        command_kind=CommandKind.REPORT,
-        input_path=workspace,
-        operator_path=None,
-        output_path=None,
-        test_mode=None,
-        bench_mode=None,
+    request = _build_report_request(
+        workspace=workspace,
+        agent_name=agent_name,
+        prompt=built_prompt,
         interact=interact,
         verbose=verbose,
         show_output=show_output,
-        force_overwrite=False,
-        agent_name=agent_name,
-        skill_name="triton-npu-report",
-        prompt=built_prompt,
-        workdir=workspace,
-        no_agent_session=True,
         staged_skill_names=staged_skill_names,
         staged_skill_sources=staged_skill_sources,
     )
@@ -131,6 +123,39 @@ def _append_report_instructions(prompt: str, workspace: Path) -> str:
     )
 
 
+def _build_report_request(
+    *,
+    workspace: Path,
+    agent_name: str,
+    prompt: str,
+    interact: bool,
+    verbose: bool,
+    show_output: bool,
+    staged_skill_names: tuple[str, ...] | None,
+    staged_skill_sources: dict[str, str] | None,
+) -> AgentRequest:
+    return AgentRequest(
+        command_kind=CommandKind.REPORT,
+        input_path=workspace,
+        operator_path=None,
+        output_path=None,
+        test_mode=None,
+        bench_mode=None,
+        interact=interact,
+        verbose=verbose,
+        show_output=show_output,
+        force_overwrite=False,
+        agent_name=agent_name,
+        skill_name="triton-npu-report",
+        prompt=prompt,
+        workdir=workspace,
+        no_agent_session=True,
+        staged_skill_names=staged_skill_names,
+        staged_skill_sources=staged_skill_sources,
+        run_id=new_trace_run_id(prefix="report"),
+    )
+
+
 def generate_workspace_report(
     workspace: Path,
     agent_name: str,
@@ -151,22 +176,13 @@ def generate_workspace_report(
         CommandKind.REPORT,
     )
 
-    request = AgentRequest(
-        command_kind=CommandKind.REPORT,
-        input_path=workspace,
-        operator_path=None,
-        output_path=None,
-        test_mode=None,
-        bench_mode=None,
+    request = _build_report_request(
+        workspace=workspace,
+        agent_name=agent_name,
+        prompt=built_prompt,
         interact=False,
         verbose=False,
         show_output=show_output,
-        force_overwrite=False,
-        agent_name=agent_name,
-        skill_name="triton-npu-report",
-        prompt=built_prompt,
-        workdir=workspace,
-        no_agent_session=True,
         staged_skill_names=staged_skill_names,
         staged_skill_sources=staged_skill_sources,
     )
