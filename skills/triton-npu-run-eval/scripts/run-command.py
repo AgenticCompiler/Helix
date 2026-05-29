@@ -151,7 +151,6 @@ def build_parser() -> argparse.ArgumentParser:
     run_bench = subparsers.add_parser("run-bench")
     run_bench.add_argument("--bench-file", required=True)
     run_bench.add_argument("--operator-file", required=True)
-    run_bench.add_argument("--test-file")
     run_bench.add_argument("--remote")
     run_bench.add_argument("--remote-workdir")
     run_bench.add_argument("--keep-remote-workdir", action="store_true")
@@ -347,7 +346,6 @@ def main(argv: list[str] | None = None) -> int:
 
     bench_file = _resolve_existing_path(parser, args.bench_file, "Bench file")
     operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
-    test_file = Path(args.test_file).resolve() if getattr(args, "test_file", None) else None
     _parse_bench_metadata, run_local_bench, run_remote_bench = _load_bench_functions()
     resolved_bench_mode = args.bench_mode or _resolve_bench_mode_from_metadata(bench_file)
     remote_workspace: str | None = None
@@ -365,14 +363,9 @@ def main(argv: list[str] | None = None) -> int:
                 stderr=sys.stderr,
             )
         else:
-            if resolved_bench_mode == "msprof-simulator":
-                result, perf_path = run_local_bench(
-                    bench_file, operator_file, resolved_bench_mode, args.npu_devices, test_file=test_file
-                )
-            else:
-                result, perf_path = run_local_bench(
-                    bench_file, operator_file, resolved_bench_mode, args.npu_devices
-                )
+            result, perf_path = run_local_bench(
+                bench_file, operator_file, resolved_bench_mode, args.npu_devices
+            )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
