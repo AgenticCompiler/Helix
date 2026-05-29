@@ -77,6 +77,7 @@ Optimize analysis is layered.
 - Use the sibling [`../triton-npu-optimize-knowledge/SKILL.md`](../triton-npu-optimize-knowledge/SKILL.md) as the generic optimize knowledge library.
 - When the optimize target is `operator`, also use the sibling [`../torch-npu-optimize-knowledge/SKILL.md`](../torch-npu-optimize-knowledge/SKILL.md) for Torch NPU and whole-operator pattern routing such as framework-op fallback, wrapper-level changes, or broader operator restructuring.
 - During pattern triage, check for `extracted_bin_data/report.txt` relative to the operator workspace root and the current `opt-round-N/` directory. If found, read it before selecting patterns.
+- **Simulation-signal as mandatory candidate:** When `extracted_bin_data/report.txt` exists, you **must** read [`../triton-npu-optimize-knowledge/references/patterns/scalar-vector-simulation-signal.md`](../triton-npu-optimize-knowledge/references/patterns/scalar-vector-simulation-signal.md) and execute the signal matching flow (check each Category in priority order). If any Category fires, `scalar-vector-simulation-signal (Cat N)` **must** appear as a candidate pattern in the `attempts.md` candidate list — it must not be skipped, omitted, or demoted to supporting evidence only. When selecting the final pattern, evaluate `scalar-vector-simulation-signal` alongside other candidates: it may be selected as the primary pattern (using its Code Manifestations and generic transforms), or it may route to a more specific domain pattern via its Related Patterns / Optimization Direction. Either way, the reasoning for why simulation-signal was or was not selected must be explicitly recorded.
 - Read [`../triton-npu-optimize-knowledge/references/pattern_index.md`](../triton-npu-optimize-knowledge/references/pattern_index.md) before detailed pattern references.
 - Read only the one or two most relevant detailed pattern files under [`../triton-npu-optimize-knowledge/references/patterns/`](../triton-npu-optimize-knowledge/references/patterns/) after the generated index has narrowed the candidate set.
 - When the optimize target is `operator` and the bottleneck looks Torch NPU or framework-op specific, read [`../torch-npu-optimize-knowledge/references/pattern_index.md`](../torch-npu-optimize-knowledge/references/pattern_index.md) before detailed Torch NPU pattern references.
@@ -140,6 +141,7 @@ Optimize analysis is layered.
 - Do not hand-calculate speedups or percentage improvements from raw perf files.
 - Use the sibling `triton-npu-optimize-check` skill to run `check-round` (with `--min-rounds <N>` when the session has a minimum round requirement) and repair the current round until it passes before continuing or stopping.
 - After `check-round` passes, read the summary output for the exit signal: if minimum rounds are satisfied, the session may stop after this round.
+- In each round, keep the `extracted_bin_data` directory parsed from the simulator data of the current round, copy to the `opt-round-<N>` directory.
 
 ## Round Records
 
