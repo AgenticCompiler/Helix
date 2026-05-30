@@ -92,7 +92,7 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_UPLOAD_URL",
-                "HTTP endpoint for the optimize upload server. "
+                "Base URL of the optimize upload server. /uploads is appended automatically. "
                 "Required for the upload-optimize subcommand and auto-upload after optimize.",
             ),
         ),
@@ -475,7 +475,7 @@ def build_parser() -> argparse.ArgumentParser:
         if spec.has_verbose:
             subparser.add_argument("--verbose", action="store_true")
         if spec.has_url:
-            subparser.add_argument("--url", help="Upload server URL (overrides TRITON_AGENT_OPTIMIZE_UPLOAD_URL)")
+            subparser.add_argument("--url", help="Upload server base URL (/uploads appended automatically)")
         if spec.has_interact:
             subparser.add_argument("--interact", action="store_true")
         if spec.has_show_output:
