@@ -36,9 +36,9 @@ On Ascend NPU, this pattern converts a serialized "load→compute→store per it
 - **MTE2 & VECTOR overlap is asymmetric.** While `%(MTE2&VECTOR/MTE2)` may appear reasonable (~70–80%), `%(MTE2&VECTOR/VECTOR)` at ~50% or below reveals that VECTOR spends a large fraction of its time without MTE2 overlap — compute is starved of incoming data for long stretches.
 - **SCALAR & VECTOR overlap is negligible.** `%(SCALAR&VECTOR/VECTOR)` typically <5% and `%(SCALAR&VECTOR/SCALAR)` <15% indicate scalar address generation and vector compute are almost entirely serialized — a hallmark of fully unrolled loops where each iteration's address setup blocks the next compute.
 - **Pipeline flows are unidirectional only.** Only `MTE2→VECTOR` and `VECTOR→MTE3` flows appear, with no reverse flows (`MTE3→MTE2`, `VECTOR→MTE2`). Missing reverse flows mean the compiler is not cascading iterations — each iteration completes fully before the next begins.
-- **High WAIT_FLAG and BAR counts.** Elevated `WAIT_FLAG` and `BAR` counts (e.g., WAIT_FLAG >10000, BAR >20000) with heavy VECTOR-side synchronization indicate serialization barriers between pipeline stages, consistent with iteration-by-iteration execution where each stage must complete before the next begins.
+- **High `WAIT_FLAG` and `BAR` counts.** Elevated `WAIT_FLAG` and `BAR` counts (e.g., `WAIT_FLAG` >10000, `BAR` >20000) with heavy VECTOR-side synchronization indicate serialization barriers between pipeline stages, consistent with iteration-by-iteration execution where each stage must complete before the next begins.
 
-### Profile Case: SwiGLU Kernel (BLOCK_M=128, BLOCK_N=4096, elementwise body)
+### Profile Case: SwiGLU Kernel (BLOCK\_M=128, BLOCK\_N=4096, elementwise body)
 
 Before optimization (using `tl.static_range`), the profiling data showed:
 
@@ -55,8 +55,8 @@ Before optimization (using `tl.static_range`), the profiling data showed:
 | %(SCALAR&VECTOR/VECTOR) | 2.69% | SCALAR and VECTOR nearly fully serialized |
 | %(SCALAR&VECTOR/SCALAR) | 9.43% | |
 | Pipeline Flows | MTE2→VECTOR, VECTOR→MTE3 (2 unidirectional) | No inter-iteration cascade |
-| WAIT_FLAG total | 12300 (VECTOR: 8200, MTE3: 4100) | Heavy sync barriers |
-| BAR total | 25420 (VECTOR: 21320) | |
+| `WAIT_FLAG` total | 12300 (VECTOR: 8200, MTE3: 4100) | Heavy sync barriers |
+| `BAR` total | 25420 (VECTOR: 21320) | |
 
 After replacing `tl.static_range` with `tl.range`, key improvements:
 
