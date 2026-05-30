@@ -25,7 +25,9 @@ def upload_optimize_workspace(
     collected = collect_workspace_upload_files(workspace)
     manifest = build_manifest(identity, collected)
 
-    upload_url = (url if url else load_upload_url()).rstrip("/") + "/uploads"
+    upload_url = (url if url else load_upload_url()).rstrip("/")
+    if not upload_url.endswith("/uploads"):
+        upload_url += "/uploads"
 
     if verbose:
         print(
