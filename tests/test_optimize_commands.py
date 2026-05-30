@@ -33,6 +33,48 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
 
             self.assertEqual(exc.exception.code, 2)
 
+    def test_handle_optimize_rejects_checked_interactive_mode(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            operator = Path(tmp) / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            args = parser.parse_args(
+                [
+                    "optimize",
+                    "-i",
+                    str(operator),
+                    "--interact",
+                    "--round-mode",
+                    "checked",
+                ]
+            )
+
+            with self.assertRaises(SystemExit) as exc:
+                handle_optimize(parser, args)
+
+            self.assertEqual(exc.exception.code, 2)
+
+    def test_handle_optimize_rejects_supervised_interactive_mode(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            operator = Path(tmp) / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            args = parser.parse_args(
+                [
+                    "optimize",
+                    "-i",
+                    str(operator),
+                    "--interact",
+                    "--round-mode",
+                    "supervised",
+                ]
+            )
+
+            with self.assertRaises(SystemExit) as exc:
+                handle_optimize(parser, args)
+
+            self.assertEqual(exc.exception.code, 2)
+
     def test_optimize_run_options_maps_compiler_source_analysis(self) -> None:
         parser = build_parser()
         args = parser.parse_args(

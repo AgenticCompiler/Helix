@@ -20,6 +20,7 @@ This README is organized by task so you can quickly find the right command for t
 - `--no-upload`: skip automatic upload after optimize.
 - `log-check`: run Codex log strategy validation for one workspace.
 - `log-check-batch`: run log strategy validation across multiple workspaces.
+- `clean`: remove known generated artifacts from one workspace or a batch root.
 - `status`: summarize optimization progress across many workspaces.
 - `verify`: rerun tests and benchmarks for the current best optimize round.
 - `verify-batch`: verify many optimize workspaces under one root.
@@ -55,6 +56,8 @@ uv run triton-agent verify-batch --input operators_root
 uv run triton-agent optimize-batch --input operators_root
 uv run triton-agent log-check --input .
 uv run triton-agent log-check-batch --input operators_root
+uv run triton-agent clean --input .
+uv run triton-agent clean --input operators_root
 ```
 
 ### Upload Server
@@ -351,7 +354,7 @@ Common options:
   - `supervised`: one round per invocation; the CLI validates each round, then a supervisor audit pass reviews it and decides whether to continue, stop, or fail.
   For `checked` and `supervised`, optimize runs a baseline preflight before the round loop and repairs `baseline/` when needed.
 - `--no-agent-session`: disable persistent agent sessions when supported.
-- `--interact`
+- `--interact`: only supported with `--round-mode continuous`; when you exit the attached agent session, the optimize command stops instead of auto-resuming to satisfy `--min-rounds`.
 - `--show-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -736,6 +739,31 @@ merging with or overwriting user-owned hook configuration.
 OpenCode hook support uses a project plugin under `.opencode/plugins/`. Because
 OpenCode's `--pure` mode disables external plugins, hook-enabled OpenCode runs
 omit `--pure`; ordinary OpenCode runs keep `--pure` unchanged.
+
+## Clean Workspaces
+
+Use `clean` when you want to remove known generated artifacts while keeping the
+original operator source file.
+
+```bash
+uv run triton-agent clean --input .
+uv run triton-agent clean --input operators_root
+uv run triton-agent clean --input . --deep
+```
+
+Behavior:
+
+- `--input` accepts one operator workspace directory or a batch root like `status`.
+- default cleanup removes known generated artifacts such as `triton_<op>.py`,
+  `opt_<op>.py`, `*_result.pt`, `*_perf.txt`, `baseline/`, `opt-round-*`,
+  `opt-verify/`, `triton-agent-logs/`, `PROF_*`, and `extra-info.json`.
+- default cleanup keeps the original operator source file plus reusable generated
+  test and benchmark harnesses.
+- `--deep` also removes generated test and benchmark harnesses such as
+  `test_<op>.py`, `differential_test_<op>.py`, and `bench_<op>.py`.
+- batch-root cleanup also removes batch-level generated files such as
+  `optimize-batch-status.json`, `log_check_summary.md`,
+  `report-batch-state.json`, and `report-batch.md`.
 
 ## Output Conventions
 

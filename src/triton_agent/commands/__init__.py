@@ -1,4 +1,5 @@
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
+from triton_agent.commands.clean import handle_clean
 from triton_agent.commands.execution import handle_run_bench, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
 from triton_agent.commands.log_check import handle_log_check, handle_log_check_batch
@@ -14,6 +15,7 @@ from triton_agent.commands.verification import handle_verify, handle_verify_batc
 __all__ = [
     "handle_compare_perf",
     "handle_compare_result",
+    "handle_clean",
     "handle_gen_bench",
     "handle_gen_test",
     "handle_log_check",
