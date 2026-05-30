@@ -102,6 +102,13 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - A high-dimensional contiguous tensor is accessed through flattened one-dimensional offsets that stride through an inner dimension.
   - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
   - Profiling or IR suggests the 1D pointer path produces strided or non-coalesced loads across a dimension that is actually contiguous in memory.
+  - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
+  - `report.txt` overall `[Pipe Distribution]` section shows **high SCALAR-to-VECTOR ratio** — `%(SCALAR) / %(VECTOR) > 10`, indicating heavy scalar address computation dominates execution time.
+  - `report.txt` overall `[Pipe Distribution]` section shows **high MTE3** — `%(MTE3) > 10%` — and high scalar–MTE3 serialization `%(SCALAR&MTE3/SCALAR) > 20%`, meaning address generation and data transfer are pipelined poorly.
+  - `report.txt` overall `[Pipe Distribution]` section shows **MTE2–MTE3 near-total overlap** — `%(MTE2&MTE3/MTE2) > 50%`, forcing the two memory transfer engines to service the same request serially.
+  - `report.txt` overall `[Pipeline Flows]` section shows **both XToY and YToX flows** for some pair (e.g., `SCALARToMTE3` + `MTE3ToSCALAR`), indicating pipeline stages are serialized in a cycle.
+  - `report.txt` overall `[Pipe Distribution]` section shows **low SCALAR–VECTOR overlap** — `%(SCALAR&VECTOR/SCALAR) < 2%` — while SCALAR is high `> 10%`, meaning scalar address generation is blocking vector execution.
+  - `report.txt` overall `[Pipe Distribution Over Each Core]` section lists **very few cores active** relative to hardware capacity, suggesting flat 1D grid decomposition is too coarse.
 
 ### `classic-matmul`
 

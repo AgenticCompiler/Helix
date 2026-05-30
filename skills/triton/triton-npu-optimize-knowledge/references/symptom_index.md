@@ -21,6 +21,7 @@ Read this generated index first. Then read only the one or two most relevant det
   - `vec-cmp`
   - `classic-matmul`
   - `simt-clip-window-closed-reduction`
+  - `block-pointer-dimensionality`
 - Common Non-Matches:
   - Scalar-looking code at the edges does not matter if the hot loop is actually cube-bound.
   - Small-shape kernels can show scalar overhead even when the better answer is dispatch or specialization rather than a local rewrite.
