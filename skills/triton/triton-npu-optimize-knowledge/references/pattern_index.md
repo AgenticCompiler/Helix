@@ -383,6 +383,18 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - The hot loop already has a real tiled structure, but loads and computation still happen too serially.
   - Profiling suggests wait-heavy or overlap-poor behavior, and the next question is pipeline quality rather than basic kernel structure.
 
+### `static-range-to-range`
+
+- Summary: Replace `tl.static_range` with `tl.range` in hot loops with lightweight, independent iterations so the compiler preserves loop structure and applies software pipelining, overlapping memory transfers and compute across iterations instead of fully unrolling into a flat serialized sequence.
+- Source: [static-range-to-range.md](patterns/static-range-to-range.md)
+- Use When:
+  - The hot loop uses `tl.static_range` (or `tl.range` with a `tl.constexpr` bound that triggers full unrolling).
+  - Loop iterations are **independent** — no loop-carried data dependency between iterations.
+  - The loop body is lightweight (simple elementwise ops, few intermediates).
+  - Profiling shows MTE2 (DMA) ratio is disproportionately low relative to VECTOR, and SCALAR/MTE2 overlap is poor.
+  - Pipeline flows are unidirectional only (`MTE2→VECTOR`, `VECTOR→MTE3`) with no reverse cascade flows, indicating each iteration completes fully before the next begins.
+  - `BLOCK_SIZE` and `num_warps` are moderate enough that the rename pressure from `tl.range` will not cause register spills.
+
 ### `stencil-resize-gm-to-ub-staging`
 
 - Summary: For 2D sampling kernels (resize, gather-stencil, pooling-like windows) whose hot path reads **multiple overlapping input samples per output point**, the core memory strategy is: **stage one contiguous input slab from global memory (GM) into on-chip buffer (UB) per program**, flatten it, then serve stencil reads via **UB-resident gather** and vector math. Secondary wins — often larger than tuning gather itself — are **eliminating UB internal densify copies**, **aligning slab row stride with gather indexing at allocation time**, **tightening slab bounds to the true input window**, and **enlarging the output tile to cut program count**. Prefer **2D output tiling** `(BLOCK_H, BLOCK_W)` over flattening the output plane onto a single 1D program axis.
