@@ -160,6 +160,16 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Gather-like code has continuous destination rows but still stores one row at a time.
   - Scatter-weight-gradient-like code has repeated row loads that can be batched from continuous source rows.
 
+### `index-scatter-store-launch-shaping`
+
+- Summary: For index-driven scatter-store kernels, tune launch shape before rewriting the kernel. Keep the hot path as a simple 1D scatter, sweep per-program token tile and useful program count first, and test SIMT-only only for narrow scatter width such as `head_num == 1`.
+- Source: [index-scatter-store-launch-shaping.md](patterns/index-scatter-store-launch-shaping.md)
+- Use When:
+  - The hot path writes data to addresses derived from per-element indices (scatter-like store).
+  - Profile and IR indicate memory-bound behavior with weak write locality and heavy index/address work.
+  - Kernel arithmetic is lightweight compared with memory movement and address generation.
+  - You can benchmark representative shape buckets while changing launch parameters.
+
 ### `layout-materialization-elision`
 
 - Summary: Avoid materializing tensors whose only purpose is to change logical layout, such as `permute`, `transpose`, `movedim`, `reshape`, `squeeze`, or `unsqueeze`, when the next step immediately copies, stores, reduces, gathers, or otherwise consumes the data. Instead, express the desired logical layout in the consuming kernel's pointer math or block-pointer metadata and write directly to the final destination layout.
@@ -272,6 +282,16 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - `tl.cumsum` or `tl.associative_scan` runs on the last axis of a tensor and profiling or IR suggests scalar fallback instead of vector lowering.
   - `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
   - A boundary-only mask repeats validity conditions that earlier `tl.load(..., boundary_check=...)` or safe zero-padding already handled.
+
+### `shift-2d-mask-to-1d-index-stream`
+
+- Summary: When a hot shift or predecessor path is expressed as a 2D mask-and-reduce construction, rewrite it to a direct 1D index stream (`base + arange - 1`) with only boundary masking. This removes unnecessary 2D intermediates and keeps the shift path closer to one-dimensional vector loads and elementwise math on Ascend NPU; do not stop at replacing the reduce with an on-chip `tl.gather` if the final lane formula can be simplified further.
+- Source: [shift-2d-mask-to-1d-index-stream.md](patterns/shift-2d-mask-to-1d-index-stream.md)
+- Use When:
+  - A shift relation is structurally "take previous element" or "take previous position in chunk", including cross-chunk lane-0 handling.
+  - Code uses 2D mask construction and reduction-like assembly for shifting, such as `arange[:, None]`, `arange[None, :]`, `tl.where`, and `tl.sum(..., axis=...)` over an extra axis.
+  - IR shows `tt.broadcast`, `tt.reduce`, helper outlined functions, or temporary mask tensors dedicated to shift assembly rather than the core math.
+  - Profiling indicates scalar/control overhead, UB pressure, vector-function fragmentation, or poor vector utilization around the shift path.
 
 ### `slice_coalesce`
 
