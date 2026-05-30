@@ -5,9 +5,9 @@ import concurrent.futures
 import sys
 from pathlib import Path
 
-from triton_agent.commands.report import generate_workspace_report
-from triton_agent.report_batch.collector import write_report_batch_state
-from triton_agent.report_batch.render import render_report_batch_file
+from triton_agent.report.workspace import generate_workspace_report
+from triton_agent.report.collector import write_report_batch_state
+from triton_agent.report.render import render_report_batch_file
 
 
 def handle_report_batch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:

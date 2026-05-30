@@ -8,7 +8,8 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.cli import build_parser
-from triton_agent.commands.report import _build_hardware_info_text, handle_report
+from triton_agent.commands.report import handle_report
+from triton_agent.report.workspace import build_hardware_info_text
 from triton_agent.commands.report_batch import handle_report_batch
 from triton_agent.models import AgentResult
 
@@ -16,7 +17,7 @@ from triton_agent.models import AgentResult
 class ReportCommandHandlerTests(unittest.TestCase):
     def test_build_hardware_info_text_omits_target_chip(self) -> None:
         with patch("triton_agent.hardware_info.capture_hardware_info", return_value={}):
-            text = _build_hardware_info_text()
+            text = build_hardware_info_text()
 
         self.assertEqual(text, "")
 
@@ -25,7 +26,7 @@ class ReportCommandHandlerTests(unittest.TestCase):
             "triton_agent.hardware_info.capture_hardware_info",
             return_value={"chip_name": "Ascend 910B"},
         ) as mocked:
-            text = _build_hardware_info_text()
+            text = build_hardware_info_text()
 
         mocked.assert_called_once_with()
         self.assertIn("- chip_name: Ascend 910B", text)

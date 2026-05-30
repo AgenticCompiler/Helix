@@ -1,5 +1,5 @@
-from triton_agent.verification.batch import run_verify_batch
-from triton_agent.verification.core import (
+from triton_agent.verify.batch import run_verify_batch
+from triton_agent.verify.core import (
     VerifyOptions,
     VerifyResult,
     VerifyTarget,

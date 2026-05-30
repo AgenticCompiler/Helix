@@ -5,8 +5,8 @@ import sys
 from pathlib import Path
 from typing import Literal, cast
 
-from triton_agent.verification.batch import run_verify_batch
-from triton_agent.verification.core import VerifyOptions, prepare_verify_target, run_verify
+from triton_agent.verify.batch import run_verify_batch
+from triton_agent.verify.core import VerifyOptions, prepare_verify_target, run_verify
 
 
 def handle_verify(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:

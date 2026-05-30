@@ -33,7 +33,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
     def setUp(self) -> None:
         super().setUp()
         self._report_patcher = patch(
-            "triton_agent.commands.report.generate_workspace_report",
+            "triton_agent.report.workspace.generate_workspace_report",
             return_value=(True, "ok"),
         )
         self._report_patcher.start()

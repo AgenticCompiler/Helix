@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal, cast
 
 from triton_agent.commands.input_resolution import resolve_single_operator_input
-from triton_agent.commands.report import generate_workspace_report
+from triton_agent.report.workspace import generate_workspace_report
 from triton_agent.models import CommandKind
 from triton_agent.optimize.batch import resolve_batch_optimize_operator_file, run_optimize_batch
 from triton_agent.optimize.models import OptimizeRunOptions
