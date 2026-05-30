@@ -101,7 +101,7 @@ def create_router(storage: UploadStorage, max_upload_bytes: int) -> APIRouter:
             "upload_timestamp": header_data["upload_timestamp"],
             "workspace_name": header_data["workspace_name"],
             "workspace_slug": header_data["workspace_slug"],
-            "stored_path": str(archive_path),
+            "stored_path": archive_name,
         })
 
     return router

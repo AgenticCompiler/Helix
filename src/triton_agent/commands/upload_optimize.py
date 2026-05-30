@@ -15,7 +15,7 @@ def handle_upload_optimize(parser: argparse.ArgumentParser, args: argparse.Names
         parser.error(f"Input path must be a directory: {input_path}")
 
     try:
-        response = upload_optimize_workspace(input_path, verbose=args.verbose)
+        response = upload_optimize_workspace(input_path, url=args.url, verbose=args.verbose)
     except ValueError as exc:
         print(f"Upload error: {exc}", file=sys.stderr)
         return 1
