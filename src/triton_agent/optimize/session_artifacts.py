@@ -4,7 +4,6 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 
-from triton_agent.log_analysis import write_agent_audit
 from triton_agent.optimize.archive import ArchiveManager, ArchiveState
 from triton_agent.optimize.memory_file import MemoryFileManager, MemoryFileState
 
@@ -40,15 +39,6 @@ class SharedOptimizeSessionArtifactsState:
     @property
     def otel_trace_path(self) -> Path:
         return self.archive.otel_trace_path
-
-    @property
-    def otel_summary_path(self) -> Path:
-        return self.archive.otel_summary_path
-
-    @property
-    def agent_audit_path(self) -> Path:
-        return self.archive.agent_audit_path
-
 
 @dataclass
 class OptimizeSessionArtifactsState(SharedOptimizeSessionArtifactsState):
@@ -196,7 +186,7 @@ class OptimizeSessionArtifactsManager:
         state: SharedOptimizeSessionArtifactsState,
     ) -> list[str]:
         """Remove or restore the temporary top-level memory file for an optimize run."""
-        warnings = self._write_agent_audit(state)
+        warnings: list[str] = []
         warnings.extend(self._memory_files.cleanup(state.memory_file))
         return warnings
 
@@ -227,10 +217,6 @@ class OptimizeSessionArtifactsManager:
         warnings.extend(self._cleanup_hidden_triton_agent_dir(state.hidden_triton_agent_dir))
         warnings.extend(self.cleanup_continuous_session(state))
         return warnings
-
-    def _write_agent_audit(self, state: SharedOptimizeSessionArtifactsState) -> list[str]:
-        workdir = state.archive.workdir
-        return write_agent_audit(workdir=workdir, archive=state.archive)
 
     def cleanup_checked_session(self, state: OptimizeSessionArtifactsState) -> list[str]:
         """Archive checked-mode artifacts, then tear down the live runtime files."""

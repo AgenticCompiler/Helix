@@ -2942,8 +2942,6 @@ class PathResolutionTests(unittest.TestCase):
             self.assertFalse((root / "learned_lessons.md").exists())
             self.assertFalse((root / "opt-round-1").exists())
             self.assertFalse((root / ".triton-agent").exists())
-            audit_files = sorted((root / "triton-agent-logs").glob("*/otel/agent-audit.md"))
-            self.assertEqual(len(audit_files), 1)
             self.assertFalse((root / "baseline").exists())
             self.assertFalse((root / "opt_kernel.py").exists())
             self.assertTrue(test_harness.exists())
