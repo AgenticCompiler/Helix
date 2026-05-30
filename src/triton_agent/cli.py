@@ -14,6 +14,7 @@ from triton_agent.commands.generation import handle_gen_eval
 from triton_agent.commands.generation import handle_gen_eval_batch
 from triton_agent.commands.status import handle_status
 from triton_agent.commands.log_check import handle_log_check, handle_log_check_batch
+from triton_agent.commands.trace_analyze import handle_trace_analyze
 from triton_agent.commands.verify import handle_verify, handle_verify_batch
 from triton_agent.commands.optimize import (
     handle_optimize,
@@ -318,8 +319,8 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
     CommandKind.LOG_CHECK: _CommandSpec(
         handler=handle_log_check,
         help_group="Optimization",
-        help_summary="Run Codex log strategy validation for one workspace.",
-        description="Run Codex log validation and write structured JSON results.",
+        help_summary="Run log strategy validation for one workspace.",
+        description="Run log validation and write structured JSON results.",
         has_output=False,
         has_agent=True,
         has_show_output=True,
@@ -335,6 +336,15 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_show_output=True,
         max_concurrency_default=1,
         has_log_tools=True,
+    ),
+    CommandKind.TRACE_ANALYZE: _CommandSpec(
+        handler=handle_trace_analyze,
+        help_group="Optimization",
+        help_summary="Analyze an otel trace file and generate summary.json.",
+        description="Parse an otel trace file and generate a structured JSON summary report.",
+        has_output=False,
+        has_verbose=False,
+        input_mode="trace-analyze",
     ),
     CommandKind.VERIFY: _CommandSpec(
         handler=handle_verify,
@@ -605,6 +615,9 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
             default="auto",
             choices=("auto", "kernel", "total-op", "all"),
         )
+        return
+    if spec.input_mode == "trace-analyze":
+        subparser.add_argument("-t", "--trace", required=True, help="Path to the otel trace.jsonl file.")
         return
     subparser.add_argument("-i", "--input", required=True)
 

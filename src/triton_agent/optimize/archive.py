@@ -34,14 +34,6 @@ class ArchiveState:
         return self.otel_dir / "trace.jsonl"
 
     @property
-    def otel_summary_path(self) -> Path:
-        return self.otel_dir / "summary.json"
-
-    @property
-    def agent_audit_path(self) -> Path:
-        return self.otel_dir / "agent-audit.md"
-
-    @property
     def show_output_path(self) -> Path:
         return self.run_archive_dir / "show-output.log"
 
