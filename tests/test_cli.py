@@ -1350,6 +1350,20 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.input, "workspace-root")
         self.assertTrue(args.verbose)
 
+    def test_clean_maps_to_command_kind(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["clean", "-i", "workspace"])
+        self.assertEqual(args.command, "clean")
+        self.assertEqual(args.command_kind, CommandKind.CLEAN)
+        self.assertFalse(args.deep)
+        self.assertFalse(hasattr(args, "agent"))
+
+    def test_clean_accepts_deep_option(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["clean", "-i", "workspace", "--deep", "--verbose"])
+        self.assertTrue(args.deep)
+        self.assertTrue(args.verbose)
+
     def test_optimize_command_defaults_upload_enabled(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize", "-i", "kernel.py"])
@@ -1430,6 +1444,85 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn(f"[OK] {workspace.name}", rendered)
             self.assertIn("Best round: round-1", rendered)
             self.assertNotIn("[NO-SESSION] opt-round-1", rendered)
+
+    def test_main_clean_single_workspace_preserves_cases_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            operator.write_text("print('source')\n", encoding="utf-8")
+            test_harness = workspace / "test_kernel.py"
+            test_harness.write_text("# test-mode: standalone\n", encoding="utf-8")
+            bench_harness = workspace / "bench_kernel.py"
+            bench_harness.write_text("# bench-mode: standalone\n", encoding="utf-8")
+            generated_operator = workspace / "triton_kernel.py"
+            generated_operator.write_text("print('gen')\n", encoding="utf-8")
+            extra_info = workspace / "extra-info.json"
+            extra_info.write_text("{}", encoding="utf-8")
+            prof_dir = workspace / "PROF_demo"
+            prof_dir.mkdir()
+
+            exit_code = main(["clean", "-i", str(workspace)])
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(operator.exists())
+            self.assertTrue(test_harness.exists())
+            self.assertTrue(bench_harness.exists())
+            self.assertFalse(generated_operator.exists())
+            self.assertFalse(extra_info.exists())
+            self.assertFalse(prof_dir.exists())
+
+    def test_main_clean_single_workspace_deep_removes_cases(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            operator.write_text("print('source')\n", encoding="utf-8")
+            test_harness = workspace / "differential_test_kernel.py"
+            test_harness.write_text("# test-mode: differential\n", encoding="utf-8")
+            bench_harness = workspace / "bench_kernel.py"
+            bench_harness.write_text("# bench-mode: msprof\n", encoding="utf-8")
+
+            exit_code = main(["clean", "-i", str(workspace), "--deep"])
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(operator.exists())
+            self.assertFalse(test_harness.exists())
+            self.assertFalse(bench_harness.exists())
+
+    def test_main_clean_batch_root_removes_batch_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "case-a"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "opt_kernel.py").write_text("print('opt')\n", encoding="utf-8")
+            batch_status = root / "optimize-batch-status.json"
+            batch_status.write_text("{}", encoding="utf-8")
+            batch_summary = root / "log_check_summary.md"
+            batch_summary.write_text("# summary\n", encoding="utf-8")
+            batch_state = root / "report-batch-state.json"
+            batch_state.write_text("{}", encoding="utf-8")
+            batch_report = root / "report-batch.md"
+            batch_report.write_text("# report\n", encoding="utf-8")
+
+            exit_code = main(["clean", "-i", str(root)])
+
+            self.assertEqual(exit_code, 0)
+            self.assertFalse((workspace / "opt_kernel.py").exists())
+            self.assertFalse(batch_status.exists())
+            self.assertFalse(batch_summary.exists())
+            self.assertFalse(batch_state.exists())
+            self.assertFalse(batch_report.exists())
+
+    def test_main_clean_batch_root_without_children_reports_status_style_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            stderr = StringIO()
+
+            with redirect_stderr(stderr):
+                exit_code = main(["clean", "-i", str(root)])
+
+            self.assertEqual(exit_code, 1)
+            self.assertIn("No operator workspaces found under", stderr.getvalue())
 
     def test_main_status_sorts_no_session_first_then_remaining_by_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

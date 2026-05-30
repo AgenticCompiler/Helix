@@ -70,6 +70,8 @@ class OptimizeRunLoop:
         current_request: AgentRequest,
         result: AgentResult,
     ) -> tuple[AgentResult, AgentRequest]:
+        if current_request.interact:
+            return result, current_request
         while result.succeeded and self._needs_more_rounds(current_request):
             round_count_before_resume = self._count_round_directories(current_request.workdir)
             summary = self._build_rounds_summary(current_request)

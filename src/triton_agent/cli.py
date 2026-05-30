@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from triton_agent.commands.convert import handle_convert, handle_convert_batch
+from triton_agent.commands.clean import handle_clean
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
 from triton_agent.commands.execution import handle_run_bench, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
@@ -49,6 +50,7 @@ _TOP_LEVEL_EXAMPLES = (
     "triton-agent log-check-batch -i kernels",
     "triton-agent optimize -i kernel.py --agent codex",
     "triton-agent report-batch -i kernels",
+    "triton-agent clean -i .",
 )
 _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
     (
@@ -417,6 +419,12 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_show_output=True,
         report_workers_default=4,
     ),
+    CommandKind.CLEAN: _CommandSpec(
+        handler=handle_clean,
+        help_group="Status",
+        help_summary="Remove known generated artifacts from one workspace or a batch root.",
+        description="Remove known generated artifacts from one operator workspace or a batch root.",
+    ),
 }
 
 
@@ -523,6 +531,8 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--report-workers", type=int, default=spec.report_workers_default)
         if spec.has_force_overwrite:
             subparser.add_argument("--force-overwrite", action="store_true")
+        if command_kind == CommandKind.CLEAN:
+            subparser.add_argument("--deep", action="store_true")
 
     return parser
 
@@ -618,6 +628,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "log_check_batch": "log-check-batch",
         "report_batch": "report-batch",
         "report": "report",
+        "clean": "clean",
     }
     normalized = list(argv)
     normalized[0] = aliases.get(normalized[0], normalized[0])

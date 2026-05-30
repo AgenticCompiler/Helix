@@ -27,6 +27,7 @@ class CommandKind(str, Enum):
     UPLOAD_OPTIMIZE = "upload-optimize"
     REPORT = "report"
     REPORT_BATCH = "report-batch"
+    CLEAN = "clean"
 
 
 COMMAND_TO_SKILL = {
@@ -50,6 +51,7 @@ COMMAND_TO_SKILL = {
     CommandKind.UPLOAD_OPTIMIZE: "",
     CommandKind.REPORT: "",
     CommandKind.REPORT_BATCH: "",
+    CommandKind.CLEAN: "",
 }
 
 

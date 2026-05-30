@@ -640,6 +640,48 @@ class OptimizeSupervisorTests(unittest.TestCase):
             self.assertIn("opt-round-*", result.stderr)
             self.assertEqual(runner.resume_calls, 1)
 
+    def test_interactive_continuous_mode_does_not_auto_resume_for_missing_rounds(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=True,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-optimize",
+                prompt="Optimize this operator",
+                workdir=workspace,
+                min_rounds=2,
+                round_mode="continuous",
+            )
+
+            class InteractiveRunner:
+                def __init__(self) -> None:
+                    self.resume_calls = 0
+
+                def run(self, request: AgentRequest) -> AgentResult:
+                    del request
+                    return AgentResult(return_code=0, stdout="user exited session", stderr="")
+
+                def resume(self, request: AgentRequest, summary: str) -> AgentResult:
+                    del request, summary
+                    self.resume_calls += 1
+                    raise AssertionError("interactive optimize should not auto-resume after exit")
+
+            runner = InteractiveRunner()
+
+            result = OptimizeRunLoop(max_recovery_attempts=2).run(runner, request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertEqual(runner.resume_calls, 0)
+
     def test_continuous_min_rounds_resume_prompt_is_not_double_wrapped(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)

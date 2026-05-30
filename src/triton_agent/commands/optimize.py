@@ -19,7 +19,7 @@ from triton_agent.output import render_result
 
 def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     options = optimize_run_options_from_args(args)
-    _validate_agent_options(parser, args)
+    _validate_agent_options(parser, args, options)
     try:
         validate_optimize_options(
             CommandKind.OPTIMIZE,
@@ -172,6 +172,12 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
     )
 
 
-def _validate_agent_options(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+def _validate_agent_options(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    options: OptimizeRunOptions,
+) -> None:
+    if options.interact and options.round_mode != "continuous":
+        parser.error("--interact only supports --round-mode continuous.")
     if getattr(args, "agent", None) == "openhands" and bool(getattr(args, "interact", False)):
         parser.error("OpenHands backend does not support --interact yet.")
