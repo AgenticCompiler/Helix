@@ -76,6 +76,18 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - The code stores log-sum-exp state in a base-2 representation solely because the forward path uses `exp2`.
   - The target is known to be an A5 device such as `ascend950PR` or `ascend950DT`.
 
+### `autotune-signal`
+
+- Summary: Match observed statistical features in `report.txt` overall sections against structured categories to identify resource imbalances, then use `@triton.autotune` to dynamically search for the optimal tiling sizes, software pipelining stages, and warp counts that resolve those specific hardware bottlenecks.
+- Source: [autotune-signal.md](patterns/autotune-signal.md)
+- Use When:
+  - The kernel logic is mathematically correct, stable, and passes validation tests.
+  - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it).
+  - You need to fine-tune the ratio of memory fetching (MTE) to execution units (CUBE/VECTOR) across varying input tensor dimensions.
+  - The kernel structure already looks semantically correct, and the likely headroom is in `BLOCK_*` selection, `num_warps`, `num_stages`, or autotune `key` configuration.
+  - `report.txt` shows one or more of: near-0% MTE2&VECTOR overlap (A-Cat-1), SCALAR instr% > 80% (A-Cat-2), small ProcessBytes per MTE fetch (A-Cat-5), high WAIT_FLAG without compute overlap (A-Cat-1), or register pressure symptoms (A-Cat-6).
+  - For A-Cat-3 (Grid/Core ratio) and A-Cat-4 (cross-shape performance decay), additional data sources beyond `report.txt` are required.
+
 ### `autotune`
 
 - Summary: Use Triton-Ascend autotune as the default way to search split sizes, tile sizes, and selected compile options when the kernel structure is already reasonable and the main open question is parameter choice.
