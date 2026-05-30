@@ -92,7 +92,7 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_UPLOAD_URL",
-                "HTTP endpoint for the optimize upload server. "
+                "Base URL of the optimize upload server. /uploads is appended automatically. "
                 "Required for the upload-optimize subcommand and auto-upload after optimize.",
             ),
         ),
@@ -170,6 +170,7 @@ class _CommandSpec:
     has_verify_phase: bool = False
     has_force_verify: bool = False
     has_log_tools: bool = False
+    has_url: bool = False
 
 
 _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
@@ -406,6 +407,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         description="Upload one optimize workspace to an analysis server.",
         has_output=False,
         has_verbose=True,
+        has_url=True,
     ),
     CommandKind.REPORT: _CommandSpec(
         handler=handle_report,
@@ -472,6 +474,8 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("-o", "--output")
         if spec.has_verbose:
             subparser.add_argument("--verbose", action="store_true")
+        if spec.has_url:
+            subparser.add_argument("--url", help="Upload server base URL (/uploads appended automatically)")
         if spec.has_interact:
             subparser.add_argument("--interact", action="store_true")
         if spec.has_show_output:
