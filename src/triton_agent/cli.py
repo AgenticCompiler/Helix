@@ -14,7 +14,7 @@ from triton_agent.commands.generation import handle_gen_eval
 from triton_agent.commands.generation import handle_gen_eval_batch
 from triton_agent.commands.status import handle_status
 from triton_agent.commands.log_check import handle_log_check, handle_log_check_batch
-from triton_agent.commands.verification import handle_verify, handle_verify_batch
+from triton_agent.commands.verify import handle_verify, handle_verify_batch
 from triton_agent.commands.optimize import (
     handle_optimize,
     handle_optimize_batch,

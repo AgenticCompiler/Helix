@@ -9,7 +9,8 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.cli import build_parser
-from triton_agent.commands.report import generate_workspace_report, handle_report
+from triton_agent.commands.report import handle_report
+from triton_agent.report.workspace import generate_workspace_report
 from triton_agent.models import AgentRequest, AgentResult
 from triton_agent.show_output_log import show_output_log_path
 from triton_agent.skills import SkillLinkSet
@@ -79,13 +80,13 @@ class ReportCommandTests(unittest.TestCase):
             captured: dict[str, AgentRequest] = {}
 
             with patch(
-                "triton_agent.commands.report.resolve_staged_skills",
+                "triton_agent.report.workspace.resolve_staged_skills",
                 side_effect=_dummy_resolve_staged_skills,
             ), patch(
-                "triton_agent.commands.report.SkillLinkManager",
+                "triton_agent.report.workspace.SkillLinkManager",
                 return_value=_DummySkillLinkManager(),
             ), patch(
-                "triton_agent.commands.report.create_runner",
+                "triton_agent.report.workspace.create_runner",
                 return_value=_DummyRunner(captured, workspace),
             ):
                 ok, message = generate_workspace_report(workspace, "codex", show_output=True)

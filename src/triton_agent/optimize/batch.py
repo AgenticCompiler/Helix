@@ -190,7 +190,7 @@ def run_optimize_batch(
                                 file=sys.stderr,
                             )
                 if options.report:
-                    from triton_agent.commands.report import generate_workspace_report
+                    from triton_agent.report.workspace import generate_workspace_report
 
                     try:
                         if options.verbose:
@@ -198,7 +198,7 @@ def run_optimize_batch(
                                 f"[{item.workspace.name}] Auto-report: generating report.md...",
                                 file=sys.stderr,
                             )
-                        from triton_agent.commands.report import generate_workspace_report
+                        from triton_agent.report.workspace import generate_workspace_report
                         report_ok, report_msg = generate_workspace_report(
                             workspace=item.workspace,
                             agent_name=options.agent_name,
