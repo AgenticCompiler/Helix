@@ -23,7 +23,7 @@ def handle_upload_optimize(parser: argparse.ArgumentParser, args: argparse.Names
         print(f"Upload failed: {exc}", file=sys.stderr)
         return 1
 
-    print(f"Uploaded {response.workspace_name} -> {response.stored_path}")
+    print(f"Uploaded {response.workspace_name} -> {Path(response.stored_path).name}")
     if args.verbose:
         print(f"  UID: {response.upload_uid}")
         print(f"  Timestamp: {response.upload_timestamp}")
