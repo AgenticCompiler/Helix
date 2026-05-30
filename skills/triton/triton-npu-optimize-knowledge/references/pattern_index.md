@@ -24,7 +24,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Source: [grid-flatten-and-ub-buffering.md](patterns/grid-flatten-and-ub-buffering.md)
 ### `software-pipeline-dependency-profiling`
 
-- Summary: Use this pattern as the highest-priority candidate when `extracted_bin_data/report.txt` or equivalent profiling evidence suggests transfer, compute, and store are weakly overlapped, the kernel contains `tl.load`, and the kernel structure can be reorganized to improve overlap. Constructing a steady-state loop around `tl.load`, enabling compiler prefetch, and then tuning `num_stages` can improve performance when the hot path is regular enough to support these changes.
+- Summary: Use this pattern when `extracted_bin_data/report.txt` suggests transfer and compute are weakly overlapped, the kernel contains `tl.load`, and the load latency can plausibly be hidden behind vector/cube compute. Constructing a `for` loop or steady-state loop around regular `tl.load` work can enable compiler prefetch, improve pipeline parallelism, and then be tuned with `num_stages` or manual prefetch when needed.
 - Source: [software-pipeline-dependency-profiling.md](patterns/software-pipeline-dependency-profiling.md)
 
 ## Generated Pattern Summaries
@@ -363,11 +363,13 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - You can prove **semantic equivalence** for the branches you enable (**padding**, **ceil**, **divisor** / **count_include_pad** for average, **`-inf` / dtype** rules for max).
 ### `software-pipeline-dependency-profiling`
 
-- Summary: Use this pattern as the highest-priority candidate when `extracted_bin_data/report.txt` or equivalent profiling evidence suggests transfer, compute, and store are weakly overlapped, the kernel contains `tl.load`, and the kernel structure can be reorganized to improve overlap. Constructing a steady-state loop around `tl.load`, enabling compiler prefetch, and then tuning `num_stages` can improve performance when the hot path is regular enough to support these changes.
+- Summary: Use this pattern when `extracted_bin_data/report.txt` suggests transfer and compute are weakly overlapped, the kernel contains `tl.load`, and the load latency can plausibly be hidden behind vector/cube compute. Constructing a `for` loop or steady-state loop around regular `tl.load` work can enable compiler prefetch, improve pipeline parallelism, and then be tuned with `num_stages` or manual prefetch when needed.
 - Source: [software-pipeline-dependency-profiling.md](patterns/software-pipeline-dependency-profiling.md)
 - Use When:
-  - `extracted_bin_data/report.txt` is available, or equivalent profiling evidence reports transfer/compute overlap.
-  - Most active `core*.veccore*` blocks satisfy the highest-priority profile gate: very low `OverlapRatio(VECTOR/CUBE & MTE2)`, very low `OverlapRatio(VECTOR/CUBE & MTE3)`, very low `OverlapRatio(MTE2 & MTE3)`, and low or moderate `Ratio(VECTOR/CUBE)`.
+  - `extracted_bin_data/report.txt` is available.
+  - The `[Pipe Overlap Ratio]` section shows a software-pipeline signal: very low `%((VECTOR+CUBE)&MTE2/(VECTOR+CUBE))` and very low `%((VECTOR+CUBE)&MTE2/MTE2)`.
+  - In `[Pipe Distribution]`, compute `compute_cycles%` from both `VECTOR cycles%` and `CUBE cycles%` when both rows exist; if only one of the two rows exists, use the available row. Prefer this pattern when `compute_cycles%` and `MTE2 cycles%` are relatively balanced, such as each being at least about one-third of the other.
+  - `SCALAR cycles%` is not the dominant share in `[Pipe Distribution]`; if scalar cycles dominate, prefer scalar-related optimization first.
   - The kernel contains `tl.load`.
   - If `tl.load` is not inside a loop, try constructing a steady-state loop to support compiler prefetch.
   - If `tl.load` is already inside a loop, try bounded `num_stages` tuning; if stage tuning is flat, try manual prefetch.
