@@ -75,6 +75,16 @@ repo `source_path` contains multiple kernels, use **Step 2b** (manual split) —
 launch entrypoint and call chain, not by raw kernel count; do not copy the whole file into
 one workspace or use blind auto-split scripts.
 
+Before Phase D, run scaffold verification:
+
+```bash
+python3 "$SKILL/scripts/verify_batch_scaffold.py" --batch-root "$BATCH"
+```
+
+Fix every reported issue. Typical failures mean the operator file is still a whole-file copy
+instead of a Step 2b extract, or `validation-meta.json` is missing `validation_target` /
+`split_from` / `included_symbols` for shared `source_path` workspaces.
+
 ## Phase D — Run optimize batch
 
 From `REPO`:
@@ -136,6 +146,8 @@ On success (`active_remaining` empty): write `$BATCH/VALIDATION_SUMMARY.md`.
 - All knowledge edits live under `$SKILLS`; the directory is never deleted by the loop.
 - Every optimize-batch run must pass `--skills-source-dir "$SKILLS"`.
 - Every optimize-batch shell command must prefix `TRITON_AGENT_STALL_TIMEOUT_SECONDS=0`.
+- Do not run optimize-batch until `verify_batch_scaffold.py --batch-root "$BATCH"` passes.
+- Do not copy entire multi-kernel source files into one workspace when synthesis validates separate launch entrypoints (Step 2b manual extract required).
 - Do not hand-edit `pattern_index.md`.
 - Do not delete `baseline/` when iterating; use `reset_workspace_rounds.py` on active workspaces.
 

@@ -11,7 +11,7 @@ from triton_agent.optimize.skill_contract import optimize_check_module
 
 _OPTIMIZE_CHECK_MODULE = optimize_check_module()
 _BATCH_OPTIMIZE_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")
-_BATCH_OPTIMIZE_EXCLUDED_NAMES = {"__init__.py"}
+_BATCH_OPTIMIZE_EXCLUDED_NAMES = frozenset({"__init__.py", "conftest.py"})
 
 expected_round_operator_name = _OPTIMIZE_CHECK_MODULE.expected_round_operator_name  # type: ignore[reportUnknownVariableType]
 expected_round_perf_name = _OPTIMIZE_CHECK_MODULE.expected_round_perf_name  # type: ignore[reportUnknownVariableType]

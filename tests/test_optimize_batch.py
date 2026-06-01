@@ -23,6 +23,7 @@ class OptimizeBatchHelpersTests(unittest.TestCase):
             (workspace / "bench_kernel.py").write_text("", encoding="utf-8")
             (workspace / "opt_kernel.py").write_text("", encoding="utf-8")
             (workspace / "__init__.py").write_text("", encoding="utf-8")
+            (workspace / "conftest.py").write_text("", encoding="utf-8")
 
             resolved = resolve_batch_optimize_operator_file(workspace)
 
@@ -48,6 +49,7 @@ class OptimizeBatchHelpersTests(unittest.TestCase):
         self.assertFalse(is_batch_optimize_operator_candidate(workspace / "bench_kernel.py"))
         self.assertFalse(is_batch_optimize_operator_candidate(workspace / "opt_kernel.py"))
         self.assertFalse(is_batch_optimize_operator_candidate(workspace / "__init__.py"))
+        self.assertFalse(is_batch_optimize_operator_candidate(workspace / "conftest.py"))
         self.assertFalse(is_batch_optimize_operator_candidate(workspace / "kernel.txt"))
 
     def test_summarize_batch_optimize_failure_prefers_last_non_blank_stderr_line(self) -> None:

@@ -181,6 +181,7 @@ State and audit helpers (python3):
   {scripts_dir.as_posix()}/record_iteration.py
   {scripts_dir.as_posix()}/reset_workspace_rounds.py
   {scripts_dir.as_posix()}/audit_batch.py
+  {scripts_dir.as_posix()}/verify_batch_scaffold.py
   {knowledge_root.as_posix()}/scripts/build_pattern_index.py
 
 Optional scaffold helpers (only if you authored manifest JSON yourself):
@@ -194,6 +195,9 @@ Required end-to-end behavior:
 2. Read `{synthesis_path.as_posix()}` (and `PERF_KNOWLEDGE_BASE.md` if needed). **You** decide which lessons become pattern card edits under `{knowledge_root.as_posix()}/references/patterns/`.
 3. Regenerate `{knowledge_root.as_posix()}/references/pattern_index.md` after each skill edit batch.
 4. **You** plan validation workspaces: select operators, extract pre-opt snapshots with Git (`{base_revision}..HEAD`), find and copy tests/benches/dependencies, write each `validation-meta.json` under `{batch_dir.as_posix()}`. Follow `{workspace_scaffold_contract.as_posix()}`.
+   - When synthesis validates multiple independent targets from the same repo `source_path`, you **must** follow **Step 2b (manual split)**: one workspace per launch entrypoint, operator file is a **minimal extract** — never `git show` the whole multi-kernel file into one workspace.
+   - For each split workspace set `validation_target`, `split_from`, `included_symbols`, and `excluded_targets` in `validation-meta.json`.
+   - Before optimize-batch, run `{scripts_dir.as_posix()}/verify_batch_scaffold.py --batch-root {batch_dir.as_posix()}` and fix every reported issue.
 5. Run from `{repo_path.as_posix()}`:
 
    {optimize_batch_initial}
@@ -215,6 +219,8 @@ Rules:
 - Do not depend on `G1-I1` tables or blind `generate_manifest.py` output; interpret synthesis yourself.
 - Do not promote repo-local-only or rejected lessons into skills or `expected_patterns`.
 - Do not edit staged backend skills (for example `{backend_skills.as_posix()}/`) for knowledge updates; use `{skills_workdir.as_posix()}` only.
+- Do not copy an entire multi-kernel repo `source_path` into a workspace when synthesis validates only one launch entrypoint inside it; use Step 2b manual extract.
+- Do not run optimize-batch until `verify_batch_scaffold.py --batch-root {batch_dir.as_posix()}` passes for all active workspaces.
 - Every optimize-batch run must pass `--skills-source-dir {skills_dir}`.
 - Every optimize-batch shell command must prefix `TRITON_AGENT_STALL_TIMEOUT_SECONDS=0` so nested optimize agents do not stall-kill on long silent runs.
 - Every optimize-batch run must pass `--show-output` so nested optimize agent logs stream to the terminal; long silent runs may be killed by job timeouts or watchdogs.

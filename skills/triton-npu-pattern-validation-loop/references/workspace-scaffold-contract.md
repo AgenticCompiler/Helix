@@ -336,8 +336,12 @@ Before moving to Step 3 / optimize-batch, verify:
 
 Each workspace must satisfy `optimize-batch` layout rules:
 
-- Exactly **one** operator `.py` at workspace root (excluding `test_*`, `bench_*`, etc.)
+- Exactly **one** operator `.py` at workspace root (excluding `test_*`, `bench_*`, `conftest.py`, etc.)
 - At least one runnable test file
+
+`conftest.py` is ignored by `optimize-batch` operator discovery and may be used for pytest path
+setup. Do not add other extra root-level `.py` files unless they are the operator or copied
+dependencies with imports wired through that operator/tests.
 
 ### Tests
 
@@ -424,10 +428,13 @@ Checklist per workspace:
 Record scaffold completion:
 
 ```bash
+python3 "$SKILL/scripts/verify_batch_scaffold.py" --batch-root "$BATCH"
 python3 "$SKILL/scripts/record_iteration.py" \
   --state "$STATE" --phase scaffold \
   --note "N workspaces: ..."
 ```
+
+Do not run optimize-batch until `verify_batch_scaffold.py` exits 0.
 
 ## When to rebuild vs reuse workspaces
 
