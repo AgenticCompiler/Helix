@@ -196,6 +196,7 @@ def run_remote_bench_standalone_parallel(
                     source_root=source_root,
                     verbose=verbose,
                     stderr=stderr,
+                    force_recompile=force_recompile,
                 )
         finally:
             deps.run_remote_command_buffered(
@@ -355,7 +356,11 @@ def _run_remote_standalone_case(
     source_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
+    force_recompile: bool = False,
 ) -> PerfCaseRecord:
+    extra_env = affinity_env_for_device(device)
+    if force_recompile:
+        extra_env["TRITON_ALWAYS_COMPILE"] = "1"
     result = deps.run_remote_command_streaming(
         spec,
         case_workspace,
@@ -370,7 +375,7 @@ def _run_remote_standalone_case(
         ],
         verbose=verbose,
         stderr=stderr,
-        extra_env=affinity_env_for_device(device),
+        extra_env=extra_env,
         stall_timeout_seconds=deps._bench_timeout(),
     )
     return _parse_standalone_case_result_payload(
