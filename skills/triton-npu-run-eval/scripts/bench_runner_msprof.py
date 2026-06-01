@@ -45,6 +45,7 @@ def run_local_bench_msprof(
     operator_file: Path,
     *,
     verbose: bool = False,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     resolution = deps.resolve_bench_kernel_resolution(bench_file, operator_file)
     count_result = deps.run_buffered_process(
@@ -85,6 +86,7 @@ def run_local_bench_msprof(
                     str(bench_file.parent),
                     stall_timeout_seconds=deps._bench_timeout(),
                     stdout=stream_target,
+                    extra_env={"TRITON_ALWAYS_COMPILE": "1"} if force_recompile else None,
                 )
             elapsed = deps._now() - t0
             stdout_chunks.append(str(result["stdout"]))
@@ -156,6 +158,7 @@ def run_local_bench_msprof_parallel(
     source_root: Path,
     json_search_root: Path,
     verbose: bool = False,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     resolution = deps.resolve_bench_kernel_resolution(bench_file, operator_file)
     count_result = deps.run_buffered_process(
@@ -189,6 +192,7 @@ def run_local_bench_msprof_parallel(
             source_root,
             json_search_root,
             verbose,
+            force_recompile=force_recompile,
         )
 
     outcomes = deps._run_parallel_case_workers(
@@ -213,6 +217,7 @@ def run_remote_bench_msprof(
     *,
     verbose: bool = False,
     stderr: TextIO | None = None,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None, str]:
     resolution = deps.resolve_bench_kernel_resolution(bench_file, operator_file)
     count_result = deps.run_remote_command_buffered(
@@ -345,6 +350,7 @@ def run_remote_bench_msprof_parallel(
     json_search_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None, str]:
     resolution = deps.resolve_bench_kernel_resolution(bench_file, operator_file)
     count_result = deps.run_remote_command_buffered(
@@ -406,6 +412,7 @@ def _run_local_msprof_case_parallel(
     source_root: Path,
     json_search_root: Path,
     verbose: bool,
+    force_recompile: bool = False,
 ) -> _MsprofCaseOutcome:
     case_workspace, cleanup = deps._create_local_msprof_case_workspace(
         bench_file,
@@ -418,6 +425,9 @@ def _run_local_msprof_case_parallel(
     output_dir, temp_dir = deps._create_local_msprof_output_dir(case_idx, preserved_run_dir)
     try:
         with pool.acquire() as device:
+            extra_env = affinity_env_for_device(device)
+            if force_recompile:
+                extra_env["TRITON_ALWAYS_COMPILE"] = "1"
             command = [
                 "msprof",
                 f"--output={output_dir}",
@@ -435,7 +445,7 @@ def _run_local_msprof_case_parallel(
                     str(case_workspace),
                     stall_timeout_seconds=deps._bench_timeout(),
                     stdout=stream_target,
-                    extra_env=affinity_env_for_device(device),
+                    extra_env=extra_env,
                 )
             elapsed = deps._now() - t0
         return _build_local_msprof_case_outcome(deps, result, resolution, case_idx, output_dir, elapsed)

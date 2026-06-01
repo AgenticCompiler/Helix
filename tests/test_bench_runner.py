@@ -183,7 +183,8 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             self.assertEqual(result["return_code"], 0)
             self.assertEqual(resolved_perf, perf_file)
-            helper.assert_called_once_with(bench_file, operator_file, verbose=False)
+            helper.assert_called_once_with(bench_file, operator_file, verbose=False,
+                                             force_recompile=False)
             streaming.assert_not_called()
 
     def test_run_local_bench_standalone_preserves_helper_perf_path(self) -> None:
@@ -228,8 +229,9 @@ class LocalBenchRunnerTests(unittest.TestCase):
             fake_result = make_skill_result(0, "", "")
             perf_file = root / "abs_perf.txt"
 
-            def _fake_helper(passed_bench: Path, passed_operator: Path, *, verbose: bool = False):
-                del passed_bench, passed_operator, verbose
+            def _fake_helper(passed_bench: Path, passed_operator: Path, *, verbose: bool = False,
+                             force_recompile: bool = False):
+                del passed_bench, passed_operator, verbose, force_recompile
                 observed_cwds.append(Path.cwd())
                 return fake_result, perf_file
 
@@ -380,7 +382,8 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             self.assertEqual(result, fake_result)
             self.assertEqual(resolved_perf, perf_file)
-            helper.assert_called_once_with(bench_file, operator_file, verbose=False)
+            helper.assert_called_once_with(bench_file, operator_file, verbose=False,
+                                             force_recompile=False)
 
     def test_run_local_bench_standalone_parallel_uses_isolated_case_workdirs_and_device_envs(self) -> None:
         module = load_bench_runner_module()

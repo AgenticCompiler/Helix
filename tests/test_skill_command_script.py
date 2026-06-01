@@ -94,6 +94,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 operator_path: Path,
                 bench_mode: str,
                 npu_devices: Optional[str] = None,
+                force_recompile: bool = False,
             ) -> tuple[dict[str, object], Path]:
                 observed_args.extend([bench_path, operator_path, bench_mode, npu_devices])
                 return (
@@ -360,6 +361,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 operator_path: Path,
                 test_mode: str,
                 verbose: bool = False,
+                force_recompile: bool = False,
             ) -> tuple[dict[str, object], Path]:
                 self.assertEqual(test_path, test_file.resolve())
                 self.assertEqual(operator_path, operator.resolve())
@@ -447,6 +449,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 operator_path: Path,
                 test_mode: str,
                 verbose: bool = False,
+                force_recompile: bool = False,
             ) -> tuple[dict[str, object], Path]:
                 self.assertEqual(test_path, test_file.resolve())
                 self.assertEqual(operator_path, operator.resolve())
@@ -545,6 +548,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 operator_path: Path,
                 test_mode: str,
                 verbose: bool = False,
+                force_recompile: bool = False,
             ) -> tuple[dict[str, object], None]:
                 self.assertEqual(test_path, test_file.resolve())
                 self.assertEqual(operator_path, operator.resolve())

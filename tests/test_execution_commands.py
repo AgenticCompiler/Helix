@@ -46,6 +46,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 operator.resolve(),
                 "differential",
                 verbose=False,
+                force_recompile=False,
             )
 
     def test_handle_run_test_auto_compares_differential_result_when_oracle_provided(self) -> None:
@@ -89,6 +90,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 operator.resolve(),
                 "differential",
                 verbose=False,
+                force_recompile=False,
             )
             compare_mock.assert_called_once_with(
                 oracle.resolve(),
@@ -129,6 +131,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 operator.resolve(),
                 "standalone",
                 verbose=True,
+                force_recompile=False,
             )
 
     def test_handle_run_bench_prints_perf_file(self) -> None:
