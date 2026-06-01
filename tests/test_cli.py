@@ -4322,6 +4322,35 @@ class PromptTests(unittest.TestCase):
             prompt,
         )
 
+    def test_build_optimize_resume_prompt_requires_pre_round_reflection(self) -> None:
+        prompt = build_optimize_resume_prompt("Round gate passed.")
+
+        self.assertIn("Before editing code for the next round, stop and reflect on the best entrypoint.", prompt)
+        self.assertIn(
+            "Choose which operator, kernel path, or wrapper bottleneck should anchor the round before making the next code change.",
+            prompt,
+        )
+        self.assertIn(
+            "Decide whether existing benchmark and compare-perf evidence is already sufficient or whether profiling is needed first.",
+            prompt,
+        )
+        self.assertIn(
+            "Escalate to IR only after profiler evidence narrows the bottleneck but still does not explain it.",
+            prompt,
+        )
+        self.assertIn(
+            "Use compiler-source analysis only after profiler and IR evidence have narrowed a concrete compiler-side question.",
+            prompt,
+        )
+        self.assertIn(
+            "Do not use agents or subagents to optimize multiple rounds in parallel; keep the optimize session one round at a time.",
+            prompt,
+        )
+        self.assertIn(
+            "Do not treat the next round as a parameter-only tuning sweep; make a bottleneck-backed change instead.",
+            prompt,
+        )
+
     def test_build_optimize_continuous_prompt_mentions_min_rounds_when_requested(self) -> None:
         prompt = build_optimize_continuous_prompt(
             Path("/tmp/op.py"),
@@ -4349,6 +4378,28 @@ class PromptTests(unittest.TestCase):
         self.assertIn("may be stuck in a local optimum", prompt)
         self.assertIn(
             "review earlier rounds and consider resuming from before that flat sequence",
+            prompt,
+        )
+
+    def test_build_optimize_continuous_prompt_requires_pre_round_reflection(self) -> None:
+        prompt = build_optimize_continuous_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+        )
+
+        self.assertIn("Do not rush from a passed `check-round` directly into the next edit.", prompt)
+        self.assertIn(
+            "Before opening the next round, reflect on which operator, kernel path, or wrapper bottleneck should anchor it.",
+            prompt,
+        )
+        self.assertIn(
+            "Decide whether existing evidence is already sufficient or whether profiling, IR, or compiler-source analysis is needed before more code changes.",
+            prompt,
+        )
+        self.assertIn(
+            "Do not treat the next round as a parameter-only tuning sweep; make a bottleneck-backed change instead.",
             prompt,
         )
 

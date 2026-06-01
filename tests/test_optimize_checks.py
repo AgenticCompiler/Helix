@@ -485,6 +485,35 @@ class OptimizeCheckTests(unittest.TestCase):
                 any("optimization may be stagnating in the current direction" in issue for issue in result.issues)
             )
 
+    def test_check_round_with_remaining_min_rounds_names_next_round_and_reflection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            round_dir = self._write_round(workdir, "opt-round-1", round_disposition="continue")
+
+            result = optimize_checks.check_round(round_dir, min_rounds=2)
+
+            self.assertTrue(result.ok)
+            self.assertEqual(result.decision, "pass")
+            self.assertIn("Next round: opt-round-2.", result.summary)
+            self.assertIn("Do not rush into the next code change.", result.summary)
+            self.assertIn(
+                "First decide which operator, kernel path, or wrapper bottleneck should anchor the next round.",
+                result.summary,
+            )
+            self.assertIn(
+                "Decide whether existing evidence is already sufficient or whether profiling, IR, or compiler-source analysis is needed first.",
+                result.summary,
+            )
+            self.assertIn(
+                "Do not use agents or subagents to optimize multiple rounds in parallel.",
+                result.summary,
+            )
+            self.assertIn(
+                "Do not treat the next round as a parameter-only tuning sweep.",
+                result.summary,
+            )
+
     def test_check_round_warns_when_local_optimum_env_vars_are_invalid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
