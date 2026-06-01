@@ -202,7 +202,7 @@ class OpenCodeRunnerTests(unittest.TestCase):
                 runner.run(request)
             mocked.assert_called_once()
 
-    def test_run_stages_general_subagent_deny_config_and_cleans_it_up(self) -> None:
+    def test_run_stages_general_and_explore_subagent_deny_config_and_cleans_it_up(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             runner = OpenCodeRunner()
@@ -232,7 +232,9 @@ class OpenCodeRunnerTests(unittest.TestCase):
                 self.assertEqual(config["agent"]["build"]["mode"], "primary")
                 self.assertEqual(config["agent"]["plan"]["mode"], "primary")
                 self.assertEqual(config["agent"]["build"]["permission"]["task"]["general"], "deny")
+                self.assertEqual(config["agent"]["build"]["permission"]["task"]["explore"], "deny")
                 self.assertEqual(config["agent"]["plan"]["permission"]["task"]["general"], "deny")
+                self.assertEqual(config["agent"]["plan"]["permission"]["task"]["explore"], "deny")
                 return _ok_result()
 
             with patch("triton_agent.backends.base.run_process", side_effect=_inspect_config):

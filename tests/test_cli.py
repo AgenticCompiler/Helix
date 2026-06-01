@@ -66,12 +66,17 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["gen-eval-batch", "-i", "kernels"])
         self.assertEqual(args.command, "gen-eval-batch")
         self.assertEqual(args.command_kind, CommandKind.GEN_EVAL_BATCH)
-        self.assertEqual(args.max_concurrency, 2)
+        self.assertEqual(args.concurrency, 1)
         self.assertEqual(args.test_mode, "differential")
         self.assertEqual(args.bench_mode, "standalone")
         self.assertEqual(args.agent, "codex")
         self.assertFalse(hasattr(args, "interact"))
         self.assertFalse(hasattr(args, "output"))
+
+    def test_gen_eval_batch_accepts_max_concurrency_keyword(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["gen-eval-batch", "-i", "kernels", "--concurrency", "max"])
+        self.assertEqual(args.concurrency, "max")
 
     def test_log_check_batch_accepts_result_options(self) -> None:
         parser = build_parser()
@@ -84,7 +89,7 @@ class CliParserTests(unittest.TestCase):
                 "custom_check.txt",
                 "--summary-file",
                 "custom_summary.txt",
-                "--max-concurrency",
+                "--concurrency",
                 "4",
                 "--verbose",
                 "--show-output",
@@ -94,9 +99,17 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.LOG_CHECK_BATCH)
         self.assertEqual(args.check_result_file, "custom_check.txt")
         self.assertEqual(args.summary_file, "custom_summary.txt")
-        self.assertEqual(args.max_concurrency, 4)
+        self.assertEqual(args.concurrency, 4)
         self.assertTrue(args.verbose)
         self.assertTrue(args.show_output)
+
+    def test_log_check_batch_rejects_max_concurrency_keyword(self) -> None:
+        parser = build_parser()
+        stderr = StringIO()
+        with self.assertRaises(SystemExit) as exc, redirect_stderr(stderr):
+            parser.parse_args(["log-check-batch", "-i", "kernels", "--concurrency", "max"])
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn("--concurrency", stderr.getvalue())
 
     def test_gen_eval_maps_to_command_kind(self) -> None:
         parser = build_parser()
@@ -148,7 +161,7 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["convert-batch", "-i", "kernels"])
         self.assertEqual(args.command, "convert-batch")
         self.assertEqual(args.command_kind, CommandKind.CONVERT_BATCH)
-        self.assertEqual(args.max_concurrency, 2)
+        self.assertEqual(args.concurrency, 1)
         self.assertEqual(args.test_mode, "differential")
         self.assertEqual(args.agent, "codex")
         self.assertFalse(hasattr(args, "interact"))
@@ -938,7 +951,7 @@ class CliParserTests(unittest.TestCase):
                 "standalone",
                 "--bench-mode",
                 "msprof",
-                "--max-concurrency",
+                "--concurrency",
                 "3",
                 "--show-output",
             ]
@@ -948,7 +961,7 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.remote_workdir, "/tmp/eval")
         self.assertEqual(args.test_mode, "standalone")
         self.assertEqual(args.bench_mode, "msprof")
-        self.assertEqual(args.max_concurrency, 3)
+        self.assertEqual(args.concurrency, 3)
         self.assertTrue(args.show_output)
 
     def test_optimize_command_supports_mode_options(self) -> None:
@@ -1232,7 +1245,7 @@ class CliParserTests(unittest.TestCase):
         parser = build_parser()
         args = parser.parse_args(["optimize-batch", "-i", "kernels"])
         self.assertEqual(args.command_kind, CommandKind.OPTIMIZE_BATCH)
-        self.assertEqual(args.max_concurrency, 1)
+        self.assertEqual(args.concurrency, 1)
         self.assertEqual(args.agent, "codex")
         self.assertFalse(hasattr(args, "interact"))
         self.assertFalse(args.show_output)
@@ -1307,7 +1320,7 @@ class CliParserTests(unittest.TestCase):
                 "--target-chip",
                 "A3",
                 "--no-agent-session",
-                "--max-concurrency",
+                "--concurrency",
                 "3",
                 "--show-output",
             ]
@@ -1321,7 +1334,7 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.resume, "continue")
         self.assertEqual(args.target_chip, "A3")
         self.assertTrue(args.no_agent_session)
-        self.assertEqual(args.max_concurrency, 3)
+        self.assertEqual(args.concurrency, 3)
         self.assertTrue(args.show_output)
 
     def test_optimize_batch_defaults_resume_to_auto(self) -> None:
@@ -1973,7 +1986,7 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("[SKIP] alpha: already completed", stdout.getvalue())
             self.assertIn("Summary: 1 succeeded, 0 failed, 1 skipped", stdout.getvalue())
 
-    def test_main_optimize_batch_honors_max_concurrency(self) -> None:
+    def test_main_optimize_batch_honors_concurrency(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for name in ("one", "two", "three"):
@@ -2003,12 +2016,39 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
-                exit_code = main(
-                    ["optimize-batch", "-i", str(root), "--max-concurrency", "2", "--no-report"]
-                )
+                exit_code = main(["optimize-batch", "-i", str(root), "--concurrency", "2", "--no-report"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(max_active, 2)
+
+    def test_main_optimize_batch_resolves_max_concurrency_keyword(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+
+            def _fake_run_optimize_batch(root, options, max_concurrency):
+                del root, options
+                captured["max_concurrency"] = max_concurrency
+                return 0
+
+            with patch.dict(
+                os.environ,
+                {
+                    "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
+                    "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                },
+                clear=False,
+            ):
+                with patch(
+                    "triton_agent.commands.optimize.run_optimize_batch",
+                    side_effect=_fake_run_optimize_batch,
+                ):
+                    exit_code = main(
+                        ["optimize-batch", "-i", str(root), "--concurrency", "max", "--no-report"]
+                    )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["max_concurrency"], 4)
 
     def test_main_optimize_batch_show_output_prefixes_workspace_streams(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2114,10 +2154,10 @@ class PathResolutionTests(unittest.TestCase):
 
             with redirect_stderr(stderr):
                 with self.assertRaises(SystemExit) as exc:
-                    main(["optimize-batch", "-i", str(root), "--max-concurrency", "0", "--no-report"])
+                    main(["optimize-batch", "-i", str(root), "--concurrency", "0", "--no-report"])
 
             self.assertEqual(exc.exception.code, 2)
-            self.assertIn("--max-concurrency must be at least 1", stderr.getvalue())
+            self.assertIn("--concurrency must be at least 1", stderr.getvalue())
 
     def test_main_gen_eval_batch_auto_detects_operator_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2213,7 +2253,7 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("found multiple candidate operator files", stdout.getvalue())
             self.assertIn("Summary: 1 succeeded, 1 failed", stdout.getvalue())
 
-    def test_main_gen_eval_batch_honors_max_concurrency(self) -> None:
+    def test_main_gen_eval_batch_honors_concurrency(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for name in ("one", "two", "three"):
@@ -2243,7 +2283,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch("triton_agent.generation.batch.run_generation_request", side_effect=_fake_run):
-                exit_code = main(["gen-eval-batch", "-i", str(root), "--max-concurrency", "2"])
+                exit_code = main(["gen-eval-batch", "-i", str(root), "--concurrency", "2"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(max_active, 2)
@@ -2282,10 +2322,10 @@ class PathResolutionTests(unittest.TestCase):
 
             with redirect_stderr(stderr):
                 with self.assertRaises(SystemExit) as exc:
-                    main(["gen-eval-batch", "-i", str(root), "--max-concurrency", "0"])
+                    main(["gen-eval-batch", "-i", str(root), "--concurrency", "0"])
 
             self.assertEqual(exc.exception.code, 2)
-            self.assertIn("--max-concurrency must be at least 1", stderr.getvalue())
+            self.assertIn("--concurrency must be at least 1", stderr.getvalue())
 
     def test_default_generated_paths_follow_convention(self) -> None:
         operator = Path("/tmp/add.py")

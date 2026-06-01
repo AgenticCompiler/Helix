@@ -8,6 +8,7 @@ from typing import Literal, cast
 from triton_agent.commands.input_resolution import resolve_single_operator_input
 from triton_agent.report.workspace import generate_workspace_report
 from triton_agent.models import CommandKind
+from triton_agent.npu_affinity import resolve_batch_concurrency
 from triton_agent.optimize.batch import resolve_batch_optimize_operator_file, run_optimize_batch
 from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
@@ -99,10 +100,14 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
 def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     options = optimize_run_options_from_args(args)
     try:
+        max_concurrency = resolve_batch_concurrency(args.concurrency)
+    except ValueError as exc:
+        parser.error(str(exc))
+    try:
         validate_optimize_options(
             CommandKind.OPTIMIZE_BATCH,
             min_rounds=options.min_rounds,
-            max_concurrency=args.max_concurrency,
+            max_concurrency=max_concurrency,
             resume_mode=options.resume_mode,
             reset_optimize=options.reset_optimize,
             test_mode=options.test_mode,
@@ -118,7 +123,7 @@ def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
         parser.error(f"Input path does not exist: {root}")
     if not root.is_dir():
         parser.error(f"Input path is not a directory: {root}")
-    return run_optimize_batch(root, options, max_concurrency=args.max_concurrency)
+    return run_optimize_batch(root, options, max_concurrency=max_concurrency)
 
 
 def _validate_round_mode(args: argparse.Namespace) -> Literal["continuous", "checked", "supervised"]:

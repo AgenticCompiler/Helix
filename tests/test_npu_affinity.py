@@ -7,8 +7,10 @@ from triton_agent.npu_affinity import (
     affinity_env_for_device,
     configured_batch_npu_slots,
     configured_batch_workers_per_npu,
+    effective_batch_affinity_capacity,
     parse_batch_npu_devices,
     parse_batch_workers_per_npu,
+    resolve_batch_concurrency,
     validate_batch_affinity_capacity,
 )
 
@@ -172,6 +174,44 @@ class BatchNpuAffinityTests(unittest.TestCase):
 
     def test_validate_capacity_noop_when_devices_none(self) -> None:
         validate_batch_affinity_capacity(None, max_concurrency=100)
+
+    def test_effective_capacity_returns_none_when_devices_unset(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertIsNone(effective_batch_affinity_capacity())
+
+    def test_effective_capacity_uses_devices_and_workers(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
+                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "3",
+            },
+            clear=True,
+        ):
+            self.assertEqual(effective_batch_affinity_capacity(), 6)
+
+    def test_resolve_batch_concurrency_returns_numeric_value(self) -> None:
+        self.assertEqual(resolve_batch_concurrency(4), 4)
+
+    def test_resolve_batch_concurrency_expands_max_keyword(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
+                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+            },
+            clear=True,
+        ):
+            self.assertEqual(resolve_batch_concurrency("max"), 4)
+
+    def test_resolve_batch_concurrency_rejects_max_without_device_pool(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(ValueError, "TRITON_AGENT_BATCH_NPU_DEVICES"):
+                resolve_batch_concurrency("max")
+
+    def test_resolve_batch_concurrency_rejects_zero(self) -> None:
+        with self.assertRaisesRegex(ValueError, "--concurrency"):
+            resolve_batch_concurrency(0)
 
     # -- pool with repeated slots (shared devices) --
 

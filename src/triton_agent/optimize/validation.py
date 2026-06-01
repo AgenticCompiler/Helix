@@ -18,7 +18,7 @@ def validate_optimize_options(
     if min_rounds < 1:
         raise ValueError("--min-rounds must be at least 1")
     if command_kind == CommandKind.OPTIMIZE_BATCH and max_concurrency is not None and max_concurrency < 1:
-        raise ValueError("--max-concurrency must be at least 1")
+        raise ValueError("--concurrency must be at least 1")
     if reset_optimize and resume_mode != "fresh":
         raise ValueError("--reset-optimize requires --resume fresh")
     if enable_cann_ext_api and target_chip != "A5":

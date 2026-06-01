@@ -13,7 +13,7 @@ _OPENCODE_CONFIG_PATH = Path(".opencode") / "opencode.json"
 
 
 def _opencode_workspace_config() -> dict[str, object]:
-    permission = {"task": {"general": "deny"}}
+    permission = {"task": {"general": "deny", "explore": "deny"}}
     return {
         "$schema": "https://opencode.ai/config.json",
         "agent": {

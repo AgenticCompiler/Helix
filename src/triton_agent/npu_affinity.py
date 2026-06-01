@@ -66,6 +66,28 @@ def configured_batch_npu_slots() -> tuple[str, ...] | None:
     return tuple(slots)
 
 
+def effective_batch_affinity_capacity() -> int | None:
+    devices = configured_batch_npu_devices()
+    if devices is None:
+        return None
+    return len(devices) * configured_batch_workers_per_npu()
+
+
+def resolve_batch_concurrency(requested: int | str) -> int:
+    if requested == "max":
+        capacity = effective_batch_affinity_capacity()
+        if capacity is None:
+            raise ValueError(
+                f"--concurrency max requires {_BATCH_NPU_DEVICES_ENV} to be set."
+            )
+        return capacity
+    if not isinstance(requested, int):
+        raise ValueError(f"--concurrency must be a positive integer or 'max', got {requested!r}")
+    if requested < 1:
+        raise ValueError("--concurrency must be at least 1")
+    return requested
+
+
 def validate_batch_affinity_capacity(
     devices: tuple[str, ...] | None,
     *,
@@ -77,7 +99,7 @@ def validate_batch_affinity_capacity(
     effective_capacity = len(devices) * workers
     if max_concurrency > effective_capacity:
         raise ValueError(
-            f"--max-concurrency ({max_concurrency}) must not exceed the effective "
+            f"--concurrency ({max_concurrency}) must not exceed the effective "
             f"capacity ({effective_capacity}) derived from "
             f"{_BATCH_NPU_DEVICES_ENV} ({len(devices)} device(s)) "
             f"and {_BATCH_WORKERS_PER_NPU_ENV} ({workers})."
