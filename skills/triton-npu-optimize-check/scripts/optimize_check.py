@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
-from dataclasses import asdict
 from pathlib import Path
 from kernel_continuity_check import KernelContinuityResult, analyze_triton_kernel_continuity
 from optimize_check_contract import (
@@ -71,6 +69,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _build_cli_payload(result: OptimizeCheckResult) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "ok": result.ok,
+        "kind": result.kind,
+        "decision": result.decision,
+        "issues": list(result.issues),
+    }
+    if result.next_option is not None:
+        payload["next_option"] = result.next_option
+    payload["guideline"] = result.summary
+    return payload
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -84,8 +95,7 @@ def main(argv: list[str] | None = None) -> int:
             optimize_target=args.optimize_target,
         )
 
-    print(json.dumps(asdict(result), ensure_ascii=True))
-    print(result.summary, file=sys.stderr)
+    print(json.dumps(_build_cli_payload(result), ensure_ascii=True))
     if result.decision == "pass":
         return 0
     if result.decision == "hard-fail":

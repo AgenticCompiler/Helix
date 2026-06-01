@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List
@@ -56,6 +57,7 @@ def staged_skill_dir(backend: str) -> Path:
 @dataclass
 class SkillLinkSet:
     created_paths: List[Path]
+    temporary_git_dir: Path | None = None
 
 
 class SkillLinkManager:
@@ -103,6 +105,33 @@ class SkillLinkManager:
             return
         target.mkdir(parents=True, exist_ok=True)
 
+    def _ensure_local_git_boundary(self, workdir: Path) -> Path | None:
+        git_path = workdir / ".git"
+        if git_path.exists():
+            return None
+        try:
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=workdir,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            detail = exc.stderr.strip() or str(exc)
+            raise RuntimeError(f"Failed to initialize temporary git repo in {workdir}: {detail}") from exc
+        if not git_path.exists():
+            raise RuntimeError(f"Failed to initialize temporary git repo in {workdir}: .git not created")
+        return git_path
+
+    def _remove_path(self, path: Path) -> None:
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+            return
+        if path.exists():
+            path.unlink()
+
     def _copy_selected_skill_dirs(
         self,
         target: Path,
@@ -131,53 +160,68 @@ class SkillLinkManager:
         if config is None:
             raise RuntimeError(f"Unsupported skill backend: {backend}")
 
-        target = workdir.joinpath(*config.target_parts)
-        backend_root_path = workdir / config.backend_root
-        root_pre_existed = backend_root_path.exists()
-        created: list[Path] = []
+        temporary_git_dir = self._ensure_local_git_boundary(workdir)
+        try:
+            target = workdir.joinpath(*config.target_parts)
+            backend_root_path = workdir / config.backend_root
+            root_pre_existed = backend_root_path.exists()
+            created: list[Path] = []
 
-        if config.copy_root_when_missing and not target.exists() and skill_names is None:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(self.skills_root, target, symlinks=False)
-            created.append(target)
+            if config.copy_root_when_missing and not target.exists() and skill_names is None:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(self.skills_root, target, symlinks=False)
+                created.append(target)
+                if not root_pre_existed:
+                    created.insert(0, backend_root_path)
+                return SkillLinkSet(created, temporary_git_dir=temporary_git_dir)
+
+            self._prepare_target_dir(target)
+
+            if config.copy_root_when_missing and not any(target.iterdir()) and skill_names is not None:
+                created.extend(self._copy_selected_skill_dirs(target, skill_names, skill_sources))
+                if created:
+                    result = [target]
+                    if not root_pre_existed:
+                        result.insert(0, backend_root_path)
+                    return SkillLinkSet(result, temporary_git_dir=temporary_git_dir)
+                return SkillLinkSet([], temporary_git_dir=temporary_git_dir)
+
+            created.extend(self._copy_selected_skill_dirs(target, skill_names, skill_sources))
             if not root_pre_existed:
                 created.insert(0, backend_root_path)
-            return SkillLinkSet(created)
-
-        self._prepare_target_dir(target)
-
-        if config.copy_root_when_missing and not any(target.iterdir()) and skill_names is not None:
-            created.extend(self._copy_selected_skill_dirs(target, skill_names, skill_sources))
-            if created:
-                result = [target]
-                if not root_pre_existed:
-                    result.insert(0, backend_root_path)
-                return SkillLinkSet(result)
-            return SkillLinkSet([])
-
-        created.extend(self._copy_selected_skill_dirs(target, skill_names, skill_sources))
-        if not root_pre_existed:
-            created.insert(0, backend_root_path)
-        return SkillLinkSet(created)
+            return SkillLinkSet(created, temporary_git_dir=temporary_git_dir)
+        except Exception:
+            if temporary_git_dir is not None:
+                self._remove_path(temporary_git_dir)
+            raise
 
     def cleanup(self, link_set: SkillLinkSet) -> list[str]:
         warnings: list[str] = []
         for path in reversed(link_set.created_paths):
             try:
-                if path.is_dir() and not path.is_symlink():
-                    shutil.rmtree(path)
-                elif path.exists():
-                    path.unlink()
+                self._remove_path(path)
             except OSError as exc:
                 warnings.append(f"Failed to remove skill copy {path}: {exc}")
+        if link_set.temporary_git_dir is not None:
+            try:
+                self._remove_path(link_set.temporary_git_dir)
+            except OSError as exc:
+                warnings.append(f"Failed to remove temporary git repo {link_set.temporary_git_dir}: {exc}")
         return warnings
 
     def describe_prepare(self, link_set: SkillLinkSet) -> list[str]:
-        if not link_set.created_paths:
+        messages: list[str] = []
+        if link_set.temporary_git_dir is not None:
+            messages.append(f"created temporary git repo {link_set.temporary_git_dir}")
+        messages.extend(f"created skill copy {path}" for path in link_set.created_paths)
+        if not messages:
             return ["No new skill copies were created."]
-        return [f"created skill copy {path}" for path in link_set.created_paths]
+        return messages
 
     def describe_cleanup(self, link_set: SkillLinkSet) -> list[str]:
-        if not link_set.created_paths:
+        messages = [f"removed skill copy {path}" for path in reversed(link_set.created_paths)]
+        if link_set.temporary_git_dir is not None:
+            messages.append(f"removed temporary git repo {link_set.temporary_git_dir}")
+        if not messages:
             return ["No skill copies needed cleanup."]
-        return [f"removed skill copy {path}" for path in reversed(link_set.created_paths)]
+        return messages
