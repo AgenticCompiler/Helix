@@ -99,6 +99,7 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
 
 def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     options = optimize_run_options_from_args(args)
+    _validate_agent_options(parser, args, options)
     try:
         max_concurrency = resolve_batch_concurrency(args.concurrency)
     except ValueError as exc:
@@ -147,6 +148,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
     compiler_source_enabled = bool(getattr(args, "enable_compiler_source_analysis", False))
     cann_ext_api_enabled = bool(getattr(args, "enable_cann_ext_api", False))
     agent_hooks_enabled = bool(getattr(args, "enable_agent_hooks", False))
+    subagent_enabled = bool(getattr(args, "enable_subagent", False))
     upload_enabled = not bool(getattr(args, "no_upload", False))
     log_tools_enabled = bool(getattr(args, "log_tools", False))
     return OptimizeRunOptions(
@@ -170,6 +172,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         optimize_knowledge=optimize_knowledge,
         compiler_source_analysis="auto" if compiler_source_enabled else "off",
         enable_cann_ext_api=cann_ext_api_enabled,
+        enable_subagent=subagent_enabled,
         enable_agent_hooks=agent_hooks_enabled,
         upload_enabled=upload_enabled,
         report=not bool(getattr(args, "no_report", False)) and not bool(getattr(args, "interact", False)),
@@ -186,3 +189,5 @@ def _validate_agent_options(
         parser.error("--interact only supports --round-mode continuous.")
     if getattr(args, "agent", None) == "openhands" and bool(getattr(args, "interact", False)):
         parser.error("OpenHands backend does not support --interact yet.")
+    if options.enable_subagent and options.agent_name not in {"codex", "opencode", "claude"}:
+        parser.error("--enable-subagent only supports --agent codex, opencode, or claude.")

@@ -89,6 +89,7 @@ class AgentRequest:
     compiler_source_analysis: Literal["off", "auto"] = "off"
     compiler_source_path: Optional[Path] = None
     compiler_source_commit: Optional[str] = None
+    enable_subagent: bool = False
     enable_agent_hooks: bool = False
     log_tools: bool = False
     show_output_label: str = ""

@@ -126,6 +126,7 @@ def execute_continuous_optimize(
         compiler_source_path=request.compiler_source_path,
         compiler_source_commit=request.compiler_source_commit,
         enable_cann_ext_api=_request_enables_cann_ext_api(request),
+        enable_subagent=request.enable_subagent,
         optimize_knowledge_skill_name=_request_optimize_knowledge_skill_name(request),
     )
     if request.verbose:
@@ -247,6 +248,7 @@ def execute_multi_invocation_optimize(
             compiler_source_path=request.compiler_source_path,
             compiler_source_commit=request.compiler_source_commit,
             enable_cann_ext_api=_request_enables_cann_ext_api(request),
+            enable_subagent=request.enable_subagent,
             optimize_knowledge_skill_name=_request_optimize_knowledge_skill_name(request),
         )
         describe_prepare = artifacts_manager.describe_prepare_supervised_session
@@ -260,6 +262,7 @@ def execute_multi_invocation_optimize(
             compiler_source_path=request.compiler_source_path,
             compiler_source_commit=request.compiler_source_commit,
             enable_cann_ext_api=_request_enables_cann_ext_api(request),
+            enable_subagent=request.enable_subagent,
             optimize_knowledge_skill_name=_request_optimize_knowledge_skill_name(request),
         )
         describe_prepare = artifacts_manager.describe_prepare_checked_session
@@ -759,6 +762,7 @@ class MultiInvocationOptimizeController:
         optimize_target: str = "kernel",
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
+        enable_subagent: bool = False,
     ) -> str:
         return build_optimize_resume_prompt(
             summary,
@@ -767,6 +771,7 @@ class MultiInvocationOptimizeController:
             optimize_target=optimize_target,
             compiler_source_path=compiler_source_path,
             compiler_source_commit=compiler_source_commit,
+            enable_subagent=enable_subagent,
         )
 
     def _request_with_continue_prompt(
@@ -784,6 +789,7 @@ class MultiInvocationOptimizeController:
                 optimize_target=current_request.optimize_target,
                 compiler_source_path=current_request.compiler_source_path,
                 compiler_source_commit=current_request.compiler_source_commit,
+                enable_subagent=current_request.enable_subagent,
             ),
         )
 

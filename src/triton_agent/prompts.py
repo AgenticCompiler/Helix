@@ -71,6 +71,7 @@ def build_prompt(
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
     enable_cann_ext_api: bool = False,
+    enable_subagent: bool = False,
 ) -> str:
     should_resume_existing_session = (
         continue_optimize if resume_existing_session is None else resume_existing_session
@@ -213,6 +214,7 @@ def build_prompt(
                     compiler_source_path=compiler_source_path,
                     compiler_source_commit=compiler_source_commit,
                     enable_cann_ext_api=enable_cann_ext_api,
+                    enable_subagent=enable_subagent,
                 ).splitlines()
             )
         else:
@@ -228,6 +230,7 @@ def build_prompt(
                     compiler_source_path=compiler_source_path,
                     compiler_source_commit=compiler_source_commit,
                     enable_cann_ext_api=enable_cann_ext_api,
+                    enable_subagent=enable_subagent,
                     round_mode=round_mode,
                     baseline_ready=True,
                 ).splitlines()
