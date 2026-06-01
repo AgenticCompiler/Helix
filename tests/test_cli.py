@@ -127,6 +127,12 @@ class CliParserTests(unittest.TestCase):
                 "--show-output",
                 "--prompt",
                 "Focus on grid flatten patterns.",
+                "--target-chip",
+                "A3",
+                "--test-mode",
+                "standalone",
+                "--bench-mode",
+                "msprof",
             ]
         )
         self.assertEqual(args.command, "pattern-validation-loop")
@@ -137,9 +143,24 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.min_rounds, 10)
         self.assertEqual(args.max_iterations, 5)
         self.assertEqual(args.optimize_knowledge, "v2")
+        self.assertEqual(args.target_chip, "A3")
+        self.assertEqual(args.test_mode, "standalone")
+        self.assertEqual(args.bench_mode, "msprof")
         self.assertEqual(args.agent, "opencode")
         self.assertTrue(args.show_output)
         self.assertEqual(args.prompt, "Focus on grid flatten patterns.")
+
+    def test_pattern_validation_loop_leaves_optimize_modes_unset_by_default(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["pattern-validation-loop", "-i", "."])
+        self.assertIsNone(args.target_chip)
+        self.assertIsNone(args.test_mode)
+        self.assertIsNone(args.bench_mode)
+
+    def test_pattern_validation_loop_defaults_show_output_on(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["pattern-validation-loop", "-i", "."])
+        self.assertTrue(args.show_output)
 
     def test_log_check_batch_rejects_max_concurrency_keyword(self) -> None:
         parser = build_parser()

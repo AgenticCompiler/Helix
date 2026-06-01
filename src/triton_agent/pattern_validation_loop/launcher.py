@@ -24,6 +24,24 @@ DEFAULT_BATCH_DIR = "pattern-validation-batch"
 DEFAULT_STATE_FILE = ".triton-agent/pattern-validation-loop-state.json"
 
 
+def build_optimize_batch_extra_flags(
+    *,
+    target_chip: str | None = None,
+    test_mode: str | None = None,
+    bench_mode: str | None = None,
+) -> str:
+    parts: list[str] = []
+    if target_chip is not None:
+        parts.append(f"--target-chip {target_chip}")
+    if test_mode is not None:
+        parts.append(f"--test-mode {test_mode}")
+    if bench_mode is not None:
+        parts.append(f"--bench-mode {bench_mode}")
+    if not parts:
+        return ""
+    return " " + " ".join(parts)
+
+
 def build_pattern_validation_loop_prompt(
     *,
     repo_path: Path,
@@ -37,7 +55,30 @@ def build_pattern_validation_loop_prompt(
     max_iterations: int,
     agent_name: str,
     optimize_knowledge: str,
+    target_chip: str | None = None,
+    test_mode: str | None = None,
+    bench_mode: str | None = None,
 ) -> str:
+    optimize_extra_flags = build_optimize_batch_extra_flags(
+        target_chip=target_chip,
+        test_mode=test_mode,
+        bench_mode=bench_mode,
+    )
+    optimize_setting_lines = [
+        f"  min_rounds={min_rounds}",
+        f"  optimize_knowledge={optimize_knowledge}",
+    ]
+    if target_chip is not None:
+        optimize_setting_lines.append(f"  target_chip={target_chip}")
+    if test_mode is not None:
+        optimize_setting_lines.append(f"  test_mode={test_mode}")
+    if bench_mode is not None:
+        optimize_setting_lines.append(f"  bench_mode={bench_mode}")
+    if target_chip is None and test_mode is None and bench_mode is None:
+        optimize_setting_lines.append(
+            "  target_chip/test_mode/bench_mode: omit from optimize-batch (use optimize defaults)"
+        )
+    optimize_settings = "\n".join(optimize_setting_lines)
     backend_skills = staged_skill_dir(agent_name)
     skill_root = backend_skills / "triton-npu-pattern-validation-loop"
     knowledge_root = skills_workdir / OPTIMIZE_KNOWLEDGE_SKILL_NAME
@@ -83,8 +124,7 @@ Git base revision for pre-optimization snapshots:
 
 Optimize batch settings:
 
-  min_rounds={min_rounds}
-  optimize_knowledge={optimize_knowledge}
+{optimize_settings}
 
 Loop limits:
 
@@ -115,14 +155,14 @@ Required end-to-end behavior:
 4. **You** plan validation workspaces: select operators, extract pre-opt snapshots with Git (`{base_revision}..HEAD`), find and copy tests/benches/dependencies, write each `validation-meta.json` under `{batch_dir.as_posix()}`. Follow `{workspace_scaffold_contract.as_posix()}`.
 5. Run from `{repo_path.as_posix()}`:
 
-   triton-agent optimize-batch -i {batch_dir.as_posix()} --resume fresh --reset-optimize --min-rounds {min_rounds} --max-concurrency 1 --show-output --optimize-knowledge {optimize_knowledge} --skills-source-dir {skills_dir} --agent {agent_name}
+   triton-agent optimize-batch -i {batch_dir.as_posix()} --resume fresh --reset-optimize --min-rounds {min_rounds} --concurrency 1 --show-output --optimize-knowledge {optimize_knowledge} --skills-source-dir {skills_dir}{optimize_extra_flags} --agent {agent_name}
 
 6. Audit with `{scripts_dir.as_posix()}/audit_batch.py --batch-root {batch_dir.as_posix()} --archive-passed --json` and save to `{batch_dir.as_posix()}/audit-report.json`. Passed workspaces move to `{batch_dir.as_posix()}/_completed/` and are skipped by later optimize-batch runs.
 7. If any **active** workspace fails audit and iteration < {max_iterations}:
    - analyze missing patterns from attempts/summary
    - update pattern cards under `{knowledge_root.as_posix()}` + regenerate index
    - run `{scripts_dir.as_posix()}/reset_workspace_rounds.py --batch-root {batch_dir.as_posix()}`
-   - re-run optimize-batch with `--resume continue --skills-source-dir {skills_dir}` per workspace or the whole batch as appropriate
+   - re-run optimize-batch with `--resume continue --min-rounds {min_rounds} --concurrency 1 --show-output --skills-source-dir {skills_dir} --optimize-knowledge {optimize_knowledge}{optimize_extra_flags} --agent {agent_name}`
    - re-audit
 8. On full pass (`active_remaining` empty in audit report), write `{batch_dir.as_posix()}/VALIDATION_SUMMARY.md` and mark loop state complete.
 
@@ -132,6 +172,7 @@ Rules:
 - Do not promote repo-local-only or rejected lessons into skills or `expected_patterns`.
 - Do not edit staged backend skills (for example `{backend_skills.as_posix()}/`) for knowledge updates; use `{skills_workdir.as_posix()}` only.
 - Every optimize-batch run must pass `--skills-source-dir {skills_dir}`.
+- Every optimize-batch run must pass `--show-output` so nested optimize agent logs stream to the terminal; long silent runs may be killed by job timeouts or watchdogs.
 - Do not delete `baseline/` when iterating skills; use reset_workspace_rounds.py.
 - Do not hand-edit `pattern_index.md`.
 - Do not re-run optimize on workspaces already archived under `_completed/`.
@@ -150,6 +191,9 @@ def build_pattern_validation_loop_request(
     min_rounds: int = 10,
     max_iterations: int = 5,
     optimize_knowledge: str = "v1",
+    target_chip: str | None = None,
+    test_mode: str | None = None,
+    bench_mode: str | None = None,
     agent_name: str = "codex",
     verbose: bool = False,
     show_output: bool = True,
@@ -186,6 +230,9 @@ def build_pattern_validation_loop_request(
             max_iterations=max_iterations,
             agent_name=agent_name,
             optimize_knowledge=optimize_knowledge,
+            target_chip=target_chip,
+            test_mode=test_mode,
+            bench_mode=bench_mode,
         ),
         user_prompt,
     )
@@ -221,6 +268,9 @@ def run_pattern_validation_loop(
     min_rounds: int = 10,
     max_iterations: int = 5,
     optimize_knowledge: Literal["v1", "v2", "v3"] = "v1",
+    target_chip: Literal["A3", "A5"] | None = None,
+    test_mode: Literal["standalone", "differential"] | None = None,
+    bench_mode: Literal["standalone", "msprof"] | None = None,
     agent_name: str = "codex",
     verbose: bool = False,
     show_output: bool = True,
@@ -236,6 +286,9 @@ def run_pattern_validation_loop(
             min_rounds=min_rounds,
             max_iterations=max_iterations,
             optimize_knowledge=optimize_knowledge,
+            target_chip=target_chip,
+            test_mode=test_mode,
+            bench_mode=bench_mode,
             agent_name=agent_name,
             verbose=verbose,
             show_output=show_output,

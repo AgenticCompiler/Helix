@@ -85,14 +85,19 @@ triton-agent optimize-batch \
   --resume fresh \
   --reset-optimize \
   --min-rounds 10 \
-  --max-concurrency 1 \
+  --concurrency 1 \
   --show-output \
   --skills-source-dir "$SKILLS" \
   --agent <backend>
+  # optional when set on pattern-validation-loop start:
+  # --target-chip A5 --test-mode differential --bench-mode standalone
 ```
 
 **Required:** `--skills-source-dir "$SKILLS"` copies matching skill subdirectories from the
 persistent workdir into each workspace before optimize (overwriting install-bundle copies).
+
+**Required:** every `optimize-batch` run must pass `--show-output` so nested optimize logs
+stream to the terminal; silent long runs may hit job timeouts or idle watchdog kills.
 
 Later iterations:
 
@@ -105,6 +110,7 @@ triton-agent optimize-batch -i "$BATCH" \
   --skills-source-dir "$SKILLS" \
   --show-output \
   --agent <backend>
+  # same optional passthrough flags as Phase D when provided at loop start
 ```
 
 ## Phase E — Audit

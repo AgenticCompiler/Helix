@@ -586,6 +586,24 @@ def build_parser() -> argparse.ArgumentParser:
                 default="v1",
                 choices=_OPTIMIZE_KNOWLEDGE_CHOICES,
             )
+            subparser.add_argument(
+                "--test-mode",
+                default=None,
+                choices=_TEST_MODE_CHOICES,
+                help="Pass through to optimize-batch when set; omit from optimize-batch when unset.",
+            )
+            subparser.add_argument(
+                "--bench-mode",
+                default=None,
+                choices=_BENCH_MODE_CHOICES,
+                help="Pass through to optimize-batch when set; omit from optimize-batch when unset.",
+            )
+            subparser.add_argument(
+                "--target-chip",
+                default=None,
+                choices=_TARGET_CHIP_CHOICES,
+                help="Pass through to optimize-batch when set; omit from optimize-batch when unset.",
+            )
         if command_kind in {CommandKind.LOG_CHECK, CommandKind.LOG_CHECK_BATCH}:
             subparser.add_argument(
                 "--check-result-file",
@@ -609,6 +627,8 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--force-overwrite", action="store_true")
         if command_kind == CommandKind.CLEAN:
             subparser.add_argument("--deep", action="store_true")
+        if command_kind == CommandKind.PATTERN_VALIDATION_LOOP:
+            subparser.set_defaults(show_output=True)
 
     return parser
 

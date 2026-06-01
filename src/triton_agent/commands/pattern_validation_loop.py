@@ -9,6 +9,9 @@ from triton_agent.pattern_validation_loop.launcher import run_pattern_validation
 
 def handle_pattern_validation_loop(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     optimize_knowledge = cast(Literal["v1", "v2", "v3"], getattr(args, "optimize_knowledge", "v1"))
+    target_chip = cast(Literal["A3", "A5"] | None, getattr(args, "target_chip", None))
+    test_mode = cast(Literal["standalone", "differential"] | None, getattr(args, "test_mode", None))
+    bench_mode = cast(Literal["standalone", "msprof"] | None, getattr(args, "bench_mode", None))
     if args.min_rounds < 1:
         parser.error("--min-rounds must be at least 1")
     if args.max_iterations < 1:
@@ -22,9 +25,12 @@ def handle_pattern_validation_loop(parser: argparse.ArgumentParser, args: argpar
         min_rounds=int(args.min_rounds),
         max_iterations=int(args.max_iterations),
         optimize_knowledge=optimize_knowledge,
+        target_chip=target_chip,
+        test_mode=test_mode,
+        bench_mode=bench_mode,
         agent_name=str(getattr(args, "agent", "codex")),
         verbose=bool(getattr(args, "verbose", False)),
-        show_output=bool(getattr(args, "show_output", False)),
+        show_output=bool(getattr(args, "show_output", True)),
         user_prompt=getattr(args, "prompt", None),
     )
 
