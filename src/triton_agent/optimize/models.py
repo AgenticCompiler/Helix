@@ -91,6 +91,18 @@ class GateDecision(str, Enum):
     HARD_FAIL = "hard-fail"
 
 
+class BaselinePreflightState(str, Enum):
+    READY = "ready"
+    NEEDS_PREPARE = "needs-prepare"
+    NEEDS_REPAIR = "needs-repair"
+
+
+@dataclass(frozen=True)
+class BaselinePreflightResult:
+    state: BaselinePreflightState
+    issues: tuple[str, ...]
+
+
 @dataclass(frozen=True)
 class GateResult:
     decision: GateDecision
