@@ -172,7 +172,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         enable_cann_ext_api=cann_ext_api_enabled,
         enable_agent_hooks=agent_hooks_enabled,
         upload_enabled=upload_enabled,
-        report=not bool(getattr(args, "no_report", False)),
+        report=not bool(getattr(args, "no_report", False)) and not bool(getattr(args, "interact", False)),
         log_tools=log_tools_enabled,
     )
 
