@@ -493,6 +493,7 @@ def run_local_bench(
     bench_mode: str,
     npu_devices: str | None = None,
     verbose: bool = False,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
@@ -511,8 +512,10 @@ def run_local_bench(
                     source_root=source_root,
                     json_search_root=json_search_root,
                     verbose=verbose,
+                    force_recompile=force_recompile,
                 )
-            return _run_local_bench_msprof(bench_file, operator_file, verbose=verbose)
+            return _run_local_bench_msprof(bench_file, operator_file, verbose=verbose,
+                                           force_recompile=force_recompile)
         if devices is not None:
             source_root, json_search_root = _resolve_case_workspace_roots(
                 bench_file,
@@ -526,8 +529,10 @@ def run_local_bench(
                 source_root=source_root,
                 json_search_root=json_search_root,
                 verbose=verbose,
+                force_recompile=force_recompile,
             )
-        return _run_local_bench_standalone(bench_file, operator_file, verbose=verbose)
+        return _run_local_bench_standalone(bench_file, operator_file, verbose=verbose,
+                                           force_recompile=force_recompile)
 
 
 def run_remote_bench(
@@ -540,6 +545,7 @@ def run_remote_bench(
     keep_remote_workdir: bool = False,
     verbose: bool = False,
     stderr: TextIO | None = None,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None, str]:
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
@@ -583,6 +589,7 @@ def run_remote_bench(
                     json_search_root=json_search_root,
                     verbose=verbose,
                     stderr=stderr,
+                    force_recompile=force_recompile,
                 )
             return _run_remote_bench_msprof(
                 spec,
@@ -591,6 +598,7 @@ def run_remote_bench(
                 operator_file,
                 verbose=verbose,
                 stderr=stderr,
+                force_recompile=force_recompile,
             )
         if devices is not None:
             source_root, json_search_root = _resolve_case_workspace_roots(
@@ -608,6 +616,7 @@ def run_remote_bench(
                 json_search_root=json_search_root,
                 verbose=verbose,
                 stderr=stderr,
+                force_recompile=force_recompile,
             )
         return _run_remote_bench_standalone(
             spec,
@@ -616,6 +625,7 @@ def run_remote_bench(
             operator_file,
             verbose=verbose,
             stderr=stderr,
+            force_recompile=force_recompile,
         )
     finally:
         if not keep_remote_workdir:
@@ -627,8 +637,10 @@ def _run_local_bench_standalone(
     operator_file: Path,
     *,
     verbose: bool = False,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
-    return run_local_standalone_bench(bench_file, operator_file, verbose=verbose)
+    return run_local_standalone_bench(bench_file, operator_file, verbose=verbose,
+                                      force_recompile=force_recompile)
 
 
 @contextlib.contextmanager
@@ -664,6 +676,7 @@ def _run_remote_bench_standalone(
     operator_file: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None, str]:
     return _standalone.run_remote_bench_standalone(
         _DEPS,
@@ -673,6 +686,7 @@ def _run_remote_bench_standalone(
         operator_file,
         verbose=verbose,
         stderr=stderr,
+        force_recompile=force_recompile,
     )
 
 
@@ -681,12 +695,14 @@ def run_local_standalone_bench(
     operator_file: Path,
     *,
     verbose: bool = False,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path]:
     return _standalone.run_local_standalone_bench(
         _DEPS,
         bench_file,
         operator_file,
         verbose=verbose,
+        force_recompile=force_recompile,
     )
 
 
@@ -698,6 +714,7 @@ def _run_local_bench_standalone_parallel(
     source_root: Path,
     json_search_root: Path,
     verbose: bool = False,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path]:
     return _standalone.run_local_bench_standalone_parallel(
         _DEPS,
@@ -707,6 +724,7 @@ def _run_local_bench_standalone_parallel(
         source_root=source_root,
         json_search_root=json_search_root,
         verbose=verbose,
+        force_recompile=force_recompile,
     )
 
 
@@ -721,6 +739,7 @@ def _run_remote_bench_standalone_parallel(
     json_search_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path, str]:
     return _standalone.run_remote_bench_standalone_parallel(
         _DEPS,
@@ -733,6 +752,7 @@ def _run_remote_bench_standalone_parallel(
         json_search_root=json_search_root,
         verbose=verbose,
         stderr=stderr,
+        force_recompile=force_recompile,
     )
 
 
@@ -777,12 +797,14 @@ def _run_local_bench_msprof(
     operator_file: Path,
     *,
     verbose: bool = False,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     return _msprof.run_local_bench_msprof(
         _DEPS,
         bench_file,
         operator_file,
         verbose=verbose,
+        force_recompile=force_recompile,
     )
 
 
@@ -794,6 +816,7 @@ def _run_local_bench_msprof_parallel(
     source_root: Path,
     json_search_root: Path,
     verbose: bool = False,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     return _msprof.run_local_bench_msprof_parallel(
         _DEPS,
@@ -803,6 +826,7 @@ def _run_local_bench_msprof_parallel(
         source_root=source_root,
         json_search_root=json_search_root,
         verbose=verbose,
+        force_recompile=force_recompile,
     )
 
 
@@ -813,6 +837,7 @@ def _run_remote_bench_msprof(
     operator_file: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None, str]:
     return _msprof.run_remote_bench_msprof(
         _DEPS,
@@ -822,6 +847,7 @@ def _run_remote_bench_msprof(
         operator_file,
         verbose=verbose,
         stderr=stderr,
+        force_recompile=force_recompile,
     )
 
 
@@ -836,6 +862,7 @@ def _run_remote_bench_msprof_parallel(
     json_search_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None, str]:
     return _msprof.run_remote_bench_msprof_parallel(
         _DEPS,
@@ -848,6 +875,7 @@ def _run_remote_bench_msprof_parallel(
         json_search_root=json_search_root,
         verbose=verbose,
         stderr=stderr,
+        force_recompile=force_recompile,
     )
 
 

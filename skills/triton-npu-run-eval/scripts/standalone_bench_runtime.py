@@ -64,36 +64,46 @@ def run_local_standalone_bench(
     operator_file: Path,
     *,
     verbose: bool = False,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path]:
-    cases, resolution = load_standalone_bench_cases(bench_file, operator_file)
-    case_records: list[PerfCaseRecord] = []
-    had_failures = False
-    stderr_chunks: list[str] = []
-    preserved_run_dir = _create_local_preserved_profile_run_dir(prefix="triton-agent-standalone-bench-")
+    prev = os.environ.get("TRITON_ALWAYS_COMPILE") if force_recompile else None
+    if force_recompile:
+        os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+    try:
+        cases, resolution = load_standalone_bench_cases(bench_file, operator_file)
+        case_records: list[PerfCaseRecord] = []
+        had_failures = False
+        stderr_chunks: list[str] = []
+        preserved_run_dir = _create_local_preserved_profile_run_dir(prefix="triton-agent-standalone-bench-")
 
-    for case in cases:
-        record = _run_standalone_case(case, resolution, preserved_run_dir, bench_file.parent, verbose=verbose)
-        if record.error_message is not None:
-            had_failures = True
-            stderr_chunks.append(f"{case.case_id}: {record.error_message}")
-        case_records.append(record)
+        for case in cases:
+            record = _run_standalone_case(case, resolution, preserved_run_dir, bench_file.parent, verbose=verbose)
+            if record.error_message is not None:
+                had_failures = True
+                stderr_chunks.append(f"{case.case_id}: {record.error_message}")
+            case_records.append(record)
 
-    perf_path = perf_output_path(operator_file)
-    write_perf_lines(
-        perf_path,
-        render_perf_case_records_jsonl(
-            case_records,
-            missing_kernel_match_error=_MISSING_KERNEL_MATCH_ERROR,
-        ),
-    )
-    return (
-        make_result(
-            return_code=1 if had_failures else 0,
-            stdout="",
-            stderr="\n".join(stderr_chunks),
-        ),
-        perf_path,
-    )
+        perf_path = perf_output_path(operator_file)
+        write_perf_lines(
+            perf_path,
+            render_perf_case_records_jsonl(
+                case_records,
+                missing_kernel_match_error=_MISSING_KERNEL_MATCH_ERROR,
+            ),
+        )
+        return (
+            make_result(
+                return_code=1 if had_failures else 0,
+                stdout="",
+                stderr="\n".join(stderr_chunks),
+            ),
+            perf_path,
+        )
+    finally:
+        if prev is None and force_recompile:
+            del os.environ["TRITON_ALWAYS_COMPILE"]
+        elif prev is not None:
+            os.environ["TRITON_ALWAYS_COMPILE"] = prev
 
 
 def profile_local_standalone_case(

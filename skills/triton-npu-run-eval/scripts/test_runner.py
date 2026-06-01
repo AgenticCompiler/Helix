@@ -50,13 +50,17 @@ def run_local_test(
     test_mode: str,
     *,
     verbose: bool = False,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     if test_mode == "differential" and _has_differential_test_contract(test_file):
         archive_path = _differential_archive_path(operator_file)
         result = _run_declarative_differential_test(test_file, operator_file, archive_path)
         archived_result = archive_path if result_succeeded(result) else None
         return _filter_result_payload(result, verbose=verbose), archived_result
-    result, archived_result = _run_legacy_local_test(test_file, operator_file, test_mode)
+    result, archived_result = _run_legacy_local_test(
+        test_file, operator_file, test_mode,
+        force_recompile=force_recompile,
+    )
     return _filter_result_payload(result, verbose=verbose), archived_result
 
 
@@ -166,9 +170,16 @@ def _run_legacy_local_test(
     test_file: Path,
     operator_file: Path,
     test_mode: str,
+    *,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     command = [sys.executable, str(test_file), "--operator-file", str(operator_file)]
-    result = run_streaming_process(command, str(test_file.parent), stall_timeout_seconds=_test_timeout())
+    extra_env = {"TRITON_ALWAYS_COMPILE": "1"} if force_recompile else None
+    result = run_streaming_process(
+        command, str(test_file.parent),
+        stall_timeout_seconds=_test_timeout(),
+        extra_env=extra_env,
+    )
     archived_result = None
     if test_mode == "differential" and result_succeeded(result):
         archived_result = archive_differential_result(test_file, operator_file)
@@ -184,7 +195,9 @@ def _run_legacy_remote_test(
     *,
     verbose: bool = False,
     stderr: TextIO | None = None,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None, str]:
+    extra_env = {"TRITON_ALWAYS_COMPILE": "1"} if force_recompile else None
     result = run_remote_command_streaming(
         spec,
         remote_workspace,
@@ -192,6 +205,7 @@ def _run_legacy_remote_test(
         stall_timeout_seconds=_test_timeout(),
         verbose=verbose,
         stderr=stderr,
+        extra_env=extra_env,
     )
     archived_result = None
     if test_mode == "differential" and result_succeeded(result):
@@ -328,6 +342,7 @@ def run_remote_test(
     keep_remote_workdir: bool = False,
     verbose: bool = False,
     stderr: TextIO | None = None,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None, str]:
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
@@ -349,6 +364,7 @@ def run_remote_test(
         copy_file_to_remote(spec, operator_file, remote_operator, verbose=verbose, stderr=stderr)
         if test_mode == "differential" and _has_differential_test_contract(test_file):
             archive_path = _differential_archive_path(operator_file)
+            extra_env = {"TRITON_ALWAYS_COMPILE": "1"} if force_recompile else None
             result = run_remote_command_streaming(
                 spec,
                 remote_workspace,
@@ -356,6 +372,7 @@ def run_remote_test(
                 stall_timeout_seconds=_test_timeout(),
                 verbose=verbose,
                 stderr=stderr,
+                extra_env=extra_env,
             )
             archived_result = None
             if result_succeeded(result):
@@ -375,6 +392,7 @@ def run_remote_test(
             test_mode,
             verbose=verbose,
             stderr=stderr,
+            force_recompile=force_recompile,
         )
         return _filter_result_payload(result, verbose=verbose), archived_result, remote_workspace
     finally:

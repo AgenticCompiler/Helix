@@ -123,7 +123,12 @@ def _select_target(operators: list[OperatorStats], target_op: str | None) -> tup
         for op in operators:
             if op.op_type == target_op:
                 return op, False
-        raise ValueError(f"Target operator not found in op_statistic: {target_op}")
+        available_operators = sorted({op.op_type for op in operators})
+        available_text = ", ".join(available_operators) if available_operators else "(none)"
+        raise ValueError(
+            f"Target operator not found in op_statistic: {target_op}. "
+            f"Available operators: {available_text}"
+        )
     return max(operators, key=lambda op: op.total_time_us), True
 
 

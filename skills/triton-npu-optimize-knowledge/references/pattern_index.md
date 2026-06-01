@@ -186,16 +186,6 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Gather-like code has continuous destination rows but still stores one row at a time.
   - Scatter-weight-gradient-like code has repeated row loads that can be batched from continuous source rows.
 
-### `index-scatter-store-launch-shaping`
-
-- Summary: For index-driven scatter-store kernels, tune launch shape before rewriting the kernel. Keep the hot path as a simple 1D scatter, sweep per-program token tile and useful program count first, and test SIMT-only only for narrow scatter width such as `head_num == 1`.
-- Source: [index-scatter-store-launch-shaping.md](patterns/index-scatter-store-launch-shaping.md)
-- Use When:
-  - The hot path writes data to addresses derived from per-element indices (scatter-like store).
-  - Profile and IR indicate memory-bound behavior with weak write locality and heavy index/address work.
-  - Kernel arithmetic is lightweight compared with memory movement and address generation.
-  - You can benchmark representative shape buckets while changing launch parameters.
-
 ### `layout-materialization-elision`
 
 - Summary: Avoid materializing tensors whose only purpose is to change logical layout, such as `permute`, `transpose`, `movedim`, `reshape`, `squeeze`, or `unsqueeze`, when the next step immediately copies, stores, reduces, gathers, or otherwise consumes the data. Instead, express the desired logical layout in the consuming kernel's pointer math or block-pointer metadata and write directly to the final destination layout.

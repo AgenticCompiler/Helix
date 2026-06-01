@@ -30,6 +30,7 @@ def run_remote_bench_standalone(
     *,
     verbose: bool = False,
     stderr: TextIO | None = None,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None, str]:
     for support_path in deps._standalone_runtime_support_paths():
         deps.copy_file_to_remote(
@@ -40,6 +41,7 @@ def run_remote_bench_standalone(
             stderr=stderr,
         )
     perf_path = perf_output_path(operator_file)
+    extra_env: dict[str, str] | None = {"TRITON_ALWAYS_COMPILE": "1"} if force_recompile else None
     with deps._stream_target_for_verbosity(False) as quiet_stdout:
         result = deps.run_remote_command_streaming(
             spec,
@@ -56,6 +58,7 @@ def run_remote_bench_standalone(
             verbose=verbose,
             stderr=stderr,
             stall_timeout_seconds=deps._bench_timeout(),
+            extra_env=extra_env,
         )
     copied_perf_path: Path | None = None
     try:
@@ -79,9 +82,11 @@ def run_local_standalone_bench(
     operator_file: Path,
     *,
     verbose: bool = False,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path]:
     runtime = deps._load_standalone_runtime_module()
-    return runtime.run_local_standalone_bench(bench_file, operator_file, verbose=verbose)
+    return runtime.run_local_standalone_bench(bench_file, operator_file, verbose=verbose,
+                                              force_recompile=force_recompile)  # pyright: ignore[reportUnknownMemberType, reportCallIssue, reportUnknownVariableType]
 
 
 def run_local_bench_standalone_parallel(
@@ -93,6 +98,7 @@ def run_local_bench_standalone_parallel(
     source_root: Path,
     json_search_root: Path,
     verbose: bool = False,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path]:
     runtime = deps._load_standalone_runtime_module()
     cases, _resolution = runtime.load_standalone_bench_cases(bench_file, operator_file)
@@ -127,6 +133,7 @@ def run_local_bench_standalone_parallel(
                     device,
                     preserved_run_dir=preserved_run_dir,
                     source_root=source_root,
+                    force_recompile=force_recompile,
                 )
         finally:
             cleanup()
@@ -149,6 +156,7 @@ def run_remote_bench_standalone_parallel(
     json_search_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path, str]:
     runtime = deps._load_standalone_runtime_module()
     cases, _resolution = runtime.load_standalone_bench_cases(bench_file, operator_file)
@@ -188,6 +196,7 @@ def run_remote_bench_standalone_parallel(
                     source_root=source_root,
                     verbose=verbose,
                     stderr=stderr,
+                    force_recompile=force_recompile,
                 )
         finally:
             deps.run_remote_command_buffered(
@@ -275,11 +284,14 @@ def _run_local_standalone_case_in_subprocess(
     *,
     preserved_run_dir: Path | None,
     source_root: Path,
+    force_recompile: bool = False,
 ) -> PerfCaseRecord:
     extra_env = affinity_env_for_device(device)
     configured_profile_root, _configured_env = deps._resolve_local_bench_profile_output_root()
     if configured_profile_root:
         extra_env[_LOCAL_BENCH_OUTPUT_DIR_ENV] = str(Path(configured_profile_root).expanduser().resolve())
+    if force_recompile:
+        extra_env["TRITON_ALWAYS_COMPILE"] = "1"
     result = deps.run_buffered_process(
         [
             deps.local_python_executable(),
@@ -344,7 +356,11 @@ def _run_remote_standalone_case(
     source_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
+    force_recompile: bool = False,
 ) -> PerfCaseRecord:
+    extra_env = affinity_env_for_device(device)
+    if force_recompile:
+        extra_env["TRITON_ALWAYS_COMPILE"] = "1"
     result = deps.run_remote_command_streaming(
         spec,
         case_workspace,
@@ -359,7 +375,7 @@ def _run_remote_standalone_case(
         ],
         verbose=verbose,
         stderr=stderr,
-        extra_env=affinity_env_for_device(device),
+        extra_env=extra_env,
         stall_timeout_seconds=deps._bench_timeout(),
     )
     return _parse_standalone_case_result_payload(
