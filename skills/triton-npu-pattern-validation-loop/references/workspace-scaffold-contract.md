@@ -22,11 +22,20 @@ Also use loop state (`base_revision`, `batch_dir`) from init.
 
 ## Step 1 — Select validation targets
 
-Decide **one optimize workspace per operator candidate**. Prefer:
+Decide **one optimize workspace per validation target**. A validation target is usually a
+**public launch entrypoint** (PyTorch wrapper, host launcher, exported API) together with
+the `@triton.jit` kernels and host helpers its call chain needs — not necessarily a single
+kernel in isolation. Prefer:
 
 - Kernels named explicitly in synthesis as perf-relevant or skill-promotion targets
 - Source files with clear pre-optimization vs post-optimization story in the analyzed range
 - Entries where updated skills should change optimize-agent behavior
+
+When several unrelated launch entrypoints or independently validated kernels live in the
+**same** repo `source_path`, create **separate** workspaces — one per synthesis target —
+instead of one workspace for the whole file. When **one** launch entrypoint necessarily calls
+**several** cooperating kernels, keep them in **one** workspace (see Step 2b). See
+[Step 2b — Multi-kernel single source file](#step-2b--multi-kernel-single-source-file-manual-split).
 
 Skip or do not require in audit:
 
@@ -72,6 +81,256 @@ typically the basename of `source_path`.
 
 You may call `scaffold_batch.py --manifest ...` **only after** you authored manifest JSON
 yourself; never treat `generate_manifest.py` output as authoritative without review.
+
+**Note:** `scaffold_batch.py` copies the **entire** pre-opt file into one workspace. Use it
+only when `source_path` already maps to a single validation target. For multi-kernel source
+files, follow Step 2b and build workspaces manually.
+
+## Step 2b — Multi-kernel single source file (manual split)
+
+Some repos place several `@triton.jit` kernels, launch wrappers, and shared helpers in one
+`.py` file — or spread one launch path across a few sibling modules. `optimize-batch` still
+requires **exactly one operator `.py` per workspace** (excluding `test_*`, `bench_*`,
+generated artifacts). There is **no** supported automatic split helper in this skill — do
+**not** rely on blind AST/script extraction. You split by reading the pre-opt snapshot(s) and
+synthesis, then composing minimal runnable operator files yourself.
+
+**Workspace boundary rule:** group by **what the test/bench actually launches**, not by
+counting `@triton.jit` decorators. One workspace may legitimately contain **multiple**
+kernels when a single validation target's call chain needs them all.
+
+### When this section applies
+
+Use manual split when **any** of the following is true:
+
+- Synthesis names multiple independent kernels or mechanisms inside the same `source_path`
+  that should be validated separately
+- The pre-opt snapshot defines more than one `@triton.jit` kernel and tests/benches exercise
+  them through **different** entrypoints
+- Copying the whole file would let the optimize agent change the wrong kernel or unrelated helpers
+- One launch entrypoint calls several kernels and you must extract the **full call chain**
+  into one runnable operator file (see below)
+
+When each kernel already lives in its own file with its own test (for example `chunk_o.py`,
+`wy_fast.py`), skip this section and use Step 2 as written.
+
+### How to choose workspace boundaries
+
+Use synthesis plus the repo test/bench call graph. Do **not** split purely because a file
+contains multiple `@triton.jit` definitions.
+
+| Situation | Workspace strategy |
+|-----------|-------------------|
+| One test/bench calls entrypoint `forward_foo`, which launches kernels A → B → C in sequence | **One workspace**: entrypoint + kernels A, B, C + shared helpers in the call chain |
+| Synthesis validates kernel A and kernel B as **independent** optimization stories; tests call them separately | **Separate workspaces**, even if A and B live in the same file |
+| Entrypoint X uses kernel C; entrypoint Y uses kernel D in the same file | **Two workspaces**: (X + C + helpers) and (Y + D + helpers) |
+| Small `@triton.jit` helper is only used inside kernel A's launch path | Keep it in **A's workspace**; do not give it its own workspace |
+| Same helper kernel is reused by two unrelated entrypoints | Duplicate or inline the minimal helper in **each** workspace; do not merge unrelated entrypoints |
+| Launch path imports kernels from **other repo files** | One workspace still, but extract/import the **full cross-file closure** (see below) |
+
+When unsure, prefer the boundary that matches **how the copied test exercises the code**.
+
+### One launch entrypoint, multiple cooperating kernels
+
+This is common: a host wrapper or PyTorch `forward` orchestrates several `@triton.jit`
+kernels (for example prepass → main compute → epilogue, or multi-stage reduction).
+
+For this case:
+
+1. Set `validation_target` to the **launch entrypoint** (for example `forward_gated_delta`,
+   `run_chunk_scan`), not to only one inner kernel name.
+2. Trace the **dynamic call chain** from that entrypoint:
+   - every `@triton.jit` kernel it launches directly or indirectly
+   - host-side grid setup, temporaries, and helpers those launches require
+   - constexpr tables and small utils used only along this path
+3. Put **all of that** into the single workspace operator file (or operator file + copied
+   dependency modules listed in `copied_dependencies`).
+4. Set `expected_patterns` to patterns synthesis expects anywhere in **this pipeline** (prep,
+   main, epilogue, or cross-kernel tiling). Audit still passes if any round cites the
+   expected IDs.
+5. In `included_symbols`, list **every** kernel and the entrypoint, for example
+   `["forward_gated_delta", "prep_kernel", "main_kernel", "epilogue_kernel"]`.
+6. In `excluded_targets`, list entrypoints/kernels from the same source file that belong to
+   **other** validation targets, not inner kernels that your entrypoint legitimately calls.
+
+**Cross-file closures:** when the entrypoint imports kernels from sibling repo modules, fetch
+each file's **pre-opt snapshot** (Step 2 Git procedure) and copy/extract only the symbols in
+the call chain. Record every contributing repo path in `closure_source_paths` (Step 4).
+
+**Do not** split cooperating kernels into separate workspaces when the repo test only exercises
+them through one entrypoint — the optimize agent needs the runnable pipeline, and partial
+extracts may not compile or may optimize the wrong stage.
+
+### Planning (before writing files)
+
+For each synthesis validation target in a shared `source_path` (or cross-file call chain):
+
+1. **Name the target** — prefer the **launch entrypoint** (for example `forward_chunk_o`,
+   `run_scan`); if synthesis only names an inner kernel, identify which entrypoint test uses
+   to reach it.
+2. **Map patterns** — list only the `expected_patterns` that apply to **this target's pipeline**,
+   not every pattern mentioned for the whole file.
+3. **Pick the launch surface** — the function tests/benches must call after the split (PyTorch
+   wrapper, host launch helper, or exported API).
+4. **Trace the dependency closure** — from that launch surface, list:
+   - **every** `@triton.jit` kernel the entrypoint launches (there may be several)
+   - host-side helpers, constexpr tables, small utils, and types the call chain needs
+   - imports from other repo modules (sibling `.py`, package `__init__`, shared utils), with
+     their repo paths when the closure spans multiple files
+5. **Exclude** entrypoints and kernels belonging to **other** synthesis targets in the same
+   source file (or unrelated pipelines), even if they sit nearby in the file.
+
+Record the plan in each workspace's `validation-meta.json` (see Step 4).
+
+### Composing the workspace operator file
+
+Work from the **pre-opt snapshot** content (Step 2). Do not copy current HEAD unless you
+intentionally want post-opt code.
+
+For workspace `$BATCH/<target_name>/`:
+
+1. Create **one** operator file, usually named after the target stem (for example
+   `chunk_o.py`), even when the repo `source_path` basename differs.
+2. Include, in dependency order:
+   - imports required by this target (keep Ascend/Triton imports faithful to the snapshot)
+   - constants, `@triton.jit` kernels, and host helpers in the **minimal closure** for this
+     target's launch entrypoint (often **more than one** `@triton.jit` kernel)
+   - the public launch entrypoint that tests will call
+3. Prefer **minimal extraction** over copying the whole original file:
+   - include every kernel the entrypoint launches; omit kernels/wrappers for **other**
+     validation targets
+   - include shared helpers only when this call chain needs them
+4. Keep semantics identical to the pre-opt snapshot for the included code — do not
+   "pre-optimize" or refactor while splitting.
+
+**Do not:**
+
+- drop the full multi-kernel source file into the workspace when synthesis validates only one
+  entrypoint or pipeline inside it
+- split cooperating kernels that one test entrypoint always launches together into separate
+  workspaces
+- put multiple **unrelated** validation targets into one workspace
+- run opaque auto-split scripts and accept the output without reading it
+
+### Resolving repo-local imports
+
+Optimize workspaces are **flat** directories. Repo package layout (`src.kernels.foo.bar`)
+will not work unchanged. Resolve imports deliberately, in this order:
+
+| Strategy | Use when |
+|----------|----------|
+| **Copy sibling modules** | A small repo `.py` file is imported by the target (for example `utils.py`, `common.py`). Copy it to the workspace root and keep `from utils import ...` working. |
+| **Copy minimal subset inline** | A helper is a few lines and copying the whole module would pull unrelated kernels. |
+| **Adjust test/bench imports** | The harness imported the repo package path; change it to import the workspace operator module or entry function directly. |
+| **Add a thin adapter** | Tests expect a specific function name; provide a small wrapper in the operator file that calls the extracted launch path. |
+
+Rules:
+
+- Copy **only** modules in the dependency closure for this target. Do not copy entire package
+  trees "just in case".
+- After copying, run a quick import sanity check from the workspace directory before
+  `optimize-batch` (for example `python3 -c "import <operator_stem>"` or run the copied test
+  once).
+- List every copied repo file in `validation-meta.json` → `copied_dependencies`.
+- Explain non-obvious import fixes in `notes`.
+
+If optimize later fails on a missing import, add the smallest additional file or inline the
+missing helper, then update `validation-meta.json`.
+
+### Tests and benches for split targets
+
+- Prefer a test/bench that exercises **only** this workspace's launch entrypoint (which may
+  still run several cooperating kernels internally).
+- If the repo test imports the whole module and runs multiple **unrelated** entrypoints,
+  **copy and trim** it, or author a focused test that calls only this workspace's entrypoint.
+- Do not attach a whole-file integration test to a single-target workspace unless that test
+  truly depends on only the extracted closure.
+- When one repo test file covers multiple unrelated entrypoints, split it the same way you
+  split the operator — one workspace gets one tailored test file.
+
+### `validation-meta.json` for split workspaces
+
+In addition to the usual fields, set:
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `validation_target` | yes | Launch entrypoint this workspace validates (for example `forward_chunk_scan`) |
+| `source_path` | yes | Primary repo file path (same for several workspaces is OK) |
+| `split_from` | recommended | Primary `source_path` when manually extracted from a larger file |
+| `closure_source_paths` | recommended when cross-file | All repo files whose pre-opt code was pulled into this workspace |
+| `included_symbols` | recommended | Entrypoint, **all** cooperating `@triton.jit` kernels, and key helpers in the operator file |
+| `copied_dependencies` | recommended | Other repo `.py` files copied into the workspace root |
+| `excluded_targets` | optional | Other entrypoints/kernels/pipelines left out (audit trail) |
+
+Example — **independent kernel** in a shared file:
+
+```json
+{
+  "workspace": "chunk_o",
+  "source_path": "src/kernels/fla/ops/common/fused_ops.py",
+  "operator_filename": "chunk_o.py",
+  "validation_target": "forward_chunk_o",
+  "split_from": "src/kernels/fla/ops/common/fused_ops.py",
+  "base_revision": "origin/main",
+  "head_revision": "HEAD",
+  "expected_patterns": ["grid-flatten-and-ub-buffering"],
+  "synthesis_refs": ["chunk_o grid flatten in fused_ops.py"],
+  "included_symbols": ["forward_chunk_o", "chunk_o_kernel", "CHUNK_BLOCK"],
+  "copied_dependencies": ["tiling_utils.py"],
+  "excluded_targets": ["forward_wy_fast", "wy_fast_kernel", "scaled_dot_kkt_kernel"],
+  "copied_tests": ["test_chunk_o.py"],
+  "copied_benches": [],
+  "notes": "Manual extract; wy_fast validated in separate workspace"
+}
+```
+
+Example — **one entrypoint, multiple cooperating kernels**:
+
+```json
+{
+  "workspace": "gated_delta_scan",
+  "source_path": "src/kernels/fla/ops/gated_delta_rule/fused_scan.py",
+  "operator_filename": "gated_delta_scan.py",
+  "validation_target": "forward_gated_delta",
+  "split_from": "src/kernels/fla/ops/gated_delta_rule/fused_scan.py",
+  "closure_source_paths": [
+    "src/kernels/fla/ops/gated_delta_rule/fused_scan.py",
+    "src/kernels/fla/ops/gated_delta_rule/wy_fast.py"
+  ],
+  "base_revision": "origin/main",
+  "head_revision": "HEAD",
+  "expected_patterns": [
+    "layout-materialization-elision",
+    "grid-flatten-and-ub-buffering"
+  ],
+  "synthesis_refs": ["gated delta scan pipeline: prep + wy_fast + epilogue"],
+  "included_symbols": [
+    "forward_gated_delta",
+    "prep_indices_kernel",
+    "wy_fast_kernel",
+    "epilogue_kernel"
+  ],
+  "copied_dependencies": [],
+  "excluded_targets": ["forward_standalone_wy_fast"],
+  "copied_tests": ["test_gated_delta_scan.py"],
+  "copied_benches": [],
+  "notes": "Single entrypoint launches 3 kernels; wy_fast.py prep-opt inlined from sibling file"
+}
+```
+
+### Pre-flight checklist (split workspaces)
+
+Before moving to Step 3 / optimize-batch, verify:
+
+- [ ] Workspace contains exactly **one** operator `.py` at the root
+- [ ] Operator file contains the intended `validation_target` entrypoint and **all** kernels
+  that entrypoint launches — not the whole multi-target source file
+- [ ] Unrelated entrypoints/kernels from the same `source_path` are absent
+- [ ] Copied tests call only this workspace's launch entrypoint (which may run multiple inner
+  kernels)
+- [ ] Import sanity check passes from the workspace directory
+- [ ] `validation-meta.json` documents `included_symbols`, `copied_dependencies`, and
+  `closure_source_paths` when applicable
 
 ## Step 3 — Copy harness and dependencies
 
@@ -124,6 +383,11 @@ Field guidance:
 | Field | Required | Meaning |
 |-------|----------|---------|
 | `expected_patterns` | yes | Pattern IDs from staged index that optimize agent should apply |
+| `validation_target` | yes when split from a multi-kernel file | Launch entrypoint this workspace validates |
+| `split_from` | recommended when manually extracted | Primary repo `source_path` before split |
+| `closure_source_paths` | recommended when cross-file | All repo files contributing to the extracted call chain |
+| `included_symbols` | recommended when manually extracted | Entrypoint, cooperating kernels, and key helpers |
+| `copied_dependencies` | recommended | Repo `.py` files copied into the workspace for imports |
 | `synthesis_refs` | recommended | Human-readable synthesis anchors (no fixed ID scheme) |
 | `copied_tests` / `copied_benches` | recommended | Audit trail of what you copied |
 
@@ -150,6 +414,8 @@ Example fixture (hand-authored): `docs/fixtures/q2tritonkernel-pattern-validatio
 Checklist per workspace:
 
 - [ ] Operator file is pre-optimization snapshot, not current HEAD (unless intentional)
+- [ ] For multi-kernel source files: operator is a **manual extract** for one launch
+  `validation_target` and its full kernel call chain — not the whole source file (see Step 2b)
 - [ ] Test file(s) present and reference the operator
 - [ ] `validation-meta.json` lists realistic `expected_patterns`
 - [ ] No `local-only` synthesis goals listed as required patterns

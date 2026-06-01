@@ -70,7 +70,10 @@ python3 "$KNOWLEDGE/scripts/build_pattern_index.py" \
 
 ## Phase C — Plan and scaffold workspaces
 
-Follow [workspace-scaffold-contract.md](references/workspace-scaffold-contract.md).
+Follow [workspace-scaffold-contract.md](references/workspace-scaffold-contract.md). When a
+repo `source_path` contains multiple kernels, use **Step 2b** (manual split) — group by
+launch entrypoint and call chain, not by raw kernel count; do not copy the whole file into
+one workspace or use blind auto-split scripts.
 
 ## Phase D — Run optimize batch
 
