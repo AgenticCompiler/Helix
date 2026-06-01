@@ -1553,7 +1553,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             with patch.dict(os.environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0"}, clear=False):
-                with self.assertRaisesRegex(ValueError, "--max-concurrency"):
+                with self.assertRaisesRegex(ValueError, "--concurrency"):
                     run_optimize_batch(
                         root,
                         options,

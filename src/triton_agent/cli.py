@@ -163,7 +163,8 @@ class _CommandSpec:
     has_npu_devices: bool = False
     has_optimize_options: bool = False
     has_prompt: bool = False
-    max_concurrency_default: int | None = None
+    concurrency_default: int | None = None
+    concurrency_accepts_max: bool = False
     report_workers_default: int | None = None
     has_force_overwrite: bool = False
     has_format: bool = False
@@ -205,7 +206,8 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_bench_mode=True,
         bench_mode_default="standalone",
         has_prompt=True,
-        max_concurrency_default=2,
+        concurrency_default=1,
+        concurrency_accepts_max=True,
         has_log_tools=True,
     ),
     CommandKind.CONVERT: _CommandSpec(
@@ -237,7 +239,8 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         test_mode_default="differential",
         test_mode_choices=("differential",),
         has_prompt=True,
-        max_concurrency_default=2,
+        concurrency_default=1,
+        concurrency_accepts_max=True,
         has_log_tools=True,
     ),
     CommandKind.GEN_TEST: _CommandSpec(
@@ -335,7 +338,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_output=False,
         has_agent=True,
         has_show_output=True,
-        max_concurrency_default=1,
+        concurrency_default=1,
         has_log_tools=True,
     ),
     CommandKind.TRACE_ANALYZE: _CommandSpec(
@@ -397,7 +400,8 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_bench_mode=True,
         has_optimize_options=True,
         has_prompt=True,
-        max_concurrency_default=1,
+        concurrency_default=1,
+        concurrency_accepts_max=True,
         has_log_tools=True,
     ),
     CommandKind.UPLOAD_OPTIMIZE: _CommandSpec(
@@ -539,8 +543,11 @@ def build_parser() -> argparse.ArgumentParser:
                 default="log_check_summary.md",
                 help="Root-relative batch log check summary file name.",
             )
-        if spec.max_concurrency_default is not None:
-            subparser.add_argument("--max-concurrency", type=int, default=spec.max_concurrency_default)
+        if spec.concurrency_default is not None:
+            concurrency_type = (
+                _parse_concurrency_value if spec.concurrency_accepts_max else _parse_positive_int_value
+            )
+            subparser.add_argument("--concurrency", type=concurrency_type, default=spec.concurrency_default)
         if spec.report_workers_default is not None:
             subparser.add_argument("--report-workers", type=int, default=spec.report_workers_default)
         if spec.has_force_overwrite:
@@ -592,6 +599,22 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(_normalize_command_aliases(argv))
     command_kind = args.command_kind
     return _COMMAND_SPECS[command_kind].handler(parser, args)
+
+
+def _parse_concurrency_value(value: str) -> int | str:
+    if value == "max":
+        return value
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("--concurrency must be an integer or 'max'") from exc
+
+
+def _parse_positive_int_value(value: str) -> int:
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("--concurrency must be an integer") from exc
 
 
 def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpec) -> None:

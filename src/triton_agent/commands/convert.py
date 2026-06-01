@@ -9,6 +9,7 @@ from triton_agent.convert.batch import resolve_batch_convert_operator_file, run_
 from triton_agent.convert.models import ConvertOptions
 from triton_agent.convert.orchestration import build_convert_request, run_convert_request
 from triton_agent.convert.outputs import prepare_convert_target
+from triton_agent.npu_affinity import resolve_batch_concurrency
 from triton_agent.output import render_result
 from triton_agent.verbose import emit_verbose_lines
 
@@ -61,12 +62,14 @@ def handle_convert_batch(parser: argparse.ArgumentParser, args: argparse.Namespa
         parser.error(f"Input path does not exist: {root}")
     if not root.is_dir():
         parser.error(f"Input path is not a directory: {root}")
-    if args.max_concurrency < 1:
-        parser.error("--max-concurrency must be at least 1")
+    try:
+        max_concurrency = resolve_batch_concurrency(args.concurrency)
+    except ValueError as exc:
+        parser.error(str(exc))
     return run_convert_batch(
         root,
         convert_options_from_args(args),
-        max_concurrency=args.max_concurrency,
+        max_concurrency=max_concurrency,
     )
 
 

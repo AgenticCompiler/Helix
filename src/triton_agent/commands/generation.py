@@ -11,6 +11,7 @@ from triton_agent.generation.models import GenerationOptions
 from triton_agent.generation.outputs import prepare_generation_targets
 from triton_agent.generation.orchestration import build_generation_request, run_generation_request
 from triton_agent.models import CommandKind
+from triton_agent.npu_affinity import resolve_batch_concurrency
 from triton_agent.output import render_result
 from triton_agent.verbose import emit_verbose_lines
 
@@ -25,9 +26,10 @@ def handle_gen_eval_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
         parser.error(f"Input path does not exist: {root}")
     if not root.is_dir():
         parser.error(f"Input path is not a directory: {root}")
-    max_concurrency = args.max_concurrency
-    if max_concurrency < 1:
-        parser.error("--max-concurrency must be at least 1")
+    try:
+        max_concurrency = resolve_batch_concurrency(args.concurrency)
+    except ValueError as exc:
+        parser.error(str(exc))
     return run_gen_eval_batch(root, generation_options_from_args(args), max_concurrency=max_concurrency)
 
 

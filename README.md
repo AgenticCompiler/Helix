@@ -103,7 +103,7 @@ export TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES=1
 export TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW=4
 export TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN=0.01
 export TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR=$HOME/.triton-agent
-uv run triton-agent optimize-batch --input operators_root --max-concurrency 8
+uv run triton-agent optimize-batch --input operators_root --concurrency max
 ```
 
 ```bash
@@ -433,13 +433,15 @@ Set `TRITON_AGENT_BATCH_NPU_DEVICES` to a comma-separated device list when you w
 
 ```bash
 export TRITON_AGENT_BATCH_NPU_DEVICES=0,3-5,8-9
-uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
+uv run triton-agent optimize-batch --input operators_root --concurrency 4
 ```
 
 When this variable is set:
 
 - `gen-eval-batch`, `convert-batch`, and `optimize-batch` assign one device per running workspace.
-- `--max-concurrency` must not exceed the number of configured devices.
+- `--concurrency` may be a positive integer or `max`.
+- `--concurrency max` resolves to the effective batch affinity capacity.
+- numeric `--concurrency` values must not exceed the number of configured devices unless per-device sharing is enabled.
 - The assigned device is exported as `ASCEND_RT_VISIBLE_DEVICES` for launched workspace processes.
 
 By default each device hosts at most one concurrent workspace. Set `TRITON_AGENT_BATCH_WORKERS_PER_NPU` to allow multiple workers to share the same device:
@@ -447,13 +449,14 @@ By default each device hosts at most one concurrent workspace. Set `TRITON_AGENT
 ```bash
 export TRITON_AGENT_BATCH_NPU_DEVICES=0,1
 export TRITON_AGENT_BATCH_WORKERS_PER_NPU=2
-uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
+uv run triton-agent optimize-batch --input operators_root --concurrency max
 ```
 
 When `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is set:
 
 - Effective capacity is `device_count × workers_per_npu`.
-- `--max-concurrency` must not exceed the effective capacity.
+- numeric `--concurrency` values must not exceed the effective capacity.
+- `--concurrency max` resolves to that effective capacity.
 - Multiple concurrent workspaces may receive the same `ASCEND_RT_VISIBLE_DEVICES` value, up to the configured per-device limit.
 - This variable is ignored when `TRITON_AGENT_BATCH_NPU_DEVICES` is unset.
 
@@ -468,7 +471,7 @@ Common options:
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--test-mode standalone|differential`
 - `--bench-mode standalone|msprof`
-- `--max-concurrency <N>`
+- `--concurrency <N|max>`: defaults to `1`
 - `--show-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -483,7 +486,7 @@ Common options:
 
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--test-mode differential`
-- `--max-concurrency <N>`
+- `--concurrency <N|max>`: defaults to `1`
 - `--show-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -598,7 +601,7 @@ Common options:
 - `--enable-cann-ext-api`
 - `--min-rounds <N>`
 - `--no-agent-session`
-- `--max-concurrency <N>`: defaults to `1`
+- `--concurrency <N|max>`: defaults to `1`
 - `--show-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
