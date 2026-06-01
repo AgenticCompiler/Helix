@@ -26,6 +26,7 @@ class RunLocalTestFn(Protocol):
         test_mode: str,
         *,
         verbose: bool = False,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -40,6 +41,7 @@ class RunRemoteTestFn(Protocol):
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: object | None = None,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None, str]: ...
 
 
@@ -50,6 +52,8 @@ class RunLocalBenchFn(Protocol):
         operator_file: Path,
         bench_mode: str,
         npu_devices: str | None = None,
+        verbose: bool = False,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -65,6 +69,7 @@ class RunRemoteBenchFn(Protocol):
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: object | None = None,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None, str]: ...
 
 
@@ -105,6 +110,7 @@ class RunLocalProfileBenchFn(Protocol):
         bench_case: int | None = None,
         case_id: str | None = None,
         kernel_name: str | None = None,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -122,6 +128,7 @@ class RunRemoteProfileBenchFn(Protocol):
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: object | None = None,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None, str]: ...
 
 
@@ -344,20 +351,30 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         _render_result(result, show_output=True)
         print(f"Return code: {result['return_code']}")
+        final_code = int(result["return_code"])
         if profile_dir is not None:
             print(f"Profile directory: {profile_dir}")
-            print(_build_profile_report(profile_dir, args.target_op))
+            try:
+                print(_build_profile_report(profile_dir, args.target_op))
+            except (FileNotFoundError, RuntimeError, ValueError) as exc:
+                print(str(exc), file=sys.stderr)
+                if final_code == 0:
+                    final_code = 1
         if args.remote and args.keep_remote_workdir and remote_workspace is not None:
             print(f"Remote workspace: {remote_workspace}")
-        return int(result["return_code"])
+        return final_code
 
     if args.command == "profile-report":
-        report = _build_profile_report(
-            _resolve_existing_path(parser, args.profile_dir, "Profile directory"),
-            args.target_op,
-            top_count=args.top,
-            output_format=args.format,
-        )
+        try:
+            report = _build_profile_report(
+                _resolve_existing_path(parser, args.profile_dir, "Profile directory"),
+                args.target_op,
+                top_count=args.top,
+                output_format=args.format,
+            )
+        except (FileNotFoundError, RuntimeError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
         print(report)
         return 0
 

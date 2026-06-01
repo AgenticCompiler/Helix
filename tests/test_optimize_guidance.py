@@ -178,6 +178,18 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertIn("Use `differential` correctness validation", guidance_content)
             self.assertIn("Use `standalone` benchmark validation", guidance_content)
             self.assertIn("Use the staged `triton-npu-optimize` skill", guidance_content)
+            self.assertIn(
+                "Complete optimize rounds strictly one at a time in sequence.",
+                guidance_content,
+            )
+            self.assertIn(
+                "Do not use subagents to implement or advance multiple optimize rounds in parallel.",
+                guidance_content,
+            )
+            self.assertIn(
+                "Do not treat the next round as a parameter-only tuning sweep; make a bottleneck-backed change instead.",
+                guidance_content,
+            )
             self.assertNotIn("Read the role brief", guidance_content)
             self.assertNotIn("Worker and supervisor roles", guidance_content)
             self.assertNotIn(".triton-agent/roles/", guidance_content)

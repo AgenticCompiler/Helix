@@ -405,6 +405,35 @@ class AscendNpuOperatorProfilerTests(unittest.TestCase):
         self.assertEqual(payload["task_timeline_signals"]["matched_rows"], 0)
         self.assertEqual(payload["task_time_file"], None)
 
+    def test_build_report_missing_target_lists_available_operators(self) -> None:
+        module = _load_reporter_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            profile_dir = Path(tmp) / "PROF_demo"
+            output_dir = profile_dir / "mindstudio_profiler_output"
+            output_dir.mkdir(parents=True)
+
+            (output_dir / "op_statistic_1.csv").write_text(
+                "\n".join(
+                    [
+                        "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                        "0,VectorKernel,AI_VECTOR_CORE,4,450.0,100.0,112.5,130.0,45.0",
+                        "0,CubeKernel,AI_CUBE_CORE,2,300.0,140.0,150.0,160.0,30.0",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(ValueError) as ctx:
+                module.build_report(profile_dir, target_op="MissingKernel")
+
+        self.assertEqual(
+            str(ctx.exception),
+            "Target operator not found in op_statistic: MissingKernel. "
+            "Available operators: CubeKernel, VectorKernel",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2162,6 +2162,195 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIn("baseline=0.0038", output)
             self.assertIn("compare=0.0254", output)
 
+    def test_force_recompile_standalone_parallel_injects_env(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            runtime_script = root / "standalone_bench_runtime.py"
+            bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
+            operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
+            runtime_script.write_text(
+                "def run_one_standalone_case_record(bench_file, operator_file, case_id, "
+                "preserved_run_dir=None, verbose=False):\n"
+                "    from perf_artifacts import PerfCaseRecord, PerfMetrics\n"
+                "    return PerfCaseRecord(\n"
+                "        case_label=case_id,\n"
+                "        kernel_names=['KernelA'],\n"
+                "        kernel_source='metadata',\n"
+                "        metrics=PerfMetrics(avg_ms=1.0, min_ms=0.5, max_ms=1.5),\n"
+                "    )\n",
+                encoding="utf-8",
+            )
+
+            observed_extra_env: list[Optional[dict[str, str]]] = []
+
+            def _fake_buffered_process(
+                command, workdir, stall_timeout_seconds,
+                extra_env: Optional[dict[str, str]] = None,
+            ):
+                observed_extra_env.append(extra_env)
+                case_id = command[5] if len(command) > 5 else "case-a"
+                return make_skill_result(
+                    0,
+                    (
+                        '{"case_label":"'
+                        + case_id
+                        + '","kernel_names":["KernelA"],"kernel_source":"metadata",'
+                        + '"metrics":{"kernel_avg_time_us":1.0,"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},'
+                        + '"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    ),
+                    "",
+                )
+
+            with patch.object(
+                module,
+                "_load_standalone_runtime_module",
+                create=True,
+            ) as load_runtime:
+                load_runtime.return_value = type(
+                    "_FakeRuntime",
+                    (),
+                    {
+                        "load_standalone_bench_cases": staticmethod(
+                            lambda *_args, **_kwargs: (
+                                [
+                                    type("_Case", (), {"case_id": "case-a"})(),
+                                ],
+                                type("_Resolution", (), {"kernel_names": ["KernelA"], "kernel_source": "metadata"})(),
+                            )
+                        ),
+                        "runtime_support_paths": staticmethod(lambda: [runtime_script]),
+                    },
+                )()
+                with patch.object(
+                    module, "run_buffered_process", side_effect=_fake_buffered_process,
+                ):
+                    result, _perf_path = module.run_local_bench(
+                        bench_file, operator_file, "standalone",
+                        npu_devices="0",
+                        force_recompile=True,
+                    )
+
+            self.assertEqual(result["return_code"], 0)
+            self.assertEqual(len(observed_extra_env), 1)
+            extra = observed_extra_env[0]
+            self.assertIsNotNone(extra)
+            self.assertEqual(extra["TRITON_ALWAYS_COMPILE"], "1")  # type: ignore[index]
+            self.assertIn("ASCEND_RT_VISIBLE_DEVICES", extra)  # type: ignore[index]
+
+    def test_force_recompile_msprof_local_injects_env(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_msprof.py"
+            operator_file = root / "operator_msprof.py"
+            bench_file.write_text("# bench-mode: msprof\n# kernel: KernelA\n", encoding="utf-8")
+            operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
+
+            observed_streaming_env: list[Optional[dict[str, str]]] = []
+
+            def _fake_buffered(command, workdir, stall_timeout_seconds, extra_env=None):
+                return make_skill_result(0, "1\n", "")
+
+            def _fake_streaming(command, workdir, stall_timeout_seconds,
+                                stdout=None, extra_env=None):
+                observed_streaming_env.append(extra_env)
+                return make_skill_result(0, "msprof output\n", "")
+
+            def _fake_read_metrics(_output_dir, _kernel_names):
+                return {"kernel_avg_time_us": 1.0, "ops": [{"op_type": "KernelA", "avg_time_us": 1.0}]}  # type: ignore[return-value]
+
+            with patch.object(module, "run_buffered_process", side_effect=_fake_buffered), \
+                 patch.object(module, "run_streaming_process", side_effect=_fake_streaming), \
+                 patch.object(
+                     module._msprof, "_read_local_msprof_metrics",
+                     side_effect=_fake_read_metrics, create=True,
+                 ):
+                result, _perf_path = module.run_local_bench(
+                    bench_file, operator_file, "msprof",
+                    force_recompile=True,
+                )
+
+            self.assertEqual(result["return_code"], 0)
+            self.assertEqual(len(observed_streaming_env), 1)
+            extra = observed_streaming_env[0]
+            self.assertIsNotNone(extra)
+            self.assertEqual(extra["TRITON_ALWAYS_COMPILE"], "1")  # type: ignore[index]
+
+    def test_force_recompile_false_does_not_set_env(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            runtime_script = root / "standalone_bench_runtime.py"
+            bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
+            operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
+            runtime_script.write_text(
+                "def run_one_standalone_case_record(bench_file, operator_file, case_id, "
+                "preserved_run_dir=None, verbose=False):\n"
+                "    from perf_artifacts import PerfCaseRecord, PerfMetrics\n"
+                "    return PerfCaseRecord(\n"
+                "        case_label=case_id,\n"
+                "        kernel_names=['KernelA'],\n"
+                "        kernel_source='metadata',\n"
+                '        metrics=PerfMetrics(kernel_avg_time_us=1.0, ops=[{"op_type":"KernelA","avg_time_us":1.0}]),\n'
+                "    )\n",
+                encoding="utf-8",
+            )
+
+            observed_extra_env: list[Optional[dict[str, str]]] = []
+
+            def _fake_buffered_process(
+                command, workdir, stall_timeout_seconds,
+                extra_env: Optional[dict[str, str]] = None,
+            ):
+                observed_extra_env.append(extra_env)
+                return make_skill_result(
+                    0,
+                    (
+                        '{"case_label":"case-a","kernel_names":["KernelA"],"kernel_source":"metadata",'
+                        + '"metrics":{"kernel_avg_time_us":1.0,"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},'
+                        + '"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    ),
+                    "",
+                )
+
+            with patch.object(
+                module,
+                "_load_standalone_runtime_module",
+                create=True,
+            ) as load_runtime:
+                load_runtime.return_value = type(
+                    "_FakeRuntime",
+                    (),
+                    {
+                        "load_standalone_bench_cases": staticmethod(
+                            lambda *_args, **_kwargs: (
+                                [
+                                    type("_Case", (), {"case_id": "case-a"})(),
+                                ],
+                                type("_Resolution", (), {"kernel_names": ["KernelA"], "kernel_source": "metadata"})(),
+                            )
+                        ),
+                        "runtime_support_paths": staticmethod(lambda: [runtime_script]),
+                    },
+                )()
+                with patch.object(
+                    module, "run_buffered_process", side_effect=_fake_buffered_process,
+                ):
+                    result, _perf_path = module.run_local_bench(
+                        bench_file, operator_file, "standalone",
+                        npu_devices="0",
+                    )
+
+            self.assertEqual(result["return_code"], 0)
+            for extra in observed_extra_env:
+                if extra is not None:
+                    self.assertNotIn("TRITON_ALWAYS_COMPILE", extra)
+
 
 if __name__ == "__main__":
     unittest.main()

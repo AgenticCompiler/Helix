@@ -11,7 +11,9 @@ from triton_agent.optimize.pattern_reminders import (
 from triton_agent.optimize.prompts import (
     cann_ext_api_lines,
     compiler_source_analysis_lines,
+    continuous_round_serialization_lines,
     layered_analysis_lines,
+    next_round_reflection_lines,
 )
 
 
@@ -319,7 +321,9 @@ class MemoryFileManager:
             bench_mode=bench_mode,
             operator_name=operator_path.name,
             analysis_block=_render_bullet_block(
-                layered_analysis_lines(round_scope="each round")
+                continuous_round_serialization_lines()
+                + layered_analysis_lines(round_scope="each round")
+                + next_round_reflection_lines()
                 + (
                     [
                         "Use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and operator-level pattern references.",

@@ -384,6 +384,7 @@ def run_remote_bench_msprof_parallel(
             json_search_root,
             verbose,
             stderr,
+            force_recompile=force_recompile,
         )
 
     outcomes = deps._run_parallel_case_workers(
@@ -469,6 +470,7 @@ def _run_remote_msprof_case_parallel(
     json_search_root: Path,
     verbose: bool,
     stderr: TextIO | None,
+    force_recompile: bool = False,
 ) -> _MsprofCaseOutcome:
     case_workspace = f"{remote_workspace}/case-{case_idx}"
     deps.run_remote_command_buffered(
@@ -493,6 +495,9 @@ def _run_remote_msprof_case_parallel(
     output_dir = f"{workspace_root}/msprof-output"
     try:
         with pool.acquire() as device:
+            extra_env = affinity_env_for_device(device)
+            if force_recompile:
+                extra_env["TRITON_ALWAYS_COMPILE"] = "1"
             t0 = deps._now()
             result = deps.run_remote_command_streaming(
                 spec,
@@ -509,7 +514,7 @@ def _run_remote_msprof_case_parallel(
                 ],
                 verbose=verbose,
                 stderr=stderr,
-                extra_env=affinity_env_for_device(device),
+                extra_env=extra_env,
                 stall_timeout_seconds=deps._bench_timeout(),
             )
             elapsed = deps._now() - t0

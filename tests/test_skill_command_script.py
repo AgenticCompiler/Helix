@@ -334,6 +334,181 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertTrue(callable(run_local_profile_bench))
         self.assertTrue(callable(run_remote_profile_bench))
 
+    def test_script_profile_report_returns_stderr_error_for_unknown_target(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_profile_report", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            profile_dir = Path(tmp) / "PROF_demo"
+            output_dir = profile_dir / "mindstudio_profiler_output"
+            output_dir.mkdir(parents=True)
+            (output_dir / "op_statistic_1.csv").write_text(
+                "\n".join(
+                    [
+                        "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                        "0,VectorKernel,AI_VECTOR_CORE,4,450.0,100.0,112.5,130.0,45.0",
+                        "0,CubeKernel,AI_CUBE_CORE,2,300.0,140.0,150.0,160.0,30.0",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                exit_code = module.main(
+                    [
+                        "profile-report",
+                        "--profile-dir",
+                        str(profile_dir),
+                        "--target-op",
+                        "MissingKernel",
+                        "--format",
+                        "json",
+                    ]
+                )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(
+            stderr.getvalue(),
+            "Target operator not found in op_statistic: MissingKernel. "
+            "Available operators: CubeKernel, VectorKernel\n",
+        )
+        self.assertNotIn("Traceback", stderr.getvalue())
+
+    def test_script_profile_bench_returns_stderr_error_for_unknown_target(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_profile_bench_error", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            profile_dir = root / "PROF_demo"
+            output_dir = profile_dir / "mindstudio_profiler_output"
+            output_dir.mkdir(parents=True)
+
+            operator.write_text("print('x')\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\nprint('bench')\n", encoding="utf-8")
+            (output_dir / "op_statistic_1.csv").write_text(
+                "\n".join(
+                    [
+                        "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                        "0,VectorKernel,AI_VECTOR_CORE,4,450.0,100.0,112.5,130.0,45.0",
+                        "0,CubeKernel,AI_CUBE_CORE,2,300.0,140.0,150.0,160.0,30.0",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            def fake_run_local_profile_bench(
+                bench_path: Path,
+                operator_path: Path,
+                bench_mode: str,
+                bench_case: Optional[int] = None,
+                case_id: Optional[str] = None,
+                kernel_name: Optional[str] = None,
+                force_recompile: bool = False,
+            ) -> tuple[dict[str, object], Path]:
+                self.assertEqual(bench_path, bench_file.resolve())
+                self.assertEqual(operator_path, operator.resolve())
+                self.assertEqual(bench_mode, "msprof")
+                self.assertIsNone(bench_case)
+                self.assertIsNone(case_id)
+                self.assertIsNone(kernel_name)
+                self.assertFalse(force_recompile)
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    profile_dir,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_bench_functions",
+                    return_value=(
+                        lambda _path: {"bench-mode": "msprof"},
+                        lambda *_args, **_kwargs: None,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ):
+                    with patch.object(
+                        module,
+                        "_load_profile_functions",
+                        return_value=(
+                            fake_run_local_profile_bench,
+                            lambda *_args, **_kwargs: None,
+                        ),
+                    ):
+                        exit_code = module.main(
+                            [
+                                "profile-bench",
+                                "--bench-file",
+                                str(bench_file),
+                                "--operator-file",
+                                str(operator),
+                                "--target-op",
+                                "MissingKernel",
+                            ]
+                        )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(
+            stdout.getvalue(),
+            f"Return code: 0\nProfile directory: {profile_dir}\n",
+        )
+        self.assertEqual(
+            stderr.getvalue(),
+            "Target operator not found in op_statistic: MissingKernel. "
+            "Available operators: CubeKernel, VectorKernel\n",
+        )
+        self.assertNotIn("Traceback", stderr.getvalue())
+
     def test_script_run_test_prints_hint_for_differential_result(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
