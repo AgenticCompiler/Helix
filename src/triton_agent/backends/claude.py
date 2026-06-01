@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 class ClaudeRunner(AgentRunner):
-    def __init__(self, executable: str = "claude", stall_timeout_seconds: int = 900) -> None:
+    def __init__(self, executable: str = "claude", stall_timeout_seconds: int | None = None) -> None:
         super().__init__(executable, stall_timeout_seconds)
 
     def build_command(self, request: AgentRequest) -> list[str]:

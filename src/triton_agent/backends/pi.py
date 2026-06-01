@@ -5,7 +5,7 @@ from triton_agent.models import AgentRequest
 
 
 class PiRunner(AgentRunner):
-    def __init__(self, executable: str = "pi", stall_timeout_seconds: int = 900) -> None:
+    def __init__(self, executable: str = "pi", stall_timeout_seconds: int | None = None) -> None:
         super().__init__(executable, stall_timeout_seconds)
 
     def build_command(self, request: AgentRequest) -> list[str]:

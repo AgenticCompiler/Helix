@@ -24,7 +24,7 @@ def _opencode_workspace_config() -> dict[str, object]:
 
 
 class OpenCodeRunner(AgentRunner):
-    def __init__(self, executable: str = "opencode", stall_timeout_seconds: int = 900) -> None:
+    def __init__(self, executable: str = "opencode", stall_timeout_seconds: int | None = None) -> None:
         super().__init__(executable, stall_timeout_seconds)
 
     def build_command(self, request: AgentRequest) -> list[str]:
