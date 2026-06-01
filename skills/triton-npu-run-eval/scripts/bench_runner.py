@@ -50,6 +50,7 @@ from run_runtime import (
     emit_verbose,
     env_int,
     local_python_executable,
+    make_result,
     result_succeeded,
     run_buffered_process,
     run_remote_command_buffered,
@@ -494,10 +495,14 @@ def run_local_bench(
     npu_devices: str | None = None,
     verbose: bool = False,
     force_recompile: bool = False,
+    extract_dest_dir: Path | None = None,
 ) -> tuple[ResultPayload, Path | None]:
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
     with _local_bench_workdir(bench_file.parent):
+        if bench_mode == "msprof-simulator":
+            _run_local_bench_msprof_simulator(bench_file, operator_file, extract_dest_dir=extract_dest_dir)
+            return _run_local_bench_msprof(bench_file, operator_file, verbose=verbose)
         if bench_mode == "msprof":
             if devices is not None:
                 source_root, json_search_root = _resolve_case_workspace_roots(
@@ -922,6 +927,23 @@ def _create_local_msprof_output_dir(
     return output_dir, None
 
 
+def _create_local_msprof_preserved_run_dir() -> Path | None:
+    configured_root, configured_env = _resolve_local_bench_profile_output_root()
+    if not configured_root:
+        return None
+    root = Path(configured_root).expanduser()
+    if root.exists() and not root.is_dir():
+        raise ValueError(
+            f"{configured_env} must point to a directory: {root}"
+        )
+    if not root.exists():
+        root.mkdir(parents=True, exist_ok=True)
+        _set_directory_owner_only(root)
+    run_dir = Path(tempfile.mkdtemp(prefix="triton-agent-msprof-", dir=str(root)))
+    _set_directory_owner_only(run_dir)
+    return run_dir
+
+
 def _bench_case_input_paths(
     bench_file: Path,
     operator_file: Path,
@@ -1161,6 +1183,135 @@ def _stage_remote_msprof_case_workspace(
 
 def _set_directory_owner_only(path: Path) -> None:
     path.chmod(0o700)
+
+
+_MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched op_statistic csv"
+_TIMEOUT_MESSAGE = "[INFO]  The timeout has reached and the application will be forcibly killed."
+
+
+def _find_latest_visualize_data_bin(output_dir: Path) -> Path | None:
+    matches = sorted(
+        path for path in output_dir.rglob("visualize_data.bin") if path.is_file()
+    )
+    if not matches:
+        return None
+    return max(matches, key=lambda path: path.stat().st_mtime_ns)
+
+
+def _run_extract_and_copy(output_dir: Path, bench_file: Path, isTimeOut: bool = False, dest_dir: Path | None = None) -> None:
+    bin_file = _find_latest_visualize_data_bin(output_dir)
+    if bin_file is None:
+        return
+
+    extract_script = Path(__file__).resolve().parent / "extract_profile_bin_data.py"
+    cmd = [sys.executable, str(extract_script), str(bin_file)]
+    if isTimeOut:
+        cmd.append("--isTimeOut")
+    run_buffered_process(cmd, str(bin_file.parent), stall_timeout_seconds=_bench_timeout())
+
+    extracted_dir = bin_file.parent / "extracted_bin_data"
+    if extracted_dir.exists():
+        tmp_dir = (dest_dir or bench_file.parent) / "extracted_bin_data"
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir)
+        shutil.copytree(extracted_dir, tmp_dir)
+
+
+def _run_local_bench_msprof_simulator(
+    bench_file: Path,
+    operator_file: Path,
+    extract_dest_dir: Path | None = None,
+) -> tuple[ResultPayload, Path | None]:
+    resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+    preserved_run_dir = _create_local_msprof_preserved_run_dir()
+    had_stalls = False
+    session_id: str | None = None
+
+    output_dir, temp_dir = _create_local_msprof_output_dir(0, preserved_run_dir)
+    try:
+        command = [
+            "msprof",
+            "op",
+            "simulator",
+            "--timeout=5",
+            f"--output={output_dir}",
+            local_python_executable(),
+            str(bench_file),
+            "--operator-file",
+            str(operator_file),
+            "--bench", "1",
+        ]
+        t0 = time.monotonic()
+        with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
+            result = run_streaming_process(
+                command,
+                str(bench_file.parent),
+                stall_timeout_seconds=_bench_timeout(),
+                stdout=quiet_stdout,
+            )
+        elapsed = time.monotonic() - t0
+        stdout_chunks.append(str(result["stdout"]))
+        stderr_chunks.append(str(result["stderr"]))
+        had_stalls = had_stalls or bool(result["stalled"])
+        if result["session_id"] is not None:
+            session_id = result["session_id"]
+
+        isTimeOut = (
+            _TIMEOUT_MESSAGE in str(result["stdout"])
+            or _TIMEOUT_MESSAGE in str(result["stderr"])
+        )
+
+        if not result_succeeded(result):
+            case_record = PerfCaseRecord(
+                case_label="0",
+                kernel_names=resolution.kernel_names,
+                kernel_source=resolution.kernel_source,
+                error_message=_format_msprof_command_failure(result),
+                case_wall_clock_seconds=elapsed,
+            )
+            perf_path = write_perf_lines(
+                perf_output_path(operator_file),
+                render_perf_case_records(
+                    [case_record],
+                    latency_prefix="latency-case",
+                    raw_prefix="raw-op-statistic-case",
+                    resolved_kernels_prefix="resolved-kernels-case",
+                    kernel_source_prefix="kernel-source-case",
+                    latency_error_prefix="latency-error-case",
+                    missing_kernel_match_error=_MISSING_KERNEL_MATCH_ERROR,
+                    elapsed_id_prefix="case",
+                ),
+            )
+            return (
+                make_result(
+                    return_code=1,
+                    stdout="".join(stdout_chunks),
+                    stderr="".join(stderr_chunks),
+                    stalled=had_stalls,
+                    session_id=session_id,
+                ),
+                perf_path,
+            )
+
+        _run_extract_and_copy(output_dir, bench_file, isTimeOut, dest_dir=extract_dest_dir)
+
+        return (
+            make_result(
+                return_code=0,
+                stdout="".join(stdout_chunks),
+                stderr="".join(stderr_chunks),
+                stalled=had_stalls,
+                session_id=session_id,
+            ),
+            None,
+        )
+
+    finally:
+        if temp_dir is not None:
+            temp_dir.cleanup()
+        _cleanup_local_bench_extra_info(bench_file.parent)
 
 
 def _format_msprof_command_failure(result: ResultPayload) -> str:

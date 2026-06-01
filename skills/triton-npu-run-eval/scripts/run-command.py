@@ -53,6 +53,7 @@ class RunLocalBenchFn(Protocol):
         bench_mode: str,
         npu_devices: str | None = None,
         force_recompile: bool = False,
+        extract_dest_dir: Path | None = None,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -165,10 +166,11 @@ def build_parser() -> argparse.ArgumentParser:
     run_bench.add_argument("--remote-workdir")
     run_bench.add_argument("--keep-remote-workdir", action="store_true")
     run_bench.add_argument("--verbose", action="store_true")
-    run_bench.add_argument("--bench-mode", choices=["standalone", "msprof"])
+    run_bench.add_argument("--bench-mode", choices=["standalone", "msprof", "msprof-simulator"])
     run_bench.add_argument("--npu-devices")
     run_bench.add_argument("--force-recompile", action="store_true",
                            help="Force Triton kernel recompilation (sets TRITON_ALWAYS_COMPILE=1)")
+    run_bench.add_argument("--extract-dest-dir")
 
     profile_bench = subparsers.add_parser("profile-bench")
     profile_bench.add_argument("--bench-file", required=True)
@@ -387,12 +389,14 @@ def main(argv: list[str] | None = None) -> int:
                 force_recompile=args.force_recompile,
             )
         else:
+            extract_dest_dir = Path(args.extract_dest_dir).resolve() if getattr(args, "extract_dest_dir", None) else None
             result, perf_path = run_local_bench(
                 bench_file,
                 operator_file,
                 resolved_bench_mode,
                 args.npu_devices,
                 force_recompile=args.force_recompile,
+                extract_dest_dir=extract_dest_dir
             )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
@@ -444,7 +448,7 @@ def _resolve_bench_mode_from_metadata(bench_file: Path) -> str:
     parse_bench_metadata = _load_bench_functions()[0]
     metadata = parse_bench_metadata(bench_file)
     mode = metadata.get("bench-mode")
-    if mode not in {"standalone", "msprof"}:
+    if mode not in {"standalone", "msprof", "msprof-simulator"}:
         raise ValueError(f"Benchmark metadata is missing required 'bench-mode' entry: {bench_file}")
     return mode
 
