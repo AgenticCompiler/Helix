@@ -84,3 +84,11 @@ This keeps the optimize loop deliberate instead of reactive.
 - Add or update tests that assert the `check-round` pass summary names the next round and pre-round reflection guidance.
 - Add or update tests that assert CLI follow-up summaries include `Next round`.
 - Add or update tests that assert continue prompts mention the pre-round reflection and evidence-ladder choices.
+
+## Follow-On CLI Output Adjustment
+
+- The `optimize_check.py` CLI should print JSON only.
+- The CLI JSON should expose `guideline` instead of duplicating a separate plain-text stderr summary.
+- When `check-round` can identify the next round from the guidance, the CLI JSON should expose it as `next_option`.
+- `OptimizeCheckResult` should carry the structured next step as `next_option` so the CLI does not need to parse `guideline` text to find it.
+- Keep `OptimizeCheckResult.summary` available for in-process callers while adding `next_option` as a structured companion field.

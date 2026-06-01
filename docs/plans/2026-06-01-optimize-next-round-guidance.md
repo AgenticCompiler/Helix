@@ -23,6 +23,7 @@
 - [ ] Extend the continue-guidance tests so they also forbid parallel round optimization and parameter-only tuning sweeps.
 - [ ] Add a test that asserts CLI follow-up summaries include `Next round: opt-round-N+1`.
 - [ ] Add a test that asserts continue prompts mention pre-round reflection and profiling / IR / compiler-source choice points.
+- [ ] Add a test that asserts the structured optimize-check result carries `next_option` directly.
 - [ ] Run the targeted tests and confirm they fail for the expected missing text.
 
 ## Task 3: Implement the prompt-chain updates
@@ -42,6 +43,7 @@
   - Modify: `tests/test_optimize_checks.py`
   - Modify: `tests/test_cli.py`
   - Modify: `tests/test_optimize_runtime.py`
+  - Modify: `tests/test_skill_command_script.py`
 
 - [ ] Run the targeted tests again and confirm they pass.
 - [ ] If prompt text changes require assertion adjustments elsewhere, update only the tests that intentionally cover these prompts.

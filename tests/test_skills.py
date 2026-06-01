@@ -2,6 +2,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -189,6 +190,82 @@ class SkillLinkManagerTests(unittest.TestCase):
             )
             self.assertFalse((target / "triton-npu-optimize-knowledge-v3").exists())
             manager.cleanup(links)
+
+    def test_prepare_skills_creates_and_cleans_temporary_git_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            source = Path(tmp) / "skills-source"
+            workspace.mkdir()
+            source.mkdir()
+            (source / "triton-npu-gen-test").mkdir()
+            (source / "triton-npu-gen-test" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
+
+            manager = SkillLinkManager(source)
+            links = manager.prepare_skills("codex", workspace, skill_names=("triton-npu-gen-test",))
+
+            temporary_git_dir = workspace / ".git"
+            self.assertTrue(temporary_git_dir.is_dir())
+            self.assertEqual(links.temporary_git_dir, temporary_git_dir)
+            manager.cleanup(links)
+            self.assertFalse(temporary_git_dir.exists())
+
+    def test_prepare_skills_preserves_existing_local_git_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            source = Path(tmp) / "skills-source"
+            workspace.mkdir()
+            source.mkdir()
+            (workspace / ".git").mkdir()
+            (source / "triton-npu-gen-test").mkdir()
+            (source / "triton-npu-gen-test" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
+
+            manager = SkillLinkManager(source)
+            links = manager.prepare_skills("codex", workspace, skill_names=("triton-npu-gen-test",))
+
+            self.assertIsNone(links.temporary_git_dir)
+            manager.cleanup(links)
+            self.assertTrue((workspace / ".git").exists())
+
+    def test_prepare_skills_creates_local_git_repo_even_under_parent_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp) / "repo-root"
+            workspace = repo_root / "workspace"
+            source = Path(tmp) / "skills-source"
+            repo_root.mkdir()
+            workspace.mkdir()
+            source.mkdir()
+            (repo_root / ".git").mkdir()
+            (source / "triton-npu-gen-test").mkdir()
+            (source / "triton-npu-gen-test" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
+
+            manager = SkillLinkManager(source)
+            links = manager.prepare_skills("codex", workspace, skill_names=("triton-npu-gen-test",))
+
+            self.assertTrue((workspace / ".git").is_dir())
+            self.assertEqual(links.temporary_git_dir, workspace / ".git")
+            manager.cleanup(links)
+            self.assertFalse((workspace / ".git").exists())
+            self.assertTrue((repo_root / ".git").exists())
+
+    def test_prepare_skills_rolls_back_temporary_git_repo_on_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            source = Path(tmp) / "skills-source"
+            workspace.mkdir()
+            source.mkdir()
+            (source / "triton-npu-gen-test").mkdir()
+            (source / "triton-npu-gen-test" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
+
+            manager = SkillLinkManager(source)
+            with mock.patch.object(
+                manager,
+                "_copy_selected_skill_dirs",
+                side_effect=RuntimeError("copy failed"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "copy failed"):
+                    manager.prepare_skills("codex", workspace, skill_names=("triton-npu-gen-test",))
+
+            self.assertFalse((workspace / ".git").exists())
 
     def test_copy_root_skills_directory_when_missing_for_supported_backends(self) -> None:
         for backend in _BACKEND_SKILL_DIRS:

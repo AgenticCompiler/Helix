@@ -26,6 +26,7 @@ python3 scripts/optimize_check.py check-round --round-dir opt-round-1 --optimize
 
 - `check-baseline` verifies canonical baseline artifacts and baseline state.
 - `check-round` verifies round-local artifacts and the recorded round state against the canonical baseline contract.
+- The CLI prints JSON only; read the `guideline` field for the human-facing pass/fix instruction, and read `next_option` when it is present.
 - When `--optimize-target kernel` is provided, `check-round` still allows rounds whose recorded `effective_metric_source` fell back to `total-op` or `mixed`, but returns that mismatch as a warning-style issue so the caller can surface it.
 - When a check fails, treat the returned issues as the repair checklist.
 - Do not start the next optimize round until the current check passes.

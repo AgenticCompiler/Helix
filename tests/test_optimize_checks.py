@@ -495,6 +495,7 @@ class OptimizeCheckTests(unittest.TestCase):
 
             self.assertTrue(result.ok)
             self.assertEqual(result.decision, "pass")
+            self.assertEqual(result.next_option, "opt-round-2")
             self.assertIn("Next round: opt-round-2.", result.summary)
             self.assertIn("Do not rush into the next code change.", result.summary)
             self.assertIn(

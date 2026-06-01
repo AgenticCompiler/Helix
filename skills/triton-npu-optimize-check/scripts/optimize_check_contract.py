@@ -65,6 +65,7 @@ class OptimizeCheckResult:
     decision: Literal["pass", "revise-required", "hard-fail"]
     issues: tuple[str, ...]
     summary: str
+    next_option: str | None = None
 
 
 @dataclass(frozen=True)
@@ -482,6 +483,7 @@ def check_round(
                     f"the optimize session may stop after this round.",
                     result.issues,
                 ),
+                next_option=None,
             )
         else:
             next_round_name = _next_round_name_for_round(round_dir, completed=completed)
@@ -501,6 +503,7 @@ def check_round(
                     "Do not treat the next round as a parameter-only tuning sweep.",
                     result.issues,
                 ),
+                next_option=next_round_name,
             )
 
     return result
@@ -687,6 +690,7 @@ def _build_result(
     decision: Literal["pass", "revise-required", "hard-fail"],
     issues: tuple[str, ...],
     summary: str | None = None,
+    next_option: str | None = None,
 ) -> OptimizeCheckResult:
     ok = decision == "pass"
     if summary is None:
@@ -701,6 +705,7 @@ def _build_result(
         decision=decision,
         issues=issues,
         summary=summary,
+        next_option=next_option,
     )
 
 
