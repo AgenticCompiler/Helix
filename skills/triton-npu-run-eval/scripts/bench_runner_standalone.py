@@ -86,7 +86,7 @@ def run_local_standalone_bench(
 ) -> tuple[ResultPayload, Path]:
     runtime = deps._load_standalone_runtime_module()
     return runtime.run_local_standalone_bench(bench_file, operator_file, verbose=verbose,
-                                              force_recompile=force_recompile)
+                                              force_recompile=force_recompile)  # pyright: ignore[reportUnknownMemberType, reportCallIssue, reportUnknownVariableType]
 
 
 def run_local_bench_standalone_parallel(

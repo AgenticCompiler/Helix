@@ -26,6 +26,7 @@ class RunLocalTestFn(Protocol):
         test_mode: str,
         *,
         verbose: bool = False,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -40,6 +41,7 @@ class RunRemoteTestFn(Protocol):
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: object | None = None,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None, str]: ...
 
 
@@ -50,6 +52,7 @@ class RunLocalBenchFn(Protocol):
         operator_file: Path,
         bench_mode: str,
         npu_devices: str | None = None,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -65,6 +68,7 @@ class RunRemoteBenchFn(Protocol):
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: object | None = None,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None, str]: ...
 
 
@@ -105,6 +109,7 @@ class RunLocalProfileBenchFn(Protocol):
         bench_case: int | None = None,
         case_id: str | None = None,
         kernel_name: str | None = None,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -122,6 +127,7 @@ class RunRemoteProfileBenchFn(Protocol):
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: object | None = None,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None, str]: ...
 
 
