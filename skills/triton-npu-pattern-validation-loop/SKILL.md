@@ -1,6 +1,6 @@
 ---
 name: triton-npu-pattern-validation-loop
-description: Close the loop from PERF_PATTERN_SYNTHESIS to validated optimize-batch runs. Agent reads synthesis, updates staged pattern skills, builds validation workspaces, runs optimize-batch, audits pattern application, and iterates until success.
+description: Close the loop from PERF_PATTERN_SYNTHESIS to validated optimize-batch runs. Agent reads synthesis, updates persistent repo-local skills, builds validation workspaces, runs optimize-batch, audits pattern application, and iterates until success.
 ---
 
 # Pattern Validation Loop
@@ -9,29 +9,29 @@ description: Close the loop from PERF_PATTERN_SYNTHESIS to validated optimize-ba
 
 Turn commit-analysis output into **verified** optimization knowledge:
 
-1. **Read** `PERF_PATTERN_SYNTHESIS.md` (any structure) and decide skill updates.
+1. **Read** `PERF_PATTERN_SYNTHESIS.md` and update a **persistent** skills workdir under the repo.
 2. **Build** optimize-batch workspaces with pre-optimization operators and tests.
-3. **Run** `optimize-batch` for a fixed minimum number of rounds.
-4. **Audit** whether expected pattern IDs appear in round artifacts.
-5. **Iterate** skills and re-run until success or `max_iterations`.
-
-This skill defines **process and contracts**. The orchestrating agent performs synthesis
-interpretation, file layout, and Git snapshot selection — not fixed-format parsers.
+3. **Run** `optimize-batch` with `--skills-source-dir` so optimize copies from that workdir.
+4. **Audit** pattern IDs in round artifacts; archive passes under `_completed/`.
+5. **Iterate** edits in the workdir and re-run until success or `max_iterations`.
 
 ## Prerequisites
 
-- `PERF_PATTERN_SYNTHESIS.md` exists (typically from `analyze-commit-perf`).
-- Git repo on the analyzed branch; know `base_revision..HEAD` for snapshots.
-- `triton-agent` CLI available for subprocess `optimize-batch`.
-- NPU bench optional; audit can pass on pattern citation alone.
+- `PERF_PATTERN_SYNTHESIS.md` in the repo.
+- Git history for pre-optimization snapshots.
+- `triton-agent` CLI for subprocess `optimize-batch`.
 
 ## Paths (resolve at runtime)
 
-- `REPO` = Git repository root
-- `SKILL` = staged copy of this skill
-- `KNOWLEDGE` = staged `triton-npu-optimize-knowledge`
+- `REPO` = Git repository root (where you run commands)
+- `SKILLS` = persistent loop skills workdir (default `REPO/pattern-validation-skills/`)
+- `KNOWLEDGE` = `SKILLS/triton-npu-optimize-knowledge/` — **edit pattern cards here only**
+- `SKILL` = staged orchestration skill (read contracts; do not edit knowledge here)
 - `STATE` = `REPO/.triton-agent/pattern-validation-loop-state.json`
-- `BATCH` = batch root (default `REPO/pattern-validation-batch`)
+- `BATCH` = batch root (default `REPO/pattern-validation-batch/`)
+
+On first `pattern-validation-loop` run, the CLI seeds `KNOWLEDGE` from the triton-agent install
+bundle if missing. The directory **stays on disk** for the whole loop and after completion.
 
 Read before acting:
 
@@ -46,19 +46,17 @@ python3 "$SKILL/scripts/init_loop_state.py" \
   --repo "$REPO" \
   --synthesis PERF_PATTERN_SYNTHESIS.md \
   --batch-dir pattern-validation-batch \
+  --skills-dir pattern-validation-skills \
   --base origin/main \
   --min-rounds 10 \
   --max-iterations 5
 ```
 
-## Phase B — Read synthesis and update skills (each iteration start)
+## Phase B — Read synthesis and update skills (each iteration)
 
-1. Read **`PERF_PATTERN_SYNTHESIS.md` end-to-end**. Use `PERF_KNOWLEDGE_BASE.md` when you
-   need file paths, commits, or diff detail. Do **not** assume fixed section names or IDs.
-2. Compare against staged `KNOWLEDGE/references/pattern_index.md`.
-3. Edit pattern cards under `KNOWLEDGE/references/patterns/` per
-   [skill-update-contract.md](references/skill-update-contract.md).
-4. Regenerate index:
+1. Read `PERF_PATTERN_SYNTHESIS.md` (and `PERF_KNOWLEDGE_BASE.md` if needed).
+2. Edit pattern cards under **`$KNOWLEDGE/references/patterns/`** only.
+3. Regenerate index:
 
 ```bash
 python3 "$KNOWLEDGE/scripts/build_pattern_index.py" \
@@ -66,40 +64,13 @@ python3 "$KNOWLEDGE/scripts/build_pattern_index.py" \
   --output "$KNOWLEDGE/references/pattern_index.md"
 ```
 
-5. Record changes:
+4. Record changes in `STATE`.
 
-```bash
-python3 "$SKILL/scripts/record_iteration.py" \
-  --state "$STATE" --phase skill-update \
-  --note "summary of pattern edits"
-```
+**Do not** edit `$REPO/.codex/skills/` or the triton-agent install tree for knowledge updates.
 
-**Do not** hand-edit `pattern_index.md`.
-
-## Phase C — Plan and scaffold workspaces (agent-driven)
+## Phase C — Plan and scaffold workspaces
 
 Follow [workspace-scaffold-contract.md](references/workspace-scaffold-contract.md).
-
-You must:
-
-1. Decide which operators deserve a validation workspace and why.
-2. Extract **pre-optimization** snapshots with Git (`base_revision..HEAD`).
-3. Find and copy tests (and optional benches / import dependencies).
-4. Write each `validation-meta.json` with `expected_patterns` aligned to staged pattern IDs.
-5. Optionally write `$BATCH/manifest.json` as your own index.
-
-Optional helpers (use only if **you** already wrote manifest JSON):
-
-- `scripts/scaffold_batch.py --manifest ... --output "$BATCH"`
-- `scripts/generate_manifest.py` — heuristic only; synthesis may not match its parser
-
-Record scaffold:
-
-```bash
-python3 "$SKILL/scripts/record_iteration.py" \
-  --state "$STATE" --phase scaffold \
-  --note "workspaces created: ..."
-```
 
 ## Phase D — Run optimize batch
 
@@ -113,23 +84,27 @@ triton-agent optimize-batch \
   --min-rounds 10 \
   --max-concurrency 1 \
   --show-output \
+  --skills-source-dir "$SKILLS" \
   --agent <backend>
 ```
 
-Later iterations (baseline already exists):
+**Required:** `--skills-source-dir "$SKILLS"` copies matching skill subdirectories from the
+persistent workdir into each workspace before optimize (overwriting install-bundle copies).
+
+Later iterations:
 
 ```bash
 python3 "$SKILL/scripts/reset_workspace_rounds.py" --batch-root "$BATCH"
 
-triton-agent optimize-batch -i "$BATCH/<workspace>" \
-  --resume continue --min-rounds 10 --show-output --agent <backend>
+triton-agent optimize-batch -i "$BATCH" \
+  --resume continue \
+  --min-rounds 10 \
+  --skills-source-dir "$SKILLS" \
+  --show-output \
+  --agent <backend>
 ```
 
-Prefer `--max-concurrency 1` until stable.
-
-## Phase E — Audit pattern application
-
-After optimize-batch, audit **active** workspaces only (`_completed/` is skipped).
+## Phase E — Audit
 
 ```bash
 python3 "$SKILL/scripts/audit_batch.py" \
@@ -138,59 +113,21 @@ python3 "$SKILL/scripts/audit_batch.py" \
   --json > "$BATCH/audit-report.json"
 ```
 
-When a workspace passes, `--archive-passed` moves it to `$BATCH/_completed/<name>/`.
-The next `optimize-batch -i "$BATCH"` run schedules only remaining active workspaces.
+## Phase F — Iterate or complete
 
-Also read failing active workspaces: `opt-round-*/attempts.md`, `summary.md`, and compare to
-each `validation-meta.json`.
+On audit failure: edit `$KNOWLEDGE` → regenerate index → reset active rounds → Phase D with the
+same `--skills-source-dir "$SKILLS"`.
 
-```bash
-python3 "$SKILL/scripts/record_iteration.py" \
-  --state "$STATE" --phase audit \
-  --audit-report "$BATCH/audit-report.json"
-```
-
-## Phase F — Decide next action
-
-| Audit result | Action |
-|--------------|--------|
-| All active workspaces passed and archived | Write `$BATCH/VALIDATION_SUMMARY.md`; mark complete |
-| Some active `missing_patterns` | Phase B targeted fixes → reset rounds on **active only** → Phase D → re-audit |
-| `round_count == 0` on an active workspace | Fix harness / snapshot / tests before skill iteration |
-| Iteration ≥ `max_iterations` with active failures | Stop with failure summary |
-
-Loop is **complete** when `audit-report.json` → `active_remaining` is empty and every
-target workspace sits under `_completed/`.
-
-```bash
-python3 "$SKILL/scripts/record_iteration.py" \
-  --state "$STATE" --phase complete
-```
+On success (`active_remaining` empty): write `$BATCH/VALIDATION_SUMMARY.md`.
 
 ## Non-Negotiable Rules
 
-- **You** interpret synthesis; do not require `G1-I1` tables or run blind manifest generation.
-- Edit **staged** pattern cards; regenerate `pattern_index.md` after each edit batch.
-- Do not treat repo-local-only lessons as required skill outcomes.
-- Do not delete `baseline/` when iterating skills; use `reset_workspace_rounds.py` on **active** workspaces only.
-- Do not re-run optimize on workspaces already under `_completed/`.
-- Do not skip audit because optimize-batch exited zero.
-- Run real shell commands; do not fabricate audit JSON or round artifacts.
-
-## Helper scripts (machine checks only)
-
-| Script | Role |
-|--------|------|
-| `init_loop_state.py` | Create/update loop state |
-| `record_iteration.py` | Append history events |
-| `reset_workspace_rounds.py` | Clear rounds; keep baseline and workspace files |
-| `audit_batch.py` | Check `expected_patterns`; `--archive-passed` moves passes to `_completed/` |
-| `batch_layout.py` | Shared active/completed workspace layout helpers (imported by scripts) |
-| `scaffold_batch.py` | Optional: materialize manifest you authored |
-| `generate_manifest.py` | Optional: rough manifest when synthesis matches strict table format |
+- All knowledge edits live under `$SKILLS`; the directory is never deleted by the loop.
+- Every optimize-batch run must pass `--skills-source-dir "$SKILLS"`.
+- Do not hand-edit `pattern_index.md`.
+- Do not delete `baseline/` when iterating; use `reset_workspace_rounds.py` on active workspaces.
 
 ## Related Skills
 
 - `triton-npu-analyze-commit-perf` — produces synthesis input
 - `triton-npu-optimize` / `optimize-batch` — optimization execution
-- `triton-npu-optimize-knowledge` — pattern library under test

@@ -95,6 +95,7 @@ class AgentRequest:
     log_tools: bool = False
     show_output_label: str = ""
     run_id: str = ""
+    skills_source_dir: Optional[Path] = None
 
     def with_prompt(self, prompt: str) -> "AgentRequest":
         return replace(self, prompt=prompt)

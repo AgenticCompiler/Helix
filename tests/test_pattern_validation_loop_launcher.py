@@ -23,6 +23,8 @@ class PatternValidationLoopLauncherTests(unittest.TestCase):
                 repo_path=repo,
                 synthesis_path=synthesis,
                 batch_dir=repo / "pattern-validation-batch",
+                skills_workdir=repo / "pattern-validation-skills",
+                skills_dir="pattern-validation-skills",
                 state_path=repo / ".triton-agent" / "pattern-validation-loop-state.json",
                 base_revision="origin/main",
                 min_rounds=10,
@@ -37,7 +39,8 @@ class PatternValidationLoopLauncherTests(unittest.TestCase):
         self.assertIn("_completed/", prompt)
         self.assertIn("optimize-batch", prompt)
         self.assertIn("build_pattern_index.py", prompt)
-        self.assertIn("Do not depend on `G1-I1`", prompt)
+        self.assertIn("--skills-source-dir", prompt)
+        self.assertIn("pattern-validation-skills", prompt)
 
     def test_build_request_requires_synthesis_report(self) -> None:
         with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
@@ -46,14 +49,31 @@ class PatternValidationLoopLauncherTests(unittest.TestCase):
                 build_pattern_validation_loop_request(target_path=repo)
 
     @patch("triton_agent.pattern_validation_loop.launcher.resolve_staged_skills")
-    def test_build_request_sets_command_kind(self, mock_staged: unittest.mock.MagicMock) -> None:
+    @patch("triton_agent.pattern_validation_loop.launcher.seed_pattern_validation_skills_dir")
+    def test_build_request_sets_command_kind(
+        self,
+        mock_seed: unittest.mock.MagicMock,
+        mock_staged: unittest.mock.MagicMock,
+    ) -> None:
         mock_staged.return_value = (("triton-npu-pattern-validation-loop",), None)
         with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
             repo = _make_git_repo(Path(tmp))
             (repo / "PERF_PATTERN_SYNTHESIS.md").write_text("# Synthesis\n", encoding="utf-8")
-            request = build_pattern_validation_loop_request(target_path=repo)
+            skills_workdir = repo / "pattern-validation-skills"
+            mock_seed.return_value = skills_workdir
+            request = build_pattern_validation_loop_request(
+                target_path=repo,
+                skills_dir="pattern-validation-skills",
+            )
+        mock_seed.assert_called_once_with(
+            repo,
+            "pattern-validation-skills",
+            optimize_knowledge="v1",
+        )
         self.assertEqual(request.command_kind, CommandKind.PATTERN_VALIDATION_LOOP)
         self.assertEqual(request.skill_name, "triton-npu-pattern-validation-loop")
+        self.assertIn("pattern-validation-skills", request.prompt)
+        self.assertIn("--skills-source-dir", request.prompt)
 
 
 def _make_git_repo(root: Path) -> Path:

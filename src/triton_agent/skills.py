@@ -108,10 +108,17 @@ class SkillLinkManager:
         target: Path,
         skill_names: tuple[str, ...] | None,
         skill_sources: dict[str, str] | None = None,
+        skill_dir_overrides: dict[str, Path] | None = None,
     ) -> list[Path]:
         created: list[Path] = []
+        overrides = skill_dir_overrides or {}
         for staged_name, skill_dir in self._iter_selected_skill_dirs(skill_names, skill_sources):
             staged_path = target / staged_name
+            if staged_name in overrides:
+                self._install_skill_dir(overrides[staged_name], staged_path, overwrite=True)
+                if staged_path not in created:
+                    created.append(staged_path)
+                continue
             if staged_path.exists():
                 if staged_path.is_symlink():
                     raise RuntimeError(f"Skill path already exists as a symlink: {staged_path}")
@@ -120,12 +127,26 @@ class SkillLinkManager:
             created.append(staged_path)
         return created
 
+    def _install_skill_dir(self, source: Path, dest: Path, *, overwrite: bool) -> None:
+        source = source.resolve()
+        if not source.is_dir():
+            raise RuntimeError(f"Skill source is not a directory: {source}")
+        if dest.exists():
+            if dest.is_symlink():
+                raise RuntimeError(f"Skill path already exists as a symlink: {dest}")
+            if overwrite:
+                shutil.rmtree(dest)
+            else:
+                return
+        shutil.copytree(source, dest, symlinks=False)
+
     def prepare_skills(
         self,
         backend: str,
         workdir: Path,
         skill_names: tuple[str, ...] | None = None,
         skill_sources: dict[str, str] | None = None,
+        skill_dir_overrides: dict[str, Path] | None = None,
     ) -> SkillLinkSet:
         config = _SKILL_BACKEND_CONFIGS.get(backend)
         if config is None:
@@ -147,7 +168,9 @@ class SkillLinkManager:
         self._prepare_target_dir(target)
 
         if config.copy_root_when_missing and not any(target.iterdir()) and skill_names is not None:
-            created.extend(self._copy_selected_skill_dirs(target, skill_names, skill_sources))
+            created.extend(
+                self._copy_selected_skill_dirs(target, skill_names, skill_sources, skill_dir_overrides)
+            )
             if created:
                 result = [target]
                 if not root_pre_existed:
@@ -155,7 +178,9 @@ class SkillLinkManager:
                 return SkillLinkSet(result)
             return SkillLinkSet([])
 
-        created.extend(self._copy_selected_skill_dirs(target, skill_names, skill_sources))
+        created.extend(
+            self._copy_selected_skill_dirs(target, skill_names, skill_sources, skill_dir_overrides)
+        )
         if not root_pre_existed:
             created.insert(0, backend_root_path)
         return SkillLinkSet(created)

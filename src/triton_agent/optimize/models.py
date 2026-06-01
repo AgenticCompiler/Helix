@@ -25,11 +25,11 @@ class OptimizeRunOptions:
     show_output: bool
     remote: str | None
     remote_workdir: str | None
-    min_rounds: int
+    min_rounds: int | None
     resume_mode: str
     reset_optimize: bool
     no_agent_session: bool
-    round_mode: Literal["continuous", "checked", "supervised"]
+    supervise: Literal["on", "off"]
     output: str | None
     test_mode: str | None
     bench_mode: str | None
@@ -40,9 +40,7 @@ class OptimizeRunOptions:
     compiler_source_analysis: Literal["off", "auto"] = "off"
     enable_cann_ext_api: bool = False
     enable_agent_hooks: bool = False
-    upload_enabled: bool = True
-    report: bool = True
-    log_tools: bool = False
+    skills_source_dir: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -86,7 +84,8 @@ class OptimizeStatusWorkspace:
 
 
 class GateDecision(str, Enum):
-    PASS = "pass"
+    PASS_CONTINUE = "pass-continue"
+    PASS_STOP = "pass-stop"
     REVISE_METADATA = "revise-metadata"
     REVISE_REQUIRED = "revise-required"
     HARD_FAIL = "hard-fail"
@@ -96,20 +95,7 @@ class GateDecision(str, Enum):
 class GateResult:
     decision: GateDecision
     blocking_issues: tuple[str, ...]
-    continue_required: bool = False
     auto_repairs_applied: tuple[str, ...] = ()
     next_parent_round: str | None = None
     next_hypothesis: str | None = None
     required_evidence_for_next_round: tuple[str, ...] = ()
-
-
-class BaselinePreflightState(str, Enum):
-    READY = "ready"
-    NEEDS_PREPARE = "needs-prepare"
-    NEEDS_REPAIR = "needs-repair"
-
-
-@dataclass(frozen=True)
-class BaselinePreflightResult:
-    state: BaselinePreflightState
-    issues: tuple[str, ...]

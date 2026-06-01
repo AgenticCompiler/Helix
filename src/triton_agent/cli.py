@@ -545,6 +545,14 @@ def build_parser() -> argparse.ArgumentParser:
             )
             subparser.add_argument("--no-upload", action="store_true")
             subparser.add_argument("--no-report", action="store_true", default=False)
+            subparser.add_argument(
+                "--skills-source-dir",
+                help=(
+                    "Persistent repo-local skills directory. Matching skill subdirectories "
+                    "are copied into each optimize workspace (overwriting install bundle copies). "
+                    "Used by pattern-validation-loop iterations."
+                ),
+            )
         if spec.has_prompt:
             subparser.add_argument("--prompt")
         if spec.has_pattern_validation_loop_options:
@@ -557,6 +565,14 @@ def build_parser() -> argparse.ArgumentParser:
                 "--batch-dir",
                 default="pattern-validation-batch",
                 help="Batch root for optimize-batch workspaces (default: pattern-validation-batch).",
+            )
+            subparser.add_argument(
+                "--skills-dir",
+                default="pattern-validation-skills",
+                help=(
+                    "Persistent repo-local skills workdir for loop edits and optimize staging "
+                    "(default: pattern-validation-skills)."
+                ),
             )
             subparser.add_argument(
                 "--base",

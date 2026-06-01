@@ -1,26 +1,21 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 from typing import Literal, cast
 
 from triton_agent.commands.input_resolution import resolve_single_operator_input
-from triton_agent.report.workspace import generate_workspace_report
 from triton_agent.models import CommandKind
-from triton_agent.npu_affinity import resolve_batch_concurrency
 from triton_agent.optimize.batch import resolve_batch_optimize_operator_file, run_optimize_batch
 from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
 from triton_agent.optimize.validation import validate_optimize_options
-from triton_agent.optimize_upload.client import UploadUrlMissingError
-from triton_agent.optimize_upload.workflow import upload_optimize_workspace
 from triton_agent.output import render_result
 
 
 def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     options = optimize_run_options_from_args(args)
-    _validate_agent_options(parser, args, options)
+    _validate_agent_options(parser, args)
     try:
         validate_optimize_options(
             CommandKind.OPTIMIZE,
@@ -58,56 +53,16 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
             f"Make sure the '{options.agent_name}' CLI is installed and available in PATH."
         )
     render_result(result, show_output=request.show_output)
-
-    # Auto-upload after successful optimize
-    if result.return_code == 0 and options.upload_enabled:
-        try:
-            if options.verbose:
-                print("Auto-upload enabled. Uploading workspace...", file=sys.stderr)
-            upload_optimize_workspace(workdir, verbose=options.verbose)
-            if options.verbose:
-                print("Auto-upload completed successfully.", file=sys.stderr)
-        except UploadUrlMissingError:
-            if options.verbose:
-                print("Auto-upload skipped: TRITON_AGENT_OPTIMIZE_UPLOAD_URL not set.", file=sys.stderr)
-        except (ValueError, RuntimeError) as exc:
-            if options.verbose:
-                print(f"Auto-upload warning: {exc}", file=sys.stderr)
-        # Upload failure does NOT change the optimize exit code
-
-    # Auto-report after successful optimize
-    if result.return_code == 0 and options.report:
-        try:
-            if options.verbose:
-                print("Auto-report enabled. Generating report.md...", file=sys.stderr)
-            report_ok, report_msg = generate_workspace_report(
-                workspace=workdir,
-                agent_name=options.agent_name,
-                show_output=options.show_output,
-            )
-            if options.verbose:
-                if report_ok:
-                    print(f"Auto-report completed: {report_msg}", file=sys.stderr)
-                else:
-                    print(f"Auto-report warning: {report_msg}", file=sys.stderr)
-        except Exception as exc:
-            if options.verbose:
-                print(f"Auto-report warning: {exc}", file=sys.stderr)
-
     return result.return_code
 
 
 def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     options = optimize_run_options_from_args(args)
     try:
-        max_concurrency = resolve_batch_concurrency(args.concurrency)
-    except ValueError as exc:
-        parser.error(str(exc))
-    try:
         validate_optimize_options(
             CommandKind.OPTIMIZE_BATCH,
             min_rounds=options.min_rounds,
-            max_concurrency=max_concurrency,
+            max_concurrency=args.max_concurrency,
             resume_mode=options.resume_mode,
             reset_optimize=options.reset_optimize,
             test_mode=options.test_mode,
@@ -123,15 +78,17 @@ def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
         parser.error(f"Input path does not exist: {root}")
     if not root.is_dir():
         parser.error(f"Input path is not a directory: {root}")
-    return run_optimize_batch(root, options, max_concurrency=max_concurrency)
+    return run_optimize_batch(root, options, max_concurrency=args.max_concurrency)
 
 
-def _validate_round_mode(args: argparse.Namespace) -> Literal["continuous", "checked", "supervised"]:
-    value = getattr(args, "round_mode", "continuous")
-    round_mode = str(value)
-    if round_mode not in {"continuous", "checked", "supervised"}:
-        raise ValueError(f"--round-mode must be one of 'continuous', 'checked', or 'supervised', got {value!r}")
-    return cast(Literal["continuous", "checked", "supervised"], round_mode)
+def _validate_supervise_mode(args: argparse.Namespace) -> Literal["on", "off"]:
+    value = getattr(args, "supervise", "off")
+    supervise = str(value)
+    if supervise == "on":
+        return "on"
+    if supervise == "off":
+        return "off"
+    raise ValueError(f"--supervise must be 'on' or 'off', got {value!r}")
 
 
 def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptions:
@@ -147,8 +104,6 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
     compiler_source_enabled = bool(getattr(args, "enable_compiler_source_analysis", False))
     cann_ext_api_enabled = bool(getattr(args, "enable_cann_ext_api", False))
     agent_hooks_enabled = bool(getattr(args, "enable_agent_hooks", False))
-    upload_enabled = not bool(getattr(args, "no_upload", False))
-    log_tools_enabled = bool(getattr(args, "log_tools", False))
     return OptimizeRunOptions(
         agent_name=args.agent,
         interact=bool(getattr(args, "interact", False)),
@@ -156,11 +111,11 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         show_output=bool(getattr(args, "show_output", False)),
         remote=getattr(args, "remote", None),
         remote_workdir=getattr(args, "remote_workdir", None),
-        min_rounds=getattr(args, "min_rounds", 5),
+        min_rounds=getattr(args, "min_rounds", None),
         resume_mode=str(getattr(args, "resume", "auto")),
         reset_optimize=bool(getattr(args, "reset_optimize", False)),
         no_agent_session=bool(getattr(args, "no_agent_session", False)),
-        round_mode=_validate_round_mode(args),
+        supervise=_validate_supervise_mode(args),
         output=getattr(args, "output", None),
         test_mode=getattr(args, "test_mode", None),
         bench_mode=getattr(args, "bench_mode", None),
@@ -171,18 +126,14 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         compiler_source_analysis="auto" if compiler_source_enabled else "off",
         enable_cann_ext_api=cann_ext_api_enabled,
         enable_agent_hooks=agent_hooks_enabled,
-        upload_enabled=upload_enabled,
-        report=not bool(getattr(args, "no_report", False)) and not bool(getattr(args, "interact", False)),
-        log_tools=log_tools_enabled,
+        skills_source_dir=(
+            Path(args.skills_source_dir).expanduser().resolve()
+            if getattr(args, "skills_source_dir", None)
+            else None
+        ),
     )
 
 
-def _validate_agent_options(
-    parser: argparse.ArgumentParser,
-    args: argparse.Namespace,
-    options: OptimizeRunOptions,
-) -> None:
-    if options.interact and options.round_mode != "continuous":
-        parser.error("--interact only supports --round-mode continuous.")
+def _validate_agent_options(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     if getattr(args, "agent", None) == "openhands" and bool(getattr(args, "interact", False)):
         parser.error("OpenHands backend does not support --interact yet.")

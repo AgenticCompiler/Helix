@@ -15,6 +15,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo", required=True)
     parser.add_argument("--synthesis", default="PERF_PATTERN_SYNTHESIS.md")
     parser.add_argument("--batch-dir", default="pattern-validation-batch")
+    parser.add_argument(
+        "--skills-dir",
+        default="pattern-validation-skills",
+        help="Persistent loop skills workdir under repo (default: pattern-validation-skills).",
+    )
     parser.add_argument("--base", default="origin/main")
     parser.add_argument("--min-rounds", type=int, default=10)
     parser.add_argument("--max-iterations", type=int, default=5)
@@ -39,6 +44,7 @@ def main(argv: list[str] | None = None) -> int:
         "repo": repo.as_posix(),
         "base_revision": str(args.base),
         "batch_dir": str(args.batch_dir),
+        "skills_dir": str(args.skills_dir),
         "synthesis_path": str(args.synthesis),
         "min_rounds": int(args.min_rounds),
         "created_at": datetime.now(timezone.utc).isoformat(),

@@ -16,6 +16,7 @@ Fields:
 | `repo` | Absolute Git repo path |
 | `base_revision` | Git base for scaffold |
 | `batch_dir` | Batch root relative or absolute |
+| `skills_dir` | Persistent loop skills workdir (default: `pattern-validation-skills`) |
 | `synthesis_path` | Path to `PERF_PATTERN_SYNTHESIS.md` |
 | `min_rounds` | `--min-rounds` for each optimize-batch run |
 | `history` | List of `{phase, iteration, note, audit}` events |
@@ -27,22 +28,28 @@ metadata, not output of a required parser.
 
 ```text
 pattern-validation-batch/
-  manifest.json              # optional: agent-written index of workspaces
-  audit-report.json          # latest audit JSON
-  VALIDATION_SUMMARY.md      # written when all targets archived
-  chunk_o/                   # active — still scheduled by optimize-batch
-    <operator>.py
-    test_*.py
-    validation-meta.json
-    baseline/
-    opt-round-N/
-  wy_fast/                   # active
+  ...
+  _completed/
     ...
-  _completed/                # reserved — NOT scheduled by optimize-batch
-    chunk_delta_h/           # passed audit; kept for evidence
-      validation-meta.json   # validation_status=completed, archived_at=...
-      baseline/
-      opt-round-N/
+
+pattern-validation-skills/          # persistent; never deleted by loop CLI
+  triton-npu-optimize-knowledge/
+    references/patterns/
+    references/pattern_index.md
+```
+
+Optimize staging: `optimize-batch --skills-source-dir pattern-validation-skills` copies from
+`pattern-validation-skills/<skill-name>/` into each workspace backend skills dir before optimize.
+
+Active workspace example:
+
+```text
+pattern-validation-batch/chunk_o/
+  chunk_o.py
+  test_*.py
+  validation-meta.json
+  baseline/
+  opt-round-N/
 ```
 
 Rules:

@@ -63,11 +63,6 @@ STAGE_RULES: dict[CommandKind, StageRule] = {
             "+triton-npu-optimize-check",
         ),
     ),
-    CommandKind.REPORT: StageRule(
-        directives=(
-            "+triton-npu-report",
-        ),
-    ),
     CommandKind.OPTIMIZE: StageRule(
         directives=(
             "+triton-npu-optimize",
@@ -93,6 +88,7 @@ def resolve_staged_skills(
     optimize_knowledge: str | None = None,
     optimize_target: str = "kernel",
     enable_cann_ext_api: bool = False,
+    include_ir: bool = False,
 ) -> tuple[tuple[str, ...] | None, dict[str, str] | None]:
     rule = STAGE_RULES.get(command_kind)
     if rule is None:

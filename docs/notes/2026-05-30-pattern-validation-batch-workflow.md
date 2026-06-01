@@ -100,6 +100,7 @@ triton-agent optimize-batch \
   --min-rounds 10 \
   --max-concurrency 1 \
   --show-output \
+  --use-repo-staged-knowledge \
   --agent opencode
 ```
 

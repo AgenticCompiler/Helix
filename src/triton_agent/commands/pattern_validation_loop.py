@@ -17,6 +17,7 @@ def handle_pattern_validation_loop(parser: argparse.ArgumentParser, args: argpar
         target_path=Path(args.input).expanduser(),
         synthesis_output=str(getattr(args, "synthesis", "PERF_PATTERN_SYNTHESIS.md")),
         batch_dir=str(getattr(args, "batch_dir", "pattern-validation-batch")),
+        skills_dir=str(getattr(args, "skills_dir", "pattern-validation-skills")),
         base_revision=str(getattr(args, "base", "origin/main")),
         min_rounds=int(args.min_rounds),
         max_iterations=int(args.max_iterations),
