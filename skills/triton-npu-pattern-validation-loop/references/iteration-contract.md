@@ -92,12 +92,14 @@ The orchestrating agent runs `triton-agent optimize-batch` as a **shell subproce
 
 Every `optimize-batch` invocation must include **`--show-output`**. This streams nested optimize agent output to the terminal with a `[workspace]` prefix. Long optimize runs that produce no stdout are more likely to be killed by CI/job timeouts or idle watchdogs.
 
+Every `optimize-batch` shell command must prefix **`TRITON_AGENT_STALL_TIMEOUT_SECONDS=0`** so nested optimize agents are not killed by triton-agent idle stall detection.
+
 Optional optimize passthrough flags from the loop start command (`pattern-validation-loop` CLI): when set at launch, include the same flags on every optimize-batch run; when unset at launch, omit them and let optimize-batch use its own defaults.
 
 Initial run:
 
 ```bash
-triton-agent optimize-batch \
+TRITON_AGENT_STALL_TIMEOUT_SECONDS=0 triton-agent optimize-batch \
   -i "$BATCH" \
   --resume fresh \
   --reset-optimize \
@@ -113,7 +115,7 @@ triton-agent optimize-batch \
 Later iteration:
 
 ```bash
-triton-agent optimize-batch \
+TRITON_AGENT_STALL_TIMEOUT_SECONDS=0 triton-agent optimize-batch \
   -i "$BATCH" \
   --resume continue \
   --min-rounds "$MIN_ROUNDS" \

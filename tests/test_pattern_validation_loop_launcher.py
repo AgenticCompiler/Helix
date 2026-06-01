@@ -6,7 +6,9 @@ from unittest.mock import patch
 
 from triton_agent.models import CommandKind
 from triton_agent.pattern_validation_loop.launcher import (
+    OPTIMIZE_BATCH_ENV_PREFIX,
     build_optimize_batch_extra_flags,
+    build_optimize_batch_shell_command,
     build_pattern_validation_loop_prompt,
     build_pattern_validation_loop_request,
 )
@@ -43,6 +45,7 @@ class PatternValidationLoopLauncherTests(unittest.TestCase):
         self.assertIn("--skills-source-dir", prompt)
         self.assertIn("pattern-validation-skills", prompt)
         self.assertGreaterEqual(prompt.count("--show-output"), 2)
+        self.assertGreaterEqual(prompt.count("TRITON_AGENT_STALL_TIMEOUT_SECONDS=0"), 2)
         self.assertIn("omit from optimize-batch (use optimize defaults)", prompt)
         self.assertNotIn("--test-mode", prompt)
         self.assertNotIn("--bench-mode", prompt)
@@ -81,6 +84,21 @@ class PatternValidationLoopLauncherTests(unittest.TestCase):
             build_optimize_batch_extra_flags(test_mode="differential"),
             " --test-mode differential",
         )
+
+    def test_build_optimize_batch_shell_command_includes_env_prefix(self) -> None:
+        self.assertEqual(OPTIMIZE_BATCH_ENV_PREFIX, "TRITON_AGENT_STALL_TIMEOUT_SECONDS=0 ")
+        command = build_optimize_batch_shell_command(
+            batch_dir="/tmp/batch",
+            skills_dir="pattern-validation-skills",
+            min_rounds=10,
+            optimize_knowledge="v1",
+            agent_name="opencode",
+            resume="fresh",
+            reset_optimize=True,
+        )
+        self.assertTrue(command.startswith("TRITON_AGENT_STALL_TIMEOUT_SECONDS=0 triton-agent optimize-batch"))
+        self.assertIn("--reset-optimize", command)
+        self.assertIn("--resume fresh", command)
 
     def test_build_request_requires_synthesis_report(self) -> None:
         with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:

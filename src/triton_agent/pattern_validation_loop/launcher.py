@@ -22,6 +22,7 @@ from triton_agent.verbose import emit_verbose_lines
 DEFAULT_SYNTHESIS_FILE = "PERF_PATTERN_SYNTHESIS.md"
 DEFAULT_BATCH_DIR = "pattern-validation-batch"
 DEFAULT_STATE_FILE = ".triton-agent/pattern-validation-loop-state.json"
+OPTIMIZE_BATCH_ENV_PREFIX = "TRITON_AGENT_STALL_TIMEOUT_SECONDS=0 "
 
 
 def build_optimize_batch_extra_flags(
@@ -40,6 +41,27 @@ def build_optimize_batch_extra_flags(
     if not parts:
         return ""
     return " " + " ".join(parts)
+
+
+def build_optimize_batch_shell_command(
+    *,
+    batch_dir: Path | str,
+    skills_dir: str,
+    min_rounds: int,
+    optimize_knowledge: str,
+    agent_name: str,
+    extra_flags: str = "",
+    resume: Literal["fresh", "continue"],
+    reset_optimize: bool = False,
+) -> str:
+    reset_flag = " --reset-optimize" if reset_optimize else ""
+    return (
+        f"{OPTIMIZE_BATCH_ENV_PREFIX}triton-agent optimize-batch -i {Path(batch_dir).as_posix()}"
+        f" --resume {resume}{reset_flag}"
+        f" --min-rounds {min_rounds} --concurrency 1 --show-output"
+        f" --optimize-knowledge {optimize_knowledge} --skills-source-dir {skills_dir}"
+        f"{extra_flags} --agent {agent_name}"
+    )
 
 
 def build_pattern_validation_loop_prompt(
@@ -63,6 +85,25 @@ def build_pattern_validation_loop_prompt(
         target_chip=target_chip,
         test_mode=test_mode,
         bench_mode=bench_mode,
+    )
+    optimize_batch_initial = build_optimize_batch_shell_command(
+        batch_dir=batch_dir,
+        skills_dir=skills_dir,
+        min_rounds=min_rounds,
+        optimize_knowledge=optimize_knowledge,
+        agent_name=agent_name,
+        extra_flags=optimize_extra_flags,
+        resume="fresh",
+        reset_optimize=True,
+    )
+    optimize_batch_continue = build_optimize_batch_shell_command(
+        batch_dir=batch_dir,
+        skills_dir=skills_dir,
+        min_rounds=min_rounds,
+        optimize_knowledge=optimize_knowledge,
+        agent_name=agent_name,
+        extra_flags=optimize_extra_flags,
+        resume="continue",
     )
     optimize_setting_lines = [
         f"  min_rounds={min_rounds}",
@@ -155,14 +196,17 @@ Required end-to-end behavior:
 4. **You** plan validation workspaces: select operators, extract pre-opt snapshots with Git (`{base_revision}..HEAD`), find and copy tests/benches/dependencies, write each `validation-meta.json` under `{batch_dir.as_posix()}`. Follow `{workspace_scaffold_contract.as_posix()}`.
 5. Run from `{repo_path.as_posix()}`:
 
-   triton-agent optimize-batch -i {batch_dir.as_posix()} --resume fresh --reset-optimize --min-rounds {min_rounds} --concurrency 1 --show-output --optimize-knowledge {optimize_knowledge} --skills-source-dir {skills_dir}{optimize_extra_flags} --agent {agent_name}
+   {optimize_batch_initial}
 
 6. Audit with `{scripts_dir.as_posix()}/audit_batch.py --batch-root {batch_dir.as_posix()} --archive-passed --json` and save to `{batch_dir.as_posix()}/audit-report.json`. Passed workspaces move to `{batch_dir.as_posix()}/_completed/` and are skipped by later optimize-batch runs.
 7. If any **active** workspace fails audit and iteration < {max_iterations}:
    - analyze missing patterns from attempts/summary
    - update pattern cards under `{knowledge_root.as_posix()}` + regenerate index
    - run `{scripts_dir.as_posix()}/reset_workspace_rounds.py --batch-root {batch_dir.as_posix()}`
-   - re-run optimize-batch with `--resume continue --min-rounds {min_rounds} --concurrency 1 --show-output --skills-source-dir {skills_dir} --optimize-knowledge {optimize_knowledge}{optimize_extra_flags} --agent {agent_name}`
+   - re-run optimize-batch:
+
+   {optimize_batch_continue}
+
    - re-audit
 8. On full pass (`active_remaining` empty in audit report), write `{batch_dir.as_posix()}/VALIDATION_SUMMARY.md` and mark loop state complete.
 
@@ -172,6 +216,7 @@ Rules:
 - Do not promote repo-local-only or rejected lessons into skills or `expected_patterns`.
 - Do not edit staged backend skills (for example `{backend_skills.as_posix()}/`) for knowledge updates; use `{skills_workdir.as_posix()}` only.
 - Every optimize-batch run must pass `--skills-source-dir {skills_dir}`.
+- Every optimize-batch shell command must prefix `TRITON_AGENT_STALL_TIMEOUT_SECONDS=0` so nested optimize agents do not stall-kill on long silent runs.
 - Every optimize-batch run must pass `--show-output` so nested optimize agent logs stream to the terminal; long silent runs may be killed by job timeouts or watchdogs.
 - Do not delete `baseline/` when iterating skills; use reset_workspace_rounds.py.
 - Do not hand-edit `pattern_index.md`.

@@ -80,7 +80,7 @@ one workspace or use blind auto-split scripts.
 From `REPO`:
 
 ```bash
-triton-agent optimize-batch \
+TRITON_AGENT_STALL_TIMEOUT_SECONDS=0 triton-agent optimize-batch \
   -i "$BATCH" \
   --resume fresh \
   --reset-optimize \
@@ -93,6 +93,8 @@ triton-agent optimize-batch \
   # --target-chip A5 --test-mode differential --bench-mode standalone
 ```
 
+**Required:** prefix every optimize-batch command with `TRITON_AGENT_STALL_TIMEOUT_SECONDS=0`.
+
 **Required:** `--skills-source-dir "$SKILLS"` copies matching skill subdirectories from the
 persistent workdir into each workspace before optimize (overwriting install-bundle copies).
 
@@ -104,13 +106,13 @@ Later iterations:
 ```bash
 python3 "$SKILL/scripts/reset_workspace_rounds.py" --batch-root "$BATCH"
 
-triton-agent optimize-batch -i "$BATCH" \
+TRITON_AGENT_STALL_TIMEOUT_SECONDS=0 triton-agent optimize-batch -i "$BATCH" \
   --resume continue \
   --min-rounds 10 \
   --skills-source-dir "$SKILLS" \
   --show-output \
   --agent <backend>
-  # same optional passthrough flags as Phase D when provided at loop start
+  # same optional passthrough flags and stall timeout prefix as Phase D
 ```
 
 ## Phase E — Audit
@@ -133,6 +135,7 @@ On success (`active_remaining` empty): write `$BATCH/VALIDATION_SUMMARY.md`.
 
 - All knowledge edits live under `$SKILLS`; the directory is never deleted by the loop.
 - Every optimize-batch run must pass `--skills-source-dir "$SKILLS"`.
+- Every optimize-batch shell command must prefix `TRITON_AGENT_STALL_TIMEOUT_SECONDS=0`.
 - Do not hand-edit `pattern_index.md`.
 - Do not delete `baseline/` when iterating; use `reset_workspace_rounds.py` on active workspaces.
 

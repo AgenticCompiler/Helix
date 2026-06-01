@@ -218,6 +218,7 @@ _TRANSIENT_AGENT_FAILURE_PATTERNS = (
 _CODE_AGENT_MAX_RETRIES_ENV = "TRITON_AGENT_CODE_AGENT_MAX_RETRIES"
 _DEFAULT_CODE_AGENT_MAX_RETRIES = 2
 _STALL_TIMEOUT_SECONDS_ENV = "TRITON_AGENT_STALL_TIMEOUT_SECONDS"
+STALL_TIMEOUT_SECONDS_ENV = _STALL_TIMEOUT_SECONDS_ENV
 _DEFAULT_STALL_TIMEOUT_SECONDS = 900
 
 
@@ -247,6 +248,10 @@ def _code_agent_max_retries() -> int:
             f"{_CODE_AGENT_MAX_RETRIES_ENV} must be a non-negative integer, got {raw_value!r}"
         )
     return value
+
+
+def resolve_stall_timeout_seconds() -> int:
+    return _resolve_stall_timeout_seconds()
 
 
 def _resolve_stall_timeout_seconds() -> int:
