@@ -14,6 +14,7 @@ Match observed signals in overall content of `report.txt` against the categories
   - `report.txt` overall `[TRACE Events]` section has **> 10,000 events** dominated by SIGNEXT/ADD/MUL/DIV/SUB/MADD (Signal Category 1).
   - `report.txt` overall `[VECTOR Unit]` UB Read or Write Conflict exceeds 100 (Signal Category 3).
   - `report.txt` overall `[VECTOR Unit]` Utilization avg < 30% (Signal Category 4).
+  - `report.txt` overall `[Pipe Distribution]` has **no CUBE row** (or CUBE instr = 0) AND kernel source contains a K-dimension multiply+accumulate loop using `tl.sum(a*b)` instead of `tl.dot` (Signal Category 6).
   - You need to map an observed simulation signal to a related pattern and a concrete optimization direction.
   - You see `tl.load` with `mask`/`other` and want to determine whether the load is taking the slow SCALAR→VECTOR→MTE2 path (Path A) or the fast SCALAR→MTE2→VECTOR path (Path B).
 
@@ -23,21 +24,25 @@ Match observed signals in overall content of `report.txt` against the categories
   - The optimization target is **multi-program atomic contention** (e.g., `tl.atomic_add` under concurrent access) — simulation cannot reproduce this and signals will be misleading.
   - Simulation data shows **no signal hitting any threshold**.
   - The kernel is **inherently lightweight** (e.g., a trivial load+store touch kernel, a copy kernel, or a kernel with no compute loop) — an abnormal Pipe distribution is the natural characteristic of such operations, not an optimization target.
+  - CUBE activity is low but non-zero — this indicates `tl.dot` exists but tile sizes or compiler lowering are suboptimal; route to `tiling` or `software-pipeline` instead of Signal Category 6.
 
 ## Signal Matching Decision Guide
 
 All metrics below are read from `report.txt` overall. Check signals in this order. The first match is the primary signal; secondary matches may co-occur.
 
 1. **Cat 5 — Check overall `[Pipeline Flows]` section:** MTE2ToVECTOR count 0? If yes (and kernel has `tl.load`), → **Cat 5**.
-2. **Cat 2 — Check overall `[Pipeline Flows]` section:** SCALARToVECTOR avg > 50ns? If yes, → **Cat 2**.
-3. **Cat 1 — Check overall `[Pipe Distribution]` + overall `[TRACE Events]` sections:** SCALAR instruction % > 80%? If yes, → **Cat 1**.
-4. **Cat 3 — Check overall `[VECTOR Unit]` section:** UB Read or Write Conflict > 100 AND utilization < 50% on conflicted instructions? If yes, → **Cat 3**.
-5. **Cat 4 — Check overall `[VECTOR Unit]` section:** VECTOR utilization avg < 30%? If yes (and Cat 1/2 not matched), → **Cat 4**.
+2. **Cat 6 — Check overall `[Pipe Distribution]` + kernel source code:** CUBE instr = 0 (or CUBE row absent) AND kernel source contains `tl.sum(a*b)` or equivalent K-reduction loop? If yes, → **Cat 6**.
+3. **Cat 2 — Check overall `[Pipeline Flows]` section:** SCALARToVECTOR avg > 50ns? If yes, → **Cat 2**.
+4. **Cat 1 — Check overall `[Pipe Distribution]` + overall `[TRACE Events]` sections:** SCALAR instruction % > 80%? If yes, → **Cat 1**.
+5. **Cat 3 — Check overall `[VECTOR Unit]` section:** UB Read or Write Conflict > 100 AND utilization < 50% on conflicted instructions? If yes, → **Cat 3**.
+6. **Cat 4 — Check overall `[VECTOR Unit]` section:** VECTOR utilization avg < 30%? If yes (and Cat 1/2 not matched), → **Cat 4**.
 
 Multiple signals can co-occur. Common co-occurrences:
 
 - Cat 1 + Cat 4: SCALAR explosion causes VECTOR starvation
 - Cat 2 + Cat 1: Dispatch bottleneck with high SCALAR ratio (Cat 2 takes priority as the more actionable issue)
+- Cat 6 + Cat 5: Missing CUBE engine with missing memory engine — Cat 6 takes priority when code precondition (matmul-like structure) is met, because CUBE engagement is the higher-order optimization
+- Cat 6 + Cat 1: Missing CUBE engine with scalar explosion — Cat 6 takes priority because the root cause is CUBE absence, not scalar overhead
 
 ------
 
@@ -691,3 +696,236 @@ def gather_load_fixed(
 ```
 
 The contiguous `tl.load` now uses MTE2ToVECTOR, and `tl.gather` operates on already-loaded UB data.
+
+------
+
+## Signal Category 6: Missing Cube Engine
+
+### Simulation Signature
+
+| Metric               | Threshold                                  | report.txt section       | Source (original JSON)       |
+| -------------------- | ------------------------------------------ | ------------------------------- | ---------------------------- |
+| CUBE instr count     | = 0 or CUBE row absent from `[Pipe Distribution]` | overall `[Pipe Distribution]` CUBE row | `dataType_4_API_INSTR.json` |
+| MMAD instruction count | = 0 or `[CUBE/MMA]` section absent     | overall `[CUBE/MMA]` MMAD field | `dataType_4_API_INSTR.json` |
+| CUBE Pipeline Flows  | absent (no CUBEToFIXP, CUBEToMTE1, MTE1ToCUBE) | overall `[Pipeline Flows]` | `flows.json` |
+| SCALAR instruction % | > 50%                                      | overall `[Pipe Distribution]` SCALAR instr% | `dataType_4_API_INSTR.json` |
+| TRACE MADD count     | > 0 (MADD events present in arithmetic breakdown) | overall `[TRACE Events]` Arithmetic breakdown | `dataType_2_TRACE.json` |
+
+> **Note on detecting manual multiply-accumulate:** The TRACE Events arithmetic breakdown reports MADD (multiply-add) events. When MADD count is substantial (> 100), the kernel is doing fused multiply-accumulate on SCALAR or VECTOR — a strong indicator that the computation pattern is `a * b + acc`, which is exactly what `tl.dot` would replace. However, MADD alone is not sufficient; it must be paired with CUBE=0 and a code-level check.
+
+### Matching Rule
+
+Read from `report.txt` overall AND inspect kernel source code:
+
+- **Primary trigger:** overall `[Pipe Distribution]` has NO CUBE row, OR CUBE instr count = 0, AND overall `[CUBE/MMA]` section is absent or MMAD = 0
+- **Code precondition (REQUIRED):** kernel source contains a loop that:
+  1. loads two tiles (one weight/parameter tile and one input tile)
+  2. computes `tl.sum(tile_a * tile_b, axis=...)` or equivalent elementwise multiply + reduction over a dimension
+  3. accumulates the result into an output accumulator
+
+  This is the critical gate that prevents false positives. Without it, Cat 6 would fire on every kernel that doesn't use CUBE — including elementwise kernels, reduction-only kernels, and trivial load+store kernels that legitimately have no matmul structure.
+
+- **Confirmation (optional, strengthen diagnosis — at least one should be present):**
+  1. overall `[Pipe Distribution]` SCALAR instr% > 50% (scalar-heavy address computation typical of manual reduction)
+  2. overall `[TRACE Events]` Arithmetic breakdown has MADD > 0 (multiply-accumulate pattern present)
+  3. overall `[Pipeline Flows]` has NO CUBE-related flows (CUBEToFIXP, CUBEToMTE1, MTE1ToCUBE all absent)
+
+- **Fire when:** Primary trigger AND code precondition AND at least one confirmation condition are all met.
+
+- **Do NOT fire when:**
+  - CUBE=0 but kernel is purely elementwise (no K-dimension multiply+accumulate loop) → this is expected, not a signal
+  - CUBE=0 but kernel is a trivial load+store or touch kernel → inherently lightweight, excluded
+  - CUBE=0 but kernel is a standalone reduction (e.g., `tl.sum(x)` without preceding multiply) → not matmul-like
+  - CUBE=0 but kernel is gather/scatter dominated → classic-matmul Avoid When explicitly excludes this
+  - CUBE is low but non-zero → `tl.dot` exists but tile sizes or compiler lowering are suboptimal; route to `tiling` or `software-pipeline`
+
+### What It Means
+
+The kernel is performing matmul-like computation (multiply two tiles and reduce over K) using VECTOR-side elementwise operations instead of CUBE-side `tl.dot`. This means:
+
+1. The CUBE engine is idle — the most powerful compute unit on Ascend NPU is not utilized
+2. VECTOR is doing work that CUBE should handle — elementwise multiply + `tl.sum` is far less efficient than a single `tl.dot` for matmul-like reduction
+3. SCALAR generates excessive address computation — per-element or per-tile pointer arithmetic that `tl.dot` would consolidate
+
+On Ascend A5, `tl.dot` with N=1 (matrix×vector) causes a Bisheng compiler SIGSEGV, so some kernels flagged by Cat 6 may require a structural grid change to make the N dimension > 1 before `tl.dot` can be used.
+
+### Code Manifestations
+
+Cat 6 can appear through several distinct code structures. Identify which one matches the current kernel, then apply the corresponding generic transform.
+
+#### Manifestation A: Manual K-reduction with `tl.sum(tile_a * tile_b, axis=K_dim)`
+
+Typical in: kernels that compute linear/matmul output but use elementwise multiply + scalar reduction instead of `tl.dot`.
+
+```python
+# detect
+while in_off < IN_F:
+    x_vec = tl.load(x_row_ptr + in_offs, mask=in_mask, other=0.0)
+    w_tile = tl.load(w_ptrs, mask=out_mask[:, None] & in_mask[None, :], other=0.0)
+    acc += tl.sum(w_tile * x_vec[None, :], axis=1)  # elementwise multiply + sum, NOT tl.dot
+    in_off += BLOCK_IN
+```
+
+```python
+# generic transform: replace tl.sum(a*b) with tl.dot when both operands are 2D
+while in_off < IN_F:
+    x_vec = tl.load(x_row_ptr + in_offs, mask=in_mask, other=0.0)
+    x_2d = tl.reshape(x_vec, (BLOCK_IN, 1))
+    w_tile = tl.load(w_ptrs, mask=out_mask[:, None] & in_mask[None, :], other=0.0)
+    acc_2d += tl.dot(w_tile, x_2d)              # CUBE-side matmul
+    in_off += BLOCK_IN
+```
+
+#### Manifestation B: Matrix×vector (N=1) pattern where `tl.dot` cannot be used directly
+
+Typical in: kernels where each program processes one row (matrix×vector), making the N dimension = 1. On Ascend A5, `tl.dot` with N=1 crashes the Bisheng compiler.
+
+```python
+# detect: grid=(B,) — one program per batch row, output is 1D
+pid = tl.program_id(axis=0)
+x_row_ptr = x_ptr + pid * X_STRIDE
+# ... computation produces a single scalar or 1D result per program
+```
+
+```python
+# generic transform: restructure grid so each program handles multiple rows
+pid = tl.program_id(axis=0)
+row_start = pid * ROWS_PER_PROGRAM
+row_offs = row_start + tl.arange(0, ROWS_PER_PROGRAM)
+row_mask = row_offs < B
+
+# Load x as [ROWS_PER_PROGRAM, BLOCK_IN] instead of [BLOCK_IN]
+x_ptrs = x_ptr + row_offs[:, None] * X_STRIDE + in_offs[None, :]
+x_block = tl.load(x_ptrs, mask=row_mask[:, None] & in_mask[None, :], other=0.0)
+
+# Now w_tile [BLOCK_OUT, BLOCK_IN] × x_block [BLOCK_IN, ROWS_PER_PROGRAM] works
+# N dimension = ROWS_PER_PROGRAM > 1 → tl.dot works on A5
+```
+
+#### Manifestation C: Conv2d via im2col with manual reduction instead of `tl.dot`
+
+Typical in: conv2d kernels that build an im2col matrix but reduce over K using elementwise multiply + sum instead of `tl.dot`.
+
+```python
+# detect: conv kernel with im2col pattern, K loop doing elementwise multiply+accumulate
+# Each program handles one output tile, grid = (B * OH * OW, CO)
+pid_m = tl.program_id(axis=0)
+pid_n = tl.program_id(axis=1)
+m_offs = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+n_offs = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+
+# Decode m -> (b, oh, ow) and k -> (ci, kh, kw) with scalar //
+ohow = OH * OW
+b_idx = m_offs // ohow
+rem = m_offs - b_idx * ohow
+oh = rem // OW
+ow = rem - oh * OW
+
+acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+
+for k0 in tl.static_range(0, K, BLOCK_K):
+    k_offs = k0 + tl.arange(0, BLOCK_K)
+    khkw = KH * KW
+    ci = k_offs // khkw              # scalar coordinate decode in K loop
+    remk = k_offs - ci * khkw
+    kh = remk // KW
+    kw = remk - kh * KW
+
+    # Compute input positions from decoded coordinates
+    ih = oh[:, None] * STRH - PADH + kh[None, :] * DILH
+    iw = ow[:, None] * STRW - PADW + kw[None, :] * DILW
+    in_bounds = (ih >= 0) & (iw >= 0) & (ih < H) & (iw < W)
+
+    x_offsets = b_idx[:, None] * x_stride_n + ci[None, :] * x_stride_c + ih * x_stride_h + iw * x_stride_w
+    a_tile = tl.load(x_ptr + x_offsets, mask=in_bounds, other=0.0).to(tl.float32)
+
+    w_offsets = n_offs[None, :] * K + k_offs[:, None]   # weight [CO, K] layout
+    b_tile = tl.load(w_ptr + w_offsets, mask=..., other=0.0).to(tl.float32)
+
+    acc += tl.sum(a_tile * b_tile, axis=1)               # ← manual K-reduction, NOT tl.dot
+```
+
+```python
+# generic transform: standard tiled tl.dot structure (see classic-matmul skeleton)
+# The key change: replace tl.sum(a*b) with tl.dot(a,b)
+# and ensure b_tile is loaded in transposed layout [BLOCK_K, BLOCK_N]
+
+for k0 in tl.static_range(0, K, BLOCK_K):
+    k_offs = k0 + tl.arange(0, BLOCK_K)
+    khkw = KH * KW
+    ci = k_offs // khkw
+    remk = k_offs - ci * khkw
+    kh = remk // KW
+    kw = remk - kh * KW
+
+    ih = oh[:, None] * STRH - PADH + kh[None, :] * DILH
+    iw = ow[:, None] * STRW - PADW + kw[None, :] * DILW
+    in_bounds = (ih >= 0) & (iw >= 0) & (ih < H) & (iw < W)
+
+    x_offsets = b_idx[:, None] * x_stride_n + ci[None, :] * x_stride_c + ih * x_stride_h + iw * x_stride_w
+    a_tile = tl.load(x_ptr + x_offsets, mask=in_bounds, other=0.0).to(tl.float32)
+
+    # Load weight tile as transposed block: [BLOCK_K, BLOCK_N]
+    w_offsets_t = k_offs[:, None] + n_offs[None, :] * K
+    b_tile_t = tl.load(w_ptr + w_offsets_t, mask=..., other=0.0).to(tl.float32)
+
+    acc += tl.dot(a_tile, b_tile_t)                      # CUBE-side matmul
+```
+
+### Optimization Direction
+
+1. **Replace `tl.sum(a*b)` with `tl.dot(a,b)`** — the core transform. Moves K-dimension reduction from VECTOR to CUBE, enabling MMAD instructions — Manifestation A, C
+2. **Restructure grid for N > 1 when needed** — batch multiple output rows per program so `tl.dot` has N ≥ 2. Required on Ascend A5 where N=1 `tl.dot` crashes — Manifestation B
+3. **Use `tl.static_range` for K loop** — enables compiler pipelining of the `tl.dot` loop, critical for CUBE/MTE2 overlap — Manifestation A, C
+4. **Increase tile sizes for CUBE amortization** — BLOCK_M, BLOCK_N ≥ 64, BLOCK_K ≥ 32 to give CUBE enough work per invocation — Manifestation A, C
+
+### Related Patterns
+
+- `classic-matmul`
+- `software-pipeline`
+
+### Worked Example
+
+**Case: l2_55_Matmul_MaxPool_Sum_Scale (Manifestation A + B)**
+
+Source: `test_case/classic-matmul-new/l2_55_Matmul_MaxPool_Sum_Scale/new1/`
+
+This kernel computes `sum(maxpool(matmul(x, W) + b)) * scale` for each batch row. The core computation is matrix×vector (weight `[OUT_F, IN_F]` × input `[IN_F]`) with max pooling over windows of size KERNEL=2, summed across windows, then scaled.
+
+Simulation evidence (baseline `report.txt`):
+
+| Metric | Value |
+|--------|-------|
+| CUBE instr | 0 (absent from Pipe Distribution) |
+| MMAD | 0 (absent, no `[CUBE/MMA]` section) |
+| CUBE Pipeline Flows | absent (no CUBEToFIXP, CUBEToMTE1, MTE1ToCUBE) |
+| SCALAR instr% | 69.5% |
+| VECTOR instr% | 1.0% |
+| SCALAR:VECTOR ratio | 73:1 |
+| TRACE MADD | 48 |
+
+All confirmation conditions met: SCALAR > 50%, MADD > 0, no CUBE flows.
+
+Code precondition confirmed — the hot loop:
+
+```python
+while in_off < IN_F:
+    x_vec = tl.load(x_row_ptr + in_offs, mask=in_mask, other=0.0)
+    w_tile = tl.load(w_ptrs, mask=out_mask[:, None] & in_mask[None, :], other=0.0)
+    acc += tl.sum(w_tile * x_vec[None, :], axis=1)  # ← manual K-reduction, NOT tl.dot
+    in_off += BLOCK_IN
+```
+
+This is `tl.sum(w_tile * x_vec, axis=1)` — elementwise multiply + scalar reduction over IN_F. CUBE should be engaged but isn't.
+
+**Optimization history:**
+
+Three optimization rounds were attempted:
+
+| Round | Change | Result | CUBE? |
+|-------|--------|--------|-------|
+| 1 | Restructured tiling (window→OUT_F based), eliminated redundant x loads | 31.83x speedup (6838ms → 215ms) | No — `tl.sum(w*x)` still present |
+| 2 | Attempted `tl.dot(w_tile, x_2d)` with N=1 | Bisheng compiler SIGSEGV — N=1 tl.dot not supported on A5 | Failed |
+| 3 | Added `cache_modifier=".cg"` | No measurable improvement | No |
+
+The 31.83x speedup came from eliminating redundant x loads (structural improvement), NOT from engaging CUBE. The simulator cycles per program remained nearly identical (210M → 212M) because compute density didn't change. Further speedup requires `tl.dot`, which needs grid restructuring (Manifestation B).
