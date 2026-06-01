@@ -1,0 +1,56 @@
+{
+  "repo": "/Users/wyx/codes/git_test/Q2TritonKernel",
+  "base_revision": "origin/main",
+  "synthesis_report": "PERF_PATTERN_SYNTHESIS.md",
+  "operators": [
+    {
+      "name": "chunk_o",
+      "source_path": "src/kernels/fla/ops/common/chunk_o.py",
+      "operator_filename": "chunk_o.py",
+      "test_paths": [],
+      "expected_patterns": [
+        "layout-materialization-elision",
+        "grid-flatten-and-ub-buffering",
+        "ascend-compile-options-catalog",
+        "block-pointer-dimensionality"
+      ],
+      "notes": "G1-I1, G2-I4, G3 baseline compile options"
+    },
+    {
+      "name": "wy_fast",
+      "source_path": "src/kernels/fla/ops/gated_delta_rule/wy_fast.py",
+      "operator_filename": "wy_fast.py",
+      "test_paths": [],
+      "expected_patterns": [
+        "layout-materialization-elision",
+        "ascend-compile-options-catalog",
+        "block-pointer-dimensionality"
+      ],
+      "notes": "G1-I2, G3"
+    },
+    {
+      "name": "chunk_scaled_dot_kkt",
+      "source_path": "src/kernels/fla/ops/common/chunk_scaled_dot_kkt.py",
+      "operator_filename": "chunk_scaled_dot_kkt.py",
+      "test_paths": [],
+      "expected_patterns": [
+        "layout-materialization-elision",
+        "algebraic-optimization",
+        "grid-flatten-and-ub-buffering",
+        "ascend-compile-options-catalog"
+      ],
+      "notes": "G1-I3, G4-I11, G2-I5, G3"
+    },
+    {
+      "name": "chunk_delta_h",
+      "source_path": "src/kernels/fla/ops/common/chunk_delta_h.py",
+      "operator_filename": "chunk_delta_h.py",
+      "test_paths": [],
+      "expected_patterns": [
+        "shape-specialization",
+        "ascend-compile-options-catalog"
+      ],
+      "notes": "G5-I12; G6-I13 is local-only and not expected in skills"
+    }
+  ]
+}

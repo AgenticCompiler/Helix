@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TextIO
 
 NO_CANDIDATE_OPERATOR_FILE = "found no candidate operator file after excluding generated artifacts"
+RESERVED_BATCH_SUBDIR_NAMES = frozenset({"_completed"})
 
 
 class PrefixedTextStream(TextIOBase):
@@ -45,7 +46,11 @@ def discover_batch_workspaces(
     no_candidate_message: str = NO_CANDIDATE_OPERATOR_FILE,
 ) -> tuple[list[tuple[Path, Path]], list[tuple[Path, str]]]:
     workspace_candidates = sorted(
-        path for path in root.iterdir() if path.is_dir() and not path.name.startswith(".")
+        path
+        for path in root.iterdir()
+        if path.is_dir()
+        and not path.name.startswith(".")
+        and path.name not in RESERVED_BATCH_SUBDIR_NAMES
     )
     child_results: list[tuple[Path, str]] = []
     child_runnable: list[tuple[Path, Path]] = []

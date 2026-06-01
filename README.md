@@ -16,6 +16,7 @@ This README is organized by task so you can quickly find the right command for t
 - `run-bench`: run an existing generated benchmark.
 - `optimize`: optimize one operator.
 - `optimize-batch`: optimize many operator workspaces.
+- `pattern-validation-loop`: integrate synthesis into skills, scaffold validation workspaces, run optimize-batch, audit pattern usage, and iterate until validation passes.
 - `upload-optimize`: upload one optimize workspace to an analysis server.
 - `--no-upload`: skip automatic upload after optimize.
 - `log-check`: run Codex log strategy validation for one workspace.
@@ -580,6 +581,44 @@ Common options:
 - `--remote-workdir <path>`
 - `--keep-remote-workdir`
 - `--verbose`
+
+### Pattern Validation Loop
+
+After you have `PERF_PATTERN_SYNTHESIS.md` in the target repo, use this command to close the loop from synthesis recommendations to verified optimize-batch runs:
+
+```bash
+uv run triton-agent pattern-validation-loop \
+  -i . \
+  --synthesis PERF_PATTERN_SYNTHESIS.md \
+  --batch-dir pattern-validation-batch \
+  --base origin/main \
+  --min-rounds 10 \
+  --max-iterations 5 \
+  --show-output \
+  --agent opencode
+```
+
+The command stages `triton-npu-pattern-validation-loop` plus optimize skills, then launches a code agent to:
+
+1. Read `PERF_PATTERN_SYNTHESIS.md` (any structure) and integrate lessons into staged pattern cards.
+2. Plan and build validation workspaces: pre-optimization snapshots, tests, and `validation-meta.json`.
+3. Run `optimize-batch` for at least `--min-rounds` rounds.
+4. Audit whether expected pattern IDs appear in round artifacts; archive passes under `_completed/`.
+5. Iterate skill updates and re-runs until audit passes or `--max-iterations` is reached.
+
+Common options:
+
+- `--synthesis <path>`: synthesis report path (default: `PERF_PATTERN_SYNTHESIS.md`).
+- `--batch-dir <path>`: batch root for validation workspaces (default: `pattern-validation-batch`).
+- `--base <rev>`: base revision for pre-optimization snapshots (default: `origin/main`).
+- `--min-rounds <N>`: minimum optimize rounds per workspace (default: `10`).
+- `--max-iterations <N>`: maximum skill-update iterations (default: `5`).
+- `--optimize-knowledge v1|v2|v3`
+- `--agent codex|opencode|pi|claude|openhands|traecli`
+- `--prompt "..."`: append extra loop instructions.
+- `--show-output`
+
+Loop state is recorded under `.triton-agent/pattern-validation-loop-state.json`. See `skills/triton-npu-pattern-validation-loop/SKILL.md` and `docs/notes/2026-05-30-pattern-validation-batch-workflow.md`.
 
 ### Optimize In Batch
 

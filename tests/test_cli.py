@@ -103,6 +103,44 @@ class CliParserTests(unittest.TestCase):
         self.assertTrue(args.verbose)
         self.assertTrue(args.show_output)
 
+    def test_pattern_validation_loop_accepts_loop_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "pattern-validation-loop",
+                "-i",
+                ".",
+                "--synthesis",
+                "PERF_PATTERN_SYNTHESIS.md",
+                "--batch-dir",
+                "pattern-validation-batch",
+                "--base",
+                "origin/main",
+                "--min-rounds",
+                "10",
+                "--max-iterations",
+                "5",
+                "--optimize-knowledge",
+                "v2",
+                "--agent",
+                "opencode",
+                "--show-output",
+                "--prompt",
+                "Focus on grid flatten patterns.",
+            ]
+        )
+        self.assertEqual(args.command, "pattern-validation-loop")
+        self.assertEqual(args.command_kind, CommandKind.PATTERN_VALIDATION_LOOP)
+        self.assertEqual(args.synthesis, "PERF_PATTERN_SYNTHESIS.md")
+        self.assertEqual(args.batch_dir, "pattern-validation-batch")
+        self.assertEqual(args.base, "origin/main")
+        self.assertEqual(args.min_rounds, 10)
+        self.assertEqual(args.max_iterations, 5)
+        self.assertEqual(args.optimize_knowledge, "v2")
+        self.assertEqual(args.agent, "opencode")
+        self.assertTrue(args.show_output)
+        self.assertEqual(args.prompt, "Focus on grid flatten patterns.")
+
     def test_log_check_batch_rejects_max_concurrency_keyword(self) -> None:
         parser = build_parser()
         stderr = StringIO()
@@ -284,6 +322,7 @@ class CliParserTests(unittest.TestCase):
             ("run_bench", CommandKind.RUN_BENCH),
             ("verify_batch", CommandKind.VERIFY_BATCH),
             ("optimize_batch", CommandKind.OPTIMIZE_BATCH),
+            ("pattern_validation_loop", CommandKind.PATTERN_VALIDATION_LOOP),
         ]
 
         for alias, expected_kind in cases:

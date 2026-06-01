@@ -23,6 +23,7 @@ from triton_agent.commands.optimize import (
 from triton_agent.commands.upload_optimize import handle_upload_optimize
 from triton_agent.commands.report_batch import handle_report_batch
 from triton_agent.commands.report import handle_report
+from triton_agent.commands.pattern_validation_loop import handle_pattern_validation_loop
 from triton_agent.models import CommandKind
 
 
@@ -49,6 +50,7 @@ _TOP_LEVEL_EXAMPLES = (
     "triton-agent status -i .",
     "triton-agent log-check -i .",
     "triton-agent log-check-batch -i kernels",
+    "triton-agent pattern-validation-loop -i . --show-output --agent opencode",
     "triton-agent optimize -i kernel.py --agent codex",
     "triton-agent report-batch -i kernels",
     "triton-agent clean -i .",
@@ -172,6 +174,7 @@ class _CommandSpec:
     has_force_verify: bool = False
     has_log_tools: bool = False
     has_url: bool = False
+    has_pattern_validation_loop_options: bool = False
 
 
 _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
@@ -387,6 +390,19 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_prompt=True,
         has_log_tools=True,
     ),
+    CommandKind.PATTERN_VALIDATION_LOOP: _CommandSpec(
+        handler=handle_pattern_validation_loop,
+        help_group="Optimization",
+        help_summary="Validate synthesis-backed patterns via optimize-batch loop.",
+        description=(
+            "Integrate PERF_PATTERN_SYNTHESIS into staged skills, scaffold pre-opt workspaces, "
+            "run optimize-batch, audit pattern usage, and iterate until validation passes."
+        ),
+        has_agent=True,
+        has_show_output=True,
+        has_prompt=True,
+        has_pattern_validation_loop_options=True,
+    ),
     CommandKind.OPTIMIZE_BATCH: _CommandSpec(
         handler=handle_optimize_batch,
         help_group="Optimization",
@@ -531,6 +547,29 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--no-report", action="store_true", default=False)
         if spec.has_prompt:
             subparser.add_argument("--prompt")
+        if spec.has_pattern_validation_loop_options:
+            subparser.add_argument(
+                "--synthesis",
+                default="PERF_PATTERN_SYNTHESIS.md",
+                help="Input synthesis report path (default: PERF_PATTERN_SYNTHESIS.md).",
+            )
+            subparser.add_argument(
+                "--batch-dir",
+                default="pattern-validation-batch",
+                help="Batch root for optimize-batch workspaces (default: pattern-validation-batch).",
+            )
+            subparser.add_argument(
+                "--base",
+                default="origin/main",
+                help="Base revision for scaffold snapshots (default: origin/main).",
+            )
+            subparser.add_argument("--min-rounds", type=int, default=10)
+            subparser.add_argument("--max-iterations", type=int, default=5)
+            subparser.add_argument(
+                "--optimize-knowledge",
+                default="v1",
+                choices=_OPTIMIZE_KNOWLEDGE_CHOICES,
+            )
         if command_kind in {CommandKind.LOG_CHECK, CommandKind.LOG_CHECK_BATCH}:
             subparser.add_argument(
                 "--check-result-file",
@@ -669,6 +708,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "report_batch": "report-batch",
         "report": "report",
         "clean": "clean",
+        "pattern_validation_loop": "pattern-validation-loop",
     }
     normalized = list(argv)
     normalized[0] = aliases.get(normalized[0], normalized[0])

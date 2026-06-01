@@ -103,6 +103,20 @@ class SkillStagingTests(unittest.TestCase):
 
         self.assertIn("torch-npu-optimize-knowledge", names or ())
 
+    def test_resolve_staged_skills_for_pattern_validation_loop(self) -> None:
+        names, sources = resolve_staged_skills(CommandKind.PATTERN_VALIDATION_LOOP)
+
+        self.assertEqual(
+            names,
+            (
+                "triton-npu-pattern-validation-loop",
+                "triton-npu-optimize-knowledge",
+                "triton-npu-optimize",
+                "triton-npu-optimize-check",
+            ),
+        )
+        self.assertIsNone(sources)
+
     def test_apply_stage_directives_supports_add_remove_and_full_copy(self) -> None:
         self.assertEqual(_apply_stage_directives(("+a", "+b", "-a", "+c")), ("b", "c"))
         self.assertIsNone(_apply_stage_directives(("*", "+a")))

@@ -55,6 +55,14 @@ STAGE_RULES: dict[CommandKind, StageRule] = {
             "+triton-npu-optimize-check",
         ),
     ),
+    CommandKind.PATTERN_VALIDATION_LOOP: StageRule(
+        directives=(
+            "+triton-npu-pattern-validation-loop",
+            "+triton-npu-optimize-knowledge",
+            "+triton-npu-optimize",
+            "+triton-npu-optimize-check",
+        ),
+    ),
     CommandKind.REPORT: StageRule(
         directives=(
             "+triton-npu-report",
@@ -142,11 +150,12 @@ def _resolve_skill_sources(
     *,
     optimize_knowledge: str | None = None,
 ) -> dict[str, str] | None:
-    if command_kind == CommandKind.OPTIMIZE and staged_skill_names is not None:
-        if "triton-npu-optimize-knowledge" not in staged_skill_names:
-            return None
-        if optimize_knowledge == "v2":
-            return {"triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v2"}
-        if optimize_knowledge == "v3":
-            return {"triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v3"}
+    if staged_skill_names is None or "triton-npu-optimize-knowledge" not in staged_skill_names:
+        return None
+    if command_kind not in {CommandKind.OPTIMIZE, CommandKind.PATTERN_VALIDATION_LOOP}:
+        return None
+    if optimize_knowledge == "v2":
+        return {"triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v2"}
+    if optimize_knowledge == "v3":
+        return {"triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v3"}
     return None
