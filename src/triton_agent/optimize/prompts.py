@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
+from triton_agent.optimize.subagents import optimize_subagent_recommendation_lines
 from triton_agent.optimize.contract import baseline_state_contract_lines
 
 
@@ -115,11 +116,17 @@ def _shared_optimize_prompt_lines(
     target_chip: str,
     optimize_check_line: str,
     optimize_target: str,
+    enable_subagent: bool = False,
 ) -> list[str]:
     return [
         *optimize_target_lines(optimize_target=optimize_target),
         "Use the staged `triton-npu-prepare-optimize-baseline` skill when baseline artifacts are missing or invalid.",
         optimize_check_line,
+        *(
+            optimize_subagent_recommendation_lines()
+            if enable_subagent
+            else []
+        ),
         "Establish or reuse `baseline/` before creating `opt-round-1`.",
         "If baseline preparation is needed, use the staged `triton-npu-prepare-optimize-baseline` skill and continue only after it has repaired the baseline through `check-baseline`.",
         "For each round, write the optimized operator snapshot as `opt_<original-operator>.py` inside `opt-round-N/`.",
@@ -253,6 +260,7 @@ def build_optimize_resume_prompt(
     optimize_target: str = "kernel",
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
+    enable_subagent: bool = False,
 ) -> str:
     lines: list[str] = []
     if base_prompt:
@@ -297,6 +305,11 @@ def build_optimize_resume_prompt(
             if optimize_target == "operator"
             else []
         ),
+        *(
+            optimize_subagent_recommendation_lines()
+            if enable_subagent
+            else []
+        ),
         *layered_analysis_lines(round_scope="the round"),
         *strict_learned_lessons_lines(),
     ]
@@ -326,6 +339,7 @@ def build_optimize_continuous_prompt(
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
     enable_cann_ext_api: bool = False,
+    enable_subagent: bool = False,
     baseline_ready: bool | None = None,
 ) -> str:
     del input_path, output_path, test_mode, bench_mode
@@ -346,6 +360,7 @@ def build_optimize_continuous_prompt(
             target_chip=target_chip,
             optimize_check_line="Use the staged `triton-npu-optimize-check` skill to validate every completed round.",
             optimize_target=optimize_target,
+            enable_subagent=enable_subagent,
         )
     )
     lines.append(
@@ -393,6 +408,7 @@ def build_optimize_round_prompt(
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
     enable_cann_ext_api: bool = False,
+    enable_subagent: bool = False,
     round_mode: Literal["checked", "supervised"],
     baseline_ready: bool = True,
 ) -> str:
@@ -409,6 +425,7 @@ def build_optimize_round_prompt(
             target_chip=target_chip,
             optimize_check_line="The CLI will run `triton-npu-optimize-check` after this round completes. Your role is to produce the round artifacts, not to run `check-round` yourself.",
             optimize_target=optimize_target,
+            enable_subagent=enable_subagent,
         )
     )
     lines.append("Do not self-approve whether the optimize session should continue.")

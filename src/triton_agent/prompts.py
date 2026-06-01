@@ -71,6 +71,7 @@ def build_prompt(
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
     enable_cann_ext_api: bool = False,
+    enable_subagent: bool = False,
 ) -> str:
     should_resume_existing_session = (
         continue_optimize if resume_existing_session is None else resume_existing_session
@@ -208,13 +209,14 @@ def build_prompt(
                     bench_mode=bench_mode,
                     target_chip=target_chip or "A5",
                     optimize_target=optimize_target,
-                    min_rounds=resolved_min_rounds,
-                    resume_existing_session=should_resume_existing_session,
-                    compiler_source_path=compiler_source_path,
-                    compiler_source_commit=compiler_source_commit,
-                    enable_cann_ext_api=enable_cann_ext_api,
-                ).splitlines()
-            )
+                min_rounds=resolved_min_rounds,
+                resume_existing_session=should_resume_existing_session,
+                compiler_source_path=compiler_source_path,
+                compiler_source_commit=compiler_source_commit,
+                enable_cann_ext_api=enable_cann_ext_api,
+                enable_subagent=enable_subagent,
+            ).splitlines()
+        )
         else:
             lines.extend(
                 build_optimize_round_prompt(
@@ -228,6 +230,7 @@ def build_prompt(
                     compiler_source_path=compiler_source_path,
                     compiler_source_commit=compiler_source_commit,
                     enable_cann_ext_api=enable_cann_ext_api,
+                    enable_subagent=enable_subagent,
                     round_mode=round_mode,
                     baseline_ready=True,
                 ).splitlines()

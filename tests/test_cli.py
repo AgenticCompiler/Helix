@@ -1060,6 +1060,14 @@ class CliParserTests(unittest.TestCase):
         options = optimize_run_options_from_args(args)
         self.assertTrue(options.enable_agent_hooks)
 
+    def test_optimize_accepts_enable_subagent_option(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--enable-subagent"])
+
+        self.assertTrue(args.enable_subagent)
+        options = optimize_run_options_from_args(args)
+        self.assertTrue(options.enable_subagent)
+
     def test_optimize_accepts_log_tools_option(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize", "-i", "kernel.py", "--log-tools"])
@@ -1067,6 +1075,14 @@ class CliParserTests(unittest.TestCase):
         self.assertTrue(args.log_tools)
         options = optimize_run_options_from_args(args)
         self.assertTrue(options.log_tools)
+
+    def test_optimize_batch_accepts_enable_subagent_option(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-batch", "-i", "operators", "--enable-subagent"])
+
+        self.assertTrue(args.enable_subagent)
+        options = optimize_run_options_from_args(args)
+        self.assertTrue(options.enable_subagent)
 
     def test_optimize_batch_accepts_log_tools_option(self) -> None:
         parser = build_parser()
@@ -2642,6 +2658,7 @@ class PathResolutionTests(unittest.TestCase):
                 resume_existing_session,
                 round_mode="continuous",
                 target_chip=None,
+                enable_subagent=False,
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
@@ -2717,6 +2734,7 @@ class PathResolutionTests(unittest.TestCase):
                 resume_existing_session,
                 round_mode="continuous",
                 target_chip=None,
+                enable_subagent=False,
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
@@ -2792,6 +2810,7 @@ class PathResolutionTests(unittest.TestCase):
                 resume_existing_session,
                 round_mode="continuous",
                 target_chip=None,
+                enable_subagent=False,
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
@@ -3044,6 +3063,7 @@ class PathResolutionTests(unittest.TestCase):
                 resume_existing_session,
                 round_mode="continuous",
                 target_chip=None,
+                enable_subagent=False,
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
@@ -3132,6 +3152,7 @@ class PathResolutionTests(unittest.TestCase):
                 resume_existing_session,
                 round_mode="continuous",
                 target_chip=None,
+                enable_subagent=False,
             ):
                 captured["test_mode"] = test_mode
                 captured["bench_mode"] = bench_mode
@@ -3173,6 +3194,32 @@ class PathResolutionTests(unittest.TestCase):
             request = mocked.call_args.args[1]
             self.assertEqual(request.test_mode, "differential")
             self.assertEqual(request.bench_mode, "msprof")
+
+    def test_handle_optimize_rejects_enable_subagent_for_pi(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["optimize", "-i", "kernel.py", "--agent", "pi", "--enable-subagent"]
+        )
+
+        stderr = StringIO()
+        with self.assertRaises(SystemExit) as exc, redirect_stderr(stderr):
+            optimize_commands.handle_optimize(parser, args)
+
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn("--enable-subagent only supports", stderr.getvalue())
+
+    def test_handle_optimize_batch_rejects_enable_subagent_for_pi(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["optimize-batch", "-i", "kernels", "--agent", "pi", "--enable-subagent"]
+        )
+
+        stderr = StringIO()
+        with self.assertRaises(SystemExit) as exc, redirect_stderr(stderr):
+            optimize_commands.handle_optimize_batch(parser, args)
+
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn("--enable-subagent only supports", stderr.getvalue())
 
     def test_main_optimize_resume_auto_uses_continue_for_baseline_only_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3228,6 +3275,7 @@ class PathResolutionTests(unittest.TestCase):
                 resume_existing_session,
                 round_mode="continuous",
                 target_chip=None,
+                enable_subagent=False,
             ):
                 captured["resume_existing_session"] = resume_existing_session
                 captured["test_mode"] = test_mode
@@ -3371,6 +3419,7 @@ class PathResolutionTests(unittest.TestCase):
                 resume_existing_session,
                 round_mode="continuous",
                 target_chip=None,
+                enable_subagent=False,
             ):
                 captured["round_mode"] = round_mode
                 captured["target_chip"] = target_chip
@@ -3425,6 +3474,7 @@ class PathResolutionTests(unittest.TestCase):
                 resume_existing_session,
                 round_mode="continuous",
                 target_chip=None,
+                enable_subagent=False,
             ):
                 captured["target_chip"] = target_chip
                 return "Prompt body"
@@ -4410,6 +4460,25 @@ class PromptTests(unittest.TestCase):
             "Do not treat the next round as a parameter-only tuning sweep; make a bottleneck-backed change instead.",
             prompt,
         )
+
+    def test_build_optimize_continuous_prompt_recommends_subagent_when_enabled(self) -> None:
+        prompt = build_optimize_continuous_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            enable_subagent=True,
+        )
+
+        self.assertIn(
+            "A diagnosis subagent named `triton-agent-perf-diagnosis-advisor` is available in this workspace.",
+            prompt,
+        )
+        self.assertIn(
+            "Use it proactively when the bottleneck hypothesis is still unclear before deeper optimize edits.",
+            prompt,
+        )
+        self.assertIn("must not perform optimization work", prompt)
 
     def test_build_optimize_continuous_prompt_requires_sequential_rounds_without_parallel_subagents(
         self,

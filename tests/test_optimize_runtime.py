@@ -370,6 +370,34 @@ class OptimizeRuntimeTests(unittest.TestCase):
 
             self.assertTrue(request.enable_agent_hooks)
 
+    def test_build_optimize_request_carries_enable_subagent_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=1,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                round_mode="continuous",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                enable_subagent=True,
+            )
+
+            request = build_optimize_request(operator, workdir, options)
+
+            self.assertTrue(request.enable_subagent)
+
     def test_build_optimize_request_enables_log_tools_when_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)

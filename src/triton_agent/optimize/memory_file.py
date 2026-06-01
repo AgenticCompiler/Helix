@@ -8,6 +8,7 @@ from typing import Optional
 from triton_agent.optimize.pattern_reminders import (
     build_high_priority_pattern_reminder_lines,
 )
+from triton_agent.optimize.subagents import optimize_subagent_recommendation_lines
 from triton_agent.optimize.prompts import (
     cann_ext_api_lines,
     compiler_source_analysis_lines,
@@ -164,6 +165,7 @@ class MemoryFileManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
     ) -> MemoryFileState:
         """Write the single-agent optimize memory file into the workspace root."""
@@ -179,6 +181,7 @@ class MemoryFileManager:
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
                 enable_cann_ext_api=enable_cann_ext_api,
+                enable_subagent=enable_subagent,
                 optimize_knowledge_skill_name=optimize_knowledge_skill_name,
             ),
         )
@@ -192,6 +195,7 @@ class MemoryFileManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
     ) -> MemoryFileState:
         """Write the shared orchestration memory file used by supervised optimize."""
@@ -204,6 +208,7 @@ class MemoryFileManager:
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
                 enable_cann_ext_api=enable_cann_ext_api,
+                enable_subagent=enable_subagent,
                 optimize_knowledge_skill_name=optimize_knowledge_skill_name,
             ),
         )
@@ -218,6 +223,7 @@ class MemoryFileManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
     ) -> MemoryFileState:
         """Write the round-gated optimize memory file for checked/supervised modes."""
@@ -232,6 +238,7 @@ class MemoryFileManager:
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
                 enable_cann_ext_api=enable_cann_ext_api,
+                enable_subagent=enable_subagent,
                 optimize_knowledge_skill_name=optimize_knowledge_skill_name,
             ),
         )
@@ -311,6 +318,7 @@ class MemoryFileManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
     ) -> str:
         return _CONTINUOUS_GUIDANCE_TEMPLATE.format(
@@ -325,6 +333,11 @@ class MemoryFileManager:
                         "Use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and operator-level pattern references.",
                     ]
                     if optimize_target == "operator"
+                    else []
+                )
+                + (
+                    optimize_subagent_recommendation_lines()
+                    if enable_subagent
                     else []
                 )
             ),
@@ -353,6 +366,7 @@ class MemoryFileManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
     ) -> str:
         return _SHARED_GUIDANCE_TEMPLATE.format(
@@ -364,6 +378,11 @@ class MemoryFileManager:
                         "Use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and operator-level pattern references.",
                     ]
                     if optimize_target == "operator"
+                    else []
+                )
+                + (
+                    optimize_subagent_recommendation_lines()
+                    if enable_subagent
                     else []
                 )
             ),
@@ -393,6 +412,7 @@ class MemoryFileManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
     ) -> str:
         base = _ROUND_GATED_GUIDANCE_TEMPLATE.format(
@@ -404,6 +424,11 @@ class MemoryFileManager:
                         "Use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and operator-level pattern references.",
                     ]
                     if optimize_target == "operator"
+                    else []
+                )
+                + (
+                    optimize_subagent_recommendation_lines()
+                    if enable_subagent
                     else []
                 )
             ),

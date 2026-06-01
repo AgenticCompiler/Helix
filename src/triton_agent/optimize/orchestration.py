@@ -67,6 +67,7 @@ def build_optimize_request(
                 compiler_source_path=compiler_source.path,
                 compiler_source_commit=compiler_source.commit,
                 enable_cann_ext_api=True,
+                enable_subagent=options.enable_subagent,
             )
         else:
             built_prompt = build_prompt(
@@ -85,6 +86,7 @@ def build_optimize_request(
                 target_chip=options.target_chip,
                 compiler_source_path=compiler_source.path,
                 compiler_source_commit=compiler_source.commit,
+                enable_subagent=options.enable_subagent,
             )
     else:
         if options.enable_cann_ext_api:
@@ -103,6 +105,7 @@ def build_optimize_request(
                 round_mode=options.round_mode,
                 target_chip=options.target_chip,
                 enable_cann_ext_api=True,
+                enable_subagent=options.enable_subagent,
             )
         else:
             built_prompt = build_prompt(
@@ -119,6 +122,7 @@ def build_optimize_request(
                 resolution.resume_existing_session,
                 round_mode=options.round_mode,
                 target_chip=options.target_chip,
+                enable_subagent=options.enable_subagent,
             )
     prompt = append_additional_user_instructions(
         built_prompt,
@@ -159,6 +163,7 @@ def build_optimize_request(
         compiler_source_analysis=options.compiler_source_analysis,
         compiler_source_path=compiler_source.path if compiler_source is not None else None,
         compiler_source_commit=compiler_source.commit if compiler_source is not None else None,
+        enable_subagent=options.enable_subagent,
         enable_agent_hooks=options.enable_agent_hooks,
         log_tools=options.log_tools,
     )
