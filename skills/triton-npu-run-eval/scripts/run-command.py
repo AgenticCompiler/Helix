@@ -26,6 +26,7 @@ class RunLocalTestFn(Protocol):
         test_mode: str,
         *,
         verbose: bool = False,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -40,6 +41,7 @@ class RunRemoteTestFn(Protocol):
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: object | None = None,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None, str]: ...
 
 
@@ -50,6 +52,7 @@ class RunLocalBenchFn(Protocol):
         operator_file: Path,
         bench_mode: str,
         npu_devices: str | None = None,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -65,6 +68,7 @@ class RunRemoteBenchFn(Protocol):
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: object | None = None,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None, str]: ...
 
 
@@ -105,6 +109,7 @@ class RunLocalProfileBenchFn(Protocol):
         bench_case: int | None = None,
         case_id: str | None = None,
         kernel_name: str | None = None,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -122,6 +127,7 @@ class RunRemoteProfileBenchFn(Protocol):
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: object | None = None,
+        force_recompile: bool = False,
     ) -> tuple[ResultPayload, Path | None, str]: ...
 
 
@@ -149,6 +155,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_test.add_argument("--keep-remote-workdir", action="store_true")
     run_test.add_argument("--verbose", action="store_true")
     run_test.add_argument("--test-mode", choices=["standalone", "differential"])
+    run_test.add_argument("--force-recompile", action="store_true",
+                          help="Force Triton kernel recompilation (sets TRITON_ALWAYS_COMPILE=1)")
 
     run_bench = subparsers.add_parser("run-bench")
     run_bench.add_argument("--bench-file", required=True)
@@ -159,6 +167,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_bench.add_argument("--verbose", action="store_true")
     run_bench.add_argument("--bench-mode", choices=["standalone", "msprof"])
     run_bench.add_argument("--npu-devices")
+    run_bench.add_argument("--force-recompile", action="store_true",
+                           help="Force Triton kernel recompilation (sets TRITON_ALWAYS_COMPILE=1)")
 
     profile_bench = subparsers.add_parser("profile-bench")
     profile_bench.add_argument("--bench-file", required=True)
@@ -172,6 +182,8 @@ def build_parser() -> argparse.ArgumentParser:
     profile_bench.add_argument("--remote-workdir")
     profile_bench.add_argument("--keep-remote-workdir", action="store_true")
     profile_bench.add_argument("--verbose", action="store_true")
+    profile_bench.add_argument("--force-recompile", action="store_true",
+                               help="Force Triton kernel recompilation (sets TRITON_ALWAYS_COMPILE=1)")
 
     profile_report = subparsers.add_parser("profile-report")
     profile_report.add_argument("--profile-dir", required=True)
@@ -268,6 +280,7 @@ def main(argv: list[str] | None = None) -> int:
                     keep_remote_workdir=args.keep_remote_workdir,
                     verbose=args.verbose,
                     stderr=sys.stderr,
+                    force_recompile=args.force_recompile,
                 )
             else:
                 result, archived_result = run_local_test(
@@ -275,6 +288,7 @@ def main(argv: list[str] | None = None) -> int:
                     operator_file,
                     resolved_test_mode,
                     verbose=args.verbose,
+                    force_recompile=args.force_recompile,
                 )
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
@@ -319,6 +333,7 @@ def main(argv: list[str] | None = None) -> int:
                     keep_remote_workdir=args.keep_remote_workdir,
                     verbose=args.verbose,
                     stderr=sys.stderr,
+                    force_recompile=args.force_recompile,
                 )
             else:
                 result, profile_dir = run_local_profile_bench(
@@ -328,6 +343,7 @@ def main(argv: list[str] | None = None) -> int:
                     bench_case=args.bench,
                     case_id=args.case_id,
                     kernel_name=args.kernel_name,
+                    force_recompile=args.force_recompile,
                 )
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
@@ -368,6 +384,7 @@ def main(argv: list[str] | None = None) -> int:
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
+                force_recompile=args.force_recompile,
             )
         else:
             result, perf_path = run_local_bench(
@@ -375,6 +392,7 @@ def main(argv: list[str] | None = None) -> int:
                 operator_file,
                 resolved_bench_mode,
                 args.npu_devices,
+                force_recompile=args.force_recompile,
             )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)

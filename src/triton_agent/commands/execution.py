@@ -23,6 +23,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
     test_file, operator_file, oracle_result = resolve_run_test_paths(parser, args)
     resolved_test_mode = args.test_mode or resolve_test_mode_from_metadata(test_file)
     compare_level = resolve_run_test_compare_level(parser, args, resolved_test_mode, oracle_result)
+    force_recompile: bool = getattr(args, "force_recompile", False)
     remote_workspace: str | None = None
     try:
         if args.remote:
@@ -35,6 +36,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
+                force_recompile=force_recompile,
             )
         else:
             result, archived_result = run_local_test(
@@ -42,6 +44,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
                 operator_file,
                 resolved_test_mode,
                 verbose=args.verbose,
+                force_recompile=force_recompile,
             )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
@@ -69,6 +72,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
 def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     bench_file, operator_file = resolve_run_bench_paths(parser, args)
     resolved_bench_mode = args.bench_mode or resolve_bench_mode_from_metadata(bench_file)
+    force_recompile: bool = getattr(args, "force_recompile", False)
     remote_workspace: str | None = None
     try:
         if args.remote:
@@ -82,6 +86,7 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
+                force_recompile=force_recompile,
             )
         else:
             result, perf_path = run_local_bench(
@@ -90,6 +95,7 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
                 resolved_bench_mode,
                 args.npu_devices,
                 verbose=args.verbose,
+                force_recompile=force_recompile,
             )
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
         print(str(exc), file=sys.stderr)

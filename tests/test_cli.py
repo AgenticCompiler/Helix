@@ -2395,6 +2395,7 @@ class PathResolutionTests(unittest.TestCase):
                 operator.resolve(),
                 "standalone",
                 verbose=False,
+                force_recompile=False,
             )
 
     def test_main_run_test_reads_mode_from_metadata_when_flag_missing(self) -> None:
@@ -2423,6 +2424,7 @@ class PathResolutionTests(unittest.TestCase):
                 operator.resolve(),
                 "differential",
                 verbose=False,
+                force_recompile=False,
             )
 
     def test_run_test_wrapper_calls_loaded_skill_module(self) -> None:
@@ -3686,6 +3688,7 @@ class PathResolutionTests(unittest.TestCase):
                 keep_remote_workdir=False,
                 verbose=False,
                 stderr=sys.stderr,
+                force_recompile=False,
             )
 
     def test_main_run_test_prints_remote_workspace_when_kept(self) -> None:
@@ -3751,6 +3754,7 @@ class PathResolutionTests(unittest.TestCase):
                 "standalone",
                 None,
                 verbose=False,
+                force_recompile=False,
             )
             self.assertEqual(
                 stdout.getvalue(),
@@ -3789,6 +3793,7 @@ class PathResolutionTests(unittest.TestCase):
                 "msprof",
                 None,
                 verbose=False,
+                force_recompile=False,
             )
 
     def test_main_run_bench_threads_npu_devices_to_local_runner(self) -> None:
@@ -3820,6 +3825,7 @@ class PathResolutionTests(unittest.TestCase):
                 "msprof",
                 "0,2-3",
                 verbose=False,
+                force_recompile=False,
             )
 
     def test_run_bench_wrapper_calls_loaded_skill_module(self) -> None:
@@ -3886,6 +3892,7 @@ class PathResolutionTests(unittest.TestCase):
                 keep_remote_workdir=False,
                 verbose=False,
                 stderr=sys.stderr,
+                force_recompile=False,
             )
 
     def test_main_run_bench_threads_npu_devices_to_remote_runner(self) -> None:
@@ -3926,6 +3933,7 @@ class PathResolutionTests(unittest.TestCase):
                 keep_remote_workdir=False,
                 verbose=False,
                 stderr=sys.stderr,
+                force_recompile=False,
             )
 
     def test_main_run_bench_prints_remote_workspace_when_kept(self) -> None:
