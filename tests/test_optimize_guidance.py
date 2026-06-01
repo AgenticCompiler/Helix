@@ -142,6 +142,66 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
         )
         self.assertNotIn("{guidance_rules_block}", template)
 
+    def test_prepare_continuous_session_rejects_subagent_on_unsupported_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            manager = OptimizeSessionArtifactsManager()
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "Optimize subagent staging only supports `codex`, `claude`, and `opencode`; got `pi`.",
+            ):
+                manager.prepare_continuous_session(
+                    workdir,
+                    operator_path=operator,
+                    agent_name="pi",
+                    test_mode="differential",
+                    bench_mode="standalone",
+                    enable_subagent=True,
+                )
+
+            self.assertFalse((workdir / "AGENTS.md").exists())
+            self.assertFalse((workdir / ".pi").exists())
+
+    def test_prepare_continuous_session_stages_perf_diagnosis_subagent_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            manager = OptimizeSessionArtifactsManager()
+            state = manager.prepare_continuous_session(
+                workdir,
+                operator_path=operator,
+                agent_name="codex",
+                test_mode="differential",
+                bench_mode="standalone",
+                enable_subagent=True,
+            )
+
+            agents_path = workdir / "AGENTS.md"
+            guidance_content = agents_path.read_text(encoding="utf-8")
+            agent_path = workdir / ".codex" / "agents" / "triton-agent-perf-diagnosis-advisor.toml"
+
+            self.assertTrue(agent_path.exists())
+            self.assertIn(
+                "A diagnosis subagent named `triton-agent-perf-diagnosis-advisor` is available in this workspace.",
+                guidance_content,
+            )
+            self.assertIn(
+                "Use it proactively when the bottleneck hypothesis is still unclear before deeper optimize edits.",
+                guidance_content,
+            )
+            self.assertIn("must not perform optimization work", guidance_content)
+
+            warnings = manager.cleanup_continuous_session(state)
+            self.assertEqual(warnings, [])
+            self.assertFalse(agent_path.exists())
+            self.assertFalse((workdir / ".codex").exists())
+
     def test_prepare_continuous_session_creates_self_contained_guidance_file_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)

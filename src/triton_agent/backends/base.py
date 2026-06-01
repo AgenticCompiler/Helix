@@ -92,6 +92,7 @@ class AgentRunner(ABC):
             base_prompt=request.prompt,
             round_mode=request.round_mode,
             optimize_target=request.optimize_target,
+            enable_subagent=request.enable_subagent,
         )
         return self.run(request.with_prompt(resumed_prompt), stdout=stdout, stderr=stderr)
 

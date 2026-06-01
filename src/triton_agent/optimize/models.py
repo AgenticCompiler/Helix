@@ -39,6 +39,7 @@ class OptimizeRunOptions:
     optimize_knowledge: Literal["v1", "v2", "v3"] = "v1"
     compiler_source_analysis: Literal["off", "auto"] = "off"
     enable_cann_ext_api: bool = False
+    enable_subagent: bool = False
     enable_agent_hooks: bool = False
     upload_enabled: bool = True
     report: bool = True

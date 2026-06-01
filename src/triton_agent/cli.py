@@ -516,6 +516,7 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--reset-optimize", action="store_true")
             subparser.add_argument("--enable-compiler-source-analysis", action="store_true")
             subparser.add_argument("--enable-cann-ext-api", action="store_true")
+            subparser.add_argument("--enable-subagent", action="store_true")
             if command_kind == CommandKind.OPTIMIZE:
                 subparser.add_argument("--enable-agent-hooks", action="store_true")
             subparser.add_argument("--target-chip", default="A5", choices=_TARGET_CHIP_CHOICES)

@@ -135,6 +135,7 @@ class OptimizeRunLoop:
         optimize_target: str = "kernel",
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
+        enable_subagent: bool = False,
     ) -> str:
         return build_optimize_resume_prompt(
             summary,
@@ -143,6 +144,7 @@ class OptimizeRunLoop:
             optimize_target=optimize_target,
             compiler_source_path=compiler_source_path,
             compiler_source_commit=compiler_source_commit,
+            enable_subagent=enable_subagent,
         )
 
 
