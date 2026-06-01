@@ -22,6 +22,12 @@ Accept any of these as A5 evidence:
 
 If A5 cannot be confirmed, record this pattern as a candidate only. Do not apply `force_simt_only=True` solely because `aiv_scalar_ratio` is high.
 
+## Structural Repair Precedence
+
+Treat this high-priority card as a high-priority **check**, not permission to skip code-structure repair. If the scalar/index-heavy hot path is mainly a flat `numel` traversal with per-lane `//` / `%` coordinate recovery, first evaluate the generic flat-index-decode-to-layout-tiling repair in the active optimize knowledge tree. Apply `force_simt_only=True` only after that structural rewrite is not applicable, is too risky for the guarded shape contract, or has been tried and the kernel remains scalar/index dominated.
+
+This ordering keeps SIMT-only as an architecture-specific launch-mode experiment instead of masking a portable layout/indexing fix.
+
 ## Use When
 
 - Target hardware is confirmed as A5 by user statement, profile metadata, runtime/compile logs, runtime device query, or environment/CANN target settings.
@@ -29,6 +35,7 @@ If A5 cannot be confirmed, record this pattern as a candidate only. Do not apply
 - That row shows `aiv_scalar_ratio` clearly higher than `aiv_vec_ratio` and `cube_utilization`.
 - The kernel body is primarily discrete/index-driven memory access, gather/scatter-like movement, or scalar-heavy pointer/index computation.
 - Correctness validation and representative benchmark reruns are available after changing launch parameters.
+- Obvious flat-index decode structure has either been ruled out or repaired first.
 
 ## Avoid When
 
@@ -36,6 +43,7 @@ If A5 cannot be confirmed, record this pattern as a candidate only. Do not apply
 - Profiling does not identify the target kernel row confidently by `opName`.
 - The scalar ratio is only slightly higher or the bottleneck is host launch overhead, copy overhead, or another operator.
 - The shape regime is not representative enough to justify architecture-specific launch-mode changes.
+- Scalar overhead mainly comes from flat linear-index traversal with per-lane `//` / `%` coordinate recovery; repair that structure first when the mapping is affine.
 
 ## Signals
 
@@ -56,8 +64,9 @@ If A5 cannot be confirmed, record this pattern as a candidate only. Do not apply
 
 1. Confirm the profile row and kernel-name match from `op_summary_*.csv`.
 2. Confirm A5 using the evidence rules above.
-3. Confirm the kernel is discrete-memory-access dominated by reading the Triton kernel body.
-4. Add `force_simt_only=True` to the Triton kernel launch:
+3. Inspect the kernel for flat `numel` traversal plus `//` / `%` coordinate recovery. If present and the mapping is affine, route to the flat-index-decode tiling repair first.
+4. Confirm the remaining kernel is discrete-memory-access dominated by reading the Triton kernel body.
+5. Add `force_simt_only=True` to the Triton kernel launch:
 
    ```python
    _kernel[grid](
@@ -68,15 +77,15 @@ If A5 cannot be confirmed, record this pattern as a candidate only. Do not apply
    )
    ```
 
-5. Run correctness first. Do not trust performance if precision or functional comparison fails.
-6. Benchmark representative shapes and compare against the parent candidate.
-7. Tune launch parameters after enabling SIMT-only mode:
+6. Run correctness first. Do not trust performance if precision or functional comparison fails.
+7. Benchmark representative shapes and compare against the parent candidate.
+8. Tune launch parameters after enabling SIMT-only mode:
    - `num_warps`
    - grid decomposition
    - per-program work size
    - block size when it affects scalar/index work
-8. If enabling SIMT-only mode fails with compile error `507035`, follow the compile-failure repair below before abandoning the experiment.
-9. Keep the change only if correctness passes and measured performance improves.
+9. If enabling SIMT-only mode fails with compile error `507035`, follow the compile-failure repair below before abandoning the experiment.
+10. Keep the change only if correctness passes and measured performance improves.
 
 ## Compile Failure: 507035
 
@@ -118,6 +127,7 @@ Treat this as an environment-level repair. Record the original error, the `acl_d
 ## What To Verify After Applying
 
 - Correctness/precision remains within the operator's accepted tolerances for all tested dtypes and boundary shapes.
+- The round record says whether flat-index decode tiling was absent, ruled out, repaired first, or tried before SIMT-only.
 - The round record cites the A5 evidence source, such as profile metadata, log text, runtime query output, environment setting, or explicit user statement.
 - If compile error `507035` was repaired through `acl_default.json`, record each `simt_stack_size` attempt, stop after 3 failed attempts, restore the original JSON on failure or abandoned experiments, and rerun correctness before benchmarking any successful compile.
 - `force_simt_only=True` improves representative benchmark results, not only one isolated shape.
