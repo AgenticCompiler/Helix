@@ -29,7 +29,7 @@ class OptimizeRunOptions:
     resume_mode: str
     reset_optimize: bool
     no_agent_session: bool
-    supervise: Literal["on", "off"]
+    round_mode: Literal["continuous", "checked", "supervised"]
     output: str | None
     test_mode: str | None
     bench_mode: str | None
@@ -40,6 +40,9 @@ class OptimizeRunOptions:
     compiler_source_analysis: Literal["off", "auto"] = "off"
     enable_cann_ext_api: bool = False
     enable_agent_hooks: bool = False
+    log_tools: bool = False
+    upload_enabled: bool = True
+    report: bool = True
     skills_source_dir: Path | None = None
 
 
@@ -84,6 +87,7 @@ class OptimizeStatusWorkspace:
 
 
 class GateDecision(str, Enum):
+    PASS = "pass"
     PASS_CONTINUE = "pass-continue"
     PASS_STOP = "pass-stop"
     REVISE_METADATA = "revise-metadata"
@@ -107,6 +111,7 @@ class BaselinePreflightResult:
 class GateResult:
     decision: GateDecision
     blocking_issues: tuple[str, ...]
+    continue_required: bool = False
     auto_repairs_applied: tuple[str, ...] = ()
     next_parent_round: str | None = None
     next_hypothesis: str | None = None

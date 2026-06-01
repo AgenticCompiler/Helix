@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Literal, cast
 
@@ -10,12 +11,17 @@ from triton_agent.optimize.batch import resolve_batch_optimize_operator_file, ru
 from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
 from triton_agent.optimize.validation import validate_optimize_options
+from triton_agent.optimize_upload.client import UploadUrlMissingError
+from triton_agent.optimize_upload.workflow import upload_optimize_workspace
 from triton_agent.output import render_result
+from triton_agent.report.workspace import generate_workspace_report
+from triton_agent.verbose import emit_verbose
 
 
 def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     options = optimize_run_options_from_args(args)
     _validate_agent_options(parser, args)
+    _validate_interactive_round_mode(parser, options)
     try:
         validate_optimize_options(
             CommandKind.OPTIMIZE,
@@ -53,6 +59,11 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
             f"Make sure the '{options.agent_name}' CLI is installed and available in PATH."
         )
     render_result(result, show_output=request.show_output)
+    if result.succeeded:
+        if options.upload_enabled:
+            _maybe_upload_workspace(workdir, verbose=options.verbose)
+        if options.report:
+            _maybe_generate_report(workdir, options)
     return result.return_code
 
 
@@ -81,14 +92,23 @@ def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
     return run_optimize_batch(root, options, max_concurrency=args.max_concurrency)
 
 
-def _validate_supervise_mode(args: argparse.Namespace) -> Literal["on", "off"]:
-    value = getattr(args, "supervise", "off")
-    supervise = str(value)
-    if supervise == "on":
-        return "on"
-    if supervise == "off":
-        return "off"
-    raise ValueError(f"--supervise must be 'on' or 'off', got {value!r}")
+def _validate_round_mode(
+    args: argparse.Namespace,
+) -> Literal["continuous", "checked", "supervised"]:
+    value = str(getattr(args, "round_mode", "continuous"))
+    if value not in {"continuous", "checked", "supervised"}:
+        raise ValueError(
+            "--round-mode must be one of 'continuous', 'checked', or 'supervised'",
+        )
+    return cast(Literal["continuous", "checked", "supervised"], value)
+
+
+def _validate_interactive_round_mode(
+    parser: argparse.ArgumentParser,
+    options: OptimizeRunOptions,
+) -> None:
+    if options.interact and options.round_mode != "continuous":
+        parser.error("--interact is only supported with --round-mode continuous")
 
 
 def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptions:
@@ -115,7 +135,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         resume_mode=str(getattr(args, "resume", "auto")),
         reset_optimize=bool(getattr(args, "reset_optimize", False)),
         no_agent_session=bool(getattr(args, "no_agent_session", False)),
-        supervise=_validate_supervise_mode(args),
+        round_mode=_validate_round_mode(args),
         output=getattr(args, "output", None),
         test_mode=getattr(args, "test_mode", None),
         bench_mode=getattr(args, "bench_mode", None),
@@ -126,6 +146,9 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         compiler_source_analysis="auto" if compiler_source_enabled else "off",
         enable_cann_ext_api=cann_ext_api_enabled,
         enable_agent_hooks=agent_hooks_enabled,
+        log_tools=bool(getattr(args, "log_tools", False)),
+        upload_enabled=not bool(getattr(args, "no_upload", False)),
+        report=not bool(getattr(args, "no_report", False)),
         skills_source_dir=(
             Path(args.skills_source_dir).expanduser().resolve()
             if getattr(args, "skills_source_dir", None)
@@ -137,3 +160,31 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
 def _validate_agent_options(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     if getattr(args, "agent", None) == "openhands" and bool(getattr(args, "interact", False)):
         parser.error("OpenHands backend does not support --interact yet.")
+
+
+def _maybe_upload_workspace(workspace: Path, *, verbose: bool) -> None:
+    try:
+        upload_optimize_workspace(workspace, verbose=verbose)
+    except UploadUrlMissingError:
+        if verbose:
+            emit_verbose(sys.stderr, "upload", "Auto-upload skipped: URL not set.")
+    except (ValueError, RuntimeError) as exc:
+        if verbose:
+            emit_verbose(sys.stderr, "upload", f"Auto-upload warning: {exc}")
+
+
+def _maybe_generate_report(workspace: Path, options: OptimizeRunOptions) -> None:
+    try:
+        if options.verbose:
+            emit_verbose(sys.stderr, "report", "Auto-report: generating report.md...")
+        report_ok, report_msg = generate_workspace_report(
+            workspace=workspace,
+            agent_name=options.agent_name,
+            show_output=options.show_output,
+        )
+        if options.verbose:
+            status = "completed" if report_ok else f"warning: {report_msg}"
+            emit_verbose(sys.stderr, "report", f"Auto-report: {status}")
+    except Exception as exc:
+        if options.verbose:
+            emit_verbose(sys.stderr, "report", f"Auto-report warning: {exc}")
