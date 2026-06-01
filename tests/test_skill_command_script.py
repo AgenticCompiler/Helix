@@ -11,6 +11,29 @@ from pathlib import Path
 from typing import Optional
 from unittest.mock import patch
 
+_TRITON_ROUND_OPERATOR = """\
+import torch
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def add_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask)
+    y = tl.load(y_ptr + offsets, mask=mask)
+    tl.store(out_ptr + offsets, x + y, mask=mask)
+
+
+def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    out = torch.empty_like(x)
+    n_elements = out.numel()
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    add_kernel[grid](x, y, out, n_elements, BLOCK_SIZE=128)
+    return out
+"""
+
 _RUN_EVAL_SCRIPT_DIR = (
     Path(__file__).resolve().parents[1] / "skills" / "triton-npu-run-eval" / "scripts"
 )
@@ -94,6 +117,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 operator_path: Path,
                 bench_mode: str,
                 npu_devices: Optional[str] = None,
+                force_recompile: bool = False,
             ) -> tuple[dict[str, object], Path]:
                 observed_args.extend([bench_path, operator_path, bench_mode, npu_devices])
                 return (
@@ -242,13 +266,11 @@ class SkillCommandScriptTests(unittest.TestCase):
 
     @unittest.skipIf(shutil.which("bash") is None, "requires bash")
     def test_skill_script_pyright_wrapper_requires_exactly_one_target(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "scripts"
-            / "run-skill-script-pyright.sh"
-        )
+        repo_root = Path(__file__).resolve().parents[1]
+        script = "scripts/run-skill-script-pyright.sh"
         completed = subprocess.run(
-            ["bash", str(script)],
+            ["bash", script],
+            cwd=repo_root,
             capture_output=True,
             text=True,
             check=False,
@@ -259,18 +281,16 @@ class SkillCommandScriptTests(unittest.TestCase):
 
     @unittest.skipIf(shutil.which("bash") is None, "requires bash")
     def test_skill_script_pyright_wrapper_rejects_multiple_targets(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "scripts"
-            / "run-skill-script-pyright.sh"
-        )
+        repo_root = Path(__file__).resolve().parents[1]
+        script = "scripts/run-skill-script-pyright.sh"
         completed = subprocess.run(
             [
                 "bash",
-                str(script),
+                script,
                 "skills/triton-npu-run-eval/scripts/bench_runner.py",
                 "skills/triton-npu-run-eval/scripts/profile_runner.py",
             ],
+            cwd=repo_root,
             capture_output=True,
             text=True,
             check=False,
@@ -363,10 +383,13 @@ class SkillCommandScriptTests(unittest.TestCase):
                 test_path: Path,
                 operator_path: Path,
                 test_mode: str,
+                verbose: bool = False,
+                force_recompile: bool = False,
             ) -> tuple[dict[str, object], Path]:
                 self.assertEqual(test_path, test_file.resolve())
                 self.assertEqual(operator_path, operator.resolve())
                 self.assertEqual(test_mode, "differential")
+                self.assertFalse(verbose)
                 return (
                     {
                         "return_code": 0,
@@ -448,10 +471,13 @@ class SkillCommandScriptTests(unittest.TestCase):
                 test_path: Path,
                 operator_path: Path,
                 test_mode: str,
+                verbose: bool = False,
+                force_recompile: bool = False,
             ) -> tuple[dict[str, object], Path]:
                 self.assertEqual(test_path, test_file.resolve())
                 self.assertEqual(operator_path, operator.resolve())
                 self.assertEqual(test_mode, "differential")
+                self.assertFalse(verbose)
                 return (
                     {
                         "return_code": 0,
@@ -518,6 +544,83 @@ class SkillCommandScriptTests(unittest.TestCase):
                 f"Archived result: {archive}\n"
             ),
         )
+
+    def test_script_run_test_threads_verbose_to_local_runner(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+
+            def fake_run_local_test(
+                test_path: Path,
+                operator_path: Path,
+                test_mode: str,
+                verbose: bool = False,
+                force_recompile: bool = False,
+            ) -> tuple[dict[str, object], None]:
+                self.assertEqual(test_path, test_file.resolve())
+                self.assertEqual(operator_path, operator.resolve())
+                self.assertEqual(test_mode, "standalone")
+                self.assertTrue(verbose)
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    None,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_test_functions",
+                    return_value=(
+                        lambda _path: {"test-mode": "standalone"},
+                        fake_run_local_test,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ):
+                    exit_code = module.main(
+                        [
+                            "run-test",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                            "--verbose",
+                        ]
+                    )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout.getvalue(), "Return code: 0\n")
+        self.assertEqual(stderr.getvalue(), "")
         self.assertEqual(stderr.getvalue(), "")
 
     def test_script_runs_cli_help_without_installed_entrypoint(self) -> None:
@@ -756,8 +859,106 @@ class SkillCommandScriptTests(unittest.TestCase):
             )
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
-            self.assertIn('"decision": "pass"', completed.stdout)
+            payload = json.loads(completed.stdout)
+            self.assertEqual(payload["decision"], "pass")
+            self.assertIn("guideline", payload)
+            self.assertNotIn("summary", payload)
+            self.assertEqual(completed.stderr, "")
             self.assertTrue((workspace / "baseline" / "test_result.pt").exists())
+
+    def test_optimize_check_round_cli_outputs_json_only_with_guideline_and_next_option(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-optimize-check"
+            / "scripts"
+            / "optimize_check.py"
+        )
+        env = os.environ.copy()
+        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            baseline_dir = workdir / "baseline"
+            round_dir = workdir / "opt-round-4"
+            baseline_dir.mkdir()
+            round_dir.mkdir()
+
+            (workdir / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workdir / "opt-note.md").write_text("## Round\n", encoding="utf-8")
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "standalone",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (round_dir / "opt_kernel.py").write_text(_TRITON_ROUND_OPERATOR, encoding="utf-8")
+            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text("latency-a: 0.9\n", encoding="utf-8")
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-4",
+                        "parent_round": "round-3",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "opt_kernel_perf.txt",
+                        "comparison_target": "baseline/perf.txt",
+                        "effective_metric_source": "kernel",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                        "round_disposition": "continue",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "check-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--min-rounds",
+                    "25",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workdir,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertEqual(payload["decision"], "pass")
+            self.assertEqual(payload["next_option"], "opt-round-5")
+            self.assertIn("guideline", payload)
+            self.assertNotIn("summary", payload)
+            self.assertIn("Round 1/25 complete", payload["guideline"])
+            self.assertEqual(completed.stderr, "")
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.backends.codex import CodexRunner, _extract_session_id
+from triton_agent.backends.codex_trace import CodexJsonOutputFilter
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.prompts import build_prompt
 
@@ -66,6 +67,56 @@ class CodexRunnerTests(unittest.TestCase):
             command = runner.build_command(request)
             sandbox_index = command.index("--sandbox")
             self.assertEqual(command[sandbox_index + 1], "danger-full-access")
+
+    def test_show_output_command_uses_json_stdout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = CodexRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=True,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+            )
+
+            command = runner.build_command(request)
+
+            self.assertIn("--json", command)
+
+    def test_show_output_uses_codex_json_output_filter_without_log_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = CodexRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=True,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+            )
+
+            output_filter = runner.output_filter(request)
+
+            self.assertIsInstance(output_filter, CodexJsonOutputFilter)
 
     def test_run_bench_non_interactive_uses_danger_full_access(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -300,7 +351,7 @@ class CodexRunnerTests(unittest.TestCase):
                 runner.run(request)
             mocked.assert_called_once()
 
-    def test_show_output_filters_bare_hunk_fragments_from_terminal_and_log(self) -> None:
+    def test_buffered_output_filters_bare_hunk_fragments_from_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             runner = CodexRunner()
@@ -313,7 +364,7 @@ class CodexRunnerTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=True,
+                show_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-gen-test",
@@ -338,25 +389,20 @@ class CodexRunnerTests(unittest.TestCase):
                 "    sys.stdout.flush()\n",
                 encoding="utf-8",
             )
-            terminal_output = StringIO()
 
             with patch.object(runner, "build_command", return_value=[sys.executable, str(helper)]):
-                result = runner.run(request, stdout=terminal_output)
+                result = runner.run(request)
 
             self.assertEqual(result.return_code, 0)
-            terminal_text = _normalize_newlines(terminal_output.getvalue())
             result_text = _normalize_newlines(result.stdout)
-            log_path = workspace / "triton-agent-logs" / "gen-test.show-output.log"
-            log_text = _normalize_newlines(log_path.read_text(encoding="utf-8"))
 
-            for text in (terminal_text, result_text, log_text):
-                self.assertIn("baseline/perf.txt 368.0119", text)
-                self.assertIn("opt-round-1/opt_triton_10_SwigluQuant_perf.txt 299.39092500000004", text)
-                self.assertIn("     tl.store(scale_ptr + row, inv_scale)", text)
-                self.assertIn("done", text)
-                self.assertNotIn("@@ -10,0 +11,3 @@", text)
-                self.assertNotIn("+@triton.jit", text)
-                self.assertNotIn("+def _round_half_to_even_tl(values):", text)
+            self.assertIn("baseline/perf.txt 368.0119", result_text)
+            self.assertIn("opt-round-1/opt_triton_10_SwigluQuant_perf.txt 299.39092500000004", result_text)
+            self.assertIn("     tl.store(scale_ptr + row, inv_scale)", result_text)
+            self.assertIn("done", result_text)
+            self.assertNotIn("@@ -10,0 +11,3 @@", result_text)
+            self.assertNotIn("+@triton.jit", result_text)
+            self.assertNotIn("+def _round_half_to_even_tl(values):", result_text)
 
     def test_buffered_mode_uses_buffered_process_runner(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -409,17 +455,17 @@ class CodexRunnerTests(unittest.TestCase):
                     False,
                     remote="alice@example.com:2200",
                     remote_workdir="/tmp/remote",
-                    supervise="on",
+                    round_mode="checked",
                 ),
                 workdir=workspace,
                 min_rounds=3,
-                supervise="on",
+                round_mode="checked",
             )
             with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.resume(request, "one round done")
 
             resumed_request = mocked.call_args.args[0][-1]
-            self.assertIn("This invocation is the optimize worker role.", resumed_request)
+            self.assertIn("This invocation owns exactly one round.", resumed_request)
             self.assertIn("Continue the existing optimize task", resumed_request)
             self.assertIn("Read `opt-note.md`", resumed_request)
             self.assertIn("existing `opt-round-*` directories", resumed_request)

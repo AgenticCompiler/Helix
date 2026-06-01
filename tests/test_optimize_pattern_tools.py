@@ -108,6 +108,120 @@ Extra prose that should stay in the source file but not become a first-line inde
         ).read_text(encoding="utf-8")
         self.assertEqual(generated, checked_in)
 
+    def test_v1_pattern_catalog_builds_high_priority_reminder_lines(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge/scripts/pattern_catalog.py"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            patterns_dir = Path(tmp)
+            (patterns_dir / "grid.md").write_text(
+                """---
+id: grid-flatten-and-ub-buffering
+priority: high
+---
+
+# Grid Flattening And UB Buffering Pattern
+
+## Summary
+
+Flatten logical work items onto physical cores.
+
+## Use When
+
+- Task count is much larger than core count.
+""",
+                encoding="utf-8",
+            )
+            (patterns_dir / "tiling.md").write_text(
+                """# Tiling Pattern
+
+## Summary
+
+Keep peak footprint bounded.
+
+## Use When
+
+- UB pressure is dominant.
+""",
+                encoding="utf-8",
+            )
+
+            cards = module.list_high_priority_pattern_cards(patterns_dir)
+            reminder_lines = module.build_high_priority_reminder_lines(patterns_dir)
+
+            self.assertEqual(
+                [card.identifier for card in cards],
+                ["grid-flatten-and-ub-buffering"],
+            )
+            self.assertEqual(
+                reminder_lines,
+                ["`grid-flatten-and-ub-buffering`: Flatten logical work items onto physical cores."],
+            )
+
+    def test_v2_pattern_catalog_renders_high_priority_section_before_full_summaries(
+        self,
+    ) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            patterns_dir = Path(tmp)
+            (patterns_dir / "autotune.md").write_text(
+                """---
+priority: high
+---
+
+# Autotune Pattern
+
+## Summary
+
+Use bounded config search when structure is already sound.
+
+## Use When
+
+- Kernel structure is already reasonable.
+""",
+                encoding="utf-8",
+            )
+
+            rendered = module.build_index_text(patterns_dir)
+
+            self.assertIn("## High Priority Patterns", rendered)
+            self.assertIn("### `autotune`", rendered)
+            self.assertLess(
+                rendered.index("## High Priority Patterns"),
+                rendered.index("## Generated Pattern Summaries"),
+            )
+
+    def test_v3_pattern_catalog_rejects_invalid_priority_value(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            patterns_dir = Path(tmp)
+            (patterns_dir / "demo.md").write_text(
+                """---
+priority: urgent
+---
+
+# Demo Pattern
+
+## Summary
+
+Short summary.
+
+## Use When
+
+- Stable trigger.
+""",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                ValueError, "demo.md has invalid priority 'urgent'"
+            ):
+                module.build_index_text(patterns_dir)
+
     def test_build_index_rejects_invalid_priority_value(self) -> None:
         module = _load_skill_script(
             "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
@@ -213,6 +327,48 @@ Normal summary.
 
             self.assertIn("## High Priority Patterns", rendered)
             self.assertIn("- None.", rendered)
+
+    def test_checked_in_v2_pattern_index_matches_generator(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py"
+        )
+        patterns_dir = (
+            REPO_ROOT
+            / "skills"
+            / "triton-npu-optimize-knowledge-v2"
+            / "references"
+            / "patterns"
+        )
+        generated = module.build_index_text(patterns_dir)
+        checked_in = (
+            REPO_ROOT
+            / "skills"
+            / "triton-npu-optimize-knowledge-v2"
+            / "references"
+            / "pattern_index.md"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(generated, checked_in)
+
+    def test_checked_in_v3_pattern_index_matches_generator(self) -> None:
+        module = _load_skill_script(
+            "skills/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py"
+        )
+        patterns_dir = (
+            REPO_ROOT
+            / "skills"
+            / "triton-npu-optimize-knowledge-v3"
+            / "references"
+            / "patterns"
+        )
+        generated = module.build_index_text(patterns_dir)
+        checked_in = (
+            REPO_ROOT
+            / "skills"
+            / "triton-npu-optimize-knowledge-v3"
+            / "references"
+            / "pattern_index.md"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(generated, checked_in)
 
     def test_generated_index_links_to_pattern_subdirectory(self) -> None:
         module = _load_skill_script(

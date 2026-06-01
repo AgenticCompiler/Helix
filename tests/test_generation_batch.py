@@ -153,6 +153,54 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                 {"0", "1"},
             )
 
+    def test_run_gen_eval_batch_allows_same_device_when_workers_per_npu_gt_1(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("alpha", "beta"):
+                workspace = root / name
+                workspace.mkdir()
+                (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+
+            seen_envs: list[dict[str, str]] = []
+
+            def _fake_run(request, stdout=None, stderr=None):
+                del stdout, stderr
+                seen_envs.append(request.extra_env or {})
+                return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            env_vars = {
+                "TRITON_AGENT_BATCH_NPU_DEVICES": "0",
+                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+            }
+            with patch.dict(environ, env_vars, clear=False):
+                exit_code = run_gen_eval_batch(
+                    root,
+                    GenerationOptions(
+                        interact=False,
+                        verbose=False,
+                        show_output=False,
+                        force_overwrite=False,
+                        agent_name="codex",
+                        remote=None,
+                        remote_workdir=None,
+                        min_rounds=None,
+                        continue_optimize=False,
+                        output=None,
+                        test_mode="differential",
+                        bench_mode="standalone",
+                        prompt=None,
+                    ),
+                    max_concurrency=2,
+                    run_request=_fake_run,
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(len(seen_envs), 2)
+            self.assertEqual(
+                {env["ASCEND_RT_VISIBLE_DEVICES"] for env in seen_envs},
+                {"0"},
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

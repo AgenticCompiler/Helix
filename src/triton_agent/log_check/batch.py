@@ -5,7 +5,7 @@ import threading
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO, cast
 
 from triton_agent.optimize.models import BatchOptimizeResult
 from triton_agent.optimize.render import render_batch_optimize_results
@@ -22,6 +22,7 @@ def run_log_check_batch(
     agent_name: str = "codex",
     verbose: bool = False,
     show_output: bool = False,
+    log_tools: bool = False,
     max_concurrency: int = 1,
     stdout: TextIO | None = None,
     run_one: Callable[..., int] | None = None,
@@ -44,10 +45,11 @@ def run_log_check_batch(
             return BatchOptimizeResult(workspace=workspace, status="skipped", message="report already exists")
         rc = log_check_runner(
             target_path=workspace,
-            output_file=output_file,
+            output_json=f"{Path(output_file).stem}.json",
             agent_name=agent_name,
             verbose=verbose,
             show_output=show_output,
+            log_tools=log_tools,
         )
         if rc != 0:
             return BatchOptimizeResult(workspace=workspace, status="failed", message=f"log check exited with return code {rc}")
@@ -83,6 +85,16 @@ def run_log_check_batch(
 
 
 def summarize_log_check_output(path: Path) -> tuple[bool, str]:
+    """Summarize log_check result from JSON (preferred) or markdown (fallback).
+
+    *path* is the log_check_result.md file path. The corresponding JSON file is
+    derived by replacing the suffix.
+    """
+    json_path = path.with_name("log_check_result.json")
+    if json_path.is_file():
+        return _summarize_from_json(json_path)
+
+    # Fallback: parse legacy markdown
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
@@ -99,6 +111,25 @@ def summarize_log_check_output(path: Path) -> tuple[bool, str]:
     if "result: PASS" in text:
         return True, "missing overall summary; all visible results are PASS"
     return False, "missing overall summary"
+
+
+def _summarize_from_json(json_path: Path) -> tuple[bool, str]:
+    import json
+
+    try:
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return False, f"failed to read {json_path.name}: {exc}"
+    if not isinstance(payload, dict):
+        return False, f"{json_path.name} is not a JSON object"
+    data = cast(dict[str, Any], payload)
+    overall = data.get("overall")
+    if overall == "PASS":
+        return True, "overall PASS"
+    if overall == "FAIL":
+        failed_checks = data.get("failed_checks", "")
+        return False, str(failed_checks) or "overall FAIL"
+    return False, f"unexpected overall value: {overall!r}"
 
 
 def write_log_check_batch_summary(

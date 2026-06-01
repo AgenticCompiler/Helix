@@ -140,7 +140,7 @@ Optimize analysis is layered.
 - In `operator` target mode, show both kernel and total-op comparison results so you can diagnose whether kernel improvements translated end-to-end, then record `effective_metric_source: total-op` for the official round conclusion.
 - Do not hand-calculate speedups or percentage improvements from raw perf files.
 - Use the sibling `triton-npu-optimize-check` skill to run `check-round` (with `--min-rounds <N>` when the session has a minimum round requirement) and repair the current round until it passes before continuing or stopping.
-- After `check-round` passes, read the summary output for the exit signal: if minimum rounds are satisfied, the session may stop after this round.
+- After `check-round` passes, read the JSON `guideline` field for the exit signal: if minimum rounds are satisfied, the session may stop after this round.
 - In each round, keep the `extracted_bin_data` directory parsed from the simulator data of the current round, copy to the `opt-round-<N>` directory.
 
 ## Round Records

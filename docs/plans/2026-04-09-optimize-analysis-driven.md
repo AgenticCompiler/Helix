@@ -1,5 +1,7 @@
 # Optimize Analysis-Driven Implementation Plan
 
+> **Superseded:** The `--require-analysis` flag described in this plan was subsequently removed by `docs/specs/2026-04-22-optimize-layered-analysis-default-design.md` (layered analysis became the default, and the flag was deleted). This plan is retained as implementation history only.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Tighten `optimize` into a diagnosis-first workflow, add a lightweight `--require-analysis` flag that only strengthens prompts and guidance, and document that existing test and benchmark harnesses should be reused when present.

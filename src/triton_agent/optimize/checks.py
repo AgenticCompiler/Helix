@@ -15,7 +15,7 @@ def check_baseline(baseline_dir: Path) -> OptimizeCheckResult:
 def check_round(
     round_dir: Path,
     *,
-    min_rounds: int | None = None,
+    min_rounds: int = 5,
     optimize_target: Literal["kernel", "operator"] | None = None,
 ) -> OptimizeCheckResult:
     module = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
@@ -38,6 +38,7 @@ def _normalize_result(raw_result: object) -> OptimizeCheckResult:
             "decision": getattr(raw_result, "decision"),
             "issues": getattr(raw_result, "issues"),
             "summary": getattr(raw_result, "summary"),
+            "next_option": getattr(raw_result, "next_option", None),
         }
 
     issues = _normalize_issues(data["issues"])
@@ -50,6 +51,7 @@ def _normalize_result(raw_result: object) -> OptimizeCheckResult:
         decision=decision,
         issues=issues,
         summary=str(data["summary"]),
+        next_option=_normalize_optional_str(data.get("next_option")),
     )
 
 
@@ -71,3 +73,9 @@ def _normalize_decision(value: object) -> Literal["pass", "revise-required", "ha
     if text not in {"pass", "revise-required", "hard-fail"}:
         raise ValueError(f"Unexpected optimize check decision: {text}")
     return cast(Literal["pass", "revise-required", "hard-fail"], text)
+
+
+def _normalize_optional_str(value: object) -> str | None:
+    if value is None:
+        return None
+    return str(value)

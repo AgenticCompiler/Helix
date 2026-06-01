@@ -1,5 +1,7 @@
 # Optimize Continue Mode Implementation Plan
 
+> **Superseded:** The `--continue` flag described in this plan was replaced by `--resume {auto,continue,fresh}` as specified in `docs/specs/2026-04-09-optimize-resume-mode-design.md`. This plan is retained as implementation history only.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add an explicit `optimize --continue` mode that resumes an existing optimization workspace, reuses existing harness modes, and fails fast when the expected session state is missing.

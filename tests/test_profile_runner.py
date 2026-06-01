@@ -369,6 +369,7 @@ class ProfileRunnerTests(unittest.TestCase):
         self.assertIn("standalone_bench_runtime.py", copy_targets)
         self.assertIn("bench_contract.py", copy_targets)
         self.assertIn("perf_artifacts.py", copy_targets)
+        self.assertIn("profile_csv_parser.py", copy_targets)
         remote_command = remote_run.call_args.args[2]
         self.assertEqual(remote_command[0:2], ["python3", "-c"])
         self.assertIn("profile_local_standalone_case", remote_command[2])

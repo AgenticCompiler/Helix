@@ -22,11 +22,14 @@ from triton_agent.npu_affinity import (
     BatchNpuAffinityPool,
     affinity_env_for_device,
     configured_batch_npu_devices,
+    configured_batch_npu_slots,
     validate_batch_affinity_capacity,
 )
 from triton_agent.optimize.models import BatchOptimizeResult, BatchOptimizeWorkspace, OptimizeRunOptions
 from triton_agent.optimize.render import render_batch_optimize_results
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
+from triton_agent.optimize_upload.client import UploadUrlMissingError
+from triton_agent.optimize_upload.workflow import upload_optimize_workspace
 
 _BATCH_STATUS_FILENAME = "optimize-batch-status.json"
 _BATCH_STATUS_VERSION = 1
@@ -92,7 +95,8 @@ def run_optimize_batch(
     stream = stdout or sys.stdout
     devices = configured_batch_npu_devices()
     validate_batch_affinity_capacity(devices, max_concurrency=max_concurrency)
-    pool = BatchNpuAffinityPool(devices) if devices is not None else None
+    slots = configured_batch_npu_slots()
+    pool = BatchNpuAffinityPool(slots) if slots is not None else None
 
     def _run_item(
         item: BatchOptimizeWorkspace,
@@ -105,7 +109,10 @@ def run_optimize_batch(
                 return optimize_request_runner(request, forwarded_stdout, forwarded_stderr)
             return optimize_request_runner(request)
         with pool.acquire() as device:
-            request.extra_env = affinity_env_for_device(device)
+            request.extra_env = {
+                **(request.extra_env or {}),
+                **affinity_env_for_device(device),
+            }
             if forwarded_stdout is not None or forwarded_stderr is not None:
                 return optimize_request_runner(request, forwarded_stdout, forwarded_stderr)
             return optimize_request_runner(request)
@@ -167,6 +174,48 @@ def run_optimize_batch(
                 )
                 continue
             if result.succeeded:
+                if options.upload_enabled:
+                    try:
+                        upload_optimize_workspace(item.workspace, verbose=options.verbose)
+                    except UploadUrlMissingError:
+                        if options.verbose:
+                            print(
+                                f"[{item.workspace.name}] Auto-upload skipped: URL not set.",
+                                file=sys.stderr,
+                            )
+                    except (ValueError, RuntimeError) as exc:
+                        if options.verbose:
+                            print(
+                                f"[{item.workspace.name}] Auto-upload warning: {exc}",
+                                file=sys.stderr,
+                            )
+                if options.report:
+                    from triton_agent.report.workspace import generate_workspace_report
+
+                    try:
+                        if options.verbose:
+                            print(
+                                f"[{item.workspace.name}] Auto-report: generating report.md...",
+                                file=sys.stderr,
+                            )
+                        from triton_agent.report.workspace import generate_workspace_report
+                        report_ok, report_msg = generate_workspace_report(
+                            workspace=item.workspace,
+                            agent_name=options.agent_name,
+                            show_output=options.show_output,
+                        )
+                        if options.verbose:
+                            status = "completed" if report_ok else f"warning: {report_msg}"
+                            print(
+                                f"[{item.workspace.name}] Auto-report: {status}",
+                                file=sys.stderr,
+                            )
+                    except Exception as exc:
+                        if options.verbose:
+                            print(
+                                f"[{item.workspace.name}] Auto-report warning: {exc}",
+                                file=sys.stderr,
+                            )
                 results.append(
                     BatchOptimizeResult(
                         workspace=item.workspace,

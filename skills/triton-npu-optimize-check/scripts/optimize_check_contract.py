@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from kernel_continuity_check import analyze_triton_kernel_continuity
+from local_optimum_check import collect_local_optimum_warnings
 
 _BATCH_OPTIMIZE_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")
 _BATCH_OPTIMIZE_EXCLUDED_NAMES = {"__init__.py"}
@@ -64,6 +65,7 @@ class OptimizeCheckResult:
     decision: Literal["pass", "revise-required", "hard-fail"]
     issues: tuple[str, ...]
     summary: str
+    next_option: str | None = None
 
 
 @dataclass(frozen=True)
@@ -336,6 +338,16 @@ def _count_round_directories(workspace: Path) -> int:
     return sum(1 for path in workspace.glob("opt-round-*") if path.is_dir())
 
 
+def _next_round_name_for_round(round_dir: Path, *, completed: int) -> str:
+    name = round_dir.name
+    prefix = "opt-round-"
+    if name.startswith(prefix):
+        suffix = name[len(prefix):]
+        if suffix.isdigit():
+            return f"{prefix}{int(suffix) + 1}"
+    return f"{prefix}{completed + 1}"
+
+
 def check_round(
     round_dir: Path,
     *,
@@ -382,6 +394,7 @@ def check_round(
         )
 
     semantic_issues: list[str] = []
+    baseline_perf_path: Path | None = None
     try:
         baseline = load_baseline_state(round_dir.parent)
         if round_state.comparison_target != baseline.perf_artifact:
@@ -389,6 +402,7 @@ def check_round(
                 f"comparison_target={round_state.comparison_target} "
                 f"(expected {baseline.perf_artifact})"
             )
+        baseline_perf_path = _declared_workspace_file(round_dir.parent, baseline.perf_artifact)
     except ValueError:
         semantic_issues.append("cannot validate comparison_target: baseline state is invalid")
     if round_state.effective_metric_source not in {"kernel", "total-op", "mixed"}:
@@ -433,17 +447,28 @@ def check_round(
     cleaned: list[str] = []
     if ordinary_optimize_pt_cleanup_enabled():
         cleaned = cleanup_dir_pt_files(round_dir)
+    local_optimum_warnings: tuple[str, ...] = ()
+    if baseline_perf_path is not None:
+        local_optimum_warnings = collect_local_optimum_warnings(
+            round_dir,
+            baseline_perf_path=baseline_perf_path,
+        )
     if cleaned:
         result = _build_result(
             kind="round",
             decision="pass",
             issues=(
                 *tuple(runtime_warnings),
+                *local_optimum_warnings,
                 f"cleaned up {len(cleaned)} unused pt file(s) in {round_dir.name}: {', '.join(cleaned)}",
             ),
         )
     else:
-        result = _build_result(kind="round", decision="pass", issues=tuple(runtime_warnings))
+        result = _build_result(
+            kind="round",
+            decision="pass",
+            issues=(*tuple(runtime_warnings), *local_optimum_warnings),
+        )
 
     if min_rounds is not None:
         completed = _count_round_directories(round_dir.parent)
@@ -452,22 +477,33 @@ def check_round(
                 kind="round",
                 decision="pass",
                 issues=result.issues,
-                summary=(
+                summary=_append_pass_issues_to_summary(
                     f"round check passed. "
                     f"Minimum round requirement satisfied ({completed}/{min_rounds}) — "
-                    f"the optimize session may stop after this round."
+                    f"the optimize session may stop after this round.",
+                    result.issues,
                 ),
+                next_option=None,
             )
         else:
+            next_round_name = _next_round_name_for_round(round_dir, completed=completed)
             result = _build_result(
                 kind="round",
                 decision="pass",
                 issues=result.issues,
-                summary=(
+                summary=_append_pass_issues_to_summary(
                     f"round check passed. "
                     f"Round {completed}/{min_rounds} complete — "
-                    f"at least {min_rounds - completed} more round(s) required before stopping."
+                    f"at least {min_rounds - completed} more round(s) required before stopping. "
+                    f"Next round: {next_round_name}. "
+                    "Do not rush into the next code change. "
+                    "First decide which operator, kernel path, or wrapper bottleneck should anchor the next round. "
+                    "Decide whether existing evidence is already sufficient or whether profiling, IR, or compiler-source analysis is needed first. "
+                    "Do not use agents or subagents to optimize multiple rounds in parallel. "
+                    "Do not treat the next round as a parameter-only tuning sweep.",
+                    result.issues,
                 ),
+                next_option=next_round_name,
             )
 
     return result
@@ -654,14 +690,26 @@ def _build_result(
     decision: Literal["pass", "revise-required", "hard-fail"],
     issues: tuple[str, ...],
     summary: str | None = None,
+    next_option: str | None = None,
 ) -> OptimizeCheckResult:
     ok = decision == "pass"
     if summary is None:
-        summary = f"{kind} check passed" if ok else f"{kind} check requires fixes: {'; '.join(issues)}"
+        summary = (
+            _append_pass_issues_to_summary(f"{kind} check passed", issues)
+            if ok
+            else f"{kind} check requires fixes: {'; '.join(issues)}"
+        )
     return OptimizeCheckResult(
         ok=ok,
         kind=kind,
         decision=decision,
         issues=issues,
         summary=summary,
+        next_option=next_option,
     )
+
+
+def _append_pass_issues_to_summary(summary: str, issues: tuple[str, ...]) -> str:
+    if not issues:
+        return summary
+    return f"{summary} Notes: {'; '.join(issues)}"

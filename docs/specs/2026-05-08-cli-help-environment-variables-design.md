@@ -22,8 +22,8 @@ Extend `triton-agent --help` with a short environment variable section so users 
 - The section covers:
   - `TRITON_AGENT_BATCH_NPU_DEVICES`
   - `TRITON_AGENT_CODE_AGENT_MAX_RETRIES`
-  - `TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR`
-  - `TRITON_AGENT_HOME`
+  - `TRITON_AGENT_BENCH_OUTPUT_DIR`
+  - `TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR`
   - `LLM_API_KEY`
   - `LLM_MODEL`
   - `LLM_BASE_URL`

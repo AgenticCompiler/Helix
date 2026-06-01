@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TextIO
 
 from triton_agent.backends.factory import create_runner
+
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
 from triton_agent.optimize import execution as optimize_execution
 from triton_agent.optimize.compiler_source import prepare_compiler_source
@@ -61,7 +62,7 @@ def build_optimize_request(
                 options.remote_workdir,
                 options.min_rounds,
                 resolution.resume_existing_session,
-                supervise=options.supervise,
+                round_mode=options.round_mode,
                 target_chip=options.target_chip,
                 compiler_source_path=compiler_source.path,
                 compiler_source_commit=compiler_source.commit,
@@ -80,7 +81,7 @@ def build_optimize_request(
                 options.remote_workdir,
                 options.min_rounds,
                 resolution.resume_existing_session,
-                supervise=options.supervise,
+                round_mode=options.round_mode,
                 target_chip=options.target_chip,
                 compiler_source_path=compiler_source.path,
                 compiler_source_commit=compiler_source.commit,
@@ -99,7 +100,7 @@ def build_optimize_request(
                 options.remote_workdir,
                 options.min_rounds,
                 resolution.resume_existing_session,
-                supervise=options.supervise,
+                round_mode=options.round_mode,
                 target_chip=options.target_chip,
                 enable_cann_ext_api=True,
             )
@@ -116,7 +117,7 @@ def build_optimize_request(
                 options.remote_workdir,
                 options.min_rounds,
                 resolution.resume_existing_session,
-                supervise=options.supervise,
+                round_mode=options.round_mode,
                 target_chip=options.target_chip,
             )
     prompt = append_additional_user_instructions(
@@ -144,19 +145,22 @@ def build_optimize_request(
         skill_name=COMMAND_TO_SKILL[CommandKind.OPTIMIZE],
         prompt=prompt,
         workdir=workdir,
+        remote=options.remote,
+        remote_workdir=options.remote_workdir,
         min_rounds=options.min_rounds,
         continue_optimize=resolution.resume_existing_session,
         no_agent_session=options.no_agent_session,
-        supervise=options.supervise,
+        round_mode=options.round_mode,
         staged_skill_names=staged_skill_names,
         staged_skill_sources=staged_skill_sources,
-        optimize_role="worker" if options.supervise == "on" else None,
+        optimize_role="worker" if options.round_mode != "continuous" else None,
         target_chip=options.target_chip,
         optimize_target=options.optimize_target,
         compiler_source_analysis=options.compiler_source_analysis,
         compiler_source_path=compiler_source.path if compiler_source is not None else None,
         compiler_source_commit=compiler_source.commit if compiler_source is not None else None,
         enable_agent_hooks=options.enable_agent_hooks,
+        log_tools=options.log_tools,
     )
 
 
@@ -178,8 +182,8 @@ def run_optimize_request(
     try:
         runner = create_runner(request.agent_name)
         artifacts_manager = OptimizeSessionArtifactsManager()
-        if request.supervise == "on":
-            return optimize_execution.execute_supervised_optimize(
+        if request.round_mode == "continuous":
+            return optimize_execution.execute_continuous_optimize(
                 runner,
                 artifacts_manager,
                 request,
@@ -187,7 +191,7 @@ def run_optimize_request(
                 stderr=stderr,
                 verbose_stream=verbose_stream,
             )
-        return optimize_execution.execute_unsupervised_optimize(
+        return optimize_execution.execute_multi_invocation_optimize(
             runner,
             artifacts_manager,
             request,

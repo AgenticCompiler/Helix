@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Protocol, cast
 
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
-from triton_agent.optimize.models import GateDecision, GateResult
 from triton_agent.optimize.prompts import build_optimize_resume_prompt
 
 
@@ -14,14 +13,6 @@ class SupportsOptimizeRecovery(Protocol):
         ...
 
     def resume(self, request: AgentRequest, summary: str) -> AgentResult:
-        ...
-
-
-class SupportsSupervisedOptimizeAdapter(Protocol):
-    def run_worker(self, request: AgentRequest) -> AgentResult:
-        ...
-
-    def run_supervisor(self, request: AgentRequest, result: AgentResult) -> GateResult:
         ...
 
 
@@ -34,24 +25,18 @@ class OptimizeRunLoop:
         current_request = self._with_default_optimize_role(request)
         resume_summary: str | None = None
 
-        if _supports_supervised_optimize_adapter(runner):
-            return self._run_supervised_loop(
-                cast(SupportsSupervisedOptimizeAdapter, runner),
-                current_request,
-            )
-
         if not _supports_recovery_runner(runner):
-            raise TypeError("runner does not implement optimize recovery or round gate interfaces")
+            raise TypeError("runner does not implement optimize recovery")
         recovery_runner = cast(SupportsOptimizeRecovery, runner)
 
-        return self._run_unsupervised_loop(
+        return self._run_continuous_loop(
             recovery_runner,
             current_request,
             attempt=attempt,
             resume_summary=resume_summary,
         )
 
-    def _run_unsupervised_loop(
+    def _run_continuous_loop(
         self,
         runner: SupportsOptimizeRecovery,
         current_request: AgentRequest,
@@ -85,6 +70,8 @@ class OptimizeRunLoop:
         current_request: AgentRequest,
         result: AgentResult,
     ) -> tuple[AgentResult, AgentRequest]:
+        if current_request.interact:
+            return result, current_request
         while result.succeeded and self._needs_more_rounds(current_request):
             round_count_before_resume = self._count_round_directories(current_request.workdir)
             summary = self._build_rounds_summary(current_request)
@@ -92,16 +79,16 @@ class OptimizeRunLoop:
             round_count_after_resume = self._count_round_directories(current_request.workdir)
             if (
                 result.succeeded
-                and current_request.min_rounds is not None
                 and round_count_after_resume <= round_count_before_resume
             ):
+                required_rounds = cast(int, current_request.min_rounds)
                 return (
                     AgentResult(
                         return_code=1,
                         stdout=result.stdout,
                         stderr=(
                             "No progress: resume exited successfully but did not create a new "
-                            f"`opt-round-*` directory ({round_count_after_resume}/{current_request.min_rounds}). "
+                            f"`opt-round-*` directory ({round_count_after_resume}/{required_rounds}). "
                             "Ensure each round writes a new `opt-round-*` directory before rerunning."
                         ),
                         stalled=False,
@@ -111,90 +98,30 @@ class OptimizeRunLoop:
                 )
         return result, current_request
 
-    def _run_supervised_loop(
-        self,
-        runner: SupportsSupervisedOptimizeAdapter,
-        request: AgentRequest,
-    ) -> AgentResult:
-        current_request = request
-        while True:
-            worker_attempt = 0
-            while True:
-                worker_result = runner.run_worker(current_request)
-                if worker_result.succeeded:
-                    break
-                if current_request.interact or worker_attempt >= self.max_recovery_attempts:
-                    return worker_result
-                if not worker_result.stalled:
-                    return worker_result
-                worker_attempt += 1
-            gate_result = runner.run_supervisor(current_request, worker_result)
-
-            if gate_result.decision == GateDecision.PASS_STOP:
-                return worker_result
-            if gate_result.decision in {GateDecision.PASS_CONTINUE, GateDecision.REVISE_METADATA}:
-                current_request = replace(
-                    current_request,
-                    prompt=self._build_continue_prompt(
-                        request.prompt,
-                        self._build_gate_summary(gate_result),
-                        supervise=current_request.supervise,
-                        optimize_target=current_request.optimize_target,
-                        compiler_source_path=current_request.compiler_source_path,
-                        compiler_source_commit=current_request.compiler_source_commit,
-                    ),
-                    optimize_role="worker",
-                )
-                continue
-            if gate_result.decision == GateDecision.REVISE_REQUIRED:
-                current_request = replace(
-                    current_request,
-                    prompt=self._build_continue_prompt(
-                        request.prompt,
-                        self._build_gate_summary(gate_result),
-                        supervise=current_request.supervise,
-                        optimize_target=current_request.optimize_target,
-                        compiler_source_path=current_request.compiler_source_path,
-                        compiler_source_commit=current_request.compiler_source_commit,
-                    ),
-                    optimize_role="worker",
-                )
-                continue
-            return AgentResult(
-                return_code=1,
-                stdout="",
-                stderr=self._build_gate_summary(gate_result),
-            )
-
     def _build_summary(self, result: AgentResult) -> str:
         output = result.stdout.strip() or result.stderr.strip() or "No progress output was captured."
         return output[-2000:]
 
     def _needs_more_rounds(self, request: AgentRequest) -> bool:
-        if request.min_rounds is None:
-            return False
-        return self._count_round_directories(request.workdir) < request.min_rounds
+        required_rounds = cast(int, request.min_rounds)
+        return self._count_round_directories(request.workdir) < required_rounds
 
     def _count_round_directories(self, workdir: Path) -> int:
         return sum(1 for path in workdir.glob("opt-round-*") if path.is_dir())
 
     def _build_rounds_summary(self, request: AgentRequest) -> str:
         completed_rounds = self._count_round_directories(request.workdir)
-        required_rounds = request.min_rounds
+        required_rounds = cast(int, request.min_rounds)
         return (
             f"The optimize run exited, but only {completed_rounds} round directories exist "
             f"under the workspace and at least {required_rounds} are required."
         )
 
-    def _build_gate_summary(self, gate_result: GateResult) -> str:
-        issues = "; ".join(gate_result.blocking_issues) if gate_result.blocking_issues else "none"
-        return f"Gate decision: {gate_result.decision.value}. Blocking issues: {issues}"
-
     def _with_default_optimize_role(self, request: AgentRequest) -> AgentRequest:
         if (
             request.command_kind != CommandKind.OPTIMIZE
             or request.optimize_role is not None
-            or request.supervise != "on"
+            or request.round_mode == "continuous"
         ):
             return request
         return replace(request, optimize_role="worker")
@@ -204,7 +131,7 @@ class OptimizeRunLoop:
         base_prompt: str,
         summary: str,
         *,
-        supervise: str = "on",
+        round_mode: str = "checked",
         optimize_target: str = "kernel",
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
@@ -212,15 +139,11 @@ class OptimizeRunLoop:
         return build_optimize_resume_prompt(
             summary,
             base_prompt=base_prompt,
-            supervise="off" if supervise == "off" else "on",
+            round_mode=round_mode,
             optimize_target=optimize_target,
             compiler_source_path=compiler_source_path,
             compiler_source_commit=compiler_source_commit,
         )
-
-
-def _supports_supervised_optimize_adapter(runner: object) -> bool:
-    return hasattr(runner, "run_worker") and hasattr(runner, "run_supervisor")
 
 
 def _supports_recovery_runner(runner: object) -> bool:

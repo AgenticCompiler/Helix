@@ -15,10 +15,15 @@ This README is organized by task so you can quickly find the right command for t
 - `gen-bench`: generate a benchmark for one operator.
 - `run-bench`: run an existing generated benchmark.
 - `optimize`: optimize one operator.
+- `optimize-batch`: optimize many operator workspaces.
+- `upload-optimize`: upload one optimize workspace to an analysis server.
+- `--no-upload`: skip automatic upload after optimize.
+- `log-check`: run Codex log strategy validation for one workspace.
+- `log-check-batch`: run log strategy validation across multiple workspaces.
+- `clean`: remove known generated artifacts from one workspace or a batch root.
 - `status`: summarize optimization progress across many workspaces.
 - `verify`: rerun tests and benchmarks for the current best optimize round.
 - `verify-batch`: verify many optimize workspaces under one root.
-- `optimize-batch`: optimize many operator workspaces.
 - `compare-result`: compare two archived correctness result files.
 - `compare-perf`: compare two archived performance files.
 
@@ -49,7 +54,25 @@ uv run triton-agent status --input operators_root --format markdown
 uv run triton-agent verify --input .
 uv run triton-agent verify-batch --input operators_root
 uv run triton-agent optimize-batch --input operators_root
+uv run triton-agent log-check --input .
+uv run triton-agent log-check-batch --input operators_root
+uv run triton-agent clean --input .
+uv run triton-agent clean --input operators_root
 ```
+
+### Upload Server
+
+An optional standalone HTTP server for receiving optimize workspace archives lives under the repository at `services/triton-agent-upload-server/`. The server runs separately from the main CLI:
+
+```bash
+cd services/triton-agent-upload-server
+uv sync
+uv run triton-agent-upload-server \
+  --storage-root /data/triton-agent/uploads \
+  --temp-root /data/triton-agent/uploads/.tmp
+```
+
+Uploads are stored as `<timestamp>-<workspace_slug>-<uid>.tar.gz` with a matching `<...>.receipt.json` sidecar. See `services/triton-agent-upload-server/README.md` for details.
 
 ## Runtime Environment Variables
 
@@ -57,11 +80,15 @@ These are the environment variables that `triton-agent` reads directly at runtim
 
 | Variable | Required | Used by | Purpose |
 | --- | --- | --- | --- |
-| `TRITON_AGENT_HOME` | No | `optimize`, `optimize-batch` with `--enable-compiler-source-analysis` | Overrides the default Triton Agent home directory. The compiler-source checkout is stored under `<TRITON_AGENT_HOME>/compiler-sources/AscendNPU-IR/` instead of `~/.triton-agent/compiler-sources/AscendNPU-IR/`. |
-| `TRITON_AGENT_BATCH_NPU_DEVICES` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Comma-separated Ascend device list that also supports inclusive numeric ranges such as `0,3-5,8-9`. When set, concurrent batch workspaces are pinned to distinct devices, and `--max-concurrency` must not exceed the number of configured devices. |
+| `TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR` | No | `optimize`, `optimize-batch` with `--enable-compiler-source-analysis` | Overrides the base directory for cached compiler source checkouts (default: `~/.triton-agent`). The checkout is stored under `<TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR>/compiler-sources/AscendNPU-IR/`. |
+| `TRITON_AGENT_BATCH_NPU_DEVICES` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Comma-separated Ascend device list that also supports inclusive numeric ranges such as `0,3-5,8-9`. When set, concurrent batch workspaces are pinned to these devices. See also `TRITON_AGENT_BATCH_WORKERS_PER_NPU` to allow multiple workers per device. |
+| `TRITON_AGENT_BATCH_WORKERS_PER_NPU` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Positive integer that allows each configured NPU device to host multiple concurrent batch workers. Only effective when `TRITON_AGENT_BATCH_NPU_DEVICES` is set; defaults to `1`. Effective capacity is `device_count × workers_per_npu`. |
 | `TRITON_AGENT_CODE_AGENT_MAX_RETRIES` | No | Agent-backed commands | Non-negative integer retry budget for transient code-agent failures such as rate limits. Default is `2`. Set `0` to disable retries. |
-| `TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR` | No | Local `run-bench`, `verify`, and optimize benchmark validation | Preserves local benchmark profiler output directories under the given root instead of using auto-cleaned temporary directories. Applies to both `standalone` and `msprof` benchmark modes so you can inspect raw profiler artifacts after local benchmark runs. |
+| `TRITON_AGENT_BENCH_OUTPUT_DIR` | No | Local `run-bench`, `verify`, and optimize benchmark validation | Preserves local benchmark profiler output directories under the given root instead of using auto-cleaned temporary directories. Applies to both `standalone` and `msprof` benchmark modes so you can inspect raw profiler artifacts after local benchmark runs. |
 | `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` | No | Ordinary `optimize`, `optimize-batch` PT cleanup | Opts back into deleting optimize-owned archived PT results during ordinary round and end-of-run cleanup. By default those PT files are preserved. This variable does not affect `check-baseline`, which never deletes PT files, or `--reset-optimize`, which still deletes known optimize PT artifacts. |
+| `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW` | No | `check-round`, optimize continuation guidance | Number of recent comparable rounds to inspect for advisory local-optimum warnings after a round already passes the contract. Default is `3`. Minimum effective value is `2`. |
+| `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN` | No | `check-round`, optimize continuation guidance | Maximum adjacent baseline-relative geomean speedup gain that still counts as nearly flat for advisory local-optimum warnings. Default is `0.02`. |
+| `TRITON_AGENT_OPTIMIZE_UPLOAD_URL` | No | `upload-optimize` | HTTP endpoint for optimize workspace uploads. |
 | `LLM_API_KEY` | Only for `--agent openhands` | OpenHands backend | API key forwarded to the OpenHands SDK LLM client. |
 | `LLM_MODEL` | Only for `--agent openhands` | OpenHands backend | Model name passed to the OpenHands SDK LLM client. |
 | `LLM_BASE_URL` | No | OpenHands backend | Optional custom base URL for the OpenHands SDK LLM client. |
@@ -70,10 +97,13 @@ Examples:
 
 ```bash
 export TRITON_AGENT_BATCH_NPU_DEVICES=0,3-5,8-9
+export TRITON_AGENT_BATCH_WORKERS_PER_NPU=2
 export TRITON_AGENT_CODE_AGENT_MAX_RETRIES=4
 export TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES=1
-export TRITON_AGENT_HOME=$HOME/.triton-agent
-uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
+export TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW=4
+export TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN=0.01
+export TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR=$HOME/.triton-agent
+uv run triton-agent optimize-batch --input operators_root --concurrency max
 ```
 
 ```bash
@@ -87,7 +117,7 @@ uv run triton-agent gen-test --input a.py --agent openhands
 
 These variables are normally set by `triton-agent` for child processes. You usually do not need to export them yourself:
 
-- `ASCEND_RT_VISIBLE_DEVICES`: set for each batch workspace when `TRITON_AGENT_BATCH_NPU_DEVICES` is configured.
+- `ASCEND_RT_VISIBLE_DEVICES`: set for each batch workspace when `TRITON_AGENT_BATCH_NPU_DEVICES` is configured. Multiple concurrent workspaces may receive the same device when `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is greater than `1`.
 
 ## Generate Tests
 
@@ -318,8 +348,13 @@ Common options:
 - `--enable-cann-ext-api`: allow A5-only CANN Triton extension API optimization patterns during optimize runs.
 - `--enable-agent-hooks`: enable the workspace-local Codex hook guard for this optimize run. Agent hooks are disabled by default.
 - `--min-rounds <N>`: require at least N optimization rounds.
+- `--round-mode continuous|checked|supervised`: default is `continuous`. Controls how the optimize session is structured:
+  - `continuous`: one long-running optimize agent owns multiple rounds end-to-end.
+  - `checked`: one round per invocation; the CLI validates each round and decides whether to continue, stop, or fail.
+  - `supervised`: one round per invocation; the CLI validates each round, then a supervisor audit pass reviews it and decides whether to continue, stop, or fail.
+  For `checked` and `supervised`, optimize runs a baseline preflight before the round loop and repairs `baseline/` when needed.
 - `--no-agent-session`: disable persistent agent sessions when supported.
-- `--interact`
+- `--interact`: only supported with `--round-mode continuous`; when you exit the attached agent session, the optimize command stops instead of auto-resuming to satisfy `--min-rounds`.
 - `--show-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -340,7 +375,7 @@ uv run triton-agent optimize --input a.py --optimize-target operator
 
 Optimize knowledge selection is explicit. `--optimize-knowledge v1` keeps the current default optimize knowledge library. `--optimize-knowledge v2` stages `triton-npu-optimize-knowledge-v2`. `--optimize-knowledge v3` stages `triton-npu-optimize-knowledge-v3` (working copy forked from `triton-npu-optimize-knowledge` for ongoing updates).
 
-Compiler source analysis is opt-in. When enabled, the CLI prepares a shallow AscendNPU-IR checkout under `~/.triton-agent/compiler-sources/AscendNPU-IR/` before launching the agent, using the configured Triton Agent home when `TRITON_AGENT_HOME` is set. The launched agent receives only the local path and commit, treats the checkout as read-only, and must not clone, fetch, pull, or modify compiler source. This option enables an escalation path for difficult compiler-side explanations; it does not require compiler-source analysis in every round.
+Compiler source analysis is opt-in. When enabled, the CLI prepares a shallow AscendNPU-IR checkout under `~/.triton-agent/compiler-sources/AscendNPU-IR/` (or `<TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR>/compiler-sources/AscendNPU-IR/` if `TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR` is set) before launching the agent. The launched agent receives only the local path and commit, treats the checkout as read-only, and must not clone, fetch, pull, or modify compiler source. This option enables an escalation path for difficult compiler-side explanations; it does not require compiler-source analysis in every round.
 
 CANN extension API pattern access is also opt-in. When `--enable-cann-ext-api` is set, optimize stages a dedicated skill with specialized CANN Triton extension API guidance, including `sub_vec_id()`-based rewrite patterns. This option is valid only with `--target-chip A5`.
 
@@ -394,18 +429,36 @@ Use the batch commands when `--input` points to a directory of operator workspac
 
 ### Batch NPU Affinity
 
-Set `TRITON_AGENT_BATCH_NPU_DEVICES` to a comma-separated device list when you want concurrent batch workspaces to stay on distinct Ascend NPUs. The value supports explicit IDs and inclusive numeric ranges:
+Set `TRITON_AGENT_BATCH_NPU_DEVICES` to a comma-separated device list when you want concurrent batch workspaces to be pinned to specific Ascend NPUs. The value supports explicit IDs and inclusive numeric ranges:
 
 ```bash
 export TRITON_AGENT_BATCH_NPU_DEVICES=0,3-5,8-9
-uv run triton-agent optimize-batch --input operators_root --max-concurrency 4
+uv run triton-agent optimize-batch --input operators_root --concurrency 4
 ```
 
 When this variable is set:
 
-- `gen-eval-batch`, `convert-batch`, and `optimize-batch` assign one configured device per running workspace.
-- `--max-concurrency` must not exceed the number of configured devices.
-- the assigned device is exported as `ASCEND_RT_VISIBLE_DEVICES` for launched workspace processes.
+- `gen-eval-batch`, `convert-batch`, and `optimize-batch` assign one device per running workspace.
+- `--concurrency` may be a positive integer or `max`.
+- `--concurrency max` resolves to the effective batch affinity capacity.
+- numeric `--concurrency` values must not exceed the number of configured devices unless per-device sharing is enabled.
+- The assigned device is exported as `ASCEND_RT_VISIBLE_DEVICES` for launched workspace processes.
+
+By default each device hosts at most one concurrent workspace. Set `TRITON_AGENT_BATCH_WORKERS_PER_NPU` to allow multiple workers to share the same device:
+
+```bash
+export TRITON_AGENT_BATCH_NPU_DEVICES=0,1
+export TRITON_AGENT_BATCH_WORKERS_PER_NPU=2
+uv run triton-agent optimize-batch --input operators_root --concurrency max
+```
+
+When `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is set:
+
+- Effective capacity is `device_count × workers_per_npu`.
+- numeric `--concurrency` values must not exceed the effective capacity.
+- `--concurrency max` resolves to that effective capacity.
+- Multiple concurrent workspaces may receive the same `ASCEND_RT_VISIBLE_DEVICES` value, up to the configured per-device limit.
+- This variable is ignored when `TRITON_AGENT_BATCH_NPU_DEVICES` is unset.
 
 ### Generate Evaluation Assets In Batch
 
@@ -418,7 +471,7 @@ Common options:
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--test-mode standalone|differential`
 - `--bench-mode standalone|msprof`
-- `--max-concurrency <N>`
+- `--concurrency <N|max>`: defaults to `1`
 - `--show-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -433,7 +486,7 @@ Common options:
 
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--test-mode differential`
-- `--max-concurrency <N>`
+- `--concurrency <N|max>`: defaults to `1`
 - `--show-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -548,7 +601,7 @@ Common options:
 - `--enable-cann-ext-api`
 - `--min-rounds <N>`
 - `--no-agent-session`
-- `--max-concurrency <N>`: defaults to `1`
+- `--concurrency <N|max>`: defaults to `1`
 - `--show-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -613,6 +666,28 @@ The command prints:
 - `Geomean speedup` for benchmark-style speedup aggregation
 - `Total speedup` for whole-workload elapsed-time aggregation
 
+## Run Log Strategy Validation
+
+Use `log-check` when you need to validate Codex agent log strategy for one operator workspace.
+
+```bash
+uv run triton-agent log-check --input .
+```
+
+For batch validation across many workspaces:
+
+```bash
+uv run triton-agent log-check-batch --input operators_root
+```
+
+Common options:
+
+- `--check-result-file <path>`: workspace-relative log check result file name (default: `log_check_result.md`).
+- `--summary-file <path>`: root-relative batch log check summary file name (default: `log_check_summary.md`, batch only).
+- `--agent codex|opencode|pi|claude|openhands|traecli`
+- `--show-output`: stream agent output live.
+- `--verbose`: print more execution detail.
+
 ## Shared Options
 
 These options appear on multiple commands:
@@ -636,6 +711,7 @@ For `--agent codex`, the staged files are:
 
 - `.codex/hooks.json`
 - `.codex/triton-agent-hooks/pretooluse_guard.py`
+- `.codex/triton-agent-hooks/tool_trace_hook.py`
 - `.codex/triton-agent-hooks/policy.json`
 
 For `--agent opencode`, the staged files are:
@@ -643,21 +719,21 @@ For `--agent opencode`, the staged files are:
 - `.opencode/plugins/triton-agent-hook-guard.js`
 - `.opencode/triton-agent-hooks/policy.json`
 
-The policy is rendered for the current workspace. When optimize enables compiler
-source analysis, the resolved compiler source checkout is also added as an
-explicit allowed read root for that run. For Codex, it evaluates both
-direct `Read` tool requests and read-oriented shell commands, including wrapped
-shell invocations such as `bash -lc "sed ..."`. For supported backends, it
-blocks reads outside the workspace unless the current run added an explicit
-allowed read root, and
-blocks reads of staged skill
-implementation files under the backend-native staged skill path, such as
-`.codex/skills/*/scripts/` or `.opencode/skills/*/scripts/`. A blocked read
-returns a short denial message to the agent telling it to stay within the
-workspace and use skill instructions or the documented command interface
-instead. The guard still allows documented helper-script entrypoints such as
-`python3 .opencode/skills/.../scripts/run-command.py ...`; it only blocks
-reading those staged implementation files as source.
+The policy is rendered for the current workspace with separate `trace` and
+`guard` sections. `--log-tools` enables only `trace.enabled`; `--enable-agent-hooks`
+enables `guard.enabled`. When optimize enables compiler source analysis, the
+resolved compiler source checkout is also added as an explicit allowed read root
+for that run. For Codex, the guard evaluates both direct `Read` tool requests
+and read-oriented shell commands, including wrapped shell invocations such as
+`bash -lc "sed ..."`. For supported backends, it blocks reads outside the
+workspace unless the current run added an explicit allowed read root, and blocks
+reads of staged skill implementation files under the backend-native staged skill
+path, such as `.codex/skills/*/scripts/` or `.opencode/skills/*/scripts/`. A
+blocked read returns a short denial message to the agent telling it to stay
+within the workspace and use skill instructions or the documented command
+interface instead. The guard still allows documented helper-script entrypoints
+such as `python3 .opencode/skills/.../scripts/run-command.py ...`; it only
+blocks reading those staged implementation files as source.
 
 The staged hook files are removed after the agent process exits. If
 backend-owned hook paths already exist, the run fails explicitly instead of
@@ -666,6 +742,31 @@ merging with or overwriting user-owned hook configuration.
 OpenCode hook support uses a project plugin under `.opencode/plugins/`. Because
 OpenCode's `--pure` mode disables external plugins, hook-enabled OpenCode runs
 omit `--pure`; ordinary OpenCode runs keep `--pure` unchanged.
+
+## Clean Workspaces
+
+Use `clean` when you want to remove known generated artifacts while keeping the
+original operator source file.
+
+```bash
+uv run triton-agent clean --input .
+uv run triton-agent clean --input operators_root
+uv run triton-agent clean --input . --deep
+```
+
+Behavior:
+
+- `--input` accepts one operator workspace directory or a batch root like `status`.
+- default cleanup removes known generated artifacts such as `triton_<op>.py`,
+  `opt_<op>.py`, `*_result.pt`, `*_perf.txt`, `baseline/`, `opt-round-*`,
+  `opt-verify/`, `triton-agent-logs/`, `PROF_*`, and `extra-info.json`.
+- default cleanup keeps the original operator source file plus reusable generated
+  test and benchmark harnesses.
+- `--deep` also removes generated test and benchmark harnesses such as
+  `test_<op>.py`, `differential_test_<op>.py`, and `bench_<op>.py`.
+- batch-root cleanup also removes batch-level generated files such as
+  `optimize-batch-status.json`, `log_check_summary.md`,
+  `report-batch-state.json`, and `report-batch.md`.
 
 ## Output Conventions
 

@@ -22,8 +22,13 @@ class CommandKind(str, Enum):
     STATUS = "status"
     LOG_CHECK = "log-check"
     LOG_CHECK_BATCH = "log-check-batch"
+    TRACE_ANALYZE = "trace-analyze"
     OPTIMIZE = "optimize"
     OPTIMIZE_BATCH = "optimize-batch"
+    UPLOAD_OPTIMIZE = "upload-optimize"
+    REPORT = "report"
+    REPORT_BATCH = "report-batch"
+    CLEAN = "clean"
 
 
 COMMAND_TO_SKILL = {
@@ -42,8 +47,13 @@ COMMAND_TO_SKILL = {
     CommandKind.STATUS: "",
     CommandKind.LOG_CHECK: "",
     CommandKind.LOG_CHECK_BATCH: "",
+    CommandKind.TRACE_ANALYZE: "",
     CommandKind.OPTIMIZE: "triton-npu-optimize",
     CommandKind.OPTIMIZE_BATCH: "",
+    CommandKind.UPLOAD_OPTIMIZE: "",
+    CommandKind.REPORT: "",
+    CommandKind.REPORT_BATCH: "",
+    CommandKind.CLEAN: "",
 }
 
 
@@ -63,15 +73,16 @@ class AgentRequest:
     skill_name: str
     prompt: str
     workdir: Path
+    remote: Optional[str] = None
+    remote_workdir: Optional[str] = None
     extra_env: dict[str, str] | None = None
     min_rounds: Optional[int] = None
     continue_optimize: bool = False
     no_agent_session: bool = False
-    supervise: Literal["on", "off"] = "off"
+    round_mode: Literal["continuous", "checked", "supervised"] = "continuous"
     staged_skill_names: tuple[str, ...] | None = None
     staged_skill_sources: dict[str, str] | None = None
     optimize_role: str | None = None
-    round_brief_path: Optional[Path] = None
     supervisor_report_path: Optional[Path] = None
     target_chip: Literal["A3", "A5"] = "A5"
     optimize_target: Literal["kernel", "operator"] = "kernel"
@@ -79,6 +90,9 @@ class AgentRequest:
     compiler_source_path: Optional[Path] = None
     compiler_source_commit: Optional[str] = None
     enable_agent_hooks: bool = False
+    log_tools: bool = False
+    show_output_label: str = ""
+    run_id: str = ""
 
     def with_prompt(self, prompt: str) -> "AgentRequest":
         return replace(self, prompt=prompt)

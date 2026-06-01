@@ -35,6 +35,8 @@ class StandaloneRuntimeModule(Protocol):
 
     def runtime_support_paths(self) -> list[Path]: ...
 
+    def create_local_preserved_profile_run_dir(self, prefix: str) -> Path | None: ...
+
 
 class BenchRunnerDeps(Protocol):
     def resolve_bench_kernel_resolution(
@@ -147,6 +149,7 @@ class BenchRunnerDeps(Protocol):
         *,
         source_root: Path,
         json_search_root: Path,
+        verbose: bool = False,
     ) -> tuple[Path, Callable[[], None]]: ...
 
     def _stage_remote_msprof_case_workspace(
@@ -223,7 +226,9 @@ class BenchRunnerDeps(Protocol):
         *,
         prefix: str,
         input_paths: Sequence[Path],
+        flat_input_paths: Sequence[Path] = (),
         source_root: Path,
+        verbose: bool = False,
     ) -> tuple[Path, Callable[[], None]]: ...
 
     def _bench_case_input_paths(
@@ -232,7 +237,6 @@ class BenchRunnerDeps(Protocol):
         operator_file: Path,
         *,
         json_search_root: Path | None = None,
-        support_paths: Sequence[Path] = (),
     ) -> list[Path]: ...
 
     def _stage_remote_case_workspace(
@@ -242,6 +246,7 @@ class BenchRunnerDeps(Protocol):
         input_paths: Sequence[Path],
         source_root: Path,
         *,
+        flat_input_paths: Sequence[Path] = (),
         verbose: bool = False,
         stderr: TextIO | None = None,
     ) -> str: ...

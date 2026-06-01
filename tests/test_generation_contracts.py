@@ -439,6 +439,20 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("scale and mask", attention)
         self.assertIn("A5", attention)
 
+    def test_grid_flatten_pattern_documents_runtime_query_and_core_count_fallbacks(
+        self,
+    ) -> None:
+        grid = _read(
+            "skills/triton-npu-optimize-knowledge/references/patterns/grid-flatten-and-ub-buffering.md"
+        )
+
+        self.assertIn("torch.npu.get_device_properties", grid)
+        self.assertIn("cube cores: `24`", grid)
+        self.assertIn("vector cores: `48`", grid)
+        self.assertIn("`cube`-like operators", grid)
+        self.assertIn("`vector`-like operators", grid)
+        self.assertIn("`mix` operators", grid)
+
     def test_optimize_pattern_cards_use_required_sections_and_generated_index(self) -> None:
         patterns_dir = (
             REPO_ROOT

@@ -4,10 +4,14 @@ import json
 import re
 import uuid
 from collections.abc import Mapping
-from typing import Callable, Optional, cast
+from typing import TYPE_CHECKING, Callable, Optional, cast
 
 from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest
+from triton_agent.otel_trace import trace_path_from_request
+
+if TYPE_CHECKING:
+    from triton_agent.backends.codex_trace import CodexJsonOutputFilter
 
 
 class CodexRunner(AgentRunner):
@@ -32,15 +36,36 @@ class CodexRunner(AgentRunner):
         ]
         if request.command_kind != request.command_kind.OPTIMIZE or request.no_agent_session:
             command.append("--ephemeral")
+        if request.show_output or request.log_tools:
+            command.append("--json")
         command.append(request.prompt)
         return command
 
     def session_id_extractor(self) -> Callable[[str], str | None]:
         return _extract_session_id
 
-    def output_filter(self, request: AgentRequest) -> "_UnifiedDiffFilter | None":
+    def output_filter(self, request: AgentRequest) -> "CodexJsonOutputFilter | _UnifiedDiffFilter | None":
         if request.interact:
             return None
+        trace_path = trace_path_from_request(request)
+        if request.show_output or request.log_tools:
+            from triton_agent.backends.codex_trace import CodexJsonOutputFilter, build_codex_trace_env
+            extra_env = request.extra_env
+            if request.log_tools and trace_path is not None:
+                extra_env = build_codex_trace_env(
+                    request.extra_env,
+                    trace_path=trace_path,
+                    run_id=request.run_id,
+                    role=request.optimize_role or "worker",
+                    workspace_root=request.workdir,
+                )
+            return CodexJsonOutputFilter(
+                trace_path if request.log_tools else None,
+                extra_env,
+                run_id=request.run_id,
+                role=request.optimize_role or "worker",
+                workspace_root=str(request.workdir),
+            )
         return _UnifiedDiffFilter()
 
 

@@ -233,7 +233,7 @@ def build_standalone_bench_cases(operator_api):
 
             with patch.dict(
                 os.environ,
-                {"TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR": str(keep_root)},
+                {"TRITON_AGENT_BENCH_OUTPUT_DIR": str(keep_root)},
                 clear=False,
             ), patch.object(
                 module,
@@ -246,10 +246,77 @@ def build_standalone_bench_cases(operator_api):
             self.assertTrue(keep_root.exists())
             self.assertEqual(len(created_output_dirs), 2)
             self.assertTrue(all(path.exists() for path in created_output_dirs))
-            self.assertTrue(all(keep_root in path.parents for path in created_output_dirs))
+            self.assertTrue(all(keep_root.resolve() in path.resolve().parents for path in created_output_dirs))
             self.assertTrue((created_output_dirs[0] / "case-a.txt").exists())
             self.assertTrue((created_output_dirs[1] / "case-b.txt").exists())
             self.assertEqual(sorted(path.name for path in created_output_dirs), ["case-case-a", "case-case-b"])
+
+    def test_run_local_standalone_bench_resolves_relative_profile_output_root_to_absolute_path(self) -> None:
+        module = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            keep_root = root / "relative-keep-root"
+            bench_file.write_text(
+                """# bench-mode: standalone
+# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_standalone_bench_cases(operator_api):
+    def run_case_a():
+        operator_api("case-a")
+    return [{"id": "case-a", "fn": run_case_a}]
+""",
+                encoding="utf-8",
+            )
+            operator_file.write_text(
+                """def build_api():
+    return lambda *_args, **_kwargs: None
+""",
+                encoding="utf-8",
+            )
+
+            created_output_dirs: list[Path] = []
+
+            def _fake_profile_case(case, resolution, profile_root, *, verbose=False):
+                del case, resolution, verbose
+                created_output_dirs.append(profile_root)
+                profile_root.mkdir(parents=True, exist_ok=True)
+                return (
+                    {
+                        "kernel_avg_time_us": 7.5,
+                        "ops": [{"op_type": "KernelA", "avg_time_us": 7.5}],
+                    },
+                    None,
+                )
+
+            original_cwd = Path.cwd()
+            try:
+                os.chdir(root)
+                with patch.dict(
+                    os.environ,
+                    {"TRITON_AGENT_BENCH_OUTPUT_DIR": "./relative-keep-root"},
+                    clear=False,
+                ), patch.object(
+                    module,
+                    "_profile_case_with_profiler",
+                    side_effect=_fake_profile_case,
+                ):
+                    result, perf_path = module.run_local_standalone_bench(bench_file, operator_file)
+            finally:
+                os.chdir(original_cwd)
+
+            self.assertEqual(result, make_skill_result(0, "", ""))
+            self.assertEqual(perf_path, root / "operator_case_perf.txt")
+            self.assertTrue(keep_root.exists())
+            self.assertEqual(len(created_output_dirs), 1)
+            self.assertTrue(created_output_dirs[0].is_absolute())
+            self.assertTrue(keep_root.resolve() in created_output_dirs[0].resolve().parents)
 
     def test_run_local_standalone_bench_cleans_extra_info_after_each_case(self) -> None:
         module = load_standalone_bench_runtime_module()
@@ -415,6 +482,182 @@ def build_standalone_bench_cases(operator_api):
 
             self.assertEqual(record.case_label, "case-b")
             self.assertEqual(record.metrics["kernel_avg_time_us"], 3.5)
+
+    def test_read_profiler_metrics_filters_zero_duration_non_kernel_rows(self) -> None:
+        module = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            profile_root = Path(tmp)
+            (profile_root / "operator_details.csv").write_text(
+                "\n".join(
+                    [
+                        "Name,Device Self Duration(us)",
+                        "aten::view,0",
+                        "KernelA,10",
+                        "aten::empty,0",
+                        "KernelB,20",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            metrics = module._read_profiler_metrics(
+                profile_root,
+                active_count=5,
+                kernel_names=["KernelA", "KernelB"],
+            )
+
+        self.assertEqual(
+            metrics["ops"],
+            [
+                {"op_type": "KernelA", "avg_time_us": 2.0},
+                {"op_type": "KernelB", "avg_time_us": 4.0},
+            ],
+        )
+        self.assertEqual(metrics["kernel_avg_time_us"], 6.0)
+
+    def test_read_profiler_metrics_preserves_zero_duration_resolved_kernel_rows(self) -> None:
+        module = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            profile_root = Path(tmp)
+            (profile_root / "operator_details.csv").write_text(
+                "\n".join(
+                    [
+                        "Name,Device Self Duration(us)",
+                        "aten::view,0",
+                        "KernelZero,0",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            metrics = module._read_profiler_metrics(
+                profile_root,
+                active_count=5,
+                kernel_names=["KernelZero"],
+            )
+
+        self.assertEqual(
+            metrics["ops"],
+            [
+                {"op_type": "KernelZero", "avg_time_us": 0.0},
+            ],
+        )
+        self.assertEqual(metrics["kernel_avg_time_us"], 0.0)
+
+    def test_read_profiler_metrics_falls_back_to_op_statistic_when_operator_details_is_missing(self) -> None:
+        module = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            profile_root = Path(tmp)
+            (profile_root / "op_statistic.csv").write_text(
+                "\n".join(
+                    [
+                        "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                        "0,KernelA,AI_CORE,5,20,1,4.0,6,80",
+                        "0,KernelB,AI_VECTOR_CORE,5,5,0.5,1.0,2,20",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            metrics = module._read_profiler_metrics(
+                profile_root,
+                active_count=5,
+                kernel_names=["KernelB"],
+            )
+
+        self.assertEqual(
+            metrics["ops"],
+            [
+                {"op_type": "KernelA", "avg_time_us": 4.0},
+                {"op_type": "KernelB", "avg_time_us": 1.0},
+            ],
+        )
+        self.assertEqual(metrics["kernel_avg_time_us"], 1.0)
+
+    def test_read_profiler_metrics_falls_back_to_kernel_details_when_operator_details_is_missing(self) -> None:
+        module = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            profile_root = Path(tmp)
+            (profile_root / "kernel_details.csv").write_text(
+                "\n".join(
+                    [
+                        "Name,Duration(us),Wait Time(us),Block Dim",
+                        "KernelA,9.0,0,3",
+                        "KernelA,6.0,0,3",
+                        "KernelB,3.0,0,1",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            metrics = module._read_profiler_metrics(
+                profile_root,
+                active_count=3,
+                kernel_names=["KernelA"],
+            )
+
+        self.assertEqual(
+            metrics["ops"],
+            [
+                {"op_type": "KernelA", "avg_time_us": 5.0},
+                {"op_type": "KernelB", "avg_time_us": 1.0},
+            ],
+        )
+        self.assertEqual(metrics["kernel_avg_time_us"], 5.0)
+
+    def test_read_profiler_metrics_falls_back_to_kernel_details_when_operator_details_total_is_zero(self) -> None:
+        module = load_standalone_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            profile_root = Path(tmp)
+            (profile_root / "operator_details.csv").write_text(
+                "\n".join(
+                    [
+                        "Name,Device Self Duration(us)",
+                        "Wrapper,0",
+                        "KernelZero,0",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (profile_root / "kernel_details.csv").write_text(
+                "\n".join(
+                    [
+                        "Name,Duration(us),Wait Time(us),Block Dim",
+                        "KernelFromKernelDetails,15.0,0,3",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (profile_root / "op_statistic.csv").write_text(
+                "\n".join(
+                    [
+                        "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                        "0,KernelFromOpStatistic,AI_CORE,5,25,2,5.0,7,100",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            metrics = module._read_profiler_metrics(
+                profile_root,
+                active_count=3,
+                kernel_names=["KernelFromKernelDetails"],
+            )
+
+        self.assertEqual(
+            metrics["ops"],
+            [
+                {"op_type": "KernelFromKernelDetails", "avg_time_us": 5.0},
+            ],
+        )
+        self.assertEqual(metrics["kernel_avg_time_us"], 5.0)
 
     def test_profile_case_with_profiler_suppresses_profiler_output(self) -> None:
         module = load_standalone_bench_runtime_module()

@@ -15,10 +15,11 @@ def handle_log_check(parser: argparse.ArgumentParser, args: argparse.Namespace) 
         parser.error(f"Input path is not a directory: {target_path}")
     return run_log_check(
         target_path=target_path,
-        output_file=str(getattr(args, "check_result_file", "log_check_result.md")),
+        output_json=str(getattr(args, "check_result_file", "log_check_result.json")),
         agent_name=str(getattr(args, "agent", "codex")),
         verbose=bool(getattr(args, "verbose", False)),
         show_output=bool(getattr(args, "show_output", False)),
+        log_tools=bool(getattr(args, "log_tools", False)),
     )
 
 
@@ -28,6 +29,9 @@ def handle_log_check_batch(parser: argparse.ArgumentParser, args: argparse.Names
         parser.error(f"Input path does not exist: {root}")
     if not root.is_dir():
         parser.error(f"Input path is not a directory: {root}")
+    concurrency = int(getattr(args, "concurrency", 1))
+    if concurrency < 1:
+        parser.error("--concurrency must be at least 1")
     return run_log_check_batch(
         root,
         output_file=str(getattr(args, "check_result_file", "log_check_result.md")),
@@ -35,7 +39,8 @@ def handle_log_check_batch(parser: argparse.ArgumentParser, args: argparse.Names
         agent_name=str(getattr(args, "agent", "codex")),
         verbose=bool(getattr(args, "verbose", False)),
         show_output=bool(getattr(args, "show_output", False)),
-        max_concurrency=int(getattr(args, "max_concurrency", 1)),
+        log_tools=bool(getattr(args, "log_tools", False)),
+        max_concurrency=concurrency,
     )
 
 

@@ -8,10 +8,12 @@ from triton_agent.backends.factory import create_runner
 from triton_agent.generation.models import GenerationOptions
 from triton_agent.generation.outputs import resolve_generation_output_path
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
+from triton_agent.otel_trace import build_tool_trace_env, new_trace_run_id, trace_path_from_request, write_tool_trace_summary
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
 from triton_agent.resources import skills_root
 from triton_agent.skill_staging import resolve_staged_skills
 from triton_agent.skills import SkillLinkManager
+from triton_agent.show_output_log import show_output_log_path
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
@@ -45,6 +47,11 @@ def build_generation_request(
         ),
         options.prompt,
     )
+    extra_env = None
+    run_id = new_trace_run_id(prefix="generate")
+    if options.log_tools:
+        extra_env, _trace_path, _ = build_tool_trace_env(None, workdir=workdir, run_id=run_id)
+
     return AgentRequest(
         command_kind=command_kind,
         input_path=input_path,
@@ -60,11 +67,14 @@ def build_generation_request(
         skill_name=COMMAND_TO_SKILL[command_kind],
         prompt=prompt,
         workdir=workdir,
+        extra_env=extra_env,
+        run_id=run_id,
         min_rounds=options.min_rounds,
         continue_optimize=options.continue_optimize,
         no_agent_session=False,
         staged_skill_names=staged_skill_names,
         staged_skill_sources=staged_skill_sources,
+        log_tools=options.log_tools,
     )
 
 
@@ -87,8 +97,24 @@ def run_generation_request(
             return cast(Any, runner).run(request, stdout=stdout, stderr=stderr)
         return runner.run(request)
     finally:
+        _write_generation_trace_summary(request)
         if request.verbose:
             emit_verbose_lines(stderr or sys.stderr, "skills", manager.describe_cleanup(links))
         warnings = manager.cleanup(links)
         for warning in warnings:
             emit_verbose(stderr or sys.stderr, "skills", warning)
+
+
+def _write_generation_trace_summary(request: AgentRequest) -> None:
+    if not request.log_tools:
+        return
+    trace_path = trace_path_from_request(request)
+    if trace_path is None:
+        return
+    warnings = write_tool_trace_summary(
+        trace_path=trace_path,
+        command_kind=request.command_kind.value,
+        show_output_path=show_output_log_path(request),
+    )
+    if request.verbose and warnings:
+        emit_verbose_lines(sys.stderr, "trace", warnings)

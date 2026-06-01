@@ -47,6 +47,7 @@ Examples:
 - task waits and overlap look weak
 - host launch or sync overhead is too high
 - parallelism is too low because `Block Dim` is too small
+- scheduling overhead may be too high because `Block Dim` is too large for the useful per-block work
 
 Useful first checks:
 
@@ -57,6 +58,8 @@ Useful first checks:
 - timeline gaps in `task_time`
 - concurrency clues in `msprof` JSON
 - bandwidth, L2, and wait signals in `.bin`
+- whether measured transfer or compute time is far above a simple lower-bound estimate
+- optional code-mapping outputs when the profiler already suggests a scalar problem that still needs source-level attribution
 
 ## Step 3: Map Symptoms To IR Checks And Potential Optimization Points
 
@@ -72,6 +75,7 @@ How it looks in profiling:
 
 - a vector-like or cube-like operator still spends too much time in scalar work
 - `aic_scalar_ratio` or `aiv_scalar_ratio` looks unexpectedly high
+- code-mapping outputs show scalar-heavy execution even in regions that should mostly feed vector or transfer hardware
 
 Check in IR:
 
@@ -94,6 +98,7 @@ How it looks in profiling:
 - transfer pressure dominates the operator
 - `aic_mte*` or `aiv_mte*` ratios stay high
 - transfer-like hotspots appear too often
+- measured movement time is far above a rough moved-bytes / bandwidth lower bound
 
 Check in IR:
 
@@ -108,6 +113,10 @@ Potential optimization points:
 - reduce redundant movement or conversion
 - fuse adjacent work to keep data on chip longer
 - reorganize layout so the kernel does not bounce between formats unnecessarily
+
+Extra interpretation:
+
+- If the data volume is modest enough that the working set should fit comfortably on chip, a very large gap above the transfer lower bound often strengthens the hypothesis that the kernel is issuing too many small transfers or repeating movement unnecessarily.
 
 ### Symptom C: Cube utilization is low
 
@@ -191,7 +200,27 @@ Potential optimization points:
 - separate small-shape and regular-shape paths when needed
 - avoid tiling changes that starve available AI cores
 
-### Symptom G: `.bin` shows poor L2 or suspicious memory paths
+### Symptom G: `Block Dim` is too large for the useful work
+
+How it looks in profiling:
+
+- `Block Dim` exceeds the effective hardware width by a large margin for a light vector kernel
+- host or scheduling overhead looks high relative to the device work per block
+- the kernel launches many tiny blocks even though the operator is not meaningfully increasing useful concurrency
+
+Check in IR and launch structure:
+
+- whether tiling split the work into very small blocks that do not amortize launch and scheduling cost
+- whether the kernel is vector-heavy and shape-regular enough that fewer, fuller blocks would likely be better
+- whether shape-specialized edge handling accidentally multiplies block count
+
+Potential optimization points:
+
+- reduce over-partitioning by increasing per-block useful work
+- retune tiling so the block count matches the operator's effective parallel width more closely
+- split small-shape and regular-shape behavior if one path is forcing excess blocks for the other
+
+### Symptom H: `.bin` shows poor L2 or suspicious memory paths
 
 How it looks in profiling:
 
@@ -221,6 +250,7 @@ Before recommending a change, ask:
 - does the chip reward larger tiles because buffer capacity allows it?
 - is the problem really a layout issue that the architecture can or cannot optimize away?
 - is the current parallelism limit shape-driven or implementation-driven?
+- is the measured gap from the rough lower bound large enough to justify structural changes, or is the operator already near a hardware-facing limit?
 
 Use architecture knowledge to rank ideas, not to replace evidence.
 

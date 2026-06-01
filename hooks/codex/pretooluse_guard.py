@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
+import os
 import re
 import shlex
 import sys
@@ -28,6 +29,9 @@ PROTECTED_RELATIVE_PATH_PREFIXES = ("triton-agent-logs/",)
 
 PATH_FRAGMENT_RE = re.compile(
     r"(?:^|[^A-Za-z0-9_./-])(?P<path>(?:/|\.\.?/|\.codex/|triton-agent-logs/)[A-Za-z0-9_./*?{}+@%:,=-]+)"
+)
+WINDOWS_PATH_FRAGMENT_RE = re.compile(
+    r"(?P<path>[A-Za-z]:[\\/][A-Za-z0-9_ .\\/(){}+@%:,=-]+)"
 )
 
 
@@ -162,6 +166,13 @@ def _candidate_paths_inner(command: str, *, seen_commands: set[str]) -> list[tup
             and not _is_nested_path_fragment(path, explicit_path_tokens)
         ):
             candidates.append((path, False))
+    for match in WINDOWS_PATH_FRAGMENT_RE.finditer(command):
+        path = match.group("path").rstrip("'\"),")
+        if (
+            not _is_read_command_token(path)
+            and not _is_nested_path_fragment(path, explicit_path_tokens)
+        ):
+            candidates.append((path, False))
 
     return candidates
 
@@ -175,13 +186,13 @@ def _shell_wrapper_commands(tokens: list[str]) -> list[str]:
             continue
         if tokens[index + 1] not in SHELL_WRAPPER_FLAGS:
             continue
-        commands.append(tokens[index + 2])
+        commands.append(tokens[index + 2].strip("\"'"))
     return commands
 
 
 def _split_command(command: str) -> list[str]:
     try:
-        return shlex.split(command)
+        return shlex.split(command, posix=os.name != "nt")
     except ValueError:
         return []
 
@@ -195,12 +206,18 @@ def _is_read_command_token(token: str) -> bool:
 
 
 def _looks_like_path(token: str) -> bool:
+    if token.startswith("-"):
+        return False
+    path = Path(token)
     return (
-        token.startswith("/")
+        path.is_absolute()
+        or token.startswith("/")
         or token.startswith("./")
         or token.startswith("../")
         or token.startswith(".codex/")
         or token.startswith(PROTECTED_RELATIVE_PATH_PREFIXES)
+        or "\\" in token
+        or path.suffix != ""
     )
 
 
