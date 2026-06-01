@@ -26,6 +26,18 @@ def continuous_round_serialization_lines() -> list[str]:
     ]
 
 
+def next_round_reflection_lines() -> list[str]:
+    return [
+        "Before editing code for the next round, stop and reflect on the best entrypoint.",
+        "Choose which operator, kernel path, or wrapper bottleneck should anchor the round before making the next code change.",
+        "Decide whether existing benchmark and compare-perf evidence is already sufficient or whether profiling is needed first.",
+        "Escalate to IR only after profiler evidence narrows the bottleneck but still does not explain it.",
+        "Use compiler-source analysis only after profiler and IR evidence have narrowed a concrete compiler-side question.",
+        "Do not use agents or subagents to optimize multiple rounds in parallel; keep the optimize session one round at a time.",
+        "Do not treat the next round as a parameter-only tuning sweep; make a bottleneck-backed change instead.",
+    ]
+
+
 def layered_analysis_lines(*, round_scope: str) -> list[str]:
     return [
         f"Choose the analysis level for {round_scope} before editing code.",
@@ -276,6 +288,7 @@ def build_optimize_resume_prompt(
         "Reuse the established `baseline/` directory instead of redefining the canonical baseline.",
         "Keep the optimize workflow hypothesis-driven: explain why each next change may help and what evidence supports it.",
         "Use `compare-perf` output as the only source for performance deltas and speedup metrics.",
+        *next_round_reflection_lines(),
         *(continuous_round_serialization_lines() if round_mode == "continuous" else []),
         *(
             [
@@ -339,6 +352,14 @@ def build_optimize_continuous_prompt(
         f"After finishing each round, use the staged `triton-npu-optimize-check` skill to run "
         f"`check-round --round-dir opt-round-N --min-rounds {min_rounds}` and repair the round "
         f"until it passes. Read the summary for the exit signal."
+    )
+    lines.extend(
+        [
+            "Do not rush from a passed `check-round` directly into the next edit.",
+            "Before opening the next round, reflect on which operator, kernel path, or wrapper bottleneck should anchor it.",
+            "Decide whether existing evidence is already sufficient or whether profiling, IR, or compiler-source analysis is needed before more code changes.",
+            "Do not treat the next round as a parameter-only tuning sweep; make a bottleneck-backed change instead.",
+        ]
     )
     lines.append(
         "If `check-round` passes with a warning that recent baseline-relative gains are nearly flat "

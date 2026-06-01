@@ -337,6 +337,16 @@ def _count_round_directories(workspace: Path) -> int:
     return sum(1 for path in workspace.glob("opt-round-*") if path.is_dir())
 
 
+def _next_round_name_for_round(round_dir: Path, *, completed: int) -> str:
+    name = round_dir.name
+    prefix = "opt-round-"
+    if name.startswith(prefix):
+        suffix = name[len(prefix):]
+        if suffix.isdigit():
+            return f"{prefix}{int(suffix) + 1}"
+    return f"{prefix}{completed + 1}"
+
+
 def check_round(
     round_dir: Path,
     *,
@@ -474,6 +484,7 @@ def check_round(
                 ),
             )
         else:
+            next_round_name = _next_round_name_for_round(round_dir, completed=completed)
             result = _build_result(
                 kind="round",
                 decision="pass",
@@ -481,7 +492,13 @@ def check_round(
                 summary=_append_pass_issues_to_summary(
                     f"round check passed. "
                     f"Round {completed}/{min_rounds} complete — "
-                    f"at least {min_rounds - completed} more round(s) required before stopping.",
+                    f"at least {min_rounds - completed} more round(s) required before stopping. "
+                    f"Next round: {next_round_name}. "
+                    "Do not rush into the next code change. "
+                    "First decide which operator, kernel path, or wrapper bottleneck should anchor the next round. "
+                    "Decide whether existing evidence is already sufficient or whether profiling, IR, or compiler-source analysis is needed first. "
+                    "Do not use agents or subagents to optimize multiple rounds in parallel. "
+                    "Do not treat the next round as a parameter-only tuning sweep.",
                     result.issues,
                 ),
             )

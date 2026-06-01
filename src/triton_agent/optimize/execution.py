@@ -181,6 +181,15 @@ def _round_sort_key(name: str) -> tuple[int, str]:
     return (int(match.group(1)), name)
 
 
+def _next_round_name(latest_round_name: str | None) -> str | None:
+    if latest_round_name is None:
+        return None
+    match = re.match(r"opt-round-(\d+)$", latest_round_name)
+    if match is None:
+        return None
+    return f"opt-round-{int(match.group(1)) + 1}"
+
+
 def _parse_supervisor_decision_from_report(report_content: str) -> str | None:
     match = re.search(r"^Decision:\s*(\S+)", report_content, re.MULTILINE)
     if match is None:
@@ -703,12 +712,15 @@ class MultiInvocationOptimizeController:
         *,
         latest_round_name: str | None,
     ) -> str:
+        next_round_name = _next_round_name(latest_round_name)
         lines = [
             "CLI round follow-up from the previous round:",
             f"- Decision: {gate_result.decision.value}",
         ]
         if latest_round_name is not None:
             lines.append(f"- Latest round: {latest_round_name}")
+        if next_round_name is not None:
+            lines.append(f"- Next round: {next_round_name}")
         lines.append(
             f"- Continue required: {'yes' if gate_result.continue_required else 'no'}"
         )

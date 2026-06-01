@@ -2430,7 +2430,20 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 runner.requests[1].prompt,
             )
             self.assertIn("- Decision: pass", runner.requests[1].prompt)
+            self.assertIn("- Next round: opt-round-2", runner.requests[1].prompt)
             self.assertIn("- Continue required: yes", runner.requests[1].prompt)
+            self.assertIn(
+                "Before editing code for the next round, stop and reflect on the best entrypoint.",
+                runner.requests[1].prompt,
+            )
+            self.assertIn(
+                "Do not use agents or subagents to optimize multiple rounds in parallel; keep the optimize session one round at a time.",
+                runner.requests[1].prompt,
+            )
+            self.assertIn(
+                "Do not treat the next round as a parameter-only tuning sweep; make a bottleneck-backed change instead.",
+                runner.requests[1].prompt,
+            )
 
     def test_multi_invocation_controller_checked_continue_carries_local_optimum_warning(
         self,
