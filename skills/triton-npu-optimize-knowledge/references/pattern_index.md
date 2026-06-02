@@ -98,6 +98,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - profiling or IR suggests the hot loop is spending too much effort on scalar address generation or repeated reduction structure
   - a block-pointer rewrite reduced one scalar chain but the full loop is still not a regular matmul
   - dtype-specialized or shape-specialized paths are acceptable when one tiled regime is clearly better but a unified rewrite would change numerics too much
+  - simulation `report.txt` shows CUBE instr = 0 (or CUBE row absent) AND kernel source contains `tl.sum(a*b)` or equivalent K-reduction loop instead of `tl.dot`
 
 ### `compile_hint`
 
