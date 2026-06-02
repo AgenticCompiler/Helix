@@ -20,7 +20,6 @@ Rewrite a manual matmul or K-reduction hot loop into a regular tiled `tl.dot`-ba
 - purely elementwise kernels
 - gather/scatter dominated kernels
 - tiny shapes where tile setup cost is unlikely to amortize
-- `tl.dot` may cause Bisheng compiler SIGSEGV depending on CANN version and kernel shape (confirmed on A5 and 910B2); verify `tl.dot` compiles on the target before relying on it, and restructure grid so N ≥ 2 when needed
 - CUBE activity is low but non-zero — `tl.dot` exists but tile sizes or compiler lowering are suboptimal; route to `tiling` or `software-pipeline` instead
 - inherently lightweight kernels (trivial load+store, touch kernels, standalone reduction without preceding multiply) — no matmul structure to rewrite
 
@@ -199,41 +198,18 @@ The exact threshold should come from benchmark evidence, not from a fixed guess.
 - tile setup overhead can hurt small shapes
 - larger tiles can increase register or UB pressure
 - forcing `fp16` dot inputs can change `fp32` input semantics
-- `tl.dot` may crash the Bisheng compiler depending on CANN version and kernel shape (confirmed on A5 and 910B2); verify `tl.dot` compiles before relying on it
-
-## Matrix×Vector Grid Restructuring (N=1 → N≥2)
-
-When each program currently processes one output row (matrix×vector, N=1), `tl.dot` may crash the Bisheng compiler depending on CANN version and kernel shape. Restructure the grid so each program handles multiple output rows:
-
-```python
-# detect: grid=(B,) — one program per batch row, output is 1D
-pid = tl.program_id(axis=0)
-x_row_ptr = x_ptr + pid * X_STRIDE
-# ... computation produces a single scalar or 1D result per program
-```
-
-```python
-# restructure: each program handles ROWS_PER_PROGRAM rows → N = ROWS_PER_PROGRAM ≥ 2
-pid = tl.program_id(axis=0)
-row_start = pid * ROWS_PER_PROGRAM
-row_offs = row_start + tl.arange(0, ROWS_PER_PROGRAM)
-row_mask = row_offs < B
-
-# Load x as [ROWS_PER_PROGRAM, BLOCK_IN] instead of [BLOCK_IN]
-x_ptrs = x_ptr + row_offs[:, None] * X_STRIDE + in_offs[None, :]
-x_block = tl.load(x_ptrs, mask=row_mask[:, None] & in_mask[None, :], other=0.0)
-
-# Now w_tile [BLOCK_OUT, BLOCK_IN] × x_block [BLOCK_IN, ROWS_PER_PROGRAM] works
-# N dimension = ROWS_PER_PROGRAM > 1 → tl.dot works
-```
 
 ## Structural Optimization Before `tl.dot`
 
-When `tl.dot` cannot be used (compiler crash, shape constraint, or UB overflow), the kernel can still benefit from structural improvements that reduce redundant data movement. Apply these **before** attempting `tl.dot` — they often yield the majority of the speedup.
+When `tl.dot` cannot be used (compiler crash, shape constraint, or UB overflow), the kernel can still benefit from structural improvements that reduce redundant data movement. Apply these **before** attempting `tl.dot` — they often yield the majority of the speedup (10-30× observed from loop swap alone).
 
-### Eliminate redundant loads in the K-reduction loop
+**Apply in this priority order.** The first item (loop swap) is usually the dominant win; the rest are incremental.
+
+### 1. Swap loop nest to eliminate redundant loads (highest priority)
 
 When the same input tile is loaded multiple times across outer-loop iterations (e.g., per output element or per window), restructure the loop nest so each input tile is loaded once and shared across all output elements that need it.
+
+**How to detect:** Count how many times the same x data is loaded per program. If x is inside the outer loop and the outer loop iterates over output dimensions, x is loaded `ceil(OUT_F / BLOCK_OUT)` times redundantly. When this count is in the hundreds or thousands, loop swap alone can yield 10-30× speedup.
 
 ```python
 # detect: x loaded inside the outer loop — redundant per output element
@@ -253,23 +229,19 @@ for in_tile in range(0, IN_F, BLOCK_IN):
         acc += tl.sum(w_tile * x_vec[None, :], axis=1)  # reused across out_tile
 ```
 
-### Widen output tiling
+### 2. Full-tile unmasked + partial-tile masked split
 
-Increase the number of output elements computed per program to amortize fixed overhead (pointer setup, accumulator init) and improve MTE2 throughput.
+Split the IN_F reduction into a full-tile phase (no mask → fast MTE2→VECTOR path) and a partial-tile tail (masked). This restores the fast memory engine path for the majority of iterations.
 
-```python
-# detect: BLOCK_OUT=32 — many small output tiles, high per-tile overhead
-```
+### 3. Widen output tiling
 
-```python
-# widen: BLOCK_OUT=128 — 4× fewer tiles, better MTE2 amortization
-```
+Increase the number of output elements computed per program to amortize fixed overhead (pointer setup, accumulator init) and improve MTE2 throughput. Use exact tile sizes when possible (e.g., KERNEL-sized output tile instead of padding to BLOCK_OUT=32 with most rows masked).
 
-### Use `tl.static_range` for the K loop
+### 4. Use `tl.static_range` for the K loop
 
 Replace `while` or `range` with `tl.static_range` to enable compiler loop pipelining, even when the body still uses `tl.sum(a*b)` instead of `tl.dot`.
 
-### Conv2d via im2col with manual K-reduction
+### 5. Conv2d via im2col with manual K-reduction
 
 Conv2d kernels that flatten to im2col matmul but use `tl.sum(a*b)` instead of `tl.dot`. Unlike pure matmul, the K loop requires coordinate decoding (`//` and `%`) to map flat indices back to `(ci, kh, kw)`, and input positions depend on decoded coordinates with padding/stride/dilation.
 
