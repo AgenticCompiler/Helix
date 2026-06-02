@@ -93,22 +93,14 @@ class ReportCommandHandlerTests(unittest.TestCase):
             args = parser.parse_args(["report-batch", "-i", str(root), "--report-workers", "1"])
 
             with patch(
-                "triton_agent.commands.report_batch.write_report_batch_state",
-                return_value=root / "report-batch-state.json",
+                "triton_agent.commands.report_batch._discover_workspaces",
+                return_value=[workspace],
             ):
                 with patch(
-                    "triton_agent.commands.report_batch.render_report_batch_file",
-                    return_value=root / "report-batch.md",
-                ):
-                    with patch(
-                        "triton_agent.commands.report_batch._discover_workspaces",
-                        return_value=[workspace],
-                    ):
-                        with patch(
-                            "triton_agent.commands.report_batch.generate_workspace_report",
-                            return_value=(True, "ok"),
-                        ) as mocked:
-                            exit_code = handle_report_batch(parser, args)
+                    "triton_agent.commands.report_batch.generate_workspace_report",
+                    return_value=(True, "ok"),
+                ) as mocked:
+                    exit_code = handle_report_batch(parser, args)
 
         self.assertEqual(exit_code, 0)
         mocked.assert_called_once_with(workspace, "codex", False)

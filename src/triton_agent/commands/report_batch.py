@@ -6,8 +6,6 @@ import sys
 from pathlib import Path
 
 from triton_agent.report.workspace import generate_workspace_report
-from triton_agent.report.collector import write_report_batch_state
-from triton_agent.report.render import render_report_batch_file
 
 
 def handle_report_batch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -27,14 +25,6 @@ def handle_report_batch(parser: argparse.ArgumentParser, args: argparse.Namespac
         flush=True,
     )
 
-    # Phase 1: Existing batch-level report
-    state_path = write_report_batch_state(root)
-    print(f"Report-batch state written to: {state_path}", flush=True)
-
-    report_path = render_report_batch_file(state_path)
-    print(f"Report-batch written to: {report_path}", flush=True)
-
-    # Phase 2: Per-workspace agent-driven report.md generation
     workspaces = _discover_workspaces(root)
     if not workspaces:
         print("[report-batch] no workspace directories found for per-workspace reports.", file=sys.stderr, flush=True)
