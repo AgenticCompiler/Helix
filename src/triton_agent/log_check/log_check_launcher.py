@@ -20,10 +20,6 @@ from .check_json import (
     validate_log_check_json,
     validate_pattern_analysis_json,
 )
-from .render_markdown import (
-    render_log_check_markdown,
-    render_pattern_analysis_markdown,
-)
 
 _LOG_CHECK_JSON_FILENAME = "log_check_result.json"
 _PATTERN_ANALYSIS_JSON_FILENAME = "pattern_analysis.json"
@@ -384,7 +380,7 @@ def run_log_check(
         print(f"[optimize-check] log check failed: {detail}", file=sys.stderr, flush=True)
         return result.return_code if result.return_code != 0 else 1
 
-    # --- Post-processing: validate JSON, repair if needed, render MD ---
+    # --- Post-processing: validate JSON, repair if needed ---
     exit_code = _post_process_log_check_output(
         normalized_target,
         log_check_json_file=output_json,
@@ -425,10 +421,8 @@ def _post_process_log_check_output(
 
 
 def _validate_and_render_log_check(workspace: Path, json_path: Path) -> bool:
-    """Validate log_check_result.json. On success, render log_check_result.md.
-    On failure, attempt repair. Return False if unrecoverable."""
-    md_path = workspace / "log_check_result.md"
-
+    """Validate log_check_result.json. On failure, attempt repair.
+    Return False if unrecoverable."""
     if not json_path.is_file():
         print(
             f"[optimize-check] warning: {json_path.name} was not created by agent",
@@ -451,22 +445,12 @@ def _validate_and_render_log_check(workspace: Path, json_path: Path) -> bool:
         )
         for err in errors:
             print(f"  - {err}", file=sys.stderr, flush=True)
-        # Still render MD from whatever we have — best-effort
-        print(
-            f"[optimize-check] rendering {md_path.name} from partial JSON (best-effort)",
-            file=sys.stderr,
-            flush=True,
-        )
 
-    md_content = render_log_check_markdown(data)
-    md_path.write_text(md_content, encoding="utf-8")
     return True
 
 
 def _validate_and_render_pattern(workspace: Path, json_path: Path) -> bool:
-    """Validate pattern_analysis.json. On success, render pattern_analysis.md."""
-    md_path = workspace / "pattern_analysis.md"
-
+    """Validate pattern_analysis.json. Return False if missing or unrecoverable."""
     if not json_path.is_file():
         print(
             f"[optimize-check] warning: {json_path.name} was not created by agent",
@@ -489,14 +473,7 @@ def _validate_and_render_pattern(workspace: Path, json_path: Path) -> bool:
         )
         for err in errors:
             print(f"  - {err}", file=sys.stderr, flush=True)
-        print(
-            f"[optimize-check] rendering {md_path.name} from partial JSON (best-effort)",
-            file=sys.stderr,
-            flush=True,
-        )
 
-    md_content = render_pattern_analysis_markdown(data)
-    md_path.write_text(md_content, encoding="utf-8")
     return True
 
 

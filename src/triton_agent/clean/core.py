@@ -25,6 +25,7 @@ _WORKSPACE_DIR_ARTIFACT_NAMES = (
 _BATCH_FILE_ARTIFACT_NAMES = (
     "optimize-batch-status.json",
     "log_check_summary.md",
+    "log_check_summary.json",
     "report-batch-state.json",
     "report-batch.md",
 )
