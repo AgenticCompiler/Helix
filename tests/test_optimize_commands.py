@@ -108,7 +108,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
 
     def test_optimize_run_options_maps_agent_hooks(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize", "-i", "kernel.py", "--enable-agent-hooks"])
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--enable-agent-hook"])
 
         options = optimize_run_options_from_args(args)
 
@@ -116,7 +116,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
 
     def test_optimize_run_options_maps_log_tools(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize", "-i", "kernel.py", "--log-tools"])
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--log-tool"])
 
         options = optimize_run_options_from_args(args)
 

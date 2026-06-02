@@ -941,7 +941,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                     "check-round",
                     "--round-dir",
                     str(round_dir),
-                    "--min-rounds",
+                    "--min-round",
                     "25",
                 ],
                 capture_output=True,

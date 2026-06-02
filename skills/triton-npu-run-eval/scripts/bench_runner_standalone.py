@@ -2,6 +2,7 @@ from __future__ import annotations
 # pyright: reportPrivateUsage=false
 
 import json
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import TextIO, cast
@@ -31,6 +32,7 @@ def run_remote_bench_standalone(
     verbose: bool = False,
     stderr: TextIO | None = None,
     force_recompile: bool = False,
+    output: str | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
     for support_path in deps._standalone_runtime_support_paths():
         deps.copy_file_to_remote(
@@ -40,21 +42,21 @@ def run_remote_bench_standalone(
             verbose=verbose,
             stderr=stderr,
         )
-    perf_path = perf_output_path(operator_file)
+    perf_path = _resolve_perf_output_path(operator_file, output=output)
     extra_env: dict[str, str] | None = {"TRITON_ALWAYS_COMPILE": "1"} if force_recompile else None
-    with deps._stream_target_for_verbosity(False) as quiet_stdout:
+    with deps._stream_target_for_verbosity(verbose) as stream_target:
         result = deps.run_remote_command_streaming(
             spec,
             remote_workspace,
             [
                 "python3",
                 "-c",
-                _build_remote_standalone_run_all_script(),
+                _build_remote_standalone_run_all_script(verbose=verbose),
                 bench_file.name,
                 operator_file.name,
                 perf_path.name,
             ],
-            stdout=quiet_stdout,
+            stdout=stream_target,
             verbose=verbose,
             stderr=stderr,
             stall_timeout_seconds=deps._bench_timeout(),
@@ -83,10 +85,14 @@ def run_local_standalone_bench(
     *,
     verbose: bool = False,
     force_recompile: bool = False,
+    output: str | None = None,
 ) -> tuple[ResultPayload, Path]:
     runtime = deps._load_standalone_runtime_module()
-    return runtime.run_local_standalone_bench(bench_file, operator_file, verbose=verbose,
-                                              force_recompile=force_recompile)  # pyright: ignore[reportUnknownMemberType, reportCallIssue, reportUnknownVariableType]
+    return runtime.run_local_standalone_bench(  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+        bench_file, operator_file, verbose=verbose,  # pyright: ignore[reportUnknownVariableType, reportCallIssue]
+        force_recompile=force_recompile,  # pyright: ignore[reportCallIssue]
+        output=output,  # pyright: ignore[reportCallIssue]
+    )
 
 
 def run_local_bench_standalone_parallel(
@@ -99,6 +105,7 @@ def run_local_bench_standalone_parallel(
     json_search_root: Path,
     verbose: bool = False,
     force_recompile: bool = False,
+    output: str | None = None,
 ) -> tuple[ResultPayload, Path]:
     runtime = deps._load_standalone_runtime_module()
     cases, _resolution = runtime.load_standalone_bench_cases(bench_file, operator_file)
@@ -133,6 +140,7 @@ def run_local_bench_standalone_parallel(
                     device,
                     preserved_run_dir=preserved_run_dir,
                     source_root=source_root,
+                    verbose=verbose,
                     force_recompile=force_recompile,
                 )
         finally:
@@ -140,7 +148,7 @@ def run_local_bench_standalone_parallel(
 
     case_records = deps._run_parallel_case_workers(case_ids, min(len(case_ids), len(devices)), _worker)
     deps._sort_case_records(case_records, case_ids)
-    perf_path = _write_standalone_perf(operator_file, case_records)
+    perf_path = _write_standalone_perf(operator_file, case_records, output=output)
     return _build_standalone_result(case_records), perf_path
 
 
@@ -157,6 +165,7 @@ def run_remote_bench_standalone_parallel(
     verbose: bool = False,
     stderr: TextIO | None = None,
     force_recompile: bool = False,
+    output: str | None = None,
 ) -> tuple[ResultPayload, Path, str]:
     runtime = deps._load_standalone_runtime_module()
     cases, _resolution = runtime.load_standalone_bench_cases(bench_file, operator_file)
@@ -209,25 +218,25 @@ def run_remote_bench_standalone_parallel(
 
     case_records = deps._run_parallel_case_workers(case_ids, min(len(case_ids), len(devices)), _worker)
     deps._sort_case_records(case_records, case_ids)
-    perf_path = _write_standalone_perf(operator_file, case_records)
+    perf_path = _write_standalone_perf(operator_file, case_records, output=output)
     return _build_standalone_result(case_records), perf_path, remote_workspace
 
 
-def _build_remote_standalone_run_all_script() -> str:
+def _build_remote_standalone_run_all_script(*, verbose: bool = False) -> str:
     return (
         "import pathlib, shutil, sys; "
         "import standalone_bench_runtime as runtime; "
         "bench_file = pathlib.Path(sys.argv[1]); "
         "operator_file = pathlib.Path(sys.argv[2]); "
         "target_path = pathlib.Path(sys.argv[3]); "
-        "result, perf_path = runtime.run_local_standalone_bench(bench_file, operator_file); "
+        f"result, perf_path = runtime.run_local_standalone_bench(bench_file, operator_file, verbose={verbose}); "
         "target_path.parent.mkdir(parents=True, exist_ok=True); "
         "shutil.copyfile(perf_path, target_path) if perf_path != target_path else None; "
         "raise SystemExit(int(result['return_code']))"
     )
 
 
-def _build_standalone_run_one_case_script() -> str:
+def _build_standalone_run_one_case_script(*, verbose: bool = False) -> str:
     return (
         "import json, pathlib, sys; "
         "import standalone_bench_runtime as runtime; "
@@ -237,7 +246,8 @@ def _build_standalone_run_one_case_script() -> str:
         "preserved_run_dir_arg = sys.argv[4]; "
         f"preserved_run_dir = None if preserved_run_dir_arg == {_PRESERVED_RUN_DIR_NONE_SENTINEL!r} else pathlib.Path(preserved_run_dir_arg); "
         "record = runtime.run_one_standalone_case_record("
-        "bench_file, operator_file, case_id, preserved_run_dir=preserved_run_dir"
+        "bench_file, operator_file, case_id, preserved_run_dir=preserved_run_dir, "
+        f"verbose={verbose}"
         "); "
         "payload = {"
         "'case_label': record.case_label, "
@@ -284,6 +294,7 @@ def _run_local_standalone_case_in_subprocess(
     *,
     preserved_run_dir: Path | None,
     source_root: Path,
+    verbose: bool = False,
     force_recompile: bool = False,
 ) -> PerfCaseRecord:
     extra_env = affinity_env_for_device(device)
@@ -296,7 +307,7 @@ def _run_local_standalone_case_in_subprocess(
         [
             deps.local_python_executable(),
             "-c",
-            _build_standalone_run_one_case_script(),
+            _build_standalone_run_one_case_script(verbose=verbose),
             deps._case_workspace_command_path(bench_file, source_root=source_root),
             deps._case_workspace_command_path(operator_file, source_root=source_root),
             case_id,
@@ -310,6 +321,9 @@ def _run_local_standalone_case_in_subprocess(
         stall_timeout_seconds=deps._bench_timeout(),
         extra_env=extra_env,
     )
+    if verbose and result["stderr"]:
+        for line in str(result["stderr"]).strip().splitlines():
+            print(f"[profiler] {case_id}: {line}", file=sys.stderr)
     return _parse_standalone_case_result_payload(
         result,
         case_id=case_id,
@@ -367,7 +381,7 @@ def _run_remote_standalone_case(
         [
             "python3",
             "-c",
-            _build_standalone_run_one_case_script(),
+            _build_standalone_run_one_case_script(verbose=verbose),
             deps._case_workspace_command_path(bench_file, source_root=source_root),
             deps._case_workspace_command_path(operator_file, source_root=source_root),
             case_id,
@@ -436,14 +450,24 @@ def _format_standalone_command_failure(result: ResultPayload) -> str:
     return f"{prefix}: {details}" if details else prefix
 
 
-def _write_standalone_perf(operator_file: Path, case_records: list[PerfCaseRecord]) -> Path:
+def _write_standalone_perf(
+    operator_file: Path,
+    case_records: list[PerfCaseRecord],
+    output: str | None = None,
+) -> Path:
     return write_perf_lines(
-        perf_output_path(operator_file),
+        _resolve_perf_output_path(operator_file, output=output),
         render_perf_case_records_jsonl(
             case_records,
             missing_kernel_match_error="no resolved kernels matched profiler operator details",
         ),
     )
+
+
+def _resolve_perf_output_path(operator_file: Path, *, output: str | None = None) -> Path:
+    if output is not None:
+        return Path(output).expanduser().resolve()
+    return perf_output_path(operator_file)
 
 
 def _build_standalone_result(case_records: list[PerfCaseRecord]) -> ResultPayload:

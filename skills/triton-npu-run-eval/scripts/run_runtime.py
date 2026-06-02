@@ -81,6 +81,20 @@ def run_buffered_process(
     stdout_pipe = process.stdout
     stderr_pipe = process.stderr
     stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
+
+    def _drain_stderr() -> None:
+        if stderr_pipe is None:
+            return
+        try:
+            for line in stderr_pipe:
+                stderr_lines.append(line)
+        except ValueError:
+            pass  # pipe closed by parent
+
+    stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+    stderr_thread.start()
+
     start = time.monotonic()
 
     try:
@@ -93,19 +107,19 @@ def run_buffered_process(
                 break
             elif time.monotonic() - start > stall_timeout_seconds:
                 process.terminate()
-                stderr_text = stderr_pipe.read() if stderr_pipe is not None else ""
+                stderr_thread.join(timeout=5)
                 return make_result(
                     return_code=1,
                     stdout="".join(stdout_lines),
-                    stderr=stderr_text,
+                    stderr="".join(stderr_lines),
                     stalled=True,
                 )
 
-        stderr_text = stderr_pipe.read() if stderr_pipe is not None else ""
+        stderr_thread.join(timeout=5)
         return make_result(
             return_code=_resolved_returncode(process.returncode),
             stdout="".join(stdout_lines),
-            stderr=stderr_text,
+            stderr="".join(stderr_lines),
         )
     finally:
         if stdout_pipe is not None:

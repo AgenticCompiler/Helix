@@ -488,7 +488,7 @@ def build_parser() -> argparse.ArgumentParser:
         if spec.has_show_output:
             subparser.add_argument("--show-output", action="store_true")
         if spec.has_log_tools:
-            subparser.add_argument("--log-tools", action="store_true")
+            subparser.add_argument("--log-tools", "--log-tool", dest="log_tools", action="store_true")
         if spec.has_agent:
             subparser.add_argument("--agent", default="codex", choices=_AGENT_CHOICES)
         if spec.has_test_mode:
@@ -511,14 +511,14 @@ def build_parser() -> argparse.ArgumentParser:
                 help="Force Triton kernel recompilation (sets TRITON_ALWAYS_COMPILE=1)",
             )
         if spec.has_optimize_options:
-            subparser.add_argument("--min-rounds", type=int, default=5)
+            subparser.add_argument("--min-rounds", "--min-round", dest="min_rounds", type=int, default=5)
             subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES)
             subparser.add_argument("--reset-optimize", action="store_true")
             subparser.add_argument("--enable-compiler-source-analysis", action="store_true")
             subparser.add_argument("--enable-cann-ext-api", action="store_true")
             subparser.add_argument("--enable-subagent", action="store_true")
             if command_kind == CommandKind.OPTIMIZE:
-                subparser.add_argument("--enable-agent-hooks", action="store_true")
+                subparser.add_argument("--enable-agent-hooks", "--enable-agent-hook", dest="enable_agent_hooks", action="store_true")
             subparser.add_argument("--target-chip", default="A5", choices=_TARGET_CHIP_CHOICES)
             subparser.add_argument(
                 "--optimize-target",
@@ -645,7 +645,7 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
     if spec.input_mode == "compare-perf":
         subparser.add_argument("--baseline", required=True)
         subparser.add_argument("--compare", required=True)
-        subparser.add_argument("--skip-latency-errors", action="store_true")
+        subparser.add_argument("--skip-latency-errors", "--skip-error", dest="skip_latency_errors", action="store_true")
         subparser.add_argument(
             "--metric-source",
             default="auto",
