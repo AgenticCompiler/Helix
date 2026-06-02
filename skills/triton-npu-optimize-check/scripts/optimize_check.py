@@ -60,7 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     round_parser = subparsers.add_parser("check-round")
     round_parser.add_argument("--round-dir", required=True)
-    round_parser.add_argument("--min-rounds", type=int, default=None)
+    round_parser.add_argument("--min-rounds", "--min-round", dest="min_rounds", type=int, default=None)
     round_parser.add_argument(
         "--optimize-target",
         choices=("kernel", "operator"),

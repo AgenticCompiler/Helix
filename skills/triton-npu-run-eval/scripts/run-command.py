@@ -206,7 +206,7 @@ def build_parser() -> argparse.ArgumentParser:
     compare_perf = subparsers.add_parser("compare-perf")
     compare_perf.add_argument("--baseline", required=True)
     compare_perf.add_argument("--compare", required=True)
-    compare_perf.add_argument("--skip-latency-errors", action="store_true")
+    compare_perf.add_argument("--skip-latency-errors", "--skip-error", dest="skip_latency_errors", action="store_true")
     compare_perf.add_argument(
         "--metric-source",
         default="auto",

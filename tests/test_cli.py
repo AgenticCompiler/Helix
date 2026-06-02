@@ -141,7 +141,7 @@ class CliParserTests(unittest.TestCase):
         parser = build_parser()
         for command in ("gen-eval", "gen-eval-batch", "gen-test", "gen-bench"):
             with self.subTest(command=command):
-                args = parser.parse_args([command, "-i", "kernel.py", "--log-tools"])
+                args = parser.parse_args([command, "-i", "kernel.py", "--log-tool"])
                 self.assertTrue(args.log_tools)
                 options = generation_options_from_args(args)
                 self.assertTrue(options.log_tools)
@@ -197,7 +197,7 @@ class CliParserTests(unittest.TestCase):
         parser = build_parser()
         for command in ("convert", "convert-batch"):
             with self.subTest(command=command):
-                args = parser.parse_args([command, "-i", "kernel.py", "--log-tools"])
+                args = parser.parse_args([command, "-i", "kernel.py", "--log-tool"])
                 self.assertTrue(args.log_tools)
                 options = convert_options_from_args(args)
                 self.assertTrue(options.log_tools)
@@ -206,7 +206,7 @@ class CliParserTests(unittest.TestCase):
         parser = build_parser()
         for command in ("log-check", "log-check-batch"):
             with self.subTest(command=command):
-                args = parser.parse_args([command, "-i", "workspace", "--log-tools"])
+                args = parser.parse_args([command, "-i", "workspace", "--log-tool"])
                 self.assertTrue(args.log_tools)
 
     def test_convert_rejects_non_differential_test_mode(self) -> None:
@@ -988,7 +988,7 @@ class CliParserTests(unittest.TestCase):
 
     def test_optimize_command_accepts_min_rounds(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize", "-i", "kernel.py", "--min-rounds", "3"])
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--min-round", "3"])
         self.assertEqual(args.min_rounds, 3)
 
     def test_optimize_command_defaults_min_rounds(self) -> None:
@@ -1054,7 +1054,7 @@ class CliParserTests(unittest.TestCase):
 
     def test_optimize_accepts_agent_hooks_option(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize", "-i", "kernel.py", "--enable-agent-hooks"])
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--enable-agent-hook"])
 
         self.assertTrue(args.enable_agent_hooks)
         options = optimize_run_options_from_args(args)
@@ -1070,7 +1070,7 @@ class CliParserTests(unittest.TestCase):
 
     def test_optimize_accepts_log_tools_option(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize", "-i", "kernel.py", "--log-tools"])
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--log-tool"])
 
         self.assertTrue(args.log_tools)
         options = optimize_run_options_from_args(args)
@@ -1086,11 +1086,33 @@ class CliParserTests(unittest.TestCase):
 
     def test_optimize_batch_accepts_log_tools_option(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize-batch", "-i", "operators", "--log-tools"])
+        args = parser.parse_args(["optimize-batch", "-i", "operators", "--log-tool"])
 
         self.assertTrue(args.log_tools)
         options = optimize_run_options_from_args(args)
         self.assertTrue(options.log_tools)
+
+    def test_canonical_plural_flags_remain_parseable(self) -> None:
+        """Backward compatibility: published plural flag names must continue to work."""
+        parser = build_parser()
+
+        # --log-tools (generation)
+        args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--log-tools"])
+        self.assertTrue(args.log_tools)
+
+        # --min-rounds (optimize)
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--min-rounds", "3"])
+        self.assertEqual(args.min_rounds, 3)
+
+        # --enable-agent-hooks (optimize)
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--enable-agent-hooks"])
+        self.assertTrue(args.enable_agent_hooks)
+
+        # --skip-latency-errors (compare-perf)
+        args = parser.parse_args(
+            ["compare-perf", "--baseline", "a.txt", "--compare", "b.txt", "--skip-latency-errors"]
+        )
+        self.assertTrue(args.skip_latency_errors)
 
     def test_optimize_batch_accepts_compiler_source_analysis_options(self) -> None:
         parser = build_parser()
@@ -1329,7 +1351,7 @@ class CliParserTests(unittest.TestCase):
                 "standalone",
                 "--bench-mode",
                 "msprof",
-                "--min-rounds",
+                "--min-round",
                 "4",
                 "--resume",
                 "continue",
@@ -3805,6 +3827,7 @@ class PathResolutionTests(unittest.TestCase):
                 None,
                 verbose=False,
                 force_recompile=False,
+                output=None,
             )
             self.assertEqual(
                 stdout.getvalue(),
@@ -3844,6 +3867,7 @@ class PathResolutionTests(unittest.TestCase):
                 None,
                 verbose=False,
                 force_recompile=False,
+                output=None,
             )
 
     def test_main_run_bench_threads_npu_devices_to_local_runner(self) -> None:
@@ -3876,6 +3900,7 @@ class PathResolutionTests(unittest.TestCase):
                 "0,2-3",
                 verbose=False,
                 force_recompile=False,
+                output=None,
             )
 
     def test_run_bench_wrapper_calls_loaded_skill_module(self) -> None:
@@ -3943,6 +3968,7 @@ class PathResolutionTests(unittest.TestCase):
                 verbose=False,
                 stderr=sys.stderr,
                 force_recompile=False,
+                output=None,
             )
 
     def test_main_run_bench_threads_npu_devices_to_remote_runner(self) -> None:
@@ -3984,6 +4010,7 @@ class PathResolutionTests(unittest.TestCase):
                 verbose=False,
                 stderr=sys.stderr,
                 force_recompile=False,
+                output=None,
             )
 
     def test_main_run_bench_prints_remote_workspace_when_kept(self) -> None:

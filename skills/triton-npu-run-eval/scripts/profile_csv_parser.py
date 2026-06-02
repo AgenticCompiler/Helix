@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import csv
+import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TextIO
 
 from perf_artifacts import PerfMetrics, PerfOpRow, format_latency_value
 
@@ -31,7 +33,7 @@ def find_latest_op_statistic_csv(profile_root: Path) -> Path | None:
     return max(matches, key=lambda path: path.stat().st_mtime_ns)
 
 
-def parse_op_statistic_csv(csv_path: Path) -> ParsedProfileCsvRows:
+def parse_op_statistic_csv(csv_path: Path, *, verbose: bool = False, stderr: TextIO = sys.stderr) -> ParsedProfileCsvRows:
     with csv_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         fieldnames = reader.fieldnames or []
@@ -56,6 +58,8 @@ def parse_op_statistic_csv(csv_path: Path) -> ParsedProfileCsvRows:
 
     if row_count == 0:
         raise ValueError(f"No rows found in {csv_path}")
+    if verbose:
+        print(f"[metrics] op_statistic.csv {csv_path}: {row_count} ops, total_time_us={total_time_us}", file=stderr)
     return ParsedProfileCsvRows(
         source_path=csv_path,
         ops=ops,
@@ -68,6 +72,8 @@ def parse_operator_details_csv(
     *,
     active_count: int,
     kernel_names: list[str],
+    verbose: bool = False,
+    stderr: TextIO = sys.stderr,
 ) -> ParsedProfileCsvRows:
     with csv_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
@@ -96,6 +102,12 @@ def parse_operator_details_csv(
         )
         total_time_us += duration
         if duration == 0.0 and op_name not in kernel_name_set:
+            if verbose:
+                print(
+                    f"[metrics] operator_details.csv {csv_path}: "
+                    f"skipping zero-duration entry '{op_name}' (not in resolved kernels)",
+                    file=stderr,
+                )
             continue
         if op_name not in totals_by_name:
             totals_by_name[op_name] = 0.0
@@ -107,6 +119,12 @@ def parse_operator_details_csv(
         avg_time_us = totals_by_name[op_name] / active_count
         ops.append({"op_type": op_name, "avg_time_us": float(format_latency_value(avg_time_us))})
 
+    if verbose:
+        print(
+            f"[metrics] operator_details.csv {csv_path}: "
+            f"{len(ops)} unique ops, total_time_us={total_time_us}",
+            file=stderr,
+        )
     return ParsedProfileCsvRows(
         source_path=csv_path,
         ops=ops,
@@ -118,6 +136,8 @@ def parse_kernel_details_csv(
     csv_path: Path,
     *,
     active_count: int,
+    verbose: bool = False,
+    stderr: TextIO = sys.stderr,
 ) -> ParsedProfileCsvRows:
     with csv_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
@@ -150,6 +170,12 @@ def parse_kernel_details_csv(
         avg_time_us = totals_by_name[op_name] / active_count
         ops.append({"op_type": op_name, "avg_time_us": float(format_latency_value(avg_time_us))})
 
+    if verbose:
+        print(
+            f"[metrics] kernel_details.csv {csv_path}: "
+            f"{len(ops)} unique ops, total_time_us={total_time_us}",
+            file=stderr,
+        )
     return ParsedProfileCsvRows(
         source_path=csv_path,
         ops=ops,
@@ -157,11 +183,18 @@ def parse_kernel_details_csv(
     )
 
 
-def resolve_perf_metrics(ops: list[PerfOpRow], kernel_names: list[str]) -> PerfMetrics:
+def resolve_perf_metrics(ops: list[PerfOpRow], kernel_names: list[str], *, verbose: bool = False, stderr: TextIO = sys.stderr) -> PerfMetrics:
     kernel_name_set = set(kernel_names)
     matched_avg_times = [
         float(row["avg_time_us"]) for row in ops if str(row["op_type"]) in kernel_name_set
     ]
+    if verbose and not matched_avg_times:
+        op_types = [str(row["op_type"]) for row in ops]
+        print(
+            f"[metrics] no resolved kernels matched profiler operators. "
+            f"resolved_kernels={kernel_names}, profiler_ops={op_types}",
+            file=stderr,
+        )
     return {
         "kernel_avg_time_us": sum(matched_avg_times) if matched_avg_times else None,
         "ops": [

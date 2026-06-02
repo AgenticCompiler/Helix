@@ -184,7 +184,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(result["return_code"], 0)
             self.assertEqual(resolved_perf, perf_file)
             helper.assert_called_once_with(bench_file, operator_file, verbose=False,
-                                             force_recompile=False)
+                                             force_recompile=False, output=None)
             streaming.assert_not_called()
 
     def test_run_local_bench_standalone_preserves_helper_perf_path(self) -> None:
@@ -230,8 +230,8 @@ class LocalBenchRunnerTests(unittest.TestCase):
             perf_file = root / "abs_perf.txt"
 
             def _fake_helper(passed_bench: Path, passed_operator: Path, *, verbose: bool = False,
-                             force_recompile: bool = False):
-                del passed_bench, passed_operator, verbose, force_recompile
+                             force_recompile: bool = False, output: str | None = None):
+                del passed_bench, passed_operator, verbose, force_recompile, output
                 observed_cwds.append(Path.cwd())
                 return fake_result, perf_file
 
@@ -383,7 +383,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(result, fake_result)
             self.assertEqual(resolved_perf, perf_file)
             helper.assert_called_once_with(bench_file, operator_file, verbose=False,
-                                             force_recompile=False)
+                                             force_recompile=False, output=None)
 
     def test_run_local_bench_standalone_parallel_uses_isolated_case_workdirs_and_device_envs(self) -> None:
         module = load_bench_runner_module()
@@ -668,8 +668,8 @@ def build_standalone_bench_cases(operator_api):
             runtime_script.write_text(
                 """from types import SimpleNamespace
 
-def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved_run_dir=None):
-    del bench_file, operator_file, preserved_run_dir
+def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved_run_dir=None, verbose=False):
+    del bench_file, operator_file, preserved_run_dir, verbose
     return SimpleNamespace(
         case_label=case_id,
         kernel_names=["KernelA"],

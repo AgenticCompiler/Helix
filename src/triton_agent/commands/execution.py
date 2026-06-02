@@ -73,6 +73,7 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
     bench_file, operator_file = resolve_run_bench_paths(parser, args)
     resolved_bench_mode = args.bench_mode or resolve_bench_mode_from_metadata(bench_file)
     force_recompile: bool = getattr(args, "force_recompile", False)
+    output: str | None = getattr(args, "output", None)
     remote_workspace: str | None = None
     try:
         if args.remote:
@@ -87,6 +88,7 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
                 verbose=args.verbose,
                 stderr=sys.stderr,
                 force_recompile=force_recompile,
+                output=output,
             )
         else:
             result, perf_path = run_local_bench(
@@ -96,6 +98,7 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
                 args.npu_devices,
                 verbose=args.verbose,
                 force_recompile=force_recompile,
+                output=output,
             )
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
         print(str(exc), file=sys.stderr)
