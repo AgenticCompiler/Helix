@@ -13,12 +13,16 @@ Rewrite a manual matmul or K-reduction hot loop into a regular tiled `tl.dot`-ba
 - profiling or IR suggests the hot loop is spending too much effort on scalar address generation or repeated reduction structure
 - a block-pointer rewrite reduced one scalar chain but the full loop is still not a regular matmul
 - dtype-specialized or shape-specialized paths are acceptable when one tiled regime is clearly better but a unified rewrite would change numerics too much
+- simulation `report.txt` shows CUBE instr = 0 (or CUBE row absent) AND kernel source contains `tl.sum(a*b)` or equivalent K-reduction loop instead of `tl.dot`
 
 ## Avoid When
 
 - purely elementwise kernels
 - gather/scatter dominated kernels
 - tiny shapes where tile setup cost is unlikely to amortize
+- `tl.dot` with N=1 on Ascend A5 — Bisheng compiler SIGSEGV; restructure grid so each program handles multiple output rows (N ≥ 2) before applying `tl.dot`
+- CUBE activity is low but non-zero — `tl.dot` exists but tile sizes or compiler lowering are suboptimal; route to `tiling` or `software-pipeline` instead
+- inherently lightweight kernels (trivial load+store, touch kernels, standalone reduction without preceding multiply) — no matmul structure to rewrite
 
 Choose this pattern when the main problem is **kernel structure**. The question it answers is:
 
@@ -26,6 +30,21 @@ Choose this pattern when the main problem is **kernel structure**. The question 
 
 If the kernel is already a reasonable tiled matmul and the remaining problem is memory/compute overlap, use `software-pipeline` instead.
 If the kernel is failing because tiles or intermediates are too large for UB, use `tiling` instead.
+
+## Signals
+
+### Code
+
+- The hot loop uses `tl.sum(tile_a * tile_b, axis=K_dim)` or equivalent elementwise multiply + reduction instead of `tl.dot` — the CUBE engine is idle while VECTOR does matmul work.
+- The K-reduction loop is a `while` loop or `range` loop instead of `tl.static_range`, preventing compiler pipelining of `tl.dot`.
+
+### Profile
+
+- Simulation `report.txt` overall `[Pipe Distribution]` has no CUBE row or CUBE instr = 0.
+- Simulation `report.txt` overall `[CUBE/MMA]` section absent or MMAD = 0.
+- Simulation `report.txt` overall `[Pipe Distribution]` SCALAR instr% > 50% (scalar-heavy address computation typical of manual reduction).
+- Simulation `report.txt` overall `[TRACE Events]` arithmetic breakdown has MADD > 0 (multiply-accumulate pattern present but routed to SCALAR/VECTOR instead of CUBE).
+- Simulation `report.txt` overall `[Pipeline Flows]` has no CUBE-related flows (CUBEToFIXP, CUBEToMTE1, MTE1ToCUBE all absent).
 
 ## Rewrite Goal
 
@@ -166,6 +185,33 @@ The exact threshold should come from benchmark evidence, not from a fixed guess.
 - tile setup overhead can hurt small shapes
 - larger tiles can increase register or UB pressure
 - forcing `fp16` dot inputs can change `fp32` input semantics
+- `tl.dot` with N=1 crashes the Bisheng compiler on Ascend A5 — grid must be restructured so N ≥ 2
+
+## Matrix×Vector Grid Restructuring (N=1 → N≥2)
+
+When each program currently processes one output row (matrix×vector, N=1), `tl.dot` cannot be used directly on Ascend A5. Restructure the grid so each program handles multiple output rows:
+
+```python
+# detect: grid=(B,) — one program per batch row, output is 1D
+pid = tl.program_id(axis=0)
+x_row_ptr = x_ptr + pid * X_STRIDE
+# ... computation produces a single scalar or 1D result per program
+```
+
+```python
+# restructure: each program handles ROWS_PER_PROGRAM rows → N = ROWS_PER_PROGRAM ≥ 2
+pid = tl.program_id(axis=0)
+row_start = pid * ROWS_PER_PROGRAM
+row_offs = row_start + tl.arange(0, ROWS_PER_PROGRAM)
+row_mask = row_offs < B
+
+# Load x as [ROWS_PER_PROGRAM, BLOCK_IN] instead of [BLOCK_IN]
+x_ptrs = x_ptr + row_offs[:, None] * X_STRIDE + in_offs[None, :]
+x_block = tl.load(x_ptrs, mask=row_mask[:, None] & in_mask[None, :], other=0.0)
+
+# Now w_tile [BLOCK_OUT, BLOCK_IN] × x_block [BLOCK_IN, ROWS_PER_PROGRAM] works
+# N dimension = ROWS_PER_PROGRAM > 1 → tl.dot works on A5
+```
 
 ## Related Patterns
 

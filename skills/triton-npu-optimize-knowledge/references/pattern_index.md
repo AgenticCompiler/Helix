@@ -98,6 +98,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - profiling or IR suggests the hot loop is spending too much effort on scalar address generation or repeated reduction structure
   - a block-pointer rewrite reduced one scalar chain but the full loop is still not a regular matmul
   - dtype-specialized or shape-specialized paths are acceptable when one tiled regime is clearly better but a unified rewrite would change numerics too much
+  - simulation `report.txt` shows CUBE instr = 0 (or CUBE row absent) AND kernel source contains `tl.sum(a*b)` or equivalent K-reduction loop instead of `tl.dot`
 
 ### `compile_hint`
 
@@ -281,14 +282,12 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - `report.txt` overall `[TRACE Events]` section has **> 10,000 events** dominated by SIGNEXT/ADD/MUL/DIV/SUB/MADD (Signal Category 1).
   - `report.txt` overall `[VECTOR Unit]` UB Read or Write Conflict exceeds 100 (Signal Category 3).
   - `report.txt` overall `[VECTOR Unit]` Utilization avg < 30% (Signal Category 4).
-  - `report.txt` overall `[Pipe Distribution]` has **no CUBE row** (or CUBE instr = 0) AND kernel source contains a K-dimension multiply+accumulate loop using `tl.sum(a*b)` instead of `tl.dot` (Signal Category 6).
   - You need to map an observed simulation signal to a related pattern and a concrete optimization direction.
   - You see `tl.load` with `mask`/`other` and want to determine whether the load is taking the slow SCALAR→VECTOR→MTE2 path (Path A) or the fast SCALAR→MTE2→VECTOR path (Path B).
   - The optimization target is **pure tiling parameter tuning** (BLOCK_M/BLOCK_N/BLOCK_K, num_warps, grid config) — these are invisible in single-program simulation and must use hardware profiling.
   - The optimization target is **multi-program atomic contention** (e.g., `tl.atomic_add` under concurrent access) — simulation cannot reproduce this and signals will be misleading.
   - Simulation data shows **no signal hitting any threshold**.
   - The kernel is **inherently lightweight** (e.g., a trivial load+store touch kernel, a copy kernel, or a kernel with no compute loop) — an abnormal Pipe distribution is the natural characteristic of such operations, not an optimization target.
-  - CUBE activity is low but non-zero — this indicates `tl.dot` exists but tile sizes or compiler lowering are suboptimal; route to `tiling` or `software-pipeline` instead of Signal Category 6.
 
 ### `slice_coalesce`
 
