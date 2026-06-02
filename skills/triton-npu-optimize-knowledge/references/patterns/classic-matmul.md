@@ -20,7 +20,7 @@ Rewrite a manual matmul or K-reduction hot loop into a regular tiled `tl.dot`-ba
 - purely elementwise kernels
 - gather/scatter dominated kernels
 - tiny shapes where tile setup cost is unlikely to amortize
-- `tl.dot` with N=1 on Ascend A5 — Bisheng compiler SIGSEGV; restructure grid so each program handles multiple output rows (N ≥ 2) before applying `tl.dot`
+- `tl.dot` may cause Bisheng compiler SIGSEGV depending on CANN version and kernel shape (confirmed on A5 and 910B2); verify `tl.dot` compiles on the target before relying on it, and restructure grid so N ≥ 2 when needed
 - CUBE activity is low but non-zero — `tl.dot` exists but tile sizes or compiler lowering are suboptimal; route to `tiling` or `software-pipeline` instead
 - inherently lightweight kernels (trivial load+store, touch kernels, standalone reduction without preceding multiply) — no matmul structure to rewrite
 
@@ -48,7 +48,15 @@ If the kernel is failing because tiles or intermediates are too large for UB, us
 
 ## Rewrite Goal
 
-Turn the hot loop into the standard tiled form:
+Apply in two phases. Phase 1 is always applicable; Phase 2 depends on `tl.dot` compiling successfully on the target.
+
+**Phase 1 — Structural optimization (always apply first):**
+
+- eliminate redundant loads in the K-reduction loop (restructure loop nest so input tiles are shared)
+- widen output tiling (increase BLOCK_OUT/BLOCK_N to amortize fixed overhead)
+- use `tl.static_range` for the K loop to enable compiler pipelining
+
+**Phase 2 — `tl.dot` replacement (apply if Phase 1 is already done and `tl.dot` compiles):**
 
 - `pid_m`, `pid_n`
 - `offs_m`, `offs_n`, `offs_k`
@@ -175,8 +183,14 @@ The exact threshold should come from benchmark evidence, not from a fixed guess.
 
 ## Expected Benefit
 
+**Phase 1 (structural):**
+- reduced redundant data movement through MTE2 (often the dominant win — 10-30× observed)
+- better MTE2 amortization from wider output tiling
+- compiler loop pipelining from `tl.static_range`
+
+**Phase 2 (`tl.dot` replacement):**
 - more regular lowering of the main `K` loop
-- better fit for `tl.dot`/matmul code generation
+- better fit for CUBE/matmul code generation
 - less scalar-heavy reduction structure
 - better amortization of fused epilogues on larger `M` and `N`
 
@@ -185,11 +199,11 @@ The exact threshold should come from benchmark evidence, not from a fixed guess.
 - tile setup overhead can hurt small shapes
 - larger tiles can increase register or UB pressure
 - forcing `fp16` dot inputs can change `fp32` input semantics
-- `tl.dot` with N=1 crashes the Bisheng compiler on Ascend A5 — grid must be restructured so N ≥ 2
+- `tl.dot` may crash the Bisheng compiler depending on CANN version and kernel shape (confirmed on A5 and 910B2); verify `tl.dot` compiles before relying on it
 
 ## Matrix×Vector Grid Restructuring (N=1 → N≥2)
 
-When each program currently processes one output row (matrix×vector, N=1), `tl.dot` cannot be used directly on Ascend A5. Restructure the grid so each program handles multiple output rows:
+When each program currently processes one output row (matrix×vector, N=1), `tl.dot` may crash the Bisheng compiler depending on CANN version and kernel shape. Restructure the grid so each program handles multiple output rows:
 
 ```python
 # detect: grid=(B,) — one program per batch row, output is 1D
@@ -210,7 +224,121 @@ x_ptrs = x_ptr + row_offs[:, None] * X_STRIDE + in_offs[None, :]
 x_block = tl.load(x_ptrs, mask=row_mask[:, None] & in_mask[None, :], other=0.0)
 
 # Now w_tile [BLOCK_OUT, BLOCK_IN] × x_block [BLOCK_IN, ROWS_PER_PROGRAM] works
-# N dimension = ROWS_PER_PROGRAM > 1 → tl.dot works on A5
+# N dimension = ROWS_PER_PROGRAM > 1 → tl.dot works
+```
+
+## Structural Optimization Before `tl.dot`
+
+When `tl.dot` cannot be used (compiler crash, shape constraint, or UB overflow), the kernel can still benefit from structural improvements that reduce redundant data movement. Apply these **before** attempting `tl.dot` — they often yield the majority of the speedup.
+
+### Eliminate redundant loads in the K-reduction loop
+
+When the same input tile is loaded multiple times across outer-loop iterations (e.g., per output element or per window), restructure the loop nest so each input tile is loaded once and shared across all output elements that need it.
+
+```python
+# detect: x loaded inside the outer loop — redundant per output element
+for out_tile in range(0, OUT_F, BLOCK_OUT):
+    for in_tile in range(0, IN_F, BLOCK_IN):
+        x_vec = tl.load(x_ptr + in_offs, ...)          # reloaded every out_tile iteration
+        w_tile = tl.load(w_ptr + out_offs * IN_F + in_offs, ...)
+        acc += tl.sum(w_tile * x_vec[None, :], axis=1)
+```
+
+```python
+# restructure: x loaded once per in_tile, shared across out_tile
+for in_tile in range(0, IN_F, BLOCK_IN):
+    x_vec = tl.load(x_ptr + in_offs, ...)              # loaded once
+    for out_tile in range(0, OUT_F, BLOCK_OUT):
+        w_tile = tl.load(w_ptr + out_offs * IN_F + in_offs, ...)
+        acc += tl.sum(w_tile * x_vec[None, :], axis=1)  # reused across out_tile
+```
+
+### Widen output tiling
+
+Increase the number of output elements computed per program to amortize fixed overhead (pointer setup, accumulator init) and improve MTE2 throughput.
+
+```python
+# detect: BLOCK_OUT=32 — many small output tiles, high per-tile overhead
+```
+
+```python
+# widen: BLOCK_OUT=128 — 4× fewer tiles, better MTE2 amortization
+```
+
+### Use `tl.static_range` for the K loop
+
+Replace `while` or `range` with `tl.static_range` to enable compiler loop pipelining, even when the body still uses `tl.sum(a*b)` instead of `tl.dot`.
+
+### Conv2d via im2col with manual K-reduction
+
+Conv2d kernels that flatten to im2col matmul but use `tl.sum(a*b)` instead of `tl.dot`. Unlike pure matmul, the K loop requires coordinate decoding (`//` and `%`) to map flat indices back to `(ci, kh, kw)`, and input positions depend on decoded coordinates with padding/stride/dilation.
+
+Phase 1 — structural: replace `//`/`%` with compile-time-known strides where possible (same as Cat 1 Manifestation A), ensure x loads are not redundant across K iterations.
+
+Phase 2 — `tl.dot` replacement: the key change is replacing `tl.sum(a_tile * b_tile, axis=1)` with `tl.dot(a_tile, b_tile_t)` **and** loading the weight tile in transposed layout `[BLOCK_K, BLOCK_N]` instead of `[BLOCK_N, BLOCK_K]`.
+
+```python
+# detect: conv kernel with im2col, K loop doing tl.sum(a*b)
+# Each program handles one output tile, grid = (B * OH * OW, CO)
+pid_m = tl.program_id(axis=0)
+pid_n = tl.program_id(axis=1)
+m_offs = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+n_offs = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+
+# Decode m -> (b, oh, ow) and k -> (ci, kh, kw) with scalar //
+ohow = OH * OW
+b_idx = m_offs // ohow
+rem = m_offs - b_idx * ohow
+oh = rem // OW
+ow = rem - oh * OW
+
+acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+
+for k0 in tl.static_range(0, K, BLOCK_K):
+    k_offs = k0 + tl.arange(0, BLOCK_K)
+    khkw = KH * KW
+    ci = k_offs // khkw
+    remk = k_offs - ci * khkw
+    kh = remk // KW
+    kw = remk - kh * KW
+
+    ih = oh[:, None] * STRH - PADH + kh[None, :] * DILH
+    iw = ow[:, None] * STRW - PADW + kw[None, :] * DILW
+    in_bounds = (ih >= 0) & (iw >= 0) & (ih < H) & (iw < W)
+
+    x_offsets = b_idx[:, None] * x_stride_n + ci[None, :] * x_stride_c + ih * x_stride_h + iw * x_stride_w
+    a_tile = tl.load(x_ptr + x_offsets, mask=in_bounds, other=0.0).to(tl.float32)
+
+    w_offsets = n_offs[None, :] * K + k_offs[:, None]   # weight [CO, K] layout
+    b_tile = tl.load(w_ptr + w_offsets, mask=..., other=0.0).to(tl.float32)
+
+    acc += tl.sum(a_tile * b_tile, axis=1)               # ← manual K-reduction, NOT tl.dot
+```
+
+```python
+# transform: replace tl.sum(a*b) with tl.dot + weight layout transpose
+# a_tile stays [BLOCK_M, BLOCK_K], b_tile becomes [BLOCK_K, BLOCK_N]
+
+for k0 in tl.static_range(0, K, BLOCK_K):
+    k_offs = k0 + tl.arange(0, BLOCK_K)
+    khkw = KH * KW
+    ci = k_offs // khkw
+    remk = k_offs - ci * khkw
+    kh = remk // KW
+    kw = remk - kh * KW
+
+    ih = oh[:, None] * STRH - PADH + kh[None, :] * DILH
+    iw = ow[:, None] * STRW - PADW + kw[None, :] * DILW
+    in_bounds = (ih >= 0) & (iw >= 0) & (ih < H) & (iw < W)
+
+    x_offsets = b_idx[:, None] * x_stride_n + ci[None, :] * x_stride_c + ih * x_stride_h + iw * x_stride_w
+    a_tile = tl.load(x_ptr + x_offsets, mask=in_bounds, other=0.0).to(tl.float32)
+
+    # Load weight tile as transposed block: [BLOCK_K, BLOCK_N]
+    w_offsets_t = k_offs[:, None] + n_offs[None, :] * K
+    b_tile_t = tl.load(w_ptr + w_offsets_t, mask=..., other=0.0).to(tl.float32)
+
+    acc += tl.dot(a_tile, b_tile_t)                      # CUBE-side matmul
 ```
 
 ## Related Patterns
