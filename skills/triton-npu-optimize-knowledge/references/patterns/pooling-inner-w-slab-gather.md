@@ -81,6 +81,7 @@ The overlapping columns (**`2`**, **`4`**, **`6`**) are loaded once from global 
 - **Tail tiles:** **`out_w % BLOCK_OW != 0`** requires **`ow_mask`** on **store** and usually **disables full-tile slab branches** unless tail handling is explicit.
 - **MaxPool** with **`return_indices`**, **dilation**, or **validity state** (`seen_valid`, etc.)—W-slab may still help **loads**, but **combine / store** need a separate design.
 - **Layout** is not **W-contiguous** per row (fix with **`contiguous()`** or a different pattern).
+- **SIMT-only discrete gather** on A5 already beats slab on measured shapes — prefer `pooling-clip-window-closed-divisor` + SIMT before forcing HIVM slab.
 - **One failed gather attempt** on device—treat as **implementation bug**, not “pattern invalid”; see **Failure playbook** below before abandoning gather.
 
 ## Signals
@@ -252,6 +253,7 @@ kernel[grid](..., BLOCK_OW=block_ow, W_SLAB_LEN=w_slab_len,
 - `constexpr-tile-discrete-access`
 - `program-multiple-rows`
 - `scalar-latency-traps` (supporting lens for boundary math—not a substitute for W staging)
+- `pooling-clip-window-closed-divisor` (portable inner-loop repair before or instead of slab on SIMT paths)
 
 ## What To Verify After Applying
 

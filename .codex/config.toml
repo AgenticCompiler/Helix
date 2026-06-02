@@ -1,0 +1,8 @@
+model = "gpt-5.4"
+model_provider = "yunwu"
+
+[model_providers.yunwu]
+name = "gpt-5.4"
+base_url = "https://yunwu.ai/v1"
+wire_api = "responses"
+env_key = "OPENAI_API_KEY"
