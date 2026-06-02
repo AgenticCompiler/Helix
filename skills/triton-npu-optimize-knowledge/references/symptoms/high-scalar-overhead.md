@@ -17,6 +17,7 @@ The round spends too much time on per-program fixed work, scalar control flow, o
 - `padded_row_col_copy`
 - `vec-cmp`
 - `classic-matmul`
+- `pooling-clip-window-closed-divisor`
 
 ## Common Non-Matches
 
