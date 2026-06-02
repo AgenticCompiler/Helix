@@ -13,12 +13,15 @@ Rewrite a manual matmul or K-reduction hot loop into a regular tiled `tl.dot`-ba
 - profiling or IR suggests the hot loop is spending too much effort on scalar address generation or repeated reduction structure
 - a block-pointer rewrite reduced one scalar chain but the full loop is still not a regular matmul
 - dtype-specialized or shape-specialized paths are acceptable when one tiled regime is clearly better but a unified rewrite would change numerics too much
+- simulation `report.txt` shows CUBE instr = 0 (or CUBE row absent) AND kernel source contains `tl.sum(a*b)` or equivalent K-reduction loop instead of `tl.dot`
 
 ## Avoid When
 
 - purely elementwise kernels
 - gather/scatter dominated kernels
 - tiny shapes where tile setup cost is unlikely to amortize
+- CUBE activity is low but non-zero — `tl.dot` exists but tile sizes or compiler lowering are suboptimal; route to `tiling` or `software-pipeline` instead
+- inherently lightweight kernels (trivial load+store, touch kernels, standalone reduction without preceding multiply) — no matmul structure to rewrite
 
 Choose this pattern when the main problem is **kernel structure**. The question it answers is:
 
@@ -27,9 +30,54 @@ Choose this pattern when the main problem is **kernel structure**. The question 
 If the kernel is already a reasonable tiled matmul and the remaining problem is memory/compute overlap, use `software-pipeline` instead.
 If the kernel is failing because tiles or intermediates are too large for UB, use `tiling` instead.
 
+## Signals
+
+### Code
+
+- The hot loop uses `tl.sum(tile_a * tile_b, axis=K_dim)` or equivalent elementwise multiply + reduction instead of `tl.dot` — the CUBE engine is idle while VECTOR does matmul work.
+- The K-reduction loop is a `while` loop or `range` loop instead of `tl.static_range`, preventing compiler pipelining of `tl.dot`.
+
+### Profile
+
+- Simulation `report.txt` overall `[Pipe Distribution]` has no CUBE row or CUBE instr = 0.
+- Simulation `report.txt` overall `[CUBE/MMA]` section absent or MMAD = 0.
+- Simulation `report.txt` overall `[Pipe Distribution]` SCALAR instr% > 50% (scalar-heavy address computation typical of manual reduction).
+- Simulation `report.txt` overall `[TRACE Events]` arithmetic breakdown has MADD > 0 (multiply-accumulate pattern present but routed to SCALAR/VECTOR instead of CUBE).
+- Simulation `report.txt` overall `[Pipeline Flows]` has no CUBE-related flows (CUBEToFIXP, CUBEToMTE1, MTE1ToCUBE all absent).
+
 ## Rewrite Goal
 
-Turn the hot loop into the standard tiled form:
+Apply in two phases. Phase 1 is always applicable and should be done first; Phase 2 replaces `tl.sum(a*b)` with `tl.dot`.
+
+**Phase 1 — Structural optimization (always apply first):**
+
+1. **Swap loop nest to eliminate redundant loads** (highest priority, often 10-30× speedup alone)
+   - Detect: count how many times the same x data is loaded per program. If x is inside the outer loop and the outer loop iterates over output dimensions, x is loaded `ceil(OUT_F / BLOCK_OUT)` times redundantly. When this count is in the hundreds or thousands, loop swap is the dominant optimization.
+   - Transform: move the input-tile loop outside, output-tile loop inside, so each x tile is loaded once and shared across all output tiles.
+
+   ```python
+   # detect: x loaded inside the outer loop — redundant per output element
+   for out_tile in range(0, OUT_F, BLOCK_OUT):
+       for in_tile in range(0, IN_F, BLOCK_IN):
+           x_vec = tl.load(x_ptr + in_offs, ...)          # reloaded every out_tile
+           w_tile = tl.load(w_ptr + out_offs * IN_F + in_offs, ...)
+           acc += tl.sum(w_tile * x_vec[None, :], axis=1)
+   ```
+
+   ```python
+   # restructure: x loaded once per in_tile, shared across out_tile
+   for in_tile in range(0, IN_F, BLOCK_IN):
+       x_vec = tl.load(x_ptr + in_offs, ...)              # loaded once
+       for out_tile in range(0, OUT_F, BLOCK_OUT):
+           w_tile = tl.load(w_ptr + out_offs * IN_F + in_offs, ...)
+           acc += tl.sum(w_tile * x_vec[None, :], axis=1)  # reused
+   ```
+
+2. **Full-tile unmasked + partial-tile masked split** — split the IN_F reduction into a full-tile phase (no mask → fast MTE2→VECTOR path) and a partial-tile tail (masked)
+3. **Widen output tiling** — increase BLOCK_OUT/BLOCK_N to amortize fixed overhead; use exact tile sizes when possible
+4. **Use `tl.static_range` for the K loop** — enables compiler pipelining
+
+**Phase 2 — `tl.dot` replacement (apply after Phase 1):**
 
 - `pid_m`, `pid_n`
 - `offs_m`, `offs_n`, `offs_k`
@@ -73,6 +121,78 @@ def matmul_kernel(
         a = tl.load(a_ptrs, mask=a_mask, other=0.0)
         b = tl.load(b_ptrs, mask=b_mask, other=0.0)
         acc += tl.dot(a, b)
+```
+
+## Conv2d via im2col
+
+Conv2d kernels that flatten to im2col matmul but use `tl.sum(a*b)` instead of `tl.dot`. Unlike pure matmul, the K loop requires coordinate decoding (`//` and `%`) to map flat indices back to `(ci, kh, kw)`, and input positions depend on decoded coordinates with padding/stride/dilation.
+
+Phase 1 — structural: replace `//`/`%` with compile-time-known strides where possible, ensure x loads are not redundant across K iterations.
+
+Phase 2 — `tl.dot` replacement: replace `tl.sum(a_tile * b_tile, axis=1)` with `tl.dot(a_tile, b_tile_t)` **and** load the weight tile in transposed layout `[BLOCK_K, BLOCK_N]` instead of `[BLOCK_N, BLOCK_K]`.
+
+```python
+# detect: conv kernel with im2col, K loop doing tl.sum(a*b)
+# Each program handles one output tile, grid = (B * OH * OW, CO)
+pid_m = tl.program_id(axis=0)
+pid_n = tl.program_id(axis=1)
+m_offs = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+n_offs = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+
+# Decode m -> (b, oh, ow) and k -> (ci, kh, kw) with scalar //
+ohow = OH * OW
+b_idx = m_offs // ohow
+rem = m_offs - b_idx * ohow
+oh = rem // OW
+ow = rem - oh * OW
+
+acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+
+for k0 in tl.static_range(0, K, BLOCK_K):
+    k_offs = k0 + tl.arange(0, BLOCK_K)
+    khkw = KH * KW
+    ci = k_offs // khkw
+    remk = k_offs - ci * khkw
+    kh = remk // KW
+    kw = remk - kh * KW
+
+    ih = oh[:, None] * STRH - PADH + kh[None, :] * DILH
+    iw = ow[:, None] * STRW - PADW + kw[None, :] * DILW
+    in_bounds = (ih >= 0) & (iw >= 0) & (ih < H) & (iw < W)
+
+    x_offsets = b_idx[:, None] * x_stride_n + ci[None, :] * x_stride_c + ih * x_stride_h + iw * x_stride_w
+    a_tile = tl.load(x_ptr + x_offsets, mask=in_bounds, other=0.0).to(tl.float32)
+
+    w_offsets = n_offs[None, :] * K + k_offs[:, None]   # weight [CO, K] layout
+    b_tile = tl.load(w_ptr + w_offsets, mask=..., other=0.0).to(tl.float32)
+
+    acc += tl.sum(a_tile * b_tile, axis=1)               # ← manual K-reduction, NOT tl.dot
+```
+
+```python
+# transform: replace tl.sum(a*b) with tl.dot + weight layout transpose
+# a_tile stays [BLOCK_M, BLOCK_K], b_tile becomes [BLOCK_K, BLOCK_N]
+
+for k0 in tl.static_range(0, K, BLOCK_K):
+    k_offs = k0 + tl.arange(0, BLOCK_K)
+    khkw = KH * KW
+    ci = k_offs // khkw
+    remk = k_offs - ci * khkw
+    kh = remk // KW
+    kw = remk - kh * KW
+
+    ih = oh[:, None] * STRH - PADH + kh[None, :] * DILH
+    iw = ow[:, None] * STRW - PADW + kw[None, :] * DILW
+    in_bounds = (ih >= 0) & (iw >= 0) & (ih < H) & (iw < W)
+
+    x_offsets = b_idx[:, None] * x_stride_n + ci[None, :] * x_stride_c + ih * x_stride_h + iw * x_stride_w
+    a_tile = tl.load(x_ptr + x_offsets, mask=in_bounds, other=0.0).to(tl.float32)
+
+    # Load weight tile as transposed block: [BLOCK_K, BLOCK_N]
+    w_offsets_t = k_offs[:, None] + n_offs[None, :] * K
+    b_tile_t = tl.load(w_ptr + w_offsets_t, mask=..., other=0.0).to(tl.float32)
+
+    acc += tl.dot(a_tile, b_tile_t)                      # CUBE-side matmul
 ```
 
 ## Layout Rule
@@ -156,8 +276,14 @@ The exact threshold should come from benchmark evidence, not from a fixed guess.
 
 ## Expected Benefit
 
+**Phase 1 (structural):**
+- reduced redundant data movement through MTE2 (often the dominant win — 10-30× observed)
+- better MTE2 amortization from wider output tiling
+- compiler loop pipelining from `tl.static_range`
+
+**Phase 2 (`tl.dot` replacement):**
 - more regular lowering of the main `K` loop
-- better fit for `tl.dot`/matmul code generation
+- better fit for CUBE/matmul code generation
 - less scalar-heavy reduction structure
 - better amortization of fused epilogues on larger `M` and `N`
 

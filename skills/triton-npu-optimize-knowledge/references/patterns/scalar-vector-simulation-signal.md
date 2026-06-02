@@ -691,3 +691,5 @@ def gather_load_fixed(
 ```
 
 The contiguous `tl.load` now uses MTE2ToVECTOR, and `tl.gather` operates on already-loaded UB data.
+
+------
