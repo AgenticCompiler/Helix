@@ -169,6 +169,7 @@ class _CommandSpec:
     report_workers_default: int | None = None
     has_force_overwrite: bool = False
     has_format: bool = False
+    has_schema: bool = False
     has_verify_phase: bool = False
     has_force_verify: bool = False
     has_log_tools: bool = False
@@ -322,6 +323,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         description="Show optimization status for one workspace.",
         has_output=False,
         has_format=True,
+        has_schema=True,
     ),
     CommandKind.LOG_CHECK: _CommandSpec(
         handler=handle_log_check,
@@ -468,6 +470,12 @@ def build_parser() -> argparse.ArgumentParser:
         _add_primary_arguments(subparser, spec)
         if spec.has_format:
             subparser.add_argument("--format", default="text", choices=_FORMAT_CHOICES)
+        if spec.has_schema:
+            subparser.add_argument(
+                "--schema",
+                action="store_true",
+                help="Generate a status-schema.json file alongside the status output.",
+            )
         if spec.has_verify_phase:
             subparser.add_argument("--phase", default="all", choices=_VERIFY_PHASE_CHOICES)
         if spec.has_force_verify:
