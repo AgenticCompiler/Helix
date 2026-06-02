@@ -1,8 +1,11 @@
-# Autotune Signal: Tuning by Simulation Profiling Analysis
+# Autotune Signal: Pre-Gate + Parameter Diagnostics
 
 ## Summary
 
-Match observed statistical features in `report.txt` overall sections against structured categories to identify resource imbalances, then use `@triton.autotune` to dynamically search for the optimal tiling sizes, software pipelining stages, and warp counts that resolve those specific hardware bottlenecks.
+Two-phase analysis from `report.txt` simulation data:
+
+- **Phase 1 (Pre-Gate):** Check A-Cat-5 to determine **whether** autotune is the right tool. If A-Cat-5 fires, the memory layout is fundamentally broken — autotune cannot fix this; route to `compile_hint` or `discrete_memory_access` instead and stop.
+- **Phase 2 (Parameter Diagnostics):** Only if the Pre-Gate passes — match observed statistical features against A-Cat-6 through A-Cat-4 to identify which autotune parameters should be searched, then use `@triton.autotune` to dynamically find the optimal tiling sizes, software pipelining stages, and warp counts.
 
 ------
 
@@ -29,40 +32,11 @@ Before outputting any code modifications or autotune configurations, the followi
 2. **SRAM (UB) Resource Trade-Off:** Tiling sizes and software pipelining stages compete for the same limited on-chip memory (SRAM/Unified Buffer). Total shared memory utilization scales proportionally with O(BLOCK_M × BLOCK_K × num_stages). If increasing `num_stages` to hide latency triggers an out-of-memory (OOM) error or causes register spilling, scale down `BLOCK_K` or other tile dimensions to compensate.
 3. **Data-Driven Logic:** Base all performance reasoning purely on concrete metrics from `report.txt`: instruction cycle ratios, `WAIT_FLAG` execution frequencies, `ProcessBytes` averages, pipe overlap ratios, and pipeline flow deltas. Abandon qualitative visual descriptions.
 
-## Signal Matching Decision Guide
+## Pre-Gate: Should You Use Autotune? (A-Cat-5)
 
-All metrics below are read from `report.txt` overall sections unless otherwise noted. Check signals in this order. The first match is the primary signal; secondary matches may co-occur.
+**Run this check BEFORE entering the parameter diagnostic flow.** If A-Cat-5 fires, autotune is the wrong tool — the memory layout or compiler information is fundamentally broken, and no amount of parameter tuning will fix it.
 
-1. **A-Cat-5 — Check `[MTE2 Data Transport]`:** ProcessBytes avg < 128 bytes AND kernel contains `tl.load` from global memory? → **A-Cat-5 (Memory Fragmentation & Hint Deficit)**
-2. **A-Cat-6 — Check `[Pipe Distribution]` + `[WAIT_FLAG / BAR Sync]`:** SCALAR cycles% > 50% AND WAIT_FLAG total < 100, but kernel has compute stalls? → **A-Cat-6 (Register Spilling)**
-3. **A-Cat-1 — Check `[Pipe Overlap Ratio]` + `[WAIT_FLAG / BAR Sync]`:** MTE2&VECTOR overlap near 0%? WAIT_FLAG total high? → **A-Cat-1 (Pipeline Overlap Deficit)**
-4. **A-Cat-2 — Check `[Pipe Distribution]` + `[Key Ratios]`:** SCALAR instr% > 80%? SCALAR:VECTOR_instr ratio > 4:1? → **A-Cat-2 (Scalar Overhead Dominance)**
-5. **A-Cat-3 — Check hardware profiling (NOT in `report.txt`):** Grid blocks ≪ physical core count? Neither A-Cat-1 nor A-Cat-2 matched? → **A-Cat-3 (Parallelism Starvation)** — **requires msprof or benchmark data**
-6. **A-Cat-4 — Check benchmark (NOT in `report.txt`):** Performance degrades on specific shapes but works optimally elsewhere? → **A-Cat-4 (Autotune Key Mismatch)** — **requires multi-shape benchmark data**
-
-Multiple signals can co-occur. Common co-occurrences:
-
-- A-Cat-2 + A-Cat-6: SCALAR dominance combined with register pressure from oversized blocks
-- A-Cat-1 + A-Cat-2: Pipeline serialization together with scalar overhead — A-Cat-1 takes priority (fix pipeline first, then scale tiles)
-
-## Related Patterns
-
-- `autotune`
-- `compile_hint`
-- `software-pipeline`
-- `tiling`
-
-## Common Non-Matches
-
-- The core algorithmic logic or global memory layouts are undergoing major design refactoring — stabilize the kernel structure first.
-- The pipeline is entirely bound by global memory bandwidth limits (compute cycles fully hidden behind continuous MTE transfers) — autotune has hit its physical ceiling; operator fusion or lower precision (FP32 → FP16/BF16) is required instead.
-- All relevant `tl.constexpr` parameters are already fixed at launch time with no meaningful tuning space.
-
-------
-
-## Signal Category 5: Memory Fragmentation & Hint Deficit
-
-### Simulation Signature
+### Simulation Signature (A-Cat-5)
 
 | Metric | Threshold | report.txt section |
 |---|---|---|
@@ -73,12 +47,20 @@ Multiple signals can co-occur. Common co-occurrences:
 
 > **Note on data movers:** `Data movers: 0` in `[MTE2 Data Transport]` with `Flow control: N` means all MTE2 instructions are flow-control (SET_FLAG/END_LABEL), not actual data movement. This is a strong signal that memory access is routing through SCALAR instead of MTE2.
 
-### Matching Rule
+### Matching Rule (A-Cat-5)
 
 Read from `report.txt` overall:
 - **Primary trigger:** overall `[MTE2 Data Transport]` ProcessBytes / data mover avg < 128 bytes, OR Data movers = 0 while kernel has `tl.load`
 - **Confirmation:** overall `[Pipe Overlap Ratio]` %(MTE2&VECTOR/VECTOR) < 5%
 - **Fire when:** Primary trigger AND confirmation are both met, AND kernel contains `tl.load` from non-constant pointers. If the kernel is pure register computation with no global memory access, small ProcessBytes is expected — do not fire.
+
+### Decision When A-Cat-5 Fires
+
+**Stop. Do not proceed to autotune parameter diagnostics.** The memory access pattern is too fragmented for the compiler to generate vectorized loads. Autotune parameter search (`BLOCK_*`, `num_stages`, `num_warps`) cannot resolve this.
+
+Route to the appropriate pattern instead:
+- Check `[SCALAR Instr Types]` to confirm the root cause (address computation instructions dominating), then apply **`compile_hint`** if the access pattern is logically contiguous but the compiler can't prove it, or **`discrete_memory_access`** if the access is inherently index-driven.
+- Apply host-side `.contiguous()` rearrangement if input strides don't match physical layout after transpose/view operations.
 
 ### What It Means
 
@@ -157,7 +139,39 @@ Simulation: `[MTE2 Data Transport]` Data movers=0, Flow control=2, ProcessBytes 
 
 The kernel loads from global memory but all data movement routes through SCALAR instead of MTE2 because the memory access pattern is non-contiguous. The compiler cannot generate wide vectorized loads.
 
-Fix: apply host-side `.contiguous()` before kernel launch and align strides with physical layout. After fix: MTE2 data movers > 0, ProcessBytes avg > 128, MTE2&VECTOR overlap > 0%.
+Fix: apply host-side `.contiguous()` before kernel launch and align strides with physical layout. After fix: MTE2 data movers > 0, ProcessBytes avg > 128, MTE2&VECTOR overlap > 0%. After the Pre-Gate is cleared, proceed to Phase 2 parameter diagnostics if further tuning is needed.
+
+------
+
+## Signal Matching Decision Guide (Phase 2: Parameter Diagnostics)
+
+**Precondition: A-Cat-5 Pre-Gate must have been checked and did NOT fire.** If A-Cat-5 fired, stop here — fix the memory layout first, then re-run simulation and re-check the Pre-Gate.
+
+All metrics below are read from `report.txt` overall sections unless otherwise noted. Check signals in this order. The first match is the primary signal; secondary matches may co-occur.
+
+1. **A-Cat-6 — Check `[Pipe Distribution]` + `[WAIT_FLAG / BAR Sync]`:** SCALAR cycles% > 50% AND WAIT_FLAG total < 100, but kernel has compute stalls? → **A-Cat-6 (Register Spilling)**
+2. **A-Cat-1 — Check `[Pipe Overlap Ratio]` + `[WAIT_FLAG / BAR Sync]`:** MTE2&VECTOR overlap near 0%? WAIT_FLAG total high? → **A-Cat-1 (Pipeline Overlap Deficit)**
+3. **A-Cat-2 — Check `[Pipe Distribution]` + `[Key Ratios]`:** SCALAR instr% > 80%? SCALAR:VECTOR_instr ratio > 4:1? → **A-Cat-2 (Scalar Overhead Dominance)**
+4. **A-Cat-3 — Check hardware profiling (NOT in `report.txt`):** Grid blocks ≪ physical core count? Neither A-Cat-1 nor A-Cat-2 matched? → **A-Cat-3 (Parallelism Starvation)** — **requires msprof or benchmark data**
+5. **A-Cat-4 — Check benchmark (NOT in `report.txt`):** Performance degrades on specific shapes but works optimally elsewhere? → **A-Cat-4 (Autotune Key Mismatch)** — **requires multi-shape benchmark data**
+
+Multiple signals can co-occur. Common co-occurrences:
+
+- A-Cat-2 + A-Cat-6: SCALAR dominance combined with register pressure from oversized blocks
+- A-Cat-1 + A-Cat-2: Pipeline serialization together with scalar overhead — A-Cat-1 takes priority (fix pipeline first, then scale tiles)
+
+## Related Patterns
+
+- `autotune`
+- `compile_hint`
+- `software-pipeline`
+- `tiling`
+
+## Common Non-Matches
+
+- The core algorithmic logic or global memory layouts are undergoing major design refactoring — stabilize the kernel structure first.
+- The pipeline is entirely bound by global memory bandwidth limits (compute cycles fully hidden behind continuous MTE transfers) — autotune has hit its physical ceiling; operator fusion or lower precision (FP32 → FP16/BF16) is required instead.
+- All relevant `tl.constexpr` parameters are already fixed at launch time with no meaningful tuning space.
 
 ------
 
@@ -274,7 +288,7 @@ Read from `report.txt` overall:
 - **Primary trigger:** overall `[Pipe Overlap Ratio]` %(MTE2&VECTOR/MTE2) < 5% OR %((VECTOR+CUBE)&MTE2/(VECTOR+CUBE)) < 5%
 - **Confirmation:** overall `[WAIT_FLAG / BAR Sync]` WAIT_FLAG total > 50
 - **Secondary confirmation (optional):** overall `[Pipeline Flows]` SCALARToVECTOR avg > 50ns
-- **Fire when:** Primary trigger AND confirmation are both met. If MTE2 data movers = 0 (kernel is not actually loading data through MTE2), this signal may be a false positive — check A-Cat-5 first.
+- **Fire when:** Primary trigger AND confirmation are both met. If MTE2 data movers = 0 (kernel is not actually loading data through MTE2), this signal may be a false positive — check Pre-Gate A-Cat-5 first.
 - **Precondition:** The kernel contains both `tl.load` (MTE activity) and compute (VECTOR activity). If the kernel is pure load+store or pure compute, zero overlap is expected — do not fire.
 
 ### What It Means
