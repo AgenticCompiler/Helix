@@ -501,8 +501,21 @@ def run_local_bench(
     devices = parse_npu_devices(npu_devices)
     with _local_bench_workdir(bench_file.parent):
         if bench_mode == "msprof-simulator":
-            _run_local_bench_msprof_simulator(bench_file, operator_file, extract_dest_dir=extract_dest_dir)
-            return _run_local_bench_msprof(bench_file, operator_file, verbose=verbose)
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                simulator_future = executor.submit(
+                    _run_local_bench_msprof_simulator,
+                    bench_file,
+                    operator_file,
+                    extract_dest_dir=extract_dest_dir,
+                )
+                msprof_future = executor.submit(
+                    _run_local_bench_msprof,
+                    bench_file,
+                    operator_file,
+                    verbose=verbose,
+                )
+                simulator_future.result()
+                return msprof_future.result()
         if bench_mode == "msprof":
             if devices is not None:
                 source_root, json_search_root = _resolve_case_workspace_roots(
