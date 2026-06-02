@@ -17,8 +17,8 @@ from .log_check_launcher import run_log_check
 def run_log_check_batch(
     root: Path,
     *,
-    output_file: str = "log_check_result.md",
-    summary_file: str = "log_check_summary.md",
+    output_file: str = "log_check_result.json",
+    summary_file: str = "log_check_summary.json",
     agent_name: str = "codex",
     verbose: bool = False,
     show_output: bool = False,
@@ -45,7 +45,7 @@ def run_log_check_batch(
             return BatchOptimizeResult(workspace=workspace, status="skipped", message="report already exists")
         rc = log_check_runner(
             target_path=workspace,
-            output_json=f"{Path(output_file).stem}.json",
+            output_json=output_file,
             agent_name=agent_name,
             verbose=verbose,
             show_output=show_output,
@@ -55,7 +55,7 @@ def run_log_check_batch(
             return BatchOptimizeResult(workspace=workspace, status="failed", message=f"log check exited with return code {rc}")
         if not output_path.is_file():
             return BatchOptimizeResult(workspace=workspace, status="failed", message=f"missing {output_file}")
-        passed, message = summarize_log_check_output(output_path)
+        passed, message = _summarize_from_json(output_path)
         return BatchOptimizeResult(
             workspace=workspace,
             status="ok" if passed else "failed",
@@ -85,32 +85,8 @@ def run_log_check_batch(
 
 
 def summarize_log_check_output(path: Path) -> tuple[bool, str]:
-    """Summarize log_check result from JSON (preferred) or markdown (fallback).
-
-    *path* is the log_check_result.md file path. The corresponding JSON file is
-    derived by replacing the suffix.
-    """
-    json_path = path.with_name("log_check_result.json")
-    if json_path.is_file():
-        return _summarize_from_json(json_path)
-
-    # Fallback: parse legacy markdown
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError as exc:
-        return False, f"failed to read {path.name}: {exc}"
-    lines = [line.strip() for line in text.splitlines()]
-    overall = _first_summary_value(lines, "overall")
-    failed_checks = _first_summary_value(lines, "failed_checks")
-    if overall == "PASS":
-        return True, "overall PASS"
-    if overall == "FAIL":
-        return False, failed_checks or "overall FAIL"
-    if "result: FAIL" in text:
-        return False, "missing overall summary; found result: FAIL"
-    if "result: PASS" in text:
-        return True, "missing overall summary; all visible results are PASS"
-    return False, "missing overall summary"
+    """Summarize log_check result from a log_check_result.json path."""
+    return _summarize_from_json(path)
 
 
 def _summarize_from_json(json_path: Path) -> tuple[bool, str]:
@@ -138,46 +114,35 @@ def write_log_check_batch_summary(
     *,
     output_file: str,
 ) -> Path:
+    import json
+
     ordered = sorted(results, key=lambda item: item.workspace.name)
     passed = [item for item in ordered if item.status == "ok"]
     failed = [item for item in ordered if item.status == "failed"]
     skipped = [item for item in ordered if item.status == "skipped"]
-    lines = [
-        "# Log Check Batch Summary",
-        "",
-        f"overall: {'PASS' if not failed else 'FAIL'}",
-        f"total: {len(ordered)}",
-        f"passed: {len(passed)}",
-        f"failed: {len(failed)}",
-        f"skipped: {len(skipped)}",
-        "",
-        "## Passed",
-        *_format_result_items(passed),
-        "",
-        "## Failed",
-        *_format_result_items(failed),
-        "",
-        "## Skipped",
-        *_format_result_items(skipped),
-        "",
-    ]
+
+    def _item_to_dict(item: BatchOptimizeResult) -> dict[str, str]:
+        return {
+            "workspace": item.workspace.name,
+            "status": item.status,
+            "message": item.message,
+        }
+
+    payload = {
+        "overall": "PASS" if not failed else "FAIL",
+        "total": len(ordered),
+        "passed": len(passed),
+        "failed": len(failed),
+        "skipped": len(skipped),
+        "results": {
+            "passed": [_item_to_dict(item) for item in passed],
+            "failed": [_item_to_dict(item) for item in failed],
+            "skipped": [_item_to_dict(item) for item in skipped],
+        },
+    }
     path = root / output_file
-    path.write_text("\n".join(lines), encoding="utf-8")
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return path
-
-
-def _first_summary_value(lines: list[str], key: str) -> str | None:
-    prefix = f"{key}:"
-    for line in lines:
-        if line.startswith(prefix):
-            return line[len(prefix) :].strip()
-    return None
-
-
-def _format_result_items(items: list[BatchOptimizeResult]) -> list[str]:
-    if not items:
-        return ["- none"]
-    return [f"- {item.workspace.name}: {item.message}" for item in items]
 
 
 __all__ = [

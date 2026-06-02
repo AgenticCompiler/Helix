@@ -236,4 +236,4 @@ class LogCheckLauncherTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             request = captured["request"]
             self.assertEqual(request.workdir, workspace.resolve())
-            self.assertTrue((root / "log_check_summary.md").exists())
+            self.assertTrue((root / "log_check_summary.json").exists())

@@ -549,7 +549,7 @@ def build_parser() -> argparse.ArgumentParser:
         if command_kind == CommandKind.LOG_CHECK_BATCH:
             subparser.add_argument(
                 "--summary-file",
-                default="log_check_summary.md",
+                default="log_check_summary.json",
                 help="Root-relative batch log check summary file name.",
             )
         if spec.concurrency_default is not None:

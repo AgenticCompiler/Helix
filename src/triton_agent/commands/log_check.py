@@ -34,8 +34,8 @@ def handle_log_check_batch(parser: argparse.ArgumentParser, args: argparse.Names
         parser.error("--concurrency must be at least 1")
     return run_log_check_batch(
         root,
-        output_file=str(getattr(args, "check_result_file", "log_check_result.md")),
-        summary_file=str(getattr(args, "summary_file", "log_check_summary.md")),
+        output_file=str(getattr(args, "check_result_file", "log_check_result.json")),
+        summary_file=str(getattr(args, "summary_file", "log_check_summary.json")),
         agent_name=str(getattr(args, "agent", "codex")),
         verbose=bool(getattr(args, "verbose", False)),
         show_output=bool(getattr(args, "show_output", False)),
