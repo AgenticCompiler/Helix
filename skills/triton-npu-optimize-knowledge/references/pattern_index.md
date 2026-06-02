@@ -10,7 +10,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `a5-force-simt-only-discrete-access`
 
-- Summary: Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, then retune `num_warps` and grid decomposition. This profile-gated launch-mode experiment targets kernels whose hot path is primarily scalar/index-driven memory access.
+- Summary: Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, after first ruling out or applying structural fixes for flat linear-index traversal with per-lane `//` / `%` coordinate recovery. This profile-gated launch-mode experiment targets kernels whose hot path remains primarily scalar/index-driven memory access.
 - Source: [a5-force-simt-only-discrete-access.md](patterns/a5-force-simt-only-discrete-access.md)
 
 ### `autotune`
@@ -18,16 +18,23 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Summary: Use Triton-Ascend autotune as the default way to search split sizes, tile sizes, and selected compile options when the kernel structure is already reasonable and the main open question is parameter choice.
 - Source: [autotune.md](patterns/autotune.md)
 
+
+### `grid-flatten-and-ub-buffering`
+
+- Summary: Flatten logical work items onto physical cores and batch small row-wise memory transfers into wider UB stores to reduce launch overhead and improve per-core work density.
+- Source: [grid-flatten-and-ub-buffering.md](patterns/grid-flatten-and-ub-buffering.md)
+
 ### `software-pipeline-dependency-profiling`
 
-- Summary: Use this pattern as the highest-priority candidate when `extracted_bin_data/report.txt` or equivalent profiling evidence suggests transfer, compute, and store are weakly overlapped, the kernel contains `tl.load`, and the kernel structure can be reorganized to improve overlap. Constructing a steady-state loop around `tl.load`, enabling compiler prefetch, and then tuning `num_stages` can improve performance when the hot path is regular enough to support these changes.
+- Summary: Use this pattern when `extracted_bin_data/report.txt` suggests transfer and compute are weakly overlapped, the kernel contains `tl.load`, and the load latency can plausibly be hidden behind vector/cube compute. Constructing a `for` loop or steady-state loop around regular `tl.load` work can enable compiler prefetch, improve pipeline parallelism, and then be tuned with `num_stages` or manual prefetch when needed.
 - Source: [software-pipeline-dependency-profiling.md](patterns/software-pipeline-dependency-profiling.md)
+
 
 ## Generated Pattern Summaries
 
 ### `a5-force-simt-only-discrete-access`
 
-- Summary: Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, then retune `num_warps` and grid decomposition. This profile-gated launch-mode experiment targets kernels whose hot path is primarily scalar/index-driven memory access.
+- Summary: Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, after first ruling out or applying structural fixes for flat linear-index traversal with per-lane `//` / `%` coordinate recovery. This profile-gated launch-mode experiment targets kernels whose hot path remains primarily scalar/index-driven memory access.
 - Source: [a5-force-simt-only-discrete-access.md](patterns/a5-force-simt-only-discrete-access.md)
 - Use When:
   - Target hardware is confirmed as A5 by user statement, profile metadata, runtime/compile logs, runtime device query, or environment/CANN target settings.
@@ -35,6 +42,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - That row shows `aiv_scalar_ratio` clearly higher than `aiv_vec_ratio` and `cube_utilization`.
   - The kernel body is primarily discrete/index-driven memory access, gather/scatter-like movement, or scalar-heavy pointer/index computation.
   - Correctness validation and representative benchmark reruns are available after changing launch parameters.
+  - Obvious flat-index decode structure has either been ruled out or repaired first.
 
 ### `accumulator-layout-alignment`
 
@@ -53,6 +61,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - The hot path performs **two or more full traversals** of the same data for statistics, normalization, or mergeable closed-form subexpressions.
   - Profiler or IR suggests **duplicate MTE-heavy** phases that differ only by a scalar statistic of the same tensor.
   - Elementwise **logical** ops (`logical_or`, `logical_and`, …) use **broadcasting**, and truth tests (`ne`, `!= 0`) run on **fully expanded** numeric tensors.
+  - Pairwise gated tiles compute `exp(g_i - g_j)` only as a multiplicative factor and can use row/column broadcast factors instead.
   - You want fewer global passes or cheaper elementwise work **before** changing tile sizes, pipelines, or autotune grids.
 
 ### `attention-cv-pipeline`
@@ -87,6 +96,13 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - A high-dimensional contiguous tensor is accessed through flattened one-dimensional offsets that stride through an inner dimension.
   - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
   - Profiling or IR suggests the 1D pointer path produces strided or non-coalesced loads across a dimension that is actually contiguous in memory.
+  - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
+  - `report.txt` overall `[Pipe Distribution]` section shows **high SCALAR-to-VECTOR ratio** — `%(SCALAR) / %(VECTOR) > 10`, indicating heavy scalar address computation dominates execution time.
+  - `report.txt` overall `[Pipe Distribution]` section shows **high MTE3** — `%(MTE3) > 10%` — and high scalar–MTE3 serialization `%(SCALAR&MTE3/SCALAR) > 20%`, meaning address generation and data transfer are pipelined poorly.
+  - `report.txt` overall `[Pipe Distribution]` section shows **MTE2–MTE3 near-total overlap** — `%(MTE2&MTE3/MTE2) > 50%`, forcing the two memory transfer engines to service the same request serially.
+  - `report.txt` overall `[Pipeline Flows]` section shows **both XToY and YToX flows** for some pair (e.g., `SCALARToMTE3` + `MTE3ToSCALAR`), indicating pipeline stages are serialized in a cycle.
+  - `report.txt` overall `[Pipe Distribution]` section shows **low SCALAR–VECTOR overlap** — `%(SCALAR&VECTOR/SCALAR) < 2%` — while SCALAR is high `> 10%`, meaning scalar address generation is blocking vector execution.
+  - `report.txt` overall `[Pipe Distribution Over Each Core]` section lists **very few cores active** relative to hardware capacity, suggesting flat 1D grid decomposition is too coarse.
 
 ### `classic-matmul`
 
@@ -108,6 +124,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - You can prove stronger alignment or contiguity facts than the current code expresses.
   - `tl.dot` inputs are stable and only need targeted padding guidance on the active path.
   - Parent comparisons are already close enough that small lowering changes can still matter.
+  - Existing related kernels use different Ascend launch hints, suggesting the choice is path-sensitive.
 
 ### `diagonal`
 
@@ -126,6 +143,31 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Index-driven global loads dominate the hot path, and contiguous staging plus local selection is more plausible than direct scattered reads.
   - The gather source array is small or medium enough that contiguous staging in shared memory is plausible.
   - The hot loop repeatedly reads fixed fields from AoS records with stride-C offsets, such as `[N, 3]` coordinates loaded as `atom_idx * 3 + channel`, and the input is reused enough to amortize wrapper-side SoA materialization.
+
+### `flat-index-decode-tiling`
+
+- Summary: Replace scalar-heavy 1D linear-index traversal with layout-aware multidimensional tiles when the logical operation is an affine data movement. This removes per-lane `//` / `%` coordinate recovery and turns regular layout copies into base-plus-stride accesses over contiguous or low-stride dimensions.
+- Source: [flat-index-decode-tiling.md](patterns/flat-index-decode-tiling.md)
+- Use When:
+  - The kernel is mostly data movement, not dense arithmetic or reduction.
+  - Work is launched over flat `n_elements` or `out.numel()`.
+  - Each lane recovers coordinates with repeated `//`, `%`, or residual chains.
+  - The output-to-input mapping is affine: axis reorder, fixed offsets, padding bounds, slice windows, or stride-based copy.
+  - At least one logical dimension can be made contiguous or low-stride inside the tile.
+- Avoid When:
+  - Indices are value-dependent or irregular enough that the hot path is true gather/scatter.
+  - The tensor layout materialization can be removed by folding layout into the next consumer.
+  - Rank/stride/shape assumptions are not guarded.
+  - A multidimensional tile would exceed UB/register budget or create invalid grid dimensions.
+- Signals / Code:
+  - `offsets = pid * BLOCK + tl.arange(...)` is the main work assignment.
+  - `coord0 = linear // stride0`, `residual = linear % stride0`, then more decode steps.
+  - One flattened mask combines all rank or boundary conditions for every lane.
+  - Simple identity, transpose, slice, pad, or reshape-copy cases share one generic flat kernel.
+- Signals / Profile:
+  - Scalar/control overhead is high for a copy-like kernel.
+  - Changing only flat `BLOCK_SIZE` gives weak or unstable gains.
+  - Specialized row-column or multidimensional tile variants improve regular shape regimes.
 
 ### `effective-extent-tiling`
 
@@ -157,6 +199,21 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Each program processes many tiny rows after grid-to-physical-core mapping.
   - Gather-like code has continuous destination rows but still stores one row at a time.
   - Scatter-weight-gradient-like code has repeated row loads that can be batched from continuous source rows.
+
+### `kernel-to-host-offload`
+
+- Summary: Move complex, non-contiguous, or permutation-heavy operations out of the Triton kernel and into host-side library calls (e.g. `torch.scatter_`, `torch.index_copy_`). Keep the kernel focused on contiguous, vector-friendly work that maps well to NPU hardware. This trades a small host-side cost for a large reduction in kernel complexity, SCALAR overhead, and MTE inefficiency.
+- Source: [kernel-to-host-offload.md](patterns/kernel-to-host-offload.md)
+- Use When:
+  - The kernel body contains `tl.store(out_ptr + base + index_tensor, val)` or `tl.load(inp_ptr + base + index_tensor)` — memory access addresses depend on dynamically loaded indices.
+  - The kernel signature includes index/permutation tensors (`index_ptr`, `routing_map_ptr`, `shuffle_indices_ptr`) whose **only purpose** is to compute load or store addresses.
+  - `report.txt` `[Pipe Distribution]` shows **high SCALAR instr%** (`>50%`) while VECTOR instr% is low (`<15%`) — kernel spends most instructions on address/control, not compute.
+  - `report.txt` `[Pipe Overlap Ratio]` shows serialized execution: `%(SCALAR&MTE2/SCALAR) < 5%`, `%(VECTOR&MTE2/MTE2) < 10%`, `%(SCALAR&VECTOR/SCALAR) < 5%`.
+  - `report.txt` `[SCALAR Instr Types]` is dominated by ADD, MOV, CMP, JUMPCMP — typical of index arithmetic and conditional branching.
+  - The same permutation operation has a well-optimized host-side library primitive (e.g. `torch.scatter_`, `torch.index_copy_`, `torch.gather`, `torch.permute`).
+  - Removing the permutation eliminates one or more input pointers, `tl.load` calls, and complex address expressions from the kernel.
+  - The intermediate contiguous buffer fits within memory budget for the largest benchmark shape.
+  - Use the recognition flow: identify non-contiguous ops → check if eliminable → decide kernel vs host → verify offload benefit.
 
 ### `layout-materialization-elision`
 
@@ -269,6 +326,33 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Integer elementwise arithmetic is done as scalar-looking `int64` work even though the value range is safely `int32`.
   - `tl.cumsum` or `tl.associative_scan` runs on the last axis of a tensor and profiling or IR suggests scalar fallback instead of vector lowering.
   - `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
+  - A boundary-only mask repeats validity conditions that earlier `tl.load(..., boundary_check=...)` or safe zero-padding already handled.
+
+### `scatter-store-to-contiguous-store`
+
+- Summary: Replace kernel-side scattered stores (`tl.store(out + indices, ...)`) with contiguous sequential stores, then perform the final permutation on the host via `scatter_` or `index_copy_`. This converts random global-memory writes into a single coalesced DMA write, dramatically improving MTE2–VECTOR overlap for store-bound kernels.
+- Source: [scatter-store-to-contiguous-store.md](patterns/scatter-store-to-contiguous-store.md)
+- Use When:
+  - The kernel body contains `tl.store(out_ptr + base + index_tensor, val)` — store address includes a dynamically loaded index tensor rather than a sequential offset.
+  - The kernel accepts an index/permutation tensor as input whose **sole purpose** is to compute the store destination address.
+  - `report.txt` `[Pipe Distribution]` shows **MTE2 cycles% is the largest or second-largest bucket** (e.g. > 20%), indicating memory write is the bottleneck.
+  - `report.txt` `[Pipe Overlap Ratio]` shows serialized memory write: `%(VECTOR&MTE2/MTE2) < 10%`, `%(SCALAR&MTE2/MTE2) < 5%`, `%(SCALAR&VECTOR/SCALAR) < 5%`.
+  - `report.txt` `[VECTOR Unit]` Utilization avg is low (`< 30%`) despite non-trivial compute — VECTOR is stalled waiting for scattered stores.
+  - `report.txt` `[SCALAR Instr Types]` dominated by ADD, MOV, CMP — index arithmetic inflating scalar pipe.
+  - The scatter indices have high randomness — no regular stride, affine pattern, or block-uniform structure that the compiler could vectorize.
+  - The host-side scatter (`torch.scatter_`, `torch.index_copy_`) is well-optimized and its cost is negligible relative to the kernel time saved.
+  - The intermediate contiguous output buffer can be allocated without doubling peak memory.
+  - Use the recognition flow: does kernel store through index tensor? → are indices random? → can indices be passed to host? → is host scatter cheaper? → does buffer fit memory?
+
+### `shift-2d-mask-to-1d-index-stream`
+
+- Summary: When a hot shift or predecessor path is expressed as a 2D mask-and-reduce construction, rewrite it to a direct 1D index stream (`base + arange - 1`) with only boundary masking. This removes unnecessary 2D intermediates and keeps the shift path closer to one-dimensional vector loads and elementwise math on Ascend NPU; do not stop at replacing the reduce with an on-chip `tl.gather` if the final lane formula can be simplified further.
+- Source: [shift-2d-mask-to-1d-index-stream.md](patterns/shift-2d-mask-to-1d-index-stream.md)
+- Use When:
+  - A shift relation is structurally "take previous element" or "take previous position in chunk", including cross-chunk lane-0 handling.
+  - Code uses 2D mask construction and reduction-like assembly for shifting, such as `arange[:, None]`, `arange[None, :]`, `tl.where`, and `tl.sum(..., axis=...)` over an extra axis.
+  - IR shows `tt.broadcast`, `tt.reduce`, helper outlined functions, or temporary mask tensors dedicated to shift assembly rather than the core math.
+  - Profiling indicates scalar/control overhead, UB pressure, vector-function fragmentation, or poor vector utilization around the shift path.
 
 ### `scalar-vector-simulation-signal`
 
@@ -306,13 +390,15 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `software-pipeline-dependency-profiling`
 
-- Summary: Use this pattern as the highest-priority candidate when `extracted_bin_data/report.txt` or equivalent profiling evidence suggests transfer, compute, and store are weakly overlapped, the kernel contains `tl.load`, and the kernel structure can be reorganized to improve overlap. Constructing a steady-state loop around `tl.load`, enabling compiler prefetch, and then tuning `num_stages` can improve performance when the hot path is regular enough to support these changes.
+- Summary: Use this pattern when `extracted_bin_data/report.txt` suggests transfer and compute are weakly overlapped, the kernel contains `tl.load`, and the load latency can plausibly be hidden behind vector/cube compute. Constructing a `for` loop or steady-state loop around regular `tl.load` work can enable compiler prefetch, improve pipeline parallelism, and then be tuned with `num_stages` or manual prefetch when needed.
 - Source: [software-pipeline-dependency-profiling.md](patterns/software-pipeline-dependency-profiling.md)
 - Use When:
-  - `extracted_bin_data/report.txt` is available, or equivalent profiling evidence reports transfer/compute overlap.
-  - Most active `core*.veccore*` blocks satisfy the highest-priority profile gate: very low `OverlapRatio(VECTOR/CUBE & MTE2)`, very low `OverlapRatio(VECTOR/CUBE & MTE3)`, very low `OverlapRatio(MTE2 & MTE3)`, and low or moderate `Ratio(VECTOR/CUBE)`.
+  - `extracted_bin_data/report.txt` is available.
+  - The `[Pipe Overlap Ratio]` section shows a software-pipeline signal: very low `%((VECTOR+CUBE)&MTE2/(VECTOR+CUBE))` and very low `%((VECTOR+CUBE)&MTE2/MTE2)`.
+  - In `[Pipe Distribution]`, compute `compute_cycles%` from both `VECTOR cycles%` and `CUBE cycles%` when both rows exist; if only one of the two rows exists, use the available row. Prefer this pattern when `compute_cycles%` and `MTE2 cycles%` are relatively balanced, such as each being at least about one-third of the other.
+  - `SCALAR cycles%` is not the dominant share in `[Pipe Distribution]`; if scalar cycles dominate, prefer scalar-related optimization first.
   - The kernel contains `tl.load`.
-  - `tl.load` is inside a loop, or `tl.load` is outside a loop but the kernel has a regular single-tile program shape; try constructing a steady-state loop to make compiler prefetch possible.
+  - The `tl.load` path is regular enough that constructing a `for` loop or steady-state loop can enable compiler prefetch and improve performance through pipeline parallelism.
 
 ### `software-pipeline`
 
