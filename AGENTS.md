@@ -4,7 +4,7 @@
 
 - This repository provides a small `uv`-managed CLI for Triton Ascend NPU operator workflows.
 - The CLI is a wrapper around code agents plus local skills, not a replacement for the skills themselves.
-- The supported backends are `codex`, `opencode`, `pi`, and `claude`.
+- The supported backends are `codex`, `opencode`, `pi`, `claude`, `openhands`, and `traecli`.
 
 ## Core Principles
 
@@ -58,6 +58,7 @@
 - Use the standard repository verification commands documented in `README.md`: `uv run --group dev ruff check`, `uv run pyright`, and `uv run python -m unittest discover -s tests -v`.
 - When running tests with pytest (e.g. during agent workflows), always pass `-q --tb=short --no-header -p no:warnings` to avoid wasting context on per-test verbose output or progress dots. Example: `uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/`.
 - Generic optimize pattern cards under `skills/triton-npu-optimize-knowledge/references/patterns/` are authored Markdown sources, while `skills/triton-npu-optimize-knowledge/references/pattern_index.md` is generated and must be regenerated after editing a pattern card instead of hand-edited. Regenerate with: `uv run python skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py --patterns-dir skills/triton-npu-optimize-knowledge/references/patterns --output skills/triton-npu-optimize-knowledge/references/pattern_index.md`
+- CANN extension API pattern cards under `skills/triton-npu-cann-ext-api-patterns/references/patterns/` follow the same card format and are also generated. Regenerate with: `uv run python skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py --patterns-dir skills/triton-npu-cann-ext-api-patterns/references/patterns --output skills/triton-npu-cann-ext-api-patterns/references/patterns/index.md`
 - Generic optimize symptom cards under `skills/triton-npu-optimize-knowledge/references/symptoms/` are authored Markdown sources, while `skills/triton-npu-optimize-knowledge/references/symptom_index.md` is generated and must be regenerated after editing a symptom card instead of hand-edited. Regenerate with: `uv run python skills/triton-npu-optimize-knowledge/scripts/build_symptom_index.py --symptoms-dir skills/triton-npu-optimize-knowledge/references/symptoms --output skills/triton-npu-optimize-knowledge/references/symptom_index.md`
 
 ## Optimization Patterns

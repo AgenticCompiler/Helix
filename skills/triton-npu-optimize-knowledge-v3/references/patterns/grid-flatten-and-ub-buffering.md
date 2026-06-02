@@ -1,3 +1,7 @@
+---
+priority: high
+---
+
 # Grid Flattening And UB Buffering Pattern
 
 ## Summary
@@ -56,6 +60,32 @@ Prefer uniform masked loops over per-core early-return branches to avoid reintro
 
 When logical tasks exceed core count, launch `NUM_CORES` programs and loop logical tasks inside each program.
 Keep loop bounds simple/explicit (`NUM_TASKS`, `NUM_CORES`) so compilers can simplify tail handling.
+
+### Runtime core discovery and task-kind-aware grid choice
+
+Run a best-effort runtime query before turning one observed core count into a blanket rule:
+
+```python
+import torch
+
+print(torch.npu.device_count())
+device = torch.npu.current_device()
+props = torch.npu.get_device_properties(device)
+print(props)
+```
+
+If the query fails, if `torch.npu` is unavailable, or if `props` does not expose explicit core counts, fall back to:
+
+- cube cores: `24`
+- vector cores: `48`
+
+Do not assume one observed physical-core count implies every optimized operator should use the same grid. Choose the first flattened grid by task kind:
+
+- `cube`-like operators: start from the Cube-core count and verify the hot path is actually Cube-dominant.
+- `vector`-like operators: start from the Vector-core count and revisit after structural rewrites that change transfer density.
+- `mix` operators: pick the initial count from the dominant side or compare cube-first and vector-first launch counts when the profile is ambiguous.
+
+Keep `NUM_CORES` explicit in the launch contract so later tuning rounds can change it without hiding the assumption.
 
 ### UB aggregate writes
 

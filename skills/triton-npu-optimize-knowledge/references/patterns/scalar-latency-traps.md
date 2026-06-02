@@ -13,6 +13,7 @@ Remove scalarizing constructs that block vector hardware utilization on Ascend N
 - Integer elementwise arithmetic is done as scalar-looking `int64` work even though the value range is safely `int32`.
 - `tl.cumsum` or `tl.associative_scan` runs on the last axis of a tensor and profiling or IR suggests scalar fallback instead of vector lowering.
 - `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
+- A boundary-only mask repeats validity conditions that earlier `tl.load(..., boundary_check=...)` or safe zero-padding already handled.
 
 ## Repairs
 
@@ -44,15 +45,22 @@ This keeps each iteration's address computation derived from a stable base plus 
 
 ### Modulo removal
 
-Avoid `%` for tail handling when a mask can preserve continuous addresses:
+Apply this repair only when `%` is being used as a boundary guard for tail or edge handling. If removing `%` would change the kernel's intended index mapping, this repair does not apply.
+
+Problem shape:
+
+```python
+offs = (block_start + tl.arange(0, BLOCK)) % N
+vals = tl.load(x + offs)
+```
+
+Preferred rewrite:
 
 ```python
 offs = block_start + tl.arange(0, BLOCK)
 mask = offs < N
 vals = tl.load(x + offs, mask=mask, other=0.0)
 ```
-
-Use modulo only when wraparound is part of the mathematical semantics, not just a boundary workaround.
 
 ### Single-position `tl.where`
 
@@ -63,6 +71,22 @@ When exactly one lane differs, consider replacing a whole-vector `tl.where` with
 If index or offset arithmetic is proven to stay within `[-2**31, 2**31 - 1]`, cast once near load or construction and keep the hot vector math in `int32`. Cast back only when the API or pointer expression truly requires it.
 
 Do not use this for values that can overflow `int32`.
+
+### Redundant boundary mask removal
+
+If prior loads already zero-pad invalid rows or columns through `boundary_check`, later vector predicates may not need to repeat both row and column validity. Keep semantic masks, such as causal lower-triangle conditions, but remove boundary-only terms that no longer protect an unsafe value.
+
+Example:
+
+```python
+# Before: row and column validity repeated in the final mask.
+m_A = (o_t[:, None] > o_t[None, :]) & (m_t[:, None] & m_t)
+
+# After: row out-of-bounds is already zero from boundary-checked inputs.
+m_A = (o_t[:, None] > o_t[None, :]) & m_t[None, :]
+```
+
+Only apply this when invalid lanes cannot reintroduce nonzero, NaN, or unsafe pointer behavior between the protected load and the final mask/store.
 
 ### Cumsum axis splitting
 
@@ -84,6 +108,7 @@ prefix = tl.trans(tl.cumsum(tl.trans(values), axis=0))
 
 - `tl.constexpr` changes specialization behavior and compile-cache cardinality.
 - Removing `%` is only safe when masks preserve the original boundary semantics.
+- Removing redundant boundary masks is only safe when earlier boundary-checked loads or stores still fully protect out-of-range access and invalid lanes have safe values.
 - Int32 conversion is a semantic promise about value range.
 - Cumsum decomposition must preserve prefix order exactly.
 - Axis swaps for cumsum can materialize a transpose; keep the temporary footprint within UB limits.

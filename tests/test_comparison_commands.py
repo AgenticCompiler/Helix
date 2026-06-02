@@ -409,6 +409,31 @@ class JsonlPerfArtifactParserTests(unittest.TestCase):
                 jsonl_entries["latency-case-x"],
             )
 
+    def test_compare_perf_files_accepts_legacy_msprof_baseline_against_numeric_jsonl_case_labels(
+        self,
+    ) -> None:
+        module = load_perf_artifacts_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            baseline.write_text(
+                "latency-case-1: 10.0\n"
+                '# raw-op-statistic-case-1: {"ops":[{"op_type":"K","avg_time_us":10.0}]}\n',
+                encoding="utf-8",
+            )
+            compare = root / "compare_perf.txt"
+            compare.write_text(
+                '{"case_label":"1","kernel_names":["K"],"kernel_source":"metadata","kernel_avg_time_us":8.0,"total_op_avg_time_us":8.0,"error_message":null,"case_wall_clock_seconds":0.1}\n',
+                encoding="utf-8",
+            )
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                exit_code = module.compare_perf_files(baseline, compare)
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("latency-case-1", stdout.getvalue())
+
     def test_legacy_parser_still_works_for_text_format(self) -> None:
         module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:

@@ -39,6 +39,7 @@ Choose tile widths from the live logical extent on each axis instead of a legacy
 3. Recompute **grid** and any program-budget logic together with the tile; do not tune tile width in isolation.
 4. For **copy-only contiguous axes**, treat **exact extent** or **`min(cap, extent)`** as the default candidate set, and treat **`next_power_of_2()`** as a measured alternative rather than the baseline.
 5. If one tile policy is only correct or profitable for certain shapes, encode that split at the **host dispatch** layer.
+6. If a small set of extents, such as `K == 64` or `K == 128`, dominates production shapes, consider dispatching to extent-specialized kernels so inactive padded branches disappear from the hot path.
 
 ## Avoid When
 
@@ -46,6 +47,7 @@ Choose tile widths from the live logical extent on each axis instead of a legacy
 - The real bottleneck is **atomic contention**, unrelated host overhead, or another phase outside the oversized-tile region.
 - A smaller tile would explode program count past a launch or synchronization knee.
 - The target rejects the needed non-power-of-two tile shapes, or the resulting specialization count is unacceptable.
+- Runtime extents vary too widely for shape-specialized dispatch to stay maintainable.
 
 ## What To Verify After Applying
 
@@ -53,6 +55,7 @@ Choose tile widths from the live logical extent on each axis instead of a legacy
 - **Profile**: LD/ST, scalar, or transfer-heavy metrics move with the new tile instead of the old padded width.
 - **Correctness**: tail blocks, masks, dtypes, and all dispatch branches still behave identically.
 - **Compilation / caching**: the target accepts the chosen tile shapes and JIT specialization does not become a new problem.
+- **Dispatch coverage**: specialized extent branches and the generic fallback are all validated.
 
 ## Related Patterns
 

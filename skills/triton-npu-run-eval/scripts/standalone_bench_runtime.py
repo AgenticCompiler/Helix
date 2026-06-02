@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_stdout
 import importlib
 import importlib.util
@@ -18,11 +17,17 @@ from bench_contract import KernelResolution, resolve_bench_kernel_resolution
 from perf_artifacts import (
     PerfCaseRecord,
     PerfMetrics,
-    PerfOpRow,
-    format_latency_value,
     perf_output_path,
     render_perf_case_records_jsonl,
     write_perf_lines,
+)
+from profile_csv_parser import (
+    find_latest_op_statistic_csv,
+    find_optional_profile_csv,
+    parse_kernel_details_csv,
+    parse_op_statistic_csv,
+    parse_operator_details_csv,
+    resolve_perf_metrics,
 )
 from result_payload import ResultPayload, make_result
 
@@ -30,7 +35,7 @@ from result_payload import ResultPayload, make_result
 WARMUP_DEFAULT = 5
 REPEATS_DEFAULT = 50
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched profiler operator details"
-_LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR"
+_LOCAL_BENCH_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_OUTPUT_DIR"
 
 @dataclass(frozen=True)
 class StandaloneBenchCase:
@@ -59,36 +64,46 @@ def run_local_standalone_bench(
     operator_file: Path,
     *,
     verbose: bool = False,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path]:
-    cases, resolution = load_standalone_bench_cases(bench_file, operator_file)
-    case_records: list[PerfCaseRecord] = []
-    had_failures = False
-    stderr_chunks: list[str] = []
-    preserved_run_dir = _create_local_preserved_profile_run_dir(prefix="triton-agent-standalone-bench-")
+    prev = os.environ.get("TRITON_ALWAYS_COMPILE") if force_recompile else None
+    if force_recompile:
+        os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+    try:
+        cases, resolution = load_standalone_bench_cases(bench_file, operator_file)
+        case_records: list[PerfCaseRecord] = []
+        had_failures = False
+        stderr_chunks: list[str] = []
+        preserved_run_dir = _create_local_preserved_profile_run_dir(prefix="triton-agent-standalone-bench-")
 
-    for case in cases:
-        record = _run_standalone_case(case, resolution, preserved_run_dir, bench_file.parent, verbose=verbose)
-        if record.error_message is not None:
-            had_failures = True
-            stderr_chunks.append(f"{case.case_id}: {record.error_message}")
-        case_records.append(record)
+        for case in cases:
+            record = _run_standalone_case(case, resolution, preserved_run_dir, bench_file.parent, verbose=verbose)
+            if record.error_message is not None:
+                had_failures = True
+                stderr_chunks.append(f"{case.case_id}: {record.error_message}")
+            case_records.append(record)
 
-    perf_path = perf_output_path(operator_file)
-    write_perf_lines(
-        perf_path,
-        render_perf_case_records_jsonl(
-            case_records,
-            missing_kernel_match_error=_MISSING_KERNEL_MATCH_ERROR,
-        ),
-    )
-    return (
-        make_result(
-            return_code=1 if had_failures else 0,
-            stdout="",
-            stderr="\n".join(stderr_chunks),
-        ),
-        perf_path,
-    )
+        perf_path = perf_output_path(operator_file)
+        write_perf_lines(
+            perf_path,
+            render_perf_case_records_jsonl(
+                case_records,
+                missing_kernel_match_error=_MISSING_KERNEL_MATCH_ERROR,
+            ),
+        )
+        return (
+            make_result(
+                return_code=1 if had_failures else 0,
+                stdout="",
+                stderr="\n".join(stderr_chunks),
+            ),
+            perf_path,
+        )
+    finally:
+        if prev is None and force_recompile:
+            del os.environ["TRITON_ALWAYS_COMPILE"]
+        elif prev is not None:
+            os.environ["TRITON_ALWAYS_COMPILE"] = prev
 
 
 def profile_local_standalone_case(
@@ -121,11 +136,18 @@ def run_one_standalone_case_record(
     operator_file: Path,
     case_id: str,
     *,
+    preserved_run_dir: Path | None = None,
     verbose: bool = False,
 ) -> PerfCaseRecord:
     cases, resolution = load_standalone_bench_cases(bench_file, operator_file)
     case = _select_case(cases, case_id)
-    return _run_standalone_case(case, resolution, None, bench_file.parent, verbose=verbose)
+    return _run_standalone_case(
+        case,
+        resolution,
+        preserved_run_dir,
+        bench_file.parent,
+        verbose=verbose,
+    )
 
 
 def runtime_support_paths() -> list[Path]:
@@ -135,6 +157,7 @@ def runtime_support_paths() -> list[Path]:
         script_dir / "standalone_bench_runtime.py",
         script_dir / "bench_contract.py",
         script_dir / "perf_artifacts.py",
+        script_dir / "profile_csv_parser.py",
     ]
 
 
@@ -356,76 +379,40 @@ def _read_profiler_metrics(
     active_count: int,
     kernel_names: list[str],
 ) -> PerfMetrics:
-    csv_path = _find_profile_file(profile_root, "operator_details.csv")
-    if csv_path is None:
-        raise FileNotFoundError(f"No operator_details.csv found under {profile_root}")
+    operator_details_path = find_optional_profile_csv(profile_root, "operator_details.csv")
+    operator_details_rows = None
+    if operator_details_path is not None:
+        operator_details_rows = parse_operator_details_csv(
+            operator_details_path,
+            active_count=active_count,
+            kernel_names=kernel_names,
+        )
+        if operator_details_rows.total_time_us > 0:
+            return resolve_perf_metrics(operator_details_rows.ops, kernel_names)
 
-    with csv_path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        fieldnames = reader.fieldnames or []
-        if "Name" not in fieldnames:
-            raise ValueError(f"Missing required column 'Name' in {csv_path}")
-        if "Device Self Duration(us)" not in fieldnames:
-            raise ValueError(f"Missing required column 'Device Self Duration(us)' in {csv_path}")
-        rows = list(reader)
+    kernel_details_path = find_optional_profile_csv(profile_root, "kernel_details.csv")
+    kernel_details_rows = None
+    if kernel_details_path is not None:
+        kernel_details_rows = parse_kernel_details_csv(
+            kernel_details_path,
+            active_count=active_count,
+        )
+        if kernel_details_rows.total_time_us > 0:
+            return resolve_perf_metrics(kernel_details_rows.ops, kernel_names)
 
-    if not rows:
-        raise ValueError(f"Profiler operator details are empty: {csv_path}")
+    op_statistic_path = find_latest_op_statistic_csv(profile_root)
+    if op_statistic_path is not None:
+        return resolve_perf_metrics(parse_op_statistic_csv(op_statistic_path).ops, kernel_names)
 
-    if "Count" in fieldnames:
-        filtered_rows = [row for row in rows if _parse_optional_int(row.get("Count")) == active_count]
-        if not filtered_rows:
-            raise ValueError(
-                f"No operator_details.csv rows matched active count {active_count}: {csv_path}"
-            )
-        rows = filtered_rows
+    if operator_details_rows is not None:
+        return resolve_perf_metrics(operator_details_rows.ops, kernel_names)
 
-    totals_by_name: dict[str, float] = {}
-    ordered_names: list[str] = []
-    for row in rows:
-        op_name = (row.get("Name") or "").strip()
-        if not op_name:
-            raise ValueError(f"Encountered empty operator name in {csv_path}")
-        duration = _parse_float_field(row.get("Device Self Duration(us)"), "Device Self Duration(us)", csv_path)
-        if op_name not in totals_by_name:
-            totals_by_name[op_name] = 0.0
-            ordered_names.append(op_name)
-        totals_by_name[op_name] += duration
+    if kernel_details_rows is not None:
+        return resolve_perf_metrics(kernel_details_rows.ops, kernel_names)
 
-    ops: list[PerfOpRow] = []
-    for op_name in ordered_names:
-        avg_time_us = totals_by_name[op_name] / active_count
-        ops.append({"op_type": op_name, "avg_time_us": float(format_latency_value(avg_time_us))})
-
-    kernel_name_set = set(kernel_names)
-    matched_ops = [op["avg_time_us"] for op in ops if op["op_type"] in kernel_name_set]
-    return {
-        "kernel_avg_time_us": sum(matched_ops) if matched_ops else None,
-        "ops": ops,
-    }
-
-
-def _find_profile_file(profile_root: Path, filename: str) -> Path | None:
-    for candidate in profile_root.rglob(filename):
-        if candidate.is_file():
-            return candidate
-    return None
-
-
-def _parse_optional_int(raw_value: object) -> int | None:
-    if raw_value is None:
-        return None
-    stripped = str(raw_value).strip()
-    if not stripped:
-        return None
-    return int(float(stripped))
-
-
-def _parse_float_field(raw_value: object, field_name: str, csv_path: Path) -> float:
-    stripped = "" if raw_value is None else str(raw_value).strip()
-    if not stripped:
-        raise ValueError(f"Empty '{field_name}' value in {csv_path}")
-    return float(stripped)
+    raise FileNotFoundError(
+        f"No operator_details.csv, kernel_details.csv, or op_statistic.csv found under {profile_root}"
+    )
 
 
 def _profile_output_root(parent: Path, case_id: str) -> Path:
@@ -433,10 +420,10 @@ def _profile_output_root(parent: Path, case_id: str) -> Path:
 
 
 def _resolve_local_bench_profile_output_root() -> tuple[str | None, str]:
-    configured_root = os.environ.get(_LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV)
+    configured_root = os.environ.get(_LOCAL_BENCH_OUTPUT_DIR_ENV)
     if configured_root:
-        return configured_root, _LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV
-    return None, _LOCAL_BENCH_PROFILE_OUTPUT_DIR_ENV
+        return str(Path(configured_root).expanduser().resolve()), _LOCAL_BENCH_OUTPUT_DIR_ENV
+    return None, _LOCAL_BENCH_OUTPUT_DIR_ENV
 
 
 def _create_local_preserved_profile_run_dir(prefix: str) -> Path | None:
@@ -454,6 +441,10 @@ def _create_local_preserved_profile_run_dir(prefix: str) -> Path | None:
     return run_dir
 
 
+def create_local_preserved_profile_run_dir(prefix: str) -> Path | None:
+    return _create_local_preserved_profile_run_dir(prefix)
+
+
 def _create_local_standalone_profile_dir(
     case_id: str,
     preserved_run_dir: Path | None,
@@ -461,7 +452,7 @@ def _create_local_standalone_profile_dir(
     if preserved_run_dir is None:
         temp_dir = tempfile.TemporaryDirectory(prefix=f"triton-agent-standalone-bench-{_sanitize_case_id(case_id)}-")
         return Path(temp_dir.name), temp_dir
-    profile_root = preserved_run_dir / f"case-{_sanitize_case_id(case_id)}"
+    profile_root = preserved_run_dir.resolve() / f"case-{_sanitize_case_id(case_id)}"
     profile_root.mkdir(parents=True, exist_ok=False)
     _set_directory_owner_only(profile_root)
     return profile_root, None

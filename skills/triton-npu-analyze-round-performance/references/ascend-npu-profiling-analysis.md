@@ -68,7 +68,33 @@ Typical readings:
 - High `Task Wait Time(us)`:
   suspect weak overlap, stalls, scheduling gaps, or a producer-consumer imbalance.
 - Strange `Block Dim` behavior:
-  suspect parallelism or launch shape that does not fit the operator structure.
+  suspect parallelism or launch shape that does not fit the operator structure. A much-too-small value often means underexposed parallel work, while a much-too-large value for a light vector kernel can mean too many tiny blocks and avoidable scheduling overhead.
+
+## Lower-Bound Sanity Checks
+
+Use simple lower-bound estimates as a rough diagnosis aid after you already know which operator and pipeline are suspicious.
+
+For transfer-heavy paths such as `MTE1`, `MTE2`, or `MTE3`, a first lower-bound estimate is:
+
+- transfer lower bound = moved bytes / path bandwidth
+
+For compute-heavy paths such as Cube, Vector, or Scalar, a first lower-bound estimate is:
+
+- compute lower bound = processed work / peak throughput of the expected dominant engine
+
+Use these estimates carefully:
+
+- Use chip-specific bandwidth and throughput values from the target environment or hardware notes. Do not hard-code one platform's example values as a universal rule.
+- If two transfer paths share the same global-memory bandwidth at the same time, reason about their combined bytes on that shared path rather than assuming each one can independently approach peak bandwidth.
+- Small transfers often underuse peak bandwidth. A measured time above the lower bound does not automatically mean the kernel is broken.
+- The estimate is a diagnosis hint, not a pass/fail test. The useful question is whether the gap is small, moderate, or surprisingly large for the operator shape.
+
+Interpretation guidance:
+
+- Measured time close to the lower bound suggests the current bottleneck may be fundamental or at least not the first thing to optimize.
+- Measured transfer time far above the lower bound suggests too-small tiles, redundant movement, weak reuse, or extra movement-side overhead.
+- Measured compute time far above the lower bound suggests underfed compute, scalarization, degraded vectorization, or avoidable wait around the expected compute path.
+- If the working set looks small enough to fit on chip but measured transfer time is still far above the lower bound, suspect over-fragmented tiling or redundant movement before assuming the hardware path itself is the problem.
 
 ## Layer 3: `task_time`
 
@@ -119,6 +145,18 @@ Look for:
 - serial regions
 
 This layer is especially useful when `task_time` hints at weak concurrency but you want stronger evidence.
+
+### Code Mapping
+
+Use code-mapping tables, text exports, or other structured outputs to connect a hot source region to the instruction mix it actually produced.
+
+Interpretation:
+
+- a load- or store-looking source region that maps mostly to scalar instructions often means address generation, boundary fix-up, or unsupported vector lowering is dominating instead of the expected MTE work
+- a simple elementwise-looking region with unexpectedly heavy scalar instruction share often reinforces a degraded-vectorization diagnosis
+- sort mapped instructions by time or cycles first; the goal is to find the dominant mismatch, not to inspect every instruction equally
+
+Treat code mapping as attribution help. It explains why a source region is expensive; it does not replace hotspot or pipeline evidence.
 
 ## Layer 6: `.bin`
 

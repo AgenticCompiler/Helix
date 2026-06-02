@@ -1,7 +1,6 @@
 from __future__ import annotations
 # pyright: reportPrivateUsage=false
 
-import csv
 import os
 import tempfile
 from dataclasses import dataclass
@@ -12,6 +11,11 @@ from bench_runner_deps import BenchRunnerDeps
 from bench_contract import KernelResolution
 from npu_affinity import NpuDevicePool, affinity_env_for_device
 from perf_artifacts import PerfCaseRecord, PerfMetrics, PerfOpRow
+from profile_csv_parser import (
+    find_latest_op_statistic_csv,
+    parse_op_statistic_csv,
+    resolve_perf_metrics,
+)
 from run_runtime import RemoteSpec, ResultPayload, make_result, result_succeeded
 
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched op_statistic csv"
@@ -31,12 +35,17 @@ def _msprof_case_outcome_sort_key(outcome: _MsprofCaseOutcome) -> int:
     return outcome.case_idx
 
 
+def _msprof_case_label(case_idx: int) -> str:
+    return f"case-{case_idx}"
+
+
 def run_local_bench_msprof(
     deps: BenchRunnerDeps,
     bench_file: Path,
     operator_file: Path,
     *,
     verbose: bool = False,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     resolution = deps.resolve_bench_kernel_resolution(bench_file, operator_file)
     count_result = deps.run_buffered_process(
@@ -77,6 +86,7 @@ def run_local_bench_msprof(
                     str(bench_file.parent),
                     stall_timeout_seconds=deps._bench_timeout(),
                     stdout=stream_target,
+                    extra_env={"TRITON_ALWAYS_COMPILE": "1"} if force_recompile else None,
                 )
             elapsed = deps._now() - t0
             stdout_chunks.append(str(result["stdout"]))
@@ -88,7 +98,7 @@ def run_local_bench_msprof(
                 had_case_failures = True
                 case_records.append(
                     PerfCaseRecord(
-                        case_label=str(case_idx),
+                        case_label=_msprof_case_label(case_idx),
                         kernel_names=resolution.kernel_names,
                         kernel_source=resolution.kernel_source,
                         error_message=deps._format_msprof_command_failure(result),
@@ -103,7 +113,7 @@ def run_local_bench_msprof(
                 had_case_failures = True
                 case_records.append(
                     PerfCaseRecord(
-                        case_label=str(case_idx),
+                        case_label=_msprof_case_label(case_idx),
                         kernel_names=resolution.kernel_names,
                         kernel_source=resolution.kernel_source,
                         error_message=str(exc),
@@ -114,7 +124,7 @@ def run_local_bench_msprof(
 
             case_records.append(
                 PerfCaseRecord(
-                    case_label=str(case_idx),
+                    case_label=_msprof_case_label(case_idx),
                     kernel_names=resolution.kernel_names,
                     kernel_source=resolution.kernel_source,
                     metrics=metrics,
@@ -148,6 +158,7 @@ def run_local_bench_msprof_parallel(
     source_root: Path,
     json_search_root: Path,
     verbose: bool = False,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     resolution = deps.resolve_bench_kernel_resolution(bench_file, operator_file)
     count_result = deps.run_buffered_process(
@@ -181,6 +192,7 @@ def run_local_bench_msprof_parallel(
             source_root,
             json_search_root,
             verbose,
+            force_recompile=force_recompile,
         )
 
     outcomes = deps._run_parallel_case_workers(
@@ -205,6 +217,7 @@ def run_remote_bench_msprof(
     *,
     verbose: bool = False,
     stderr: TextIO | None = None,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None, str]:
     resolution = deps.resolve_bench_kernel_resolution(bench_file, operator_file)
     count_result = deps.run_remote_command_buffered(
@@ -262,7 +275,7 @@ def run_remote_bench_msprof(
                 had_case_failures = True
                 case_records.append(
                     PerfCaseRecord(
-                        case_label=str(case_idx),
+                        case_label=_msprof_case_label(case_idx),
                         kernel_names=resolution.kernel_names,
                         kernel_source=resolution.kernel_source,
                         error_message=deps._format_msprof_command_failure(result),
@@ -284,7 +297,7 @@ def run_remote_bench_msprof(
                 had_case_failures = True
                 case_records.append(
                     PerfCaseRecord(
-                        case_label=str(case_idx),
+                        case_label=_msprof_case_label(case_idx),
                         kernel_names=resolution.kernel_names,
                         kernel_source=resolution.kernel_source,
                         error_message=str(exc),
@@ -295,7 +308,7 @@ def run_remote_bench_msprof(
 
             case_records.append(
                 PerfCaseRecord(
-                    case_label=str(case_idx),
+                    case_label=_msprof_case_label(case_idx),
                     kernel_names=resolution.kernel_names,
                     kernel_source=resolution.kernel_source,
                     metrics=metrics,
@@ -337,6 +350,7 @@ def run_remote_bench_msprof_parallel(
     json_search_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
+    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None, str]:
     resolution = deps.resolve_bench_kernel_resolution(bench_file, operator_file)
     count_result = deps.run_remote_command_buffered(
@@ -370,6 +384,7 @@ def run_remote_bench_msprof_parallel(
             json_search_root,
             verbose,
             stderr,
+            force_recompile=force_recompile,
         )
 
     outcomes = deps._run_parallel_case_workers(
@@ -398,6 +413,7 @@ def _run_local_msprof_case_parallel(
     source_root: Path,
     json_search_root: Path,
     verbose: bool,
+    force_recompile: bool = False,
 ) -> _MsprofCaseOutcome:
     case_workspace, cleanup = deps._create_local_msprof_case_workspace(
         bench_file,
@@ -405,10 +421,14 @@ def _run_local_msprof_case_parallel(
         case_idx,
         source_root=source_root,
         json_search_root=json_search_root,
+        verbose=verbose,
     )
     output_dir, temp_dir = deps._create_local_msprof_output_dir(case_idx, preserved_run_dir)
     try:
         with pool.acquire() as device:
+            extra_env = affinity_env_for_device(device)
+            if force_recompile:
+                extra_env["TRITON_ALWAYS_COMPILE"] = "1"
             command = [
                 "msprof",
                 f"--output={output_dir}",
@@ -426,7 +446,7 @@ def _run_local_msprof_case_parallel(
                     str(case_workspace),
                     stall_timeout_seconds=deps._bench_timeout(),
                     stdout=stream_target,
-                    extra_env=affinity_env_for_device(device),
+                    extra_env=extra_env,
                 )
             elapsed = deps._now() - t0
         return _build_local_msprof_case_outcome(deps, result, resolution, case_idx, output_dir, elapsed)
@@ -450,6 +470,7 @@ def _run_remote_msprof_case_parallel(
     json_search_root: Path,
     verbose: bool,
     stderr: TextIO | None,
+    force_recompile: bool = False,
 ) -> _MsprofCaseOutcome:
     case_workspace = f"{remote_workspace}/case-{case_idx}"
     deps.run_remote_command_buffered(
@@ -474,6 +495,9 @@ def _run_remote_msprof_case_parallel(
     output_dir = f"{workspace_root}/msprof-output"
     try:
         with pool.acquire() as device:
+            extra_env = affinity_env_for_device(device)
+            if force_recompile:
+                extra_env["TRITON_ALWAYS_COMPILE"] = "1"
             t0 = deps._now()
             result = deps.run_remote_command_streaming(
                 spec,
@@ -490,7 +514,7 @@ def _run_remote_msprof_case_parallel(
                 ],
                 verbose=verbose,
                 stderr=stderr,
-                extra_env=affinity_env_for_device(device),
+                extra_env=extra_env,
                 stall_timeout_seconds=deps._bench_timeout(),
             )
             elapsed = deps._now() - t0
@@ -526,7 +550,7 @@ def _build_local_msprof_case_outcome(
 ) -> _MsprofCaseOutcome:
     if not result_succeeded(result):
         record = PerfCaseRecord(
-            case_label=str(case_idx),
+            case_label=_msprof_case_label(case_idx),
             kernel_names=resolution.kernel_names,
             kernel_source=resolution.kernel_source,
             error_message=deps._format_msprof_command_failure(result),
@@ -536,7 +560,7 @@ def _build_local_msprof_case_outcome(
         try:
             metrics = _read_local_msprof_metrics(output_dir, resolution.kernel_names)
             record = PerfCaseRecord(
-                case_label=str(case_idx),
+                case_label=_msprof_case_label(case_idx),
                 kernel_names=resolution.kernel_names,
                 kernel_source=resolution.kernel_source,
                 metrics=metrics,
@@ -544,7 +568,7 @@ def _build_local_msprof_case_outcome(
             )
         except (FileNotFoundError, ValueError) as exc:
             record = PerfCaseRecord(
-                case_label=str(case_idx),
+                case_label=_msprof_case_label(case_idx),
                 kernel_names=resolution.kernel_names,
                 kernel_source=resolution.kernel_source,
                 error_message=str(exc),
@@ -575,7 +599,7 @@ def _build_remote_msprof_case_outcome(
 ) -> _MsprofCaseOutcome:
     if not result_succeeded(result):
         record = PerfCaseRecord(
-            case_label=str(case_idx),
+            case_label=_msprof_case_label(case_idx),
             kernel_names=resolution.kernel_names,
             kernel_source=resolution.kernel_source,
             error_message=deps._format_msprof_command_failure(result),
@@ -592,7 +616,7 @@ def _build_remote_msprof_case_outcome(
                 stderr=stderr,
             )
             record = PerfCaseRecord(
-                case_label=str(case_idx),
+                case_label=_msprof_case_label(case_idx),
                 kernel_names=resolution.kernel_names,
                 kernel_source=resolution.kernel_source,
                 metrics=metrics,
@@ -600,7 +624,7 @@ def _build_remote_msprof_case_outcome(
             )
         except RuntimeError as exc:
             record = PerfCaseRecord(
-                case_label=str(case_idx),
+                case_label=_msprof_case_label(case_idx),
                 kernel_names=resolution.kernel_names,
                 kernel_source=resolution.kernel_source,
                 error_message=str(exc),
@@ -645,63 +669,17 @@ def _write_msprof_perf(
 
 
 def _load_msprof_avg_rows(output_dir: Path) -> list[PerfOpRow]:
-    csv_path = _find_latest_msprof_statistic_csv(output_dir)
-    with csv_path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        fieldnames = reader.fieldnames or []
-        if "Avg Time(us)" not in fieldnames:
-            raise ValueError(f"Missing required column 'Avg Time(us)' in {csv_path}")
-        if "OP Type" not in fieldnames:
-            raise ValueError(f"Missing required column 'OP Type' in {csv_path}")
-        rows: list[PerfOpRow] = []
-        row_count = 0
-        for row in reader:
-            avg_time = (row.get("Avg Time(us)") or "").strip()
-            if not avg_time:
-                raise ValueError(f"Empty 'Avg Time(us)' value in {csv_path}")
-            op_type = (row.get("OP Type") or "").strip()
-            if not op_type:
-                raise ValueError(f"Empty 'OP Type' value in {csv_path}")
-            rows.append(
-                {
-                    "op_type": op_type,
-                    "avg_time_us": float(avg_time),
-                }
-            )
-            row_count += 1
-    if row_count == 0:
-        raise ValueError(f"No rows found in {csv_path}")
-    return rows
-
-
-def _find_latest_msprof_statistic_csv(output_dir: Path) -> Path:
-    matches = sorted(
-        path for path in output_dir.rglob("op_statistic_*.csv") if path.is_file()
-    )
-    if not matches:
+    csv_path = find_latest_op_statistic_csv(output_dir)
+    if csv_path is None:
         raise FileNotFoundError(f"No op_statistic_*.csv found under {output_dir}")
-    return max(matches, key=lambda path: path.stat().st_mtime_ns)
+    return parse_op_statistic_csv(csv_path).ops
 
 
 def _resolve_msprof_metrics(
     rows: list[PerfOpRow],
     kernel_names: list[str],
 ) -> PerfMetrics:
-    kernel_name_set = set(kernel_names)
-    matched_avg_times = [
-        float(row["avg_time_us"]) for row in rows if str(row["op_type"]) in kernel_name_set
-    ]
-    kernel_avg_time_us = sum(matched_avg_times) if matched_avg_times else None
-    return {
-        "kernel_avg_time_us": kernel_avg_time_us,
-        "ops": [
-            {
-                "op_type": row["op_type"],
-                "avg_time_us": row["avg_time_us"],
-            }
-            for row in rows
-        ],
-    }
+    return resolve_perf_metrics(rows, kernel_names)
 
 
 def _read_local_msprof_metrics(output_dir: Path, kernel_names: list[str]) -> PerfMetrics:

@@ -11,10 +11,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.cli import main
 from triton_agent.cli import build_parser
-from triton_agent.commands.verification import handle_verify_batch
-from triton_agent.verification.batch import run_verify_batch
-from triton_agent.verification.core import VerifyOptions
-from triton_agent.verification.core import VerifyResult
+from triton_agent.commands.verify import handle_verify_batch
+from triton_agent.verify.batch import run_verify_batch
+from triton_agent.verify.core import VerifyOptions
+from triton_agent.verify.core import VerifyResult
 
 
 class VerifyBatchTests(unittest.TestCase):
@@ -55,8 +55,8 @@ class VerifyBatchTests(unittest.TestCase):
             latest_state = self._write_verify_state(workspace, "verify-20260421-120000")
             stream = StringIO()
 
-            with patch("triton_agent.verification.batch.prepare_verify_target") as prepare_target:
-                with patch("triton_agent.verification.batch.run_verify") as run_verify:
+            with patch("triton_agent.verify.batch.prepare_verify_target") as prepare_target:
+                with patch("triton_agent.verify.batch.run_verify") as run_verify:
                     exit_code = run_verify_batch(root, stdout=stream)
 
             self.assertEqual(exit_code, 0)
@@ -77,11 +77,11 @@ class VerifyBatchTests(unittest.TestCase):
             state_path = verify_dir / "verify-state.json"
 
             with patch(
-                "triton_agent.verification.batch.prepare_verify_target",
+                "triton_agent.verify.batch.prepare_verify_target",
                 return_value=object(),
             ) as prepare_target:
                 with patch(
-                    "triton_agent.verification.batch.run_verify",
+                    "triton_agent.verify.batch.run_verify",
                     return_value=VerifyResult(
                         return_code=0,
                         verify_dir=verify_dir,
@@ -113,11 +113,11 @@ class VerifyBatchTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.verification.batch.prepare_verify_target",
+                "triton_agent.verify.batch.prepare_verify_target",
                 return_value=object(),
             ):
                 with patch(
-                    "triton_agent.verification.batch.run_verify",
+                    "triton_agent.verify.batch.run_verify",
                     return_value=VerifyResult(
                         return_code=0,
                         verify_dir=verify_dir,
@@ -146,7 +146,7 @@ class VerifyBatchTests(unittest.TestCase):
             stream = StringIO()
 
             with patch(
-                "triton_agent.verification.batch.prepare_verify_target",
+                "triton_agent.verify.batch.prepare_verify_target",
                 side_effect=ValueError("missing baseline"),
             ) as prepare_target:
                 exit_code = run_verify_batch(root, stdout=stream)
@@ -181,8 +181,8 @@ class VerifyBatchTests(unittest.TestCase):
                     state_path=workspace / "opt-verify" / "verify-20260421-120000" / "verify-state.json",
                 )
 
-            with patch("triton_agent.verification.batch.prepare_verify_target", side_effect=prepare_side_effect):
-                with patch("triton_agent.verification.batch.run_verify", side_effect=run_side_effect):
+            with patch("triton_agent.verify.batch.prepare_verify_target", side_effect=prepare_side_effect):
+                with patch("triton_agent.verify.batch.run_verify", side_effect=run_side_effect):
                     exit_code = run_verify_batch(root, force_verify=True, stdout=stream)
 
             self.assertEqual(exit_code, 1)
@@ -196,7 +196,7 @@ class VerifyBatchTests(unittest.TestCase):
             (root / "matmul").mkdir()
 
             with patch(
-                "triton_agent.commands.verification.run_verify_batch",
+                "triton_agent.commands.verify.run_verify_batch",
                 return_value=0,
             ) as run_batch:
                 exit_code = main(["verify-batch", "-i", str(root), "--force-verify"])
@@ -218,7 +218,7 @@ class VerifyBatchTests(unittest.TestCase):
             )
 
             with patch(
-                "triton_agent.commands.verification.run_verify_batch",
+                "triton_agent.commands.verify.run_verify_batch",
                 return_value=0,
             ) as run_batch:
                 exit_code = handle_verify_batch(parser, args)

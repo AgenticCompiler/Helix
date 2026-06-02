@@ -154,6 +154,23 @@ else:
 
 The exact threshold should come from benchmark evidence, not from a fixed guess.
 
+### K-dimension constexpr specialization
+
+When common shapes concentrate around a few `K` values, split dispatch by `K` and compile specialized kernels instead of keeping runtime branch trees inside one generic kernel. This is useful when `K == 64` and `K == 128` have meaningfully different block-pointer, load, or dot structure.
+
+```python
+if K == 64:
+    kernel_k64[grid](...)
+elif K == 128:
+    kernel_k128[grid](...)
+else:
+    kernel_generic[grid](...)
+```
+
+Use this when the specialized branch removes active `if K > ...` logic, dead pointer paths, or padded work from the hot loop. Avoid it when `K` has many active values, when compile-cache growth dominates, or when the generic kernel already receives `K` as `tl.constexpr` and the backend eliminates the branch cleanly.
+
+Record which shapes justify the specialization. Delete or demote experimental branches that lose to the generic path.
+
 ## Expected Benefit
 
 - more regular lowering of the main `K` loop
@@ -179,5 +196,6 @@ The exact threshold should come from benchmark evidence, not from a fixed guess.
 - confirm masks on `M`, `N`, and `K`
 - confirm fused bias or activation broadcasting
 - if you introduce dispatch, validate each dispatched regime explicitly
+- if you specialize by `K`, validate each `K` branch and the generic fallback
 - benchmark against the previous implementation
 - record whether the win came from lower scalar pressure, better matmul lowering, or better epilogue amortization

@@ -107,6 +107,14 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
             ],
         )
 
+    def test_standalone_runtime_support_paths_include_profile_csv_parser(self) -> None:
+        module = _load_capture_ir_module()
+
+        support_names = {path.name for path in module._standalone_runtime_support_paths()}
+
+        self.assertIn("standalone_bench_runtime.py", support_names)
+        self.assertIn("profile_csv_parser.py", support_names)
+
     def test_build_execution_command_forwards_bench_case_for_msprof_benches(self) -> None:
         module = _load_capture_ir_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -386,7 +394,15 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
         copied_names = [call.args[2].rsplit("/", 1)[-1] for call in copy_file.call_args_list]
         self.assertEqual(
             copied_names,
-            ["bench.py", "kernel.py", "result_payload.py", "standalone_bench_runtime.py"],
+            [
+                "bench.py",
+                "kernel.py",
+                "result_payload.py",
+                "standalone_bench_runtime.py",
+                "bench_contract.py",
+                "perf_artifacts.py",
+                "profile_csv_parser.py",
+            ],
         )
         self.assertIn(
             "python3 standalone_bench_runtime.py run-one --bench-file bench.py --operator-file kernel.py",

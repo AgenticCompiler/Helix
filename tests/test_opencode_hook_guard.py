@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 import tempfile
 import textwrap
@@ -7,7 +8,12 @@ from pathlib import Path
 from typing import Optional
 
 
+_node_available = shutil.which("node") is not None
+_skip_if_no_node = unittest.skipUnless(_node_available, "node is not available")
+
+
 class OpenCodeHookGuardTests(unittest.TestCase):
+    @_skip_if_no_node
     def test_allows_in_workspace_non_protected_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -19,6 +25,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": True})
 
+    @_skip_if_no_node
     def test_blocks_outside_workspace_absolute_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -30,6 +37,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
 
+    @_skip_if_no_node
     def test_blocks_outside_workspace_parent_escape_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -41,6 +49,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
 
+    @_skip_if_no_node
     def test_blocks_staged_skill_script_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -52,6 +61,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
 
+    @_skip_if_no_node
     def test_allows_python_one_liner_opening_protected_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -68,6 +78,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": True})
 
+    @_skip_if_no_node
     def test_allows_python_entrypoint_for_staged_helper_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -84,6 +95,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": True})
 
+    @_skip_if_no_node
     def test_allows_relative_python_entrypoint_for_staged_helper_script_with_redirection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -109,6 +121,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": True})
 
+    @_skip_if_no_node
     def test_blocks_read_tool_for_protected_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -121,6 +134,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
 
+    @_skip_if_no_node
     def test_allows_read_tool_for_in_workspace_non_protected_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -132,6 +146,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": True})
 
+    @_skip_if_no_node
     def test_allows_read_tool_relative_path_against_cwd(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -144,6 +159,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": True})
 
+    @_skip_if_no_node
     def test_blocks_triton_agent_logs_bash_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -155,6 +171,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
 
+    @_skip_if_no_node
     def test_blocks_triton_agent_logs_bare_relative_bash_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -171,6 +188,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
 
+    @_skip_if_no_node
     def test_blocks_triton_agent_logs_read_tool(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -182,6 +200,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
 
+    @_skip_if_no_node
     def test_allows_python_one_liner_opening_relative_triton_agent_log(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -198,6 +217,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": True})
 
+    @_skip_if_no_node
     def test_allows_read_outside_triton_agent_logs_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -209,6 +229,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": True})
 
+    @_skip_if_no_node
     def test_allows_read_from_extra_allow_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -227,6 +248,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertEqual(result, {"allowed": True})
 
+    @_skip_if_no_node
     def test_malformed_shell_payload_fails_open(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"

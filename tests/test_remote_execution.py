@@ -122,9 +122,9 @@ record = module._standalone._parse_standalone_case_result_payload(
     fallback_kernel_source="metadata",
 )
 print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.metrics["kernel_avg_time_us"]}))
-"""
+        """
         completed = subprocess.run(
-            ["python3", "-c", script],
+            [sys.executable, "-c", script],
             cwd=str(Path(__file__).resolve().parents[1]),
             capture_output=True,
             text=True,
@@ -193,6 +193,42 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
 
         self.assertEqual(mocked.call_args.kwargs["env"]["ASCEND_RT_VISIBLE_DEVICES"], "4")
         self.assertEqual(mocked.call_args.kwargs["env"]["EXISTING_ENV"], "base")
+
+    def test_run_runtime_buffered_process_closes_pipe_streams(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        class _FakeStream:
+            def __init__(self, text: str = "") -> None:
+                self._text = text
+                self.closed = False
+
+            def readline(self) -> str:
+                return ""
+
+            def read(self) -> str:
+                text = self._text
+                self._text = ""
+                return text
+
+            def close(self) -> None:
+                self.closed = True
+
+        class _FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = _FakeStream()
+                self.stderr = _FakeStream()
+                self.returncode = 0
+
+            def poll(self):
+                return 0
+
+        process = _FakeProcess()
+        with patch.object(module.subprocess, "Popen", return_value=process):
+            result = module.run_buffered_process(["python3", "bench.py"], ".", 10)
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertTrue(process.stdout.closed)
+        self.assertTrue(process.stderr.closed)
 
     def test_run_remote_command_streaming_shell_joins_sequence_args(self) -> None:
         module = load_operator_eval_script_module("run_runtime")
@@ -385,6 +421,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
         self.assertIsNotNone(remote_run.call_args.kwargs.get("stdout"))
         copy_targets = [call.args[2].rsplit("/", 1)[-1] for call in copy_to_remote.call_args_list]
         self.assertIn("standalone_bench_runtime.py", copy_targets)
+        self.assertIn("profile_csv_parser.py", copy_targets)
         self.assertEqual(
             remote_run.call_args.args[2],
             [
@@ -457,6 +494,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                     or remote_path.endswith("/standalone_bench_runtime.py")
                     or remote_path.endswith("/bench_contract.py")
                     or remote_path.endswith("/perf_artifacts.py")
+                    or remote_path.endswith("/profile_csv_parser.py")
                 )
 
             def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
@@ -468,7 +506,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                         command,
                     )
                 )
-                case_id = command[-1]
+                case_id = command[-2]
                 return make_skill_result(
                     0,
                     (
@@ -623,8 +661,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"1","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":2.5,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
-                    '{"case_label":"2","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelA","avg_time_us":3.0},{"op_type":"KernelB","avg_time_us":5.0}],"total_op_avg_time_us":8.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"case-1","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":2.5,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"case-2","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelA","avg_time_us":3.0},{"op_type":"KernelB","avg_time_us":5.0}],"total_op_avg_time_us":8.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
                 ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
@@ -748,7 +786,10 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             if perf_path is None:
                 self.fail("expected msprof perf path")
             perf_text = perf_path.read_text(encoding="utf-8")
-            self.assertLess(perf_text.index('"case_label":"1"'), perf_text.index('"case_label":"2"'))
+            self.assertLess(
+                perf_text.index('"case_label":"case-1"'),
+                perf_text.index('"case_label":"case-2"'),
+            )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
 
     def test_run_remote_bench_msprof_parallel_stages_discovered_case_json_files(self) -> None:
@@ -1008,8 +1049,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"1","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":null,"total_op_avg_time_us":null,"error_message":"msprof command failed with return code 1","case_wall_clock_seconds":0.0}\n'
-                    '{"case_label":"2","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelB","avg_time_us":5.0}],"total_op_avg_time_us":5.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"case-1","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":null,"total_op_avg_time_us":null,"error_message":"msprof command failed with return code 1","case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"case-2","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelB","avg_time_us":5.0}],"total_op_avg_time_us":5.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
                 ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
@@ -1078,7 +1119,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"1","kernel_names":["MissingKernel"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":"no resolved kernels matched op_statistic csv","case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"case-1","kernel_names":["MissingKernel"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":"no resolved kernels matched op_statistic csv","case_wall_clock_seconds":0.0}\n'
                 ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
@@ -1147,7 +1188,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"1","kernel_names":["KernelA","KernelB"],"kernel_source":"metadata","kernel_avg_time_us":4.0,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"case-1","kernel_names":["KernelA","KernelB"],"kernel_source":"metadata","kernel_avg_time_us":4.0,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
                 ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
@@ -1259,7 +1300,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             if perf_path is None:
                 self.fail("expected remote msprof perf path")
             perf_text = perf_path.read_text(encoding="utf-8")
-            self.assertIn('"case_label":"1"', perf_text)
+            self.assertIn('"case_label":"case-1"', perf_text)
             self.assertIn('"kernel_avg_time_us":3.0', perf_text)
             self.assertIn('"case_wall_clock_seconds":1.5', perf_text)
 

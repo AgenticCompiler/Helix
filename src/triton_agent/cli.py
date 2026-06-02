@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from triton_agent.commands.convert import handle_convert, handle_convert_batch
+from triton_agent.commands.clean import handle_clean
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
 from triton_agent.commands.execution import handle_run_bench, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
@@ -13,11 +14,15 @@ from triton_agent.commands.generation import handle_gen_eval
 from triton_agent.commands.generation import handle_gen_eval_batch
 from triton_agent.commands.status import handle_status
 from triton_agent.commands.log_check import handle_log_check, handle_log_check_batch
-from triton_agent.commands.verification import handle_verify, handle_verify_batch
+from triton_agent.commands.trace_analyze import handle_trace_analyze
+from triton_agent.commands.verify import handle_verify, handle_verify_batch
 from triton_agent.commands.optimize import (
     handle_optimize,
     handle_optimize_batch,
 )
+from triton_agent.commands.upload_optimize import handle_upload_optimize
+from triton_agent.commands.report_batch import handle_report_batch
+from triton_agent.commands.report import handle_report
 from triton_agent.models import CommandKind
 
 
@@ -28,7 +33,7 @@ _FORMAT_CHOICES = ("text", "markdown")
 _TEST_MODE_CHOICES = ("standalone", "differential")
 _BENCH_MODE_CHOICES = ("standalone", "msprof", "msprof-simulator")
 _RESUME_CHOICES = ("auto", "continue", "fresh")
-_SUPERVISE_CHOICES = ("on", "off")
+_ROUND_MODE_CHOICES = ("continuous", "checked", "supervised")
 _TARGET_CHIP_CHOICES = ("A3", "A5")
 _OPTIMIZE_TARGET_CHOICES = ("kernel", "operator")
 _OPTIMIZE_KNOWLEDGE_CHOICES = ("v1", "v2", "v3")
@@ -45,6 +50,8 @@ _TOP_LEVEL_EXAMPLES = (
     "triton-agent log-check -i .",
     "triton-agent log-check-batch -i kernels",
     "triton-agent optimize -i kernel.py --agent codex",
+    "triton-agent report-batch -i kernels",
+    "triton-agent clean -i .",
 )
 _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
     (
@@ -55,11 +62,15 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
                 "Comma-separated Ascend NPU device pool for batch workspaces.",
             ),
             (
+                "TRITON_AGENT_BATCH_WORKERS_PER_NPU",
+                "Concurrent workers per NPU device in batch mode (positive int, default 1).",
+            ),
+            (
                 "TRITON_AGENT_CODE_AGENT_MAX_RETRIES",
                 "Retry limit for transient code-agent failures.",
             ),
             (
-                "TRITON_AGENT_BENCH_PROFILE_OUTPUT_DIR",
+                "TRITON_AGENT_BENCH_OUTPUT_DIR",
                 "Directory used to keep local benchmark profiler output.",
             ),
             (
@@ -67,8 +78,22 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
                 "Enable ordinary optimize PT cleanup; default keeps PT files and does not affect --reset-optimize.",
             ),
             (
-                "TRITON_AGENT_HOME",
-                "Overrides the triton-agent home directory for cached artifacts.",
+                "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW",
+                "Recent comparable round count for advisory local-optimum warnings in check-round (default: 3).",
+            ),
+            (
+                "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN",
+                "Maximum adjacent baseline-relative geomean gain that still counts as flat for local-optimum warnings (default: 0.02).",
+            ),
+            (
+                "TRITON_AGENT_COMPILER_SOURCE_CACHE_DIR",
+                "Overrides the base directory for cached compiler source checkouts. "
+                "Defaults to ~/.triton-agent.",
+            ),
+            (
+                "TRITON_AGENT_OPTIMIZE_UPLOAD_URL",
+                "Base URL of the optimize upload server. /uploads is appended automatically. "
+                "Required for the upload-optimize subcommand and auto-upload after optimize.",
             ),
         ),
     ),
@@ -136,13 +161,18 @@ class _CommandSpec:
     has_bench_mode: bool = False
     bench_mode_default: str | None = None
     has_npu_devices: bool = False
+    has_force_recompile: bool = False
     has_optimize_options: bool = False
     has_prompt: bool = False
-    max_concurrency_default: int | None = None
+    concurrency_default: int | None = None
+    concurrency_accepts_max: bool = False
+    report_workers_default: int | None = None
     has_force_overwrite: bool = False
     has_format: bool = False
     has_verify_phase: bool = False
     has_force_verify: bool = False
+    has_log_tools: bool = False
+    has_url: bool = False
 
 
 _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
@@ -161,6 +191,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         bench_mode_default="standalone",
         has_prompt=True,
         has_force_overwrite=True,
+        has_log_tools=True,
     ),
     CommandKind.GEN_EVAL_BATCH: _CommandSpec(
         handler=handle_gen_eval_batch,
@@ -176,7 +207,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_bench_mode=True,
         bench_mode_default="standalone",
         has_prompt=True,
-        max_concurrency_default=2,
+        concurrency_default=1,
+        concurrency_accepts_max=True,
+        has_log_tools=True,
     ),
     CommandKind.CONVERT: _CommandSpec(
         handler=handle_convert,
@@ -192,6 +225,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         test_mode_choices=("differential",),
         has_prompt=True,
         has_force_overwrite=True,
+        has_log_tools=True,
     ),
     CommandKind.CONVERT_BATCH: _CommandSpec(
         handler=handle_convert_batch,
@@ -206,7 +240,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         test_mode_default="differential",
         test_mode_choices=("differential",),
         has_prompt=True,
-        max_concurrency_default=2,
+        concurrency_default=1,
+        concurrency_accepts_max=True,
+        has_log_tools=True,
     ),
     CommandKind.GEN_TEST: _CommandSpec(
         handler=handle_gen_test,
@@ -221,6 +257,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         test_mode_default="standalone",
         has_prompt=True,
         has_force_overwrite=True,
+        has_log_tools=True,
     ),
     CommandKind.RUN_TEST: _CommandSpec(
         handler=handle_run_test,
@@ -231,6 +268,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_remote=True,
         keep_remote_workdir=True,
         has_test_mode=True,
+        has_force_recompile=True,
     ),
     CommandKind.GEN_BENCH: _CommandSpec(
         handler=handle_gen_bench,
@@ -245,6 +283,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         bench_mode_default="standalone",
         has_prompt=True,
         has_force_overwrite=True,
+        has_log_tools=True,
     ),
     CommandKind.RUN_BENCH: _CommandSpec(
         handler=handle_run_bench,
@@ -256,6 +295,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         keep_remote_workdir=True,
         has_bench_mode=True,
         has_npu_devices=True,
+        has_force_recompile=True,
     ),
     CommandKind.COMPARE_RESULT: _CommandSpec(
         handler=handle_compare_result,
@@ -286,11 +326,12 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
     CommandKind.LOG_CHECK: _CommandSpec(
         handler=handle_log_check,
         help_group="Optimization",
-        help_summary="Run Codex log strategy validation for one workspace.",
-        description="Run Codex log strategy validation and write log_check_result.md.",
+        help_summary="Run log strategy validation for one workspace.",
+        description="Run log validation and write structured JSON results.",
         has_output=False,
         has_agent=True,
         has_show_output=True,
+        has_log_tools=True,
     ),
     CommandKind.LOG_CHECK_BATCH: _CommandSpec(
         handler=handle_log_check_batch,
@@ -300,7 +341,17 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_output=False,
         has_agent=True,
         has_show_output=True,
-        max_concurrency_default=1,
+        concurrency_default=1,
+        has_log_tools=True,
+    ),
+    CommandKind.TRACE_ANALYZE: _CommandSpec(
+        handler=handle_trace_analyze,
+        help_group="Optimization",
+        help_summary="Analyze an otel trace file and generate summary.json.",
+        description="Parse an otel trace file and generate a structured JSON summary report.",
+        has_output=False,
+        has_verbose=False,
+        input_mode="trace-analyze",
     ),
     CommandKind.VERIFY: _CommandSpec(
         handler=handle_verify,
@@ -337,6 +388,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_bench_mode=True,
         has_optimize_options=True,
         has_prompt=True,
+        has_log_tools=True,
     ),
     CommandKind.OPTIMIZE_BATCH: _CommandSpec(
         handler=handle_optimize_batch,
@@ -351,7 +403,46 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_bench_mode=True,
         has_optimize_options=True,
         has_prompt=True,
-        max_concurrency_default=1,
+        concurrency_default=1,
+        concurrency_accepts_max=True,
+        has_log_tools=True,
+    ),
+    CommandKind.UPLOAD_OPTIMIZE: _CommandSpec(
+        handler=handle_upload_optimize,
+        help_group="Optimization",
+        help_summary="Upload one optimize workspace to an analysis server.",
+        description="Upload one optimize workspace to an analysis server.",
+        has_output=False,
+        has_verbose=True,
+        has_url=True,
+    ),
+    CommandKind.REPORT: _CommandSpec(
+        handler=handle_report,
+        help_group="Reporting",
+        help_summary="Generate operator-level optimization report.",
+        description="Launch an agent to read workspace artifacts and render report.md.",
+        has_output=False,
+        has_agent=True,
+        has_interact=True,
+        has_show_output=True,
+        has_prompt=True,
+    ),
+    CommandKind.REPORT_BATCH: _CommandSpec(
+        handler=handle_report_batch,
+        help_group="Reporting",
+        help_summary="Collect report-batch state and generate batch and per-workspace reports.",
+        description="Scan a batch root, collect results into report-batch-state.json, render report-batch.md, "
+                    "and generate per-workspace report.md via agent.",
+        has_output=False,
+        has_agent=True,
+        has_show_output=True,
+        report_workers_default=4,
+    ),
+    CommandKind.CLEAN: _CommandSpec(
+        handler=handle_clean,
+        help_group="Status",
+        help_summary="Remove known generated artifacts from one workspace or a batch root.",
+        description="Remove known generated artifacts from one operator workspace or a batch root.",
     ),
 }
 
@@ -390,10 +481,14 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("-o", "--output")
         if spec.has_verbose:
             subparser.add_argument("--verbose", action="store_true")
+        if spec.has_url:
+            subparser.add_argument("--url", help="Upload server base URL (/uploads appended automatically)")
         if spec.has_interact:
             subparser.add_argument("--interact", action="store_true")
         if spec.has_show_output:
             subparser.add_argument("--show-output", action="store_true")
+        if spec.has_log_tools:
+            subparser.add_argument("--log-tools", action="store_true")
         if spec.has_agent:
             subparser.add_argument("--agent", default="codex", choices=_AGENT_CHOICES)
         if spec.has_test_mode:
@@ -410,8 +505,13 @@ def build_parser() -> argparse.ArgumentParser:
             )
         if spec.has_npu_devices:
             subparser.add_argument("--npu-devices")
+        if spec.has_force_recompile:
+            subparser.add_argument(
+                "--force-recompile", action="store_true",
+                help="Force Triton kernel recompilation (sets TRITON_ALWAYS_COMPILE=1)",
+            )
         if spec.has_optimize_options:
-            subparser.add_argument("--min-rounds", type=int)
+            subparser.add_argument("--min-rounds", type=int, default=5)
             subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES)
             subparser.add_argument("--reset-optimize", action="store_true")
             subparser.add_argument("--enable-compiler-source-analysis", action="store_true")
@@ -431,19 +531,19 @@ def build_parser() -> argparse.ArgumentParser:
             )
             subparser.add_argument("--no-agent-session", action="store_true")
             subparser.add_argument(
-                "--supervise",
-                "--supervisor",
-                dest="supervise",
-                default="off",
-                choices=_SUPERVISE_CHOICES,
+                "--round-mode",
+                default="continuous",
+                choices=_ROUND_MODE_CHOICES,
             )
+            subparser.add_argument("--no-upload", action="store_true")
+            subparser.add_argument("--no-report", action="store_true", default=False)
         if spec.has_prompt:
             subparser.add_argument("--prompt")
         if command_kind in {CommandKind.LOG_CHECK, CommandKind.LOG_CHECK_BATCH}:
             subparser.add_argument(
                 "--check-result-file",
-                default="log_check_result.md",
-                help="Workspace-relative log check result file name.",
+                default="log_check_result.json",
+                help="Workspace-relative log check result JSON file name.",
             )
         if command_kind == CommandKind.LOG_CHECK_BATCH:
             subparser.add_argument(
@@ -451,10 +551,17 @@ def build_parser() -> argparse.ArgumentParser:
                 default="log_check_summary.md",
                 help="Root-relative batch log check summary file name.",
             )
-        if spec.max_concurrency_default is not None:
-            subparser.add_argument("--max-concurrency", type=int, default=spec.max_concurrency_default)
+        if spec.concurrency_default is not None:
+            concurrency_type = (
+                _parse_concurrency_value if spec.concurrency_accepts_max else _parse_positive_int_value
+            )
+            subparser.add_argument("--concurrency", type=concurrency_type, default=spec.concurrency_default)
+        if spec.report_workers_default is not None:
+            subparser.add_argument("--report-workers", type=int, default=spec.report_workers_default)
         if spec.has_force_overwrite:
             subparser.add_argument("--force-overwrite", action="store_true")
+        if command_kind == CommandKind.CLEAN:
+            subparser.add_argument("--deep", action="store_true")
 
     return parser
 
@@ -469,6 +576,7 @@ def _build_top_level_epilog() -> str:
         "Status",
         "Verification",
         "Optimization",
+        "Reporting",
     )
     for group_name in group_names:
         lines.append(f"{group_name}:")
@@ -501,6 +609,22 @@ def main(argv: Optional[list[str]] = None) -> int:
     return _COMMAND_SPECS[command_kind].handler(parser, args)
 
 
+def _parse_concurrency_value(value: str) -> int | str:
+    if value == "max":
+        return value
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("--concurrency must be an integer or 'max'") from exc
+
+
+def _parse_positive_int_value(value: str) -> int:
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("--concurrency must be an integer") from exc
+
+
 def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpec) -> None:
     if spec.input_mode == "run-test":
         subparser.add_argument("--test-file", required=True)
@@ -527,6 +651,9 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
             choices=("auto", "kernel", "total-op", "all"),
         )
         return
+    if spec.input_mode == "trace-analyze":
+        subparser.add_argument("-t", "--trace", required=True, help="Path to the otel trace.jsonl file.")
+        return
     subparser.add_argument("-i", "--input", required=True)
 
 
@@ -547,6 +674,9 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "optimize_batch": "optimize-batch",
         "log_check": "log-check",
         "log_check_batch": "log-check-batch",
+        "report_batch": "report-batch",
+        "report": "report",
+        "clean": "clean",
     }
     normalized = list(argv)
     normalized[0] = aliases.get(normalized[0], normalized[0])

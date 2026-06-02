@@ -22,6 +22,7 @@ from triton_agent.npu_affinity import (
     BatchNpuAffinityPool,
     affinity_env_for_device,
     configured_batch_npu_devices,
+    configured_batch_npu_slots,
     validate_batch_affinity_capacity,
 )
 
@@ -72,7 +73,8 @@ def run_gen_eval_batch(
     stream = stdout or sys.stdout
     devices = configured_batch_npu_devices()
     validate_batch_affinity_capacity(devices, max_concurrency=max_concurrency)
-    pool = BatchNpuAffinityPool(devices) if devices is not None else None
+    slots = configured_batch_npu_slots()
+    pool = BatchNpuAffinityPool(slots) if slots is not None else None
 
     def _run_item(
         item: BatchGenEvalWorkspace,
@@ -88,7 +90,10 @@ def run_gen_eval_batch(
         )
         if pool is not None:
             with pool.acquire() as device:
-                request.extra_env = affinity_env_for_device(device)
+                request.extra_env = {
+                    **(request.extra_env or {}),
+                    **affinity_env_for_device(device),
+                }
                 if forwarded_stdout is not None or forwarded_stderr is not None:
                     return generation_request_runner(request, forwarded_stdout, forwarded_stderr)
                 return generation_request_runner(request)
