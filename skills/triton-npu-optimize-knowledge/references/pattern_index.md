@@ -222,14 +222,15 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `pooling-clip-window-closed-divisor`
 
-- Summary: Repair sliding-window pooling kernels by aligning the inner loop nest and divisor logic with the PyTorch/CUDA reference: compute each output window's **clipped input bounds once**, use a **closed-form window volume** for the average divisor, and iterate **input coordinates inside the clipped range** instead of scanning the full `KERNEL_D×KERNEL_H×KERNEL_W` cube with per-tap validity masks and runtime counting.
+- Summary: On **SIMT execution paths**, repair sliding-window pooling kernels by aligning the inner loop nest and divisor logic with the PyTorch/CUDA reference: compute each output window's **clipped input bounds once**, use a **closed-form window volume** for the average divisor, and iterate **input coordinates inside the clipped range** instead of scanning the full `KERNEL_D×KERNEL_H×KERNEL_W` cube with per-tap validity masks and runtime counting.
 - Source: [pooling-clip-window-closed-divisor.md](patterns/pooling-clip-window-closed-divisor.md)
 - Use When:
+  - **SIMT is already in use** per the evidence rules above (`force_simt_only=True`, an active SIMT-only optimize round, or explicit user confirmation).
   - The operator is **AvgPool / MaxPool** or another **fixed-kernel window reduction** over an affine layout (NCDHW, NCHW, or collapsed batch×channel rows).
   - The hot path uses **`for kd/kh/kw in range(KERNEL_*)`** with per-tap **`valid_*` / `safe_*` / `window_mask`** and/or **`count += tl.where(...)`** to derive the average divisor.
   - Padding, `count_include_pad`, `ceil_mode`, or edge outputs make many lanes use **partial windows**, but the mapping from output coordinates to input bounds is still **static and affine**.
   - Correctness can be checked against PyTorch `avg_pool{2,3}d` / `max_pool{2,3}d` across padding, `count_include_pad=False`, and boundary shapes.
-  - You want a low-risk structural cleanup **before** autotune, W-slab, or SIMT-only experiments.
+  - Profiling on the SIMT launch still shows mask-heavy inner loops or scalar dominance after outer tiling and SIMT-only mode are settled.
 
 ### `pooling-inner-w-slab-gather`
 
