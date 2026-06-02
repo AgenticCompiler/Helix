@@ -65,7 +65,7 @@ This ordering keeps SIMT-only as an architecture-specific launch-mode experiment
 1. Confirm the profile row and kernel-name match from `op_summary_*.csv`.
 2. Confirm A5 using the evidence rules above.
 3. Inspect the kernel for flat `numel` traversal plus `//` / `%` coordinate recovery. If present and the mapping is affine, route to the flat-index-decode tiling repair first.
-4. For fixed-kernel pooling (AvgPool/MaxPool), if inner loops scan `KERNEL_D×H×W` with per-tap validity masks and runtime divisor counting, route to `pooling-clip-window-closed-divisor` before or together with SIMT-only tuning.
+4. For fixed-kernel pooling (AvgPool/MaxPool), enable and validate SIMT-only launch first; if inner loops still scan `KERNEL_D×H×W` with per-tap validity masks and runtime divisor counting, route to `pooling-clip-window-closed-divisor` **after** SIMT is active.
 5. Confirm the remaining kernel is discrete-memory-access dominated by reading the Triton kernel body.
 6. Add `force_simt_only=True` to the Triton kernel launch:
 
