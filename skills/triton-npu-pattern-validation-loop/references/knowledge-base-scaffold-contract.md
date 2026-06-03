@@ -32,11 +32,14 @@ kernels independently.
 From repo root:
 
 ```bash
-python3 "$SKILL/scripts/plan_workspaces_from_knowledge.py" \
+triton-agent pattern-validation-plan -i "$REPO" \
   --knowledge PERF_KNOWLEDGE_BASE.md \
-  --repo "$REPO" \
-  --output pattern-validation-batch/workspace-plan.json
+  --batch-dir pattern-validation-batch \
+  --base "$BASE"
 ```
+
+`pattern-validation-loop` runs this automatically when `PERF_KNOWLEDGE_BASE.md` exists.
+The prepare agent may re-run the same command if the plan is missing or stale.
 
 The script:
 

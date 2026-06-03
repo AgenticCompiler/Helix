@@ -22,6 +22,11 @@ from triton_agent.pattern_validation_loop.paths import (
     DEFAULT_SYNTHESIS_FILE,
     resolve_repo_path,
 )
+from triton_agent.pattern_validation_loop.workspace_plan import (
+    DEFAULT_KNOWLEDGE_FILE,
+    generate_workspace_plan_if_present,
+    resolve_knowledge_base_path,
+)
 from triton_agent.pattern_validation_loop.prompts import build_analyze_prompt, build_prepare_prompt
 from triton_agent.pattern_validation_loop.scaffold_verify import run_pattern_validation_verify
 from triton_agent.pattern_validation_loop.seed_skills import (
@@ -44,6 +49,7 @@ _STALL_TIMEOUT_ENV = "TRITON_AGENT_STALL_TIMEOUT_SECONDS"
 class PatternValidationLoopConfig:
     repo_root: Path
     synthesis_path: Path
+    knowledge_path: Path
     batch_path: Path
     skills_workdir: Path
     skills_dir: str
@@ -65,6 +71,7 @@ def run_pattern_validation_loop_orchestrated(
     *,
     target_path: Path,
     synthesis_output: str = DEFAULT_SYNTHESIS_FILE,
+    knowledge_base: str = DEFAULT_KNOWLEDGE_FILE,
     batch_dir: str = DEFAULT_BATCH_DIR,
     skills_dir: str = DEFAULT_SKILLS_DIR_NAME,
     base_revision: str = "origin/main",
@@ -83,6 +90,7 @@ def run_pattern_validation_loop_orchestrated(
         config = _build_loop_config(
             target_path=target_path,
             synthesis_output=synthesis_output,
+            knowledge_base=knowledge_base,
             batch_dir=batch_dir,
             skills_dir=skills_dir,
             base_revision=base_revision,
@@ -108,7 +116,17 @@ def run_pattern_validation_loop_orchestrated(
     )
     _ensure_loop_state(config)
 
-    prepare_code = _run_prepare_agent(config)
+    workspace_plan_path, plan_warnings = generate_workspace_plan_if_present(
+        repo_root=config.repo_root,
+        batch_root=config.batch_path,
+        knowledge_output=_relative_to_repo(config.repo_root, config.knowledge_path),
+        base_revision=config.base_revision,
+        stream=sys.stderr,
+    )
+    for warning in plan_warnings:
+        print(f"[pattern-validation-loop] {warning}", file=sys.stderr, flush=True)
+
+    prepare_code = _run_prepare_agent(config, workspace_plan_path=workspace_plan_path)
     if prepare_code != 0:
         return prepare_code
 
@@ -197,6 +215,7 @@ def _build_loop_config(
     *,
     target_path: Path,
     synthesis_output: str,
+    knowledge_base: str,
     batch_dir: str,
     skills_dir: str,
     base_revision: str,
@@ -219,11 +238,13 @@ def _build_loop_config(
             "Pass --synthesis to an existing synthesis report or create PERF_PATTERN_SYNTHESIS.md in the repo.",
         )
     batch_path = resolve_repo_path(repo_root, batch_dir)
+    knowledge_path = resolve_knowledge_base_path(repo_root, knowledge_base)
     skills_workdir = repo_root / skills_dir
     state_path = repo_root / DEFAULT_STATE_FILE
     return PatternValidationLoopConfig(
         repo_root=repo_root,
         synthesis_path=synthesis_path,
+        knowledge_path=knowledge_path,
         batch_path=batch_path,
         skills_workdir=skills_workdir,
         skills_dir=skills_dir,
@@ -276,7 +297,11 @@ def _relative_to_repo(repo_root: Path, path: Path) -> str:
         return path.as_posix()
 
 
-def _run_prepare_agent(config: PatternValidationLoopConfig) -> int:
+def _run_prepare_agent(
+    config: PatternValidationLoopConfig,
+    *,
+    workspace_plan_path: Path | None,
+) -> int:
     backend_skills = staged_skill_dir(config.agent_name)
     skill_root = backend_skills / _PATTERN_VALIDATION_SKILL
     knowledge_root = config.skills_workdir / OPTIMIZE_KNOWLEDGE_SKILL_NAME
@@ -284,7 +309,9 @@ def _run_prepare_agent(config: PatternValidationLoopConfig) -> int:
         build_prepare_prompt(
             repo_path=config.repo_root,
             synthesis_path=config.synthesis_path,
+            knowledge_path=config.knowledge_path,
             batch_dir=config.batch_path,
+            workspace_plan_path=workspace_plan_path,
             skills_workdir=config.skills_workdir,
             skills_dir=config.skills_dir,
             state_path=config.state_path,

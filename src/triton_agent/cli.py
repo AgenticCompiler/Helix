@@ -24,6 +24,7 @@ from triton_agent.commands.upload_optimize import handle_upload_optimize
 from triton_agent.commands.report_batch import handle_report_batch
 from triton_agent.commands.report import handle_report
 from triton_agent.commands.pattern_validation_loop import handle_pattern_validation_loop
+from triton_agent.commands.pattern_validation_plan import handle_pattern_validation_plan
 from triton_agent.commands.pattern_validation_verify import handle_pattern_validation_verify
 from triton_agent.models import CommandKind
 
@@ -176,6 +177,7 @@ class _CommandSpec:
     has_log_tools: bool = False
     has_url: bool = False
     has_pattern_validation_loop_options: bool = False
+    has_pattern_validation_plan_options: bool = False
 
 
 _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
@@ -414,6 +416,17 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         ),
         has_output=False,
     ),
+    CommandKind.PATTERN_VALIDATION_PLAN: _CommandSpec(
+        handler=handle_pattern_validation_plan,
+        help_group="Optimization",
+        help_summary="Plan kernel-named validation workspaces from PERF_KNOWLEDGE_BASE.md.",
+        description=(
+            "Parse PERF_KNOWLEDGE_BASE.md, map kernels to launch functions in repo sources, "
+            "and write workspace-plan.json for the prepare agent."
+        ),
+        has_output=False,
+        has_pattern_validation_plan_options=True,
+    ),
     CommandKind.OPTIMIZE_BATCH: _CommandSpec(
         handler=handle_optimize_batch,
         help_group="Optimization",
@@ -573,6 +586,14 @@ def build_parser() -> argparse.ArgumentParser:
                 help="Input synthesis report path (default: PERF_PATTERN_SYNTHESIS.md).",
             )
             subparser.add_argument(
+                "--knowledge-base",
+                default="PERF_KNOWLEDGE_BASE.md",
+                help=(
+                    "Knowledge base path for workspace planning "
+                    "(default: PERF_KNOWLEDGE_BASE.md)."
+                ),
+            )
+            subparser.add_argument(
                 "--batch-dir",
                 default="pattern-validation-batch",
                 help="Batch root for optimize-batch workspaces (default: pattern-validation-batch).",
@@ -645,6 +666,30 @@ def build_parser() -> argparse.ArgumentParser:
                 "--json",
                 action="store_true",
                 help="Emit machine-readable JSON scaffold verification report.",
+            )
+        if spec.has_pattern_validation_plan_options:
+            subparser.add_argument(
+                "--knowledge",
+                default="PERF_KNOWLEDGE_BASE.md",
+                help="Knowledge base markdown path (default: PERF_KNOWLEDGE_BASE.md).",
+            )
+            subparser.add_argument(
+                "--batch-dir",
+                default="pattern-validation-batch",
+                help="Batch root used for default workspace-plan.json location.",
+            )
+            subparser.add_argument(
+                "--output",
+                default="",
+                help=(
+                    "Output plan JSON path (default: <batch-dir>/workspace-plan.json "
+                    "under -i)."
+                ),
+            )
+            subparser.add_argument(
+                "--base",
+                default="",
+                help="Optional base revision recorded in the plan for scaffold Git steps.",
             )
 
     return parser
@@ -763,6 +808,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "clean": "clean",
         "pattern_validation_loop": "pattern-validation-loop",
         "pattern_validation_verify": "pattern-validation-verify",
+        "pattern_validation_plan": "pattern-validation-plan",
     }
     normalized = list(argv)
     normalized[0] = aliases.get(normalized[0], normalized[0])

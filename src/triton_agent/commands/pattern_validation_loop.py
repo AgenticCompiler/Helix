@@ -19,6 +19,7 @@ def handle_pattern_validation_loop(parser: argparse.ArgumentParser, args: argpar
     return run_pattern_validation_loop(
         target_path=Path(args.input).expanduser(),
         synthesis_output=str(getattr(args, "synthesis", "PERF_PATTERN_SYNTHESIS.md")),
+        knowledge_base=str(getattr(args, "knowledge_base", "PERF_KNOWLEDGE_BASE.md")),
         batch_dir=str(getattr(args, "batch_dir", "pattern-validation-batch")),
         skills_dir=str(getattr(args, "skills_dir", "pattern-validation-skills")),
         base_revision=str(getattr(args, "base", "origin/main")),

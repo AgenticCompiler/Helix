@@ -12,6 +12,10 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 
 
 class PatternValidationOrchestrationTests(unittest.TestCase):
+    @patch(
+        "triton_agent.pattern_validation_loop.orchestration.generate_workspace_plan_if_present",
+        return_value=(None, []),
+    )
     @patch("triton_agent.pattern_validation_loop.orchestration.reset_active_workspace_rounds")
     @patch("triton_agent.pattern_validation_loop.orchestration.collect_batch_evidence")
     @patch("triton_agent.pattern_validation_loop.orchestration.run_optimize_batch", return_value=1)
@@ -31,6 +35,7 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
         mock_optimize: unittest.mock.MagicMock,
         mock_collect: unittest.mock.MagicMock,
         _mock_reset: unittest.mock.MagicMock,
+        _mock_plan: unittest.mock.MagicMock,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
             repo = _make_git_repo(Path(tmp))
@@ -60,6 +65,10 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
         mock_analyze.assert_called_once()
         mock_optimize.assert_called_once()
 
+    @patch(
+        "triton_agent.pattern_validation_loop.orchestration.generate_workspace_plan_if_present",
+        return_value=(None, []),
+    )
     @patch("triton_agent.pattern_validation_loop.orchestration.reset_active_workspace_rounds")
     @patch("triton_agent.pattern_validation_loop.orchestration.collect_batch_evidence")
     @patch("triton_agent.pattern_validation_loop.orchestration.run_optimize_batch", return_value=0)
@@ -79,6 +88,7 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
         mock_optimize: unittest.mock.MagicMock,
         _mock_collect: unittest.mock.MagicMock,
         _mock_reset: unittest.mock.MagicMock,
+        _mock_plan: unittest.mock.MagicMock,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
             repo = _make_git_repo(Path(tmp))
@@ -109,6 +119,10 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
         mock_analyze.assert_called_once()
         mock_optimize.assert_called_once()
 
+    @patch(
+        "triton_agent.pattern_validation_loop.orchestration.generate_workspace_plan_if_present",
+        return_value=(None, []),
+    )
     @patch("triton_agent.pattern_validation_loop.orchestration.reset_active_workspace_rounds")
     @patch("triton_agent.pattern_validation_loop.orchestration.collect_batch_evidence")
     @patch("triton_agent.pattern_validation_loop.orchestration.run_optimize_batch", return_value=0)
@@ -128,6 +142,7 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
         mock_optimize: unittest.mock.MagicMock,
         _mock_collect: unittest.mock.MagicMock,
         mock_reset: unittest.mock.MagicMock,
+        _mock_plan: unittest.mock.MagicMock,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
             repo = _make_git_repo(Path(tmp))

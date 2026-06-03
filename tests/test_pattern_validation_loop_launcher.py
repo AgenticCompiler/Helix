@@ -36,7 +36,9 @@ class PatternValidationLoopLauncherTests(unittest.TestCase):
             prompt = build_prepare_prompt(
                 repo_path=repo,
                 synthesis_path=synthesis,
+                knowledge_path=repo / "PERF_KNOWLEDGE_BASE.md",
                 batch_dir=repo / "pattern-validation-batch",
+                workspace_plan_path=repo / "pattern-validation-batch" / "workspace-plan.json",
                 skills_workdir=repo / "pattern-validation-skills",
                 skills_dir="pattern-validation-skills",
                 state_path=repo / ".triton-agent" / "pattern-validation-loop-state.json",
@@ -44,7 +46,9 @@ class PatternValidationLoopLauncherTests(unittest.TestCase):
                 skill_root=skill_root,
                 knowledge_root=repo / "pattern-validation-skills" / "triton-npu-optimize-knowledge",
             )
+        self.assertIn("triton-agent pattern-validation-plan", prompt)
         self.assertIn("triton-agent pattern-validation-verify", prompt)
+        self.assertIn("workspace-plan.json", prompt)
         self.assertIn("Do not run `triton-agent optimize-batch`", prompt)
         self.assertIn("workspace-scaffold-contract.md", prompt)
 

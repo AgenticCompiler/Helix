@@ -13,6 +13,10 @@ from triton_agent.pattern_validation_loop.paths import (
     DEFAULT_SYNTHESIS_FILE,
     resolve_repo_path,
 )
+from triton_agent.pattern_validation_loop.workspace_plan import (
+    DEFAULT_KNOWLEDGE_FILE,
+    resolve_knowledge_base_path,
+)
 from triton_agent.pattern_validation_loop.prompts import build_analyze_prompt, build_prepare_prompt
 from triton_agent.pattern_validation_loop.seed_skills import (
     DEFAULT_SKILLS_DIR_NAME,
@@ -89,7 +93,9 @@ def build_pattern_validation_loop_prompt(
     prepare = build_prepare_prompt(
         repo_path=repo_path,
         synthesis_path=synthesis_path,
+        knowledge_path=resolve_knowledge_base_path(repo_path, DEFAULT_KNOWLEDGE_FILE),
         batch_dir=batch_dir,
+        workspace_plan_path=batch_dir / "workspace-plan.json",
         skills_workdir=skills_workdir,
         skills_dir=skills_dir,
         state_path=state_path,
@@ -197,6 +203,7 @@ def run_pattern_validation_loop(
     *,
     target_path: Path,
     synthesis_output: str = DEFAULT_SYNTHESIS_FILE,
+    knowledge_base: str = "PERF_KNOWLEDGE_BASE.md",
     batch_dir: str = DEFAULT_BATCH_DIR,
     skills_dir: str = DEFAULT_SKILLS_DIR_NAME,
     base_revision: str = "origin/main",
@@ -214,6 +221,7 @@ def run_pattern_validation_loop(
     return run_pattern_validation_loop_orchestrated(
         target_path=target_path,
         synthesis_output=synthesis_output,
+        knowledge_base=knowledge_base,
         batch_dir=batch_dir,
         skills_dir=skills_dir,
         base_revision=base_revision,

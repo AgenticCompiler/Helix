@@ -162,6 +162,20 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["pattern-validation-loop", "-i", "."])
         self.assertTrue(args.show_output)
 
+    def test_pattern_validation_plan_maps_to_command_kind(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "pattern-validation-plan",
+                "-i",
+                ".",
+                "--knowledge",
+                "PERF_KNOWLEDGE_BASE.md",
+            ],
+        )
+        self.assertEqual(args.command, "pattern-validation-plan")
+        self.assertEqual(args.command_kind, CommandKind.PATTERN_VALIDATION_PLAN)
+
     def test_pattern_validation_verify_maps_to_command_kind(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["pattern-validation-verify", "-i", "pattern-validation-batch"])
@@ -351,6 +365,7 @@ class CliParserTests(unittest.TestCase):
             ("optimize_batch", CommandKind.OPTIMIZE_BATCH),
             ("pattern_validation_loop", CommandKind.PATTERN_VALIDATION_LOOP),
             ("pattern_validation_verify", CommandKind.PATTERN_VALIDATION_VERIFY),
+            ("pattern_validation_plan", CommandKind.PATTERN_VALIDATION_PLAN),
         ]
 
         for alias, expected_kind in cases:

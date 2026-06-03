@@ -18,9 +18,13 @@ Turn commit-analysis output into **verified** optimization knowledge:
 
 ## Prerequisites
 
-- `PERF_PATTERN_SYNTHESIS.md` in the repo.
+- `PERF_PATTERN_SYNTHESIS.md` in the repo (pattern promotion targets).
+- `PERF_KNOWLEDGE_BASE.md` in the repo (kernel-scoped lessons; drives `workspace-plan.json`).
 - Git history for pre-optimization snapshots.
-- `triton-agent` CLI for the loop entrypoint and `pattern-validation-verify`.
+- `triton-agent` CLI for the loop, `pattern-validation-plan`, and `pattern-validation-verify`.
+
+You only need to place the markdown reports; the CLI generates `workspace-plan.json` before the
+prepare agent runs.
 
 ## Paths (resolve at runtime)
 
@@ -86,13 +90,8 @@ python3 "$KNOWLEDGE/scripts/build_pattern_index.py" \
 When `PERF_KNOWLEDGE_BASE.md` exists, read
 [knowledge-base-scaffold-contract.md](references/knowledge-base-scaffold-contract.md) first:
 
-```bash
-python3 "$SKILL/scripts/plan_workspaces_from_knowledge.py" \
-  --knowledge PERF_KNOWLEDGE_BASE.md \
-  --repo "$REPO" \
-  --base "$BASE" \
-  --output "$BATCH/workspace-plan.json"
-```
+The CLI already ran `triton-agent pattern-validation-plan` when `PERF_KNOWLEDGE_BASE.md` exists.
+Read `$BATCH/workspace-plan.json` (regenerate with `pattern-validation-plan` only if missing).
 
 Then follow [workspace-scaffold-contract.md](references/workspace-scaffold-contract.md):
 
