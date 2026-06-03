@@ -171,7 +171,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
 
             result = inspect_round_artifacts(round_dir)
 
-            self.assertIn("missing reports/final.md", result.issues)
+            self.assertIn("summary_path must be summary.md", result.issues)
             self.assertIn("perf_artifact must be opt_kernel_perf.txt", result.issues)
 
     def test_inspect_round_artifacts_accepts_legacy_round_perf_and_operator_names(self) -> None:
