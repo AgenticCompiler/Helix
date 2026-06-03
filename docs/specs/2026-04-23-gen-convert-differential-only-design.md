@@ -124,7 +124,7 @@ It should stop staging optimize-only or benchmark-only skills such as:
 
 - `triton-npu-prepare-optimize-baseline`
 - `triton-npu-gen-bench`
-- `triton-npu-optimize-check`
+- `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`
 
 ### Convert Skill Contract
 

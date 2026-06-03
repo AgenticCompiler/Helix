@@ -61,7 +61,7 @@ The state JSON files (`baseline/state.json`, `round-state.json`, `verify-state.j
 | File | Change |
 |------|--------|
 | `src/triton_agent/optimize/pt_cleanup.py` | **New** — shared cleanup functions |
-| `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py` | Import `cleanup_dir_pt_files`; call in `check_baseline()` and `check_round()` |
+| `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py` | Import `cleanup_dir_pt_files`; call in `check_baseline()` and `check_round()` |
 | `src/triton_agent/optimize/execution.py` | Import `cleanup_workspace_pt_files`; call in both finally blocks |
 | `src/triton_agent/optimize/resume.py` | Add `*_result.pt` to `reset_optimize_workspace()` deletion list |
 | `src/triton_agent/verification/core.py` | Import `cleanup_dir_pt_files`; call after `_write_verify_state()` |

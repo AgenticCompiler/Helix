@@ -5,10 +5,10 @@ from pathlib import Path
 from typing import Optional, cast
 
 from triton_agent.optimize.naming import resolve_batch_optimize_operator_file
-from triton_agent.optimize.skill_contract import optimize_check_module
+from triton_agent.optimize.skill_contract import optimize_submit_round_module
 from triton_agent.optimize_upload.models import CollectedUpload
 
-_OPTIMIZE_CHECK = optimize_check_module()
+_OPTIMIZE_ROUND = optimize_submit_round_module()
 
 
 _EXCLUDED_DIRS = frozenset({
@@ -77,7 +77,7 @@ def _resolve_baseline_artifacts(workspace: Path) -> list[Path]:
 def _resolve_round_artifacts(workspace: Path, round_dir: Path) -> list[Path]:
     files: list[Path] = []
     # Round operator via the contract resolver.
-    op = _OPTIMIZE_CHECK.resolve_round_operator_file(round_dir)
+    op = _OPTIMIZE_ROUND.resolve_round_operator_file(round_dir)
     if op is not None and op.exists():
         files.append(op)
     # Round notes and state.
@@ -86,7 +86,7 @@ def _resolve_round_artifacts(workspace: Path, round_dir: Path) -> list[Path]:
         if p.exists():
             files.append(p)
     # Round perf artifact via the contract resolver.
-    perf = _OPTIMIZE_CHECK.resolve_round_perf_file(round_dir)
+    perf = _OPTIMIZE_ROUND.resolve_round_perf_file(round_dir)
     if perf is not None and perf.exists():
         files.append(perf)
     # Round operator .py fallback: include so the upload has something.

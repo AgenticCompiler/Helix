@@ -35,7 +35,7 @@
 | `eval-gen` | `triton-npu-gen-eval-suite` | ~8 |
 | `operator-eval` | `triton-npu-run-eval` | ~12 |
 | `optimize` | `triton-npu-optimize` | ~15 |
-| `optimize-check` | `triton-npu-optimize-check` | ~4 |
+| `optimize-check` | `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` | ~4 |
 | `ascend-npu-operator-profiler` | `triton-npu-profile-operator` | ~5 |
 | `ascend-operator-ir-analyzer` | `triton-npu-analyze-ir` | ~4 |
 | `triton-repair-experience` | `triton-npu-repair-guide` | ~2 |
@@ -219,7 +219,7 @@ supervisor round-gate 相关文档引用 `.triton-agent/roles/optimize-worker.md
 | `2026-04-13-capture-ir-local-python-design.md` | IR 捕获本地 Python | **路径过时** | 引用 `skills/ascend-operator-ir-analyzer/`（已改名） |
 | `2026-04-13-profile-bench-local-python-design.md` | Profile bench 本地 Python | **路径过时** | 引用 `skills/operator-eval/`（已改名） |
 | `2026-04-13-cli-backend-dedup-refactor-design.md` | 后端去重设计 | **部分过时** | 引用 `triton_agent.comparison`（已删除）；引用 `triton_agent.test_runner`/`bench_runner`（已删除） |
-| `2026-04-14-optimize-check-loop-design.md` | optimize-check 设计 | **路径过时** | 引用旧 skill 名称 `optimize-check`（已改名 `triton-npu-optimize-check`） |
+| `2026-04-14-optimize-check-loop-design.md` | optimize-check 设计 | **路径过时** | 引用旧 skill 名称 `optimize-check`（已改名 `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`） |
 | `2026-04-14-optimize-reset-design.md` | --reset-optimize 设计 | **需验证** | `--reset-optimize` 是否已实现需确认 |
 | `2026-04-14-optimize-user-prompt-design.md` | --prompt 设计 | **需验证** | `--prompt` 是否已实现需确认 |
 | `2026-04-15-comparison-skill-wrapper-flattening-design.md` | 比较 skill 扁平化 | **路径过时** | 引用 `skills/operator-eval/`（已改名）；引用 `src/triton_agent/test_runner.py`/`bench_runner.py` 作为"不重构"目标（已删除） |

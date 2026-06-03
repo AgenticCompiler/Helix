@@ -136,7 +136,7 @@ Expected: PASS
 Future escalation path:
 - add canonical kernel identity to baseline metadata
 - add round continuity metadata
-- make triton-npu-optimize-check reject pure PyTorch substitution
+- make triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round reject pure PyTorch substitution
 ```
 
 - [ ] **Step 4: Commit the verification checkpoint**

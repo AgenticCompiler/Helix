@@ -4,7 +4,7 @@
 
 **Goal:** Add a round-check validation that rejects optimize rounds whose round-local operator no longer preserves a recognizable Triton kernel launch path.
 
-**Architecture:** Keep the new enforcement inside the existing `triton-npu-optimize-check` skill contract flow. Add one dedicated helper module under `skills/triton-npu-optimize-check/scripts/` to analyze a round-local operator file, then have `check_round()` translate helper failures into a `revise-required` result.
+**Architecture:** Keep the new enforcement inside the existing `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` skill contract flow. Add one dedicated helper module under `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/` to analyze a round-local operator file, then have `check_round()` translate helper failures into a `revise-required` result.
 
 **Tech Stack:** Python 3, `dataclasses`, `pathlib`, Python `unittest`, existing skill-loader-backed optimize checks, `uv run pyright`.
 
@@ -47,9 +47,9 @@ Expected: FAIL because the new pure-PyTorch rejection behavior is not implemente
 ### Task 2: Add the dedicated Triton continuity helper and wire it into round check
 
 **Files:**
-- Create: `skills/triton-npu-optimize-check/scripts/kernel_continuity_check.py`
-- Modify: `skills/triton-npu-optimize-check/scripts/optimize_check.py`
-- Modify: `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py`
+- Create: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/kernel_continuity_check.py`
+- Modify: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check.py`
+- Modify: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check_contract.py`
 - Test: `tests/test_optimize_checks.py`
 
 - [ ] **Step 1: Add a small helper result type and static detection function**
@@ -93,9 +93,9 @@ Expected: PASS.
 ### Task 3: Run verification for touched Python code and repo-targeted checks
 
 **Files:**
-- Verify: `skills/triton-npu-optimize-check/scripts/kernel_continuity_check.py`
-- Verify: `skills/triton-npu-optimize-check/scripts/optimize_check.py`
-- Verify: `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py`
+- Verify: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/kernel_continuity_check.py`
+- Verify: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check.py`
+- Verify: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check_contract.py`
 - Verify: `tests/test_optimize_checks.py`
 
 - [ ] **Step 1: Run strict file-scoped pyright for the touched skill scripts**
@@ -103,7 +103,7 @@ Expected: PASS.
 Run a file-scoped strict check covering:
 
 ```bash
-bash -lc 'tmpdir=$(mktemp -d); printf "[tool.pyright]\npythonVersion = \"3.11\"\ninclude = [\"%s\", \"%s\", \"%s\"]\ntypeCheckingMode = \"strict\"\n" "$PWD/skills/triton-npu-optimize-check/scripts/kernel_continuity_check.py" "$PWD/skills/triton-npu-optimize-check/scripts/optimize_check.py" "$PWD/skills/triton-npu-optimize-check/scripts/optimize_check_contract.py" > "$tmpdir/pyproject.toml"; uv run pyright --project "$tmpdir/pyproject.toml"'
+bash -lc 'tmpdir=$(mktemp -d); printf "[tool.pyright]\npythonVersion = \"3.11\"\ninclude = [\"%s\", \"%s\", \"%s\"]\ntypeCheckingMode = \"strict\"\n" "$PWD/skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/kernel_continuity_check.py" "$PWD/skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check.py" "$PWD/skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check_contract.py" > "$tmpdir/pyproject.toml"; uv run pyright --project "$tmpdir/pyproject.toml"'
 ```
 
 Expected: `0 errors`.

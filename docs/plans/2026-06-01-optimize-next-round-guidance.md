@@ -29,7 +29,7 @@
 ## Task 3: Implement the prompt-chain updates
 
 - Files:
-  - Modify: `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py`
+  - Modify: `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py`
   - Modify: `src/triton_agent/optimize/execution.py`
   - Modify: `src/triton_agent/optimize/prompts.py`
 

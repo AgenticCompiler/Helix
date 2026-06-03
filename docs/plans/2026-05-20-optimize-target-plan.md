@@ -25,8 +25,8 @@
 - Modify: `src/triton_agent/optimize/session_artifacts.py`
 - Modify: `src/triton_agent/optimize/memory_file.py`
 - Modify: `skills/triton-npu-optimize/SKILL.md`
-- Modify: `skills/triton-npu-optimize-check/references/contract.json`
-- Modify: `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py`
+- Modify: `skills/triton-npu-optimize-submit-round/references/contract.json`
+- Modify: `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py`
 - Modify: `skills/triton-npu-run-eval/scripts/perf_artifacts.py`
 - Modify: `skills/triton-npu-run-eval/references/compare-perf.md`
 - Modify: `README.md`
@@ -379,8 +379,8 @@ Expected: `PASS`
 - Modify: `skills/triton-npu-run-eval/scripts/perf_artifacts.py`
 - Modify: `skills/triton-npu-run-eval/references/compare-perf.md`
 - Modify: `README.md`
-- Modify: `skills/triton-npu-optimize-check/references/contract.json`
-- Modify: `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py`
+- Modify: `skills/triton-npu-optimize-submit-round/references/contract.json`
+- Modify: `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py`
 - Modify: `tests/test_comparison_commands.py`
 - Modify: `tests/test_bench_runner.py`
 - Modify: `tests/test_optimize_checks.py`
@@ -420,7 +420,7 @@ For operator-target optimize:
 
 - [ ] **Step 3: Extend optimize round-state contract**
 
-Add `effective_metric_source` to `skills/triton-npu-optimize-check/references/contract.json` and load it through the optimize-check contract model.
+Add `effective_metric_source` to `skills/triton-npu-optimize-submit-round/references/contract.json` and load it through the optimize-check contract model.
 
 Allowed values:
 

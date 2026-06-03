@@ -5,12 +5,12 @@
 - Add a new round-check-only static validation that rejects optimize rounds which replace the Triton kernel execution path with pure PyTorch computation.
 - Keep the check lightweight and file-local: inspect the round-local operator artifact and look for recognizable Triton kernel launch signals.
 - Allow mixed PyTorch plus Triton operators as long as the round artifact still preserves a real Triton kernel launch path.
-- Implement the detection in a dedicated Python module under `skills/triton-npu-optimize-check/scripts/`, then call it from the existing `check_round()` flow.
+- Implement the detection in a dedicated Python module under `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/`, then call it from the existing `check_round()` flow.
 
 ## Problem
 
 - The current optimize prompts already tell the code agent not to bypass the Triton kernel path.
-- The current `triton-npu-optimize-check` round gate does not enforce that policy. It checks artifact completeness and a small set of round-state semantics, but it does not inspect whether the operator still launches Triton.
+- The current `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` round gate does not enforce that policy. It checks artifact completeness and a small set of round-state semantics, but it does not inspect whether the operator still launches Triton.
 - That leaves an obvious cheating path: a round can pass correctness and benchmark steps after rewriting the operator to call a PyTorch op directly, even though no Triton kernel optimization actually happened.
 
 ## Goals
@@ -29,7 +29,7 @@
 
 ## Recommended Approach
 
-Create a new static analysis helper in `skills/triton-npu-optimize-check/scripts/` that:
+Create a new static analysis helper in `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/` that:
 
 - reads the round-local operator file discovered by the existing round artifact inspection
 - detects whether the file still contains recognizable Triton kernel continuity signals

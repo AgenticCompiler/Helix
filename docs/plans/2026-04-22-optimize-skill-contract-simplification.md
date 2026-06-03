@@ -136,7 +136,7 @@ Optimize one Triton Ascend NPU operator through validated rounds anchored to a c
 - Reuse existing correctness and benchmark harnesses when possible; generate only missing harnesses.
 - Read [artifacts.md](references/artifacts.md) before writing `baseline/state.json`.
 - Read [opt-note-format.md](references/opt-note-format.md) before initializing `opt-note.md`.
-- Use `triton-npu-optimize-check check-baseline` until baseline state passes.
+- Use `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round check-baseline` until baseline state passes.
 
 ## Stage 1: Round Entry
 
@@ -177,7 +177,7 @@ Optimize one Triton Ascend NPU operator through validated rounds anchored to a c
 - Run correctness before trusting performance.
 - Run benchmark validation after correctness passes.
 - Use `compare-perf` as the sole source of speedup claims.
-- Run `triton-npu-optimize-check check-round` before ending or continuing a round.
+- Run `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round check-round` before ending or continuing a round.
 - Update `summary.md`, `opt-note.md`, and `learned_lessons.md` when eligible.
 
 ## Round Records

@@ -112,7 +112,7 @@ This stage should describe:
 - reuse existing tests and benchmarks when possible
 - generate only missing harnesses
 - establish `baseline/` before any completed round exists
-- use `triton-npu-optimize-check check-baseline`
+- use `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round check-baseline`
 - use `references/artifacts.md` when writing baseline state
 - use `references/opt-note-format.md` when initializing `opt-note.md`
 
@@ -192,7 +192,7 @@ This stage should describe:
 - correctness before trusting performance
 - benchmark execution after correctness passes
 - `compare-perf` as the sole source of speedup claims
-- `triton-npu-optimize-check check-round`
+- `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round check-round`
 - updating `summary.md`, `opt-note.md`, and `learned_lessons.md`
 
 This is where validation, comparison, and round-finalization rules should live, instead of being scattered across workflow and quality rules.

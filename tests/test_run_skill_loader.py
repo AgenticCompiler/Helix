@@ -45,36 +45,81 @@ class RunSkillLoaderTests(unittest.TestCase):
         self.assertIs(first, second)
         self.assertTrue(hasattr(first, "run_local_test"))
 
-    def test_skill_script_path_points_to_optimize_check_script(self) -> None:
-        path = skill_script_path("triton-npu-optimize-check", "optimize_check")
-        self.assertEqual(path.name, "optimize_check.py")
+    def test_skill_script_path_points_to_optimize_submit_baseline_script(self) -> None:
+        expected = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-optimize-submit-baseline"
+            / "scripts"
+            / "optimize_submit_baseline.py"
+        )
+        self.assertTrue(expected.exists())
+        path = skill_script_path("triton-npu-optimize-submit-baseline", "optimize_submit_baseline")
+        self.assertEqual(path.name, "optimize_submit_baseline.py")
         self.assertEqual(path.parent.name, "scripts")
-        self.assertEqual(path.parent.parent.name, "triton-npu-optimize-check")
+        self.assertEqual(path.parent.parent.name, "triton-npu-optimize-submit-baseline")
 
-    def test_load_skill_script_module_returns_cached_module(self) -> None:
-        first = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
-        second = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
+    def test_skill_script_path_points_to_optimize_submit_round_script(self) -> None:
+        expected = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-optimize-submit-round"
+            / "scripts"
+            / "optimize_submit_round.py"
+        )
+        self.assertTrue(expected.exists())
+        path = skill_script_path("triton-npu-optimize-submit-round", "optimize_submit_round")
+        self.assertEqual(path.name, "optimize_submit_round.py")
+        self.assertEqual(path.parent.name, "scripts")
+        self.assertEqual(path.parent.parent.name, "triton-npu-optimize-submit-round")
+
+    def test_load_skill_script_module_returns_cached_split_modules(self) -> None:
+        first = load_skill_script_module(
+            "triton-npu-optimize-submit-baseline",
+            "optimize_submit_baseline",
+        )
+        second = load_skill_script_module(
+            "triton-npu-optimize-submit-baseline",
+            "optimize_submit_baseline",
+        )
         self.assertIs(first, second)
         self.assertTrue(hasattr(first, "check_baseline"))
-        self.assertTrue(hasattr(first, "check_round"))
+        round_module = load_skill_script_module(
+            "triton-npu-optimize-submit-round",
+            "optimize_submit_round",
+        )
+        self.assertTrue(hasattr(round_module, "check_round"))
 
-    def test_optimize_runtime_models_reuse_skill_contract_classes(self) -> None:
-        module = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
+    def test_optimize_runtime_models_reuse_split_submit_skill_contract_classes(self) -> None:
+        baseline_module = load_skill_script_module(
+            "triton-npu-optimize-submit-baseline",
+            "optimize_submit_baseline",
+        )
+        round_module = load_skill_script_module(
+            "triton-npu-optimize-submit-round",
+            "optimize_submit_round",
+        )
 
-        self.assertIs(module.OptimizeCheckResult, OptimizeCheckResult)
-        self.assertIs(module.BaselineState, BaselineState)
-        self.assertIs(module.RoundState, RoundState)
+        self.assertIs(baseline_module.BaselineState, BaselineState)
+        self.assertIs(round_module.OptimizeCheckResult, OptimizeCheckResult)
+        self.assertIs(round_module.RoundState, RoundState)
 
-    def test_optimize_runtime_naming_helpers_reuse_skill_contract_functions(self) -> None:
-        module = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
+    def test_optimize_runtime_naming_helpers_reuse_round_submit_skill_contract_functions(self) -> None:
+        module = load_skill_script_module(
+            "triton-npu-optimize-submit-round",
+            "optimize_submit_round",
+        )
 
         self.assertIs(optimize_naming.expected_round_operator_name, module.expected_round_operator_name)
         self.assertIs(optimize_naming.expected_round_perf_name, module.expected_round_perf_name)
         self.assertIs(optimize_naming.resolve_round_operator_file, module.resolve_round_operator_file)
         self.assertIs(optimize_naming.resolve_round_perf_file, module.resolve_round_perf_file)
 
-    def test_optimize_runtime_pt_cleanup_helpers_reuse_skill_contract_functions(self) -> None:
-        module = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
+    def test_optimize_runtime_pt_cleanup_helpers_reuse_round_submit_skill_contract_functions(self) -> None:
+        module = load_skill_script_module(
+            "triton-npu-optimize-submit-round",
+            "optimize_submit_round",
+        )
 
         self.assertIs(optimize_pt_cleanup.cleanup_dir_pt_files, module.cleanup_dir_pt_files)
 
@@ -86,24 +131,50 @@ class RunSkillLoaderTests(unittest.TestCase):
                 self.assertNotIn("import triton_agent", content)
                 self.assertNotIn("from triton_agent", content)
 
-    def test_optimize_check_script_does_not_import_runtime_sources_directly(self) -> None:
-        path = skill_script_path("triton-npu-optimize-check", "optimize_check")
+    def test_optimize_submit_round_script_does_not_import_runtime_sources_directly(self) -> None:
+        expected = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-optimize-submit-round"
+            / "scripts"
+            / "optimize_submit_round.py"
+        )
+        self.assertTrue(expected.exists())
+        path = skill_script_path("triton-npu-optimize-submit-round", "optimize_submit_round")
         content = path.read_text(encoding="utf-8")
         self.assertNotIn("from src.", content)
         self.assertNotIn("import src.", content)
 
-    def test_optimize_check_skill_scripts_do_not_import_triton_agent(self) -> None:
+    def test_optimize_submit_skill_scripts_do_not_import_triton_agent(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        for skill_name in (
+            "triton-npu-optimize-submit-baseline",
+            "triton-npu-optimize-submit-round",
+        ):
+            scripts_dir = repo_root / "skills" / skill_name / "scripts"
+            self.assertTrue(scripts_dir.is_dir())
+            for path in sorted(scripts_dir.glob("*.py")):
+                with self.subTest(skill=skill_name, path=path.name):
+                    content = path.read_text(encoding="utf-8")
+                    self.assertNotIn("import triton_agent", content)
+                    self.assertNotIn("from triton_agent", content)
+
+    def test_optimize_submit_baseline_skill_only_keeps_baseline_specific_scripts(self) -> None:
         scripts_dir = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-optimize-check"
+            / "triton-npu-optimize-submit-baseline"
             / "scripts"
         )
-        for path in sorted(scripts_dir.glob("*.py")):
-            with self.subTest(path=path.name):
-                content = path.read_text(encoding="utf-8")
-                self.assertNotIn("import triton_agent", content)
-                self.assertNotIn("from triton_agent", content)
+        script_names = {path.name for path in scripts_dir.glob("*.py")}
+
+        self.assertEqual(
+            script_names,
+            {
+                "optimize_submit_baseline.py",
+                "optimize_submit_baseline_contract.py",
+            },
+        )
 
     def test_run_runtime_only_exposes_skill_runtime_helpers(self) -> None:
         module = load_operator_eval_script_module("run_runtime")

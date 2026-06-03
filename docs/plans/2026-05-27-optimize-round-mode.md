@@ -289,7 +289,7 @@ def build_optimize_continuous_prompt(
     lines.extend(
         _shared_optimize_prompt_lines(
             target_chip=target_chip,
-            optimize_check_line="Use the staged `triton-npu-optimize-check` skill to validate every completed round.",
+            optimize_check_line="Use the staged `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` skill to validate every completed round.",
             optimize_target=optimize_target,
         )
     )
@@ -365,7 +365,7 @@ def build_optimize_baseline_prompt(
             "This invocation repairs the optimize baseline before the round loop begins.",
             f"Baseline preflight result: {baseline_state}.",
             "Repair or establish `baseline/` before the round loop begins.",
-            "Use the staged `triton-npu-optimize-check` skill to run `check-baseline` until it passes.",
+            "Use the staged `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` skill to run `check-baseline` until it passes.",
             "Do not open a new optimization round yet.",
         ]
     )

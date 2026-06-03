@@ -46,13 +46,15 @@ STAGE_RULES: dict[CommandKind, StageRule] = {
     CommandKind.LOG_CHECK: StageRule(
         directives=(
             "+triton-npu-optimize-knowledge",
-            "+triton-npu-optimize-check",
+            "+triton-npu-optimize-submit-baseline",
+            "+triton-npu-optimize-submit-round",
         ),
     ),
     CommandKind.LOG_CHECK_BATCH: StageRule(
         directives=(
             "+triton-npu-optimize-knowledge",
-            "+triton-npu-optimize-check",
+            "+triton-npu-optimize-submit-baseline",
+            "+triton-npu-optimize-submit-round",
         ),
     ),
     CommandKind.REPORT: StageRule(
@@ -68,7 +70,9 @@ STAGE_RULES: dict[CommandKind, StageRule] = {
             "+triton-npu-gen-test",
             "+triton-npu-gen-bench",
             "+triton-npu-run-eval",
-            "+triton-npu-optimize-check",
+            "+triton-npu-optimize-submit-baseline",
+            "+triton-npu-optimize-submit-round",
+            "+triton-npu-optimize-start-round",
             "+triton-npu-profile-operator",
             "+triton-npu-analyze-round-performance",
             "+triton-npu-analyze-ir",

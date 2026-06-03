@@ -37,7 +37,7 @@
 ### Task 3: Implement strict round artifact resolution
 
 **Files:**
-- Modify: `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py`
+- Modify: `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py`
 - Modify: `src/triton_agent/status/core.py`
 - Modify: `src/triton_agent/verification/core.py`
 
@@ -72,6 +72,6 @@
 - Modify only as needed from earlier tasks
 
 - [ ] Run the targeted unittest commands covering execution, CLI, optimize-check, status, verify, and optimize runtime.
-- [ ] Run `bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-check/scripts/optimize_check_contract.py`.
+- [ ] Run `bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py`.
 - [ ] Run `bash scripts/run-skill-script-pyright.sh skills/triton-npu-run-eval/scripts/run-command.py`.
 - [ ] If any test or pyright check fails, fix and rerun before completion.
