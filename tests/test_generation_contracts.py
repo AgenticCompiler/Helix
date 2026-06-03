@@ -598,22 +598,56 @@ class GenerationContractTests(unittest.TestCase):
         self,
     ) -> None:
         agents = _read("AGENTS.md")
+        self.assertIn("create-optimize-pattern", agents)
+        skill = _read(".codex/skills/create-optimize-pattern/SKILL.md")
         self.assertIn(
-            "skills/triton-npu-optimize-knowledge/references/patterns/*.md",
-            agents,
+            "skills/triton-npu-optimize-knowledge/references/patterns/",
+            skill,
         )
         self.assertIn(
-            "skills/triton-npu-optimize-knowledge/references/symptoms/*.md",
-            agents,
+            "skills/torch-npu-optimize-knowledge/references/patterns/",
+            skill,
         )
-        self.assertIn("## Evidence To Confirm", agents)
-        self.assertIn("## Candidate Pattern Directions", agents)
+        self.assertIn(
+            "skills/triton-npu-cann-ext-api-patterns/references/patterns/",
+            skill,
+        )
+        self.assertIn(
+            "skills/triton-npu-optimize-knowledge/references/symptoms/",
+            skill,
+        )
+        self.assertIn("## Evidence To Confirm", skill)
+        self.assertIn("## Candidate Pattern Directions", skill)
 
-    def test_agents_declares_pattern_priority_authoring_rule(self) -> None:
-        agents = _read("AGENTS.md")
-        self.assertIn("priority: high|normal", agents)
-        self.assertIn("default to `normal`", agents)
-        self.assertIn("## High Priority Patterns", agents)
+    def test_create_optimize_pattern_skill_declares_priority_rule(self) -> None:
+        skill = _read(".codex/skills/create-optimize-pattern/SKILL.md")
+        self.assertIn("priority: high|normal", skill)
+        self.assertIn("default to `normal`", skill)
+        self.assertIn("## High Priority Patterns", skill)
+
+    def test_skill_points_to_shared_optimize_knowledge_index_update_script(self) -> None:
+        skill = _read(".codex/skills/create-optimize-pattern/SKILL.md")
+        script = _read("scripts/update-optimize-knowledge-indices.sh")
+
+        self.assertIn("bash scripts/update-optimize-knowledge-indices.sh", skill)
+        self.assertIn("build_pattern_index.py", script)
+        self.assertIn("build_symptom_index.py", script)
+        self.assertIn(
+            "skills/triton-npu-optimize-knowledge/references/pattern_index.md",
+            script,
+        )
+        self.assertIn(
+            "skills/torch-npu-optimize-knowledge/references/pattern_index.md",
+            script,
+        )
+        self.assertIn(
+            "skills/triton-npu-cann-ext-api-patterns/references/patterns/index.md",
+            script,
+        )
+        self.assertIn(
+            "skills/triton-npu-optimize-knowledge/references/symptom_index.md",
+            script,
+        )
 
     def test_pattern_and_symptom_authoring_notes_point_to_knowledge_skill(self) -> None:
         pattern_note = _read("docs/notes/2026-04-29-optimize-pattern-card-authoring.md")
