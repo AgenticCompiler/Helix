@@ -22,7 +22,7 @@
 ## Non-Goals
 
 - Do not add post-run validation that inspects the converted file for Triton launch signals.
-- Do not stage `triton-npu-optimize-check` or reuse optimize round checks in `convert`.
+- Do not stage `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` or reuse optimize round checks in `convert`.
 - Do not change convert execution flow, output naming, or differential-test workflow.
 
 ## Recommended Approach

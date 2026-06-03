@@ -25,12 +25,13 @@ Do not use this skill just to inspect, list, or update an existing PR. Use `$man
 uv run --group dev ruff check
 uv run pyright
 uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/
-find skills -path '*/scripts/*.py' | sort | while IFS= read -r file; do
+git diff --name-only origin/main -- 'skills/*/scripts/*.py' | while IFS= read -r file; do
+  [[ -z "$file" ]] && continue
   bash scripts/run-skill-script-pyright.sh "$file"
 done
 ```
 
-Always run the skill-script loop for every `skills/*/scripts/*.py`, even when the current change did not touch any of those files. If any required command fails, stop, fix it, and rerun the full set before creating the PR.
+Only run the strict skill-script pyright check on `skills/*/scripts/*.py` files changed in this branch (diff against `origin/main`). If the diff produces no matching files, the loop is a no-op. If any required command fails, stop, fix it, and rerun the full set before creating the PR.
 
 ## Final Handoff
 

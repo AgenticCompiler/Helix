@@ -5,16 +5,20 @@ from enum import Enum
 from pathlib import Path
 from typing import Literal
 
-from triton_agent.optimize.skill_contract import optimize_check_module
+from triton_agent.optimize.skill_contract import (
+    optimize_submit_baseline_module,
+    optimize_submit_round_module,
+)
 
 
-_OPTIMIZE_CHECK_MODULE = optimize_check_module()
+_OPTIMIZE_BASELINE_MODULE = optimize_submit_baseline_module()
+_OPTIMIZE_ROUND_MODULE = optimize_submit_round_module()
 
-BaselineState = _OPTIMIZE_CHECK_MODULE.BaselineState  # type: ignore[reportUnknownVariableType]
-BaselineArtifactsInspection = _OPTIMIZE_CHECK_MODULE.BaselineArtifactsInspection  # type: ignore[reportUnknownVariableType]
-RoundState = _OPTIMIZE_CHECK_MODULE.RoundState  # type: ignore[reportUnknownVariableType]
-RoundArtifactsInspection = _OPTIMIZE_CHECK_MODULE.RoundArtifactsInspection  # type: ignore[reportUnknownVariableType]
-OptimizeCheckResult = _OPTIMIZE_CHECK_MODULE.OptimizeCheckResult  # type: ignore[reportUnknownVariableType]
+BaselineState = _OPTIMIZE_BASELINE_MODULE.BaselineState  # type: ignore[reportUnknownVariableType]
+BaselineArtifactsInspection = _OPTIMIZE_BASELINE_MODULE.BaselineArtifactsInspection  # type: ignore[reportUnknownVariableType]
+RoundState = _OPTIMIZE_ROUND_MODULE.RoundState  # type: ignore[reportUnknownVariableType]
+RoundArtifactsInspection = _OPTIMIZE_ROUND_MODULE.RoundArtifactsInspection  # type: ignore[reportUnknownVariableType]
+OptimizeCheckResult = _OPTIMIZE_ROUND_MODULE.OptimizeCheckResult  # type: ignore[reportUnknownVariableType]
 
 
 @dataclass(frozen=True)

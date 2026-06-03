@@ -5,7 +5,7 @@
 - Tighten the optimize worker and supervisor prompts so `optimize` no longer treats a pure PyTorch rewrite as a successful operator optimization.
 - Keep the existing public-entrypoint flexibility: a valid operator may still expose a PyTorch-facing wrapper function or module class.
 - Define the optimization target more precisely in prompt wording: the round must continue optimizing the same Triton Ascend NPU kernel path instead of replacing core computation with a pure PyTorch implementation.
-- Limit this change to prompt guidance and prompt tests for now; do not add new `triton-npu-optimize-check` enforcement in this iteration.
+- Limit this change to prompt guidance and prompt tests for now; do not add new `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` enforcement in this iteration.
 
 ## Problem
 
@@ -25,7 +25,7 @@
 ## Non-Goals
 
 - Do not add new `baseline/state.json` or `round-state.json` fields in this change.
-- Do not modify `triton-npu-optimize-check` or add static or runtime kernel continuity checks yet.
+- Do not modify `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` or add static or runtime kernel continuity checks yet.
 - Do not change generation, test, or benchmark harness contracts.
 - Do not forbid PyTorch wrappers or modules as public operator entrypoints in general.
 
@@ -42,7 +42,7 @@ Why this is the best fit now:
 - It avoids expanding the optimize artifact contract before confirming whether stronger enforcement is necessary.
 - It preserves the team's preferred rollout order: try clearer prompt constraints first, then escalate to checks only if needed.
 
-### Alternative: Add `triton-npu-optimize-check` Enforcement Immediately
+### Alternative: Add `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` Enforcement Immediately
 
 - Extend baseline and round contracts with canonical kernel identity and continuity fields.
 - Fail rounds whose artifacts suggest the Triton kernel was bypassed.
@@ -110,7 +110,7 @@ If prompt tightening is not enough, the next iteration should add hard enforceme
 
 - recording canonical kernel identity in baseline metadata
 - recording round-level kernel continuity metadata
-- teaching `triton-npu-optimize-check` to reject rounds that preserve only output equivalence while bypassing the Triton kernel path
+- teaching `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` to reject rounds that preserve only output equivalence while bypassing the Triton kernel path
 
 This document intentionally leaves that follow-up as future work.
 

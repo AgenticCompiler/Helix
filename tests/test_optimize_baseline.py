@@ -15,8 +15,11 @@ from triton_agent.skill_loader import load_skill_script_module
 
 
 class OptimizeBaselineTests(unittest.TestCase):
-    def test_runtime_baseline_helpers_match_shared_optimize_check_contract(self) -> None:
-        module = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
+    def test_runtime_baseline_helpers_match_split_baseline_submit_contract(self) -> None:
+        module = load_skill_script_module(
+            "triton-npu-optimize-submit-baseline",
+            "optimize_submit_baseline",
+        )
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)

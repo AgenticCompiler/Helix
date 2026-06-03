@@ -11,8 +11,11 @@ from triton_agent.skill_loader import load_skill_script_module
 
 
 class OptimizeRoundContractTests(unittest.TestCase):
-    def test_runtime_round_helpers_match_shared_optimize_check_contract(self) -> None:
-        module = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
+    def test_runtime_round_helpers_match_split_round_submit_contract(self) -> None:
+        module = load_skill_script_module(
+            "triton-npu-optimize-submit-round",
+            "optimize_submit_round",
+        )
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)

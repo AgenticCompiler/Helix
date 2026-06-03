@@ -45,7 +45,7 @@ We want a lightweight signal that helps the agent notice a possible local optimu
 
 ### 1. Add a local-optimum analysis helper under the optimize-check skill
 
-Create a small helper module under `skills/triton-npu-optimize-check/scripts/` that:
+Create a small helper module under `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/` that:
 
 - discovers numeric `opt-round-*` directories in workspace order
 - selects a recent window ending at the current round
@@ -162,7 +162,7 @@ This preserves explicit diagnostics without turning local configuration mistakes
 
 ### 5. Integrate after the existing round contract passes
 
-`check_round()` in `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py` should keep its current validation order:
+`check_round()` in `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check_contract.py` should keep its current validation order:
 
 1. artifacts
 2. round-state loading
@@ -219,11 +219,11 @@ This keeps the new signal aligned with the user's intended semantics: `pass + wa
 
 ## File-Level Changes
 
-- `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py`
+- `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check_contract.py`
   - invoke local-optimum analysis after the existing pass path succeeds
   - append local-optimum/config warnings to pass issues
 
-- `skills/triton-npu-optimize-check/scripts/`
+- `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/`
   - add one focused helper module for:
     - environment variable parsing
     - recent round discovery

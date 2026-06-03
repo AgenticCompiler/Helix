@@ -4277,22 +4277,26 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("This invocation is a continuous optimize run.", prompt)
         self.assertIn("Use the staged `triton-npu-prepare-optimize-baseline` skill", prompt)
-        self.assertIn("Use the staged `triton-npu-optimize-check` skill", prompt)
+        self.assertIn("Use the staged `triton-npu-optimize-submit-round` skill", prompt)
         self.assertIn(
             "baseline preparation is needed, use the staged `triton-npu-prepare-optimize-baseline` skill",
             prompt.lower(),
         )
-        self.assertNotIn(
-            "use the staged `triton-npu-optimize-check` skill to run `check-baseline`",
+        self.assertIn(
+            "continue only after it has repaired the baseline through `triton-npu-optimize-submit-baseline`",
             prompt.lower(),
         )
         self.assertIn(
-            "use the staged `triton-npu-optimize-check` skill to run `check-round --round-dir opt-round-n --min-rounds 5`",
+            "use the staged `triton-npu-optimize-submit-round` skill to submit the current round with `--min-rounds 5`",
             prompt.lower(),
         )
         self.assertIn("continue optimizing until the session should stop", prompt)
         self.assertIn(
-            "Do not begin the next round until the current round passes `check-round` through `triton-npu-optimize-check`.",
+            "Do not begin the next round until the current round passes the staged `triton-npu-optimize-submit-round` skill.",
+            prompt,
+        )
+        self.assertIn(
+            "Use the staged `triton-npu-optimize-start-round` skill before opening the next round.",
             prompt,
         )
         self.assertIn("Use the staged `triton-npu-analyze-round-performance` skill", prompt)
@@ -4447,7 +4451,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Complete at least 4 optimization rounds", prompt)
         self.assertIn("Once 4 optimization rounds are complete", prompt)
         self.assertIn(
-            "stop the session after the current round passes `check-round` through `triton-npu-optimize-check`",
+            "stop the session after the current round passes the staged `triton-npu-optimize-submit-round` skill",
             prompt,
         )
 
@@ -4459,7 +4463,7 @@ class PromptTests(unittest.TestCase):
             bench_mode="standalone",
         )
 
-        self.assertIn("If `check-round` passes with a warning", prompt)
+        self.assertIn("If the staged `triton-npu-optimize-submit-round` skill passes with a warning", prompt)
         self.assertIn("may be stuck in a local optimum", prompt)
         self.assertIn(
             "review earlier rounds and consider resuming from before that flat sequence",
@@ -4474,7 +4478,11 @@ class PromptTests(unittest.TestCase):
             bench_mode="standalone",
         )
 
-        self.assertIn("Do not rush from a passed `check-round` directly into the next edit.", prompt)
+        self.assertIn("Do not rush from a passed round submission directly into the next edit.", prompt)
+        self.assertIn(
+            "Use the staged `triton-npu-optimize-start-round` skill before opening the next round.",
+            prompt,
+        )
         self.assertIn(
             "Before opening the next round, reflect on which operator, kernel path, or wrapper bottleneck should anchor it.",
             prompt,
@@ -4530,7 +4538,9 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Read `/tmp/opt-round-3`", prompt)
         self.assertIn("Use only existing `compare-perf` results", prompt)
         self.assertIn("`triton-npu-prepare-optimize-baseline`", prompt)
-        self.assertIn("`triton-npu-optimize-check`", prompt)
+        self.assertIn("`triton-npu-optimize-submit-baseline`", prompt)
+        self.assertIn("`triton-npu-optimize-submit-round`", prompt)
+        self.assertIn("`triton-npu-optimize-start-round`", prompt)
         self.assertIn("Write `.triton-agent/supervisor-report.md`", prompt)
         self.assertIn("The CLI will read that supervisor report", prompt)
         self.assertIn("Do not edit the operator implementation", prompt)

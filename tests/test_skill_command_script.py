@@ -756,13 +756,13 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(compare_remote_result.__name__, "compare_remote_result_files")
         self.assertEqual(compare_remote_result.__module__, "compare_result")
 
-    def test_optimize_check_script_help_runs_without_installed_entrypoint(self) -> None:
+    def test_optimize_submit_baseline_script_help_runs_without_installed_entrypoint(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-optimize-check"
+            / "triton-npu-optimize-submit-baseline"
             / "scripts"
-            / "optimize_check.py"
+            / "optimize_submit_baseline.py"
         )
         env = os.environ.copy()
         src_dir = str(Path(__file__).resolve().parents[1] / "src")
@@ -775,18 +775,41 @@ class SkillCommandScriptTests(unittest.TestCase):
             env=env,
         )
         self.assertEqual(completed.returncode, 0)
-        self.assertIn("optimize_check.py", completed.stdout)
+        self.assertIn("optimize_submit_baseline.py", completed.stdout)
         self.assertIn("check-baseline", completed.stdout)
-        self.assertIn("check-round", completed.stdout)
+        self.assertNotIn("check-round", completed.stdout)
 
-    def test_optimize_check_script_supports_runtime_without_pt_cleanup_module(self) -> None:
+    def test_optimize_submit_round_script_help_runs_without_installed_entrypoint(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-optimize-submit-round"
+            / "scripts"
+            / "optimize_submit_round.py"
+        )
+        env = os.environ.copy()
+        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        completed = subprocess.run(
+            [sys.executable, str(script), "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        self.assertEqual(completed.returncode, 0)
+        self.assertIn("optimize_submit_round.py", completed.stdout)
+        self.assertIn("check-round", completed.stdout)
+        self.assertNotIn("check-baseline", completed.stdout)
+
+    def test_optimize_submit_baseline_script_supports_runtime_without_pt_cleanup_module(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         script = (
             repo_root
             / "skills"
-            / "triton-npu-optimize-check"
+            / "triton-npu-optimize-submit-baseline"
             / "scripts"
-            / "optimize_check.py"
+            / "optimize_submit_baseline.py"
         )
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -866,13 +889,13 @@ class SkillCommandScriptTests(unittest.TestCase):
             self.assertEqual(completed.stderr, "")
             self.assertTrue((workspace / "baseline" / "test_result.pt").exists())
 
-    def test_optimize_check_round_cli_outputs_json_only_with_guideline_and_next_option(self) -> None:
+    def test_optimize_submit_round_cli_outputs_json_only_with_guideline_and_next_option(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-optimize-check"
+            / "triton-npu-optimize-submit-round"
             / "scripts"
-            / "optimize_check.py"
+            / "optimize_submit_round.py"
         )
         env = os.environ.copy()
         src_dir = str(Path(__file__).resolve().parents[1] / "src")

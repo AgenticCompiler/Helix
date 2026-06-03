@@ -8,7 +8,7 @@ summary: During check-round, tell the agent whether it may exit the optimize ses
 
 ## Summary
 
-- Add an optional `--min-rounds N` parameter to the `triton-npu-optimize-check` skill's `check-round` script.
+- Add an optional `--min-rounds N` parameter to the `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` skill's `check-round` script.
 - When `--min-rounds` is provided and all existing checks pass, enhance the `summary` field with a clear exit/continue signal based on `opt-round-*` directory count.
 - Keep the `decision` field unchanged — min_rounds is an informational signal, not a gate.
 - Update the optimize workflow and prompts so agents know to pass `--min-rounds` when invoking `check-round`.
@@ -40,7 +40,7 @@ Neither mode surfaces the exit signal through the `check-round` flow — the one
 - Do not change the CLI run-loop's mechanical enforcement of min_rounds (`run_loop.py`, `execution.py`). Those remain as safety nets.
 - Do not add `min_rounds` awareness to the `check-baseline` flow.
 - Do not introduce a new `decision` value for round-count gating.
-- Do not move the round-counting logic out of `triton-npu-optimize-check` into the CLI layer.
+- Do not move the round-counting logic out of `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` into the CLI layer.
 
 ## Design
 
@@ -137,7 +137,7 @@ In `src/triton_agent/optimize/checks.py`:
 
 ```python
 def check_round(round_dir: Path, *, min_rounds: int | None = None) -> OptimizeCheckResult:
-    module = load_skill_script_module("triton-npu-optimize-check", "optimize_check")
+    module = load_skill_script_module("triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round", "optimize_check")
     return _normalize_result(module.check_round(round_dir, min_rounds=min_rounds))
 ```
 
@@ -148,7 +148,7 @@ def check_round(round_dir: Path, *, min_rounds: int | None = None) -> OptimizeCh
 The prompt already embeds min_rounds instructions (lines 190-198). Add to the check-round instruction:
 
 ```
-"After finishing each round, use the staged `triton-npu-optimize-check` skill to run 
+"After finishing each round, use the staged `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` skill to run 
 `check-round --round-dir opt-round-N --min-rounds {min_rounds}` and repair the round 
 until it passes. Read the summary for the exit signal."
 ```
@@ -160,7 +160,7 @@ The `{min_rounds}` value is already available in the prompt builder since it's t
 Update the check-round instruction (currently around line 130):
 
 ```markdown
-- Use the sibling `triton-npu-optimize-check` skill to run `check-round` 
+- Use the sibling `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` skill to run `check-round` 
   with `--min-rounds <N>` (where N is the session's minimum round requirement) 
   and repair the current round until it passes before continuing or stopping.
 - After `check-round` passes, read the summary output for the exit signal:

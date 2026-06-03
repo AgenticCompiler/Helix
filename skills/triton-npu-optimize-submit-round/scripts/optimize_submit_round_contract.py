@@ -490,7 +490,9 @@ def check_round(
                     "First decide which operator, kernel path, or wrapper bottleneck should anchor the next round. "
                     "Decide whether existing evidence is already sufficient or whether profiling, IR, or compiler-source analysis is needed first. "
                     "Do not use agents or subagents to optimize multiple rounds in parallel. "
-                    "Do not treat the next round as a parameter-only tuning sweep.",
+                    "Do not treat the next round as a parameter-only tuning sweep. "
+                    "Do not use a script to create multiple optimize rounds where each round only adjusts parameters in order to speed up the optimization process. "
+                    "This is cheating behavior and is strictly prohibited.",
                     result.issues,
                 ),
                 next_option=next_round_name,

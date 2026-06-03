@@ -2,8 +2,8 @@
 
 ## Summary
 
-- Remove duplicated optimize-check models and contract parsing logic between `src/triton_agent/optimize/` and `skills/triton-npu-optimize-check/scripts/`.
-- Keep `triton-npu-optimize-check` as the source of truth for optimize validation contracts.
+- Remove duplicated optimize-check models and contract parsing logic between `src/triton_agent/optimize/` and `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/`.
+- Keep `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` as the source of truth for optimize validation contracts.
 - Preserve direct `python3 scripts/optimize_check.py ...` execution inside staged skill copies.
 
 ## Goals
@@ -23,7 +23,7 @@
 
 ### Skill-Owned Shared Contract Module
 
-- Add a new shared helper module under `skills/triton-npu-optimize-check/scripts/`.
+- Add a new shared helper module under `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/`.
 - Move these items into that helper:
   - `OptimizeCheckResult`
   - `BaselineState`
@@ -38,7 +38,7 @@ This keeps the reusable validation contract inside the optimize-check skill, whi
 
 ### Thin Skill CLI Wrapper
 
-- Reduce `skills/triton-npu-optimize-check/scripts/optimize_check.py` to a thin CLI wrapper that imports shared types and check functions from the new helper.
+- Reduce `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check.py` to a thin CLI wrapper that imports shared types and check functions from the new helper.
 - Keep the wrapper self-contained within the skill directory so direct execution still works after skills are copied into a workspace.
 
 ### Runtime Bridge Layer

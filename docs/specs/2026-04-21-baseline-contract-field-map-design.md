@@ -8,7 +8,7 @@
 
 ## Goals
 
-- Remove redundant baseline field-name duplication in `skills/triton-npu-optimize-check/references/contract.json`.
+- Remove redundant baseline field-name duplication in `skills/triton-npu-optimize-submit-round/references/contract.json`.
 - Keep baseline parser behavior unchanged.
 - Keep prompt and guidance rendering order stable.
 
