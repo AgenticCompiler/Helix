@@ -247,6 +247,54 @@ class StreamingProcessRunnerTests(unittest.TestCase):
         self.assertEqual(stdout.getvalue(), "line one\nline two\n")
         self.assertEqual(result.stdout, "line one\nline two\n")
 
+    def test_streaming_can_write_rendered_chunks_to_incremental_sink(self) -> None:
+        stdout = StringIO()
+        sink = StringIO()
+
+        def write_chunk(text: str) -> None:
+            sink.write(text)
+
+        process = _StreamingFakeProcess(wait_code=0)
+        chunks = [b"line one\n", b"line two\n", b""]
+        with patch("triton_agent.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+                with patch(
+                    "triton_agent.process_runner.select.select",
+                    side_effect=[([11], [], []), ([11], [], []), ([11], [], [])],
+                ):
+                    with patch("triton_agent.process_runner.os.read", side_effect=chunks):
+                        with patch("triton_agent.process_runner.os.close"):
+                            result = run_streaming_process(
+                                ["codex", "exec"],
+                                "/tmp",
+                                stall_timeout_seconds=10,
+                                stdout=stdout,
+                                rendered_chunk_sink=write_chunk,
+                                collect_stdout=False,
+                            )
+        self.assertEqual(stdout.getvalue(), "line one\nline two\n")
+        self.assertEqual(sink.getvalue(), "line one\nline two\n")
+        self.assertEqual(result.stdout, "")
+
+    def test_streaming_marks_retryable_failure_from_raw_chunks(self) -> None:
+        process = _StreamingFakeProcess(wait_code=1)
+        chunks = [b"ERROR: exceeded retry limit, ", b"last status: 429 Too Many Requests\n", b""]
+        with patch("triton_agent.process_runner.pty.openpty", return_value=(11, 12)):
+            with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
+                with patch(
+                    "triton_agent.process_runner.select.select",
+                    side_effect=[([11], [], []), ([11], [], []), ([11], [], [])],
+                ):
+                    with patch("triton_agent.process_runner.os.read", side_effect=chunks):
+                        with patch("triton_agent.process_runner.os.close"):
+                            result = run_streaming_process(
+                                ["codex", "exec"],
+                                "/tmp",
+                                stall_timeout_seconds=10,
+                                collect_stdout=False,
+                            )
+        self.assertTrue(result.retryable_failure)
+
     def test_streaming_collects_session_id(self) -> None:
         stdout = StringIO()
         process = _StreamingFakeProcess(wait_code=0)

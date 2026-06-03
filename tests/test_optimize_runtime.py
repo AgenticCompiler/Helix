@@ -22,6 +22,7 @@ from triton_agent.optimize.execution import (
     _latest_round_dir,
 )
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
+from triton_agent.optimize.run_loop import _STALL_RECOVERY_SUMMARY
 from triton_agent.optimize.pt_cleanup import cleanup_workspace_pt_files
 from triton_agent.optimize.archive import ArchiveState
 from triton_agent.optimize.memory_file import MemoryFileState
@@ -1383,7 +1384,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
 
             self.assertEqual(result.return_code, 0)
             self.assertEqual(runner.calls, ["run", "resume"])
-            self.assertEqual(runner.resume_summaries, ["first stall"])
+            self.assertEqual(runner.resume_summaries, [_STALL_RECOVERY_SUMMARY])
 
     def test_run_optimize_batch_preserves_round_mode_mode(self) -> None:
         for round_mode_mode in ("checked", "continuous"):

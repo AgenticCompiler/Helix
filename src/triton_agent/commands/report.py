@@ -14,6 +14,7 @@ from triton_agent.report.workspace import (
     build_hardware_info_text,
     build_report_request,
 )
+from triton_agent.show_output_log import show_output_log_path
 from triton_agent.skill_staging import resolve_staged_skills
 from triton_agent.skills import SkillLinkManager
 from triton_agent.verbose import emit_verbose, emit_verbose_lines
@@ -109,7 +110,10 @@ def handle_report(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         else:
             print("[report] warning: agent completed but report.md was not created", file=sys.stderr, flush=True)
     else:
-        detail = result.stderr.strip() or result.stdout.strip() or "agent execution failed"
+        if show_output:
+            detail = result.stderr.strip() or f"agent execution failed; see show-output log: {show_output_log_path(request)}"
+        else:
+            detail = result.stderr.strip() or result.stdout.strip() or "agent execution failed"
         print(f"[report] failed: {detail}", file=sys.stderr, flush=True)
     return result.return_code
 

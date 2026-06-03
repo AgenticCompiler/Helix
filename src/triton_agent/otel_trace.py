@@ -3,9 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping
 from datetime import datetime, timezone
-import hashlib
 import json
-import re
 from pathlib import Path
 from typing import Any, cast
 
@@ -16,7 +14,6 @@ TRACE_PATH_ENV = "TRITON_AGENT_OTEL_TRACE_PATH"
 TRACE_RUN_ID_ENV = "TRITON_AGENT_OTEL_RUN_ID"
 TRACE_ROLE_ENV = "TRITON_AGENT_OTEL_ROLE"
 TRACE_WORKSPACE_ROOT_ENV = "TRITON_AGENT_WORKSPACE_ROOT"
-_EXCERPT_LIMIT = 2000
 
 
 def utc_timestamp() -> str:
@@ -184,8 +181,6 @@ def build_code_agent_event(
     else:
         status = "stalled" if result.stalled else ("ok" if result.return_code == 0 else "error")
         return_code = result.return_code
-    stdout_text = result.stdout if result is not None else ""
-    stderr_text = result.stderr if result is not None else ""
     event: dict[str, Any] = {
         "schema_version": 1,
         "type": "agent_invocation",
@@ -201,10 +196,6 @@ def build_code_agent_event(
         "role": trace_role_from_request(request),
         "source": "runner",
         "confidence": "high",
-        "stdout_digest": digest_text(stdout_text),
-        "stderr_digest": digest_text(stderr_text),
-        "stdout_excerpt": bounded_excerpt(stdout_text),
-        "stderr_excerpt": bounded_excerpt(stderr_text),
     }
     if result is not None and result.session_id:
         event["session_id"] = result.session_id
@@ -287,24 +278,6 @@ def summarize_agent_command(command: list[str], prompt: str) -> str:
         else:
             summarized.append(token)
     return " ".join(summarized)
-
-
-def digest_text(text: str) -> str:
-    return "sha256:" + hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
-
-
-def bounded_excerpt(text: str, limit: int = _EXCERPT_LIMIT) -> str:
-    sanitized = sanitize_text(text)
-    if len(sanitized) <= limit:
-        return sanitized
-    return sanitized[:limit] + "\n<truncated>"
-
-
-def sanitize_text(text: str) -> str:
-    sanitized = text
-    sanitized = re.sub(r"(?i)(authorization:\s*bearer\s+)[^\s]+", r"\1<redacted>", sanitized)
-    sanitized = re.sub(r"(?i)((?:api[_-]?key|token|password|secret)\s*[=:]\s*)[^\s]+", r"\1<redacted>", sanitized)
-    return sanitized
 
 
 def _detect_trace_source(events: list[dict[str, Any]]) -> str:

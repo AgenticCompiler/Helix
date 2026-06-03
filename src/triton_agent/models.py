@@ -106,6 +106,7 @@ class AgentResult:
     stderr: str
     stalled: bool = False
     session_id: Optional[str] = None
+    retryable_failure: bool = False
 
     @property
     def succeeded(self) -> bool:
