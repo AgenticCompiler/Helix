@@ -288,7 +288,7 @@ def inspect_round_artifacts(round_dir: Path) -> RoundArtifactsInspection:
         perf_path = _declared_round_file(round_dir, declared_perf)
         perf_analysis_path = _declared_round_file(round_dir, declared_analysis)
 
-    if state is None and summary_path is None:
+    if summary_path is None:
         summary_path = _existing_file(round_dir / "summary.md")
     expected_operator_name_value, expected_perf_name_value = _expected_round_artifact_names(workspace)
     if perf_path is None:
@@ -300,11 +300,13 @@ def inspect_round_artifacts(round_dir: Path) -> RoundArtifactsInspection:
         issues.append("missing attempts.md")
     if summary_path is None:
         issues.append(_missing_issue(declared_summary, default_path="summary.md"))
+    elif state is not None and declared_summary is not None and Path(declared_summary).name != summary_path.name:
+        issues.append("summary_path must be summary.md")
     if round_state_path is None:
         issues.append("missing round-state.json")
     if perf_path is None:
         issues.append(_missing_issue(declared_perf, default_path=expected_perf_name_value))
-    elif state is not None and declared_perf != perf_path.name:
+    elif state is not None and declared_perf is not None and Path(declared_perf).name != perf_path.name:
         issues.append(f"perf_artifact must be {expected_perf_name_value}")
     if declared_analysis is not None and perf_analysis_path is None:
         issues.append(_missing_issue(declared_analysis, default_path="perf-analysis.md"))
