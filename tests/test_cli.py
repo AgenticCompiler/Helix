@@ -162,6 +162,12 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["pattern-validation-loop", "-i", "."])
         self.assertTrue(args.show_output)
 
+    def test_pattern_validation_verify_maps_to_command_kind(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["pattern-validation-verify", "-i", "pattern-validation-batch"])
+        self.assertEqual(args.command, "pattern-validation-verify")
+        self.assertEqual(args.command_kind, CommandKind.PATTERN_VALIDATION_VERIFY)
+
     def test_log_check_batch_rejects_max_concurrency_keyword(self) -> None:
         parser = build_parser()
         stderr = StringIO()
@@ -344,6 +350,7 @@ class CliParserTests(unittest.TestCase):
             ("verify_batch", CommandKind.VERIFY_BATCH),
             ("optimize_batch", CommandKind.OPTIMIZE_BATCH),
             ("pattern_validation_loop", CommandKind.PATTERN_VALIDATION_LOOP),
+            ("pattern_validation_verify", CommandKind.PATTERN_VALIDATION_VERIFY),
         ]
 
         for alias, expected_kind in cases:

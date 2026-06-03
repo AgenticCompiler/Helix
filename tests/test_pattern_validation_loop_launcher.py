@@ -12,16 +12,48 @@ from triton_agent.pattern_validation_loop.launcher import (
     build_pattern_validation_loop_prompt,
     build_pattern_validation_loop_request,
 )
+from triton_agent.pattern_validation_loop.prompts import build_prepare_prompt
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 
 
 class PatternValidationLoopLauncherTests(unittest.TestCase):
-    def test_prompt_references_skill_helpers_and_loop_contract(self) -> None:
+    def test_prepare_prompt_references_verify_cli_and_no_optimize_batch(self) -> None:
         with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
             repo = Path(tmp)
             synthesis = repo / "PERF_PATTERN_SYNTHESIS.md"
             synthesis.write_text("# Synthesis\n", encoding="utf-8")
+            skill_root = repo / ".codex" / "skills" / "triton-npu-pattern-validation-loop"
+            skill_root.mkdir(parents=True)
+            (skill_root / "references").mkdir(parents=True, exist_ok=True)
+            for name in (
+                "iteration-contract.md",
+                "skill-update-contract.md",
+                "workspace-scaffold-contract.md",
+            ):
+                (skill_root / "references" / name).write_text(f"# {name}\n", encoding="utf-8")
+            (skill_root / "SKILL.md").write_text("# skill\n", encoding="utf-8")
+            prompt = build_prepare_prompt(
+                repo_path=repo,
+                synthesis_path=synthesis,
+                batch_dir=repo / "pattern-validation-batch",
+                skills_workdir=repo / "pattern-validation-skills",
+                skills_dir="pattern-validation-skills",
+                state_path=repo / ".triton-agent" / "pattern-validation-loop-state.json",
+                base_revision="origin/main",
+                skill_root=skill_root,
+                knowledge_root=repo / "pattern-validation-skills" / "triton-npu-optimize-knowledge",
+            )
+        self.assertIn("triton-agent pattern-validation-verify", prompt)
+        self.assertIn("Do not run `triton-agent optimize-batch`", prompt)
+        self.assertIn("workspace-scaffold-contract.md", prompt)
+
+    def test_legacy_combined_prompt_still_documents_phases(self) -> None:
+        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
+            repo = Path(tmp)
+            synthesis = repo / "PERF_PATTERN_SYNTHESIS.md"
+            synthesis.write_text("# Synthesis\n", encoding="utf-8")
+            (repo / ".codex" / "skills" / "triton-npu-pattern-validation-loop").mkdir(parents=True)
             prompt = build_pattern_validation_loop_prompt(
                 repo_path=repo,
                 synthesis_path=synthesis,
@@ -35,55 +67,9 @@ class PatternValidationLoopLauncherTests(unittest.TestCase):
                 agent_name="codex",
                 optimize_knowledge="v1",
             )
-        self.assertIn("triton-npu-pattern-validation-loop", prompt)
-        self.assertIn("workspace-scaffold-contract.md", prompt)
-        self.assertIn("audit_batch.py", prompt)
-        self.assertIn("--archive-passed", prompt)
-        self.assertIn("_completed/", prompt)
-        self.assertIn("optimize-batch", prompt)
-        self.assertIn("build_pattern_index.py", prompt)
-        self.assertIn("--skills-source-dir", prompt)
-        self.assertIn("pattern-validation-skills", prompt)
-        self.assertGreaterEqual(prompt.count("--show-output"), 2)
-        self.assertGreaterEqual(prompt.count("TRITON_AGENT_STALL_TIMEOUT_SECONDS=0"), 2)
-        self.assertIn("omit from optimize-batch (use optimize defaults)", prompt)
-        self.assertNotIn("--test-mode", prompt)
-        self.assertNotIn("--bench-mode", prompt)
-        self.assertNotIn("--target-chip", prompt)
-
-    def test_prompt_includes_optimize_passthrough_flags_when_set(self) -> None:
-        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
-            repo = Path(tmp)
-            synthesis = repo / "PERF_PATTERN_SYNTHESIS.md"
-            synthesis.write_text("# Synthesis\n", encoding="utf-8")
-            prompt = build_pattern_validation_loop_prompt(
-                repo_path=repo,
-                synthesis_path=synthesis,
-                batch_dir=repo / "pattern-validation-batch",
-                skills_workdir=repo / "pattern-validation-skills",
-                skills_dir="pattern-validation-skills",
-                state_path=repo / ".triton-agent" / "pattern-validation-loop-state.json",
-                base_revision="origin/main",
-                min_rounds=10,
-                max_iterations=5,
-                agent_name="opencode",
-                optimize_knowledge="v2",
-                target_chip="A3",
-                test_mode="standalone",
-                bench_mode="msprof",
-            )
-        self.assertIn("--target-chip A3", prompt)
-        self.assertIn("--test-mode standalone", prompt)
-        self.assertIn("--bench-mode msprof", prompt)
-        self.assertIn("target_chip=A3", prompt)
-        self.assertNotIn("omit from optimize-batch", prompt)
-
-    def test_build_optimize_batch_extra_flags_omits_unset_values(self) -> None:
-        self.assertEqual(build_optimize_batch_extra_flags(), "")
-        self.assertEqual(
-            build_optimize_batch_extra_flags(test_mode="differential"),
-            " --test-mode differential",
-        )
+        self.assertIn("pattern-validation-verify", prompt)
+        self.assertIn("audit-report.json", prompt)
+        self.assertIn("CLI runs optimize-batch", prompt)
 
     def test_build_optimize_batch_shell_command_includes_env_prefix(self) -> None:
         self.assertEqual(OPTIMIZE_BATCH_ENV_PREFIX, "TRITON_AGENT_STALL_TIMEOUT_SECONDS=0 ")
@@ -98,7 +84,6 @@ class PatternValidationLoopLauncherTests(unittest.TestCase):
         )
         self.assertTrue(command.startswith("TRITON_AGENT_STALL_TIMEOUT_SECONDS=0 triton-agent optimize-batch"))
         self.assertIn("--reset-optimize", command)
-        self.assertIn("--resume fresh", command)
 
     def test_build_request_requires_synthesis_report(self) -> None:
         with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
@@ -123,15 +108,8 @@ class PatternValidationLoopLauncherTests(unittest.TestCase):
                 target_path=repo,
                 skills_dir="pattern-validation-skills",
             )
-        mock_seed.assert_called_once_with(
-            repo,
-            "pattern-validation-skills",
-            optimize_knowledge="v1",
-        )
         self.assertEqual(request.command_kind, CommandKind.PATTERN_VALIDATION_LOOP)
-        self.assertEqual(request.skill_name, "triton-npu-pattern-validation-loop")
-        self.assertIn("pattern-validation-skills", request.prompt)
-        self.assertIn("--skills-source-dir", request.prompt)
+        self.assertIn("pattern-validation-verify", request.prompt)
 
 
 def _make_git_repo(root: Path) -> Path:

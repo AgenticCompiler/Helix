@@ -1,5 +1,21 @@
 # Pattern Validation Iteration Contract
 
+## Orchestration model
+
+`triton-agent pattern-validation-loop` is **CLI-orchestrated**:
+
+| Step | Runner | Responsibility |
+|------|--------|----------------|
+| Seed skills | CLI | Copy install-bundle knowledge into `pattern-validation-skills/` when missing |
+| Prepare | Code agent | Read synthesis, edit skills, scaffold workspaces, run `pattern-validation-verify` |
+| Verify gate | CLI | `triton-agent pattern-validation-verify -i "$BATCH"` (must exit 0) |
+| Optimize | CLI | `optimize-batch` with `--skills-source-dir` (direct Python API, streamed output) |
+| Evidence | CLI | `audit_batch.py --output "$BATCH/audit-report.json"` |
+| Analyze | Code agent | Review evidence, update skills, archive passes, mark complete or request another iteration |
+| Reset | CLI | `reset_workspace_rounds.py` on active workspaces before the next optimize |
+
+Prepare and analyze agents **must not** shell out to `triton-agent optimize-batch`.
+
 ## Loop state file
 
 Path: `.triton-agent/pattern-validation-loop-state.json`
@@ -12,7 +28,7 @@ Fields:
 |-------|---------|
 | `status` | `running` \| `complete` \| `failed` |
 | `iteration` | Current iteration number (starts at 1) |
-| `max_iterations` | Stop skill loop after this many audit failures |
+| `max_iterations` | Stop after this many optimize/analyze cycles without completion |
 | `repo` | Absolute Git repo path |
 | `base_revision` | Git base for scaffold |
 | `batch_dir` | Batch root relative or absolute |
@@ -28,6 +44,7 @@ metadata, not output of a required parser.
 
 ```text
 pattern-validation-batch/
+  audit-report.json              # CLI-written evidence bundle
   ...
   _completed/
     ...
@@ -56,22 +73,26 @@ Rules:
 
 - Only **active** workspaces (batch root children with `validation-meta.json`) run in the next
   `optimize-batch -i "$BATCH"`.
-- After audit pass, move workspace to `_completed/` with `audit_batch.py --archive-passed`.
+- After analyze agent confirms pass, archive to `_completed/` with `audit_batch.py --archive-passed`.
 - Do not manually delete `_completed/` unless intentionally re-validating that operator.
 
 ## Success criteria
 
 Per workspace (`validation-meta.json` → `expected_patterns`):
 
-1. `audit_batch.py` reports `passed: true`
-2. At least one `opt-round-*/summary.md` cites a **mechanism** aligned with synthesis (not only pattern ID string match)
-3. Optional: benchmark improvement vs `baseline/` when NPU available
+1. Analyze agent confirms optimize rounds applied synthesis-backed mechanisms.
+2. Evidence report lists round artifacts under `opt-round-*/` for review.
+3. Optional: benchmark improvement vs `baseline/` when NPU available.
 
-Whole loop success: `audit-report.json` → `active_remaining` is `[]` and all targets live under `_completed/`.
+Heuristic `heuristic_suggested_pass` in `audit-report.json` (substring match on pattern IDs) is a
+**hint only**.
+
+Whole loop success: analyze agent sets loop state `status=complete` and `active_remaining` is
+empty after archiving passed workspaces.
 
 ## Reset between iterations
 
-Use `reset_workspace_rounds.py` on **active** workspaces only. It skips `_completed/`.
+The CLI runs `reset_workspace_rounds.py` on **active** workspaces only. It skips `_completed/`.
 
 Removes:
 
@@ -86,49 +107,53 @@ Keep:
 - `validation-meta.json`
 - `baseline/`
 
-## Subprocess commands
+## CLI optimize-batch settings
 
-The orchestrating agent runs `triton-agent optimize-batch` as a **shell subprocess** from `REPO`. Do not simulate optimize rounds inside this skill without invoking the CLI.
-
-Every `optimize-batch` invocation must include **`--show-output`**. This streams nested optimize agent output to the terminal with a `[workspace]` prefix. Long optimize runs that produce no stdout are more likely to be killed by CI/job timeouts or idle watchdogs.
-
-Every `optimize-batch` shell command must prefix **`TRITON_AGENT_STALL_TIMEOUT_SECONDS=0`** so nested optimize agents are not killed by triton-agent idle stall detection.
-
-Optional optimize passthrough flags from the loop start command (`pattern-validation-loop` CLI): when set at launch, include the same flags on every optimize-batch run; when unset at launch, omit them and let optimize-batch use its own defaults.
-
-Initial run:
+Environment:
 
 ```bash
-TRITON_AGENT_STALL_TIMEOUT_SECONDS=0 triton-agent optimize-batch \
-  -i "$BATCH" \
-  --resume fresh \
-  --reset-optimize \
-  --min-rounds "$MIN_ROUNDS" \
-  --concurrency 1 \
-  --show-output \
-  --skills-source-dir "$SKILLS" \
-  --agent <backend>
-  # optional when set on pattern-validation-loop start:
-  # --target-chip A5 --test-mode differential --bench-mode standalone
+export TRITON_AGENT_STALL_TIMEOUT_SECONDS=0
 ```
 
-Later iteration:
+Initial iteration (CLI):
 
 ```bash
-TRITON_AGENT_STALL_TIMEOUT_SECONDS=0 triton-agent optimize-batch \
-  -i "$BATCH" \
+triton-agent optimize-batch -i "$BATCH" \
+  --resume fresh --reset-optimize \
+  --min-rounds "$MIN_ROUNDS" --concurrency 1 --show-output \
+  --skills-source-dir "$SKILLS" --agent <backend>
+```
+
+Later iteration (CLI):
+
+```bash
+triton-agent optimize-batch -i "$BATCH" \
   --resume continue \
-  --min-rounds "$MIN_ROUNDS" \
-  --concurrency 1 \
-  --show-output \
-  --skills-source-dir "$SKILLS" \
-  --agent <backend>
-  # same optional passthrough flags as initial run when provided at loop start
+  --min-rounds "$MIN_ROUNDS" --concurrency 1 --show-output \
+  --skills-source-dir "$SKILLS" --agent <backend>
 ```
 
-Audit and archive:
+Optional passthrough flags from loop start (`pattern-validation-loop` CLI): when set at launch,
+the CLI includes the same flags on every optimize-batch run.
+
+## Evidence and archive helpers
+
+Collect evidence (CLI or manual):
 
 ```bash
 python3 "$SKILL/scripts/audit_batch.py" \
-  --batch-root "$BATCH" --archive-passed --json > "$BATCH/audit-report.json"
+  --batch-root "$BATCH" --output "$BATCH/audit-report.json"
+```
+
+Archive after **agent review** (not heuristics alone):
+
+```bash
+python3 "$SKILL/scripts/audit_batch.py" \
+  --batch-root "$BATCH" --archive-passed
+```
+
+Scaffold verify (prepare agent and CLI gate):
+
+```bash
+triton-agent pattern-validation-verify -i "$BATCH"
 ```

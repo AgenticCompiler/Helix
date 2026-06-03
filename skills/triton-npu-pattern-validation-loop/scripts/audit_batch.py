@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit optimize workspaces against validation-meta expected patterns."""
+"""Collect optimize-round evidence for pattern-validation review."""
 
 from __future__ import annotations
 
@@ -15,10 +15,20 @@ from batch_layout import (
     list_completed_validation_workspaces,
 )
 
+_ARTIFACT_NAMES = ("attempts.md", "summary.md", "opt-note.md")
+_EXCERPT_LIMIT = 8000
+_HEURISTIC_NOTE = (
+    "Heuristic substring match on attempts.md and summary.md only. "
+    "The orchestrating agent must confirm mechanism alignment with synthesis."
+)
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Check whether optimize rounds cited expected pattern IDs.",
+        description=(
+            "Collect per-workspace optimize evidence (round artifacts, pattern-id hints) "
+            "for agent review. Exit code reflects collection errors only, not validation pass/fail."
+        ),
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--workspace", help="Single operator workspace directory.")
@@ -29,14 +39,21 @@ def main(argv: list[str] | None = None) -> int:
         help="Emit machine-readable JSON report.",
     )
     parser.add_argument(
+        "--output",
+        help="Write JSON report to this path (implies structured output).",
+    )
+    parser.add_argument(
         "--archive-passed",
         action="store_true",
-        help="Move passed active workspaces into batch-root/_completed/.",
+        help=(
+            "Move workspaces with heuristic_suggested_pass=true into batch-root/_completed/. "
+            "Use only after agent review confirms pass."
+        ),
     )
     parser.add_argument(
         "--include-completed",
         action="store_true",
-        help="With --batch-root, also audit workspaces under _completed/.",
+        help="With --batch-root, also include workspaces under _completed/.",
     )
     args = parser.parse_args(argv)
 
@@ -49,16 +66,23 @@ def main(argv: list[str] | None = None) -> int:
         if args.include_completed:
             workspaces.extend(list_completed_validation_workspaces(batch_root))
 
-    reports = [audit_workspace(path) for path in workspaces]
+    if not workspaces:
+        print("audit_batch: no workspaces to collect", file=sys.stderr)
+        return 2
+
+    reports = [collect_workspace_evidence(path) for path in workspaces]
     archived: list[str] = []
     if args.archive_passed:
         if batch_root is None:
             print("audit_batch: --archive-passed requires --batch-root", file=sys.stderr)
             return 2
-        moved = archive_passed_workspaces(reports, batch_root=batch_root)
+        moved = archive_passed_workspaces(_heuristic_reports_for_archive(reports), batch_root=batch_root)
         archived = [path.as_posix() for path in moved]
 
     payload: dict[str, Any] = {
+        "schema_version": 1,
+        "review_model": "agent",
+        "heuristic_note": _HEURISTIC_NOTE,
         "reports": reports,
         "archived": archived,
         "active_remaining": [
@@ -71,11 +95,15 @@ def main(argv: list[str] | None = None) -> int:
         else 0,
     }
 
-    if args.json:
-        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    text = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    if args.output:
+        Path(args.output).expanduser().resolve().write_text(text, encoding="utf-8")
+    if args.json or args.output:
+        if not args.output:
+            print(text, end="")
     else:
         for report in reports:
-            print(render_report(report))
+            print(render_evidence_report(report))
         for path in archived:
             print(f"archived: {path}")
         if batch_root is not None:
@@ -85,56 +113,88 @@ def main(argv: list[str] | None = None) -> int:
                 f"completed total: {payload['completed_total']}",
             )
 
-    active_reports = [
-        report
-        for report in reports
-        if batch_root is None or report["location"] == "active"
-    ]
-    failed = any(not report["passed"] for report in active_reports)
-    return 1 if failed else 0
+    return 0
 
 
-def audit_workspace(workspace: Path) -> dict[str, object]:
+def collect_workspace_evidence(workspace: Path) -> dict[str, object]:
     meta_path = workspace / "validation-meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     expected = [str(item) for item in meta.get("expected_patterns", [])]
     round_dirs = sorted(workspace.glob("opt-round-*"))
+    rounds: list[dict[str, object]] = []
     corpus_parts: list[str] = []
     for round_dir in round_dirs:
-        for name in ("attempts.md", "summary.md"):
+        artifacts: dict[str, object] = {}
+        for name in _ARTIFACT_NAMES:
             path = round_dir / name
-            if path.is_file():
-                corpus_parts.append(path.read_text(encoding="utf-8"))
-    corpus = "\n".join(corpus_parts).lower()
+            if not path.is_file():
+                artifacts[name] = {"path": path.as_posix(), "exists": False}
+                continue
+            text = path.read_text(encoding="utf-8")
+            corpus_parts.append(text)
+            artifacts[name] = {
+                "path": path.as_posix(),
+                "exists": True,
+                "size_bytes": path.stat().st_size,
+                "excerpt": _excerpt(text),
+            }
+        rounds.append({"round": round_dir.name, "artifacts": artifacts})
 
+    corpus = "\n".join(corpus_parts).lower()
     matched = [pattern for pattern in expected if pattern.lower() in corpus]
     missing = [pattern for pattern in expected if pattern not in matched]
     location = "completed" if workspace.parent.name == "_completed" else "active"
+    heuristic_suggested_pass = not missing and bool(round_dirs)
     return {
         "workspace": workspace.name,
         "location": location,
-        "expected_patterns": expected,
-        "matched_patterns": matched,
-        "missing_patterns": missing,
+        "validation_meta": {
+            "expected_patterns": expected,
+            "validation_target": meta.get("validation_target"),
+            "synthesis_refs": meta.get("synthesis_refs", []),
+        },
         "round_count": len(round_dirs),
         "has_baseline": (workspace / "baseline").is_dir(),
-        "passed": not missing and bool(round_dirs),
+        "rounds": rounds,
+        "expected_patterns": expected,
+        "heuristic_pattern_hits": matched,
+        "heuristic_missing_patterns": missing,
+        "heuristic_suggested_pass": heuristic_suggested_pass,
+        "agent_review_required": True,
     }
 
 
-def render_report(report: dict[str, object]) -> str:
-    status = "PASS" if report["passed"] else "FAIL"
+def render_evidence_report(report: dict[str, object]) -> str:
+    hint = "SUGGEST_PASS" if report["heuristic_suggested_pass"] else "NEEDS_REVIEW"
     location = report.get("location", "active")
     lines = [
-        f"[{status}] {report['workspace']} ({location})",
+        f"[{hint}] {report['workspace']} ({location})",
         f"  rounds: {report['round_count']}  baseline: {report['has_baseline']}",
         f"  expected: {', '.join(str(x) for x in report['expected_patterns']) or '(none)'}",
-        f"  matched:  {', '.join(str(x) for x in report['matched_patterns']) or '(none)'}",
+        f"  heuristic hits:  {', '.join(str(x) for x in report['heuristic_pattern_hits']) or '(none)'}",
     ]
-    missing = report["missing_patterns"]
+    missing = report["heuristic_missing_patterns"]
     if missing:
-        lines.append(f"  missing:  {', '.join(str(x) for x in missing)}")
+        lines.append(f"  heuristic missing:  {', '.join(str(x) for x in missing)}")
+    lines.append("  agent_review_required: yes")
     return "\n".join(lines)
+
+
+def _heuristic_reports_for_archive(reports: list[dict[str, object]]) -> list[dict[str, object]]:
+    return [
+        {
+            "workspace": report["workspace"],
+            "location": report["location"],
+            "passed": bool(report["heuristic_suggested_pass"]),
+        }
+        for report in reports
+    ]
+
+
+def _excerpt(text: str) -> str:
+    if len(text) <= _EXCERPT_LIMIT:
+        return text
+    return text[:_EXCERPT_LIMIT] + "\n... [truncated]"
 
 
 if __name__ == "__main__":

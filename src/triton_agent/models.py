@@ -24,6 +24,7 @@ class CommandKind(str, Enum):
     LOG_CHECK_BATCH = "log-check-batch"
     TRACE_ANALYZE = "trace-analyze"
     PATTERN_VALIDATION_LOOP = "pattern-validation-loop"
+    PATTERN_VALIDATION_VERIFY = "pattern-validation-verify"
     OPTIMIZE = "optimize"
     OPTIMIZE_BATCH = "optimize-batch"
     UPLOAD_OPTIMIZE = "upload-optimize"
@@ -50,6 +51,7 @@ COMMAND_TO_SKILL = {
     CommandKind.LOG_CHECK_BATCH: "",
     CommandKind.TRACE_ANALYZE: "",
     CommandKind.PATTERN_VALIDATION_LOOP: "triton-npu-pattern-validation-loop",
+    CommandKind.PATTERN_VALIDATION_VERIFY: "",
     CommandKind.OPTIMIZE: "triton-npu-optimize",
     CommandKind.OPTIMIZE_BATCH: "",
     CommandKind.UPLOAD_OPTIMIZE: "",

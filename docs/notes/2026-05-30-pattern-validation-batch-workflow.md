@@ -8,7 +8,7 @@
 
 ---
 
-## 推荐：一键全链路（agent 自动执行）
+## 推荐：一键全链路（CLI 编排）
 
 前提：目标仓库已有 `PERF_PATTERN_SYNTHESIS.md`（通常来自 `analyze-commit-perf`）。
 
@@ -26,10 +26,17 @@ uv run triton-agent pattern-validation-loop \
   --agent opencode
 ```
 
-Agent 按 [skills/triton-npu-pattern-validation-loop/SKILL.md](../../skills/triton-npu-pattern-validation-loop/SKILL.md) 执行：
+CLI 按 [skills/triton-npu-pattern-validation-loop/SKILL.md](../../skills/triton-npu-pattern-validation-loop/SKILL.md) 编排：
 
 ```text
-init → 读 synthesis 更新 skills → agent 搭建 workspace → optimize-batch → audit → iterate
+prepare agent → pattern-validation-verify → CLI optimize-batch → 证据汇总
+  → analyze agent →（如需）reset → CLI optimize-batch → …
+```
+
+单独检查 scaffold（prepare agent 也会执行）：
+
+```bash
+uv run triton-agent pattern-validation-verify -i pattern-validation-batch
 ```
 
 必读契约：

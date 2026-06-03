@@ -24,6 +24,7 @@ from triton_agent.commands.upload_optimize import handle_upload_optimize
 from triton_agent.commands.report_batch import handle_report_batch
 from triton_agent.commands.report import handle_report
 from triton_agent.commands.pattern_validation_loop import handle_pattern_validation_loop
+from triton_agent.commands.pattern_validation_verify import handle_pattern_validation_verify
 from triton_agent.models import CommandKind
 
 
@@ -393,15 +394,25 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
     CommandKind.PATTERN_VALIDATION_LOOP: _CommandSpec(
         handler=handle_pattern_validation_loop,
         help_group="Optimization",
-        help_summary="Validate synthesis-backed patterns via optimize-batch loop.",
+        help_summary="Validate synthesis-backed patterns via CLI-orchestrated loop.",
         description=(
-            "Integrate PERF_PATTERN_SYNTHESIS into staged skills, scaffold pre-opt workspaces, "
-            "run optimize-batch, audit pattern usage, and iterate until validation passes."
+            "Run prepare and analyze agents around CLI-driven optimize-batch: seed skills, "
+            "scaffold workspaces, verify layout, optimize, collect evidence, and iterate."
         ),
         has_agent=True,
         has_show_output=True,
         has_prompt=True,
         has_pattern_validation_loop_options=True,
+    ),
+    CommandKind.PATTERN_VALIDATION_VERIFY: _CommandSpec(
+        handler=handle_pattern_validation_verify,
+        help_group="Optimization",
+        help_summary="Verify pattern-validation batch workspace scaffold.",
+        description=(
+            "Check validation workspaces for Step 2b split metadata and operator layout "
+            "before optimize-batch."
+        ),
+        has_output=False,
     ),
     CommandKind.OPTIMIZE_BATCH: _CommandSpec(
         handler=handle_optimize_batch,
@@ -629,6 +640,12 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--deep", action="store_true")
         if command_kind == CommandKind.PATTERN_VALIDATION_LOOP:
             subparser.set_defaults(show_output=True)
+        if command_kind == CommandKind.PATTERN_VALIDATION_VERIFY:
+            subparser.add_argument(
+                "--json",
+                action="store_true",
+                help="Emit machine-readable JSON scaffold verification report.",
+            )
 
     return parser
 
@@ -745,6 +762,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "report": "report",
         "clean": "clean",
         "pattern_validation_loop": "pattern-validation-loop",
+        "pattern_validation_verify": "pattern-validation-verify",
     }
     normalized = list(argv)
     normalized[0] = aliases.get(normalized[0], normalized[0])

@@ -16,7 +16,7 @@ This README is organized by task so you can quickly find the right command for t
 - `run-bench`: run an existing generated benchmark.
 - `optimize`: optimize one operator.
 - `optimize-batch`: optimize many operator workspaces.
-- `pattern-validation-loop`: integrate synthesis into skills, scaffold validation workspaces, run optimize-batch, audit pattern usage, and iterate until validation passes.
+- `pattern-validation-loop`: CLI-orchestrated loop (prepare/analyze agents + CLI optimize-batch); `pattern-validation-verify` checks workspace scaffold.
 - `upload-optimize`: upload one optimize workspace to an analysis server.
 - `--no-upload`: skip automatic upload after optimize.
 - `log-check`: run Codex log strategy validation for one workspace.
@@ -598,13 +598,18 @@ uv run triton-agent pattern-validation-loop \
   --agent opencode
 ```
 
-The command stages `triton-npu-pattern-validation-loop` plus optimize skills, then launches a code agent to:
+The command stages skills, then runs **prepare agent → verify → CLI optimize-batch → evidence → analyze agent** (repeat until complete):
 
-1. Read `PERF_PATTERN_SYNTHESIS.md` (any structure) and integrate lessons into staged pattern cards.
-2. Plan and build validation workspaces: pre-optimization snapshots, tests, and `validation-meta.json`.
-3. Run `optimize-batch` for at least `--min-rounds` rounds.
-4. Audit whether expected pattern IDs appear in round artifacts; archive passes under `_completed/`.
-5. Iterate skill updates and re-runs until audit passes or `--max-iterations` is reached.
+1. **Prepare agent:** read synthesis, update `pattern-validation-skills/`, scaffold workspaces, run `pattern-validation-verify`.
+2. **CLI:** `optimize-batch` with `--skills-source-dir` (streamed output, no nested loop agent).
+3. **CLI:** write `audit-report.json` via `audit_batch.py` (evidence bundle for review).
+4. **Analyze agent:** judge round artifacts, update skills, archive passes; CLI resets rounds and re-optimizes when needed.
+
+Standalone scaffold check:
+
+```bash
+uv run triton-agent pattern-validation-verify -i pattern-validation-batch
+```
 
 Common options:
 

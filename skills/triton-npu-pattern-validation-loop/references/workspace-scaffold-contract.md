@@ -428,13 +428,13 @@ Checklist per workspace:
 Record scaffold completion:
 
 ```bash
-python3 "$SKILL/scripts/verify_batch_scaffold.py" --batch-root "$BATCH"
+triton-agent pattern-validation-verify -i "$BATCH"
 python3 "$SKILL/scripts/record_iteration.py" \
   --state "$STATE" --phase scaffold \
   --note "N workspaces: ..."
 ```
 
-Do not run optimize-batch until `verify_batch_scaffold.py` exits 0.
+Do not run optimize-batch until `triton-agent pattern-validation-verify -i "$BATCH"` exits 0.
 
 ## When to rebuild vs reuse workspaces
 

@@ -7,10 +7,12 @@ commit-derived lessons into `triton-npu-optimize-knowledge`, build a dedicated b
 root of pre-optimization operator workspaces, run fixed-round optimize sessions, and
 iterate on pattern cards until agents rediscover the human optimizations.
 
-**Orchestration model (2026-05 update):** The `pattern-validation-loop` skill treats
-synthesis interpretation and workspace scaffolding as **agent responsibilities**. Helper
-scripts materialize agent-authored manifests when useful; they do not parse a fixed
-synthesis schema such as `G1-I1` tables as the source of truth.
+**Orchestration model (2026-06 update):** `triton-agent pattern-validation-loop` is
+**CLI-orchestrated**: prepare and analyze agents handle synthesis/skills/scaffold and
+evidence review; the CLI runs `pattern-validation-verify`, `optimize-batch`, evidence
+collection, and `reset_workspace_rounds.py`. Helper scripts materialize agent-authored
+manifests when useful; they do not parse a fixed synthesis schema such as `G1-I1` tables
+as the source of truth.
 
 ## Problem
 
