@@ -783,5 +783,5 @@ Generated files and archived outputs follow predictable naming based on the oper
 ```bash
 uv run --group dev ruff check
 uv run pyright
-uv run python -m unittest discover -s tests -v
+uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/
 ```
