@@ -296,7 +296,17 @@ class GenerationContractTests(unittest.TestCase):
     def test_optimize_baseline_preparation_uses_dedicated_skill(self) -> None:
         optimize = _read("skills/triton-npu-optimize/SKILL.md")
         baseline = _read("skills/triton-npu-prepare-optimize-baseline/SKILL.md")
-        optimize_check = _read("skills/triton-npu-optimize-check/SKILL.md")
+        baseline_submit_path = (
+            REPO_ROOT / "skills" / "triton-npu-optimize-submit-baseline" / "SKILL.md"
+        )
+        round_submit_path = REPO_ROOT / "skills" / "triton-npu-optimize-submit-round" / "SKILL.md"
+        start_round_path = REPO_ROOT / "skills" / "triton-npu-optimize-start-round" / "SKILL.md"
+        self.assertTrue(baseline_submit_path.exists())
+        self.assertTrue(round_submit_path.exists())
+        self.assertTrue(start_round_path.exists())
+        baseline_submit = baseline_submit_path.read_text(encoding="utf-8")
+        round_submit = round_submit_path.read_text(encoding="utf-8")
+        start_round = start_round_path.read_text(encoding="utf-8")
         readme = _read("README.md")
 
         self.assertTrue(
@@ -306,9 +316,13 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("triton-npu-gen-test", baseline)
         self.assertIn("triton-npu-gen-bench", baseline)
         self.assertIn("triton-npu-run-eval", baseline)
-        self.assertIn("triton-npu-optimize-check", baseline)
+        self.assertIn("triton-npu-optimize-submit-baseline", baseline)
+        self.assertIn("triton-npu-optimize-submit-round", optimize)
+        self.assertIn("triton-npu-optimize-start-round", optimize)
         self.assertNotIn("../triton-npu-run-eval/scripts/run-command.py", optimize)
-        self.assertIn("Do not use this skill to generate missing harnesses", optimize_check)
+        self.assertIn("Do not use this skill to generate missing harnesses", baseline_submit)
+        self.assertIn("Do not start the next optimize round until this submission passes", round_submit)
+        self.assertIn("Only one optimize round may be active at a time", start_round)
         self.assertIn("triton-npu-prepare-optimize-baseline", readme)
         self.assertIn("triton-npu-profile-operator", optimize)
         self.assertIn("triton-npu-analyze-round-performance", optimize)

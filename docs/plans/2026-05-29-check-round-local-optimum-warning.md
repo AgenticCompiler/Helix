@@ -4,7 +4,7 @@
 
 **Goal:** Add advisory `check-round` warnings when recent baseline-relative round gains have nearly flattened out, with environment-variable controls for the recent-round window and geomean-gain threshold.
 
-**Architecture:** Keep the feature inside the existing `triton-npu-optimize-check` skill contract flow. Add one focused helper under `skills/triton-npu-optimize-check/scripts/` that loads baseline/round perf data using the same metric-source semantics as optimize conclusions, computes recent baseline-relative round scores, and returns advisory local-optimum/config warnings that `check_round()` appends only after the current round already passes the existing contract. Preserve those pass-time warnings in checked and supervised continuation summaries even when the session must continue only because `min_rounds` is not yet satisfied.
+**Architecture:** Keep the feature inside the existing `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` skill contract flow. Add one focused helper under `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/` that loads baseline/round perf data using the same metric-source semantics as optimize conclusions, computes recent baseline-relative round scores, and returns advisory local-optimum/config warnings that `check_round()` appends only after the current round already passes the existing contract. Preserve those pass-time warnings in checked and supervised continuation summaries even when the session must continue only because `min_rounds` is not yet satisfied.
 
 **Tech Stack:** Python, unittest, skill-side helper modules, existing perf artifact parsers from `skills/triton-npu-run-eval/scripts/perf_artifacts.py`
 
@@ -14,7 +14,7 @@
 
 **Files:**
 - Modify: `tests/test_optimize_checks.py`
-- Reference: `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py`
+- Reference: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check_contract.py`
 
 - [ ] **Step 1: Add a focused warning test for flat recent gains**
 
@@ -60,8 +60,8 @@ Expected:
 ### Task 2: Implement skill-side local-optimum analysis
 
 **Files:**
-- Create: `skills/triton-npu-optimize-check/scripts/local_optimum_check.py`
-- Modify: `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py`
+- Create: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/local_optimum_check.py`
+- Modify: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check_contract.py`
 - Reference: `skills/triton-npu-run-eval/scripts/perf_artifacts.py`
 - Modify: `src/triton_agent/optimize/execution.py`
 - Modify: `src/triton_agent/optimize/prompts.py`
@@ -110,15 +110,15 @@ Expected:
 ### Task 3: Verify skill-script quality gates
 
 **Files:**
-- Modify: `skills/triton-npu-optimize-check/scripts/local_optimum_check.py`
-- Modify: `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py`
+- Modify: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/local_optimum_check.py`
+- Modify: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check_contract.py`
 
 - [ ] **Step 1: Run the required strict pyright check for modified skill scripts**
 
 Run:
 
 ```bash
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-check/scripts/local_optimum_check.py
+bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/local_optimum_check.py
 ```
 
 Expected:
@@ -129,7 +129,7 @@ Expected:
 Run:
 
 ```bash
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-check/scripts/optimize_check_contract.py
+bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check_contract.py
 ```
 
 Expected:

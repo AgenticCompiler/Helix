@@ -4,9 +4,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add an `triton-npu-optimize-check` skill plus a simplified optimize loop where workers validate baseline and each round themselves, and supervisor becomes an optional metadata-only audit layer.
+**Goal:** Add an `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` skill plus a simplified optimize loop where workers validate baseline and each round themselves, and supervisor becomes an optional metadata-only audit layer.
 
-**Architecture:** Introduce one shared triton-npu-optimize-check contract in Python so skill scripts, worker prompts, and supervisor logic all reuse the same baseline and round validation rules. Keep `--supervisor off` as a long-running worker-owned session, keep `--supervisor on` as a one-round worker plus optional supervisor loop, and remove runtime-owned technical gate decisions that duplicate skill behavior.
+**Architecture:** Introduce one shared triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round contract in Python so skill scripts, worker prompts, and supervisor logic all reuse the same baseline and round validation rules. Keep `--supervisor off` as a long-running worker-owned session, keep `--supervisor on` as a one-round worker plus optional supervisor loop, and remove runtime-owned technical gate decisions that duplicate skill behavior.
 
 **Tech Stack:** Python `argparse`, `dataclasses`, existing optimize baseline/round helpers, workspace skills and scripts, Python `unittest`
 
@@ -16,23 +16,23 @@
 
 **New files**
 
-- `docs/plans/2026-04-14-triton-npu-optimize-check-loop.md`
+- `docs/plans/2026-04-14-triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round-loop.md`
   This implementation plan.
 - `src/triton_agent/optimize/checks.py`
   Shared baseline and round check API that returns structured results for scripts, runtime helpers, and tests.
-- `skills/triton-npu-optimize-check/SKILL.md`
+- `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md`
   Workflow contract for baseline and round checking.
-- `skills/triton-npu-optimize-check/scripts/optimize_check.py`
+- `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check.py`
   Standalone script entrypoint with `check-baseline` and `check-round` subcommands.
 - `tests/test_optimize_checks.py`
-  Focused unit tests for shared triton-npu-optimize-check behavior.
+  Focused unit tests for shared triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round behavior.
 
 **Existing files to modify**
 
 - `src/triton_agent/optimize/models.py`
-  Add structured triton-npu-optimize-check result models if they do not fit cleanly in `checks.py`.
+  Add structured triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round result models if they do not fit cleanly in `checks.py`.
 - `src/triton_agent/prompts.py`
-  Update worker and supervisor prompts to require triton-npu-optimize-check usage and clarify per-mode ownership.
+  Update worker and supervisor prompts to require triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round usage and clarify per-mode ownership.
 - `src/triton_agent/optimize/orchestration.py`
   Simplify orchestration around worker-owned checks and optional supervisor passes.
 - `src/triton_agent/optimize/run_loop.py`
@@ -44,7 +44,7 @@
 - `skills/optimize-supervisor/SKILL.md`
   Limit supervisor to metadata-only repair and explicit continuation decisions.
 - `src/triton_agent/skills.py`
-  Ensure `triton-npu-optimize-check` stages alongside optimize-related skills where needed.
+  Ensure `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` stages alongside optimize-related skills where needed.
 - `tests/test_cli.py`
   Extend prompt and request-construction assertions for the new worker and supervisor contracts.
 - `tests/test_optimize_runtime.py`
@@ -52,18 +52,18 @@
 - `tests/test_supervisor.py`
   Update loop tests to reflect supervisor as audit plus continue-or-stop control, not artifact gate evaluator.
 - `tests/test_skills.py`
-  Cover staging of `triton-npu-optimize-check`.
+  Cover staging of `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`.
 - `tests/test_skill_command_script.py`
   Cover `optimize_check.py --help` and direct script execution without installed console entrypoints.
 - `README.md`
-  Document `triton-npu-optimize-check`, worker-owned validation, and the updated supervised versus unsupervised semantics.
+  Document `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`, worker-owned validation, and the updated supervised versus unsupervised semantics.
 
 ## Task 1: Add The Shared Optimize-Check Contract And Script
 
 **Files:**
 - Create: `src/triton_agent/optimize/checks.py`
-- Create: `skills/triton-npu-optimize-check/SKILL.md`
-- Create: `skills/triton-npu-optimize-check/scripts/optimize_check.py`
+- Create: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md`
+- Create: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check.py`
 - Modify: `src/triton_agent/optimize/models.py`
 - Create: `tests/test_optimize_checks.py`
 - Modify: `tests/test_skill_command_script.py`
@@ -96,12 +96,12 @@ self.assertIn("check-baseline", completed.stdout)
 self.assertIn("check-round", completed.stdout)
 ```
 
-and a staging test that asserts `triton-npu-optimize-check` is copied into backend-native skills directories.
+and a staging test that asserts `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` is copied into backend-native skills directories.
 
 - [ ] **Step 2: Run the focused check and script tests to verify they fail**
 
 Run: `uv run python -m unittest tests.test_optimize_checks tests.test_skill_command_script tests.test_skills -v`
-Expected: FAIL because the shared triton-npu-optimize-check layer and skill do not exist yet.
+Expected: FAIL because the shared triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round layer and skill do not exist yet.
 
 - [ ] **Step 3: Implement the shared check API and thin script wrapper**
 
@@ -130,10 +130,10 @@ Guidelines:
 Run: `uv run python -m unittest tests.test_optimize_checks tests.test_skill_command_script tests.test_skills -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit the triton-npu-optimize-check foundation**
+- [ ] **Step 5: Commit the triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round foundation**
 
 ```bash
-git add src/triton_agent/optimize/checks.py src/triton_agent/optimize/models.py skills/triton-npu-optimize-check/SKILL.md skills/triton-npu-optimize-check/scripts/optimize_check.py tests/test_optimize_checks.py tests/test_skill_command_script.py tests/test_skills.py
+git add src/triton_agent/optimize/checks.py src/triton_agent/optimize/models.py skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check.py tests/test_optimize_checks.py tests/test_skill_command_script.py tests/test_skills.py
 git commit -m "feat: add optimize check skill and script"
 ```
 
@@ -169,14 +169,14 @@ def test_build_optimize_supervisor_prompt_limits_repairs_to_metadata(self) -> No
 - [ ] **Step 2: Run the focused prompt tests to verify they fail**
 
 Run: `uv run python -m unittest tests.test_cli -v`
-Expected: FAIL because current prompts still describe runtime-owned gate behavior and do not require triton-npu-optimize-check usage.
+Expected: FAIL because current prompts still describe runtime-owned gate behavior and do not require triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round usage.
 
 - [ ] **Step 3: Update the optimize and optimize-supervisor contracts**
 
 In `skills/triton-npu-optimize/SKILL.md`, make both modes require:
 
-- baseline validation through `triton-npu-optimize-check check-baseline`
-- round validation through `triton-npu-optimize-check check-round`
+- baseline validation through `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round check-baseline`
+- round validation through `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round check-round`
 - repair-and-recheck behavior before moving on
 
 In `skills/optimize-supervisor/SKILL.md`, narrow the contract to:
@@ -246,7 +246,7 @@ Implementation guidelines:
   1. one worker invocation
   2. one supervisor invocation
   3. continue-or-stop decision
-- Remove runtime-owned technical gate decisions that duplicate `triton-npu-optimize-check`.
+- Remove runtime-owned technical gate decisions that duplicate `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`.
 - Keep `.triton-agent/round-brief.md` and `.triton-agent/supervisor-report.md` only for supervised handoff.
 - Let supervisor parse and emit a small decision artifact instead of requiring runtime to infer the decision from workspace state.
 
@@ -279,7 +279,7 @@ git commit -m "refactor: simplify optimize supervisor loop"
 
 Document:
 
-- what `triton-npu-optimize-check` is
+- what `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` is
 - that workers validate baseline and each round themselves
 - that `--supervisor off` means one worker owns the full session
 - that `--supervisor on` means worker owns one round and supervisor owns the outer loop
@@ -309,7 +309,7 @@ Manually verify:
 
 - optimize technical checks live in shared check helpers and skill scripts
 - prompts do not tell supervisor to modify operator code
-- runtime does not silently reintroduce artifact-based round gating outside `triton-npu-optimize-check`
+- runtime does not silently reintroduce artifact-based round gating outside `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`
 - docs describe worker-owned validation accurately
 
 - [ ] **Step 5: Commit docs and final verification updates**

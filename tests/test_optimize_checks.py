@@ -76,7 +76,7 @@ def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
 
 class OptimizeCheckTests(unittest.TestCase):
-    def test_optimize_checks_delegate_to_optimize_check_script_module(self) -> None:
+    def test_optimize_checks_delegate_to_split_submit_script_modules(self) -> None:
         module = SimpleNamespace(
             check_baseline=lambda path: {
                 "ok": False,
@@ -106,7 +106,14 @@ class OptimizeCheckTests(unittest.TestCase):
         self.assertEqual(round_result.kind, "round")
         self.assertEqual(round_result.decision, "pass")
         self.assertEqual(round_result.summary, "checked opt-round-1")
-        mocked.assert_any_call("triton-npu-optimize-check", "optimize_check")
+        mocked.assert_any_call(
+            "triton-npu-optimize-submit-baseline",
+            "optimize_submit_baseline",
+        )
+        mocked.assert_any_call(
+            "triton-npu-optimize-submit-round",
+            "optimize_submit_round",
+        )
 
     def test_check_baseline_reports_missing_perf_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

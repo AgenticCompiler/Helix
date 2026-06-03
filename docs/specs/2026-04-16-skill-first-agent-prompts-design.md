@@ -19,7 +19,7 @@ Some agent-facing prompts mention helper subcommands such as `check-round` direc
 ## Design
 
 1. In generated agent prompts, treat the skill as the primary workflow contract and describe helper subcommands as actions taken through that skill.
-2. In optimize prompts specifically, replace bare `check-baseline` / `check-round` instructions with wording that explicitly routes those checks through `triton-npu-optimize-check`.
+2. In optimize prompts specifically, replace bare `check-baseline` / `check-round` instructions with wording that explicitly routes those checks through `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`.
 3. Add prompt tests that lock in this distinction:
    - cross-skill prompt text must be skill-first
    - self-contained same-skill command references remain acceptable

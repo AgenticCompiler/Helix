@@ -52,13 +52,13 @@ This keeps the default safe, avoids widening the CLI surface, and gives users a 
 
 ### Single Source Of Truth
 
-Keep optimize PT cleanup policy anchored in the `triton-npu-optimize-check` skill-side contract code and continue reusing that logic from runtime through the existing bridge layer.
+Keep optimize PT cleanup policy anchored in the `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` skill-side contract code and continue reusing that logic from runtime through the existing bridge layer.
 
 This follows the repository rule that skill-side helper code must not import `triton_agent`, while runtime code may reuse skill-side behavior through `skill_loader`.
 
 Concretely:
 
-- extend `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py` with a small helper that answers whether ordinary optimize PT cleanup is enabled
+- extend `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check_contract.py` with a small helper that answers whether ordinary optimize PT cleanup is enabled
 - expose that helper through the existing `optimize_check` bridge module
 - reuse it from `src/triton_agent/optimize/pt_cleanup.py`
 

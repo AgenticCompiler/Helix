@@ -93,7 +93,7 @@ The conversion skill should delegate baseline work instead of re-describing it:
 - `triton-npu-gen-test`
 - `triton-npu-gen-bench`
 - `triton-npu-run-eval`
-- `triton-npu-optimize-check`
+- `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`
 
 ## Runtime Design
 

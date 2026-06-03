@@ -13,13 +13,14 @@ class OptimizeContractTests(unittest.TestCase):
         contract_path = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-optimize-check"
+            / "triton-npu-optimize-submit-baseline"
             / "references"
             / "contract.json"
         )
         data = json.loads(contract_path.read_text(encoding="utf-8"))
 
         self.assertIn("baseline_state_fields", data)
+        self.assertNotIn("round_state_required_fields", data)
         self.assertNotIn("baseline_state_required_fields", data)
         self.assertNotIn("baseline_state_field_descriptions", data)
 

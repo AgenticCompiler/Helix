@@ -80,7 +80,7 @@ Added after check-9 in the prompt string:
 
 - `log_check_result.md` format and PASS/FAIL contract stays the same (checks 1-9).
 - `build_log_check_request()` signature unchanged.
-- Skill staging (`+triton-npu-optimize-knowledge`, `+triton-npu-optimize-check`) unchanged.
+- Skill staging (`+triton-npu-optimize-knowledge`, `+triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`) unchanged.
 - `run_log_check_batch()` — no changes needed (`pattern_analysis.md` is per-workspace,
   produced alongside `log_check_result.md`).
 

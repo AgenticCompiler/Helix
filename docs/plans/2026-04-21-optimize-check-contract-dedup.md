@@ -4,7 +4,7 @@
 
 **Goal:** Deduplicate optimize-check models and baseline/round contract parsing while preserving the skill-first validation boundary and direct skill-script execution.
 
-**Architecture:** Move shared contract dataclasses and parsing helpers into a new helper module inside `skills/triton-npu-optimize-check/scripts/`, then add thin runtime bridge modules in `src/triton_agent/optimize/` that re-export the shared API for existing callers. Keep `optimize_check.py` as a thin CLI wrapper that owns argument parsing and process exit behavior.
+**Architecture:** Move shared contract dataclasses and parsing helpers into a new helper module inside `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/`, then add thin runtime bridge modules in `src/triton_agent/optimize/` that re-export the shared API for existing callers. Keep `optimize_check.py` as a thin CLI wrapper that owns argument parsing and process exit behavior.
 
 **Tech Stack:** Python `dataclasses`, `pathlib`, `importlib`, `unittest`
 
@@ -24,8 +24,8 @@
 ### Task 2: Move shared contract code into the optimize-check skill
 
 **Files:**
-- Create: `skills/triton-npu-optimize-check/scripts/optimize_contract.py`
-- Modify: `skills/triton-npu-optimize-check/scripts/optimize_check.py`
+- Create: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_contract.py`
+- Modify: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check.py`
 
 - [ ] Create a shared skill-local helper module containing the optimize-check dataclasses and baseline/round helper logic.
 - [ ] Reduce `optimize_check.py` to a thin CLI wrapper that imports shared types and check functions from the helper.

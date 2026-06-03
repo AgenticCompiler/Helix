@@ -3,8 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+
 from kernel_continuity_check import KernelContinuityResult, analyze_triton_kernel_continuity
-from optimize_check_contract import (
+from optimize_submit_round_contract import (
     BaselineArtifactsInspection,
     BaselineState,
     OptimizeCheckResult,
@@ -12,7 +13,6 @@ from optimize_check_contract import (
     RoundState,
     baseline_gate_issues,
     cleanup_dir_pt_files,
-    check_baseline,
     check_round,
     expected_round_operator_name,
     expected_round_perf_name,
@@ -36,7 +36,6 @@ __all__ = [
     "baseline_gate_issues",
     "cleanup_dir_pt_files",
     "build_parser",
-    "check_baseline",
     "check_round",
     "expected_round_operator_name",
     "expected_round_perf_name",
@@ -54,9 +53,6 @@ __all__ = [
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=Path(__file__).name)
     subparsers = parser.add_subparsers(dest="command", required=True)
-
-    baseline = subparsers.add_parser("check-baseline")
-    baseline.add_argument("--baseline-dir", required=True)
 
     round_parser = subparsers.add_parser("check-round")
     round_parser.add_argument("--round-dir", required=True)
@@ -86,14 +82,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.command == "check-baseline":
-        result = check_baseline(Path(args.baseline_dir).expanduser().resolve())
-    else:
-        result = check_round(
-            Path(args.round_dir).expanduser().resolve(),
-            min_rounds=args.min_rounds,
-            optimize_target=args.optimize_target,
-        )
+    result = check_round(
+        Path(args.round_dir).expanduser().resolve(),
+        min_rounds=args.min_rounds,
+        optimize_target=args.optimize_target,
+    )
 
     print(json.dumps(_build_cli_payload(result), ensure_ascii=True))
     if result.decision == "pass":

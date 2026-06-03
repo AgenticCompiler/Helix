@@ -159,7 +159,7 @@ Expected: PASS
 Add or update tests so optimize requests can declare staged skill names that include:
 
 - `triton-npu-optimize`
-- `triton-npu-optimize-check`
+- `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`
 - `triton-npu-analyze-round-performance`
 
 - [ ] **Step 2: Add a failing prompt or contract test that expects the new skill name to appear in optimize-facing guidance**
@@ -188,12 +188,12 @@ Run: `uv run python -m unittest tests.test_models tests.test_generation_contract
 
 Expected: PASS for the touched assertions
 
-### Task 6: Add optional round-state and triton-npu-optimize-check support for `perf-analysis.md`
+### Task 6: Add optional round-state and triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round support for `perf-analysis.md`
 
 **Files:**
 - Modify: `src/triton_agent/optimize/models.py`
 - Modify: `src/triton_agent/optimize/round_contract.py`
-- Modify: `skills/triton-npu-optimize-check/scripts/optimize_check.py`
+- Modify: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check.py`
 - Modify: `tests/test_optimize_round_contract.py`
 - Modify: `tests/test_optimize_checks.py`
 
@@ -206,7 +206,7 @@ Add tests that confirm `RoundState` can parse optional fields:
 
 and that artifact inspection can resolve a declared analysis file when present.
 
-- [ ] **Step 2: Add failing triton-npu-optimize-check tests for declared analysis paths**
+- [ ] **Step 2: Add failing triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round tests for declared analysis paths**
 
 Assert that:
 
@@ -217,7 +217,7 @@ Assert that:
 
 Add optional fields only. Do not add them to the required round contract.
 
-- [ ] **Step 4: Extend round artifact inspection and triton-npu-optimize-check validation**
+- [ ] **Step 4: Extend round artifact inspection and triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round validation**
 
 Check the declared analysis file only when `round-state.json` includes `perf_analysis_path`.
 
@@ -302,7 +302,7 @@ Run:
 uv run --group dev ruff check \
   skills/triton-npu-profile-operator/scripts/profile_summary.py \
   skills/triton-npu-analyze-ir/scripts/inspect_ir.py \
-  skills/triton-npu-optimize-check/scripts/optimize_check.py \
+  skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check.py \
   src/triton_agent/models.py \
   src/triton_agent/optimize/models.py \
   src/triton_agent/optimize/orchestration.py \

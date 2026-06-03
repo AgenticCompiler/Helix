@@ -33,7 +33,7 @@ This leaves three gaps:
 
 ### 1. Optimize-check success summary
 
-Update the pass summary in `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py` when `min_rounds` is provided and more rounds are still required.
+Update the pass summary in `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py` when `min_rounds` is provided and more rounds are still required.
 
 The summary should:
 
@@ -74,7 +74,7 @@ This keeps the optimize loop deliberate instead of reactive.
 
 ## Files
 
-- Modify `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py`
+- Modify `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py`
 - Modify `src/triton_agent/optimize/execution.py`
 - Modify `src/triton_agent/optimize/prompts.py`
 - Modify targeted tests under `tests/`

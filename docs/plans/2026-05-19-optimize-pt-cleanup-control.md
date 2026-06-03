@@ -41,13 +41,13 @@ Expected: failures showing that baseline and/or round cleanup still delete PT fi
 ### Task 2: Implement The Skill-Owned PT Cleanup Gate
 
 **Files:**
-- Modify: `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py`
-- Modify: `skills/triton-npu-optimize-check/scripts/optimize_check.py`
+- Modify: `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py`
+- Modify: `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round.py`
 - Modify: `src/triton_agent/optimize/pt_cleanup.py`
 
 - [ ] **Step 1: Add the environment-variable helper in the skill contract**
 
-In `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py`, add:
+In `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py`, add:
 
 - a module-level constant for `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES`
 - a small helper that returns `True` only for case-insensitive values `1`, `true`, `yes`, or `on`
@@ -57,11 +57,11 @@ Keep the helper local to the skill-side script so runtime can reuse it through t
 
 - [ ] **Step 2: Remove baseline PT deletion entirely**
 
-Update `check_baseline()` in `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py` so a passing baseline check returns `_build_result(kind="baseline", decision="pass", issues=())` directly, without calling `cleanup_dir_pt_files()` for either `baseline/` or the workspace root.
+Update `check_baseline()` in `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py` so a passing baseline check returns `_build_result(kind="baseline", decision="pass", issues=())` directly, without calling `cleanup_dir_pt_files()` for either `baseline/` or the workspace root.
 
 - [ ] **Step 3: Gate round PT deletion behind the new helper**
 
-Update `check_round()` in `skills/triton-npu-optimize-check/scripts/optimize_check_contract.py` so it:
+Update `check_round()` in `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py` so it:
 
 - preserves the existing validation flow
 - only calls `cleanup_dir_pt_files(round_dir)` when the new helper returns `True`
@@ -70,7 +70,7 @@ Update `check_round()` in `skills/triton-npu-optimize-check/scripts/optimize_che
 
 - [ ] **Step 4: Re-export the helper through the bridge module**
 
-Update `skills/triton-npu-optimize-check/scripts/optimize_check.py` to import and expose the new helper in `__all__` so `src/triton_agent/optimize/pt_cleanup.py` can reuse the same policy through `optimize_check_module()`.
+Update `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round.py` to import and expose the new helper in `__all__` so `src/triton_agent/optimize/pt_cleanup.py` can reuse the same policy through `optimize_check_module()`.
 
 - [ ] **Step 5: Gate end-of-run runtime cleanup through the same helper**
 
@@ -82,8 +82,8 @@ Run:
 
 ```bash
 uv run python -m unittest tests.test_skill_command_script tests.test_optimize_checks -v
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-check/scripts/optimize_check_contract.py
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-check/scripts/optimize_check.py
+bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py
+bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round.py
 ```
 
 Expected: the focused tests pass, and both strict pyright checks succeed.
@@ -187,8 +187,8 @@ uv run python -m unittest \
 Run:
 
 ```bash
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-check/scripts/optimize_check_contract.py
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-check/scripts/optimize_check.py
+bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py
+bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round.py
 ```
 
 - [ ] **Step 3: Run the repository-standard verification commands**

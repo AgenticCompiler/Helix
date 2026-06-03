@@ -7,7 +7,7 @@
 - Treat `checked` as a one-round-per-invocation mode where the CLI validates each finished round and decides whether to continue, stop, or fail.
 - Treat `supervised` as a one-round-per-invocation mode where the CLI validates each finished round first, then a supervisor audit pass decides whether to continue, stop, or fail.
 - Add a CLI-owned baseline preflight before the round loop so `checked` and `supervised` can keep round invocations focused on exactly one optimization round.
-- Keep `triton-npu-optimize-check` as the shared technical validation authority for baseline and round acceptance.
+- Keep `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` as the shared technical validation authority for baseline and round acceptance.
 
 ## Goals
 
@@ -61,7 +61,7 @@ Default:
 
 - One optimize agent owns the full session.
 - The agent may complete multiple rounds in one invocation.
-- The agent validates baseline and round state itself through `triton-npu-optimize-check`.
+- The agent validates baseline and round state itself through `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`.
 - The agent decides when the optimize session should stop.
 
 `checked`

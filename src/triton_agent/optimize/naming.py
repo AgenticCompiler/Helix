@@ -7,16 +7,16 @@ from triton_agent.batch_utils import (
     is_batch_operator_candidate,
     resolve_batch_operator_file,
 )
-from triton_agent.optimize.skill_contract import optimize_check_module
+from triton_agent.optimize.skill_contract import optimize_submit_round_module
 
-_OPTIMIZE_CHECK_MODULE = optimize_check_module()
+_OPTIMIZE_ROUND_MODULE = optimize_submit_round_module()
 _BATCH_OPTIMIZE_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")
 _BATCH_OPTIMIZE_EXCLUDED_NAMES = {"__init__.py"}
 
-expected_round_operator_name = _OPTIMIZE_CHECK_MODULE.expected_round_operator_name  # type: ignore[reportUnknownVariableType]
-expected_round_perf_name = _OPTIMIZE_CHECK_MODULE.expected_round_perf_name  # type: ignore[reportUnknownVariableType]
-resolve_round_perf_file = _OPTIMIZE_CHECK_MODULE.resolve_round_perf_file  # type: ignore[reportUnknownVariableType]
-resolve_round_operator_file = _OPTIMIZE_CHECK_MODULE.resolve_round_operator_file  # type: ignore[reportUnknownVariableType]
+expected_round_operator_name = _OPTIMIZE_ROUND_MODULE.expected_round_operator_name  # type: ignore[reportUnknownVariableType]
+expected_round_perf_name = _OPTIMIZE_ROUND_MODULE.expected_round_perf_name  # type: ignore[reportUnknownVariableType]
+resolve_round_perf_file = _OPTIMIZE_ROUND_MODULE.resolve_round_perf_file  # type: ignore[reportUnknownVariableType]
+resolve_round_operator_file = _OPTIMIZE_ROUND_MODULE.resolve_round_operator_file  # type: ignore[reportUnknownVariableType]
 
 
 def is_batch_optimize_operator_candidate(path: Path) -> bool:

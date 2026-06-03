@@ -2,11 +2,11 @@
 
 ## Summary
 
-Keep `skills/triton-npu-optimize-check/scripts/` self-contained so staged optimize-check scripts do not import `triton_agent` at all.
+Keep `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/` self-contained so staged optimize-check scripts do not import `triton_agent` at all.
 
 ## Problem
 
-`skills/triton-npu-optimize-check/scripts/optimize_check_contract.py` had started importing helper logic from `triton_agent.optimize.*`.
+`skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/scripts/optimize_check_contract.py` had started importing helper logic from `triton_agent.optimize.*`.
 
 That violates the confirmed project boundary for this skill family: the optimize-check skill should own its script-side helper logic, while `src/triton_agent` may load and call the skill through the bridge layer. Once the skill script imports `triton_agent`, direct script execution becomes coupled to whichever runtime package happens to be present, and staged workspaces can fail before contract checks even start.
 

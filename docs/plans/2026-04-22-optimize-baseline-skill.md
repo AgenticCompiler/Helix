@@ -14,7 +14,7 @@
 
 - Create: `skills/triton-npu-prepare-optimize-baseline/SKILL.md`
 - Modify: `skills/triton-npu-optimize/SKILL.md`
-- Modify: `skills/triton-npu-optimize-check/SKILL.md`
+- Modify: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md`
 - Modify: `README.md`
 - Modify: `src/triton_agent/prompts.py`
 - Modify: `tests/test_generation_contracts.py`
@@ -28,7 +28,7 @@ No change is planned for `src/triton_agent/optimize/orchestration.py`: optimize 
 **Files:**
 - Create: `skills/triton-npu-prepare-optimize-baseline/SKILL.md`
 - Modify: `skills/triton-npu-optimize/SKILL.md`
-- Modify: `skills/triton-npu-optimize-check/SKILL.md`
+- Modify: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md`
 - Modify: `README.md`
 - Test: `tests/test_generation_contracts.py`
 
@@ -38,7 +38,7 @@ No change is planned for `src/triton_agent/optimize/orchestration.py`: optimize 
     def test_optimize_baseline_preparation_uses_dedicated_skill(self) -> None:
         optimize = _read("skills/triton-npu-optimize/SKILL.md")
         baseline = _read("skills/triton-npu-prepare-optimize-baseline/SKILL.md")
-        optimize_check = _read("skills/triton-npu-optimize-check/SKILL.md")
+        optimize_check = _read("skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md")
         readme = _read("README.md")
 
         self.assertTrue(
@@ -48,7 +48,7 @@ No change is planned for `src/triton_agent/optimize/orchestration.py`: optimize 
         self.assertIn("triton-npu-gen-test", baseline)
         self.assertIn("triton-npu-gen-bench", baseline)
         self.assertIn("triton-npu-run-eval", baseline)
-        self.assertIn("triton-npu-optimize-check", baseline)
+        self.assertIn("triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round", baseline)
         self.assertNotIn("../triton-npu-run-eval/scripts/run-command.py", optimize)
         self.assertIn("Do not use this skill to generate missing harnesses", optimize_check)
         self.assertIn("triton-npu-prepare-optimize-baseline", readme)
@@ -105,7 +105,7 @@ Establish a reusable canonical `baseline/` before any optimize round begins.
 
 ### 4. Gate The Baseline
 
-- Use the sibling `triton-npu-optimize-check` skill to run `check-baseline`.
+- Use the sibling `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` skill to run `check-baseline`.
 - Keep repairing baseline state until `check-baseline` passes.
 - Stop once the workspace has a reusable canonical baseline.
 
@@ -127,7 +127,7 @@ Replace the baseline section in `skills/triton-npu-optimize/SKILL.md` with a han
 - Read [opt-note-format.md](references/opt-note-format.md) before initializing `opt-note.md`.
 ```
 
-Tighten `skills/triton-npu-optimize-check/SKILL.md` so it stays gate-only:
+Tighten `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md` so it stays gate-only:
 
 ```md
 - Do not use this skill to generate missing harnesses, repair operator logic, or invent missing baseline evidence.
@@ -159,7 +159,7 @@ Expected: all generation-contract tests pass, including the new baseline-skill r
 git add README.md \
   skills/triton-npu-prepare-optimize-baseline/SKILL.md \
   skills/triton-npu-optimize/SKILL.md \
-  skills/triton-npu-optimize-check/SKILL.md \
+  skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md \
   tests/test_generation_contracts.py
 git commit -m "docs: add optimize baseline preparation skill"
 ```
@@ -181,11 +181,11 @@ Add or replace assertions in `tests/test_cli.py` so worker, unsupervised, and su
             prompt.lower(),
         )
         self.assertNotIn(
-            "use the staged `triton-npu-optimize-check` skill to run `check-baseline`",
+            "use the staged `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` skill to run `check-baseline`",
             prompt.lower(),
         )
         self.assertIn(
-            "use the staged `triton-npu-optimize-check` skill to run `check-round`",
+            "use the staged `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` skill to run `check-round`",
             prompt.lower(),
         )
 ```
@@ -194,18 +194,18 @@ For the supervisor prompt, add:
 
 ```python
         self.assertIn("`triton-npu-prepare-optimize-baseline`", prompt)
-        self.assertIn("`triton-npu-optimize-check`", prompt)
+        self.assertIn("`triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`", prompt)
 ```
 
 - [ ] **Step 2: Run the targeted prompt tests and confirm the old wording fails**
 
 Run: `uv run python -m unittest tests.test_cli.PromptTests.test_build_optimize_worker_prompt_mentions_single_round_boundary tests.test_cli.PromptTests.test_build_optimize_unsupervised_prompt_mentions_baseline_state_contract tests.test_cli.PromptTests.test_build_optimize_supervisor_prompt_mentions_audit_role -v`
 
-Expected: `FAIL` because the current prompts still route baseline repair through `triton-npu-optimize-check`.
+Expected: `FAIL` because the current prompts still route baseline repair through `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`.
 
 - [ ] **Step 3: Update prompt strings in `src/triton_agent/prompts.py`**
 
-Replace the worker and unsupervised baseline lines with wording that points baseline work at the new skill and keeps `triton-npu-optimize-check` for round gating:
+Replace the worker and unsupervised baseline lines with wording that points baseline work at the new skill and keeps `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` for round gating:
 
 ```python
         "Use the staged `triton-npu-prepare-optimize-baseline` skill when baseline artifacts are missing or invalid.",
@@ -217,14 +217,14 @@ Replace the worker and unsupervised baseline lines with wording that points base
 Keep the round gate lines intact:
 
 ```python
-        "After finishing the round, use the staged `triton-npu-optimize-check` skill to run `check-round` and repair the round until it passes.",
-        "The current round must pass `check-round` through `triton-npu-optimize-check` before the invocation ends.",
+        "After finishing the round, use the staged `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` skill to run `check-round` and repair the round until it passes.",
+        "The current round must pass `check-round` through `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` before the invocation ends.",
 ```
 
 Update the supervisor contract line so audits read all three relevant skills:
 
 ```python
-                "Read the staged `triton-npu-optimize`, `triton-npu-prepare-optimize-baseline`, and `triton-npu-optimize-check` skills as the workflow contract that the worker round was supposed to follow.",
+                "Read the staged `triton-npu-optimize`, `triton-npu-prepare-optimize-baseline`, and `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` skills as the workflow contract that the worker round was supposed to follow.",
 ```
 
 - [ ] **Step 4: Re-run the targeted prompt tests**
@@ -260,7 +260,7 @@ Extend the existing explicit optimize-skill staging test in `tests/test_skills.p
                 skill_names=(
                     "triton-npu-optimize",
                     "triton-npu-prepare-optimize-baseline",
-                    "triton-npu-optimize-check",
+                    "triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round",
                     "triton-npu-analyze-round-performance",
                 ),
             )
@@ -268,7 +268,7 @@ Extend the existing explicit optimize-skill staging test in `tests/test_skills.p
             target = self._skills_target(workspace, "codex")
             self.assertTrue((target / "triton-npu-optimize" / "SKILL.md").exists())
             self.assertTrue((target / "triton-npu-prepare-optimize-baseline" / "SKILL.md").exists())
-            self.assertTrue((target / "triton-npu-optimize-check" / "SKILL.md").exists())
+            self.assertTrue((target / "triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round" / "SKILL.md").exists())
 ```
 
 - [ ] **Step 2: Run the targeted staging regression**
