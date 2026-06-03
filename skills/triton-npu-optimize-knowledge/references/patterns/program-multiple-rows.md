@@ -9,6 +9,11 @@ Amortize per-program fixed costs and improve vector-friendly batching for **row-
 - The kernel is **naturally row-wise**: each output row depends mainly on one row of input (e.g. row-wise LogSumExp, row norms, row softmax statistics).
 - Profiling or timeline views suggest **high scalar/control overhead**, **under-filled vector work per program**, or **many tiny programs** relative to problem size `B` (batch / number of rows).
 - The row-wise math already uses **tile loops along `N`** (`BLOCK_N`); increasing **`BLOCK_M`** does not force an extra full pass over global memory if you keep a **single streaming pass** over `N` per program.
+- `report.txt` overall `[Pipe Distribution]` shows high SCALAR/control share while VECTOR work is low or thin, suggesting fixed per-program setup is large compared with useful row work.
+- `report.txt` overall `[Key Ratios]` shows a high SCALAR:VECTOR ratio, and code inspection shows `program_id(0)` maps one-to-one to rows.
+- `report.txt` overall `[VECTOR Unit]` shows low utilization or a small amount of vector work per program, consistent with narrow row tiles such as `(1, BLOCK_N)`.
+- `report.txt` `[WAIT_FLAG / BAR Sync]`, `[Pipeline Flows]`, or timeline views show frequent short-program wait/barrier/control patterns rather than long sustained vector work.
+- `report.txt` `[Pipe Distribution Over Each Core]` shows similar SCALAR-heavy / VECTOR-thin behavior across cores, suggesting the issue is global program granularity rather than a single-core anomaly.
 
 ## Signals
 
