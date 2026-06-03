@@ -425,3 +425,9 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Use When:
   - Explicit `i64` or `i32` comparisons appear on the hot path outside the compiler's normal fast load/store mask cases.
   - Comparison-heavy control flow or masking looks like a real vectorization blocker rather than just minor boundary handling.
+  - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
+  - `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR ratio: `%(SCALAR) / %(VECTOR) > 10`.
+  - `report.txt` overall `[Key Ratios]` shows a high `SCALAR:VECTOR` ratio, such as `SCALAR:VECTOR_instr` much larger than `4:1`.
+  - `report.txt` overall `[VECTOR Unit]` shows low or zero utilization, and the top VECTOR instructions are mask-like operations such as `MOVEMASK`.
+  - `report.txt` overall `[TRACE Events]` contains many mask/control-related scalar events such as `CMP_IMM`, `JUMPC`, `JUMPCMP`, `MOVEMASK`, or `SIGNEXT`.
+  - UB conflicts are low and MTE2/MTE3 activity does not explain the regression by itself, making scalarized mask/control work a plausible cause.
