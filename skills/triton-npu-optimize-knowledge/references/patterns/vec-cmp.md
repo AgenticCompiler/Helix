@@ -8,6 +8,7 @@ Rewrite explicit integer compare-heavy logic into a form that is more vector-fri
 
 - Explicit `i64` or `i32` comparisons appear on the hot path outside the compiler's normal fast load/store mask cases.
 - Comparison-heavy control flow or masking looks like a real vectorization blocker rather than just minor boundary handling.
+- You have a `report.txt` output from `extracted_bin_data` and its overall pipe sections suggest scalarized compare work is blocking useful vector work.
 
 ## Signals
 
@@ -16,6 +17,14 @@ Rewrite explicit integer compare-heavy logic into a form that is more vector-fri
 - Integer comparisons produce explicit boolean masks used in `tl.where`, conditional assignments, or similar hot-path logic.
 - The comparison is written outside the compiler's normal `tl.load` or `tl.store` mask fast path.
 - The code still compares integer operands directly even though vector-friendly `fp32` comparison would preserve semantics.
+
+### Profile
+
+- `report.txt` overall `[Pipe Distribution]` section shows **dominant scalar work with little useful vector work**, for example `SCALAR_instr_pct > 75%`, `SCALAR_cycles_pct > 75%`, and `VECTOR_cycles_pct < 15%`.
+- `report.txt` overall `[Key Ratios]` section shows a very high scalar-to-vector ratio, for example `SCALAR:VECTOR_instr > 10:1` or `SCALAR:VECTOR_cycles > 10:1`, while the hot code has explicit integer comparisons that can explain the scalar work.
+- `report.txt` `[TRACE Events]` or `[SCALAR Instr Types]` sections contain compare/mask-building scalar activity such as `CMP_IMM`, `JUMPC`, `JUMPCMP`, `MOVEMASK`, `SIGNEXT`, `ZEROEXT`, `AND`, or repeated scalar integer arithmetic near mask construction.
+- `report.txt` `[VECTOR Unit]` shows very few vector instructions, or mainly mask-related instructions such as `MOVEMASK`, suggesting compare/mask work did not become useful vector compute.
+- Treat the `report.txt` evidence as a trigger only when it matches the code signal; if `DIV`, `REM`, `MADD`, `ADD`, or stride arithmetic dominate around flat-index decoding or pooling coordinate math, treat `vec-cmp` as secondary and prefer the matching address/indexing pattern first.
 
 ## Problem Description
 
@@ -133,9 +142,12 @@ x = tl.load(x_ptr + offsets, mask=mask_fp32)
 
 3. **Non-performance-critical code** - optimization overhead may not be justified
 
+4. **`report.txt` does not support a scalarized-compare bottleneck** - if `SCALAR` is not meaningful, `VECTOR` is already well utilized, or the scalar work is better explained by address generation, pooling coordinate math, gather/scatter, or memory movement, prefer the matching pattern instead.
+
 ## What To Verify After Applying
 
 - Verify the comparison result still feeds the same hot-path conditional logic after the dtype rewrite.
 - Verify both operands are cast in a way that preserves semantic equivalence for the downstream mask usage.
 - Re-check downstream dtype expectations and confirm the comparison is no longer a scalarization bottleneck.
+- Re-check `extracted_bin_data/report.txt` when available and confirm the scalar/vector balance improved instead of merely moving the bottleneck.
 - Re-check `tl.maximum()` and `tl.minimum()` call sites on the hot path and document any intentional `propagate_nan` choice as a semantics change.
