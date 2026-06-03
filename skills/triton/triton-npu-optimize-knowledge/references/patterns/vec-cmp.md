@@ -9,7 +9,7 @@ Rewrite explicit integer compare-heavy logic into a form that is more vector-fri
 - Explicit `i64` or `i32` comparisons appear on the hot path outside the compiler's normal fast load/store mask cases.
 - Comparison-heavy control flow or masking looks like a real vectorization blocker rather than just minor boundary handling.
 - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
-- `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR ratio: `%(SCALAR) / %(VECTOR) > 10`.
+- `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR ratio: `%(SCALAR_dur) / %(VECTOR_dur) > 10`.
 - `report.txt` overall `[Key Ratios]` shows a high `SCALAR:VECTOR` ratio, such as `SCALAR:VECTOR_instr` much larger than `4:1`.
 - `report.txt` overall `[VECTOR Unit]` shows low or zero utilization, and the top VECTOR instructions are mask-like operations such as `MOVEMASK`.
 - `report.txt` overall `[TRACE Events]` contains many mask/control-related scalar events such as `CMP_IMM`, `JUMPC`, `JUMPCMP`, `MOVEMASK`, or `SIGNEXT`.
@@ -25,7 +25,7 @@ Rewrite explicit integer compare-heavy logic into a form that is more vector-fri
 
 ### Profile
 
-- `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR ratio, for example `%(SCALAR) / %(VECTOR) > 10`. This supports `vec-cmp` only when the code has explicit integer masks, because scalarized integer compares can spend most cycles building control/mask state instead of doing useful vector selection.
+- `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR ratio, for example `%(SCALAR_dur) / %(VECTOR_dur) > 10`. This supports `vec-cmp` only when the code has explicit integer masks, because scalarized integer compares can spend most cycles building control/mask state instead of doing useful vector selection.
 - `report.txt` overall `[Key Ratios]` shows a high `SCALAR:VECTOR` ratio, such as `SCALAR:VECTOR_instr` much larger than `4:1` or `SCALAR:VECTOR_cycles > 10:1`. This matches `vec-cmp` when integer compare masks feed hot-path `tl.where`, conditional assignments, or reused masks, because those masks should become cheaper if the comparison is lowered through vector-friendly `fp32` compare.
 - `report.txt` overall `[VECTOR Unit]` shows low or zero utilization, and the top VECTOR instructions are mask-like operations such as `MOVEMASK`. This suggests the vector pipe is mostly receiving or materializing masks rather than performing sustained vector compute, which is the failure mode `vec-cmp` tries to avoid.
 - `report.txt` overall `[TRACE Events]` or `[SCALAR Instr Types]` contains many mask/control-related scalar events such as `CMP_IMM`, `JUMPC`, `JUMPCMP`, `MOVEMASK`, `SIGNEXT`, `ZEROEXT`, or `AND`. These are direct signatures of integer compare, branch/control, integer widening, and mask materialization; they strengthen the `vec-cmp` diagnosis when they line up with explicit compare-mask code.
