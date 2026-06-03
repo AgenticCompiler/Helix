@@ -16,6 +16,12 @@ class SupportsOptimizeRecovery(Protocol):
         ...
 
 
+_STALL_RECOVERY_SUMMARY = (
+    "The previous invocation ended unexpectedly before completion. "
+    "Continue from the existing workspace state and recorded optimize artifacts."
+)
+
+
 class OptimizeRunLoop:
     def __init__(self, max_recovery_attempts: int = 2) -> None:
         self.max_recovery_attempts = max_recovery_attempts
@@ -62,7 +68,7 @@ class OptimizeRunLoop:
                 return result
 
             attempt += 1
-            resume_summary = self._build_summary(result)
+            resume_summary = _STALL_RECOVERY_SUMMARY
 
     def _resume_until_round_requirement_satisfied(
         self,
@@ -97,10 +103,6 @@ class OptimizeRunLoop:
                     current_request,
                 )
         return result, current_request
-
-    def _build_summary(self, result: AgentResult) -> str:
-        output = result.stdout.strip() or result.stderr.strip() or "No progress output was captured."
-        return output[-2000:]
 
     def _needs_more_rounds(self, request: AgentRequest) -> bool:
         required_rounds = cast(int, request.min_rounds)

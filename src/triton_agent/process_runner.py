@@ -12,6 +12,7 @@ import threading
 from typing import Any, Callable, Optional, Protocol, TextIO, cast
 
 from triton_agent.models import AgentResult
+from triton_agent.transient_failures import contains_transient_agent_failure_text
 
 _IS_WINDOWS = sys.platform == "win32"
 
@@ -58,6 +59,9 @@ def run_process(
     output_filter: Optional[OutputFilter] = None,
     interrupt_policy: Optional[InterruptPolicy] = None,
     extra_env: Optional[dict[str, str]] = None,
+    *,
+    rendered_chunk_sink: Optional[Callable[[str], None]] = None,
+    collect_stdout: bool = True,
 ) -> AgentResult:
     if mode == "interactive":
         return run_interactive_process(command, workdir, extra_env=extra_env)
@@ -71,6 +75,8 @@ def run_process(
             session_id_extractor=session_id_extractor or (lambda _text: None),
             interrupt_policy=interrupt_policy,
             extra_env=extra_env,
+            rendered_chunk_sink=rendered_chunk_sink,
+            collect_stdout=collect_stdout,
         )
     if mode == "buffered":
         return run_buffered_process(
@@ -226,6 +232,9 @@ def run_streaming_process(
     session_id_extractor: Optional[Callable[[str], Optional[str]]] = None,
     interrupt_policy: Optional[InterruptPolicy] = None,
     extra_env: Optional[dict[str, str]] = None,
+    *,
+    rendered_chunk_sink: Optional[Callable[[str], None]] = None,
+    collect_stdout: bool = True,
 ) -> AgentResult:
     if _IS_WINDOWS:
         return _run_streaming_process_windows(
@@ -237,6 +246,8 @@ def run_streaming_process(
             session_id_extractor=session_id_extractor or (lambda _text: None),
             interrupt_policy=interrupt_policy,
             extra_env=extra_env,
+            rendered_chunk_sink=rendered_chunk_sink,
+            collect_stdout=collect_stdout,
         )
     return _run_streaming_process_pty(
         command,
@@ -247,6 +258,8 @@ def run_streaming_process(
         session_id_extractor=session_id_extractor or (lambda _text: None),
         interrupt_policy=interrupt_policy,
         extra_env=extra_env,
+        rendered_chunk_sink=rendered_chunk_sink,
+        collect_stdout=collect_stdout,
     )
 
 
@@ -259,6 +272,9 @@ def _run_streaming_process_windows(
     session_id_extractor: Callable[[str], Optional[str]] = lambda _text: None,
     interrupt_policy: Optional[InterruptPolicy] = None,
     extra_env: Optional[dict[str, str]] = None,
+    *,
+    rendered_chunk_sink: Optional[Callable[[str], None]] = None,
+    collect_stdout: bool = True,
 ) -> AgentResult:
     """Windows-compatible streaming using threads to drain stdout and stderr."""
     process = subprocess.Popen(
@@ -273,20 +289,30 @@ def _run_streaming_process_windows(
     start_ref: list[float] = [time.monotonic()]
     stalled_ref: list[bool] = [False]
     session_id_ref: list[str | None] = [None]
+    retryable_failure_ref: list[bool] = [False]
     lock = threading.Lock()
+    rolling_window = ""
 
     def reader() -> None:
+        nonlocal rolling_window
         assert process.stdout is not None
         while True:
             chunk = process.stdout.read(4096)
             if not chunk:
                 break
             text = chunk.decode(errors="replace")
+            rolling_window = (rolling_window + text.lower())[-4096:]
+            retryable_failure_ref[0] = (
+                retryable_failure_ref[0] or contains_transient_agent_failure_text(rolling_window)
+            )
             filtered = output_filter.feed(text) if output_filter is not None else text
             with lock:
                 if filtered:
-                    output_chunks.append(filtered)
+                    if collect_stdout:
+                        output_chunks.append(filtered)
                     print(filtered, file=stdout or sys.stdout, end="", flush=True)
+                    if rendered_chunk_sink is not None:
+                        rendered_chunk_sink(filtered)
                 start_ref[0] = time.monotonic()
                 session_id_ref[0] = session_id_ref[0] or session_id_extractor(text)
 
@@ -312,29 +338,37 @@ def _run_streaming_process_windows(
         if output_filter is not None:
             trailing = output_filter.feed("", flush=True)
             if trailing:
-                output_chunks.append(trailing)
+                if collect_stdout:
+                    output_chunks.append(trailing)
                 print(trailing, file=stdout or sys.stdout, end="")
+                if rendered_chunk_sink is not None:
+                    rendered_chunk_sink(trailing)
         return AgentResult(
             return_code=interrupt_policy.interrupted_return_code,
-            stdout="".join(output_chunks),
+            stdout="".join(output_chunks) if collect_stdout else "",
             stderr="",
             stalled=False,
             session_id=session_id_ref[0],
+            retryable_failure=retryable_failure_ref[0],
         )
 
     reader_thread.join()
     if output_filter is not None:
         trailing = output_filter.feed("", flush=True)
         if trailing:
-            output_chunks.append(trailing)
+            if collect_stdout:
+                output_chunks.append(trailing)
             print(trailing, file=stdout or sys.stdout, end="")
+            if rendered_chunk_sink is not None:
+                rendered_chunk_sink(trailing)
     rc = process.wait() if not stalled_ref[0] else 1
     return AgentResult(
         return_code=rc,
-        stdout="".join(output_chunks),
+        stdout="".join(output_chunks) if collect_stdout else "",
         stderr="",
         stalled=stalled_ref[0],
         session_id=session_id_ref[0],
+        retryable_failure=retryable_failure_ref[0],
     )
 
 
@@ -347,6 +381,9 @@ def _run_streaming_process_pty(
     session_id_extractor: Callable[[str], Optional[str]] = lambda _text: None,
     interrupt_policy: Optional[InterruptPolicy] = None,
     extra_env: Optional[dict[str, str]] = None,
+    *,
+    rendered_chunk_sink: Optional[Callable[[str], None]] = None,
+    collect_stdout: bool = True,
 ) -> AgentResult:
     """Unix PTY-backed streaming so the child sees a terminal and flushes incrementally."""
     if pty is None or select is None:
@@ -372,6 +409,8 @@ def _run_streaming_process_pty(
     os.close(slave_fd)
     start = time.monotonic()
     session_id: Optional[str] = None
+    retryable_failure = False
+    rolling_window = ""
 
     try:
         while True:
@@ -385,10 +424,17 @@ def _run_streaming_process_pty(
                     raise
                 if chunk:
                     text = chunk.decode(errors="replace")
+                    rolling_window = (rolling_window + text.lower())[-4096:]
+                    retryable_failure = (
+                        retryable_failure or contains_transient_agent_failure_text(rolling_window)
+                    )
                     filtered = output_filter.feed(text) if output_filter is not None else text
                     if filtered:
-                        output_chunks.append(filtered)
+                        if collect_stdout:
+                            output_chunks.append(filtered)
                         print(filtered, file=stdout or sys.stdout, end="")
+                        if rendered_chunk_sink is not None:
+                            rendered_chunk_sink(filtered)
                     start = time.monotonic()
                     session_id = session_id or session_id_extractor(text)
                 elif process.poll() is not None:
@@ -399,22 +445,27 @@ def _run_streaming_process_pty(
                 process.terminate()
                 return AgentResult(
                     return_code=1,
-                    stdout="".join(output_chunks),
+                    stdout="".join(output_chunks) if collect_stdout else "",
                     stderr="",
                     stalled=True,
                     session_id=session_id,
+                    retryable_failure=retryable_failure,
                 )
         if output_filter is not None:
             trailing = output_filter.feed("", flush=True)
             if trailing:
-                output_chunks.append(trailing)
+                if collect_stdout:
+                    output_chunks.append(trailing)
                 print(trailing, file=stdout or sys.stdout, end="")
+                if rendered_chunk_sink is not None:
+                    rendered_chunk_sink(trailing)
         return AgentResult(
             return_code=process.wait(),
-            stdout="".join(output_chunks),
+            stdout="".join(output_chunks) if collect_stdout else "",
             stderr="",
             stalled=False,
             session_id=session_id,
+            retryable_failure=retryable_failure,
         )
     except KeyboardInterrupt:
         if interrupt_policy is None:
@@ -423,14 +474,18 @@ def _run_streaming_process_pty(
         if output_filter is not None:
             trailing = output_filter.feed("", flush=True)
             if trailing:
-                output_chunks.append(trailing)
+                if collect_stdout:
+                    output_chunks.append(trailing)
                 print(trailing, file=stdout or sys.stdout, end="")
+                if rendered_chunk_sink is not None:
+                    rendered_chunk_sink(trailing)
         return AgentResult(
             return_code=interrupt_policy.interrupted_return_code,
-            stdout="".join(output_chunks),
+            stdout="".join(output_chunks) if collect_stdout else "",
             stderr="",
             stalled=False,
             session_id=session_id,
+            retryable_failure=retryable_failure,
         )
     finally:
         os.close(master_fd)

@@ -154,10 +154,11 @@ class OpenHandsRunnerTests(unittest.TestCase):
                         result = runner.run(self._request(workspace, show_output=True), stdout=io.StringIO())
 
             self.assertEqual(result.return_code, 0)
+            self.assertEqual(result.stdout, "")
             log_path = workspace / "triton-agent-logs" / "gen-test.show-output.log"
             self.assertTrue(log_path.exists())
             content = log_path.read_text(encoding="utf-8")
-            self.assertIn("attempt=1", content)
+            self.assertNotIn("attempt=1", content)
             self.assertIn("assistant update", content)
             self.assertIn("assistant final", content)
 

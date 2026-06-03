@@ -329,7 +329,8 @@ class OptimizeSupervisorTests(unittest.TestCase):
                 1,
             )
             self.assertIn("This invocation continues a continuous optimize task.", resume_prompt)
-            self.assertIn("Progress summary:\nstalled once", resume_prompt)
+            self.assertIn("Progress summary:", resume_prompt)
+            self.assertIn("previous invocation ended unexpectedly", resume_prompt.lower())
 
     def test_retries_with_progress_summary_after_stall(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -374,7 +375,8 @@ class OptimizeSupervisorTests(unittest.TestCase):
             result = supervisor.run(runner, request)
             self.assertEqual(result.return_code, 0)
             self.assertEqual(len(runner.prompts), 2)
-            self.assertIn("working...", runner.prompts[1])
+            self.assertIn("previous invocation ended unexpectedly", runner.prompts[1].lower())
+            self.assertNotIn("working...", runner.prompts[1])
 
     def test_continuous_does_not_retry_non_stalled_agent_failure(self) -> None:
         request = AgentRequest(
@@ -482,7 +484,13 @@ class OptimizeSupervisorTests(unittest.TestCase):
 
             self.assertEqual(result.return_code, 0)
             self.assertEqual(runner.calls, ["run", "resume", "resume"])
-            self.assertEqual(runner.resume_summaries, ["first stall", "second stall"])
+            self.assertEqual(
+                runner.resume_summaries,
+                [
+                    "The previous invocation ended unexpectedly before completion. Continue from the existing workspace state and recorded optimize artifacts.",
+                    "The previous invocation ended unexpectedly before completion. Continue from the existing workspace state and recorded optimize artifacts.",
+                ],
+            )
 
     def test_restarts_when_successful_run_has_too_few_rounds(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

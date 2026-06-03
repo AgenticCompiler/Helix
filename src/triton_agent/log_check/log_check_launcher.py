@@ -377,7 +377,10 @@ def run_log_check(
             emit_verbose_lines(sys.stderr, "skills", cleanup_warnings)
 
     if not result.succeeded:
-        detail = result.stderr.strip() or result.stdout.strip() or "agent execution failed"
+        if request.show_output:
+            detail = result.stderr.strip() or f"agent execution failed; see show-output log: {show_output_log_path(request)}"
+        else:
+            detail = result.stderr.strip() or result.stdout.strip() or "agent execution failed"
         print(f"[optimize-check] log check failed: {detail}", file=sys.stderr, flush=True)
         return result.return_code if result.return_code != 0 else 1
 

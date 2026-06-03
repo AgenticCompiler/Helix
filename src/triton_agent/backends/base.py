@@ -20,9 +20,9 @@ from triton_agent.otel_trace import (
 from triton_agent.process_runner import InterruptPolicy, OutputFilter, run_process
 from triton_agent.show_output_log import (
     open_show_output_log,
-    write_show_output_attempt_result,
-    write_show_output_attempt_start,
+    write_show_output_chunk,
 )
+from triton_agent.transient_failures import contains_transient_agent_failure_text
 from triton_agent.verbose import emit_command_block, emit_verbose_lines
 
 
@@ -136,10 +136,21 @@ class AgentRunner(ABC):
         stdout: Optional[TextIO] = None,
     ) -> AgentResult:
         with open_show_output_log(request) as log_stream:
-            attempt_number = 1
-            write_show_output_attempt_start(log_stream, request=request, attempt_number=attempt_number)
-            result = self._run_once(command, request, stdout=stdout)
-            write_show_output_attempt_result(log_stream, result=result)
+            rendered_chunk_sink: Callable[[str], None] | None = None
+            if log_stream is not None:
+                def _write_rendered_chunk(text: str) -> None:
+                    write_show_output_chunk(log_stream, text)
+
+                rendered_chunk_sink = _write_rendered_chunk
+
+            collect_stdout = not request.show_output
+            result = self._run_once(
+                command,
+                request,
+                stdout=stdout,
+                rendered_chunk_sink=rendered_chunk_sink,
+                collect_stdout=collect_stdout,
+            )
             if request.interact:
                 return result
 
@@ -148,10 +159,13 @@ class AgentRunner(ABC):
             while _is_transient_agent_failure(result) and attempt < max_retries:
                 attempt += 1
                 time.sleep(_retry_delay_seconds(attempt))
-                attempt_number += 1
-                write_show_output_attempt_start(log_stream, request=request, attempt_number=attempt_number)
-                result = self._run_once(command, request, stdout=stdout)
-                write_show_output_attempt_result(log_stream, result=result)
+                result = self._run_once(
+                    command,
+                    request,
+                    stdout=stdout,
+                    rendered_chunk_sink=rendered_chunk_sink,
+                    collect_stdout=collect_stdout,
+                )
             return result
 
     def _run_once(
@@ -160,6 +174,8 @@ class AgentRunner(ABC):
         request: AgentRequest,
         *,
         stdout: Optional[TextIO] = None,
+        rendered_chunk_sink: Callable[[str], None] | None = None,
+        collect_stdout: bool = True,
     ) -> AgentResult:
         trace_path = trace_path_from_request(request)
         start_time = utc_timestamp()
@@ -176,6 +192,8 @@ class AgentRunner(ABC):
                 output_filter=self.output_filter(request),
                 interrupt_policy=self.interrupt_policy(request),
                 extra_env=request.extra_env,
+                rendered_chunk_sink=rendered_chunk_sink,
+                collect_stdout=collect_stdout,
             )
             return result
         except BaseException as exc:
@@ -210,12 +228,6 @@ class AgentRunner(ABC):
                     ),
                 )
 
-
-_TRANSIENT_AGENT_FAILURE_PATTERNS = (
-    "429 too many requests",
-    "exceeded retry limit",
-    "rate limit",
-)
 _CODE_AGENT_MAX_RETRIES_ENV = "TRITON_AGENT_CODE_AGENT_MAX_RETRIES"
 _DEFAULT_CODE_AGENT_MAX_RETRIES = 2
 _STALL_TIMEOUT_SECONDS_ENV = "TRITON_AGENT_STALL_TIMEOUT_SECONDS"
@@ -225,8 +237,10 @@ _DEFAULT_STALL_TIMEOUT_SECONDS = 900
 def _is_transient_agent_failure(result: AgentResult) -> bool:
     if result.stalled or result.return_code == 130:
         return False
+    if result.retryable_failure:
+        return True
     combined = f"{result.stdout}\n{result.stderr}".lower()
-    return any(pattern in combined for pattern in _TRANSIENT_AGENT_FAILURE_PATTERNS)
+    return contains_transient_agent_failure_text(combined)
 
 
 def _retry_delay_seconds(retry_number: int) -> float:

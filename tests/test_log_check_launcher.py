@@ -199,6 +199,37 @@ class LogCheckLauncherTests(unittest.TestCase):
             self.assertEqual(summary["command_kind"], "log-check")
             self.assertEqual(summary["tool_trace_capability"], "agent_invocation_only")
 
+    def test_run_log_check_failure_with_show_output_uses_log_hint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "LayerNorm"
+            target.mkdir()
+            captured: dict[str, AgentRequest] = {}
+            stderr = StringIO()
+
+            class DummyRunner:
+                def run(self, request: AgentRequest) -> AgentResult:
+                    captured["request"] = request
+                    return AgentResult(return_code=1, stdout="", stderr="")
+
+            with patch(
+                "triton_agent.log_check.log_check_launcher.resolve_staged_skills",
+                side_effect=_dummy_resolve_staged_skills,
+            ), patch(
+                "triton_agent.log_check.log_check_launcher.SkillLinkManager",
+                return_value=_DummySkillLinkManager(),
+            ), patch(
+                "triton_agent.log_check.log_check_launcher.create_runner",
+                return_value=DummyRunner(),
+            ), patch("sys.stderr", stderr):
+                exit_code = run_log_check(target_path=target, agent_name="codex", show_output=True)
+
+            self.assertEqual(exit_code, 1)
+            request = captured["request"]
+            self.assertIn(
+                f"see show-output log: {show_output_log_path(request)}",
+                stderr.getvalue(),
+            )
+
     def test_run_log_check_batch_uses_each_workspace_as_agent_workdir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

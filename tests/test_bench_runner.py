@@ -229,8 +229,14 @@ class LocalBenchRunnerTests(unittest.TestCase):
             fake_result = make_skill_result(0, "", "")
             perf_file = root / "abs_perf.txt"
 
-            def _fake_helper(passed_bench: Path, passed_operator: Path, *, verbose: bool = False,
-                             force_recompile: bool = False, output: str | None = None):
+            def _fake_helper(
+                passed_bench: Path,
+                passed_operator: Path,
+                *,
+                verbose: bool = False,
+                force_recompile: bool = False,
+                output: Optional[str] = None,
+            ):
                 del passed_bench, passed_operator, verbose, force_recompile, output
                 observed_cwds.append(Path.cwd())
                 return fake_result, perf_file

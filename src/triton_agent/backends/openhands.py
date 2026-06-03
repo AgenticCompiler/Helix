@@ -11,8 +11,7 @@ from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult
 from triton_agent.show_output_log import (
     open_show_output_log,
-    write_show_output_attempt_result,
-    write_show_output_attempt_start,
+    write_show_output_chunk,
 )
 from triton_agent.verbose import emit_command_block
 
@@ -69,35 +68,35 @@ class OpenHandsRunner(AgentRunner):
             self._log_sdk_launch(request, stderr or sys.stderr)
 
         with open_show_output_log(request) as log_stream:
-            write_show_output_attempt_start(log_stream, request=request, attempt_number=1)
             try:
                 dependencies = _load_openhands_dependencies()
-                conversation, emitted_lines = self._create_conversation(
+                conversation, emitted_lines, saw_output = self._create_conversation(
                     request,
                     dependencies,
                     model=model,
                     api_key=api_key,
                     stdout=stdout,
+                    log_stream=log_stream,
                 )
                 conversation.send_message(request.prompt)
                 result = conversation.run()
             except OpenHandsSetupError as exc:
-                error_result = _error_result(str(exc))
-                write_show_output_attempt_result(log_stream, result=error_result)
-                return error_result
+                return _error_result(str(exc))
             except Exception as exc:  # pragma: no cover - defensive adapter boundary
-                error_result = _error_result(f"OpenHands backend failed: {exc}")
-                write_show_output_attempt_result(log_stream, result=error_result)
-                return error_result
+                return _error_result(f"OpenHands backend failed: {exc}")
+
+            final_line = _event_to_text(result)
+            if request.show_output:
+                if not saw_output[0] and final_line:
+                    rendered = final_line if final_line.endswith("\n") else f"{final_line}\n"
+                    print(rendered, file=stdout or sys.stdout, end="")
+                    write_show_output_chunk(log_stream, rendered)
+                return AgentResult(return_code=0, stdout="", stderr="")
 
             output = "\n".join(line for line in emitted_lines if line)
-            if not output:
-                final_line = _event_to_text(result)
-                if final_line:
-                    output = final_line
-            agent_result = AgentResult(return_code=0, stdout=output, stderr="")
-            write_show_output_attempt_result(log_stream, result=agent_result)
-            return agent_result
+            if not output and final_line:
+                output = final_line
+            return AgentResult(return_code=0, stdout=output, stderr="")
 
     def _create_conversation(
         self,
@@ -107,7 +106,8 @@ class OpenHandsRunner(AgentRunner):
         model: str,
         api_key: str,
         stdout: TextIO | None,
-    ) -> tuple[Any, list[str]]:
+        log_stream: TextIO | None,
+    ) -> tuple[Any, list[str], list[bool]]:
         llm_kwargs: dict[str, object] = {
             "model": model,
             "api_key": dependencies.SecretStr(api_key),
@@ -141,15 +141,21 @@ class OpenHandsRunner(AgentRunner):
         )
 
         emitted_lines: list[str] = []
+        # Mutable list so _capture_event's closure can signal back whether any output was emitted.
+        saw_output: list[bool] = [False]
 
         def _capture_event(event: object) -> None:
             line = _event_to_text(event)
             if not line:
                 return
-            emitted_lines.append(line)
+            saw_output[0] = True
             if request.show_output:
+                rendered = line if line.endswith("\n") else f"{line}\n"
                 stream = stdout or sys.stdout
-                print(line, file=stream)
+                print(rendered, file=stream, end="")
+                write_show_output_chunk(log_stream, rendered)
+            else:
+                emitted_lines.append(line)
 
         conversation = dependencies.Conversation(
             agent=agent,
@@ -157,7 +163,7 @@ class OpenHandsRunner(AgentRunner):
             callbacks=[_capture_event],
         )
         conversation.set_confirmation_policy(dependencies.NeverConfirm())
-        return conversation, emitted_lines
+        return conversation, emitted_lines, saw_output
 
     def _log_sdk_launch(self, request: AgentRequest, stream: TextIO) -> None:
         emit_command_block(stream, [*self.build_command(request), request.prompt])

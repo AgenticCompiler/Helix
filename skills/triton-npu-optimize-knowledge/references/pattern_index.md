@@ -10,7 +10,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `a5-force-simt-only-discrete-access`
 
-- Summary: Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, after first ruling out or applying structural fixes for flat linear-index traversal with per-lane `//` / `%` coordinate recovery. This profile-gated launch-mode experiment targets kernels whose hot path remains primarily scalar/index-driven memory access.
+- Summary: Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, then retune `num_warps` and grid decomposition. This profile-gated launch-mode experiment targets kernels whose hot path is primarily scalar/index-driven memory access.
 - Source: [a5-force-simt-only-discrete-access.md](patterns/a5-force-simt-only-discrete-access.md)
 
 ### `autotune`
@@ -27,7 +27,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `a5-force-simt-only-discrete-access`
 
-- Summary: Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, after first ruling out or applying structural fixes for flat linear-index traversal with per-lane `//` / `%` coordinate recovery. This profile-gated launch-mode experiment targets kernels whose hot path remains primarily scalar/index-driven memory access.
+- Summary: Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, then retune `num_warps` and grid decomposition. This profile-gated launch-mode experiment targets kernels whose hot path is primarily scalar/index-driven memory access.
 - Source: [a5-force-simt-only-discrete-access.md](patterns/a5-force-simt-only-discrete-access.md)
 - Use When:
   - Target hardware is confirmed as A5 by user statement, profile metadata, runtime/compile logs, runtime device query, or environment/CANN target settings.
@@ -130,31 +130,6 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - The gather source array is small or medium enough that contiguous staging in shared memory is plausible.
   - The hot loop repeatedly reads fixed fields from AoS records with stride-C offsets, such as `[N, 3]` coordinates loaded as `atom_idx * 3 + channel`, and the input is reused enough to amortize wrapper-side SoA materialization.
 
-### `flat-index-decode-tiling`
-
-- Summary: Replace scalar-heavy 1D linear-index traversal with layout-aware multidimensional tiles when the logical operation is an affine data movement. This removes per-lane `//` / `%` coordinate recovery and turns regular layout copies into base-plus-stride accesses over contiguous or low-stride dimensions.
-- Source: [flat-index-decode-tiling.md](patterns/flat-index-decode-tiling.md)
-- Use When:
-  - The kernel is mostly data movement, not dense arithmetic or reduction.
-  - Work is launched over flat `n_elements` or `out.numel()`.
-  - Each lane recovers coordinates with repeated `//`, `%`, or residual chains.
-  - The output-to-input mapping is affine: axis reorder, fixed offsets, padding bounds, slice windows, or stride-based copy.
-  - At least one logical dimension can be made contiguous or low-stride inside the tile.
-- Avoid When:
-  - Indices are value-dependent or irregular enough that the hot path is true gather/scatter.
-  - The tensor layout materialization can be removed by folding layout into the next consumer.
-  - Rank/stride/shape assumptions are not guarded.
-  - A multidimensional tile would exceed UB/register budget or create invalid grid dimensions.
-- Signals / Code:
-  - `offsets = pid * BLOCK + tl.arange(...)` is the main work assignment.
-  - `coord0 = linear // stride0`, `residual = linear % stride0`, then more decode steps.
-  - One flattened mask combines all rank or boundary conditions for every lane.
-  - Simple identity, transpose, slice, pad, or reshape-copy cases share one generic flat kernel.
-- Signals / Profile:
-  - Scalar/control overhead is high for a copy-like kernel.
-  - Changing only flat `BLOCK_SIZE` gives weak or unstable gains.
-  - Specialized row-column or multidimensional tile variants improve regular shape regimes.
-
 ### `effective-extent-tiling`
 
 - Summary: Choose tile widths from the live logical extent on each axis instead of a legacy maximum or blanket power-of-two rule, so masked lanes do not dominate loop trip counts, transfer work, or vector-path work.
@@ -174,6 +149,18 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Python dispatch can guard the aligned branch before launch and keep the original masked kernel as fallback.
   - MLIR, LLVM, or profiler traces still show boundary checks, masks, padding, or branch/control overhead on the exact-tile hot path.
   - The kernel is already structurally reasonable, so a bounded control-overhead cleanup can matter.
+
+### `flat-index-decode-tiling`
+
+- Summary: Replace scalar-heavy 1D linear-index traversal with layout-aware multidimensional tiles when the logical operation is an affine data movement.
+- Source: [flat-index-decode-tiling.md](patterns/flat-index-decode-tiling.md)
+- Use When:
+  - The kernel is mostly data movement, not dense arithmetic or reduction.
+  - Work is launched over a flat `n_elements` or `out.numel()` stream.
+  - Each lane recovers coordinates with repeated `//`, `%`, or residual chains.
+  - The output-to-input mapping is affine: coordinates map through strides, axis reorder, fixed offsets, padding bounds, or simple slice windows.
+  - At least one logical dimension can be made contiguous or low-stride inside the tile.
+  - Shape/rank regimes are known enough to dispatch to specialized tile layouts or guarded fallbacks.
 
 ### `grid-flatten-and-ub-buffering`
 
