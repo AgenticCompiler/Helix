@@ -533,11 +533,9 @@ class OptimizeCheckTests(unittest.TestCase):
 
             self.assertTrue(result.ok)
             self.assertEqual(result.decision, "pass")
-            self.assertTrue(
-                any("invalid TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW='abc'; using default 3" in issue for issue in result.issues)
-            )
-            self.assertTrue(
-                any("invalid TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN='-1'; using default 0.02" in issue for issue in result.issues)
+            # Invalid env vars silently fall back to defaults without warnings.
+            self.assertFalse(
+                any("invalid" in issue and "LOCAL_OPTIMUM" in issue for issue in result.issues),
             )
 
     def _write_baseline_with_perf_text(self, workdir: Path, *, perf_text: str) -> None:

@@ -444,31 +444,19 @@ def check_round(
             "the round may still participate in best-round selection, but review the comparison basis."
         )
 
-    cleaned: list[str] = []
     if ordinary_optimize_pt_cleanup_enabled():
-        cleaned = cleanup_dir_pt_files(round_dir)
+        cleanup_dir_pt_files(round_dir)
     local_optimum_warnings: tuple[str, ...] = ()
     if baseline_perf_path is not None:
         local_optimum_warnings = collect_local_optimum_warnings(
             round_dir,
             baseline_perf_path=baseline_perf_path,
         )
-    if cleaned:
-        result = _build_result(
-            kind="round",
-            decision="pass",
-            issues=(
-                *tuple(runtime_warnings),
-                *local_optimum_warnings,
-                f"cleaned up {len(cleaned)} unused pt file(s) in {round_dir.name}: {', '.join(cleaned)}",
-            ),
-        )
-    else:
-        result = _build_result(
-            kind="round",
-            decision="pass",
-            issues=(*tuple(runtime_warnings), *local_optimum_warnings),
-        )
+    result = _build_result(
+        kind="round",
+        decision="pass",
+        issues=(*tuple(runtime_warnings), *local_optimum_warnings),
+    )
 
     if min_rounds is not None:
         completed = _count_round_directories(round_dir.parent)
