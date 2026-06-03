@@ -14,6 +14,54 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 class PatternValidationOrchestrationTests(unittest.TestCase):
     @patch("triton_agent.pattern_validation_loop.orchestration.reset_active_workspace_rounds")
     @patch("triton_agent.pattern_validation_loop.orchestration.collect_batch_evidence")
+    @patch("triton_agent.pattern_validation_loop.orchestration.run_optimize_batch", return_value=1)
+    @patch(
+        "triton_agent.pattern_validation_loop.orchestration.run_pattern_validation_verify",
+        return_value=0,
+    )
+    @patch("triton_agent.pattern_validation_loop.orchestration._run_analyze_agent")
+    @patch("triton_agent.pattern_validation_loop.orchestration._run_prepare_agent", return_value=0)
+    @patch("triton_agent.pattern_validation_loop.orchestration.seed_pattern_validation_skills_dir")
+    def test_loop_continues_after_optimize_batch_failure(
+        self,
+        _mock_seed: unittest.mock.MagicMock,
+        mock_prepare: unittest.mock.MagicMock,
+        mock_analyze: unittest.mock.MagicMock,
+        _mock_verify: unittest.mock.MagicMock,
+        mock_optimize: unittest.mock.MagicMock,
+        mock_collect: unittest.mock.MagicMock,
+        _mock_reset: unittest.mock.MagicMock,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
+            repo = _make_git_repo(Path(tmp))
+            (repo / "PERF_PATTERN_SYNTHESIS.md").write_text("# Synthesis\n", encoding="utf-8")
+            state_path = repo / ".triton-agent" / "pattern-validation-loop-state.json"
+
+            def analyze_side_effect(config, **kwargs: object) -> int:
+                state_path.parent.mkdir(parents=True, exist_ok=True)
+                state_path.write_text(
+                    '{"status": "complete", "iteration": 1, "history": []}\n',
+                    encoding="utf-8",
+                )
+                return 0
+
+            mock_analyze.side_effect = analyze_side_effect
+
+            code = run_pattern_validation_loop_orchestrated(
+                target_path=repo,
+                max_iterations=3,
+                agent_name="codex",
+                verbose=False,
+                show_output=False,
+            )
+
+        self.assertEqual(code, 0)
+        mock_collect.assert_called_once()
+        mock_analyze.assert_called_once()
+        mock_optimize.assert_called_once()
+
+    @patch("triton_agent.pattern_validation_loop.orchestration.reset_active_workspace_rounds")
+    @patch("triton_agent.pattern_validation_loop.orchestration.collect_batch_evidence")
     @patch("triton_agent.pattern_validation_loop.orchestration.run_optimize_batch", return_value=0)
     @patch(
         "triton_agent.pattern_validation_loop.orchestration.run_pattern_validation_verify",

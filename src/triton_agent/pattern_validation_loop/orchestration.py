@@ -139,8 +139,17 @@ def run_pattern_validation_loop_orchestrated(
             reset_optimize=iteration == 1,
         )
         if optimize_code != 0:
-            _mark_loop_failed(config, note=f"optimize-batch failed on iteration {iteration}")
-            return optimize_code
+            print(
+                "[pattern-validation-loop] optimize-batch reported failures; "
+                "continuing with evidence collection and analyze agent.",
+                file=sys.stderr,
+                flush=True,
+            )
+            _record_loop_phase(
+                config,
+                phase="optimize",
+                note=f"optimize-batch exit code {optimize_code} on iteration {iteration}",
+            )
 
         collect_batch_evidence(config.batch_path, output_path=audit_report_path)
 
@@ -417,17 +426,28 @@ def _load_loop_state(state_path: Path) -> dict[str, object]:
     return json.loads(state_path.read_text(encoding="utf-8"))
 
 
-def _mark_loop_failed(config: PatternValidationLoopConfig, *, note: str) -> None:
+def _record_loop_phase(
+    config: PatternValidationLoopConfig,
+    *,
+    phase: str,
+    note: str,
+    audit_report_path: Path | None = None,
+) -> None:
     if not config.state_path.is_file():
         return
     module = load_skill_script_module(_PATTERN_VALIDATION_SKILL, "record_iteration")
-    module.main(
-        [
-            "--state",
-            config.state_path.as_posix(),
-            "--phase",
-            "failed",
-            "--note",
-            note,
-        ],
-    )
+    argv = [
+        "--state",
+        config.state_path.as_posix(),
+        "--phase",
+        phase,
+        "--note",
+        note,
+    ]
+    if audit_report_path is not None:
+        argv.extend(["--audit-report", audit_report_path.as_posix()])
+    module.main(argv)
+
+
+def _mark_loop_failed(config: PatternValidationLoopConfig, *, note: str) -> None:
+    _record_loop_phase(config, phase="failed", note=note)

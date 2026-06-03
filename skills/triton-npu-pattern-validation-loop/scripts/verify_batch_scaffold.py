@@ -11,6 +11,10 @@ from typing import Any
 
 from batch_layout import list_active_validation_workspaces
 
+_DEFAULT_DEPENDENCY_DIR = "deps"
+_ROOT_ALLOWED_NAMES = frozenset({"__init__.py", "conftest.py"})
+_ROOT_ALLOWED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
@@ -66,7 +70,17 @@ def verify_workspace(
     shared_sources: dict[str, list[str]],
 ) -> dict[str, Any]:
     issues: list[str] = []
+    kernel_name = str(meta.get("kernel_name", "")).strip()
     operator_name = str(meta.get("operator_filename", "")).strip()
+    if kernel_name and workspace.name != kernel_name:
+        issues.append(
+            f"workspace directory {workspace.name!r} must match validation-meta kernel_name "
+            f"{kernel_name!r}"
+        )
+    if kernel_name and operator_name and operator_name != f"{kernel_name}.py":
+        issues.append(
+            f"operator_filename {operator_name!r} must be {kernel_name}.py when kernel_name is set"
+        )
     if not operator_name:
         issues.append("validation-meta.json missing operator_filename")
         operator_path = None
@@ -116,15 +130,56 @@ def verify_workspace(
                 "Step 2b extract likely incomplete"
             )
 
+    extra_root_py = _extra_root_py_files(workspace, operator_name)
+    if extra_root_py:
+        issues.append(
+            "optimize-batch allows only one operator .py at workspace root; move helper "
+            f"modules under {_DEFAULT_DEPENDENCY_DIR}/: {', '.join(extra_root_py)}"
+        )
+
+    dependency_dir = str(meta.get("dependency_dir", _DEFAULT_DEPENDENCY_DIR)).strip() or _DEFAULT_DEPENDENCY_DIR
+    for entry in _string_list(meta.get("copied_dependencies")):
+        normalized = entry.replace("\\", "/").lstrip("./")
+        if "/" not in normalized:
+            issues.append(
+                f"copied_dependencies entry {entry!r} must live under {dependency_dir}/ "
+                f"(for example {dependency_dir}/{Path(normalized).name})"
+            )
+            continue
+        if not normalized.startswith(f"{dependency_dir}/"):
+            issues.append(
+                f"copied_dependencies entry {entry!r} must be under workspace {dependency_dir}/"
+            )
+
     return {
         "workspace": workspace.name,
         "source_path": source_path or None,
         "validation_target": validation_target or None,
         "split_from": split_from or None,
         "shared_source_path": shared_source,
+        "kernel_name": kernel_name or None,
+        "dependency_dir": dependency_dir,
+        "extra_root_py": extra_root_py,
         "issues": issues,
         "passed": not issues,
     }
+
+
+def _extra_root_py_files(workspace: Path, operator_filename: str) -> list[str]:
+    if not operator_filename:
+        return []
+    extras: list[str] = []
+    for path in sorted(workspace.iterdir()):
+        if not path.is_file() or path.suffix != ".py":
+            continue
+        if path.name == operator_filename:
+            continue
+        if path.name in _ROOT_ALLOWED_NAMES:
+            continue
+        if path.name.startswith(_ROOT_ALLOWED_PREFIXES):
+            continue
+        extras.append(path.name)
+    return extras
 
 
 def _load_meta(workspace: Path) -> dict[str, Any]:

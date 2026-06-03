@@ -83,8 +83,23 @@ python3 "$KNOWLEDGE/scripts/build_pattern_index.py" \
 
 ## Phase C — Prepare agent: scaffold workspaces
 
-Follow [workspace-scaffold-contract.md](references/workspace-scaffold-contract.md). When a
-repo `source_path` contains multiple kernels, use **Step 2b** (manual split).
+When `PERF_KNOWLEDGE_BASE.md` exists, read
+[knowledge-base-scaffold-contract.md](references/knowledge-base-scaffold-contract.md) first:
+
+```bash
+python3 "$SKILL/scripts/plan_workspaces_from_knowledge.py" \
+  --knowledge PERF_KNOWLEDGE_BASE.md \
+  --repo "$REPO" \
+  --base "$BASE" \
+  --output "$BATCH/workspace-plan.json"
+```
+
+Then follow [workspace-scaffold-contract.md](references/workspace-scaffold-contract.md):
+
+- **One launch function → one workspace** named after the **primary kernel**
+  (for example `chunk_bwd_kernel_dv_local/chunk_bwd_kernel_dv_local.py`).
+- Split knowledge-base lessons **per kernel**, not per source file.
+- If one launch calls multiple kernels (branches), merge them into one operator file.
 
 After scaffolding, run:
 
@@ -131,7 +146,9 @@ Between iterations the CLI runs `reset_workspace_rounds.py` and another `optimiz
 
 - All knowledge edits live under `$SKILLS`; the directory is never deleted by the loop.
 - Prepare and analyze agents **must not** run `triton-agent optimize-batch`.
+- Only **one** operator `.py` at each workspace root; copy helper modules under `deps/` (see workspace-scaffold-contract).
 - Run `triton-agent pattern-validation-verify -i "$BATCH"` after scaffolding (prepare agent + CLI gate).
+- If `optimize-batch` has per-workspace failures, the CLI still collects evidence and runs the analyze agent.
 - Do not copy entire multi-kernel source files into one workspace when synthesis validates separate launch entrypoints.
 - Do not hand-edit `pattern_index.md`.
 - Do not delete `baseline/` when iterating; use `reset_workspace_rounds.py` on active workspaces.

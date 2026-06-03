@@ -27,6 +27,7 @@ Read before acting:
 
   {iteration_contract.as_posix()}
   {skill_update_contract.as_posix()}
+  {skill_root.as_posix()}/references/knowledge-base-scaffold-contract.md
   {workspace_scaffold_contract.as_posix()}
   {skill_root.as_posix()}/SKILL.md
 
@@ -37,6 +38,10 @@ Repository root:
 Synthesis report:
 
   {synthesis_path.as_posix()}
+
+Knowledge base (read when present at repo root):
+
+  {repo_path.as_posix()}/PERF_KNOWLEDGE_BASE.md
 
 Batch root (create workspaces here):
 
@@ -65,15 +70,16 @@ Required steps:
      --skills-dir {skills_dir} \\
      --base {base_revision}
 
-2. Read synthesis (and `PERF_KNOWLEDGE_BASE.md` if needed). Update pattern cards under `{knowledge_root.as_posix()}/references/patterns/` only.
+2. Read `{synthesis_path.name}` and **`PERF_KNOWLEDGE_BASE.md`** when it exists. Update pattern cards under `{knowledge_root.as_posix()}/references/patterns/` only.
 3. Regenerate `{knowledge_root.as_posix()}/references/pattern_index.md`.
-4. Plan and scaffold workspaces under `{batch_dir.as_posix()}` per `{workspace_scaffold_contract.as_posix()}` (Step 2b manual split when needed).
-5. Run scaffold verification from repo root:
+4. When `PERF_KNOWLEDGE_BASE.md` exists, run `{scripts_dir.as_posix()}/plan_workspaces_from_knowledge.py` and write `{batch_dir.as_posix()}/workspace-plan.json`. Scaffold **one workspace per plan entry**: directory and operator file named after `kernel_name`, one launch function per workspace (merge multiple kernels into one operator file when the same launch branches).
+5. Plan and scaffold workspaces under `{batch_dir.as_posix()}` per `{workspace_scaffold_contract.as_posix()}` and the knowledge-base contract. Put copied helper `.py` modules under `deps/` — only one operator `.py` at each workspace root.
+6. Run scaffold verification from repo root:
 
    triton-agent pattern-validation-verify -i {batch_dir.as_posix()}
 
    Fix every issue until it exits 0.
-6. Record scaffold completion:
+7. Record scaffold completion:
 
    python3 {scripts_dir.as_posix()}/record_iteration.py \\
      --state {state_path.as_posix()} --phase scaffold \\
@@ -131,6 +137,9 @@ Current iteration: {iteration} / {max_iterations}
 
 The evidence report aggregates `opt-round-*/attempts.md`, `summary.md`, and related artifacts.
 `heuristic_suggested_pass` is a **hint only** (substring match on pattern IDs). You must judge whether optimize rounds actually applied synthesis-backed mechanisms.
+
+Some workspaces may have failed optimize-batch runs; still review their partial `opt-round-*`
+artifacts and `validation-meta.json` before deciding next steps.
 
 Required steps:
 

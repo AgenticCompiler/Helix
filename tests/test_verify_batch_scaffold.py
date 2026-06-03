@@ -85,6 +85,39 @@ class VerifyBatchScaffoldTests(unittest.TestCase):
         self.assertFalse(report["passed"])
         self.assertTrue(any("excluded_targets" in issue for issue in report["issues"]))
 
+    def test_extra_root_py_fails_verify(self) -> None:
+        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
+            workspace = Path(tmp) / "chunk_o"
+            workspace.mkdir()
+            (workspace / "chunk_o.py").write_text("def forward_chunk_o():\n    pass\n", encoding="utf-8")
+            (workspace / "tiling_utils.py").write_text("X = 1\n", encoding="utf-8")
+            meta = {
+                "workspace": "chunk_o",
+                "source_path": "src/kernels/chunk_o.py",
+                "operator_filename": "chunk_o.py",
+            }
+            report = verify_workspace(workspace, meta, shared_sources={})
+
+        self.assertFalse(report["passed"])
+        self.assertEqual(report["extra_root_py"], ["tiling_utils.py"])
+        self.assertTrue(any("deps/" in issue for issue in report["issues"]))
+
+    def test_copied_dependencies_must_use_deps_prefix(self) -> None:
+        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
+            workspace = Path(tmp) / "chunk_o"
+            workspace.mkdir()
+            (workspace / "chunk_o.py").write_text("def forward_chunk_o():\n    pass\n", encoding="utf-8")
+            meta = {
+                "workspace": "chunk_o",
+                "source_path": "src/kernels/chunk_o.py",
+                "operator_filename": "chunk_o.py",
+                "copied_dependencies": ["tiling_utils.py"],
+            }
+            report = verify_workspace(workspace, meta, shared_sources={})
+
+        self.assertFalse(report["passed"])
+        self.assertTrue(any("copied_dependencies" in issue for issue in report["issues"]))
+
 
 if __name__ == "__main__":
     unittest.main()

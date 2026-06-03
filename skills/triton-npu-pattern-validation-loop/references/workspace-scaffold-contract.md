@@ -13,19 +13,44 @@ Before choosing operators, read as needed:
 
 | Source | Use |
 |--------|-----|
-| `PERF_PATTERN_SYNTHESIS.md` | Primary: which kernels/mechanisms to validate in skills |
-| `PERF_KNOWLEDGE_BASE.md` | File paths, commits, diffs when synthesis is high-level |
+| `PERF_PATTERN_SYNTHESIS.md` | Primary: which patterns to validate in skills |
+| `PERF_KNOWLEDGE_BASE.md` | **Kernel-scoped** perf lessons, commits, and source paths — drives workspace count and naming |
+| [knowledge-base-scaffold-contract.md](knowledge-base-scaffold-contract.md) | Required when `PERF_KNOWLEDGE_BASE.md` exists: split by kernel, map launch functions |
 | Staged `pattern_index.md` | Pattern IDs to cite in `expected_patterns` |
 | Git history `base_revision..HEAD` | Confirm which files changed and when |
 
 Also use loop state (`base_revision`, `batch_dir`) from init.
 
+## Step 0 — Plan from PERF_KNOWLEDGE_BASE (when present)
+
+If `PERF_KNOWLEDGE_BASE.md` exists, follow
+[knowledge-base-scaffold-contract.md](knowledge-base-scaffold-contract.md) **before** Step 1:
+
+```bash
+python3 "$SKILL/scripts/plan_workspaces_from_knowledge.py" \
+  --knowledge PERF_KNOWLEDGE_BASE.md \
+  --repo "$REPO" \
+  --base "$BASE" \
+  --output "$BATCH/workspace-plan.json"
+```
+
+Rules from that contract:
+
+- Split knowledge-base lessons **per kernel**, not per source file.
+- **One launch function → one workspace**; directory and operator file named after the
+  **primary kernel** (for example `chunk_bwd_kernel_dv_local/chunk_bwd_kernel_dv_local.py`).
+- If one launch function calls **multiple kernels** (branches), merge them into that single
+  operator file.
+
 ## Step 1 — Select validation targets
 
-Decide **one optimize workspace per validation target**. A validation target is usually a
-**public launch entrypoint** (PyTorch wrapper, host launcher, exported API) together with
-the `@triton.jit` kernels and host helpers its call chain needs — not necessarily a single
-kernel in isolation. Prefer:
+When no knowledge base is available, decide **one optimize workspace per validation target**
+as below. When `workspace-plan.json` exists, **each planned entry is one target**.
+
+A validation target is usually a **public launch entrypoint** (PyTorch wrapper, host launcher,
+exported API) together with the `@triton.jit` kernels and host helpers its call chain needs.
+With knowledge-base planning, the workspace is named after the **primary kernel**, while
+`launch_functions` in `validation-meta.json` records the host entrypoint tests call. Prefer:
 
 - Kernels named explicitly in synthesis as perf-relevant or skill-promotion targets
 - Source files with clear pre-optimization vs post-optimization story in the analyzed range
@@ -76,8 +101,9 @@ Write the snapshot to:
 $BATCH/<workspace>/<operator_filename>
 ```
 
-`<workspace>` is usually the operator stem (e.g. `chunk_o`). `<operator_filename>` is
-typically the basename of `source_path`.
+`<workspace>` is the planned `kernel_name` when using knowledge-base planning (for example
+`chunk_bwd_kernel_dv_local`). Otherwise it is usually the operator stem (e.g. `chunk_o`).
+`<operator_filename>` must be `<kernel_name>.py` in the knowledge-base-driven layout.
 
 You may call `scaffold_batch.py --manifest ...` **only after** you authored manifest JSON
 yourself; never treat `generate_manifest.py` output as authoritative without review.
@@ -219,7 +245,7 @@ will not work unchanged. Resolve imports deliberately, in this order:
 
 | Strategy | Use when |
 |----------|----------|
-| **Copy sibling modules** | A small repo `.py` file is imported by the target (for example `utils.py`, `common.py`). Copy it to the workspace root and keep `from utils import ...` working. |
+| **Copy sibling modules under `deps/`** | A small repo `.py` file is imported by the target (for example `utils.py`, `common.py`). Copy to `$BATCH/<workspace>/deps/` and import as `from deps.utils import ...` or add `deps/` to `sys.path` in the operator/tests. **Never** place helper `.py` files at the workspace root — `optimize-batch` fails with `multiple candidate operator files`. |
 | **Copy minimal subset inline** | A helper is a few lines and copying the whole module would pull unrelated kernels. |
 | **Adjust test/bench imports** | The harness imported the repo package path; change it to import the workspace operator module or entry function directly. |
 | **Add a thin adapter** | Tests expect a specific function name; provide a small wrapper in the operator file that calls the extracted launch path. |
@@ -231,7 +257,9 @@ Rules:
 - After copying, run a quick import sanity check from the workspace directory before
   `optimize-batch` (for example `python3 -c "import <operator_stem>"` or run the copied test
   once).
-- List every copied repo file in `validation-meta.json` → `copied_dependencies`.
+- List every copied repo file in `validation-meta.json` → `copied_dependencies` using paths
+  under `deps/` (for example `deps/tiling_utils.py`). Set `dependency_dir` to `deps` when using
+  the default layout.
 - Explain non-obvious import fixes in `notes`.
 
 If optimize later fails on a missing import, add the smallest additional file or inline the
@@ -259,7 +287,8 @@ In addition to the usual fields, set:
 | `split_from` | recommended | Primary `source_path` when manually extracted from a larger file |
 | `closure_source_paths` | recommended when cross-file | All repo files whose pre-opt code was pulled into this workspace |
 | `included_symbols` | recommended | Entrypoint, **all** cooperating `@triton.jit` kernels, and key helpers in the operator file |
-| `copied_dependencies` | recommended | Other repo `.py` files copied into the workspace root |
+| `dependency_dir` | recommended | Subdirectory for helper modules (default: `deps`) |
+| `copied_dependencies` | recommended | Helper `.py` paths under `dependency_dir/` (for example `deps/utils.py`) |
 | `excluded_targets` | optional | Other entrypoints/kernels/pipelines left out (audit trail) |
 
 Example — **independent kernel** in a shared file:
@@ -276,7 +305,8 @@ Example — **independent kernel** in a shared file:
   "expected_patterns": ["grid-flatten-and-ub-buffering"],
   "synthesis_refs": ["chunk_o grid flatten in fused_ops.py"],
   "included_symbols": ["forward_chunk_o", "chunk_o_kernel", "CHUNK_BLOCK"],
-  "copied_dependencies": ["tiling_utils.py"],
+  "dependency_dir": "deps",
+  "copied_dependencies": ["deps/tiling_utils.py"],
   "excluded_targets": ["forward_wy_fast", "wy_fast_kernel", "scaled_dot_kkt_kernel"],
   "copied_tests": ["test_chunk_o.py"],
   "copied_benches": [],
@@ -338,10 +368,11 @@ Each workspace must satisfy `optimize-batch` layout rules:
 
 - Exactly **one** operator `.py` at workspace root (excluding `test_*`, `bench_*`, `conftest.py`, etc.)
 - At least one runnable test file
+- **No other** `.py` files at workspace root — put copied helpers under `deps/` (or another
+  single subdirectory recorded in `dependency_dir`)
 
 `conftest.py` is ignored by `optimize-batch` operator discovery and may be used for pytest path
-setup. Do not add other extra root-level `.py` files unless they are the operator or copied
-dependencies with imports wired through that operator/tests.
+setup. Helper modules belong in `deps/`, not beside the operator file.
 
 ### Tests
 

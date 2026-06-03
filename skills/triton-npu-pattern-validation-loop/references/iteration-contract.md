@@ -9,12 +9,16 @@
 | Seed skills | CLI | Copy install-bundle knowledge into `pattern-validation-skills/` when missing |
 | Prepare | Code agent | Read synthesis, edit skills, scaffold workspaces, run `pattern-validation-verify` |
 | Verify gate | CLI | `triton-agent pattern-validation-verify -i "$BATCH"` (must exit 0) |
-| Optimize | CLI | `optimize-batch` with `--skills-source-dir` (direct Python API, streamed output) |
+| Optimize | CLI | `optimize-batch` with `--skills-source-dir` (direct Python API, streamed output). Partial workspace failures do **not** stop the loop. |
 | Evidence | CLI | `audit_batch.py --output "$BATCH/audit-report.json"` |
 | Analyze | Code agent | Review evidence, update skills, archive passes, mark complete or request another iteration |
 | Reset | CLI | `reset_workspace_rounds.py` on active workspaces before the next optimize |
 
 Prepare and analyze agents **must not** shell out to `triton-agent optimize-batch`.
+
+Workspace layout: exactly one operator `.py` at the workspace root; copied helper modules go under
+`deps/` (see `dependency_dir` / `copied_dependencies` in `validation-meta.json`). Extra root-level
+`.py` files cause `optimize-batch` to fail with `multiple candidate operator files`.
 
 ## Loop state file
 
