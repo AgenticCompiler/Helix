@@ -94,6 +94,9 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - `report.txt` overall `[Pipeline Flows]` section shows **both XToY and YToX flows** for some pair (e.g., `SCALARToMTE3` + `MTE3ToSCALAR`), indicating pipeline stages are serialized in a cycle.
   - `report.txt` overall `[Pipe Distribution]` section shows **low SCALAR–VECTOR overlap** — `%(SCALAR&VECTOR/SCALAR) < 2%` — while SCALAR is high `> 10%`, meaning scalar address generation is blocking vector execution.
   - `report.txt` overall `[Pipe Distribution Over Each Core]` section lists **very few cores active** relative to hardware capacity, suggesting flat 1D grid decomposition is too coarse.
+  - `report.txt` overall `[Pipe Distribution]` section shows **SCALAR and VECTOR already well-overlapped** — `%(SCALAR&VECTOR/VECTOR) > 60%`; block_ptr cannot further improve overlap.
+  - The kernel uses **gather/scatter access** — non-contiguous indirect access via `tl.gather` or `index_ptr` violates the contiguous-memory assumption of `make_block_ptr`.
+  - `report.txt` overall `[Pipe Distribution]` section shows **MTE2 negligible** — `%(MTE2) < 0.5%` — meaning memory access volume is too small to be the bottleneck; likely compute-bound or control-bound instead.
 
 ### `classic-matmul`
 
@@ -333,15 +336,13 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `static-range-to-range`
 
-- Summary: Replace `tl.static_range` with `tl.range` in hot loops with lightweight, independent iterations so the compiler preserves loop structure and applies software pipelining, overlapping memory transfers and compute across iterations instead of fully unrolling into a flat serialized sequence.
+- Summary: Replace `tl.static_range` with `tl.range` in hot loops where iteration bodies are lightweight and iterations have no cross-iteration data dependencies. This allows the compiler to preserve loop structure and apply software pipelining, overlapping memory transfers and compute across iterations — instead of fully unrolling the loop into a flat instruction sequence that prevents inter-iteration overlap.
 - Source: [static-range-to-range.md](patterns/static-range-to-range.md)
 - Use When:
-  - The hot loop uses `tl.static_range` (or `tl.range` with a `tl.constexpr` bound that triggers full unrolling).
+  - Hot loop uses `tl.static_range` (or `tl.range` with a `tl.constexpr` bound that triggers full unrolling).
   - Loop iterations are **independent** — no loop-carried data dependency between iterations.
-  - The loop body is lightweight (simple elementwise ops, few intermediates).
+  - Loop body is lightweight (simple elementwise ops, few intermediates).
   - Profiling shows MTE2 (DMA) ratio is disproportionately low relative to VECTOR, and SCALAR/MTE2 overlap is poor.
-  - Pipeline flows are unidirectional only (`MTE2→VECTOR`, `VECTOR→MTE3`) with no reverse cascade flows, indicating each iteration completes fully before the next begins.
-  - `BLOCK_SIZE` and `num_warps` are moderate enough that the rename pressure from `tl.range` will not cause register spills.
 
 ### `stencil-resize-gm-to-ub-staging`
 
@@ -367,5 +368,12 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Summary: Rewrite explicit integer compare-heavy logic into a form that is more vector-friendly on Ascend NPU, especially when scalarized compares are blocking fast masking or selection.
 - Source: [vec-cmp.md](patterns/vec-cmp.md)
 - Use When:
-  - Explicit `i64` or `i32` comparisons appear on the hot path outside the compiler's normal fast load/store mask cases.
-  - Comparison-heavy control flow or masking looks like a real vectorization blocker rather than just minor boundary handling.
+  - Explicit `i64` or `i32` comparisons feed `tl.where`, conditional assignments, reused masks, or other hot-path selection logic.
+  - The comparison is outside the compiler's normal inline `tl.load(..., mask=...)` or `tl.store(..., mask=...)` fast path.
+  - `fp32` comparison preserves the mask semantics for the compared value range.
+  - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
+  - `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR ratio: `%(SCALAR) / %(VECTOR) > 10`.
+  - `report.txt` overall `[Key Ratios]` shows a high `SCALAR:VECTOR` ratio, such as `SCALAR:VECTOR_instr` much larger than `4:1`.
+  - `report.txt` overall `[VECTOR Unit]` shows low or zero utilization, and the top VECTOR instructions are mask-like operations such as `MOVEMASK`.
+  - `report.txt` overall `[TRACE Events]` contains many mask/control-related scalar events such as `CMP_IMM`, `JUMPC`, `JUMPCMP`, `MOVEMASK`, or `SIGNEXT`.
+  - UB conflicts are low and MTE2/MTE3 activity does not explain the regression by itself, making scalarized mask/control work a plausible cause.

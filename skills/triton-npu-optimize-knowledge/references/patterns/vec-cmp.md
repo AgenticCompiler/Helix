@@ -6,8 +6,15 @@ Rewrite explicit integer compare-heavy logic into a form that is more vector-fri
 
 ## Use When
 
-- Explicit `i64` or `i32` comparisons appear on the hot path outside the compiler's normal fast load/store mask cases.
-- Comparison-heavy control flow or masking looks like a real vectorization blocker rather than just minor boundary handling.
+- Explicit `i64` or `i32` comparisons feed `tl.where`, conditional assignments, reused masks, or other hot-path selection logic.
+- The comparison is outside the compiler's normal inline `tl.load(..., mask=...)` or `tl.store(..., mask=...)` fast path.
+- `fp32` comparison preserves the mask semantics for the compared value range.
+- You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
+- `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR ratio: `%(SCALAR) / %(VECTOR) > 10`.
+- `report.txt` overall `[Key Ratios]` shows a high `SCALAR:VECTOR` ratio, such as `SCALAR:VECTOR_instr` much larger than `4:1`.
+- `report.txt` overall `[VECTOR Unit]` shows low or zero utilization, and the top VECTOR instructions are mask-like operations such as `MOVEMASK`.
+- `report.txt` overall `[TRACE Events]` contains many mask/control-related scalar events such as `CMP_IMM`, `JUMPC`, `JUMPCMP`, `MOVEMASK`, or `SIGNEXT`.
+- UB conflicts are low and MTE2/MTE3 activity does not explain the regression by itself, making scalarized mask/control work a plausible cause.
 
 ## Signals
 
@@ -16,6 +23,15 @@ Rewrite explicit integer compare-heavy logic into a form that is more vector-fri
 - Integer comparisons produce explicit boolean masks used in `tl.where`, conditional assignments, or similar hot-path logic.
 - The comparison is written outside the compiler's normal `tl.load` or `tl.store` mask fast path.
 - The code still compares integer operands directly even though vector-friendly `fp32` comparison would preserve semantics.
+
+### Profile
+
+- `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR ratio, for example `%(SCALAR) / %(VECTOR) > 10`. This supports `vec-cmp` only when the code has explicit integer masks, because scalarized integer compares can spend most cycles building control/mask state instead of doing useful vector selection.
+- `report.txt` overall `[Key Ratios]` shows a high `SCALAR:VECTOR` ratio, such as `SCALAR:VECTOR_instr` much larger than `4:1` or `SCALAR:VECTOR_cycles > 10:1`. This matches `vec-cmp` when integer compare masks feed hot-path `tl.where`, conditional assignments, or reused masks, because those masks should become cheaper if the comparison is lowered through vector-friendly `fp32` compare.
+- `report.txt` overall `[VECTOR Unit]` shows low or zero utilization, and the top VECTOR instructions are mask-like operations such as `MOVEMASK`. This suggests the vector pipe is mostly receiving or materializing masks rather than performing sustained vector compute, which is the failure mode `vec-cmp` tries to avoid.
+- `report.txt` overall `[TRACE Events]` or `[SCALAR Instr Types]` contains many mask/control-related scalar events such as `CMP_IMM`, `JUMPC`, `JUMPCMP`, `MOVEMASK`, `SIGNEXT`, `ZEROEXT`, or `AND`. These are direct signatures of integer compare, branch/control, integer widening, and mask materialization; they strengthen the `vec-cmp` diagnosis when they line up with explicit compare-mask code.
+- UB conflicts are low and MTE2/MTE3 activity does not explain the regression by itself. This matters because `vec-cmp` targets scalarized mask/control work; if UB, memory transfer, gather/scatter, layout, or address/index math dominates instead, the report points to another pattern.
+- Treat the `report.txt` evidence as a trigger only when it matches the code signal; if `DIV`, `REM`, `MADD`, `ADD`, or stride arithmetic dominate around flat-index decoding or pooling coordinate math, treat `vec-cmp` as secondary and prefer the matching address/indexing pattern first.
 
 ## Problem Description
 
@@ -118,24 +134,16 @@ x = tl.load(x_ptr + offsets, mask=mask_fp32)
 
 ## Avoid When
 
-1. **Comparisons in `tl.load`/`tl.store` masks** - already auto-optimized:
-   ```python
-   # No change needed - compiler handles this
-   x = tl.load(x_ptr + offsets, mask=offsets < n_elements)
-   ```
-
-2. **Already using fp32 comparisons** - no optimization needed:
-   ```python
-   # Already optimal
-   offsets_fp32 = tl.cast(offsets, tl.float32)
-   valid = offsets_fp32 < threshold
-   ```
-
-3. **Non-performance-critical code** - optimization overhead may not be justified
+- The comparison appears only as an inline `tl.load` or `tl.store` boundary mask; the compiler normally handles this case.
+- The compared integer values can exceed the exact `fp32` integer range, or exact large-integer ordering matters.
+- The report points primarily to address math, layout, UB conflicts, gather/scatter, or memory transfer rather than compare scalarization.
+- The comparison is not on the hot path or the operands are already compared as `fp32`.
+- Nearby hot-path compare helpers such as `tl.maximum()` or `tl.minimum()` require specific NaN semantics; add `propagate_nan=tl.PropagateNan.ALL` only as an intentional behavior change and record the NaN-input behavior.
 
 ## What To Verify After Applying
 
 - Verify the comparison result still feeds the same hot-path conditional logic after the dtype rewrite.
 - Verify both operands are cast in a way that preserves semantic equivalence for the downstream mask usage.
 - Re-check downstream dtype expectations and confirm the comparison is no longer a scalarization bottleneck.
+- Re-check `extracted_bin_data/report.txt` when available and confirm the scalar/vector balance improved instead of merely moving the bottleneck.
 - Re-check `tl.maximum()` and `tl.minimum()` call sites on the hot path and document any intentional `propagate_nan` choice as a semantics change.
