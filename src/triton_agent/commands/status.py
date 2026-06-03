@@ -21,8 +21,9 @@ def handle_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         parser.error(f"Input path is not a directory: {root}")
 
     want_schema = bool(getattr(args, "schema", False))
+    is_single_workspace = workspace_has_optimize_artifacts(root)
 
-    if workspace_has_optimize_artifacts(root):
+    if is_single_workspace:
         results = [inspect_optimize_status_workspace(root, verbose=bool(getattr(args, "verbose", False)))]
         exit_code = render_optimize_status_results(
             results,
@@ -36,7 +37,7 @@ def handle_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         results = scan_optimize_status_workspaces(root, verbose=bool(getattr(args, "verbose", False)))
         exit_code = render_optimize_status_results(results, output_format=str(getattr(args, "format", "text")))
 
-    if want_schema:
+    if want_schema and not is_single_workspace:
         schema_path = write_status_schema(root, results)
         print(f"[status-schema] written to: {schema_path}", file=sys.stderr, flush=True)
         warn_missing_sources(root)
