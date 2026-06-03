@@ -78,15 +78,17 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `autotune`
 
-- Summary: Use Triton-Ascend autotune as the default way to search split sizes, tile sizes, and selected compile options when the kernel structure is already reasonable and the main open question is parameter choice.
+- Summary: Three-phase signal-driven optimization from `report.txt`. Phase 1 (Pre-Gate A-Cat-5): determine whether autotune is the right tool — if memory layout is fragmented, route to `compile_hint`/`discrete_memory_access` instead. Phase 2: match `report.txt` statistical features against A-Cat-6 through A-Cat-4 to identify which parameters need tuning. Phase 3: choose Route 1 (`configs=[]` auto-infer), Route 2 (`hints`), or Route 3 (hand-written Configs using Category examples). Each Category includes concrete `triton.Config` examples and worked simulation cases.
 - Source: [autotune.md](patterns/autotune.md)
 - Use When:
-  - The kernel structure already looks semantically correct, and the likely headroom is in `BLOCK_*` selection, split shape, or Ascend-specific compile options such as `multibuffer`.
-  - The current optimization loop is drifting toward repeated manual tiling edits without strong evidence that a structural rewrite is needed first.
+  - The kernel logic is mathematically correct, stable, and passes validation tests.
+  - You have a `report.txt` output from `extracted_bin_data`.
+  - **Pre-Gate (always check first):** A-Cat-5 fires when `[MTE2 Data Transport]` ProcessBytes avg < 128B or Data movers = 0 with `tl.load` present. If fired, stop — autotune cannot fix this; fix memory layout/compiler hints first.
+  - **Parameter Diagnostics (only if Pre-Gate passes):** A-Cat-6 (Register Spilling), A-Cat-1 (Pipeline Overlap Deficit), A-Cat-2 (Scalar Overhead Dominance) are diagnosed from `report.txt`. A-Cat-3 (Parallelism Starvation) and A-Cat-4 (Autotune Key Mismatch) require additional data sources.
   - The hot path exposes one or more free `tl.constexpr` parameters that are not hard-coded at launch time.
   - Bounds masks or loop structure still map cleanly back to runtime shape arguments, so a shape-keyed autotune cache is plausible.
-  - The operator is vector-like rather than a Cube-only kernel path that needs a different optimization route.
-  - You are not already in a launch-mode experiment that explicitly changes execution style; if you are applying the A5 SIMT-only discrete-access pattern, `num_warps` and grid decomposition are rechecked there after `force_simt_only=True`.
+  - The operator is vector-like rather than a Cube-only kernel path.
+  - You are not already in a launch-mode experiment that explicitly changes execution style; if applying the A5 SIMT-only discrete-access pattern, `num_warps` and grid decomposition are rechecked there after `force_simt_only=True`.
 
 ### `block-pointer-dimensionality`
 
