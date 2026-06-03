@@ -9,6 +9,15 @@ Apply **Loop-Invariant Code Motion (LICM)** to Triton kernels: move computations
 - The kernel has a hot inner loop (often a K loop in GEMM-like kernels).
 - Each loop iteration repeats substantial pointer math, mask construction, type casts, or shape bookkeeping.
 - Profiling shows scalar/control work is disproportionately high relative to useful compute.
+- You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
+- `report.txt` overall `[Pipe Distribution]` shows high SCALAR/control share while VECTOR or CUBE useful compute is low or thin, suggesting repeated per-iteration setup is large compared with useful loop work.
+- `report.txt` overall `[Key Ratios]` shows a high SCALAR:VECTOR ratio, and code inspection shows a hot loop repeatedly rebuilding pointer math, masks, casts, or bounds checks.
+- `report.txt` overall `[VECTOR Unit]` shows low utilization or a small amount of vector work per loop iteration, consistent with scalar bookkeeping throttling otherwise vector-friendly work.
+- For matmul, reduction, or dot-like kernels, `report.txt` shows CUBE work is low or not sustained even though `tl.dot` should be the main work, suggesting repeated scalar loop setup may be starving useful compute.
+- `report.txt` overall `[Pipe Distribution]` shows MTE2/MTE3 are not the dominant buckets, so scalar/control loop bookkeeping is a more plausible first lever than memory movement.
+- `report.txt` `[WAIT_FLAG / BAR Sync]`, `[Pipeline Flows]`, or timeline views show frequent scalar/control wait or barrier patterns around the loop rather than long sustained VECTOR/CUBE work.
+- `report.txt` `[Pipe Distribution Over Each Core]` shows similar SCALAR-heavy and VECTOR/CUBE-thin behavior across cores, suggesting a systematic loop-body granularity problem rather than a single-core anomaly.
+- `[SCALAR Instr Types]` or `[TRACE Events]` are dominated by `ADD`, `ADD_IMM`, `MUL`, `MADD`, `CMP`, `JUMPCMP`, `SIGNEXT`, or `ZEROEXT` around address generation, mask construction, casts, or bounds checks.
 
 ## Signals
 
@@ -29,6 +38,12 @@ Apply **Loop-Invariant Code Motion (LICM)** to Triton kernels: move computations
 
 - AIV scalar dominated by `LD_XD_XN_IMM`, `ST_XD_XN_IMM`, `ADD(_IMM)`, `CMP_IMM`.
 - Timeline shows CUBE waiting on flags around the loop, while AIV performs control-heavy work.
+- `report.txt` overall `[Pipe Distribution]` shows high SCALAR instruction/cycle share while VECTOR or CUBE useful compute is not dominant. This supports loop-invariant hoisting when the code has a hot loop with repeated pointer math, masks, casts, or bounds checks, because LICM removes scalar bookkeeping from every iteration without changing the math.
+- `report.txt` overall `[Key Ratios]` shows SCALAR much larger than VECTOR, for example a large `SCALAR:VECTOR_instr` or `SCALAR:VECTOR_cycles` ratio. This matches LICM when the loop body spends more work preparing addresses, masks, or loop-local metadata than doing useful vector work, and some of that setup can be computed once outside the loop.
+- For matmul, reduction, or dot-like kernels, `report.txt` shows CUBE work is low or not sustained even though `tl.dot` should dominate. This can indicate CUBE is being starved by scalar loop bookkeeping, especially repeated address generation or mask construction before each load/dot step.
+- `report.txt` overall `[Pipe Distribution]` shows MTE2/MTE3 are not the dominant buckets. This matters because LICM targets scalar/control overhead inside the loop; if memory movement dominates, a memory-layout, block-pointer, or software-pipeline pattern is more likely to be the first lever.
+- `[SCALAR Instr Types]` or `[TRACE Events]` are dominated by `ADD`, `ADD_IMM`, `MUL`, `MADD`, `CMP`, `CMP_IMM`, `JUMPCMP`, `SIGNEXT`, or `ZEROEXT` near address generation, mask construction, casts, or bounds checks. These are direct signatures of repeated scalar bookkeeping, and they strengthen the LICM diagnosis when the repeated expression can be split into an invariant base plus a loop-varying delta.
+- Treat the `report.txt` evidence as a trigger only when it matches the code signal; the repeated work must be inside a hot loop and must have a loop-invariant component that can be hoisted safely.
 
 ## Optimization strategy
 
@@ -119,6 +134,15 @@ while k < K:
 - **Broadcast orientation mistakes**: `[:, None]` vs `[None, :]` must be preserved.
 - **Over-hoisting**: do not hoist expressions that depend on `k_offs` or other loop-varying values.
 - LICM does not eliminate transform costs (e.g. ND2NZ) by itself; treat layout issues as separate patterns.
+
+## Avoid When
+
+- The repeated work actually depends on the loop variable and cannot be split into an invariant base plus a loop-varying delta.
+- `report.txt` shows MTE2/MTE3 dominate the profile, or hotspot views point primarily to memory transfer, layout conversion, gather/scatter, or store shape rather than scalar loop bookkeeping.
+- `report.txt` shows CUBE or VECTOR utilization is already high and scalar/control work is small; LICM is unlikely to be the primary lever.
+- `report.txt` `[VECTOR Unit]` points primarily to UB conflicts, or `[Pipeline Flows]` points to memory/transfer overlap problems, rather than repeated scalar setup inside the loop.
+- `report.txt` shows the main scalar cost comes from flattened coordinate decoding, modulo addressing, or scalar traps that need a structural rewrite first; prefer `scalar-latency-traps` or `block-pointer-dimensionality`.
+- Do not conclude from one metric such as SCALAR percentage or BAR cycles alone; correlate the report with code evidence of loop-invariant work, wall time, and correctness.
 
 ## What To Verify After Applying
 

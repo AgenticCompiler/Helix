@@ -222,6 +222,15 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - The kernel has a hot inner loop (often a K loop in GEMM-like kernels).
   - Each loop iteration repeats substantial pointer math, mask construction, type casts, or shape bookkeeping.
   - Profiling shows scalar/control work is disproportionately high relative to useful compute.
+  - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
+  - `report.txt` overall `[Pipe Distribution]` shows high SCALAR/control share while VECTOR or CUBE useful compute is low or thin, suggesting repeated per-iteration setup is large compared with useful loop work.
+  - `report.txt` overall `[Key Ratios]` shows a high SCALAR:VECTOR ratio, and code inspection shows a hot loop repeatedly rebuilding pointer math, masks, casts, or bounds checks.
+  - `report.txt` overall `[VECTOR Unit]` shows low utilization or a small amount of vector work per loop iteration, consistent with scalar bookkeeping throttling otherwise vector-friendly work.
+  - For matmul, reduction, or dot-like kernels, `report.txt` shows CUBE work is low or not sustained even though `tl.dot` should be the main work, suggesting repeated scalar loop setup may be starving useful compute.
+  - `report.txt` overall `[Pipe Distribution]` shows MTE2/MTE3 are not the dominant buckets, so scalar/control loop bookkeeping is a more plausible first lever than memory movement.
+  - `report.txt` `[WAIT_FLAG / BAR Sync]`, `[Pipeline Flows]`, or timeline views show frequent scalar/control wait or barrier patterns around the loop rather than long sustained VECTOR/CUBE work.
+  - `report.txt` `[Pipe Distribution Over Each Core]` shows similar SCALAR-heavy and VECTOR/CUBE-thin behavior across cores, suggesting a systematic loop-body granularity problem rather than a single-core anomaly.
+  - `[SCALAR Instr Types]` or `[TRACE Events]` are dominated by `ADD`, `ADD_IMM`, `MUL`, `MADD`, `CMP`, `JUMPCMP`, `SIGNEXT`, or `ZEROEXT` around address generation, mask construction, casts, or bounds checks.
 
 ### `merge-adjacent-stores`
 
