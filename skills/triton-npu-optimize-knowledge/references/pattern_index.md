@@ -222,6 +222,12 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - The kernel has a hot inner loop (often a K loop in GEMM-like kernels).
   - Each loop iteration repeats substantial pointer math, mask construction, type casts, or shape bookkeeping.
   - Profiling shows scalar/control work is disproportionately high relative to useful compute.
+  - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
+  - `report.txt` overall `[Pipe Distribution]` shows high SCALAR instruction/cycle share while VECTOR or CUBE useful compute is not dominant.
+  - `report.txt` overall `[Key Ratios]` shows SCALAR much larger than VECTOR, suggesting bookkeeping is heavier than useful vector work.
+  - For matmul, reduction, or dot-like kernels, `report.txt` shows CUBE work is low or not sustained even though `tl.dot` should be the main work.
+  - `report.txt` overall `[Pipe Distribution]` shows MTE2/MTE3 are not the dominant buckets.
+  - `[SCALAR Instr Types]` or `[TRACE Events]` are dominated by `ADD`, `ADD_IMM`, `MUL`, `MADD`, `CMP`, `JUMPCMP`, `SIGNEXT`, or `ZEROEXT` around address generation, mask construction, casts, or bounds checks.
 
 ### `merge-adjacent-stores`
 
@@ -267,6 +273,12 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - The kernel is **naturally row-wise**: each output row depends mainly on one row of input (e.g. row-wise LogSumExp, row norms, row softmax statistics).
   - Profiling or timeline views suggest **high scalar/control overhead**, **under-filled vector work per program**, or **many tiny programs** relative to problem size `B` (batch / number of rows).
   - The row-wise math already uses **tile loops along `N`** (`BLOCK_N`); increasing **`BLOCK_M`** does not force an extra full pass over global memory if you keep a **single streaming pass** over `N` per program.
+  - `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR imbalance, such as `%(SCALAR instr) >= 70%` or `%(SCALAR cycles) >= 40%`, while `%(VECTOR instr) <= 15%` or `%(VECTOR cycles) <= 15%`.
+  - `report.txt` overall `[Key Ratios]` shows a high `SCALAR:VECTOR` ratio, such as `SCALAR:VECTOR_instr >= 8:1` or `SCALAR:VECTOR_cycles >= 3:1`, and code inspection shows `program_id(0)` maps one-to-one to rows.
+  - `report.txt` overall `[VECTOR Unit]` shows low utilization or a small amount of vector work per program, such as only tens of VECTOR instructions, near-zero utilization, or mask/setup-heavy top VECTOR instructions.
+  - `report.txt` total instruction/event counts are small, or only one/few cores appear active, while the same report still shows SCALAR-heavy / VECTOR-thin ratios.
+  - `report.txt` `[WAIT_FLAG / BAR Sync]`, `[Pipeline Flows]`, or timeline views show short-program synchronization/control traces rather than long sustained vector work. When these traits appear with scalar/vector thin-program ratios, `program-multiple-rows` is worth trying; frequent wait/barrier patterns strengthen the signal, but low counts do not rule it out.
+  - `report.txt` `[Pipe Distribution Over Each Core]` shows similar SCALAR-heavy / VECTOR-thin behavior across cores.
 
 ### `reduce-avoid-transpose-copy`
 
