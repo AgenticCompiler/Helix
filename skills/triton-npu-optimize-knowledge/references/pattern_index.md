@@ -222,6 +222,12 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - The kernel has a hot inner loop (often a K loop in GEMM-like kernels).
   - Each loop iteration repeats substantial pointer math, mask construction, type casts, or shape bookkeeping.
   - Profiling shows scalar/control work is disproportionately high relative to useful compute.
+  - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
+  - `report.txt` overall `[Pipe Distribution]` shows high SCALAR instruction/cycle share while VECTOR or CUBE useful compute is not dominant.
+  - `report.txt` overall `[Key Ratios]` shows SCALAR much larger than VECTOR, suggesting bookkeeping is heavier than useful vector work.
+  - For matmul, reduction, or dot-like kernels, `report.txt` shows CUBE work is low or not sustained even though `tl.dot` should be the main work.
+  - `report.txt` overall `[Pipe Distribution]` shows MTE2/MTE3 are not the dominant buckets.
+  - `[SCALAR Instr Types]` or `[TRACE Events]` are dominated by `ADD`, `ADD_IMM`, `MUL`, `MADD`, `CMP`, `JUMPCMP`, `SIGNEXT`, or `ZEROEXT` around address generation, mask construction, casts, or bounds checks.
 
 ### `merge-adjacent-stores`
 
