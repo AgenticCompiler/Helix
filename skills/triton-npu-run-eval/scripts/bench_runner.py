@@ -25,6 +25,7 @@ from bench_contract import (
     resolve_bench_kernel_resolution as _resolve_bench_kernel_resolution,
 )
 from npu_affinity import parse_npu_devices
+from debug_device import maybe_print_visible_devices
 from perf_artifacts import (
     MetricSource,
     PerfCaseRecord,
@@ -497,6 +498,7 @@ def run_local_bench(
 ) -> tuple[ResultPayload, Path | None]:
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
+    maybe_print_visible_devices()
     with _local_bench_workdir(bench_file.parent):
         if bench_mode == "msprof":
             if devices is not None:
@@ -549,6 +551,7 @@ def run_remote_bench(
 ) -> tuple[ResultPayload, Path | None, str]:
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
+    maybe_print_visible_devices()
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
     )

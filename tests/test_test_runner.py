@@ -2,6 +2,7 @@ import pickle
 import sys
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -13,6 +14,44 @@ _ANOTHER_WARNING_LINE = "[WARNING] autotune fallback was used\n"
 
 
 class LocalTestRunnerTests(unittest.TestCase):
+    def test_run_local_test_prints_visible_devices_when_debug_enabled(self) -> None:
+        module = load_test_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "abs.py"
+            test_file = root / "test_abs.py"
+            operator.write_text("def noop():\n    return 1\n", encoding="utf-8")
+            test_file.write_text("print('test')\n", encoding="utf-8")
+
+            fake_result = {
+                "return_code": 0,
+                "stdout": "",
+                "stderr": "",
+                "stalled": False,
+                "session_id": None,
+            }
+            stdout = StringIO()
+
+            with patch.dict(
+                module.os.environ,
+                {
+                    "TRITON_AGENT_DEBUG": "1",
+                    "ASCEND_RT_VISIBLE_DEVICES": "3",
+                },
+                clear=False,
+            ):
+                with patch.object(module, "run_streaming_process", return_value=fake_result):
+                    with patch("sys.stdout", stdout):
+                        result, archived = module.run_local_test(
+                            test_file,
+                            operator,
+                            "standalone",
+                        )
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertIsNone(archived)
+        self.assertIn("[TRITON_AGENT_DEBUG] ASCEND_RT_VISIBLE_DEVICES=3", stdout.getvalue())
+
     def test_run_local_test_executes_declarative_differential_cases(self) -> None:
         module = load_test_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
