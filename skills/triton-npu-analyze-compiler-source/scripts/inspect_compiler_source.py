@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import TypedDict
 
 
 SEARCH_AREAS: tuple[tuple[str, str, str], ...] = (
@@ -43,16 +44,24 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+class _SearchItem(TypedDict):
+    area: str
+    path: str
+    score: int
+    matched_terms: list[str]
+    why: str
+
+
 def locate_payload(
     source_root: str | Path,
     *,
     terms: list[str],
     hint: str | None = None,
     limit: int = 10,
-) -> dict[str, list[dict[str, object]]]:
+) -> dict[str, list[_SearchItem]]:
     root = Path(source_root).expanduser().resolve()
     lowered_terms = [term.lower() for term in terms if term.strip()]
-    grouped: dict[str, list[dict[str, object]]] = {"docs": [], "lib": [], "include": []}
+    grouped: dict[str, list[_SearchItem]] = {"docs": [], "lib": [], "include": []}
 
     for area, relative_root, pattern in SEARCH_AREAS:
         candidate_root = root / relative_root
@@ -110,12 +119,10 @@ def locate_text(
             lines.append("  (no matches)")
             continue
         for item in payload[area]:
-            matched_terms = item["matched_terms"]
-            assert isinstance(matched_terms, list)
             lines.append(
                 "  "
                 f"{item['path']}  score={item['score']}  "
-                f"matched_terms={','.join(matched_terms)}  why={item['why']}"
+                f"matched_terms={','.join(item['matched_terms'])}  why={item['why']}"
             )
     return "\n".join(lines) + "\n"
 

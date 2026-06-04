@@ -522,6 +522,21 @@ class OptimizeCheckTests(unittest.TestCase):
                 result.summary,
             )
 
+    def test_check_round_min_rounds_ignores_precreated_incomplete_round_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            round_dir = self._write_round(workdir, "opt-round-1", round_disposition="continue")
+            (workdir / "opt-round-2").mkdir()
+
+            result = optimize_checks.check_round(round_dir, min_rounds=2)
+
+            self.assertTrue(result.ok)
+            self.assertEqual(result.decision, "pass")
+            self.assertEqual(result.next_option, "opt-round-2")
+            self.assertIn("Round 1/2 complete", result.summary)
+            self.assertNotIn("Minimum round requirement satisfied", result.summary)
+
     def test_check_round_warns_when_local_optimum_env_vars_are_invalid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)

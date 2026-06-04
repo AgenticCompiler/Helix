@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from typing import Protocol, TextIO, cast
 
+from triton_agent.remote_execution_env import resolve_remote_execution
 from triton_agent.skill_loader import load_operator_eval_script_module
 
 
@@ -94,14 +95,18 @@ def handle_compare_result(parser: argparse.ArgumentParser, args: argparse.Namesp
     new_result = Path(args.new_result).expanduser().resolve()
     if not new_result.exists():
         parser.error(f"New result path does not exist: {new_result}")
-    if args.remote:
+    remote, remote_workdir = resolve_remote_execution(
+        getattr(args, "remote", None),
+        getattr(args, "remote_workdir", None),
+    )
+    if remote is not None:
         try:
             return compare_remote_result_files(
                 oracle_result,
                 new_result,
                 args.compare_level,
-                args.remote,
-                args.remote_workdir,
+                remote,
+                remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
             )

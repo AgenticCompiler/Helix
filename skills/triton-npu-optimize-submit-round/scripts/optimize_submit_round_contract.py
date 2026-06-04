@@ -337,7 +337,47 @@ def check_baseline(baseline_dir_path: Path) -> OptimizeCheckResult:
 
 
 def _count_round_directories(workspace: Path) -> int:
-    return sum(1 for path in workspace.glob("opt-round-*") if path.is_dir())
+    return len(iter_completed_round_directories(workspace))
+
+
+def _inspect_round_minimum_artifact_package(
+    round_dir: Path,
+) -> tuple[RoundArtifactsInspection, RoundState | None, str | None]:
+    artifact_inspection = inspect_round_artifacts(round_dir)
+    if artifact_inspection.issues:
+        return artifact_inspection, None, None
+    try:
+        return artifact_inspection, load_round_state(round_dir), None
+    except ValueError as exc:
+        return artifact_inspection, None, str(exc)
+
+
+def is_completed_round_directory(round_dir: Path) -> bool:
+    if not round_dir.is_dir():
+        return False
+    name = round_dir.name
+    if not name.startswith("opt-round-"):
+        return False
+    suffix = name[len("opt-round-"):]
+    if not suffix.isdigit():
+        return False
+
+    inspection, round_state, _state_error = _inspect_round_minimum_artifact_package(round_dir)
+    if inspection.issues or round_state is None:
+        return False
+
+    return (
+        round_state.correctness_status == "passed"
+        and round_state.benchmark_status == "passed"
+    )
+
+
+def iter_completed_round_directories(workspace: Path) -> tuple[Path, ...]:
+    return tuple(
+        path
+        for path in sorted(workspace.glob("opt-round-*"))
+        if is_completed_round_directory(path)
+    )
 
 
 def _next_round_name_for_round(round_dir: Path, *, completed: int) -> str:
@@ -356,7 +396,7 @@ def check_round(
     min_rounds: int | None = None,
     optimize_target: Literal["kernel", "operator"] | None = None,
 ) -> OptimizeCheckResult:
-    artifact_inspection = inspect_round_artifacts(round_dir)
+    artifact_inspection, round_state, state_error = _inspect_round_minimum_artifact_package(round_dir)
     artifact_issues = artifact_inspection.issues
     if artifact_issues:
         return _build_result(
@@ -365,14 +405,13 @@ def check_round(
             issues=artifact_issues,
         )
 
-    try:
-        round_state = load_round_state(round_dir)
-    except ValueError as exc:
+    if state_error is not None:
         return _build_result(
             kind="round",
             decision="revise-required",
-            issues=(str(exc),),
+            issues=(state_error,),
         )
+    assert round_state is not None
 
     if round_state.correctness_status != "passed":
         return _build_result(

@@ -38,6 +38,7 @@ from triton_agent.prompts import (
     build_optimize_supervisor_prompt,
     build_prompt,
 )
+from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
 from triton_agent.execution import _normalize_agent_result as normalize_agent_result
 
 
@@ -361,6 +362,8 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("TRITON_AGENT_BATCH_NPU_DEVICES", help_text)
         self.assertIn("TRITON_AGENT_CODE_AGENT_MAX_RETRIES", help_text)
         self.assertIn("TRITON_AGENT_BENCH_OUTPUT_DIR", help_text)
+        self.assertIn(remote_target_env_name(), help_text)
+        self.assertIn(remote_workdir_env_name(), help_text)
         self.assertIn("TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES", help_text)
         self.assertIn("TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW", help_text)
         self.assertIn("TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN", help_text)
@@ -2481,6 +2484,104 @@ class PathResolutionTests(unittest.TestCase):
                 verbose=False,
                 force_recompile=False,
             )
+
+    def test_main_sets_remote_env_before_dispatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+
+            seen_env: dict[str, Optional[str]] = {}
+
+            def fake_run_remote_test(*args, **kwargs):
+                del args, kwargs
+                seen_env["remote"] = os.environ.get(remote_target_env_name())
+                seen_env["remote_workdir"] = os.environ.get(remote_workdir_env_name())
+                return AgentResult(return_code=0, stdout="", stderr=""), None, "/tmp/triton-agent-123"
+
+            with patch(
+                "triton_agent.commands.execution.run_remote_test",
+                side_effect=fake_run_remote_test,
+            ):
+                exit_code = main(
+                    [
+                        "run-test",
+                        "--test-file",
+                        str(test_file),
+                        "--operator-file",
+                        str(operator),
+                        "--remote",
+                        "alice@example.com",
+                        "--remote-workdir",
+                        "/tmp/triton-agent",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(seen_env["remote"], "alice@example.com")
+            self.assertEqual(seen_env["remote_workdir"], "/tmp/triton-agent")
+
+    def test_main_clears_stale_remote_workdir_when_remote_has_no_workdir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+
+            seen_env: dict[str, Optional[str]] = {}
+
+            def fake_run_remote_test(*args, **kwargs):
+                del args, kwargs
+                seen_env["remote"] = os.environ.get(remote_target_env_name())
+                seen_env["remote_workdir"] = os.environ.get(remote_workdir_env_name())
+                return AgentResult(return_code=0, stdout="", stderr=""), None, "/tmp/triton-agent-123"
+
+            with patch.dict(
+                os.environ,
+                {remote_workdir_env_name(): "/tmp/stale-workdir"},
+                clear=False,
+            ):
+                with patch(
+                    "triton_agent.commands.execution.run_remote_test",
+                    side_effect=fake_run_remote_test,
+                ):
+                    exit_code = main(
+                        [
+                            "run-test",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                            "--remote",
+                            "alice@example.com",
+                        ]
+                    )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(seen_env["remote"], "alice@example.com")
+            self.assertIsNone(seen_env["remote_workdir"])
+
+    def test_main_clears_stale_remote_env_for_non_remote_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch.dict(
+                os.environ,
+                {
+                    remote_target_env_name(): "alice@example.com",
+                    remote_workdir_env_name(): "/tmp/stale-workdir",
+                },
+                clear=False,
+            ):
+                with redirect_stdout(StringIO()), redirect_stderr(StringIO()) as stderr:
+                    exit_code = main(["status", "-i", str(root)])
+
+            self.assertEqual(exit_code, 1)
+            self.assertNotIn(remote_target_env_name(), os.environ)
+            self.assertNotIn(remote_workdir_env_name(), os.environ)
+            self.assertIn("No operator workspaces found", stderr.getvalue())
 
     def test_run_test_wrapper_calls_loaded_skill_module(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

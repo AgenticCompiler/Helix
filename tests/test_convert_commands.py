@@ -16,6 +16,7 @@ from triton_agent.cli import build_parser
 from triton_agent.convert.models import ConvertOptions
 from triton_agent.models import AgentResult, CommandKind
 from triton_agent.otel_trace import TRACE_PATH_ENV
+from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
 
 
 class ConvertCommandModuleTests(unittest.TestCase):
@@ -89,6 +90,34 @@ class ConvertRuntimeTests(unittest.TestCase):
         self.assertIsNone(request.staged_skill_sources)
         self.assertEqual(request.skill_name, "triton-npu-convert-pytorch-operator")
         self.assertEqual(request.output_path, Path("/tmp/triton_kernel.py"))
+
+    def test_build_convert_request_injects_remote_env(self) -> None:
+        from triton_agent.convert.orchestration import build_convert_request
+
+        request = build_convert_request(
+            Path("/tmp/kernel.py"),
+            Path("/tmp/kernel.py"),
+            Path("/tmp"),
+            ConvertOptions(
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                remote="alice@example.com",
+                remote_workdir="/tmp/triton-agent",
+                output=None,
+                test_mode="differential",
+                prompt=None,
+            ),
+        )
+
+        self.assertEqual(request.remote, "alice@example.com")
+        self.assertEqual(request.remote_workdir, "/tmp/triton-agent")
+        self.assertIsNotNone(request.extra_env)
+        assert request.extra_env is not None
+        self.assertEqual(request.extra_env[remote_target_env_name()], "alice@example.com")
+        self.assertEqual(request.extra_env[remote_workdir_env_name()], "/tmp/triton-agent")
 
     def test_build_convert_request_appends_user_prompt(self) -> None:
         from triton_agent.convert.orchestration import build_convert_request

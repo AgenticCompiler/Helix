@@ -6,6 +6,7 @@ from typing import Protocol, cast
 
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.optimize.prompts import build_optimize_resume_prompt
+from triton_agent.skill_loader import load_skill_script_module
 
 
 class SupportsOptimizeRecovery(Protocol):
@@ -109,7 +110,11 @@ class OptimizeRunLoop:
         return self._count_round_directories(request.workdir) < required_rounds
 
     def _count_round_directories(self, workdir: Path) -> int:
-        return sum(1 for path in workdir.glob("opt-round-*") if path.is_dir())
+        module = load_skill_script_module(
+            "triton-npu-optimize-submit-round",
+            "optimize_submit_round",
+        )
+        return len(cast(tuple[Path, ...], module.iter_completed_round_directories(workdir)))
 
     def _build_rounds_summary(self, request: AgentRequest) -> str:
         completed_rounds = self._count_round_directories(request.workdir)

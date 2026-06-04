@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Optional
@@ -24,6 +25,11 @@ from triton_agent.commands.upload_optimize import handle_upload_optimize
 from triton_agent.commands.report_batch import handle_report_batch
 from triton_agent.commands.report import handle_report
 from triton_agent.models import CommandKind
+from triton_agent.remote_execution_env import (
+    apply_remote_execution_env,
+    remote_target_env_name,
+    remote_workdir_env_name,
+)
 
 
 _Handler = Callable[[argparse.ArgumentParser, argparse.Namespace], int]
@@ -72,6 +78,15 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
             (
                 "TRITON_AGENT_BENCH_OUTPUT_DIR",
                 "Directory used to keep local benchmark profiler output.",
+            ),
+            (
+                remote_target_env_name(),
+                "Injected remote target for agent child processes; remote-aware run helpers use it as a fallback when "
+                "`--remote` is omitted.",
+            ),
+            (
+                remote_workdir_env_name(),
+                "Injected remote workspace root for agent child processes; used together with the remote target fallback.",
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES",
@@ -606,8 +621,17 @@ def _build_environment_variables_section() -> list[str]:
 def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(_normalize_command_aliases(argv))
+    _apply_remote_execution_env_from_args(args)
     command_kind = args.command_kind
     return _COMMAND_SPECS[command_kind].handler(parser, args)
+
+
+def _apply_remote_execution_env_from_args(args: argparse.Namespace) -> None:
+    apply_remote_execution_env(
+        getattr(args, "remote", None) if hasattr(args, "remote") else None,
+        getattr(args, "remote_workdir", None) if hasattr(args, "remote_workdir") else None,
+        os.environ,
+    )
 
 
 def _parse_concurrency_value(value: str) -> int | str:
