@@ -371,7 +371,9 @@ def sync_workspace_dependencies(
         meta["unresolved_repo_imports"] = unresolved
     elif "unresolved_repo_imports" in meta:
         del meta["unresolved_repo_imports"]
-    meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    from batch_evaluation import upsert_workspace_entry
+
+    upsert_workspace_entry(workspace.parent, workspace.name, meta)
 
     return {
         "workspace": workspace.name,

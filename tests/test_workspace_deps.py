@@ -92,22 +92,21 @@ class WorkspaceDepsTests(unittest.TestCase):
                 "from fla.utils import device\n",
                 encoding="utf-8",
             )
-            meta_path = workspace / "validation-meta.json"
-            meta_path.write_text(
-                json.dumps(
-                    {
-                        "workspace": "demo_ws",
-                        "operator_filename": "demo.py",
-                        "dependency_dir": "{deps}",
-                    },
-                )
-                + "\n",
-                encoding="utf-8",
+            from batch_evaluation import resolve_workspace_meta, upsert_workspace_entry
+
+            upsert_workspace_entry(
+                root,
+                "demo_ws",
+                {
+                    "workspace": "demo_ws",
+                    "operator_filename": "demo.py",
+                    "dependency_dir": "{deps}",
+                },
             )
 
             report = sync_workspace_dependencies(workspace, repo)
             operator_text = (workspace / "demo.py").read_text(encoding="utf-8")
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            meta = resolve_workspace_meta(workspace, batch_root=root)
 
             self.assertIn(REPO_PATH_BOOTSTRAP_START, operator_text)
             self.assertTrue(has_repo_path_bootstrap(operator_text))
@@ -130,17 +129,16 @@ class WorkspaceDepsTests(unittest.TestCase):
                 "from fla.utils import device\n",
                 encoding="utf-8",
             )
-            meta_path = workspace / "validation-meta.json"
-            meta_path.write_text(
-                json.dumps(
-                    {
-                        "workspace": "demo_ws",
-                        "operator_filename": "demo.py",
-                        "dependency_dir": "deps",
-                    },
-                )
-                + "\n",
-                encoding="utf-8",
+            from batch_evaluation import upsert_workspace_entry
+
+            upsert_workspace_entry(
+                root,
+                "demo_ws",
+                {
+                    "workspace": "demo_ws",
+                    "operator_filename": "demo.py",
+                    "dependency_dir": "deps",
+                },
             )
 
             report = sync_workspace_dependencies(
