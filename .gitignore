@@ -5,6 +5,8 @@ __pycache__/
 build/
 dist/
 workspace/
+pattern-validation-skills/
+pattern-validation-batch/
 .worktrees/
 .vscode/
 .sisyphus/
