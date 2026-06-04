@@ -17,7 +17,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--phase",
         required=True,
-        choices=("simulate", "skill-audit", "complete", "failed"),
+        choices=("prepare", "simulate", "skill-audit", "complete", "failed"),
     )
     parser.add_argument("--note", default="")
     parser.add_argument(

@@ -27,7 +27,11 @@ from triton_agent.pattern_validation_loop.workspace_plan import (
     generate_workspace_plan_if_present,
     resolve_knowledge_base_path,
 )
-from triton_agent.pattern_validation_loop.prompts import build_analyze_prompt, build_prepare_prompt
+from triton_agent.pattern_validation_loop.prepare_agent import (
+    PrepareBatchParams,
+    run_pattern_validation_prepare_agent,
+)
+from triton_agent.pattern_validation_loop.prompts import build_analyze_prompt
 from triton_agent.pattern_validation_loop.scaffold_verify import run_pattern_validation_verify
 from triton_agent.pattern_validation_loop.workspace_sync import sync_batch_workspace_dependencies
 from triton_agent.pattern_validation_loop.seed_skills import (
@@ -329,27 +333,26 @@ def _run_prepare_agent(
     *,
     workspace_plan_path: Path | None,
 ) -> int:
-    backend_skills = staged_skill_dir(config.agent_name)
-    skill_root = backend_skills / _PATTERN_VALIDATION_SKILL
-    knowledge_root = config.skills_workdir / OPTIMIZE_KNOWLEDGE_SKILL_NAME
-    prompt = append_additional_user_instructions(
-        build_prepare_prompt(
-            repo_path=config.repo_root,
+    return run_pattern_validation_prepare_agent(
+        PrepareBatchParams(
+            repo_root=config.repo_root,
             synthesis_path=config.synthesis_path,
             knowledge_path=config.knowledge_path,
-            batch_dir=config.batch_path,
-            workspace_plan_path=workspace_plan_path,
+            batch_path=config.batch_path,
             skills_workdir=config.skills_workdir,
             skills_dir=config.skills_dir,
             state_path=config.state_path,
             base_revision=config.base_revision,
-            skill_root=skill_root,
-            knowledge_root=knowledge_root,
+            agent_name=config.agent_name,
+            optimize_knowledge=config.optimize_knowledge,
+            verbose=config.verbose,
+            show_output=config.show_output,
+            user_prompt=config.user_prompt,
+            log_tag="pattern-validation-loop",
+            workflow="loop",
         ),
-        config.user_prompt,
+        workspace_plan_path=workspace_plan_path,
     )
-    request = _build_agent_request(config, prompt=prompt)
-    return _run_agent_request(config, request)
 
 
 def _run_analyze_agent(

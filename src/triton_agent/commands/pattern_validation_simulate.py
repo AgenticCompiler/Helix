@@ -31,6 +31,7 @@ def handle_pattern_validation_simulate(
             verbose=bool(getattr(args, "verbose", False)),
             show_output=bool(getattr(args, "show_output", True)),
             skip_verify=bool(getattr(args, "skip_verify", False)),
+            skip_prepare=bool(getattr(args, "skip_prepare", False)),
             run_optimize_after=bool(getattr(args, "run_optimize", False)),
             max_iterations=int(getattr(args, "max_iterations", 5)),
             synthesis_output=str(getattr(args, "synthesis", "PERF_PATTERN_SYNTHESIS.md")),

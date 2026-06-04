@@ -2,12 +2,14 @@
 
 ## Purpose
 
-`triton-agent pattern-validation-simulate` is a **standalone** loop. It does not change
-`pattern-validation-loop` orchestration.
+`triton-agent pattern-validation-simulate` is an **integrated** end-to-end command. It does not
+run real `optimize-batch` unless `--run-optimize` is set.
 
-Each cycle: **simulate agents** (per workspace, same inputs as optimize-batch) → **skill-audit
-agent** (updates `pattern-validation-skills` from reports) → repeat until all workspaces report
-`skills_alignment: aligned` or `--max-iterations` is reached.
+Bootstrap (once): workspace plan from knowledge → **prepare agent** when the batch is empty →
+dependency sync → scaffold verify.
+
+Each cycle: **simulate agents** (per workspace) → **skill-audit agent** (updates
+`pattern-validation-skills`) → repeat until `skills_alignment: aligned` or `--max-iterations`.
 
 ## Outputs
 
@@ -19,8 +21,9 @@ agent** (updates `pattern-validation-skills` from reports) → repeat until all 
 
 ## Typical workflow
 
-1. Prepare batch (manually or via prepare agent + verify).
-2. `pattern-validation-simulate` until the loop completes.
+1. Ensure `PERF_PATTERN_SYNTHESIS.md` (and usually `PERF_KNOWLEDGE_BASE.md`) exist in the repo.
+2. Run `pattern-validation-simulate` once; the CLI plans, prepares when needed, verifies, then
+   runs simulate → skill-audit iterations.
 3. Run the printed `optimize-batch` command manually (or `--run-optimize`).
 
 ## Flags
@@ -30,5 +33,6 @@ agent** (updates `pattern-validation-skills` from reports) → repeat until all 
   knowledge is optional but drives workspace-plan regeneration and agent prompts when present.
 - `--base` / `--skip-launch` — passed through to workspace-plan generation when knowledge exists.
 - `--max-iterations` — simulate → skill-audit cycles (default: 5); use `1` for one simulate pass only.
-- `--skip-verify` — skip scaffold verify before the first simulate iteration.
+- `--skip-prepare` — do not launch the prepare agent when the batch is empty (batch must exist).
+- `--skip-verify` — skip scaffold verify before simulate iterations.
 - `--run-optimize` — run real `optimize-batch` after loop completion (off by default).

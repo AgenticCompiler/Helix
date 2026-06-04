@@ -34,14 +34,34 @@ def run_pattern_validation_verify(
 
     payload = _verify_batch_payload(module, batch_root)
     out = stream or sys.stdout
+    if payload.get("no_active_workspaces"):
+        out.write(_format_no_active_workspaces_message(batch_root))
+        out.write("\n")
     for report in payload["reports"]:
         out.write(_render_verify_report(report))
         out.write("\n")
-    out.write(
-        f"Summary: {payload['workspace_count'] - payload['failed_count']} ok, "
-        f"{payload['failed_count']} failed scaffold checks\n",
-    )
+    out.write(_format_verify_summary(payload))
+    out.write("\n")
     return 1 if payload["failed_count"] else 0
+
+
+def _format_no_active_workspaces_message(batch_root: Path) -> str:
+    return (
+        "[FAIL] batch root has no active validation workspaces\n"
+        f"  batch_root: {batch_root.as_posix()}\n"
+        "  expected: <batch>/<workspace>/validation-meta.json (one operator .py per workspace)\n"
+        "  fix: run `triton-agent pattern-validation-loop` prepare to scaffold from "
+        "workspace-plan.json, or create workspaces manually, then re-run verify/simulate"
+    )
+
+
+def _format_verify_summary(payload: dict[str, Any]) -> str:
+    if payload.get("no_active_workspaces"):
+        return "Summary: 0 active workspaces — scaffold the batch before simulate or optimize"
+    ok_count = payload["workspace_count"] - payload["failed_count"]
+    return (
+        f"Summary: {ok_count} ok, {payload['failed_count']} failed scaffold checks"
+    )
 
 
 def _verify_batch_payload(module: Any, batch_root: Path) -> dict[str, Any]:
@@ -51,6 +71,7 @@ def _verify_batch_payload(module: Any, batch_root: Path) -> dict[str, Any]:
             "batch_root": batch_root.as_posix(),
             "workspace_count": 0,
             "failed_count": 1,
+            "no_active_workspaces": True,
             "reports": [],
         }
 

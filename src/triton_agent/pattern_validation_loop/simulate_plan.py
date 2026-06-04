@@ -27,7 +27,12 @@ from triton_agent.pattern_validation_loop.workspace_plan import (
     DEFAULT_KNOWLEDGE_FILE,
     resolve_knowledge_base_path,
 )
+from triton_agent.pattern_validation_loop.prepare_agent import (
+    PrepareBatchParams,
+    run_pattern_validation_prepare_agent,
+)
 from triton_agent.pattern_validation_loop.scaffold_verify import run_pattern_validation_verify
+from triton_agent.skill_loader import load_skill_script_module
 from triton_agent.pattern_validation_loop.seed_skills import (
     DEFAULT_SKILLS_DIR_NAME,
     seed_pattern_validation_skills_dir,
@@ -65,7 +70,9 @@ class SimulatePlanConfig:
     verbose: bool
     show_output: bool
     skip_verify: bool
+    skip_prepare: bool
     run_optimize_after: bool
+    skills_dir: str
     synthesis_path: Path
     knowledge_path: Path
     base_revision: str = "origin/main"
@@ -95,6 +102,7 @@ def build_simulate_plan_config(
     verbose: bool = False,
     show_output: bool = True,
     skip_verify: bool = False,
+    skip_prepare: bool = False,
     run_optimize_after: bool = False,
     max_iterations: int = 5,
     synthesis_output: str = DEFAULT_SYNTHESIS_FILE,
@@ -135,7 +143,9 @@ def build_simulate_plan_config(
         verbose=verbose,
         show_output=show_output,
         skip_verify=skip_verify,
+        skip_prepare=skip_prepare,
         run_optimize_after=run_optimize_after,
+        skills_dir=skills_dir,
         max_iterations=max(1, max_iterations),
         synthesis_path=synthesis_path,
         knowledge_path=knowledge_path,
@@ -324,11 +334,74 @@ def run_simulate_workspace_agents(
     return results, 1 if failed else 0
 
 
+def bootstrap_simulate_batch(
+    config: SimulatePlanConfig,
+    *,
+    workspace_plan_path: Path | None,
+    simulate_state_path: Path,
+    stream: TextIO | None = None,
+) -> int:
+    """Plan → prepare (if needed) → sync deps → verify before simulate iterations."""
+    out = stream or sys.stderr
+    if not config.batch_path.is_dir():
+        config.batch_path.mkdir(parents=True, exist_ok=True)
+
+    active_count = _active_validation_workspace_count(config.batch_path)
+    if active_count == 0:
+        if config.skip_prepare:
+            print(
+                "[pattern-validation-simulate] no active workspaces and --skip-prepare set; "
+                "cannot continue.",
+                file=sys.stderr,
+            )
+            return 1
+        print(
+            "[pattern-validation-simulate] no workspaces yet — launching prepare agent "
+            "(plan → scaffold → verify)",
+            file=out,
+            flush=True,
+        )
+        prepare_code = run_pattern_validation_prepare_agent(
+            PrepareBatchParams(
+                repo_root=config.repo_root,
+                synthesis_path=config.synthesis_path,
+                knowledge_path=config.knowledge_path,
+                batch_path=config.batch_path,
+                skills_workdir=config.skills_workdir,
+                skills_dir=config.skills_dir,
+                state_path=simulate_state_path,
+                base_revision=config.base_revision,
+                agent_name=config.agent_name,
+                optimize_knowledge=config.optimize_knowledge,
+                verbose=config.verbose,
+                show_output=config.show_output,
+                user_prompt=config.user_prompt,
+                log_tag="pattern-validation-simulate",
+                workflow="simulate",
+            ),
+            workspace_plan_path=workspace_plan_path,
+        )
+        if prepare_code != 0:
+            print(
+                "[pattern-validation-simulate] prepare agent failed.",
+                file=sys.stderr,
+            )
+            return prepare_code
+    elif config.verbose:
+        print(
+            f"[pattern-validation-simulate] reusing {active_count} existing workspace(s)",
+            file=out,
+            flush=True,
+        )
+
+    return prepare_simulate_batch(config, stream=out, run_verify=not config.skip_verify)
+
+
 def prepare_simulate_batch(
     config: SimulatePlanConfig,
     *,
     stream: TextIO | None = None,
-    run_verify: bool = True,
+    run_verify: bool = False,
 ) -> int:
     out = stream or sys.stderr
     if not config.batch_path.is_dir():
@@ -518,6 +591,14 @@ def _staged_cann_ext_api_enabled(request: AgentRequest) -> bool:
         request.staged_skill_names is not None
         and "triton-npu-cann-ext-api-patterns" in request.staged_skill_names
     )
+
+
+def _active_validation_workspace_count(batch_path: Path) -> int:
+    module = load_skill_script_module(
+        "triton-npu-pattern-validation-loop",
+        "batch_layout",
+    )
+    return len(module.list_active_validation_workspaces(batch_path))
 
 
 def _load_validation_meta(workspace: Path) -> dict[str, Any] | None:

@@ -120,11 +120,12 @@ triton-agent pattern-validation-verify -i "$BATCH"
 Fix every reported issue before the prepare agent finishes. The CLI runs the same command
 again before optimize as a hard gate.
 
-## Simulate optimize plan loop (separate from pattern-validation-loop)
+## Simulate optimize plan loop (integrated prepare + simulate)
 
-Use `pattern-validation-simulate` when you want to iterate on **pattern skills** using dry-run
-simulate agents **before** real `optimize-batch`. This does **not** modify
-`pattern-validation-loop`.
+Use `pattern-validation-simulate` for an **end-to-end** dry-run loop: workspace plan,
+prepare agent (when the batch is empty), verify, simulate agents, skill-audit on
+`pattern-validation-skills`, then repeat until aligned. It does **not** run real
+`optimize-batch` unless you pass `--run-optimize`.
 
 ```bash
 uv run triton-agent pattern-validation-simulate -i "$REPO" \
@@ -137,9 +138,17 @@ uv run triton-agent pattern-validation-simulate -i "$REPO" \
   --agent opencode
 ```
 
-Each iteration:
+Bootstrap (once per command, before simulate iterations):
 
-1. Sync deps; `pattern-validation-verify` on iteration 1 only (`--skip-verify` to skip).
+1. CLI generates `workspace-plan.json` when `PERF_KNOWLEDGE_BASE.md` exists.
+2. If no active workspaces, CLI launches the **same prepare agent** as
+   `pattern-validation-loop` (scaffold + verify). Use `--skip-prepare` only when the batch
+   is already scaffolded.
+3. CLI syncs deps and runs `pattern-validation-verify` (`--skip-verify` to skip).
+
+Each simulate iteration:
+
+1. Sync deps.
 2. **Simulate agents** (one per workspace): same inputs as optimize, write
    `simulate-plan/report.json` with `ranked_patterns` (priority, hit, rationale) and
    `skills_alignment`.

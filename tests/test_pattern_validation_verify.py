@@ -2,6 +2,7 @@ import json
 import sys
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
 
 from triton_agent.pattern_validation_loop.scaffold_verify import run_pattern_validation_verify
@@ -10,6 +11,18 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 
 
 class PatternValidationVerifyTests(unittest.TestCase):
+    def test_verify_empty_batch_reports_no_active_workspaces(self) -> None:
+        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
+            batch_root = Path(tmp)
+            (batch_root / "workspace-plan.json").write_text("{}", encoding="utf-8")
+            captured = StringIO()
+            code = run_pattern_validation_verify(batch_root, stream=captured)
+            output = captured.getvalue()
+        self.assertEqual(code, 1)
+        self.assertIn("no active validation workspaces", output)
+        self.assertIn("0 active workspaces", output)
+        self.assertNotIn("-1 ok", output)
+
     def test_verify_passes_minimal_workspace(self) -> None:
         with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
             batch_root = Path(tmp)

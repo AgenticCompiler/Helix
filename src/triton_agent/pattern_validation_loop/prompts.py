@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 
 def build_prepare_prompt(
@@ -16,6 +17,7 @@ def build_prepare_prompt(
     base_revision: str,
     skill_root: Path,
     knowledge_root: Path,
+    workflow: Literal["loop", "simulate"] = "loop",
 ) -> str:
     iteration_contract = skill_root / "references" / "iteration-contract.md"
     skill_update_contract = skill_root / "references" / "skill-update-contract.md"
@@ -51,8 +53,39 @@ def build_prepare_prompt(
         plan_step = f"""4. No `{knowledge_path.name}` found — plan workspaces manually from `{synthesis_path.name}` and
    `{workspace_scaffold_contract.as_posix()}` (one launch function per workspace when possible)."""
 
+    if workflow == "simulate":
+        init_step = (
+            f"1. Simulate loop state is managed by the CLI at `{state_path.as_posix()}`. "
+            "Do not run `init_loop_state.py`."
+        )
+        record_step = f"""7. Record scaffold completion in simulate state:
+
+   python3 {scripts_dir.as_posix()}/record_simulate_iteration.py \\
+     --state {state_path.as_posix()} --phase prepare \\
+     --note "workspaces ready for simulate agents\""""
+    else:
+        init_step = f"""1. Initialize loop state if `{state_path.as_posix()}` does not exist:
+
+   python3 {scripts_dir.as_posix()}/init_loop_state.py \\
+     --repo {repo_path.as_posix()} \\
+     --synthesis {synthesis_path.name} \\
+     --batch-dir {batch_dir.name} \\
+     --skills-dir {skills_dir} \\
+     --base {base_revision}"""
+        record_step = f"""7. Record scaffold completion:
+
+   python3 {scripts_dir.as_posix()}/record_iteration.py \\
+     --state {state_path.as_posix()} --phase scaffold \\
+     --note "workspaces ready for CLI optimize\""""
+
+    flow_label = (
+        "pattern-validation-simulate (dry-run planning loop)"
+        if workflow == "simulate"
+        else "the CLI-driven loop"
+    )
+
     return f"""\
-Prepare pattern-validation workspaces for the CLI-driven loop. **Do not** run `optimize-batch` or nested optimize agents.
+Prepare pattern-validation workspaces for {flow_label}. **Do not** run `optimize-batch` or nested optimize agents.
 
 The user provides markdown reports in the repo; you scaffold batch workspaces from them.
 
@@ -94,14 +127,7 @@ Git base revision for pre-optimization snapshots:
 
 Required steps:
 
-1. Initialize loop state if `{state_path.as_posix()}` does not exist:
-
-   python3 {scripts_dir.as_posix()}/init_loop_state.py \\
-     --repo {repo_path.as_posix()} \\
-     --synthesis {synthesis_path.name} \\
-     --batch-dir {batch_dir.name} \\
-     --skills-dir {skills_dir} \\
-     --base {base_revision}
+{init_step}
 
 2. Read `{synthesis_path.name}` and `{knowledge_path.name}` when present. Update pattern cards under `{knowledge_root.as_posix()}/references/patterns/` only.
 3. Regenerate `{knowledge_root.as_posix()}/references/pattern_index.md`.
@@ -119,11 +145,7 @@ Required steps:
    triton-agent pattern-validation-verify -i {batch_dir.as_posix()}
 
    Fix every issue until it exits 0.
-7. Record scaffold completion:
-
-   python3 {scripts_dir.as_posix()}/record_iteration.py \\
-     --state {state_path.as_posix()} --phase scaffold \\
-     --note "workspaces ready for CLI optimize"
+{record_step}
 
 Rules:
 

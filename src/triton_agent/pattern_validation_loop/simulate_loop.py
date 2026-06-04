@@ -12,6 +12,7 @@ from triton_agent.models import AgentRequest, CommandKind
 from triton_agent.pattern_validation_loop.simulate_plan import (
     SimulatePlanConfig,
     batch_report_skills_aligned,
+    bootstrap_simulate_batch,
     load_batch_simulate_report,
     prepare_simulate_batch,
     run_simulate_workspace_agents,
@@ -69,6 +70,20 @@ def run_pattern_validation_simulate_loop(config: SimulatePlanConfig) -> tuple[in
             flush=True,
         )
 
+    bootstrap_code = bootstrap_simulate_batch(
+        config,
+        workspace_plan_path=workspace_plan_path,
+        simulate_state_path=ctx.state_path,
+        stream=sys.stderr,
+    )
+    if bootstrap_code != 0:
+        _record_simulate_phase(
+            ctx,
+            phase="failed",
+            note=f"batch bootstrap failed: exit {bootstrap_code}",
+        )
+        return bootstrap_code, config.batch_path / BATCH_SIMULATE_REPORT_FILENAME
+
     for iteration in range(1, config.max_iterations + 1):
         _set_state_iteration(ctx, iteration)
         if config.verbose:
@@ -78,12 +93,9 @@ def run_pattern_validation_simulate_loop(config: SimulatePlanConfig) -> tuple[in
                 flush=True,
             )
 
-        prep_code = prepare_simulate_batch(
-            config,
-            run_verify=iteration == 1,
-        )
+        prep_code = prepare_simulate_batch(config)
         if prep_code != 0:
-            _record_simulate_phase(ctx, phase="failed", note=f"prepare failed: exit {prep_code}")
+            _record_simulate_phase(ctx, phase="failed", note=f"sync failed: exit {prep_code}")
             return prep_code, config.batch_path / BATCH_SIMULATE_REPORT_FILENAME
 
         results, agent_code = run_simulate_workspace_agents(config)
