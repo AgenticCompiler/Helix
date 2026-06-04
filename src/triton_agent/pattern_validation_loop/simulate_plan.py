@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal, TextIO
@@ -295,12 +296,17 @@ def run_simulate_workspace_agents(
             WorkspaceSimulateResult(workspace=workspace, status="failed", message=message),
         )
 
+    output_lock = threading.Lock()
     for workspace, operator_file in discovered:
         print(f"[pattern-validation-simulate] {workspace.name}", file=out, flush=True)
         request = build_simulate_plan_request(operator_file, workspace, config)
         prefix = f"[{workspace.name}] "
-        stdout = PrefixedTextStream(sys.stdout, prefix) if config.show_output else None
-        stderr = PrefixedTextStream(sys.stderr, prefix) if config.show_output else None
+        stdout = (
+            PrefixedTextStream(sys.stdout, prefix, output_lock) if config.show_output else None
+        )
+        stderr = (
+            PrefixedTextStream(sys.stderr, prefix, output_lock) if config.show_output else None
+        )
         code = run_simulate_plan_request(request, stdout=stdout, stderr=stderr)
         report_path = workspace / SIMULATE_PLAN_DIR / SIMULATE_REPORT_FILENAME
         if code == 0 and report_path.is_file():
