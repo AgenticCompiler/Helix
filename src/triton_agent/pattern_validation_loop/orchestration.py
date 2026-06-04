@@ -142,6 +142,8 @@ def run_pattern_validation_loop_orchestrated(
     if prepare_code != 0:
         return prepare_code
 
+    _migrate_legacy_batch_evaluation(config.batch_path)
+
     sync_code = sync_batch_workspace_dependencies(
         config.batch_path,
         config.repo_root,
@@ -319,6 +321,18 @@ def _ensure_loop_state(config: PatternValidationLoopConfig) -> None:
     exit_code = int(module.main(argv))
     if exit_code != 0:
         raise RuntimeError(f"init_loop_state failed with exit code {exit_code}")
+
+
+def _migrate_legacy_batch_evaluation(batch_path: Path) -> None:
+    module = load_skill_script_module(_PATTERN_VALIDATION_SKILL, "batch_evaluation")
+    migrated = module.migrate_legacy_workspace_meta(batch_path)
+    if migrated:
+        print(
+            f"[pattern-validation-loop] migrated {len(migrated)} legacy validation-meta "
+            f"entries into {module.BATCH_EVALUATION_FILENAME}",
+            file=sys.stderr,
+            flush=True,
+        )
 
 
 def _relative_to_repo(repo_root: Path, path: Path) -> str:

@@ -283,14 +283,20 @@ def sync_workspace_dependencies(
 ) -> dict[str, Any]:
     workspace = workspace.expanduser().resolve()
     repo_root = repo_root.expanduser().resolve()
-    meta_path = meta_path or (workspace / "validation-meta.json")
-    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    if not isinstance(meta, dict):
-        raise ValueError(f"invalid validation-meta.json: {meta_path}")
+    if meta_path is not None:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        if not isinstance(meta, dict):
+            raise ValueError(f"invalid workspace meta: {meta_path}")
+    else:
+        from batch_evaluation import resolve_workspace_meta
+
+        meta = resolve_workspace_meta(workspace, batch_root=workspace.parent)
 
     operator_name = str(meta.get("operator_filename", "")).strip()
     if not operator_name:
-        raise ValueError(f"validation-meta.json missing operator_filename: {meta_path}")
+        raise ValueError(
+            f"batch-evaluation entry for {workspace.name!r} missing operator_filename",
+        )
     operator_path = workspace / operator_name
     operator_text = operator_path.read_text(encoding="utf-8")
 

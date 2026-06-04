@@ -33,6 +33,7 @@ from triton_agent.pattern_validation_loop.prepare_agent import (
     run_pattern_validation_prepare_agent,
 )
 from triton_agent.pattern_validation_loop.scaffold_verify import run_pattern_validation_verify
+from triton_agent.pattern_validation_loop.simulate_isolation import isolate_workspace_for_simulate
 from triton_agent.skill_loader import load_skill_script_module
 from triton_agent.pattern_validation_loop.seed_skills import (
     DEFAULT_SKILLS_DIR_NAME,
@@ -187,7 +188,6 @@ def build_simulate_plan_request(
 ) -> AgentRequest:
     options = build_simulate_optimize_options(config)
     base = build_optimize_request(operator_file, workspace, options)
-    meta = _load_validation_meta(workspace)
     simulate_prompt = build_simulate_plan_prompt(
         operator_path=operator_file,
         workdir=workspace,
@@ -195,9 +195,6 @@ def build_simulate_plan_request(
         bench_mode=base.bench_mode,
         target_chip=base.target_chip,
         optimize_target=base.optimize_target,
-        validation_meta=meta,
-        synthesis_path=config.synthesis_path,
-        knowledge_path=config.knowledge_path,
         compiler_source_path=base.compiler_source_path,
         compiler_source_commit=base.compiler_source_commit,
         enable_cann_ext_api=options.enable_cann_ext_api,
@@ -307,7 +304,8 @@ def run_simulate_workspace_agents(
         stderr = (
             PrefixedTextStream(sys.stderr, prefix, output_lock) if config.show_output else None
         )
-        code = run_simulate_plan_request(request, stdout=stdout, stderr=stderr)
+        with isolate_workspace_for_simulate(workspace):
+            code = run_simulate_plan_request(request, stdout=stdout, stderr=stderr)
         report_path = workspace / SIMULATE_PLAN_DIR / SIMULATE_REPORT_FILENAME
         if code == 0 and report_path.is_file():
             results.append(
@@ -352,6 +350,7 @@ def bootstrap_simulate_batch(
     if not config.batch_path.is_dir():
         config.batch_path.mkdir(parents=True, exist_ok=True)
 
+    _maybe_migrate_legacy_batch_evaluation(config.batch_path, stream=out)
     active_count = _active_validation_workspace_count(config.batch_path)
     if active_count == 0:
         if config.skip_prepare:
@@ -597,6 +596,21 @@ def _staged_cann_ext_api_enabled(request: AgentRequest) -> bool:
         request.staged_skill_names is not None
         and "triton-npu-cann-ext-api-patterns" in request.staged_skill_names
     )
+
+
+def _maybe_migrate_legacy_batch_evaluation(batch_path: Path, *, stream: TextIO) -> None:
+    module = load_skill_script_module(
+        "triton-npu-pattern-validation-loop",
+        "batch_evaluation",
+    )
+    migrated = module.migrate_legacy_workspace_meta(batch_path)
+    if migrated and stream:
+        print(
+            f"[pattern-validation-simulate] migrated {len(migrated)} legacy validation-meta "
+            f"entries into {module.BATCH_EVALUATION_FILENAME}",
+            file=stream,
+            flush=True,
+        )
 
 
 def _active_validation_workspace_count(batch_path: Path) -> int:

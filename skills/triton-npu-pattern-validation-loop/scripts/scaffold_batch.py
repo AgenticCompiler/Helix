@@ -135,10 +135,9 @@ def scaffold_operator(
         "copied_tests": copied_tests,
         "copied_benches": copied_benches,
     }
-    (workspace / "validation-meta.json").write_text(
-        json.dumps(meta, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    from batch_evaluation import upsert_workspace_entry
+
+    upsert_workspace_entry(output_root, name, meta)
 
 
 def extract_pre_optimization_snapshot(

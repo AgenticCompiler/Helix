@@ -49,7 +49,7 @@ def _format_no_active_workspaces_message(batch_root: Path) -> str:
     return (
         "[FAIL] batch root has no active validation workspaces\n"
         f"  batch_root: {batch_root.as_posix()}\n"
-        "  expected: <batch>/<workspace>/validation-meta.json (one operator .py per workspace)\n"
+        "  expected: <batch>/batch-evaluation.json entry plus <workspace>/<operator>.py\n"
         "  fix: run `triton-agent pattern-validation-loop` prepare to scaffold from "
         "workspace-plan.json, or create workspaces manually, then re-run verify/simulate"
     )

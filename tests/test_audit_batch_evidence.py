@@ -22,15 +22,16 @@ class AuditBatchEvidenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
             workspace = Path(tmp) / "chunk_o"
             workspace.mkdir()
-            (workspace / "validation-meta.json").write_text(
-                json.dumps(
-                    {
-                        "workspace": "chunk_o",
-                        "expected_patterns": ["grid-flatten-and-ub-buffering"],
-                        "validation_target": "forward_chunk_o",
-                    }
-                ),
-                encoding="utf-8",
+            from batch_evaluation import upsert_workspace_entry
+
+            upsert_workspace_entry(
+                Path(tmp),
+                "chunk_o",
+                {
+                    "operator_filename": "chunk_o.py",
+                    "expected_patterns": ["grid-flatten-and-ub-buffering"],
+                    "validation_target": "forward_chunk_o",
+                },
             )
             round_dir = workspace / "opt-round-1"
             round_dir.mkdir()
@@ -54,9 +55,16 @@ class AuditBatchEvidenceTests(unittest.TestCase):
             batch_root = Path(tmp)
             workspace = batch_root / "chunk_o"
             workspace.mkdir()
-            (workspace / "validation-meta.json").write_text(
-                json.dumps({"workspace": "chunk_o", "expected_patterns": ["missing-pattern"]}),
-                encoding="utf-8",
+            (workspace / "chunk_o.py").write_text("def forward_chunk_o():\n    pass\n", encoding="utf-8")
+            from batch_evaluation import upsert_workspace_entry
+
+            upsert_workspace_entry(
+                batch_root,
+                "chunk_o",
+                {
+                    "operator_filename": "chunk_o.py",
+                    "expected_patterns": ["missing-pattern"],
+                },
             )
             round_dir = workspace / "opt-round-1"
             round_dir.mkdir()

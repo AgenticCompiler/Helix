@@ -213,8 +213,6 @@ def _run_skill_audit_agent(
         skills_workdir=ctx.config.skills_workdir,
         state_path=ctx.state_path,
         simulate_report_path=report_path,
-        synthesis_path=ctx.config.synthesis_path,
-        knowledge_path=ctx.config.knowledge_path,
         iteration=iteration,
         max_iterations=ctx.config.max_iterations,
         skill_root=skill_root,

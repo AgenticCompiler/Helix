@@ -17,6 +17,7 @@ _TRITON_KERNEL_RE = re.compile(
 _DEF_RE = re.compile(r"^def\s+(\w+)\s*\(", re.MULTILINE)
 _LAUNCH_GRID_RE = re.compile(r"\b(\w+)\s*\[")
 
+from batch_evaluation import resolve_workspace_meta
 from batch_layout import list_active_validation_workspaces
 from workspace_deps import verify_dependency_issues
 
@@ -305,13 +306,10 @@ def _extra_root_py_files(workspace: Path, operator_filename: str) -> list[str]:
 
 
 def _load_meta(workspace: Path) -> dict[str, Any]:
-    meta_path = workspace / "validation-meta.json"
-    if not meta_path.is_file():
-        raise SystemExit(f"verify_batch_scaffold: missing validation-meta.json: {workspace}")
-    payload = json.loads(meta_path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise SystemExit(f"verify_batch_scaffold: invalid validation-meta.json: {meta_path}")
-    return payload
+    try:
+        return resolve_workspace_meta(workspace)
+    except RuntimeError as exc:
+        raise SystemExit(f"verify_batch_scaffold: {exc}") from exc
 
 
 def _shared_source_paths(metas: list[dict[str, Any]]) -> dict[str, list[str]]:

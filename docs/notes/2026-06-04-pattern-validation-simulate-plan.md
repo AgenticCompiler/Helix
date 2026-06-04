@@ -6,10 +6,12 @@
 run real `optimize-batch` unless `--run-optimize` is set.
 
 Bootstrap (once): workspace plan from knowledge → **prepare agent** when the batch is empty →
-dependency sync → scaffold verify.
+dependency sync → scaffold verify. CLI/prepare may read PERF markdown; simulate agents may not.
 
-Each cycle: **simulate agents** (per workspace) → **skill-audit agent** (updates
-`pattern-validation-skills`) → repeat until `skills_alignment: aligned` or `--max-iterations`.
+Each cycle: **simulate agents** (skills + operator only; CLI hides `validation-meta.json` during
+the agent run; no PERF reports) → **skill-audit**
+(updates `pattern-validation-skills` from simulate reports only) → repeat until
+`skills_alignment: aligned` or `--max-iterations`.
 
 ## Outputs
 
@@ -28,9 +30,8 @@ Each cycle: **simulate agents** (per workspace) → **skill-audit agent** (updat
 
 ## Flags
 
-- `--synthesis` / `--knowledge-base` — same defaults as `pattern-validation-loop`
-  (`PERF_PATTERN_SYNTHESIS.md`, `PERF_KNOWLEDGE_BASE.md`). Synthesis is required on disk;
-  knowledge is optional but drives workspace-plan regeneration and agent prompts when present.
+- `--synthesis` / `--knowledge-base` — used by CLI for plan/prepare only (not passed to simulate
+  or skill-audit agents). Synthesis must exist on disk; knowledge drives workspace-plan when present.
 - `--base` / `--skip-launch` — passed through to workspace-plan generation when knowledge exists.
 - `--max-iterations` — simulate → skill-audit cycles (default: 5); use `1` for one simulate pass only.
 - `--skip-prepare` — do not launch the prepare agent when the batch is empty (batch must exist).

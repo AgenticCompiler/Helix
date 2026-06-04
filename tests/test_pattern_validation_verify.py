@@ -5,6 +5,16 @@ import unittest
 from io import StringIO
 from pathlib import Path
 
+SCRIPTS = (
+    Path(__file__).resolve().parents[1]
+    / "skills"
+    / "triton-npu-pattern-validation-loop"
+    / "scripts"
+)
+sys.path.insert(0, str(SCRIPTS))
+
+from batch_evaluation import upsert_workspace_entry  # noqa: E402
+
 from triton_agent.pattern_validation_loop.scaffold_verify import run_pattern_validation_verify
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
@@ -29,16 +39,15 @@ class PatternValidationVerifyTests(unittest.TestCase):
             workspace = batch_root / "chunk_o"
             workspace.mkdir()
             (workspace / "chunk_o.py").write_text("def forward_chunk_o():\n    pass\n", encoding="utf-8")
-            (workspace / "validation-meta.json").write_text(
-                json.dumps(
-                    {
-                        "workspace": "chunk_o",
-                        "source_path": "src/kernels/chunk_o.py",
-                        "operator_filename": "chunk_o.py",
-                        "expected_patterns": ["grid-flatten-and-ub-buffering"],
-                    }
-                ),
-                encoding="utf-8",
+            upsert_workspace_entry(
+                batch_root,
+                "chunk_o",
+                {
+                    "workspace": "chunk_o",
+                    "source_path": "src/kernels/chunk_o.py",
+                    "operator_filename": "chunk_o.py",
+                    "expected_patterns": ["grid-flatten-and-ub-buffering"],
+                },
             )
             code = run_pattern_validation_verify(batch_root, stream=sys.stdout)
         self.assertEqual(code, 0)
@@ -50,16 +59,15 @@ class PatternValidationVerifyTests(unittest.TestCase):
                 workspace = batch_root / name
                 workspace.mkdir()
                 (workspace / f"{name}.py").write_text(f"def forward_{name}():\n    pass\n", encoding="utf-8")
-                (workspace / "validation-meta.json").write_text(
-                    json.dumps(
-                        {
-                            "workspace": name,
-                            "source_path": "src/kernels/fused_ops.py",
-                            "operator_filename": f"{name}.py",
-                            "expected_patterns": ["grid-flatten-and-ub-buffering"],
-                        }
-                    ),
-                    encoding="utf-8",
+                upsert_workspace_entry(
+                    batch_root,
+                    name,
+                    {
+                        "workspace": name,
+                        "source_path": "src/kernels/fused_ops.py",
+                        "operator_filename": f"{name}.py",
+                        "expected_patterns": ["grid-flatten-and-ub-buffering"],
+                    },
                 )
             code = run_pattern_validation_verify(batch_root, stream=sys.stdout)
         self.assertEqual(code, 1)
@@ -70,16 +78,15 @@ class PatternValidationVerifyTests(unittest.TestCase):
             workspace = batch_root / "op"
             workspace.mkdir()
             (workspace / "op.py").write_text("def run():\n    pass\n", encoding="utf-8")
-            (workspace / "validation-meta.json").write_text(
-                json.dumps(
-                    {
-                        "workspace": "op",
-                        "source_path": "src/op.py",
-                        "operator_filename": "op.py",
-                        "expected_patterns": [],
-                    }
-                ),
-                encoding="utf-8",
+            upsert_workspace_entry(
+                batch_root,
+                "op",
+                {
+                    "workspace": "op",
+                    "source_path": "src/op.py",
+                    "operator_filename": "op.py",
+                    "expected_patterns": [],
+                },
             )
             code = run_pattern_validation_verify(batch_root, json_output=True)
         self.assertEqual(code, 0)

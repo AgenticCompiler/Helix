@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from batch_evaluation import resolve_workspace_meta
 from batch_layout import (
     archive_passed_workspaces,
     list_active_validation_workspaces,
@@ -117,8 +118,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def collect_workspace_evidence(workspace: Path) -> dict[str, object]:
-    meta_path = workspace / "validation-meta.json"
-    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta = resolve_workspace_meta(workspace)
     expected = [str(item) for item in meta.get("expected_patterns", [])]
     round_dirs = sorted(workspace.glob("opt-round-*"))
     rounds: list[dict[str, object]] = []

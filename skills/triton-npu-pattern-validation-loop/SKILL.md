@@ -149,8 +149,10 @@ Bootstrap (once per command, before simulate iterations):
 Each simulate iteration:
 
 1. Sync deps.
-2. **Simulate agents** (one per workspace): same inputs as optimize, write
-   `simulate-plan/report.json` with `ranked_patterns` (priority, hit, rationale) and
+2. **Simulate agents** (one per workspace): same staged optimize skills as a real worker plus the
+   operator `.py` and `test_*.py.txt` only. Ground truth (`expected_patterns`, etc.) lives in
+   `pattern-validation-batch/batch-evaluation.json`, not inside workspace directories. They
+   must **not** read PERF markdown. Write `simulate-plan/report.json` with `ranked_patterns` and
    `skills_alignment`.
 3. If all workspaces report `skills_alignment: aligned`, the loop completes.
 4. Otherwise a **skill-audit agent** reads `$BATCH/simulate-plan-report.json`, edits
