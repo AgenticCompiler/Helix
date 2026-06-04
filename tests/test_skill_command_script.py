@@ -40,6 +40,9 @@ _RUN_EVAL_SCRIPT_DIR = (
 if str(_RUN_EVAL_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_RUN_EVAL_SCRIPT_DIR))
 
+_REMOTE_TARGET_ENV = "TRITON_AGENT_REMOTE"
+_REMOTE_WORKDIR_ENV = "TRITON_AGENT_REMOTE_WORKDIR"
+
 
 class SkillCommandScriptTests(unittest.TestCase):
     def test_loading_run_command_does_not_mutate_sys_path(self) -> None:
@@ -180,6 +183,95 @@ class SkillCommandScriptTests(unittest.TestCase):
             ),
         )
         self.assertEqual(stderr.getvalue(), "")
+
+    def test_script_run_bench_uses_remote_env_when_flag_missing(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_remote_bench", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: standalone\nprint('bench')\n", encoding="utf-8")
+
+            observed: list[object] = []
+
+            def fake_run_remote_bench(
+                bench_path: Path,
+                operator_path: Path,
+                bench_mode: str,
+                remote: str,
+                remote_workdir: Optional[str],
+                npu_devices: Optional[str] = None,
+                keep_remote_workdir: bool = False,
+                verbose: bool = False,
+                stderr: Optional[object] = None,
+                force_recompile: bool = False,
+            ) -> tuple[dict[str, object], None, str]:
+                del keep_remote_workdir, verbose, stderr, force_recompile
+                observed.extend([bench_path, operator_path, bench_mode, remote, remote_workdir, npu_devices])
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    None,
+                    "/tmp/triton-agent-123",
+                )
+
+            with patch.dict(
+                os.environ,
+                {
+                    _REMOTE_TARGET_ENV: "alice@example.com",
+                    _REMOTE_WORKDIR_ENV: "/tmp/triton-agent",
+                },
+                clear=False,
+            ):
+                with patch.object(
+                    module,
+                    "_load_bench_functions",
+                    return_value=(
+                        lambda _path: {"bench-mode": "standalone"},
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("local runner should not be used")),
+                        fake_run_remote_bench,
+                    ),
+                ):
+                    exit_code = module.main(
+                        [
+                            "run-bench",
+                            "--bench-file",
+                            str(bench_file),
+                            "--operator-file",
+                            str(operator),
+                        ]
+                    )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            observed,
+            [
+                bench_file.resolve(),
+                operator.resolve(),
+                "standalone",
+                "alice@example.com",
+                "/tmp/triton-agent",
+                None,
+            ],
+        )
 
     def test_compare_perf_parser_accepts_skip_latency_errors_flag(self) -> None:
         script = (

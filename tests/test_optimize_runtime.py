@@ -28,6 +28,7 @@ from triton_agent.optimize.archive import ArchiveState
 from triton_agent.optimize.memory_file import MemoryFileState
 from triton_agent.optimize.resume import reset_optimize_workspace
 from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsState
+from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
 
 
 class OptimizeRuntimeTests(unittest.TestCase):
@@ -426,6 +427,38 @@ class OptimizeRuntimeTests(unittest.TestCase):
             request = build_optimize_request(operator, workdir, options)
 
             self.assertTrue(request.log_tools)
+
+    def test_build_optimize_request_injects_remote_env(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                remote="alice@example.com:2200",
+                remote_workdir="/tmp/triton-agent",
+                min_rounds=1,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                round_mode="continuous",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+            )
+
+            request = build_optimize_request(operator, workdir, options)
+
+            self.assertEqual(request.remote, "alice@example.com:2200")
+            self.assertEqual(request.remote_workdir, "/tmp/triton-agent")
+            self.assertIsNotNone(request.extra_env)
+            assert request.extra_env is not None
+            self.assertEqual(request.extra_env[remote_target_env_name()], "alice@example.com:2200")
+            self.assertEqual(request.extra_env[remote_workdir_env_name()], "/tmp/triton-agent")
 
     def test_build_optimize_request_uses_explicit_optimize_skill_allowlist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

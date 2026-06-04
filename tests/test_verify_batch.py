@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.cli import main
 from triton_agent.cli import build_parser
 from triton_agent.commands.verify import handle_verify_batch
+from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
 from triton_agent.verify.batch import run_verify_batch
 from triton_agent.verify.core import VerifyOptions
 from triton_agent.verify.core import VerifyResult
@@ -231,6 +232,38 @@ class VerifyBatchTests(unittest.TestCase):
             self.assertEqual(options.remote_workdir, "/tmp/triton-agent")
             self.assertTrue(options.keep_remote_workdir)
             self.assertTrue(options.verbose)
+
+    def test_handle_verify_batch_uses_remote_env_when_flag_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            parser = build_parser()
+            args = Namespace(
+                input=str(root),
+                force_verify=False,
+                remote=None,
+                remote_workdir=None,
+                keep_remote_workdir=False,
+                verbose=False,
+            )
+
+            with patch.dict(
+                "os.environ",
+                {
+                    remote_target_env_name(): "alice@example.com",
+                    remote_workdir_env_name(): "/tmp/triton-agent",
+                },
+                clear=False,
+            ):
+                with patch(
+                    "triton_agent.commands.verify.run_verify_batch",
+                    return_value=0,
+                ) as run_batch:
+                    exit_code = handle_verify_batch(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            options = run_batch.call_args.kwargs["options"]
+            self.assertEqual(options.remote, "alice@example.com")
+            self.assertEqual(options.remote_workdir, "/tmp/triton-agent")
 
 
 if __name__ == "__main__":

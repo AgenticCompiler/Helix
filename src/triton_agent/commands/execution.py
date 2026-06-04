@@ -14,6 +14,7 @@ from triton_agent.execution import (
     run_remote_test,
 )
 from triton_agent.output import render_result
+from triton_agent.remote_execution_env import resolve_remote_execution
 
 _RUN_BENCH_HINT = "Hint: use `compare-perf` to inspect this perf artifact instead of reading it directly."
 _RUN_TEST_HINT = "Hint: use `compare-result` to inspect this archived result instead of reading it directly."
@@ -22,6 +23,10 @@ _RUN_TEST_HINT = "Hint: use `compare-result` to inspect this archived result ins
 def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     test_file, operator_file, baseline_result, baseline_operator_file = resolve_run_test_paths(parser, args)
     resolved_test_mode = args.test_mode or resolve_test_mode_from_metadata(test_file)
+    remote, remote_workdir = resolve_remote_execution(
+        getattr(args, "remote", None),
+        getattr(args, "remote_workdir", None),
+    )
     compare_level, baseline_result = resolve_run_test_comparison_inputs(
         parser,
         args,
@@ -29,17 +34,19 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
         baseline_result,
         baseline_operator_file,
         test_file,
+        remote=remote,
+        remote_workdir=remote_workdir,
     )
     force_recompile: bool = getattr(args, "force_recompile", False)
     remote_workspace: str | None = None
     try:
-        if args.remote:
+        if remote is not None:
             result, archived_result, remote_workspace = run_remote_test(
                 test_file,
                 operator_file,
                 resolved_test_mode,
-                args.remote,
-                args.remote_workdir,
+                remote,
+                remote_workdir,
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
@@ -71,7 +78,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
             file=sys.stderr,
         )
         final_code = 1
-    if args.remote and args.keep_remote_workdir and remote_workspace is not None:
+    if remote is not None and args.keep_remote_workdir and remote_workspace is not None:
         print(f"Remote workspace: {remote_workspace}")
     return final_code
 
@@ -79,17 +86,21 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
 def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     bench_file, operator_file = resolve_run_bench_paths(parser, args)
     resolved_bench_mode = args.bench_mode or resolve_bench_mode_from_metadata(bench_file)
+    remote, remote_workdir = resolve_remote_execution(
+        getattr(args, "remote", None),
+        getattr(args, "remote_workdir", None),
+    )
     force_recompile: bool = getattr(args, "force_recompile", False)
     output: str | None = getattr(args, "output", None)
     remote_workspace: str | None = None
     try:
-        if args.remote:
+        if remote is not None:
             result, perf_path, remote_workspace = run_remote_bench(
                 bench_file,
                 operator_file,
                 resolved_bench_mode,
-                args.remote,
-                args.remote_workdir,
+                remote,
+                remote_workdir,
                 args.npu_devices,
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
@@ -112,7 +123,7 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
         return 1
     if args.verbose or result.return_code != 0:
         render_result(result, show_output=False)
-    if args.remote and args.keep_remote_workdir and remote_workspace is not None:
+    if remote is not None and args.keep_remote_workdir and remote_workspace is not None:
         print(f"Remote workspace: {remote_workspace}")
     if perf_path is not None:
         print(f"Perf file: {perf_path}")
@@ -154,6 +165,9 @@ def resolve_run_test_comparison_inputs(
     baseline_result: Path | None,
     baseline_operator_file: Path | None,
     test_file: Path,
+    *,
+    remote: str | None,
+    remote_workdir: str | None,
 ) -> tuple[str, Path | None]:
     if baseline_result is not None and baseline_operator_file is not None:
         parser.error("run-test differential mode accepts at most one of --baseline-result or --baseline-operator-file")
@@ -172,13 +186,13 @@ def resolve_run_test_comparison_inputs(
 
     force_recompile: bool = getattr(args, "force_recompile", False)
     try:
-        if args.remote:
+        if remote is not None:
             baseline_run_result, archived_result, remote_workspace = run_remote_test(
                 test_file,
                 baseline_operator_file,
                 resolved_test_mode,
-                args.remote,
-                args.remote_workdir,
+                remote,
+                remote_workdir,
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
@@ -188,7 +202,7 @@ def resolve_run_test_comparison_inputs(
             print(f"Return code: {baseline_run_result.return_code}")
             if archived_result is not None:
                 print(f"Archived result: {archived_result}")
-            if args.remote and args.keep_remote_workdir:
+            if args.keep_remote_workdir:
                 print(f"Remote workspace: {remote_workspace}")
         else:
             baseline_run_result, archived_result = run_local_test(
