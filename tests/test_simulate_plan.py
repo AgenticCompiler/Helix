@@ -3,10 +3,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from triton_agent.pattern_validation_loop.simulate_prompts import SIMULATE_PLAN_DIR
 from triton_agent.pattern_validation_loop.simulate_plan import (
     WorkspaceSimulateResult,
     build_manual_optimize_command_hint,
     build_simulate_plan_config,
+    remove_batch_workspace_simulate_plans,
     write_batch_simulate_report,
 )
 
@@ -61,6 +63,21 @@ class SimulatePlanTests(unittest.TestCase):
         hint = build_manual_optimize_command_hint(Path("/tmp/batch"))
         self.assertIn("optimize-batch", hint)
         self.assertIn("/tmp/batch", hint)
+
+    def test_remove_batch_workspace_simulate_plans_deletes_active_workspace_dirs(self) -> None:
+        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
+            batch = Path(tmp)
+            workspace = batch / "demo"
+            workspace.mkdir()
+            (workspace / "demo.py").write_text("def demo():\n    pass\n", encoding="utf-8")
+            plan_dir = workspace / SIMULATE_PLAN_DIR
+            plan_dir.mkdir()
+            (plan_dir / "report.json").write_text("{}\n", encoding="utf-8")
+
+            removed = remove_batch_workspace_simulate_plans(batch)
+
+        self.assertEqual(removed, ["demo"])
+        self.assertFalse(plan_dir.exists())
 
     def test_build_simulate_plan_config_requires_synthesis_file(self) -> None:
         missing = "tests/_simulate_missing_synthesis.md"

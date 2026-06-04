@@ -15,7 +15,9 @@ repeat until `skills_alignment: aligned`, `code_plan_quality: concrete`, or `--m
 
 After real optimize, the **analyze agent** compares each workspace's `simulate-plan/report.json`
 (`proposed_code_changes`) against `baseline/` and `opt-round-*` operator edits (no
-`batch-evaluation.json` or PERF).
+`batch-evaluation.json` or PERF). After a successful analyze in `pattern-validation-loop`, the
+CLI removes workspace `simulate-plan/` directories before the next `optimize-batch` iteration
+(batch-level `simulate-plan-report.json` is kept).
 
 ## Outputs
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 import threading
 from dataclasses import dataclass, replace
@@ -494,6 +495,23 @@ def write_batch_simulate_report(
     report_path = batch_path / BATCH_SIMULATE_REPORT_FILENAME
     report_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return report_path
+
+
+def remove_batch_workspace_simulate_plans(batch_path: Path) -> list[str]:
+    """Delete per-workspace simulate-plan dirs after analyze, before the next optimize round."""
+    batch_path = batch_path.expanduser().resolve()
+    discovered, _failures = discover_batch_workspaces(
+        batch_path,
+        resolve_operator_file=resolve_batch_optimize_operator_file,
+    )
+    removed: list[str] = []
+    for workspace, _operator in discovered:
+        plan_dir = workspace / SIMULATE_PLAN_DIR
+        if not plan_dir.is_dir():
+            continue
+        shutil.rmtree(plan_dir)
+        removed.append(workspace.name)
+    return removed
 
 
 def load_batch_simulate_report(batch_path: Path) -> dict[str, Any] | None:

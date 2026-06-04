@@ -96,7 +96,11 @@ empty after archiving passed workspaces.
 
 ## Reset between iterations
 
-The CLI runs `reset_workspace_rounds.py` on **active** workspaces only. It skips `_completed/`.
+After each successful analyze agent, the CLI removes `simulate-plan/` under every active
+workspace (analyze has already compared simulate reports to `opt-round-*` artifacts). Batch-level
+`simulate-plan-report.json` is not deleted.
+
+The CLI then runs `reset_workspace_rounds.py` on **active** workspaces only. It skips `_completed/`.
 
 Removes:
 

@@ -204,7 +204,10 @@ python3 "$SKILL/scripts/audit_batch.py" \
 4. When confident a workspace passed, archive with `audit_batch.py --archive-passed`.
 5. When all targets pass, write `$BATCH/VALIDATION_SUMMARY.md` and `record_iteration.py --phase complete`.
 
-Between iterations the CLI runs `reset_workspace_rounds.py` and another `optimize-batch`.
+After a successful analyze agent, the CLI deletes each active workspace's `simulate-plan/`
+directory (dry-run artifacts are already summarized in `audit-report.json` and batch-level
+`simulate-plan-report.json` when present). Then, between iterations, the CLI runs
+`reset_workspace_rounds.py` and another `optimize-batch`.
 
 ## Non-Negotiable Rules
 

@@ -32,6 +32,9 @@ from triton_agent.pattern_validation_loop.prepare_agent import (
     run_pattern_validation_prepare_agent,
 )
 from triton_agent.pattern_validation_loop.prompts import build_analyze_prompt
+from triton_agent.pattern_validation_loop.simulate_plan import (
+    remove_batch_workspace_simulate_plans,
+)
 from triton_agent.pattern_validation_loop.scaffold_verify import run_pattern_validation_verify
 from triton_agent.pattern_validation_loop.workspace_sync import sync_batch_workspace_dependencies
 from triton_agent.pattern_validation_loop.seed_skills import (
@@ -212,6 +215,15 @@ def run_pattern_validation_loop_orchestrated(
         )
         if analyze_code != 0:
             return analyze_code
+
+        removed_simulate_plans = remove_batch_workspace_simulate_plans(config.batch_path)
+        if config.verbose and removed_simulate_plans:
+            names = ", ".join(removed_simulate_plans)
+            print(
+                f"[pattern-validation-loop] removed simulate-plan from: {names}",
+                file=sys.stderr,
+                flush=True,
+            )
 
         state = _load_loop_state(config.state_path)
         if state.get("status") == "complete":

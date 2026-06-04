@@ -20,6 +20,10 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
         "triton_agent.pattern_validation_loop.orchestration.generate_workspace_plan_if_present",
         return_value=(None, []),
     )
+    @patch(
+        "triton_agent.pattern_validation_loop.orchestration.remove_batch_workspace_simulate_plans",
+        return_value=[],
+    )
     @patch("triton_agent.pattern_validation_loop.orchestration.reset_active_workspace_rounds")
     @patch("triton_agent.pattern_validation_loop.orchestration.collect_batch_evidence")
     @patch("triton_agent.pattern_validation_loop.orchestration.run_optimize_batch", return_value=1)
@@ -39,6 +43,7 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
         mock_optimize: unittest.mock.MagicMock,
         mock_collect: unittest.mock.MagicMock,
         _mock_reset: unittest.mock.MagicMock,
+        mock_remove_simulate: unittest.mock.MagicMock,
         _mock_plan: unittest.mock.MagicMock,
         _mock_sync: unittest.mock.MagicMock,
     ) -> None:
@@ -68,6 +73,7 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
         self.assertEqual(code, 0)
         mock_collect.assert_called_once()
         mock_analyze.assert_called_once()
+        mock_remove_simulate.assert_called_once()
         mock_optimize.assert_called_once()
         optimize_options = mock_optimize.call_args[0][1]
         self.assertIn(".py.txt", optimize_options.prompt or "")
@@ -79,6 +85,10 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
     @patch(
         "triton_agent.pattern_validation_loop.orchestration.generate_workspace_plan_if_present",
         return_value=(None, []),
+    )
+    @patch(
+        "triton_agent.pattern_validation_loop.orchestration.remove_batch_workspace_simulate_plans",
+        return_value=[],
     )
     @patch("triton_agent.pattern_validation_loop.orchestration.reset_active_workspace_rounds")
     @patch("triton_agent.pattern_validation_loop.orchestration.collect_batch_evidence")
@@ -99,6 +109,7 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
         mock_optimize: unittest.mock.MagicMock,
         _mock_collect: unittest.mock.MagicMock,
         _mock_reset: unittest.mock.MagicMock,
+        mock_remove_simulate: unittest.mock.MagicMock,
         _mock_plan: unittest.mock.MagicMock,
         _mock_sync: unittest.mock.MagicMock,
     ) -> None:
@@ -129,6 +140,7 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
         mock_prepare.assert_called_once()
         mock_optimize.assert_called_once()
         mock_analyze.assert_called_once()
+        mock_remove_simulate.assert_called_once()
         mock_optimize.assert_called_once()
 
     @patch(
@@ -138,6 +150,10 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
     @patch(
         "triton_agent.pattern_validation_loop.orchestration.generate_workspace_plan_if_present",
         return_value=(None, []),
+    )
+    @patch(
+        "triton_agent.pattern_validation_loop.orchestration.remove_batch_workspace_simulate_plans",
+        return_value=[],
     )
     @patch("triton_agent.pattern_validation_loop.orchestration.reset_active_workspace_rounds")
     @patch("triton_agent.pattern_validation_loop.orchestration.collect_batch_evidence")
@@ -158,6 +174,7 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
         mock_optimize: unittest.mock.MagicMock,
         _mock_collect: unittest.mock.MagicMock,
         mock_reset: unittest.mock.MagicMock,
+        mock_remove_simulate: unittest.mock.MagicMock,
         _mock_plan: unittest.mock.MagicMock,
         _mock_sync: unittest.mock.MagicMock,
     ) -> None:
@@ -178,6 +195,7 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
 
         self.assertEqual(code, 1)
         self.assertEqual(mock_optimize.call_count, 2)
+        self.assertEqual(mock_remove_simulate.call_count, 2)
         mock_reset.assert_called_once()
 
 
