@@ -184,7 +184,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(result["return_code"], 0)
             self.assertEqual(resolved_perf, perf_file)
             helper.assert_called_once_with(bench_file, operator_file, verbose=False,
-                                             force_recompile=False, output=None)
+                                             output=None)
             streaming.assert_not_called()
 
     def test_run_local_bench_standalone_preserves_helper_perf_path(self) -> None:
@@ -234,10 +234,9 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 passed_operator: Path,
                 *,
                 verbose: bool = False,
-                force_recompile: bool = False,
                 output: Optional[str] = None,
             ):
-                del passed_bench, passed_operator, verbose, force_recompile, output
+                del passed_bench, passed_operator, verbose, output
                 observed_cwds.append(Path.cwd())
                 return fake_result, perf_file
 
@@ -389,7 +388,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(result, fake_result)
             self.assertEqual(resolved_perf, perf_file)
             helper.assert_called_once_with(bench_file, operator_file, verbose=False,
-                                             force_recompile=False, output=None)
+                                             output=None)
 
     def test_run_local_bench_standalone_parallel_uses_isolated_case_workdirs_and_device_envs(self) -> None:
         module = load_bench_runner_module()
@@ -2168,7 +2167,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIn("baseline=0.0038", output)
             self.assertIn("compare=0.0254", output)
 
-    def test_force_recompile_standalone_parallel_injects_env(self) -> None:
+    def test_always_compile_standalone_parallel_injects_env(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2236,7 +2235,6 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                     result, _perf_path = module.run_local_bench(
                         bench_file, operator_file, "standalone",
                         npu_devices="0",
-                        force_recompile=True,
                     )
 
             self.assertEqual(result["return_code"], 0)
@@ -2246,7 +2244,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertEqual(extra["TRITON_ALWAYS_COMPILE"], "1")  # type: ignore[index]
             self.assertIn("ASCEND_RT_VISIBLE_DEVICES", extra)  # type: ignore[index]
 
-    def test_force_recompile_msprof_local_injects_env(self) -> None:
+    def test_always_compile_msprof_local_injects_env(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2276,7 +2274,6 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                  ):
                 result, _perf_path = module.run_local_bench(
                     bench_file, operator_file, "msprof",
-                    force_recompile=True,
                 )
 
             self.assertEqual(result["return_code"], 0)
@@ -2285,7 +2282,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIsNotNone(extra)
             self.assertEqual(extra["TRITON_ALWAYS_COMPILE"], "1")  # type: ignore[index]
 
-    def test_force_recompile_false_does_not_set_env(self) -> None:
+    def test_always_compile_standalone_parallel_with_npu_devices_injects_env(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2355,7 +2352,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertEqual(result["return_code"], 0)
             for extra in observed_extra_env:
                 if extra is not None:
-                    self.assertNotIn("TRITON_ALWAYS_COMPILE", extra)
+                    self.assertEqual(extra["TRITON_ALWAYS_COMPILE"], "1")  # type: ignore[index]
 
 
 if __name__ == "__main__":

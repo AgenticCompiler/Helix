@@ -31,7 +31,6 @@ def run_remote_bench_standalone(
     *,
     verbose: bool = False,
     stderr: TextIO | None = None,
-    force_recompile: bool = False,
     output: str | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
     for support_path in deps._standalone_runtime_support_paths():
@@ -43,7 +42,7 @@ def run_remote_bench_standalone(
             stderr=stderr,
         )
     perf_path = _resolve_perf_output_path(operator_file, output=output)
-    extra_env: dict[str, str] | None = {"TRITON_ALWAYS_COMPILE": "1"} if force_recompile else None
+    extra_env: dict[str, str] | None = {"TRITON_ALWAYS_COMPILE": "1"}
     with deps._stream_target_for_verbosity(verbose) as stream_target:
         result = deps.run_remote_command_streaming(
             spec,
@@ -84,13 +83,11 @@ def run_local_standalone_bench(
     operator_file: Path,
     *,
     verbose: bool = False,
-    force_recompile: bool = False,
     output: str | None = None,
 ) -> tuple[ResultPayload, Path]:
     runtime = deps._load_standalone_runtime_module()
     return runtime.run_local_standalone_bench(  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
         bench_file, operator_file, verbose=verbose,  # pyright: ignore[reportUnknownVariableType, reportCallIssue]
-        force_recompile=force_recompile,  # pyright: ignore[reportCallIssue]
         output=output,  # pyright: ignore[reportCallIssue]
     )
 
@@ -104,7 +101,6 @@ def run_local_bench_standalone_parallel(
     source_root: Path,
     json_search_root: Path,
     verbose: bool = False,
-    force_recompile: bool = False,
     output: str | None = None,
 ) -> tuple[ResultPayload, Path]:
     runtime = deps._load_standalone_runtime_module()
@@ -141,7 +137,6 @@ def run_local_bench_standalone_parallel(
                     preserved_run_dir=preserved_run_dir,
                     source_root=source_root,
                     verbose=verbose,
-                    force_recompile=force_recompile,
                 )
         finally:
             cleanup()
@@ -164,7 +159,6 @@ def run_remote_bench_standalone_parallel(
     json_search_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
-    force_recompile: bool = False,
     output: str | None = None,
 ) -> tuple[ResultPayload, Path, str]:
     runtime = deps._load_standalone_runtime_module()
@@ -205,7 +199,6 @@ def run_remote_bench_standalone_parallel(
                     source_root=source_root,
                     verbose=verbose,
                     stderr=stderr,
-                    force_recompile=force_recompile,
                 )
         finally:
             deps.run_remote_command_buffered(
@@ -295,14 +288,12 @@ def _run_local_standalone_case_in_subprocess(
     preserved_run_dir: Path | None,
     source_root: Path,
     verbose: bool = False,
-    force_recompile: bool = False,
 ) -> PerfCaseRecord:
     extra_env = affinity_env_for_device(device)
     configured_profile_root, _configured_env = deps._resolve_local_bench_profile_output_root()
     if configured_profile_root:
         extra_env[_LOCAL_BENCH_OUTPUT_DIR_ENV] = str(Path(configured_profile_root).expanduser().resolve())
-    if force_recompile:
-        extra_env["TRITON_ALWAYS_COMPILE"] = "1"
+    extra_env["TRITON_ALWAYS_COMPILE"] = "1"
     result = deps.run_buffered_process(
         [
             deps.local_python_executable(),
@@ -370,11 +361,9 @@ def _run_remote_standalone_case(
     source_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
-    force_recompile: bool = False,
 ) -> PerfCaseRecord:
     extra_env = affinity_env_for_device(device)
-    if force_recompile:
-        extra_env["TRITON_ALWAYS_COMPILE"] = "1"
+    extra_env["TRITON_ALWAYS_COMPILE"] = "1"
     result = deps.run_remote_command_streaming(
         spec,
         case_workspace,
