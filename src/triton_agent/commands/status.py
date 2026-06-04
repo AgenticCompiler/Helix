@@ -11,7 +11,7 @@ from triton_agent.status.core import (
     workspace_has_optimize_artifacts,
 )
 from triton_agent.status.render import render_optimize_status_json, render_optimize_status_results
-from triton_agent.status.schema import collect_status_schema, warn_missing_sources, write_status_schema
+from triton_agent.status.full import collect_status_schema, warn_missing_sources, write_status_schema
 
 
 def handle_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
