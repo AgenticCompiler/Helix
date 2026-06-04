@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add `--force-recompile` flag to `run-test`, `run-bench`, and `profile-bench` subcommands to force Triton kernel recompilation via `TRITON_ALWAYS_COMPILE=1`.
+Always force Triton kernel recompilation via `TRITON_ALWAYS_COMPILE=1` for `run-test`, `run-bench`, `profile-bench`, `verify`, and `verify-batch`. No CLI flag; always-on behavior.
 
 ## Steps
 
@@ -18,5 +18,7 @@ Add `--force-recompile` flag to `run-test`, `run-bench`, and `profile-bench` sub
 - [x] Thread through profile runner (local subprocess, in-process, remote paths)
 - [x] Handle in-process standalone bench (`standalone_bench_runtime.py`)
 - [x] Handle in-process standalone profile (`profile_runner.py`)
-- [ ] Fix existing test mock assertions to include `force_recompile=False`
-- [ ] Create PR
+- [x] Fix existing test mock assertions
+- [x] Change to always-on (force_recompile=True), remove all CLI flags
+- [x] Extend to verify / verify-batch commands
+- [x] Create PR

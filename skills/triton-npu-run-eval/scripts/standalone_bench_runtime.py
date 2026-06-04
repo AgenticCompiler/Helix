@@ -70,12 +70,10 @@ def run_local_standalone_bench(
     operator_file: Path,
     *,
     verbose: bool = False,
-    force_recompile: bool = False,
     output: str | None = None,
 ) -> tuple[ResultPayload, Path]:
-    prev = os.environ.get("TRITON_ALWAYS_COMPILE") if force_recompile else None
-    if force_recompile:
-        os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+    prev = os.environ.get("TRITON_ALWAYS_COMPILE")
+    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
     try:
         cases, resolution = load_standalone_bench_cases(bench_file, operator_file)
         case_records: list[PerfCaseRecord] = []
@@ -107,9 +105,9 @@ def run_local_standalone_bench(
             perf_path,
         )
     finally:
-        if prev is None and force_recompile:
+        if prev is None:
             del os.environ["TRITON_ALWAYS_COMPILE"]
-        elif prev is not None:
+        else:
             os.environ["TRITON_ALWAYS_COMPILE"] = prev
 
 

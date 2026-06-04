@@ -37,7 +37,6 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
         remote=remote,
         remote_workdir=remote_workdir,
     )
-    force_recompile: bool = getattr(args, "force_recompile", False)
     remote_workspace: str | None = None
     try:
         if remote is not None:
@@ -50,7 +49,6 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
-                force_recompile=force_recompile,
             )
         else:
             result, archived_result = run_local_test(
@@ -58,7 +56,6 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
                 operator_file,
                 resolved_test_mode,
                 verbose=args.verbose,
-                force_recompile=force_recompile,
             )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
@@ -90,7 +87,6 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
         getattr(args, "remote", None),
         getattr(args, "remote_workdir", None),
     )
-    force_recompile: bool = getattr(args, "force_recompile", False)
     output: str | None = getattr(args, "output", None)
     remote_workspace: str | None = None
     try:
@@ -105,7 +101,6 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
-                force_recompile=force_recompile,
                 output=output,
             )
         else:
@@ -115,7 +110,6 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
                 resolved_bench_mode,
                 args.npu_devices,
                 verbose=args.verbose,
-                force_recompile=force_recompile,
                 output=output,
             )
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
@@ -184,7 +178,6 @@ def resolve_run_test_comparison_inputs(
     if derived_baseline_result.exists():
         return compare_level, derived_baseline_result
 
-    force_recompile: bool = getattr(args, "force_recompile", False)
     try:
         if remote is not None:
             baseline_run_result, archived_result, remote_workspace = run_remote_test(
@@ -196,7 +189,6 @@ def resolve_run_test_comparison_inputs(
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
-                force_recompile=force_recompile,
             )
             render_result(baseline_run_result, show_output=True)
             print(f"Return code: {baseline_run_result.return_code}")
@@ -210,7 +202,6 @@ def resolve_run_test_comparison_inputs(
                 baseline_operator_file,
                 resolved_test_mode,
                 verbose=args.verbose,
-                force_recompile=force_recompile,
             )
             render_result(baseline_run_result, show_output=True)
             print(f"Return code: {baseline_run_result.return_code}")

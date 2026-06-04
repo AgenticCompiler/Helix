@@ -47,7 +47,6 @@ Both accept the same execution flags as the current helper `run-test` surface, w
 - `--keep-remote-workdir`
 - `--verbose`
 - `--test-mode`
-- `--force-recompile`
 
 ### Behavioral split
 
