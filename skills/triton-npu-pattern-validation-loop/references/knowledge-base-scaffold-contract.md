@@ -46,6 +46,20 @@ triton-agent pattern-validation-plan -i "$REPO" \
   --base "$BASE"
 ```
 
+To skip host launch functions you are not validating yet (omit them from `workspaces[]`):
+
+```bash
+triton-agent pattern-validation-plan -i "$REPO" \
+  --knowledge PERF_KNOWLEDGE_BASE.md \
+  --batch-dir pattern-validation-batch \
+  --base "$BASE" \
+  --skip-launch chunk_bwd_dqkwg \
+  --skip-launch other_launch_fn
+```
+
+`workspace-plan.json` records `skip_launch_functions` and `skipped_workspaces` for audit.
+`pattern-validation-loop` accepts the same `--skip-launch` flags when it auto-generates the plan.
+
 `pattern-validation-loop` runs this automatically when `PERF_KNOWLEDGE_BASE.md` exists.
 The prepare agent may re-run the same command if the plan is missing or stale.
 

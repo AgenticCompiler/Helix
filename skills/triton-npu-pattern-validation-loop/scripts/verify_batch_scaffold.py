@@ -5,9 +5,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
+
+_TRITON_KERNEL_RE = re.compile(
+    r"@triton\.jit[^\n]*\n(?:@[^\n]+\n)*def\s+(\w+)\s*\(",
+    re.MULTILINE,
+)
+_DEF_RE = re.compile(r"^def\s+(\w+)\s*\(", re.MULTILINE)
+_LAUNCH_GRID_RE = re.compile(r"\b(\w+)\s*\[")
 
 from batch_layout import list_active_validation_workspaces
 from workspace_deps import verify_dependency_issues
@@ -131,6 +139,14 @@ def verify_workspace(
                 "Step 2b extract likely incomplete"
             )
 
+    issues.extend(
+        _operator_extract_issues(
+            operator_text,
+            kernels_in_operator=_string_list(meta.get("kernels_in_operator")),
+            launch_functions=_string_list(meta.get("launch_functions")),
+        ),
+    )
+
     extra_root_py = _extra_root_py_files(workspace, operator_name)
     if extra_root_py:
         issues.append(
@@ -175,6 +191,100 @@ def verify_workspace(
         "issues": issues,
         "passed": not issues,
     }
+
+
+def _operator_extract_issues(
+    operator_text: str,
+    *,
+    kernels_in_operator: list[str],
+    launch_functions: list[str],
+) -> list[str]:
+    if not operator_text:
+        return []
+
+    issues: list[str] = []
+    found_kernels = _triton_kernel_names(operator_text)
+
+    if kernels_in_operator:
+        allowed = set(kernels_in_operator)
+        extra_kernels = [name for name in found_kernels if name not in allowed]
+        missing_kernels = [name for name in kernels_in_operator if name not in found_kernels]
+        if extra_kernels:
+            issues.append(
+                "operator still defines Triton kernels outside kernels_in_operator: "
+                f"{', '.join(extra_kernels)}; trim the extract (Step 2b), do not copy the whole "
+                "source_path file"
+            )
+        if missing_kernels:
+            issues.append(
+                "kernels_in_operator not present in operator file: "
+                f"{', '.join(missing_kernels)}"
+            )
+    elif launch_functions and len(found_kernels) > 1:
+        issues.append(
+            f"operator defines {len(found_kernels)} @triton.jit kernels "
+            f"({', '.join(found_kernels)}) but kernels_in_operator is unset; copy "
+            "kernels_in_operator from workspace-plan.json and trim unrelated kernels"
+        )
+
+    if launch_functions:
+        launch_map = _launch_functions_in_source(operator_text)
+        for launch_name in launch_functions:
+            if launch_name not in operator_text:
+                issues.append(
+                    f"launch_functions entry {launch_name!r} not found in operator file",
+                )
+        extra_launches = [name for name in launch_map if name not in launch_functions]
+        if extra_launches:
+            issues.append(
+                "operator still defines host launch functions outside launch_functions: "
+                f"{', '.join(extra_launches)}; trim the extract (Step 2b)"
+            )
+
+    return issues
+
+
+def _triton_kernel_names(source_text: str) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for name in _TRITON_KERNEL_RE.findall(source_text):
+        if name in seen:
+            continue
+        seen.add(name)
+        ordered.append(name)
+    return ordered
+
+
+def _launch_functions_in_source(source_text: str) -> dict[str, list[str]]:
+    kernel_names = set(_TRITON_KERNEL_RE.findall(source_text))
+    if not kernel_names:
+        return {}
+
+    current_host: str | None = None
+    host_is_triton = False
+    launch_to_kernels: dict[str, list[str]] = {}
+
+    for line in source_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("@triton.jit"):
+            host_is_triton = True
+            continue
+        def_match = _DEF_RE.match(line)
+        if def_match:
+            current_host = def_match.group(1)
+            host_is_triton = False
+            continue
+        if current_host is None or host_is_triton:
+            continue
+        for launch_match in _LAUNCH_GRID_RE.finditer(line):
+            callee = launch_match.group(1)
+            if callee not in kernel_names:
+                continue
+            kernels = launch_to_kernels.setdefault(current_host, [])
+            if callee not in kernels:
+                kernels.append(callee)
+
+    return launch_to_kernels
 
 
 def _extra_root_py_files(workspace: Path, operator_filename: str) -> list[str]:

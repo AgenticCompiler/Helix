@@ -12,7 +12,7 @@ SCRIPTS = (
 )
 sys.path.insert(0, str(SCRIPTS))
 
-from plan_workspaces_from_knowledge import main
+from plan_workspaces_from_knowledge import main, parse_skip_launch_names
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 
@@ -88,6 +88,48 @@ class PlanWorkspacesFromKnowledgeTests(unittest.TestCase):
         self.assertEqual(dv_entry["launch_functions"], ["chunk_bwd_dv_local"])
         self.assertEqual(dv_entry["operator_filename"], "chunk_bwd_dv_local.py")
         self.assertIn("85171374766b", dv_entry["knowledge_lessons"])
+
+    def test_parse_skip_launch_names_splits_commas(self) -> None:
+        self.assertEqual(
+            parse_skip_launch_names(["chunk_bwd_dqkwg", "a,b", " c "]),
+            {"chunk_bwd_dqkwg", "a", "b", "c"},
+        )
+
+    def test_plan_skip_launch_omits_workspace(self) -> None:
+        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            source_dir = repo / "src/kernels/fla/ops/common"
+            source_dir.mkdir(parents=True)
+            (source_dir / "chunk_o.py").write_text(SAMPLE_SOURCE, encoding="utf-8")
+            knowledge = root / "PERF_KNOWLEDGE_BASE.md"
+            knowledge.write_text(SAMPLE_KB, encoding="utf-8")
+            output = root / "workspace-plan.json"
+
+            code = main(
+                [
+                    "--knowledge",
+                    knowledge.as_posix(),
+                    "--repo",
+                    repo.as_posix(),
+                    "--output",
+                    output.as_posix(),
+                    "--skip-launch",
+                    "chunk_bwd_dqkwg",
+                ],
+            )
+            self.assertEqual(code, 0)
+            payload = json.loads(output.read_text(encoding="utf-8"))
+
+        names = {entry["workspace"] for entry in payload["workspaces"]}
+        self.assertEqual(names, {"chunk_bwd_dv_local"})
+        self.assertEqual(payload["skip_launch_functions"], ["chunk_bwd_dqkwg"])
+        self.assertEqual(len(payload["skipped_workspaces"]), 1)
+        self.assertEqual(
+            payload["skipped_workspaces"][0]["launch_function"],
+            "chunk_bwd_dqkwg",
+        )
 
     def test_plan_with_base_fallback_on_non_git_repo(self) -> None:
         with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:

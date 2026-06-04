@@ -611,6 +611,16 @@ def build_parser() -> argparse.ArgumentParser:
                 default="origin/main",
                 help="Base revision for scaffold snapshots (default: origin/main).",
             )
+            subparser.add_argument(
+                "--skip-launch",
+                action="append",
+                default=[],
+                metavar="NAME",
+                help=(
+                    "Host launch function(s) to omit when generating workspace-plan.json. "
+                    "Repeat or use comma-separated names."
+                ),
+            )
             subparser.add_argument("--min-rounds", type=int, default=10)
             subparser.add_argument("--max-iterations", type=int, default=5)
             subparser.add_argument(
@@ -690,6 +700,16 @@ def build_parser() -> argparse.ArgumentParser:
                 "--base",
                 default="",
                 help="Optional base revision recorded in the plan for scaffold Git steps.",
+            )
+            subparser.add_argument(
+                "--skip-launch",
+                action="append",
+                default=[],
+                metavar="NAME",
+                help=(
+                    "Host launch function(s) to omit from workspace-plan.json. "
+                    "Repeat or use comma-separated names."
+                ),
             )
 
     return parser

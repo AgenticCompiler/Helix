@@ -217,6 +217,7 @@ def run_pattern_validation_loop(
     verbose: bool = False,
     show_output: bool = True,
     user_prompt: str | None = None,
+    skip_launch_functions: list[str] | None = None,
 ) -> int:
     return run_pattern_validation_loop_orchestrated(
         target_path=target_path,
@@ -235,5 +236,6 @@ def run_pattern_validation_loop(
         verbose=verbose,
         show_output=show_output,
         user_prompt=user_prompt,
+        skip_launch_functions=skip_launch_functions,
     )
 

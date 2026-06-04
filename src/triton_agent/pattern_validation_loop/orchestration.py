@@ -69,6 +69,7 @@ class PatternValidationLoopConfig:
     verbose: bool
     show_output: bool
     user_prompt: str | None
+    skip_launch_functions: tuple[str, ...] = ()
 
 
 def run_pattern_validation_loop_orchestrated(
@@ -89,6 +90,7 @@ def run_pattern_validation_loop_orchestrated(
     verbose: bool = False,
     show_output: bool = True,
     user_prompt: str | None = None,
+    skip_launch_functions: list[str] | None = None,
 ) -> int:
     try:
         config = _build_loop_config(
@@ -108,6 +110,7 @@ def run_pattern_validation_loop_orchestrated(
             verbose=verbose,
             show_output=show_output,
             user_prompt=user_prompt,
+            skip_launch_functions=skip_launch_functions,
         )
     except ValueError as exc:
         print(f"[pattern-validation-loop] {exc}", file=sys.stderr, flush=True)
@@ -125,6 +128,7 @@ def run_pattern_validation_loop_orchestrated(
         batch_root=config.batch_path,
         knowledge_output=_relative_to_repo(config.repo_root, config.knowledge_path),
         base_revision=config.base_revision,
+        skip_launch_functions=list(config.skip_launch_functions),
         stream=sys.stderr,
     )
     for warning in plan_warnings:
@@ -246,6 +250,7 @@ def _build_loop_config(
     verbose: bool,
     show_output: bool,
     user_prompt: str | None,
+    skip_launch_functions: list[str] | None = None,
 ) -> PatternValidationLoopConfig:
     repo_root = resolve_git_worktree(target_path)
     synthesis_path = resolve_repo_path(repo_root, synthesis_output)
@@ -277,6 +282,11 @@ def _build_loop_config(
         verbose=verbose,
         show_output=show_output,
         user_prompt=user_prompt,
+        skip_launch_functions=tuple(
+            str(item).strip()
+            for item in (skip_launch_functions or [])
+            if str(item).strip()
+        ),
     )
 
 

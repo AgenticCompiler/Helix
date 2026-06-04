@@ -35,14 +35,16 @@ def build_prepare_prompt(
      triton-agent pattern-validation-plan -i {repo_path.as_posix()} \\
        --knowledge {knowledge_path.relative_to(repo_path).as_posix() if knowledge_path.is_relative_to(repo_path) else knowledge_path.as_posix()} \\
        --batch-dir {batch_dir.name} \\
-       --base {base_revision}"""
+       --base {base_revision} \\
+       [--skip-launch <host_launch_fn> ...]"""
     elif knowledge_exists:
         plan_step = f"""4. **Generate workspace plan** from the knowledge base (required):
 
      triton-agent pattern-validation-plan -i {repo_path.as_posix()} \\
        --knowledge {knowledge_path.relative_to(repo_path).as_posix() if _is_relative(knowledge_path, repo_path) else knowledge_path.as_posix()} \\
        --batch-dir {batch_dir.name} \\
-       --base {base_revision}
+       --base {base_revision} \\
+       [--skip-launch <host_launch_fn> ...]
 
    Then read `{default_plan_path.as_posix()}` and scaffold one workspace per `workspaces[]` entry."""
     else:
@@ -105,6 +107,8 @@ Required steps:
 3. Regenerate `{knowledge_root.as_posix()}/references/pattern_index.md`.
 {plan_step}
 5. Scaffold workspaces under `{batch_dir.as_posix()}`: **workspace-named** directories and operator files per the plan; helper `.py` only under `deps/`.
+   - Operator file = **minimal extract** for this workspace's `launch_functions` / `kernels_in_operator` only — do not copy the whole `source_path` file when the plan splits by launch.
+   - `deps/` fallback copies whole repo modules for imports; do not trim `deps/` — trim the operator instead.
    - `dependency_dir` must be the literal string `deps` (never `{{deps}}` or other placeholders).
    - Copy repo `test_*.py` as **reference** files named `test_*.py.txt` (not runnable pytest). Record them in `validation-meta.json` → `copied_tests`.
    - The optimize CLI will tell the agent these `.py.txt` files document dtype and shapes only.

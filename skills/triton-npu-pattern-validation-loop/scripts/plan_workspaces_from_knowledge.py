@@ -33,6 +33,16 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help="Optional base revision string copied into the plan for scaffold Git steps.",
     )
+    parser.add_argument(
+        "--skip-launch",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help=(
+            "Host launch function(s) to omit from the plan. Repeat the flag or pass "
+            "comma-separated names (for example --skip-launch chunk_bwd_dqkwg)."
+        ),
+    )
     args = parser.parse_args(argv)
 
     knowledge_path = Path(args.knowledge).expanduser().resolve()
@@ -49,8 +59,11 @@ def main(argv: list[str] | None = None) -> int:
     knowledge_text = knowledge_path.read_text(encoding="utf-8")
     file_sections = _parse_knowledge_file_sections(knowledge_text)
     workspaces: list[dict[str, Any]] = []
+    skipped_entries: list[dict[str, str]] = []
     warnings: list[str] = []
     base_rev = str(args.base).strip() or None
+    skip_launch = parse_skip_launch_names(args.skip_launch)
+    discovered_launch_names: set[str] = set()
 
     for source_path, section in file_sections.items():
         kernel_lessons = _kernel_lessons_from_section(section)
@@ -72,6 +85,16 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         for launch_fn, kernels_launched in launch_map.items():
+            discovered_launch_names.add(launch_fn)
+            if launch_fn in skip_launch:
+                skipped_entries.append(
+                    {
+                        "launch_function": launch_fn,
+                        "source_path": source_path,
+                        "kernels_in_operator": ", ".join(kernels_launched),
+                    },
+                )
+                continue
             lesson_shas = sorted(
                 {
                     sha
@@ -105,6 +128,14 @@ def main(argv: list[str] | None = None) -> int:
                 f"{', '.join(orphan_lessons)} — assign manually in workspace-plan.json",
             )
 
+    if skip_launch:
+        unknown_skips = sorted(skip_launch - discovered_launch_names)
+        if unknown_skips:
+            warnings.append(
+                "--skip-launch names not found in scanned sources: "
+                + ", ".join(unknown_skips),
+            )
+
     # Deduplicate by workspace name; later entries override with a warning.
     deduped: dict[str, dict[str, Any]] = {}
     for entry in workspaces:
@@ -122,6 +153,8 @@ def main(argv: list[str] | None = None) -> int:
         "knowledge_path": knowledge_path.as_posix(),
         "repo": repo_root.as_posix(),
         "base_revision": str(args.base).strip() or None,
+        "skip_launch_functions": sorted(skip_launch),
+        "skipped_workspaces": skipped_entries,
         "workspace_count": len(deduped),
         "warnings": warnings,
         "workspaces": list(deduped.values()),
@@ -196,6 +229,16 @@ def _looks_like_kernel_symbol(symbol: str) -> bool:
     if symbol.endswith("_fwd") or symbol.endswith("_bwd"):
         return True
     return bool(re.search(r"(?:fwd|bwd|kernel)", symbol))
+
+
+def parse_skip_launch_names(values: list[str] | None) -> set[str]:
+    names: set[str] = set()
+    for raw in values or []:
+        for part in raw.split(","):
+            name = part.strip()
+            if name:
+                names.add(name)
+    return names
 
 
 def _map_launch_functions(source_text: str) -> dict[str, list[str]]:
