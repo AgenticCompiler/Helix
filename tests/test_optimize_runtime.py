@@ -1173,7 +1173,13 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     self.saw_guidance_file = (workdir / "AGENTS.md").exists()
                     if self.saw_guidance_file:
                         self.guidance_content = (workdir / "AGENTS.md").read_text(encoding="utf-8")
-                    (workdir / "opt-round-1").mkdir()
+                    self_outer._write_baseline(workdir)
+                    self_outer._write_round(
+                        workdir,
+                        "opt-round-1",
+                        parent_round="round-0",
+                        round_disposition="continue",
+                    )
                     return AgentResult(return_code=0, stdout="ok", stderr="", session_id=None)
 
                 def resume(
@@ -1188,6 +1194,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
             runner = FakeRunner()
+            self_outer = self
             with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
                 with patch(
                     "triton_agent.optimize.orchestration.OptimizeSessionArtifactsManager.prepare_supervised_session"
@@ -1252,7 +1259,13 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 ) -> AgentResult:
                     del request, stdout, stderr
                     self.guidance_content = (workdir / "AGENTS.md").read_text(encoding="utf-8")
-                    (workdir / "opt-round-1").mkdir()
+                    self_outer._write_baseline(workdir)
+                    self_outer._write_round(
+                        workdir,
+                        "opt-round-1",
+                        parent_round="round-0",
+                        round_disposition="continue",
+                    )
                     return AgentResult(return_code=0, stdout="ok", stderr="", session_id=None)
 
                 def resume(
@@ -1266,6 +1279,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
             runner = FakeRunner()
+            self_outer = self
             with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
                 result = run_optimize_request(request)
 
@@ -1319,7 +1333,13 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 ) -> AgentResult:
                     del request, stdout, stderr
                     self.guidance_content = (workdir / "AGENTS.md").read_text(encoding="utf-8")
-                    (workdir / "opt-round-1").mkdir()
+                    self_outer._write_baseline(workdir)
+                    self_outer._write_round(
+                        workdir,
+                        "opt-round-1",
+                        parent_round="round-0",
+                        round_disposition="continue",
+                    )
                     return AgentResult(return_code=0, stdout="ok", stderr="", session_id=None)
 
                 def resume(
@@ -1333,6 +1353,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
             runner = FakeRunner()
+            self_outer = self
             with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
                 result = run_optimize_request(request)
 
@@ -1410,10 +1431,17 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     del request, stdout, stderr
                     self.calls.append("resume")
                     self.resume_summaries.append(summary)
-                    (workdir / "opt-round-1").mkdir()
+                    self_outer._write_baseline(workdir)
+                    self_outer._write_round(
+                        workdir,
+                        "opt-round-1",
+                        parent_round="round-0",
+                        round_disposition="continue",
+                    )
                     return AgentResult(return_code=0, stdout="done", stderr="", stalled=False)
 
             runner = RecordingRecoveryRunner()
+            self_outer = self
             with patch("triton_agent.optimize.orchestration.create_runner", return_value=runner):
                 result = run_optimize_request(request)
 
@@ -2867,8 +2895,19 @@ class OptimizeRuntimeTests(unittest.TestCase):
     def test_latest_round_dir_prefers_highest_numeric_suffix(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            (workdir / "opt-round-2").mkdir()
-            (workdir / "opt-round-10").mkdir()
+            self._write_baseline(workdir)
+            self._write_round(
+                workdir,
+                "opt-round-2",
+                parent_round="round-1",
+                round_disposition="continue",
+            )
+            self._write_round(
+                workdir,
+                "opt-round-10",
+                parent_round="round-9",
+                round_disposition="continue",
+            )
 
             latest = _latest_round_dir(workdir)
 
@@ -2879,7 +2918,13 @@ class OptimizeRuntimeTests(unittest.TestCase):
     def test_round_helpers_ignore_non_numeric_opt_round_names(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            (workdir / "opt-round-2").mkdir()
+            self._write_baseline(workdir)
+            self._write_round(
+                workdir,
+                "opt-round-2",
+                parent_round="round-1",
+                round_disposition="continue",
+            )
             (workdir / "opt-round-final").mkdir()
             (workdir / "opt-round-notes").mkdir()
 
@@ -2888,6 +2933,25 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIsNotNone(latest)
             assert latest is not None
             self.assertEqual(latest.name, "opt-round-2")
+            self.assertEqual(_count_round_directories(workdir), 1)
+
+    def test_round_helpers_ignore_incomplete_precreated_round_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            self._write_round(
+                workdir,
+                "opt-round-1",
+                parent_round="round-0",
+                round_disposition="continue",
+            )
+            (workdir / "opt-round-2").mkdir()
+
+            latest = _latest_round_dir(workdir)
+
+            self.assertIsNotNone(latest)
+            assert latest is not None
+            self.assertEqual(latest.name, "opt-round-1")
             self.assertEqual(_count_round_directories(workdir), 1)
 
     def test_run_optimize_batch_auto_upload_on_success(self) -> None:

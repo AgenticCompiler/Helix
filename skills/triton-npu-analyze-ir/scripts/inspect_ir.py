@@ -7,7 +7,7 @@ import difflib
 import json
 import re
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, TypedDict
 
 
 KEYWORDS: tuple[str, ...] = (
@@ -32,6 +32,42 @@ class StageInfo(NamedTuple):
     stem: str
     size_bytes: int
     line_count: int
+
+
+_StageChange = TypedDict(
+    "_StageChange",
+    {
+        "from": StageInfo,
+        "to": StageInfo,
+        "line_delta": int,
+        "size_delta": int,
+        "keyword_deltas": dict[str, int],
+        "score": int,
+    },
+)
+
+
+class _StageSignalSummary(TypedDict):
+    stage: str
+    path: str
+    line_count: int
+    size_bytes: int
+    vector_ops: int
+    transfer_ops: int
+    sync_ops: int
+    alloc_ops: int
+    interesting_score: int
+
+
+class _SuspiciousTransition(TypedDict):
+    from_stage: str
+    to_stage: str
+    signal_score: int
+    vector_delta: int
+    transfer_delta: int
+    sync_delta: int
+    line_delta: int
+    size_delta: int
 
 
 def resolve_stages_dir(ir_dir: str | Path) -> Path:
@@ -256,10 +292,8 @@ def performance_signals_text(
         ]
     )
     transitions = payload["suspicious_transitions"]
-    assert isinstance(transitions, list)
     if transitions:
         for change in transitions:
-            assert isinstance(change, dict)
             lines.append(
                 f"- {change['from_stage']} -> {change['to_stage']} "
                 f"(score={change['signal_score']}, vector_delta={change['vector_delta']:+d}, "
@@ -270,11 +304,19 @@ def performance_signals_text(
     return "\n".join(lines) + "\n"
 
 
+class _PerformanceSignalsPayload(TypedDict):
+    stage_summaries: list[_StageSignalSummary]
+    vector_heavy_stages: list[_StageSignalSummary]
+    transfer_heavy_stages: list[_StageSignalSummary]
+    sync_heavy_stages: list[_StageSignalSummary]
+    suspicious_transitions: list[_SuspiciousTransition]
+
+
 def build_performance_signals_payload(
     ir_dir: str | Path,
     *,
     limit: int | None = None,
-) -> dict[str, object]:
+) -> _PerformanceSignalsPayload:
     stage_infos = discover_stages(resolve_stages_dir(ir_dir))
     stage_summaries = [_stage_signal_summary(info) for info in stage_infos]
     suspicious_transitions = _suspicious_transitions(stage_infos)
@@ -283,15 +325,15 @@ def build_performance_signals_payload(
 
     sorted_vector = sorted(
         [summary for summary in stage_summaries if summary["vector_ops"] > 0],
-        key=lambda item: (-int(item["vector_ops"]), str(item["stage"])),
+        key=lambda item: (-item["vector_ops"], str(item["stage"])),
     )
     sorted_transfer = sorted(
         [summary for summary in stage_summaries if summary["transfer_ops"] > 0],
-        key=lambda item: (-int(item["transfer_ops"]), str(item["stage"])),
+        key=lambda item: (-item["transfer_ops"], str(item["stage"])),
     )
     sorted_sync = sorted(
         [summary for summary in stage_summaries if summary["sync_ops"] > 0],
-        key=lambda item: (-int(item["sync_ops"]), str(item["stage"])),
+        key=lambda item: (-item["sync_ops"], str(item["stage"])),
     )
 
     if limit is not None:
@@ -474,8 +516,8 @@ def _sort_stage_infos(stage_infos: list[StageInfo], *, sort_by: str) -> list[Sta
     )
 
 
-def _adjacent_stage_changes(stage_infos: list[StageInfo]) -> list[dict[str, object]]:
-    changes: list[dict[str, object]] = []
+def _adjacent_stage_changes(stage_infos: list[StageInfo]) -> list[_StageChange]:
+    changes: list[_StageChange] = []
     for index in range(len(stage_infos) - 1):
         previous = stage_infos[index]
         current = stage_infos[index + 1]
@@ -503,12 +545,12 @@ def _adjacent_stage_changes(stage_infos: list[StageInfo]) -> list[dict[str, obje
     return changes
 
 
-def _sort_stage_changes(changes: list[dict[str, object]], *, sort_by: str) -> list[dict[str, object]]:
+def _sort_stage_changes(changes: list[_StageChange], *, sort_by: str) -> list[_StageChange]:
     if sort_by == "lines":
-        return sorted(changes, key=lambda item: (-abs(int(item["line_delta"])), str(item["to"])))
+        return sorted(changes, key=lambda item: (-abs(item["line_delta"]), str(item["to"])))
     if sort_by == "size":
-        return sorted(changes, key=lambda item: (-abs(int(item["size_delta"])), str(item["to"])))
-    return sorted(changes, key=lambda item: (-int(item["score"]), str(item["to"])))
+        return sorted(changes, key=lambda item: (-abs(item["size_delta"]), str(item["to"])))
+    return sorted(changes, key=lambda item: (-item["score"], str(item["to"])))
 
 
 def _format_keyword_delta_summary(keyword_deltas: dict[str, int], limit: int = 5) -> str:
@@ -533,7 +575,7 @@ def _stage_highlights(text: str, limit: int = 8) -> list[str]:
     return highlights
 
 
-def _stage_signal_summary(info: StageInfo) -> dict[str, object]:
+def _stage_signal_summary(info: StageInfo) -> _StageSignalSummary:
     counts = _keyword_counts(info.path.read_text(encoding="utf-8"))
     transfer_ops = counts["copy"] + counts["dma"] + counts["load"] + counts["store"]
     sync_ops = counts["wait"] + counts["set_flag"] + counts["barrier"]
@@ -550,30 +592,27 @@ def _stage_signal_summary(info: StageInfo) -> dict[str, object]:
     }
 
 
-def _suspicious_transitions(stage_infos: list[StageInfo]) -> list[dict[str, object]]:
-    suspicious: list[dict[str, object]] = []
+def _suspicious_transitions(stage_infos: list[StageInfo]) -> list[_SuspiciousTransition]:
+    suspicious: list[_SuspiciousTransition] = []
     for change in _adjacent_stage_changes(stage_infos):
         keyword_deltas = change["keyword_deltas"]
-        assert isinstance(keyword_deltas, dict)
-        vector_delta = int(keyword_deltas["vector"])
+        vector_delta = keyword_deltas["vector"]
         transfer_delta = (
-            int(keyword_deltas["copy"])
-            + int(keyword_deltas["dma"])
-            + int(keyword_deltas["load"])
-            + int(keyword_deltas["store"])
+            keyword_deltas["copy"]
+            + keyword_deltas["dma"]
+            + keyword_deltas["load"]
+            + keyword_deltas["store"]
         )
         sync_delta = (
-            int(keyword_deltas["wait"])
-            + int(keyword_deltas["set_flag"])
-            + int(keyword_deltas["barrier"])
+            keyword_deltas["wait"]
+            + keyword_deltas["set_flag"]
+            + keyword_deltas["barrier"]
         )
         signal_score = abs(vector_delta) + abs(transfer_delta) + abs(sync_delta)
         if signal_score == 0:
             continue
         previous = change["from"]
         current = change["to"]
-        assert isinstance(previous, StageInfo)
-        assert isinstance(current, StageInfo)
         suspicious.append(
             {
                 "from_stage": previous.stem,
@@ -582,19 +621,18 @@ def _suspicious_transitions(stage_infos: list[StageInfo]) -> list[dict[str, obje
                 "vector_delta": vector_delta,
                 "transfer_delta": transfer_delta,
                 "sync_delta": sync_delta,
-                "line_delta": int(change["line_delta"]),
-                "size_delta": int(change["size_delta"]),
+                "line_delta": change["line_delta"],
+                "size_delta": change["size_delta"],
             }
         )
-    return sorted(suspicious, key=lambda item: (-int(item["signal_score"]), str(item["to_stage"])))
+    return sorted(suspicious, key=lambda item: (-item["signal_score"], str(item["to_stage"])))
 
 
-def _render_signal_stage_lines(entries: object) -> list[str]:
-    if not isinstance(entries, list) or not entries:
+def _render_signal_stage_lines(entries: list[_StageSignalSummary]) -> list[str]:
+    if not entries:
         return ["- No stages matched the default heuristics."]
     lines: list[str] = []
     for entry in entries:
-        assert isinstance(entry, dict)
         lines.append(
             f"- {entry['stage']} "
             f"(vector={entry['vector_ops']}, transfer={entry['transfer_ops']}, "
