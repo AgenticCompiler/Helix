@@ -33,6 +33,9 @@ from triton_agent.pattern_validation_loop.seed_skills import (
     DEFAULT_SKILLS_DIR_NAME,
     seed_pattern_validation_skills_dir,
 )
+from triton_agent.pattern_validation_loop.reference_tests import (
+    build_pattern_validation_optimize_reference_test_prompt,
+)
 from triton_agent.prompts import append_additional_user_instructions
 from triton_agent.resources import skills_root
 from triton_agent.skill_loader import load_skill_script_module
@@ -418,6 +421,13 @@ def _run_agent_request(config: PatternValidationLoopConfig, request: AgentReques
     return result.return_code
 
 
+def _build_pattern_validation_optimize_prompt(user_prompt: str | None) -> str:
+    return append_additional_user_instructions(
+        build_pattern_validation_optimize_reference_test_prompt(),
+        user_prompt,
+    )
+
+
 def _run_optimize_batch(
     config: PatternValidationLoopConfig,
     *,
@@ -439,7 +449,7 @@ def _run_optimize_batch(
         output=None,
         test_mode=config.test_mode,
         bench_mode=config.bench_mode,
-        prompt=None,
+        prompt=_build_pattern_validation_optimize_prompt(config.user_prompt),
         target_chip=config.target_chip or "A5",
         optimize_knowledge=config.optimize_knowledge,
         upload_enabled=False,

@@ -67,7 +67,7 @@ Active workspace example:
 ```text
 pattern-validation-batch/chunk_o/
   chunk_o.py
-  test_*.py
+  test_*.py.txt          # reference only (dtype/shapes); optimize agent generates runnable tests
   validation-meta.json
   baseline/
   opt-round-N/

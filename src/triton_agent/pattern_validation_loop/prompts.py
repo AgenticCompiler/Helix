@@ -105,6 +105,8 @@ Required steps:
 3. Regenerate `{knowledge_root.as_posix()}/references/pattern_index.md`.
 {plan_step}
 5. Scaffold workspaces under `{batch_dir.as_posix()}`: **workspace-named** directories and operator files per the plan; helper `.py` only under `deps/`.
+   - Copy repo `test_*.py` as **reference** files named `test_*.py.txt` (not runnable pytest). Record them in `validation-meta.json` → `copied_tests`.
+   - The optimize CLI will tell the agent these `.py.txt` files document dtype and shapes only.
 6. Run scaffold verification from repo root:
 
    triton-agent pattern-validation-verify -i {batch_dir.as_posix()}

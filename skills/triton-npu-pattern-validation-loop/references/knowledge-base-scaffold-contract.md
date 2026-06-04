@@ -103,7 +103,7 @@ For each entry in `workspace-plan.json`:
 ```text
 pattern-validation-batch/chunk_bwd_dv_local/
   chunk_bwd_dv_local.py    # minimal extract: launch + its kernel(s) + helpers
-  test_*.py
+  test_*.py.txt          # reference only (dtype/shapes); not runnable pytest
   validation-meta.json
   deps/                           # helper .py only under deps/
     ...

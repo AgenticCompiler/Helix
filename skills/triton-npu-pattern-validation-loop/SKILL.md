@@ -111,7 +111,11 @@ again before optimize as a hard gate.
 
 ## Phase D — CLI optimize batch
 
-The **CLI** runs `optimize-batch` (not the prepare/analyze agents). Typical flags:
+The **CLI** runs `optimize-batch` (not the prepare/analyze agents). It injects a prompt that
+each workspace may include `test_*.py.txt` **reference** files (dtype and shapes only; not
+runnable pytest). The optimize agent should use them when authoring real `test_*.py`.
+
+Typical flags:
 
 - `--skills-source-dir "$SKILLS"`
 - `--min-rounds 10 --concurrency 1 --show-output`

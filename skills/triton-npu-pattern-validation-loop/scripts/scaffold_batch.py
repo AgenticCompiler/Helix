@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from reference_test import reference_test_destination_name
+
 
 class ScaffoldError(RuntimeError):
     pass
@@ -111,9 +113,10 @@ def scaffold_operator(
 
     copied_tests: list[str] = []
     for test_path in test_paths:
-        destination = workspace / test_path.name
+        destination_name = reference_test_destination_name(test_path.name)
+        destination = workspace / destination_name
         destination.write_text(test_path.read_text(encoding="utf-8"), encoding="utf-8")
-        copied_tests.append(destination.name)
+        copied_tests.append(destination_name)
 
     copied_benches: list[str] = []
     for bench_path in bench_paths:

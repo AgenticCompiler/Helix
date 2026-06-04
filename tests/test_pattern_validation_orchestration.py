@@ -64,6 +64,8 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
         mock_collect.assert_called_once()
         mock_analyze.assert_called_once()
         mock_optimize.assert_called_once()
+        optimize_options = mock_optimize.call_args[0][1]
+        self.assertIn(".py.txt", optimize_options.prompt or "")
 
     @patch(
         "triton_agent.pattern_validation_loop.orchestration.generate_workspace_plan_if_present",

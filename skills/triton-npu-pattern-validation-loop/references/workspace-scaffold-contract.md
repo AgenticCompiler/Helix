@@ -310,7 +310,7 @@ Example — **independent kernel** in a shared file:
   "dependency_dir": "deps",
   "copied_dependencies": ["deps/tiling_utils.py"],
   "excluded_targets": ["forward_wy_fast", "wy_fast_kernel", "scaled_dot_kkt_kernel"],
-  "copied_tests": ["test_chunk_o.py"],
+  "copied_tests": ["test_chunk_o.py.txt"],
   "copied_benches": [],
   "notes": "Manual extract; wy_fast validated in separate workspace"
 }
@@ -344,7 +344,7 @@ Example — **one entrypoint, multiple cooperating kernels**:
   ],
   "copied_dependencies": [],
   "excluded_targets": ["forward_standalone_wy_fast"],
-  "copied_tests": ["test_gated_delta_scan.py"],
+  "copied_tests": ["test_gated_delta_scan.py.txt"],
   "copied_benches": [],
   "notes": "Single entrypoint launches 3 kernels; wy_fast.py prep-opt inlined from sibling file"
 }
@@ -369,14 +369,14 @@ Before moving to Step 3 / optimize-batch, verify:
 Each workspace must satisfy `optimize-batch` layout rules:
 
 - Exactly **one** operator `.py` at workspace root (excluding `test_*`, `bench_*`, `conftest.py`, etc.)
-- At least one runnable test file
+- At least one reference test file (`test_*.py.txt`) when the repo has matching tests
 - **No other** `.py` files at workspace root — put copied helpers under `deps/` (or another
   single subdirectory recorded in `dependency_dir`)
 
 `conftest.py` is ignored by `optimize-batch` operator discovery and may be used for pytest path
 setup. Helper modules belong in `deps/`, not beside the operator file.
 
-### Tests
+### Tests (reference only)
 
 Search the repo and choose files that actually exercise the operator:
 
@@ -384,8 +384,18 @@ Search the repo and choose files that actually exercise the operator:
 - `differential_test_*`
 - Imports or pytest markers referencing the module path
 
-Copy chosen files into the workspace. Prefer minimal copies; if tests import sibling
-modules, copy those `.py` files too or adjust imports deliberately.
+Copy chosen test files into the workspace as **`test_<name>.py.txt`** (append `.txt` to the
+original `.py` name). These are **reference artifacts for the optimize agent** — they document
+dtype, tensor shapes, and how the operator is called. They are **not** runnable pytest files.
+
+Record the destination names in `validation-meta.json` → `copied_tests` (for example
+`test_chunk_gated_delta_rule_fwd_h.py.txt`).
+
+The pattern-validation loop injects optimize-batch instructions explaining how to use these
+reference files when generating real `test_*.py` for optimize rounds.
+
+Prefer minimal copies; if reference tests import sibling modules, copy those helpers under
+`deps/` or adjust imports deliberately.
 
 ### Benchmarks (optional)
 
@@ -409,7 +419,7 @@ Create in each workspace:
   "head_revision": "HEAD",
   "expected_patterns": ["layout-materialization-elision", "grid-flatten-and-ub-buffering"],
   "synthesis_refs": ["host-side transpose before HSTU", "grid flatten for chunk_o"],
-  "copied_tests": ["test_chunk_o.py"],
+  "copied_tests": ["test_chunk_o.py.txt"],
   "copied_benches": [],
   "notes": "Why this workspace exists and what success looks like"
 }
