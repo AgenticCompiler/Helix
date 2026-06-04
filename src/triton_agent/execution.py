@@ -39,7 +39,6 @@ class TestRunnerModule(Protocol):
         test_mode: str,
         *,
         verbose: bool = False,
-        force_recompile: bool = False,
     ) -> tuple[_RunSkillPayload, Path | None]: ...
 
     def run_remote_test(
@@ -52,7 +51,6 @@ class TestRunnerModule(Protocol):
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: TextIO | None = None,
-        force_recompile: bool = False,
     ) -> tuple[_RunSkillPayload, Path | None, str]: ...
 
     def parse_test_metadata(self, test_file: Path) -> dict[str, str]: ...
@@ -66,7 +64,6 @@ class BenchRunnerModule(Protocol):
         bench_mode: str,
         npu_devices: str | None = None,
         verbose: bool = False,
-        force_recompile: bool = False,
         output: str | None = None,
     ) -> tuple[_RunSkillPayload, Path | None]: ...
 
@@ -81,7 +78,6 @@ class BenchRunnerModule(Protocol):
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: TextIO | None = None,
-        force_recompile: bool = False,
         output: str | None = None,
     ) -> tuple[_RunSkillPayload, Path | None, str]: ...
 
@@ -102,14 +98,12 @@ def run_local_test(
     test_mode: str,
     *,
     verbose: bool = False,
-    force_recompile: bool = False,
 ) -> tuple[AgentResult, Path | None]:
     result, archived = _load_test_runner().run_local_test(
         test_file,
         operator_file,
         test_mode,
         verbose=verbose,
-        force_recompile=force_recompile,
     )
     return _normalize_agent_result(result), archived
 
@@ -124,7 +118,6 @@ def run_remote_test(
     keep_remote_workdir: bool = False,
     verbose: bool = False,
     stderr: TextIO | None = None,
-    force_recompile: bool = False,
 ) -> tuple[AgentResult, Path | None, str]:
     result, archived, remote_workspace = _load_test_runner().run_remote_test(
         test_file,
@@ -135,7 +128,6 @@ def run_remote_test(
         keep_remote_workdir=keep_remote_workdir,
         verbose=verbose,
         stderr=stderr,
-        force_recompile=force_recompile,
     )
     return _normalize_agent_result(result), archived, remote_workspace
 
@@ -158,12 +150,10 @@ def run_local_bench(
     bench_mode: str,
     npu_devices: str | None = None,
     verbose: bool = False,
-    force_recompile: bool = False,
     output: str | None = None,
 ) -> tuple[AgentResult, Path | None]:
     result, perf_path = _load_bench_runner().run_local_bench(
         bench_file, operator_file, bench_mode, npu_devices, verbose=verbose,
-        force_recompile=force_recompile,
         output=output,
     )
     return _normalize_agent_result(result), perf_path
@@ -180,7 +170,6 @@ def run_remote_bench(
     keep_remote_workdir: bool = False,
     verbose: bool = False,
     stderr: TextIO | None = None,
-    force_recompile: bool = False,
     output: str | None = None,
 ) -> tuple[AgentResult, Path | None, str]:
     result, perf_path, remote_workspace = _load_bench_runner().run_remote_bench(
@@ -193,7 +182,6 @@ def run_remote_bench(
         keep_remote_workdir=keep_remote_workdir,
         verbose=verbose,
         stderr=stderr,
-        force_recompile=force_recompile,
         output=output,
     )
     return _normalize_agent_result(result), perf_path, remote_workspace

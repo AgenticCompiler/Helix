@@ -120,7 +120,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 operator_path: Path,
                 bench_mode: str,
                 npu_devices: Optional[str] = None,
-                force_recompile: bool = False,
+                **kwargs: object,
             ) -> tuple[dict[str, object], Path]:
                 observed_args.extend([bench_path, operator_path, bench_mode, npu_devices])
                 return (
@@ -217,9 +217,9 @@ class SkillCommandScriptTests(unittest.TestCase):
                 keep_remote_workdir: bool = False,
                 verbose: bool = False,
                 stderr: Optional[object] = None,
-                force_recompile: bool = False,
+                **kwargs: object,
             ) -> tuple[dict[str, object], None, str]:
-                del keep_remote_workdir, verbose, stderr, force_recompile
+                del keep_remote_workdir, verbose, stderr
                 observed.extend([bench_path, operator_path, bench_mode, remote, remote_workdir, npu_devices])
                 return (
                     {
@@ -476,7 +476,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 operator_path: Path,
                 test_mode: str,
                 verbose: bool = False,
-                force_recompile: bool = False,
+                **_kwargs: object,
             ) -> tuple[dict[str, object], Path]:
                 self.assertEqual(test_path, test_file.resolve())
                 self.assertEqual(operator_path, operator.resolve())
@@ -615,7 +615,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 operator_path: Path,
                 test_mode: str,
                 verbose: bool = False,
-                force_recompile: bool = False,
+                **_kwargs: object,
             ) -> tuple[dict[str, object], Path]:
                 self.assertEqual(test_path, test_file.resolve())
                 self.assertEqual(operator_path, operator.resolve())
@@ -713,7 +713,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 operator_path: Path,
                 test_mode: str,
                 verbose: bool = False,
-                force_recompile: bool = False,
+                **_kwargs: object,
             ) -> tuple[dict[str, object], Path]:
                 observed_calls.append(("local", test_path, operator_path, test_mode))
                 self.assertEqual(test_path, test_file.resolve())
@@ -811,7 +811,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 operator_path: Path,
                 test_mode: str,
                 verbose: bool = False,
-                force_recompile: bool = False,
+                **_kwargs: object,
             ) -> tuple[dict[str, object], Path]:
                 observed_calls.append((test_path, operator_path, test_mode))
                 if operator_path == baseline_operator.resolve():
@@ -1088,7 +1088,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 operator_path: Path,
                 test_mode: str,
                 verbose: bool = False,
-                force_recompile: bool = False,
+                **_kwargs: object,
             ) -> tuple[dict[str, object], Path]:
                 self.assertEqual(test_path, test_file.resolve())
                 self.assertEqual(operator_path, operator.resolve())
@@ -1186,7 +1186,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 operator_path: Path,
                 test_mode: str,
                 verbose: bool = False,
-                force_recompile: bool = False,
+                **_kwargs: object,
             ) -> tuple[dict[str, object], Path]:
                 observed_calls.append(("local", test_path, operator_path, test_mode))
                 self.assertEqual(test_path, test_file.resolve())
@@ -1284,7 +1284,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 operator_path: Path,
                 test_mode: str,
                 verbose: bool = False,
-                force_recompile: bool = False,
+                **_kwargs: object,
             ) -> tuple[dict[str, object], Path]:
                 observed_calls.append((test_path, operator_path, test_mode))
                 if operator_path == baseline_operator.resolve():
@@ -1394,7 +1394,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 operator_path: Path,
                 test_mode: str,
                 verbose: bool = False,
-                force_recompile: bool = False,
+                **_kwargs: object,
             ) -> tuple[dict[str, object], None]:
                 self.assertEqual(test_path, test_file.resolve())
                 self.assertEqual(operator_path, operator.resolve())

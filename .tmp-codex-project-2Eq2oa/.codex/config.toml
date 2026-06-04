@@ -1,0 +1,6 @@
+[mcp_servers.test_server]
+command = "python3"
+args = ["server.py"]
+
+[mcp_servers.test_server.env]
+FOO = "bar"
