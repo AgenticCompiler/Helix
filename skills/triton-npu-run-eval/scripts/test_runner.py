@@ -12,6 +12,7 @@ from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any, TextIO, cast
 
+from debug_device import maybe_print_visible_devices
 from run_runtime import (
     env_int,
     ResultPayload,
@@ -52,6 +53,7 @@ def run_local_test(
     *,
     verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
+    maybe_print_visible_devices()
     if test_mode == "differential" and _has_differential_test_contract(test_file):
         archive_path = _differential_archive_path(operator_file)
         result = _run_declarative_differential_test(test_file, operator_file, archive_path)
@@ -346,6 +348,7 @@ def run_remote_test(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
+    maybe_print_visible_devices()
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
     )

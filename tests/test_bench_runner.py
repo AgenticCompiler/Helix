@@ -187,6 +187,43 @@ class LocalBenchRunnerTests(unittest.TestCase):
                                              output=None)
             streaming.assert_not_called()
 
+    def test_run_local_bench_prints_visible_devices_when_debug_enabled(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            bench_file.write_text("# bench-mode: standalone\n# kernel: abs_kernel\n", encoding="utf-8")
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+
+            fake_result = make_skill_result(0, "", "")
+            perf_file = root / "abs_perf.txt"
+            stdout = StringIO()
+            with patch.dict(
+                module.os.environ,
+                {
+                    "TRITON_AGENT_DEBUG": "true",
+                    "ASCEND_RT_VISIBLE_DEVICES": "5",
+                },
+                clear=False,
+            ):
+                with patch.object(
+                    module,
+                    "run_local_standalone_bench",
+                    create=True,
+                    return_value=(fake_result, perf_file),
+                ):
+                    with redirect_stdout(stdout):
+                        result, resolved_perf = module.run_local_bench(
+                            bench_file,
+                            operator_file,
+                            "standalone",
+                        )
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertEqual(resolved_perf, perf_file)
+        self.assertIn("[TRITON_AGENT_DEBUG] ASCEND_RT_VISIBLE_DEVICES=5", stdout.getvalue())
+
     def test_run_local_bench_standalone_preserves_helper_perf_path(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:

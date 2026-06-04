@@ -80,6 +80,10 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
                 "Directory used to keep local benchmark profiler output.",
             ),
             (
+                "TRITON_AGENT_DEBUG",
+                "When set to true, print NPU device diagnostics before run-test and run-bench execution.",
+            ),
+            (
                 remote_target_env_name(),
                 "Injected remote target for agent child processes; remote-aware run helpers use it as a fallback when "
                 "`--remote` is omitted.",

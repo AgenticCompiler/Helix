@@ -375,6 +375,7 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("TRITON_AGENT_TEST_TIMEOUT_SECONDS", help_text)
         self.assertIn("TRITON_AGENT_BENCH_TIMEOUT_SECONDS", help_text)
         self.assertIn("TRITON_AGENT_PROFILE_TIMEOUT_SECONDS", help_text)
+        self.assertIn("TRITON_AGENT_DEBUG", help_text)
         self.assertIn("LLM_API_KEY", help_text)
         self.assertIn("LLM_MODEL", help_text)
         self.assertIn("LLM_BASE_URL", help_text)
