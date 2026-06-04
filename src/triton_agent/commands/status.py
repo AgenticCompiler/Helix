@@ -23,7 +23,7 @@ def handle_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
 
     is_single_workspace = workspace_has_optimize_artifacts(root)
     output_format = str(getattr(args, "format", "text"))
-    scope = str(getattr(args, "scope", "optimize"))
+    want_full = bool(getattr(args, "full", False))
 
     if is_single_workspace:
         results = [inspect_optimize_status_workspace(root, verbose=bool(getattr(args, "verbose", False)))]
@@ -34,9 +34,9 @@ def handle_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
             return 1
         results = scan_optimize_status_workspaces(root, verbose=bool(getattr(args, "verbose", False)))
 
-    if scope == "full":
+    if want_full:
         if is_single_workspace:
-            print("error: --scope full is only supported in batch directories", file=sys.stderr)
+            print("error: --full is only supported in batch directories", file=sys.stderr)
             return 1
         schema_path = write_status_schema(root, results)
         state = collect_status_schema(root, results)
