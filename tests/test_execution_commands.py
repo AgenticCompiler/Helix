@@ -49,17 +49,17 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 force_recompile=False,
             )
 
-    def test_handle_run_test_auto_compares_differential_result_when_oracle_provided(self) -> None:
+    def test_handle_run_test_auto_compares_differential_result_when_baseline_result_provided(self) -> None:
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
             test_file = root / "differential_test_kernel.py"
-            oracle = root / "oracle_result.pt"
+            baseline_result = root / "baseline_result.pt"
             archive = root / "kernel_result.pt"
             operator.write_text("print('x')", encoding="utf-8")
             test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
-            oracle.write_text("oracle", encoding="utf-8")
+            baseline_result.write_text("baseline", encoding="utf-8")
 
             args = parser.parse_args(
                 [
@@ -68,8 +68,8 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                     str(test_file),
                     "--operator-file",
                     str(operator),
-                    "--oracle-result",
-                    str(oracle),
+                    "--baseline-result",
+                    str(baseline_result),
                 ]
             )
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
@@ -93,7 +93,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 force_recompile=False,
             )
             compare_mock.assert_called_once_with(
-                oracle.resolve(),
+                baseline_result.resolve(),
                 archive,
                 "balanced",
             )

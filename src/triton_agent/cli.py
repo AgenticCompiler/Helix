@@ -630,7 +630,8 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
     if spec.input_mode == "run-test":
         subparser.add_argument("--test-file", required=True)
         subparser.add_argument("--operator-file", required=True)
-        subparser.add_argument("--oracle-result")
+        subparser.add_argument("--baseline-result")
+        subparser.add_argument("--baseline-operator-file")
         subparser.add_argument("--compare-level", choices=_COMPARE_LEVEL_CHOICES)
         return
     if spec.input_mode == "run-bench":

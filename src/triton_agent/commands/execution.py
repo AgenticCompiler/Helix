@@ -20,9 +20,16 @@ _RUN_TEST_HINT = "Hint: use `compare-result` to inspect this archived result ins
 
 
 def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
-    test_file, operator_file, oracle_result = resolve_run_test_paths(parser, args)
+    test_file, operator_file, baseline_result, baseline_operator_file = resolve_run_test_paths(parser, args)
     resolved_test_mode = args.test_mode or resolve_test_mode_from_metadata(test_file)
-    compare_level = resolve_run_test_compare_level(parser, args, resolved_test_mode, oracle_result)
+    compare_level, baseline_result = resolve_run_test_comparison_inputs(
+        parser,
+        args,
+        resolved_test_mode,
+        baseline_result,
+        baseline_operator_file,
+        test_file,
+    )
     force_recompile: bool = getattr(args, "force_recompile", False)
     remote_workspace: str | None = None
     try:
@@ -54,11 +61,11 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
     final_code = result.return_code
     if archived_result is not None:
         print(f"Archived result: {archived_result}")
-        if oracle_result is not None:
-            final_code = compare_result_files(oracle_result, archived_result, compare_level)
+        if baseline_result is not None:
+            final_code = compare_result_files(baseline_result, archived_result, compare_level)
         else:
             print(_RUN_TEST_HINT)
-    elif oracle_result is not None:
+    elif baseline_result is not None:
         print(
             "Differential run-test did not produce an archived result required for automatic comparison.",
             file=sys.stderr,
@@ -116,32 +123,92 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
 def resolve_run_test_paths(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
-) -> tuple[Path, Path, Path | None]:
+) -> tuple[Path, Path, Path | None, Path | None]:
     test_file = Path(args.test_file).expanduser().resolve()
     if not test_file.exists():
         parser.error(f"Test file path does not exist: {test_file}")
     operator_file = Path(args.operator_file).expanduser().resolve()
     if not operator_file.exists():
         parser.error(f"Operator file path does not exist: {operator_file}")
-    oracle_result: Path | None = None
-    if getattr(args, "oracle_result", None) is not None:
-        oracle_result = Path(args.oracle_result).expanduser().resolve()
-        if not oracle_result.exists():
-            parser.error(f"Oracle result path does not exist: {oracle_result}")
-    return test_file, operator_file, oracle_result
+    baseline_result: Path | None = None
+    if getattr(args, "baseline_result", None) is not None:
+        baseline_result = Path(args.baseline_result).expanduser().resolve()
+        if not baseline_result.exists():
+            parser.error(f"Baseline result path does not exist: {baseline_result}")
+    baseline_operator_file: Path | None = None
+    if getattr(args, "baseline_operator_file", None) is not None:
+        baseline_operator_file = Path(args.baseline_operator_file).expanduser().resolve()
+        if not baseline_operator_file.exists():
+            parser.error(f"Baseline operator file path does not exist: {baseline_operator_file}")
+    return test_file, operator_file, baseline_result, baseline_operator_file
 
 
-def resolve_run_test_compare_level(
+def _derived_result_path(operator_file: Path) -> Path:
+    return operator_file.parent / f"{operator_file.stem}_result.pt"
+
+
+def resolve_run_test_comparison_inputs(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
     resolved_test_mode: str,
-    oracle_result: Path | None,
-) -> str:
-    if args.compare_level is not None and oracle_result is None:
-        parser.error("--compare-level requires --oracle-result")
-    if oracle_result is not None and resolved_test_mode != "differential":
-        parser.error("--oracle-result is supported only with --test-mode differential")
-    return args.compare_level or "balanced"
+    baseline_result: Path | None,
+    baseline_operator_file: Path | None,
+    test_file: Path,
+) -> tuple[str, Path | None]:
+    if baseline_result is not None and baseline_operator_file is not None:
+        parser.error("run-test differential mode accepts at most one of --baseline-result or --baseline-operator-file")
+    if args.compare_level is not None and baseline_result is None and baseline_operator_file is None:
+        parser.error("--compare-level requires --baseline-result or --baseline-operator-file")
+    if baseline_result is not None and resolved_test_mode != "differential":
+        parser.error("--baseline-result is supported only with --test-mode differential")
+    if baseline_operator_file is not None and resolved_test_mode != "differential":
+        parser.error("--baseline-operator-file is supported only with --test-mode differential")
+    compare_level = args.compare_level or "balanced"
+    if baseline_operator_file is None:
+        return compare_level, baseline_result
+    derived_baseline_result = _derived_result_path(baseline_operator_file)
+    if derived_baseline_result.exists():
+        return compare_level, derived_baseline_result
+
+    force_recompile: bool = getattr(args, "force_recompile", False)
+    try:
+        if args.remote:
+            baseline_run_result, archived_result, remote_workspace = run_remote_test(
+                test_file,
+                baseline_operator_file,
+                resolved_test_mode,
+                args.remote,
+                args.remote_workdir,
+                keep_remote_workdir=args.keep_remote_workdir,
+                verbose=args.verbose,
+                stderr=sys.stderr,
+                force_recompile=force_recompile,
+            )
+            render_result(baseline_run_result, show_output=True)
+            print(f"Return code: {baseline_run_result.return_code}")
+            if archived_result is not None:
+                print(f"Archived result: {archived_result}")
+            if args.remote and args.keep_remote_workdir:
+                print(f"Remote workspace: {remote_workspace}")
+        else:
+            baseline_run_result, archived_result = run_local_test(
+                test_file,
+                baseline_operator_file,
+                resolved_test_mode,
+                verbose=args.verbose,
+                force_recompile=force_recompile,
+            )
+            render_result(baseline_run_result, show_output=True)
+            print(f"Return code: {baseline_run_result.return_code}")
+            if archived_result is not None:
+                print(f"Archived result: {archived_result}")
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
+
+    if baseline_run_result.return_code != 0 or archived_result is None:
+        raise SystemExit(1)
+    return compare_level, derived_baseline_result
 
 
 def resolve_run_bench_paths(

@@ -20,7 +20,7 @@ Patterns and code hints live in [references/repair-experience.md](references/rep
 ## How to apply
 
 1. Open [references/repair-experience.md](references/repair-experience.md) and match error text or symptom to a section.
-2. Apply the smallest change; re-run validation through the `triton-npu-run-eval` skill, using `run-test` / `run-bench` as appropriate.
+2. Apply the smallest change; re-run validation through the `triton-npu-run-eval` skill, using `run-test-baseline` or `run-test-optimize` / `run-bench` as appropriate.
 3. If nothing fits, do **not** force a heuristic—fall back to logs, IR skills, or deeper debugging.
 
 ## Append-Only Repair Log

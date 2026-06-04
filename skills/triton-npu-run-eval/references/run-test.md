@@ -1,10 +1,10 @@
-# `run-test`
+# `run-test-baseline` and `run-test-optimize`
 
-Run a generated test with:
+Use `run-test-baseline` for baseline or generation validation, and use `run-test-optimize` for optimize-round validation.
 
 ```bash
-python3 ./scripts/run-command.py run-test --test-file test_<operator>.py --operator-file <operator>.py
-python3 ./scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file opt_<operator>.py
+python3 ./scripts/run-command.py run-test-baseline --test-file test_<operator>.py --operator-file <operator>.py
+python3 ./scripts/run-command.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --baseline-operator-file <operator>.py
 ```
 
 Rules:
@@ -12,24 +12,23 @@ Rules:
 - Always pass both `--test-file` and `--operator-file`.
 - If `--test-mode` is omitted, the command reads `# test-mode: ...` from the test file.
 - Use `--test-mode standalone` or `--test-mode differential` only when you need to override the embedded metadata.
-- If you already have an oracle payload, pass `--oracle-result <oracle_result.pt>` to make a differential run compare the newly archived payload in the same command.
-- `--compare-level strict|balanced|relaxed` is optional and only valid together with `--oracle-result`. The default level is `balanced`.
-- In `differential` mode, generated tests are import-only modules. `run-test` imports the module, calls `build_operator_api(operator_module)`, then calls `build_differential_test_cases(operator_api)` and archives the result as `<operator>_result.pt`.
-- Existing legacy script-style differential tests are still supported for compatibility, but newly generated differential tests should use the import-only hook contract.
-- When a differential run succeeds without `--oracle-result`, the command prints the archived result path and a hint to use `compare-result`.
-- When `--oracle-result` is present, `run-test` returns the comparison result directly so the agent does not need a second command.
+
+- `run-test-baseline` must be used to validate the correctness of a baseline operator.
+- `run-test-optimize` must be used to validate the correctness of an optimized operator.
+- In optimize differential mode, `run-test-optimize` requires `--baseline-operator-file`.
+- `--compare-level strict|balanced|relaxed` is optional whose default level is `balanced`.
 
 Examples:
 
 ```bash
-python3 ./scripts/run-command.py run-test --test-file test_<operator>.py --operator-file <operator>.py --test-mode standalone
-python3 ./scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode differential
-python3 ./scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode differential --oracle-result <oracle_result.pt>
+python3 ./scripts/run-command.py run-test-baseline --test-file test_<operator>.py --operator-file <operator>.py --test-mode standalone
+python3 ./scripts/run-command.py run-test-baseline --test-file differential_test_<operator>.py --operator-file <operator>.py --test-mode differential
+python3 ./scripts/run-command.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode differential --baseline-operator-file <operator>.py
 ```
 
 Remote examples:
 
 ```bash
-python3 ./scripts/run-command.py run-test --test-file test_<operator>.py --operator-file <operator>.py --remote user@host:2222
-python3 ./scripts/run-command.py run-test --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
+python3 ./scripts/run-command.py run-test-baseline --test-file test_<operator>.py --operator-file <operator>.py --remote user@host:2222
+python3 ./scripts/run-command.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --baseline-operator-file <operator>.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
 ```

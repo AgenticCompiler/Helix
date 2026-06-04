@@ -101,7 +101,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             reason = guard.evaluate_payload(
                 _policy(workspace),
-                _payload(workspace, f"python3 {script} run-test --test-file differential_test_file.py"),
+                _payload(workspace, f"python3 {script} run-test-optimize --test-file differential_test_file.py"),
             )
 
             self.assertIsNone(reason)

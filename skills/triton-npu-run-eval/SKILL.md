@@ -11,11 +11,9 @@ Use the bundled helper script in this skill:
 python3 ./scripts/run-command.py <subcommand> ...
 ```
 
-Use the `triton-npu-run-eval` skill to execute generated test files, benchmark files, profiling runs, and comparison flows.
-
 Read only the focused guide for the subcommand you are about to run:
 
-- `run-test`: [references/run-test.md](references/run-test.md)
+- `run-test-baseline` / `run-test-optimize`: [references/run-test.md](references/run-test.md)
 - `run-bench`: [references/run-bench.md](references/run-bench.md)
 - `profile-bench`: [references/profile-bench.md](references/profile-bench.md)
 - `profile-report`: [references/profile-report.md](references/profile-report.md)

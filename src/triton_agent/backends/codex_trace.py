@@ -604,7 +604,7 @@ class CodexJsonLineParser:
             return "check_baseline"
         if "check-round" in lower:
             return "check_round"
-        if "run-test" in lower or "pytest" in lower or "differential_test_" in lower:
+        if "run-test" in lower or "run-test-baseline" in lower or "run-test-optimize" in lower or "pytest" in lower or "differential_test_" in lower:
             return "correctness_test"
         if "run-bench" in lower or "bench_" in lower:
             return "remote_bench" if "ssh" in lower or remote_from_command(command) else "benchmark"

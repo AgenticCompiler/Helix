@@ -9,8 +9,6 @@ Complete one combined evaluation-generation workflow for a single operator.
 
 Use this skill when the user wants one code-agent task to:
 
-- Inspect the operator file.
-- Repair the operator file when required.
 - Generate a correctness test via `triton-npu-gen-test`.
 - Generate a benchmark via `triton-npu-gen-bench`.
 - Validate both artifacts via `triton-npu-run-eval`.
@@ -56,7 +54,7 @@ If the successful fix is a new pattern not covered there, append a short entry t
 
 ## Validation Commands
 
-- Use the `triton-npu-run-eval` skill for correctness validation, with `python3 ../triton-npu-run-eval/scripts/run-command.py run-test ...` as the standard helper command.
+- Use the `triton-npu-run-eval` skill for correctness validation, with `python3 ../triton-npu-run-eval/scripts/run-command.py run-test-baseline ...` as the standard helper command.
 - Use the `triton-npu-run-eval` skill for benchmark validation, with `python3 ../triton-npu-run-eval/scripts/run-command.py run-bench ...` as the standard helper command.
 - If the outer task is remote-aware, carry the same remote flags into every validation command and reuse `--remote-workdir` when provided.
 
@@ -71,7 +69,7 @@ If the successful fix is a new pattern not covered there, append a short entry t
 
 ## Do Not
 
-- Do not mask operator failures in harnesses. Never add try/except, alternate paths, shims, or PyTorch-only fallbacks in generated tests/benchmarks to green `triton-npu-run-eval` `run-test` / `run-bench` validations when the real issue is Triton compile, launch, or operator logic—**forbidden**.
+- Do not mask operator failures in harnesses. Never add try/except, alternate paths, shims, or PyTorch-only fallbacks in generated tests/benchmarks to green `triton-npu-run-eval` correctness-test / `run-bench` validations when the real issue is Triton compile, launch, or operator logic—**forbidden**.
 - Do not patch only the harness for compiler/kernel failures
 - Do not create `opt-round-*` directories.
 - Do not create or update `opt-note.md`.
