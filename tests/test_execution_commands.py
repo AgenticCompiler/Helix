@@ -47,7 +47,6 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 operator.resolve(),
                 "differential",
                 verbose=False,
-                force_recompile=False,
             )
 
     def test_handle_run_test_auto_compares_differential_result_when_baseline_result_provided(self) -> None:
@@ -91,7 +90,6 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 operator.resolve(),
                 "differential",
                 verbose=False,
-                force_recompile=False,
             )
             compare_mock.assert_called_once_with(
                 baseline_result.resolve(),
@@ -132,7 +130,6 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 operator.resolve(),
                 "standalone",
                 verbose=True,
-                force_recompile=False,
             )
 
     def test_handle_run_test_uses_remote_env_when_flag_missing(self) -> None:
@@ -179,7 +176,6 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 keep_remote_workdir=False,
                 verbose=False,
                 stderr=sys.stderr,
-                force_recompile=False,
             )
 
     def test_handle_run_bench_prints_perf_file(self) -> None:
@@ -298,7 +294,6 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 keep_remote_workdir=False,
                 verbose=False,
                 stderr=sys.stderr,
-                force_recompile=False,
                 output=None,
             )
 

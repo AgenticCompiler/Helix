@@ -1,0 +1,49 @@
+INFO  2026-06-04T11:28:39 +145ms service=default version=1.15.13 args=["mcp","add"] process_role=main run_id=707b7fb1-b5c6-4314-a0cd-539c7cea84f6 opencode
+INFO  2026-06-04T11:28:39 +5ms service=db path=/Users/cdj/Projects/triton-agent/.tmp-opencode-mcp-7Dkh0D/home/.local/share/opencode/opencode.db opening database
+INFO  2026-06-04T11:28:39 +3ms service=db count=21 mode=bundled applying migrations
+INFO  2026-06-04T11:28:39 +5ms service=json-migration storage directory does not exist, skipping migration
+INFO  2026-06-04T11:28:39 +4ms service=file init
+INFO  2026-06-04T11:28:40 +274ms service=data-migration name=session_usage_from_messages running data migration
+INFO  2026-06-04T11:28:40 +16ms service=default directory=/Users/cdj/Projects/triton-agent creating instance
+INFO  2026-06-04T11:28:40 +0ms service=project directory=/Users/cdj/Projects/triton-agent fromDirectory
+INFO  2026-06-04T11:28:40 +80ms service=default directory=/Users/cdj/Projects/triton-agent bootstrapping
+INFO  2026-06-04T11:28:40 +5ms service=config path=/Users/cdj/Projects/triton-agent/.tmp-opencode-mcp-7Dkh0D/xdg/opencode/config.json loading
+INFO  2026-06-04T11:28:40 +0ms service=config path=/Users/cdj/Projects/triton-agent/.tmp-opencode-mcp-7Dkh0D/xdg/opencode/opencode.json loading
+INFO  2026-06-04T11:28:40 +0ms service=config path=/Users/cdj/Projects/triton-agent/.tmp-opencode-mcp-7Dkh0D/xdg/opencode/opencode.jsonc loading
+INFO  2026-06-04T11:28:40 +55ms service=config path=/Users/cdj/Projects/triton-agent/.opencode/opencode.json loading
+INFO  2026-06-04T11:28:40 +0ms service=config path=/Users/cdj/Projects/triton-agent/.opencode/opencode.jsonc loading
+INFO  2026-06-04T11:28:40 +7ms service=plugin name= loading internal plugin
+INFO  2026-06-04T11:28:40 +0ms service=plugin name=oG loading internal plugin
+INFO  2026-06-04T11:28:40 +0ms service=plugin name=$M loading internal plugin
+INFO  2026-06-04T11:28:40 +0ms service=plugin name=H7 loading internal plugin
+INFO  2026-06-04T11:28:40 +0ms service=plugin name=YM loading internal plugin
+INFO  2026-06-04T11:28:40 +0ms service=plugin name=XM loading internal plugin
+INFO  2026-06-04T11:28:40 +0ms service=plugin name=JM loading internal plugin
+INFO  2026-06-04T11:28:40 +0ms service=plugin name=zM loading internal plugin
+INFO  2026-06-04T11:28:40 +0ms service=plugin name=OM loading internal plugin
+INFO  2026-06-04T11:28:40 +0ms service=bus type=* subscribing
+INFO  2026-06-04T11:28:40 +1ms service=lsp all LSPs are disabled
+INFO  2026-06-04T11:28:40 +0ms service=bus type=session.updated subscribing
+INFO  2026-06-04T11:28:40 +0ms service=bus type=message.updated subscribing
+INFO  2026-06-04T11:28:40 +0ms service=bus type=message.part.updated subscribing
+INFO  2026-06-04T11:28:40 +0ms service=bus type=session.diff subscribing
+INFO  2026-06-04T11:28:40 +0ms service=bus type=session.deleted subscribing
+INFO  2026-06-04T11:28:40 +1ms service=format all formatters are disabled
+INFO  2026-06-04T11:28:40 +0ms service=format init
+INFO  2026-06-04T11:28:40 +0ms service=file.watcher directory=/Users/cdj/Projects/triton-agent init
+INFO  2026-06-04T11:28:40 +169ms service=file.watcher directory=/Users/cdj/Projects/triton-agent platform=darwin backend=fs-events watcher backend
+INFO  2026-06-04T11:28:40 +1ms service=bus type=command.executed subscribing
+ERROR 2026-06-04T11:28:40 +17ms service=default e=Error starting FSEvents stream rejection
+ERROR 2026-06-04T11:28:40 +2ms service=file.watcher dir=/Users/cdj/Projects/triton-agent/.git cause=Error: Error starting FSEvents stream
+    at FileWatcher.state (/$bunfs/root/chunk-1n6f171v.js:680:6979)
+    at FileWatcher.state (definition) (/$bunfs/root/chunk-pm3006je.js:34:5562)
+    at FileWatcher.init (/$bunfs/root/chunk-pm3006je.js:37:6593)
+    at FileWatcher.init (definition) (/$bunfs/root/chunk-pm3006je.js:34:7241)
+    at InstanceBootstrap.init (/$bunfs/root/chunk-pm3006je.js:37:6712)
+    at InstanceBootstrap (/$bunfs/root/chunk-pm3006je.js:37:6757)
+    at InstanceStore.boot (/$bunfs/root/chunk-f5nbaqbh.js:2:1475)
+    at InstanceStore.load (/$bunfs/root/chunk-f5nbaqbh.js:2:2636) failed to subscribe
+INFO  2026-06-04T11:28:40 +17ms service=vcs branch=feat/remote-execution-env-fallback default_branch=main initialized
+INFO  2026-06-04T11:28:40 +0ms service=bus type=file.watcher.updated subscribing
+ERROR 2026-06-04T11:28:40 +302ms service=default cause={"_id":"Cause","failures":[{"_tag":"Fail","error":{"reason":{"request":{"_id":"HttpClientRequest","method":"GET","url":"https://models.dev/api.json","urlParams":{"_id":"UrlParams","params":{}},"hash":{"_id":"Option","_tag":"None"},"headers":{"user-agent":"opencode/latest/1.15.13/cli","b3":"9fbe4001589b8e24ecca81b764c4daac-30eda4d3e9b19cff-1-aa9c495529be5d21","traceparent":"00-9fbe4001589b8e24ecca81b764c4daac-30eda4d3e9b19cff-01"},"body":{"_id":"effect/HttpBody","_tag":"Empty"}},"cause":{"code":"ConnectionRefused","path":"https://models.dev/api.json","errno":0},"_tag":"TransportError"},"cause":{"code":"ConnectionRefused","path":"https://models.dev/api.json","errno":0},"_tag":"HttpClientError","~effect/http/HttpClientError":"~effect/http/HttpClientError"}}]} Failed to fetch models.dev
+WARN  2026-06-04T11:29:50 +69717ms service=config dir=/Users/cdj/Projects/triton-agent/.tmp-opencode-mcp-7Dkh0D/xdg/opencode error=Cause([Fail(NpmInstallFailedError (cause: FetchError: request to https://registry.npmjs.org/@opencode-ai%2fplugin failed, reason: ECONNREFUSED))]) background dependency install failed

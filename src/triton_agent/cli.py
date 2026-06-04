@@ -176,7 +176,6 @@ class _CommandSpec:
     has_bench_mode: bool = False
     bench_mode_default: str | None = None
     has_npu_devices: bool = False
-    has_force_recompile: bool = False
     has_optimize_options: bool = False
     has_prompt: bool = False
     concurrency_default: int | None = None
@@ -283,7 +282,6 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_remote=True,
         keep_remote_workdir=True,
         has_test_mode=True,
-        has_force_recompile=True,
     ),
     CommandKind.GEN_BENCH: _CommandSpec(
         handler=handle_gen_bench,
@@ -310,7 +308,6 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         keep_remote_workdir=True,
         has_bench_mode=True,
         has_npu_devices=True,
-        has_force_recompile=True,
     ),
     CommandKind.COMPARE_RESULT: _CommandSpec(
         handler=handle_compare_result,
@@ -520,11 +517,6 @@ def build_parser() -> argparse.ArgumentParser:
             )
         if spec.has_npu_devices:
             subparser.add_argument("--npu-devices")
-        if spec.has_force_recompile:
-            subparser.add_argument(
-                "--force-recompile", action="store_true",
-                help="Force Triton kernel recompilation (sets TRITON_ALWAYS_COMPILE=1)",
-            )
         if spec.has_optimize_options:
             subparser.add_argument("--min-rounds", "--min-round", dest="min_rounds", type=int, default=5)
             subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES)
