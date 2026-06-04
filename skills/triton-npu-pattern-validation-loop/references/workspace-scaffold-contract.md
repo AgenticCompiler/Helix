@@ -78,6 +78,8 @@ For each target `source_path` (path in repo, e.g. `src/kernels/foo/bar.py`):
 **Goal:** the operator file content **before** branch perf work began, within
 `base_revision..HEAD`.
 
+**Critical Rule:** Always use the **original, pre-optimization** kernels and launch functions as the starting point. Do **not** include post-optimization specialized kernels (such as `chunk_gated_delta_rule_bwd_kernel_dhu_k128_blockdim128` or `chunk_gated_delta_rule_fwd_kernel_h_k128_blockdim128` which were added in later performance commits). The operator file content must represent the baseline before those optimizations were introduced.
+
 Recommended Git procedure:
 
 ```bash
@@ -101,9 +103,9 @@ Write the snapshot to:
 $BATCH/<workspace>/<operator_filename>
 ```
 
-`<workspace>` is the planned `kernel_name` when using knowledge-base planning (for example
-`chunk_bwd_kernel_dv_local`). Otherwise it is usually the operator stem (e.g. `chunk_o`).
-`<operator_filename>` must be `<kernel_name>.py` in the knowledge-base-driven layout.
+`<workspace>` is the planned launch function name when using knowledge-base planning (for example
+`chunk_bwd_dv_local`). Otherwise it is usually the operator stem (e.g. `chunk_o`).
+`<operator_filename>` must be `<launch_function_name>.py` in the knowledge-base-driven layout.
 
 You may call `scaffold_batch.py --manifest ...` **only after** you authored manifest JSON
 yourself; never treat `generate_manifest.py` output as authoritative without review.

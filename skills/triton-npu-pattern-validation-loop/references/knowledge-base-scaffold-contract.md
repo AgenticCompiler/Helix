@@ -11,21 +11,29 @@ Before copying files into `pattern-validation-batch/`:
 
 1. Read `PERF_KNOWLEDGE_BASE.md` and **split perf lessons per kernel** (not per source file).
 2. For each kernel, find the **host launch function(s)** in repo source that call it.
-3. Build **one optimize workspace per launch function**, named after the **primary kernel**.
+3. Build **one optimize workspace per launch function**, named after the **launch function** (e.g., `chunk_bwd_dv_local`).
 4. If **one launch function** calls **multiple kernels** (branches / pipeline), **merge** those
-   kernels into **one** operator file under that kernel-named workspace.
+   kernels into **one** operator file under that launch-function-named workspace.
 
 ## Naming rules (required)
 
 | Artifact | Name |
 |----------|------|
-| Workspace directory | `<kernel_name>/` (for example `chunk_bwd_kernel_dv_local/`) |
-| Operator file | `<kernel_name>.py` (same stem as directory) |
-| `validation-meta.json` → `kernel_name` | Same string as directory |
+| Workspace directory | `<launch_function_name>/` (for example `chunk_bwd_dv_local/`) |
+| Operator file | `<launch_function_name>.py` (same stem as directory) |
+| `validation-meta.json` → `kernel_name` | Same string as directory (the launch function name) |
 | `validation-meta.json` → `launch_functions` | Host entrypoint(s) tests call (for example `chunk_bwd_dv_local`) |
 
 Do **not** name workspaces after the source file (`chunk_o.py`) when that file validates multiple
-kernels independently.
+launch functions independently.
+
+## Pre-optimization Baseline Rule (Critical)
+
+Always use the **pre-optimization** kernel and launch function as the optimization starting point. 
+Do **not** scaffold or create separate workspaces for post-optimization specialized kernels (such as `chunk_gated_delta_rule_bwd_kernel_dhu_k128_blockdim128` or `chunk_gated_delta_rule_fwd_kernel_h_k128_blockdim128` which were added in later performance commits). 
+- The workspace and operator file must be based on the **original, pre-optimization** kernel (e.g., `chunk_gated_delta_rule_bwd_kernel_dhu_blockdim64` or `chunk_gated_delta_rule_fwd_kernel_h_blockdim64`).
+- Any specialized variants (like K=128 or K=64 variants) added during the commit history are the *results* of optimization. The optimize agent should be starting from the unoptimized baseline and re-applying or re-discovering those optimizations, not starting with the already-specialized kernels.
+- When generating the workspace plan, the CLI automatically scans the **pre-optimization snapshot** (the base revision or the state before the first in-range commit touching that file) to identify the original kernels and launch functions. Always respect this plan.
 
 ## Step 0 — Generate a workspace plan
 
@@ -48,7 +56,7 @@ The script:
 - Scans each referenced `source_path` for `@triton.jit` definitions and host functions that
   launch them.
 - Emits one planned workspace per **launch function**, with `workspace` / `kernel_name` set to
-  the **primary kernel** (first kernel launched in that function's body).
+  the **launch function name** (for example `chunk_bwd_dv_local`).
 
 Review the JSON plan before scaffolding. Fix missing launch mappings manually in the plan or
 in repo source/tests.
@@ -84,17 +92,17 @@ For each planned workspace:
    - every `@triton.jit` kernel the launch calls (including both branches of an `if` / `else`)
    - host helpers and constants only that launch needs
 4. If two kernels appear only because one launch branches, keep **both** in the **same**
-   operator extract — still **one** workspace directory named after the **primary** kernel.
+   operator extract — still **one** workspace directory named after the **launch function**.
 
 **Do not** create separate workspaces for inner kernels that share a single test entrypoint.
 
-## Step 3 — Build `$BATCH/<kernel_name>/`
+## Step 3 — Build `$BATCH/<launch_function_name>/`
 
 For each entry in `workspace-plan.json`:
 
 ```text
-pattern-validation-batch/chunk_bwd_kernel_dv_local/
-  chunk_bwd_kernel_dv_local.py    # minimal extract: launch + its kernel(s) + helpers
+pattern-validation-batch/chunk_bwd_dv_local/
+  chunk_bwd_dv_local.py    # minimal extract: launch + its kernel(s) + helpers
   test_*.py
   validation-meta.json
   deps/                           # helper .py only under deps/
@@ -105,12 +113,12 @@ pattern-validation-batch/chunk_bwd_kernel_dv_local/
 
 ```json
 {
-  "workspace": "chunk_bwd_kernel_dv_local",
-  "kernel_name": "chunk_bwd_kernel_dv_local",
+  "workspace": "chunk_bwd_dv_local",
+  "kernel_name": "chunk_bwd_dv_local",
   "launch_functions": ["chunk_bwd_dv_local"],
   "kernels_in_operator": ["chunk_bwd_kernel_dv_local"],
   "source_path": "src/kernels/fla/ops/common/chunk_o.py",
-  "operator_filename": "chunk_bwd_kernel_dv_local.py",
+  "operator_filename": "chunk_bwd_dv_local.py",
   "knowledge_lessons": ["85171374766b", "a8cb0ffb2f7d"],
   "expected_patterns": ["layout-materialization-elision"],
   "dependency_dir": "deps",

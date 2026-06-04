@@ -80,14 +80,42 @@ class PlanWorkspacesFromKnowledgeTests(unittest.TestCase):
         names = {entry["workspace"] for entry in payload["workspaces"]}
         self.assertEqual(
             names,
-            {"chunk_bwd_kernel_dv_local", "chunk_bwd_kernel_dqkwg"},
+            {"chunk_bwd_dv_local", "chunk_bwd_dqkwg"},
         )
         dv_entry = next(
-            item for item in payload["workspaces"] if item["workspace"] == "chunk_bwd_kernel_dv_local"
+            item for item in payload["workspaces"] if item["workspace"] == "chunk_bwd_dv_local"
         )
         self.assertEqual(dv_entry["launch_functions"], ["chunk_bwd_dv_local"])
-        self.assertEqual(dv_entry["operator_filename"], "chunk_bwd_kernel_dv_local.py")
+        self.assertEqual(dv_entry["operator_filename"], "chunk_bwd_dv_local.py")
         self.assertIn("85171374766b", dv_entry["knowledge_lessons"])
+
+    def test_plan_with_base_fallback_on_non_git_repo(self) -> None:
+        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            source_dir = repo / "src/kernels/fla/ops/common"
+            source_dir.mkdir(parents=True)
+            (source_dir / "chunk_o.py").write_text(SAMPLE_SOURCE, encoding="utf-8")
+            knowledge = root / "PERF_KNOWLEDGE_BASE.md"
+            knowledge.write_text(SAMPLE_KB, encoding="utf-8")
+            output = root / "workspace-plan.json"
+
+            code = main(
+                [
+                    "--knowledge",
+                    knowledge.as_posix(),
+                    "--repo",
+                    repo.as_posix(),
+                    "--output",
+                    output.as_posix(),
+                    "--base",
+                    "origin/main",
+                ],
+            )
+            self.assertEqual(code, 0)
+            payload = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(payload["workspace_count"], 2)
 
 
 if __name__ == "__main__":

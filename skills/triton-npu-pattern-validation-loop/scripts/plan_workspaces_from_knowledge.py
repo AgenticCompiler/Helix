@@ -50,21 +50,28 @@ def main(argv: list[str] | None = None) -> int:
     file_sections = _parse_knowledge_file_sections(knowledge_text)
     workspaces: list[dict[str, Any]] = []
     warnings: list[str] = []
+    base_rev = str(args.base).strip() or None
 
     for source_path, section in file_sections.items():
         kernel_lessons = _kernel_lessons_from_section(section)
-        source_file = repo_root / source_path
-        if not source_file.is_file():
-            warnings.append(f"source_path not found in repo, skipping scan: {source_path}")
-            continue
-        source_text = source_file.read_text(encoding="utf-8")
+        
+        source_text = None
+        if base_rev:
+            source_text = _get_pre_opt_snapshot(repo_root, source_path, base_rev)
+            
+        if source_text is None:
+            source_file = repo_root / source_path
+            if not source_file.is_file():
+                warnings.append(f"source_path not found in repo, skipping scan: {source_path}")
+                continue
+            source_text = source_file.read_text(encoding="utf-8")
+            
         launch_map = _map_launch_functions(source_text)
         if not launch_map:
             warnings.append(f"no launch functions discovered in {source_path}")
             continue
 
         for launch_fn, kernels_launched in launch_map.items():
-            primary_kernel = kernels_launched[0]
             lesson_shas = sorted(
                 {
                     sha
@@ -74,9 +81,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             workspaces.append(
                 {
-                    "workspace": primary_kernel,
-                    "kernel_name": primary_kernel,
-                    "operator_filename": f"{primary_kernel}.py",
+                    "workspace": launch_fn,
+                    "kernel_name": launch_fn,
+                    "operator_filename": f"{launch_fn}.py",
                     "launch_functions": [launch_fn],
                     "kernels_in_operator": kernels_launched,
                     "source_path": source_path,
@@ -84,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
                     "merge_launch_functions": len(kernels_launched) > 1,
                     "notes": (
                         f"Launch {launch_fn} calls {', '.join(kernels_launched)}; "
-                        f"workspace named after primary kernel {primary_kernel}."
+                        f"workspace named after launch function {launch_fn}."
                     ),
                 },
             )
@@ -222,6 +229,43 @@ def _map_launch_functions(source_text: str) -> dict[str, list[str]]:
                 kernels.append(callee)
 
     return launch_to_kernels
+
+
+def _get_pre_opt_snapshot(repo_root: Path, source_path: str, base_revision: str) -> str | None:
+    import subprocess
+    try:
+        # Get the list of commits touching source_path in the range base_revision..HEAD
+        cmd_log = [
+            "git", "-C", str(repo_root), "log",
+            f"{base_revision}..HEAD", "--reverse", "--format=%H", "--", source_path
+        ]
+        res_log = subprocess.run(cmd_log, capture_output=True, text=True, check=True)
+        commits = [line.strip() for line in res_log.stdout.splitlines() if line.strip()]
+        
+        if commits:
+            first_commit = commits[0]
+            # Try parent of first commit
+            cmd_show = ["git", "-C", str(repo_root), "show", f"{first_commit}^:{source_path}"]
+            res_show = subprocess.run(cmd_show, capture_output=True, text=True)
+            if res_show.returncode == 0:
+                return res_show.stdout
+            
+            # If parent show failed (e.g. file didn't exist), try the first commit itself
+            cmd_show = ["git", "-C", str(repo_root), "show", f"{first_commit}:{source_path}"]
+            res_show = subprocess.run(cmd_show, capture_output=True, text=True)
+            if res_show.returncode == 0:
+                return res_show.stdout
+
+        # Fallback to base_revision
+        cmd_show = ["git", "-C", str(repo_root), "show", f"{base_revision}:{source_path}"]
+        res_show = subprocess.run(cmd_show, capture_output=True, text=True)
+        if res_show.returncode == 0:
+            return res_show.stdout
+            
+    except Exception as e:
+        print(f"warning: failed to get git snapshot for {source_path}: {e}", file=sys.stderr)
+        
+    return None
 
 
 if __name__ == "__main__":
