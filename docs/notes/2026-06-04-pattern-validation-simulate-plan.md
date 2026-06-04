@@ -25,6 +25,10 @@ agent** (updates `pattern-validation-skills` from reports) → repeat until all 
 
 ## Flags
 
+- `--synthesis` / `--knowledge-base` — same defaults as `pattern-validation-loop`
+  (`PERF_PATTERN_SYNTHESIS.md`, `PERF_KNOWLEDGE_BASE.md`). Synthesis is required on disk;
+  knowledge is optional but drives workspace-plan regeneration and agent prompts when present.
+- `--base` / `--skip-launch` — passed through to workspace-plan generation when knowledge exists.
 - `--max-iterations` — simulate → skill-audit cycles (default: 5); use `1` for one simulate pass only.
 - `--skip-verify` — skip scaffold verify before the first simulate iteration.
 - `--run-optimize` — run real `optimize-batch` after loop completion (off by default).

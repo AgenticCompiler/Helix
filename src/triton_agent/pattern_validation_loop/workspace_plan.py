@@ -75,6 +75,7 @@ def generate_workspace_plan_if_present(
     skip_launch_functions: list[str] | None = None,
     output_path: Path | None = None,
     stream: Any = None,
+    log_tag: str = "pattern-validation-loop",
 ) -> tuple[Path | None, list[str]]:
     """Generate plan when the knowledge base file exists; otherwise return (None, [])."""
     knowledge_path = resolve_knowledge_base_path(repo_root, knowledge_output)
@@ -84,7 +85,7 @@ def generate_workspace_plan_if_present(
     plan_path = output_path or default_workspace_plan_path(batch_root)
     out = stream or sys.stderr
     print(
-        f"[pattern-validation-loop] generating workspace plan from {knowledge_path.as_posix()}",
+        f"[{log_tag}] generating workspace plan from {knowledge_path.as_posix()}",
         file=out,
         flush=True,
     )
@@ -98,7 +99,7 @@ def generate_workspace_plan_if_present(
     if payload is not None:
         count = int(payload.get("workspace_count", 0))
         print(
-            f"[pattern-validation-loop] workspace plan: {plan_path.as_posix()} ({count} workspaces)",
+            f"[{log_tag}] workspace plan: {plan_path.as_posix()} ({count} workspaces)",
             file=out,
             flush=True,
         )

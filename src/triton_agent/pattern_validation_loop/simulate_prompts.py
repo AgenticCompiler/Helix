@@ -64,6 +64,8 @@ def build_simulate_plan_prompt(
     target_chip: str,
     optimize_target: str,
     validation_meta: dict[str, Any] | None,
+    synthesis_path: Path,
+    knowledge_path: Path,
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
     enable_cann_ext_api: bool = False,
@@ -89,7 +91,7 @@ def build_simulate_plan_prompt(
         "",
         "Required:",
         "- Read the operator, `validation-meta.json`, staged `triton-npu-optimize-knowledge` pattern index/cards, "
-        "and any `test_*.py.txt` reference files.",
+        "any `test_*.py.txt` reference files, and the synthesis/knowledge inputs listed below.",
         "- Rank pattern candidates by priority (1 = highest). For each ranked pattern, state whether it "
         "**hits** this workspace and give evidence-backed rationale.",
         "- Compare your ranking to `expected_patterns` in validation-meta and note alignment or gaps.",
@@ -103,6 +105,9 @@ def build_simulate_plan_prompt(
         f"Operator input: {_display_path(operator_path)}",
         f"Workspace directory: {_display_path(workdir)}",
         f"Validation meta: {_display_path(meta_path)}",
+        f"Synthesis report (pattern promotion targets): {_display_path(synthesis_path)}",
+        f"Knowledge base (kernel lessons): {_display_path(knowledge_path)}"
+        + (" (file present)" if knowledge_path.is_file() else " (missing on disk — use meta + synthesis only)"),
     ]
     if expected_patterns:
         lines.append(f"Expected patterns from meta: {', '.join(expected_patterns)}")
@@ -153,6 +158,8 @@ def build_simulate_skill_audit_prompt(
     skills_workdir: Path,
     state_path: Path,
     simulate_report_path: Path,
+    synthesis_path: Path,
+    knowledge_path: Path,
     iteration: int,
     max_iterations: int,
     skill_root: Path,
@@ -166,6 +173,8 @@ Read:
 
   {skill_root.as_posix()}/SKILL.md
   {skill_root.as_posix()}/references/skill-update-contract.md
+  {synthesis_path.as_posix()}
+  {knowledge_path.as_posix()} {"(present)" if knowledge_path.is_file() else "(missing)"}
   {simulate_report_path.as_posix()}
   {knowledge_root.as_posix()}/references/pattern_index.md
 
@@ -189,23 +198,25 @@ Current iteration: {iteration} / {max_iterations}
 
 Required steps:
 
-1. Read `{simulate_report_path.as_posix()}`. For each workspace, compare `ranked_patterns`, \
-`skills_alignment`, and `skill_edit_notes` against `expected_patterns` in the embedded simulate reports.
-2. Update pattern cards under `{knowledge_root.as_posix()}/references/patterns/` when simulate plans show \
+1. Read `{synthesis_path.as_posix()}` and `{simulate_report_path.as_posix()}`. For each workspace, \
+compare `ranked_patterns`, `skills_alignment`, and `skill_edit_notes` against `expected_patterns` \
+and synthesis-backed mechanisms (not only pattern ID substring matches).
+2. Use `{knowledge_path.as_posix()}` when present to confirm kernel-scoped lessons match the workspace targets.
+3. Update pattern cards under `{knowledge_root.as_posix()}/references/patterns/` when simulate plans show \
 `partial` or `mismatch`, or when pattern cards would mislead a real optimize worker.
-3. Regenerate the pattern index:
+4. Regenerate the pattern index:
 
    python3 {knowledge_root.as_posix()}/scripts/build_pattern_index.py \\
      --patterns-dir {knowledge_root.as_posix()}/references/patterns \\
      --output {knowledge_root.as_posix()}/references/pattern_index.md
 
-4. Record this skill-audit pass:
+5. Record this skill-audit pass:
 
    python3 {record_script.as_posix()} \\
      --state {state_path.as_posix()} --phase skill-audit \\
      --note "updated pattern cards from simulate-plan-report"
 
-5. If **every** workspace simulate report has `skills_alignment: aligned` and simulate agents succeeded, \
+6. If **every** workspace simulate report has `skills_alignment: aligned` and simulate agents succeeded, \
 mark the simulate loop complete:
 
    python3 {record_script.as_posix()} \\

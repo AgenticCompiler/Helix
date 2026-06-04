@@ -19,7 +19,14 @@ from triton_agent.optimize.orchestration import build_optimize_request
 from triton_agent.optimize.pattern_reminders import resolve_generic_optimize_knowledge_skill_name
 from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsManager
 from triton_agent.pattern_validation_loop.git_worktree import resolve_git_worktree
-from triton_agent.pattern_validation_loop.paths import resolve_repo_path
+from triton_agent.pattern_validation_loop.paths import (
+    DEFAULT_SYNTHESIS_FILE,
+    resolve_repo_path,
+)
+from triton_agent.pattern_validation_loop.workspace_plan import (
+    DEFAULT_KNOWLEDGE_FILE,
+    resolve_knowledge_base_path,
+)
 from triton_agent.pattern_validation_loop.scaffold_verify import run_pattern_validation_verify
 from triton_agent.pattern_validation_loop.seed_skills import (
     DEFAULT_SKILLS_DIR_NAME,
@@ -59,6 +66,10 @@ class SimulatePlanConfig:
     show_output: bool
     skip_verify: bool
     run_optimize_after: bool
+    synthesis_path: Path
+    knowledge_path: Path
+    base_revision: str = "origin/main"
+    skip_launch_functions: tuple[str, ...] = ()
     max_iterations: int = 5
 
 
@@ -86,13 +97,30 @@ def build_simulate_plan_config(
     skip_verify: bool = False,
     run_optimize_after: bool = False,
     max_iterations: int = 5,
+    synthesis_output: str = DEFAULT_SYNTHESIS_FILE,
+    knowledge_base: str = DEFAULT_KNOWLEDGE_FILE,
+    base_revision: str = "origin/main",
+    skip_launch_functions: list[str] | None = None,
 ) -> SimulatePlanConfig:
     repo_root = resolve_git_worktree(target_path)
     batch_path = resolve_repo_path(repo_root, batch_dir)
+    synthesis_path = resolve_repo_path(repo_root, synthesis_output)
+    if not synthesis_path.is_file():
+        raise ValueError(
+            f"Synthesis report not found: {synthesis_path}. "
+            f"Pass --synthesis or create {DEFAULT_SYNTHESIS_FILE} in the repo.",
+        )
+    knowledge_path = resolve_knowledge_base_path(repo_root, knowledge_base)
     skills_workdir = seed_pattern_validation_skills_dir(
         repo_root,
         skills_dir,
         optimize_knowledge=optimize_knowledge,
+    )
+    skip_launch = tuple(
+        name
+        for raw in (skip_launch_functions or [])
+        for name in raw.replace(",", " ").split()
+        if name.strip()
     )
     return SimulatePlanConfig(
         repo_root=repo_root,
@@ -109,6 +137,10 @@ def build_simulate_plan_config(
         skip_verify=skip_verify,
         run_optimize_after=run_optimize_after,
         max_iterations=max(1, max_iterations),
+        synthesis_path=synthesis_path,
+        knowledge_path=knowledge_path,
+        base_revision=base_revision.strip() or "origin/main",
+        skip_launch_functions=skip_launch,
     )
 
 
@@ -153,6 +185,8 @@ def build_simulate_plan_request(
         target_chip=base.target_chip,
         optimize_target=base.optimize_target,
         validation_meta=meta,
+        synthesis_path=config.synthesis_path,
+        knowledge_path=config.knowledge_path,
         compiler_source_path=base.compiler_source_path,
         compiler_source_commit=base.compiler_source_commit,
         enable_cann_ext_api=options.enable_cann_ext_api,

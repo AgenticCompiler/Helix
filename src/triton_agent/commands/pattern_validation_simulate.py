@@ -33,6 +33,10 @@ def handle_pattern_validation_simulate(
             skip_verify=bool(getattr(args, "skip_verify", False)),
             run_optimize_after=bool(getattr(args, "run_optimize", False)),
             max_iterations=int(getattr(args, "max_iterations", 5)),
+            synthesis_output=str(getattr(args, "synthesis", "PERF_PATTERN_SYNTHESIS.md")),
+            knowledge_base=str(getattr(args, "knowledge_base", "PERF_KNOWLEDGE_BASE.md")),
+            base_revision=str(getattr(args, "base", "origin/main")),
+            skip_launch_functions=list(getattr(args, "skip_launch", []) or []),
         )
     except ValueError as exc:
         print(f"[pattern-validation-simulate] {exc}", file=sys.stderr)

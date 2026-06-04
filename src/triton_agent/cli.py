@@ -696,6 +696,34 @@ def build_parser() -> argparse.ArgumentParser:
             )
         if spec.has_pattern_validation_simulate_options:
             subparser.add_argument(
+                "--synthesis",
+                default="PERF_PATTERN_SYNTHESIS.md",
+                help="Input synthesis report path (default: PERF_PATTERN_SYNTHESIS.md).",
+            )
+            subparser.add_argument(
+                "--knowledge-base",
+                default="PERF_KNOWLEDGE_BASE.md",
+                help=(
+                    "Knowledge base path for workspace planning and simulate prompts "
+                    "(default: PERF_KNOWLEDGE_BASE.md)."
+                ),
+            )
+            subparser.add_argument(
+                "--base",
+                default="origin/main",
+                help="Base revision for workspace-plan generation (default: origin/main).",
+            )
+            subparser.add_argument(
+                "--skip-launch",
+                action="append",
+                default=[],
+                metavar="NAME",
+                help=(
+                    "Host launch function(s) to omit when generating workspace-plan.json. "
+                    "Repeat or use comma-separated names."
+                ),
+            )
+            subparser.add_argument(
                 "--batch-dir",
                 default="pattern-validation-batch",
                 help="Batch root with validation workspaces (default: pattern-validation-batch).",

@@ -128,6 +128,8 @@ simulate agents **before** real `optimize-batch`. This does **not** modify
 
 ```bash
 uv run triton-agent pattern-validation-simulate -i "$REPO" \
+  --synthesis PERF_PATTERN_SYNTHESIS.md \
+  --knowledge-base PERF_KNOWLEDGE_BASE.md \
   --batch-dir pattern-validation-batch \
   --skills-dir pattern-validation-skills \
   --max-iterations 5 \

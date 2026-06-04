@@ -6,6 +6,7 @@ from pathlib import Path
 from triton_agent.pattern_validation_loop.simulate_plan import (
     WorkspaceSimulateResult,
     build_manual_optimize_command_hint,
+    build_simulate_plan_config,
     write_batch_simulate_report,
 )
 
@@ -60,6 +61,15 @@ class SimulatePlanTests(unittest.TestCase):
         hint = build_manual_optimize_command_hint(Path("/tmp/batch"))
         self.assertIn("optimize-batch", hint)
         self.assertIn("/tmp/batch", hint)
+
+    def test_build_simulate_plan_config_requires_synthesis_file(self) -> None:
+        missing = "tests/_simulate_missing_synthesis.md"
+        with self.assertRaises(ValueError) as ctx:
+            build_simulate_plan_config(
+                target_path=WORKSPACE_ROOT,
+                synthesis_output=missing,
+            )
+        self.assertIn("Synthesis report not found", str(ctx.exception))
 
 
 if __name__ == "__main__":

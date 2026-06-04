@@ -22,6 +22,9 @@ from triton_agent.pattern_validation_loop.simulate_prompts import (
     BATCH_SIMULATE_REPORT_FILENAME,
     build_simulate_skill_audit_prompt,
 )
+from triton_agent.pattern_validation_loop.workspace_plan import (
+    generate_workspace_plan_if_present,
+)
 from triton_agent.resources import skills_root
 from triton_agent.skill_loader import load_skill_script_module
 from triton_agent.skill_staging import resolve_staged_skills
@@ -46,6 +49,25 @@ def run_pattern_validation_simulate_loop(config: SimulatePlanConfig) -> tuple[in
         state_path=config.repo_root / _DEFAULT_STATE_FILE,
     )
     _ensure_simulate_state(ctx)
+
+    _knowledge_rel = _relative_to_repo(config.repo_root, config.knowledge_path)
+    workspace_plan_path, plan_warnings = generate_workspace_plan_if_present(
+        repo_root=config.repo_root,
+        batch_root=config.batch_path,
+        knowledge_output=_knowledge_rel,
+        base_revision=config.base_revision,
+        skip_launch_functions=list(config.skip_launch_functions),
+        stream=sys.stderr,
+        log_tag="pattern-validation-simulate",
+    )
+    for warning in plan_warnings:
+        print(f"[pattern-validation-simulate] {warning}", file=sys.stderr, flush=True)
+    if config.verbose and workspace_plan_path is not None:
+        print(
+            f"[pattern-validation-simulate] workspace plan: {workspace_plan_path.as_posix()}",
+            file=sys.stderr,
+            flush=True,
+        )
 
     for iteration in range(1, config.max_iterations + 1):
         _set_state_iteration(ctx, iteration)
@@ -126,6 +148,8 @@ def _ensure_simulate_state(ctx: SimulateLoopContext) -> None:
         "max_iterations": ctx.config.max_iterations,
         "batch_dir": ctx.config.batch_path.name,
         "skills_dir": ctx.config.skills_workdir.name,
+        "synthesis_path": _relative_to_repo(ctx.config.repo_root, ctx.config.synthesis_path),
+        "knowledge_path": _relative_to_repo(ctx.config.repo_root, ctx.config.knowledge_path),
         "started_at": datetime.now(timezone.utc).isoformat(),
         "history": [],
     }
@@ -177,6 +201,8 @@ def _run_skill_audit_agent(
         skills_workdir=ctx.config.skills_workdir,
         state_path=ctx.state_path,
         simulate_report_path=report_path,
+        synthesis_path=ctx.config.synthesis_path,
+        knowledge_path=ctx.config.knowledge_path,
         iteration=iteration,
         max_iterations=ctx.config.max_iterations,
         skill_root=skill_root,
@@ -207,6 +233,13 @@ def _run_skill_audit_agent(
         staged_skill_sources=staged_skill_sources,
     )
     return _run_agent_request(ctx.config, request)
+
+
+def _relative_to_repo(repo_root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def _run_agent_request(config: SimulatePlanConfig, request: AgentRequest) -> int:
