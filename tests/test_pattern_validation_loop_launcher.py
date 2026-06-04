@@ -12,7 +12,10 @@ from triton_agent.pattern_validation_loop.launcher import (
     build_pattern_validation_loop_prompt,
     build_pattern_validation_loop_request,
 )
-from triton_agent.pattern_validation_loop.prompts import build_prepare_prompt
+from triton_agent.pattern_validation_loop.prompts import (
+    build_analyze_prompt,
+    build_prepare_prompt,
+)
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 
@@ -51,6 +54,35 @@ class PatternValidationLoopLauncherTests(unittest.TestCase):
         self.assertIn("workspace-plan.json", prompt)
         self.assertIn("Do not run `triton-agent optimize-batch`", prompt)
         self.assertIn("workspace-scaffold-contract.md", prompt)
+
+    def test_analyze_prompt_requires_simulate_vs_optimize_code_review(self) -> None:
+        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
+            repo = Path(tmp)
+            skill_root = repo / ".codex" / "skills" / "triton-npu-pattern-validation-loop"
+            skill_root.mkdir(parents=True)
+            (skill_root / "references").mkdir(parents=True, exist_ok=True)
+            (skill_root / "references" / "iteration-contract.md").write_text(
+                "# iteration\n", encoding="utf-8"
+            )
+            (skill_root / "SKILL.md").write_text("# skill\n", encoding="utf-8")
+            batch = repo / "pattern-validation-batch"
+            batch.mkdir()
+            prompt = build_analyze_prompt(
+                repo_path=repo,
+                batch_dir=batch,
+                skills_workdir=repo / "pattern-validation-skills",
+                state_path=repo / ".triton-agent" / "pattern-validation-loop-state.json",
+                audit_report_path=batch / "audit-report.json",
+                iteration=1,
+                max_iterations=5,
+                skill_root=skill_root,
+                knowledge_root=repo / "pattern-validation-skills" / "triton-npu-optimize-knowledge",
+            )
+        self.assertIn("simulate-plan/report.json", prompt)
+        self.assertIn("proposed_code_changes.unified_diff", prompt)
+        self.assertIn("code_change_alignment", prompt)
+        self.assertIn("Code change review", prompt)
+        self.assertIn("batch-evaluation.json", prompt)
 
     def test_legacy_combined_prompt_still_documents_phases(self) -> None:
         with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:

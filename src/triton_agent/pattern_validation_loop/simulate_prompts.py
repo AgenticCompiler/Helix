@@ -44,7 +44,22 @@ def simulate_report_schema_hint() -> str:
                     "rationale": "Why it does not apply.",
                 },
             ],
-            "proposed_changes": "Markdown: intended code edits if a real optimize run happened (no file writes).",
+            "proposed_code_changes": {
+                "summary": "1-3 sentences: what would change in the operator and why.",
+                "unified_diff": "Required unified diff vs the current operator file (---/+++ lines, real code).",
+                "edits_by_pattern": [
+                    {
+                        "pattern_id": "pattern-id",
+                        "file": "operator.py",
+                        "change_type": "tiling | pipeline | memory | launch | other",
+                        "before_excerpt": "Minimal quote of code to replace.",
+                        "after_excerpt": "Concrete replacement code snippet.",
+                        "rationale": "Why this edit implements the pattern on this workspace.",
+                    },
+                ],
+            },
+            "proposed_changes": "Same content as proposed_code_changes.summary (legacy string field).",
+            "code_plan_quality": "concrete | vague | missing",
             "skills_alignment": "aligned | partial | mismatch",
             "skill_edit_notes": ["Concrete edits to pattern cards under skills workdir if mismatch."],
             "risks_for_real_optimize": ["Compile, correctness, or scope risks for a follow-up optimize-batch."],
@@ -87,9 +102,16 @@ def build_simulate_plan_prompt(
         "and any `test_*.py.txt` reference files.",
         "- Rank pattern candidates by priority (1 = highest) using **pattern cards and operator code only**. "
         "For each ranked pattern, state whether it **hits** this workspace and give evidence-backed rationale.",
-        "- Describe proposed code changes in prose or a unified diff block only inside the report (do not apply).",
-        "- Assess whether the **current pattern cards alone** would steer a real optimize agent correctly "
-        "(`skills_alignment`: aligned | partial | mismatch) based on code/signals, not external PERF reports.",
+        "- Produce a **concrete code-change plan** as if you were about to edit the operator in a real optimize round:",
+        "  - `proposed_code_changes.unified_diff` is **required** (unified diff vs the current operator `.py`).",
+        "  - `proposed_code_changes.edits_by_pattern` must list every **hit** pattern with `before_excerpt`, "
+        "`after_excerpt`, and Triton/NPU-specific edits (tiling, UB buffering, launch grid, pipelining, etc.).",
+        "  - Do not stop at pattern names only; a real worker would leave actionable code behind.",
+        "  - Set `code_plan_quality` to `concrete` only when the diff is implementation-ready; use `vague` or "
+        "`missing` otherwise.",
+        "- Do **not** apply edits to disk; all code stays inside the JSON report.",
+        "- Assess whether the **current pattern cards alone** would steer a real optimize agent to produce "
+        "this same code plan (`skills_alignment`: aligned | partial | mismatch).",
         f"- Write exactly one JSON file: `{SIMULATE_PLAN_DIR}/{SIMULATE_REPORT_FILENAME}` in this workspace.",
         "",
         "JSON schema (follow field names; `ranked_patterns` must be sorted by ascending `priority`):",
@@ -150,7 +172,7 @@ def build_simulate_skill_audit_prompt(
     record_script: Path,
 ) -> str:
     return f"""\
-Review simulate-plan reports and update pattern skills before another simulate iteration.
+Review simulate-plan reports (pattern skills **and** proposed code changes) before another simulate iteration.
 
 Read:
 
@@ -181,22 +203,27 @@ Current iteration: {iteration} / {max_iterations}
 Required steps:
 
 1. Read `{simulate_report_path.as_posix()}` and per-workspace `simulate-plan/report.json` files only. \
-Do **not** read PERF markdown, `validation-meta.json`, or `manifest.json` under batch workspaces.
-2. Update pattern cards under `{knowledge_root.as_posix()}/references/patterns/` when simulate plans show \
-`partial` or `mismatch`, or when `skill_edit_notes` explain gaps — use only simulate evidence and operator-facing card quality.
-3. Regenerate the pattern index:
+Do **not** read PERF markdown, `batch-evaluation.json`, or `validation-meta.json`.
+2. For each workspace report, review **code**, not only patterns:
+   - `proposed_code_changes.unified_diff` must be present and implementation-specific when `code_plan_quality` is `concrete`.
+   - Every `ranked_patterns[]` entry with `hit: true` should appear in `edits_by_pattern` with matching `before_excerpt`/`after_excerpt`.
+   - If the plan is pattern-only prose with no real diff, set `skills_alignment` to `partial` or `mismatch` in your notes and fix cards so the next simulate pass produces code-level guidance.
+3. Update pattern cards under `{knowledge_root.as_posix()}/references/patterns/` when simulate plans show \
+`partial`/`mismatch` on skills or when cards would not lead to the proposed code edits.
+4. Regenerate the pattern index:
 
    python3 {knowledge_root.as_posix()}/scripts/build_pattern_index.py \\
      --patterns-dir {knowledge_root.as_posix()}/references/patterns \\
      --output {knowledge_root.as_posix()}/references/pattern_index.md
 
-4. Record this skill-audit pass:
+5. Record this skill-audit pass:
 
    python3 {record_script.as_posix()} \\
      --state {state_path.as_posix()} --phase skill-audit \\
      --note "updated pattern cards from simulate-plan-report"
 
-5. If **every** workspace simulate report has `skills_alignment: aligned` and simulate agents succeeded, \
+6. If **every** workspace simulate report has `skills_alignment: aligned`, `code_plan_quality: concrete`, \
+and simulate agents succeeded, \
 mark the simulate loop complete:
 
    python3 {record_script.as_posix()} \\

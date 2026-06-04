@@ -229,23 +229,29 @@ Forbidden (ground truth outside workspaces — do not open):
 Required steps:
 
 1. Read `{audit_report_path.as_posix()}` and open **only** files under `{batch_dir.as_posix()}/<workspace>/` when excerpts are insufficient.
-2. For each active workspace, judge pass/fail from optimize round artifacts and synthesis mechanisms visible in attempts/summaries — **not** from `batch-evaluation.json` or `expected_patterns` fields you cannot read.
-3. If skills need fixes, edit `{knowledge_root.as_posix()}/references/patterns/`, regenerate `pattern_index.md`, and record a skill-update note.
-4. When you are confident a workspace passed, archive it:
+2. For each active workspace, judge optimize pass/fail from `opt-round-*/attempts.md`, `summary.md`, and operator `.py` changes vs `baseline/` — using mechanisms described in round artifacts only (do not read `batch-evaluation.json`).
+3. **Simulate plan vs real optimize (when `simulate-plan/report.json` exists in the workspace):**
+   - Read `proposed_code_changes.unified_diff` and `edits_by_pattern` from the simulate report (inside the workspace tree).
+   - Compare against the **actual** operator changes in `opt-round-*` (and `baseline/` if needed).
+   - Decide whether real optimize implemented the same intent and similar code structure as the dry-run plan (human-like edit), not merely the same pattern ID string.
+   - Record per-workspace notes in your analysis: `code_change_alignment: aligned | partial | mismatch | no_simulate_plan`.
+   - A workspace should not be archived as passed if simulate predicted concrete code but optimize rounds diverged materially without justification in round artifacts.
+4. If skills need fixes, edit `{knowledge_root.as_posix()}/references/patterns/`, regenerate `pattern_index.md`, and record a skill-update note.
+5. When you are confident a workspace passed (patterns **and** code-change alignment), archive it:
 
    python3 {scripts_dir.as_posix()}/audit_batch.py \\
      --batch-root {batch_dir.as_posix()} \\
      --archive-passed
 
    Use `--archive-passed` only for workspaces you reviewed; do not rely on heuristics alone.
-5. If **all** validation targets are satisfied (`active_remaining` empty in a fresh evidence report), write `{batch_dir.as_posix()}/VALIDATION_SUMMARY.md` and:
+6. If **all** validation targets are satisfied (`active_remaining` empty in a fresh evidence report), write `{batch_dir.as_posix()}/VALIDATION_SUMMARY.md` including a **Code change review** section per workspace (simulate plan vs opt-round diffs), and:
 
    python3 {scripts_dir.as_posix()}/record_iteration.py \\
      --state {state_path.as_posix()} --phase complete \\
      --audit-report {audit_report_path.as_posix()} \\
      --note "pattern validation complete"
 
-6. If more skill/optimize iterations are needed and iteration < {max_iterations}, record analysis without marking complete:
+7. If more skill/optimize iterations are needed and iteration < {max_iterations}, record analysis without marking complete:
 
    python3 {scripts_dir.as_posix()}/record_iteration.py \\
      --state {state_path.as_posix()} --phase audit \\

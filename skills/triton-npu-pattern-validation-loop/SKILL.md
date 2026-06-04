@@ -152,10 +152,13 @@ Each simulate iteration:
 2. **Simulate agents** (one per workspace): same staged optimize skills as a real worker plus the
    operator `.py` and `test_*.py.txt` only. Ground truth (`expected_patterns`, etc.) lives in
    `pattern-validation-batch/batch-evaluation.json`, not inside workspace directories. They
-   must **not** read PERF markdown. Write `simulate-plan/report.json` with `ranked_patterns` and
-   `skills_alignment`.
-3. If all workspaces report `skills_alignment: aligned`, the loop completes.
-4. Otherwise a **skill-audit agent** reads `$BATCH/simulate-plan-report.json`, edits
+   must **not** read PERF markdown. Write `simulate-plan/report.json` with `ranked_patterns`,
+   `proposed_code_changes` (required `unified_diff` and per-hit `edits_by_pattern`),
+   `code_plan_quality`, and `skills_alignment`.
+3. If all workspaces report `skills_alignment: aligned` and `code_plan_quality: concrete`, the
+   loop completes.
+4. Otherwise a **skill-audit agent** reads `$BATCH/simulate-plan-report.json`, reviews proposed
+   code changes (not only pattern hits), edits
    `$SKILLS/triton-npu-optimize-knowledge/references/patterns/`, regenerates
    `pattern_index.md`, and may mark `.triton-agent/pattern-validation-simulate-state.json`
    complete.

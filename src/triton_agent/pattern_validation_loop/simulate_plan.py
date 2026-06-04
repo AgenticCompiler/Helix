@@ -504,6 +504,21 @@ def load_batch_simulate_report(batch_path: Path) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+def _simulate_report_code_plan_concrete(simulate_report: dict[str, Any]) -> bool:
+    quality = str(simulate_report.get("code_plan_quality", "")).strip().lower()
+    if quality == "concrete":
+        return True
+    if quality in {"vague", "missing"}:
+        return False
+    proposed = simulate_report.get("proposed_code_changes")
+    if isinstance(proposed, dict):
+        diff = str(proposed.get("unified_diff", "")).strip()
+        if diff.startswith("---") and "+++" in diff:
+            return True
+    legacy = str(simulate_report.get("proposed_changes", "")).strip()
+    return legacy.startswith("---") and "+++" in legacy
+
+
 def batch_report_skills_aligned(payload: dict[str, Any]) -> bool:
     workspaces = payload.get("workspaces")
     if not isinstance(workspaces, list) or not workspaces:
@@ -518,6 +533,8 @@ def batch_report_skills_aligned(payload: dict[str, Any]) -> bool:
             return False
         alignment = str(simulate_report.get("skills_alignment", "")).strip().lower()
         if alignment != "aligned":
+            return False
+        if not _simulate_report_code_plan_concrete(simulate_report):
             return False
     return True
 

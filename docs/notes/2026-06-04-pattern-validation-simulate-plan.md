@@ -10,14 +10,18 @@ dependency sync → scaffold verify. CLI/prepare may read PERF markdown; simulat
 
 Each cycle: **simulate agents** (skills + operator only; CLI hides `validation-meta.json` during
 the agent run; no PERF reports) → **skill-audit**
-(updates `pattern-validation-skills` from simulate reports only) → repeat until
-`skills_alignment: aligned` or `--max-iterations`.
+(updates `pattern-validation-skills` from simulate reports, including proposed code diffs) →
+repeat until `skills_alignment: aligned`, `code_plan_quality: concrete`, or `--max-iterations`.
+
+After real optimize, the **analyze agent** compares each workspace's `simulate-plan/report.json`
+(`proposed_code_changes`) against `baseline/` and `opt-round-*` operator edits (no
+`batch-evaluation.json` or PERF).
 
 ## Outputs
 
 | Path | Content |
 |------|---------|
-| `<workspace>/simulate-plan/report.json` | Pattern ranking, hit rationale, proposed changes, skills alignment |
+| `<workspace>/simulate-plan/report.json` | Pattern ranking, unified diff / `edits_by_pattern`, `code_plan_quality`, skills alignment |
 | `<batch>/simulate-plan-report.json` | Aggregated batch report |
 | `.triton-agent/pattern-validation-simulate-state.json` | Loop iteration history |
 
