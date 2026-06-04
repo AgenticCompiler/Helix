@@ -6,7 +6,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from triton_agent.optimize.models import OptimizeStatusWorkspace
 
@@ -34,11 +34,11 @@ def collect_status_schema(
 
     input_sources = _build_input_sources(root)
 
-    summary = _build_summary(results)
-
     workspace_entries: list[dict[str, Any]] = []
     for item in sorted(results, key=lambda r: r.workspace.name):
         workspace_entries.append(_build_workspace_entry(item))
+
+    summary = _build_summary(workspace_entries)
 
     return {
         "schema_version": _SCHEMA_VERSION,
@@ -80,6 +80,37 @@ def warn_missing_sources(root: Path) -> None:
         )
 
 
+# --- helper ---
+
+
+def _as_json_object(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    return cast(dict[str, Any], value)
+
+
+def _as_json_list(value: object) -> list[object] | None:
+    if not isinstance(value, list):
+        return None
+    return cast(list[object], value)
+
+
+def _int_list(value: object) -> list[int]:
+    items = _as_json_list(value)
+    if items is None:
+        return []
+    result: list[int] = []
+    for item in items:
+        if isinstance(item, int):
+            result.append(item)
+        elif isinstance(item, (str, float)):
+            try:
+                result.append(int(item))
+            except (ValueError, TypeError):
+                pass
+    return result
+
+
 # --- input source checking ---
 
 
@@ -111,8 +142,8 @@ def _check_source_present(root: Path, source: str, workspaces: list[Path]) -> bo
 # --- summary aggregation ---
 
 
-def _build_summary(results: list[OptimizeStatusWorkspace]) -> dict[str, Any]:
-    total = len(results)
+def _build_summary(workspace_entries: list[dict[str, Any]]) -> dict[str, Any]:
+    total = len(workspace_entries)
     health_ok = 0
     health_warning = 0
     health_no_session = 0
@@ -121,21 +152,38 @@ def _build_summary(results: list[OptimizeStatusWorkspace]) -> dict[str, Any]:
     unverified_count = 0
     no_verify = 0
 
-    for item in results:
-        if item.state == "ok":
+    check_passed = 0
+    check_failed = 0
+    check_skipped = 0
+
+    for entry in workspace_entries:
+        state = entry.get("state", "no-session")
+        if state == "ok":
             health_ok += 1
-        elif item.state == "warning":
+        elif state == "warning":
             health_warning += 1
         else:
             health_no_session += 1
 
-        if item.latest_verify_state is not None:
-            if item.verified:
+        if entry.get("latest_verify_state") is not None:
+            if entry.get("verified"):
                 verified_count += 1
             else:
                 unverified_count += 1
         else:
             no_verify += 1
+
+        chk = _as_json_object(entry.get("check"))
+        if chk is not None:
+            cs = chk.get("status", "skipped")
+            if cs == "passed":
+                check_passed += 1
+            elif cs == "failed":
+                check_failed += 1
+            else:
+                check_skipped += 1
+        else:
+            check_skipped += 1
 
     return {
         "total_workspaces": total,
@@ -151,6 +199,11 @@ def _build_summary(results: list[OptimizeStatusWorkspace]) -> dict[str, Any]:
             "unverified": unverified_count,
             "no_verify": no_verify,
         },
+        "check": {
+            "passed": check_passed,
+            "failed": check_failed,
+            "skipped": check_skipped,
+        },
     }
 
 
@@ -158,8 +211,9 @@ def _build_summary(results: list[OptimizeStatusWorkspace]) -> dict[str, Any]:
 
 
 def _build_workspace_entry(item: OptimizeStatusWorkspace) -> dict[str, Any]:
+    ws_path = item.workspace
     entry: dict[str, Any] = {
-        "workspace": item.workspace.name,
+        "workspace": ws_path.name,
         "state": item.state,
     }
 
@@ -177,7 +231,139 @@ def _build_workspace_entry(item: OptimizeStatusWorkspace) -> dict[str, Any]:
     if item.latest_verify_state is not None:
         entry["latest_verify_state"] = item.latest_verify_state.as_posix()
 
+    entry["check"] = _collect_check(ws_path)
+    entry["pattern"] = _collect_pattern(ws_path)
+
     return entry
+
+
+def _collect_check(ws_path: Path) -> dict[str, Any]:
+    json_path = ws_path / "log_check_result.json"
+    if not json_path.is_file():
+        return {
+            "status": "skipped",
+            "checks": [],
+        }
+    try:
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "status": "skipped",
+            "checks": [],
+        }
+    data = _as_json_object(payload)
+    if data is None:
+        return {
+            "status": "skipped",
+            "checks": [],
+        }
+
+    overall = data.get("overall", "UNKNOWN")
+    if overall == "PASS":
+        check_status = "passed"
+    elif overall == "FAIL":
+        check_status = "failed"
+    else:
+        check_status = "skipped"
+
+    raw_check_items = _as_json_list(data.get("checks"))
+    if raw_check_items is None:
+        raw_check_items = []
+
+    checks: list[dict[str, Any]] = []
+    for check_value in raw_check_items:
+        c = _as_json_object(check_value)
+        if c is None:
+            continue
+        cid = c.get("id")
+        if not isinstance(cid, str):
+            continue
+        result_value = c.get("result")
+        result = result_value if result_value in ("pass", "fail") else "fail"
+        detail_value = c.get("detail")
+        if result == "pass":
+            detail: str | None = None
+        elif detail_value is None:
+            detail = ""
+        else:
+            detail = str(detail_value)
+        name = c.get("name")
+        checks.append({
+            "id": cid,
+            "name": name if isinstance(name, str) else "",
+            "result": result,
+            "detail": detail,
+        })
+
+    return {
+        "status": check_status,
+        "checks": checks,
+    }
+
+
+def _collect_pattern(ws_path: Path) -> dict[str, Any]:
+    empty: dict[str, list[dict[str, Any]]] = {
+        "given": [],
+        "new": [],
+        "extended": [],
+    }
+    json_path = ws_path / "pattern_analysis.json"
+    if not json_path.is_file():
+        return empty
+    try:
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return empty
+    data = _as_json_object(payload)
+    if data is None:
+        return empty
+
+    summary = _as_json_object(data.get("summary"))
+    if summary is None:
+        return empty
+
+    given: list[dict[str, Any]] = []
+    raw_given = _as_json_list(summary.get("given"))
+    if raw_given is not None:
+        for item_value in raw_given:
+            item = _as_json_object(item_value)
+            if item is not None and isinstance(item.get("name"), str):
+                evidence = item.get("evidence")
+                given.append({
+                    "name": item["name"],
+                    "rounds": _int_list(item.get("rounds")),
+                    "evidence": evidence if evidence in ("explicit", "inferred") else "inferred",
+                })
+
+    new: list[dict[str, Any]] = []
+    raw_new = _as_json_list(summary.get("new"))
+    if raw_new is not None:
+        for item_value in raw_new:
+            item = _as_json_object(item_value)
+            if item is not None and isinstance(item.get("name"), str):
+                new.append({
+                    "name": item["name"],
+                    "rounds": _int_list(item.get("rounds")),
+                })
+
+    extended: list[dict[str, Any]] = []
+    raw_ext = _as_json_list(summary.get("extended"))
+    if raw_ext is not None:
+        for item_value in raw_ext:
+            item = _as_json_object(item_value)
+            if item is not None and isinstance(item.get("name"), str):
+                from_value = item.get("from")
+                extended.append({
+                    "name": item["name"],
+                    "rounds": _int_list(item.get("rounds")),
+                    "from": from_value if isinstance(from_value, str) else "",
+                })
+
+    return {
+        "given": given,
+        "new": new,
+        "extended": extended,
+    }
 
 
 __all__ = [

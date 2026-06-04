@@ -29,7 +29,8 @@ from triton_agent.models import CommandKind
 _Handler = Callable[[argparse.ArgumentParser, argparse.Namespace], int]
 _AGENT_CHOICES = ("codex", "opencode", "pi", "claude", "openhands", "traecli")
 _COMPARE_LEVEL_CHOICES = ("strict", "balanced", "relaxed")
-_FORMAT_CHOICES = ("text", "markdown")
+_FORMAT_CHOICES = ("text", "markdown", "json")
+_SCOPE_CHOICES = ("optimize", "full")
 _TEST_MODE_CHOICES = ("standalone", "differential")
 _BENCH_MODE_CHOICES = ("standalone", "msprof")
 _RESUME_CHOICES = ("auto", "continue", "fresh")
@@ -169,7 +170,7 @@ class _CommandSpec:
     report_workers_default: int | None = None
     has_force_overwrite: bool = False
     has_format: bool = False
-    has_schema: bool = False
+    has_scope: bool = False
     has_verify_phase: bool = False
     has_force_verify: bool = False
     has_log_tools: bool = False
@@ -323,7 +324,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         description="Show optimization status for one workspace.",
         has_output=False,
         has_format=True,
-        has_schema=True,
+        has_scope=True,
     ),
     CommandKind.LOG_CHECK: _CommandSpec(
         handler=handle_log_check,
@@ -470,11 +471,12 @@ def build_parser() -> argparse.ArgumentParser:
         _add_primary_arguments(subparser, spec)
         if spec.has_format:
             subparser.add_argument("--format", default="text", choices=_FORMAT_CHOICES)
-        if spec.has_schema:
+        if spec.has_scope:
             subparser.add_argument(
-                "--schema",
-                action="store_true",
-                help="Generate a status-schema.json file alongside the status output.",
+                "--scope",
+                default="optimize",
+                choices=_SCOPE_CHOICES,
+                help="Output scope: optimize (speedup only) or full (collector metadata + speedup, writes status-schema.json).",
             )
         if spec.has_verify_phase:
             subparser.add_argument("--phase", default="all", choices=_VERIFY_PHASE_CHOICES)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -9,8 +10,8 @@ from triton_agent.status.core import (
     scan_optimize_status_workspaces,
     workspace_has_optimize_artifacts,
 )
-from triton_agent.status.render import render_optimize_status_results
-from triton_agent.status.schema import warn_missing_sources, write_status_schema
+from triton_agent.status.render import render_optimize_status_json, render_optimize_status_results
+from triton_agent.status.schema import collect_status_schema, warn_missing_sources, write_status_schema
 
 
 def handle_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -20,29 +21,33 @@ def handle_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
     if not root.is_dir():
         parser.error(f"Input path is not a directory: {root}")
 
-    want_schema = bool(getattr(args, "schema", False))
     is_single_workspace = workspace_has_optimize_artifacts(root)
+    output_format = str(getattr(args, "format", "text"))
+    scope = str(getattr(args, "scope", "optimize"))
 
     if is_single_workspace:
         results = [inspect_optimize_status_workspace(root, verbose=bool(getattr(args, "verbose", False)))]
-        exit_code = render_optimize_status_results(
-            results,
-            output_format=str(getattr(args, "format", "text")),
-        )
     else:
         workspace_candidates = sorted(path for path in root.iterdir() if path.is_dir())
         if not workspace_candidates:
             print(f"No operator workspaces found under {root}", file=sys.stderr)
             return 1
         results = scan_optimize_status_workspaces(root, verbose=bool(getattr(args, "verbose", False)))
-        exit_code = render_optimize_status_results(results, output_format=str(getattr(args, "format", "text")))
 
-    if want_schema and not is_single_workspace:
+    if scope == "full":
+        if is_single_workspace:
+            print("error: --scope full is only supported in batch directories", file=sys.stderr)
+            return 1
         schema_path = write_status_schema(root, results)
+        state = collect_status_schema(root, results)
+        print(json.dumps(state, indent=2, sort_keys=True, ensure_ascii=False), flush=True)
         print(f"[status-schema] written to: {schema_path}", file=sys.stderr, flush=True)
         warn_missing_sources(root)
+        return 0
 
-    return exit_code
+    if output_format == "json":
+        return render_optimize_status_json(results)
+    return render_optimize_status_results(results, output_format=output_format)
 
 
 __all__ = ["handle_status"]

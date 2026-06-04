@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import json
 import sys
-from typing import TextIO
+from typing import Any, TextIO
 
 from triton_agent.optimize.models import OptimizeStatusWorkspace
 
@@ -86,6 +87,36 @@ def render_optimize_status_results(
         file=stream,
     )
     return 0 if ordered_results else 1
+
+
+def render_optimize_status_json(
+    results: list[OptimizeStatusWorkspace],
+    stdout: TextIO | None = None,
+) -> int:
+    stream = stdout or sys.stdout
+    entries: list[dict[str, Any]] = []
+    for item in sorted(results, key=lambda r: r.workspace.name):
+        entry: dict[str, Any] = {
+            "name": item.workspace.name,
+            "state": item.state,
+        }
+        if item.state != "no-session":
+            entry["avg_improvement"] = item.avg_improvement
+            entry["geomean_speedup"] = item.geomean_speedup
+            entry["best_round"] = item.best_round
+            entry["logged_best"] = item.logged_best
+        entry["verified"] = item.verified
+        entry["verified_geomean_speedup"] = item.verified_geomean_speedup
+        if item.latest_verify_state is not None:
+            entry["latest_verify_state"] = item.latest_verify_state.as_posix()
+        else:
+            entry["latest_verify_state"] = None
+        entry["warnings"] = list(item.warnings)
+        entries.append(entry)
+    doc: dict[str, Any] = {"workspaces": entries}
+    json.dump(doc, stream, indent=2, sort_keys=True, ensure_ascii=False)
+    stream.write("\n")
+    return 0
 
 
 def render_optimize_status_markdown_table(
