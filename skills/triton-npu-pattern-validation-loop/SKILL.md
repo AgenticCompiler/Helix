@@ -100,7 +100,18 @@ Then follow [workspace-scaffold-contract.md](references/workspace-scaffold-contr
 - Split knowledge-base lessons **per kernel**, not per source file.
 - If one launch calls multiple kernels (branches), merge them into one operator file.
 
-After scaffolding, run:
+After scaffolding, sync dependencies into each workspace (literal directory name `deps`, never `{deps}`):
+
+- **Default:** inject repo `sys.path` at the top of the operator; keep original `from fla...` / `from src.kernels.fla...` imports.
+- **Verify:** import smoke (`python -c "import <operator_stem>"`) per workspace.
+- **Fallback:** copy `fla.*` closure into `deps/fla/` only when smoke fails or you pass `--copy-deps`.
+
+```bash
+python3 "$SKILL/scripts/sync_workspace_dependencies.py" \
+  --batch-root "$BATCH" --repo "$REPO"
+```
+
+`pattern-validation-loop` runs this automatically before verify. Then:
 
 ```bash
 triton-agent pattern-validation-verify -i "$BATCH"

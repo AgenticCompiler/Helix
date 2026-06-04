@@ -105,8 +105,11 @@ Required steps:
 3. Regenerate `{knowledge_root.as_posix()}/references/pattern_index.md`.
 {plan_step}
 5. Scaffold workspaces under `{batch_dir.as_posix()}`: **workspace-named** directories and operator files per the plan; helper `.py` only under `deps/`.
+   - `dependency_dir` must be the literal string `deps` (never `{{deps}}` or other placeholders).
    - Copy repo `test_*.py` as **reference** files named `test_*.py.txt` (not runnable pytest). Record them in `validation-meta.json` → `copied_tests`.
    - The optimize CLI will tell the agent these `.py.txt` files document dtype and shapes only.
+   - After scaffolding, the CLI runs `sync_workspace_dependencies.py` to inject repo `sys.path` at the top of each operator (keep original `from fla...` imports), run import smoke, and only copy into `deps/fla/` when smoke fails or you pass `--copy-deps`:
+     python3 {scripts_dir.as_posix()}/sync_workspace_dependencies.py --batch-root {batch_dir.as_posix()} --repo {repo_path.as_posix()}
 6. Run scaffold verification from repo root:
 
    triton-agent pattern-validation-verify -i {batch_dir.as_posix()}

@@ -243,29 +243,27 @@ For workspace `$BATCH/<target_name>/`:
 ### Resolving repo-local imports
 
 Optimize workspaces are **flat** directories. Repo package layout (`src.kernels.foo.bar`)
-will not work unchanged. Resolve imports deliberately, in this order:
+will not work unchanged. The CLI **`sync_workspace_dependencies.py`** applies this order:
 
 | Strategy | Use when |
 |----------|----------|
-| **Copy sibling modules under `deps/`** | A small repo `.py` file is imported by the target (for example `utils.py`, `common.py`). Copy to `$BATCH/<workspace>/deps/` and import as `from deps.utils import ...` or add `deps/` to `sys.path` in the operator/tests. **Never** place helper `.py` files at the workspace root — `optimize-batch` fails with `multiple candidate operator files`. |
+| **Repo path bootstrap (default)** | Operator still uses original `from fla...` / `from src.kernels.fla...` imports. `sync_workspace_dependencies.py` injects an auto-generated block at the top of the operator that adds the repo's `src/kernels` and repo root to `sys.path`. Record `dependency_strategy: repo_path` and `repo_path_injected: true` in `validation-meta.json`. |
+| **Import smoke (verify)** | After sync, `pattern-validation-verify` and sync both run `python -c "import <operator_stem>"` from the workspace directory. Failures must be fixed before optimize. |
+| **Copy `fla.*` under `deps/` (fallback)** | Only when import smoke fails after repo-path bootstrap, or when you need an isolated snapshot (`--copy-deps`). Copies the `fla` import closure into `deps/fla/` and sets `dependency_strategy: deps_copy`. List copied files in `copied_dependencies`. |
+| **Copy sibling helpers under `deps/`** | A small non-`fla` repo `.py` is imported by the target (for example `utils.py`). Copy manually to `$BATCH/<workspace>/deps/` during scaffold. **Never** place helper `.py` files at the workspace root — `optimize-batch` fails with `multiple candidate operator files`. |
 | **Copy minimal subset inline** | A helper is a few lines and copying the whole module would pull unrelated kernels. |
 | **Adjust test/bench imports** | The harness imported the repo package path; change it to import the workspace operator module or entry function directly. |
 | **Add a thin adapter** | Tests expect a specific function name; provide a small wrapper in the operator file that calls the extracted launch path. |
 
 Rules:
 
-- Copy **only** modules in the dependency closure for this target. Do not copy entire package
-  trees "just in case".
-- After copying, run a quick import sanity check from the workspace directory before
-  `optimize-batch` (for example `python3 -c "import <operator_stem>"` or run the copied test
-  once).
-- List every copied repo file in `validation-meta.json` → `copied_dependencies` using paths
-  under `deps/` (for example `deps/tiling_utils.py`). Set `dependency_dir` to `deps` when using
-  the default layout.
+- Set `dependency_dir` to the literal string `deps` (never `{deps}`).
+- Do not pre-copy entire `fla` trees during scaffold; let sync inject repo paths first.
+- List every file under `deps/` in `validation-meta.json` → `copied_dependencies`.
 - Explain non-obvious import fixes in `notes`.
 
-If optimize later fails on a missing import, add the smallest additional file or inline the
-missing helper, then update `validation-meta.json`.
+If optimize later fails on a missing import, re-run sync, use `--copy-deps`, or add the smallest
+additional file, then update `validation-meta.json`.
 
 ### Tests and benches for split targets
 

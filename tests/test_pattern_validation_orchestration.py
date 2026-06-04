@@ -13,6 +13,10 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 
 class PatternValidationOrchestrationTests(unittest.TestCase):
     @patch(
+        "triton_agent.pattern_validation_loop.orchestration.sync_batch_workspace_dependencies",
+        return_value=0,
+    )
+    @patch(
         "triton_agent.pattern_validation_loop.orchestration.generate_workspace_plan_if_present",
         return_value=(None, []),
     )
@@ -36,6 +40,7 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
         mock_collect: unittest.mock.MagicMock,
         _mock_reset: unittest.mock.MagicMock,
         _mock_plan: unittest.mock.MagicMock,
+        _mock_sync: unittest.mock.MagicMock,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
             repo = _make_git_repo(Path(tmp))
@@ -68,6 +73,10 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
         self.assertIn(".py.txt", optimize_options.prompt or "")
 
     @patch(
+        "triton_agent.pattern_validation_loop.orchestration.sync_batch_workspace_dependencies",
+        return_value=0,
+    )
+    @patch(
         "triton_agent.pattern_validation_loop.orchestration.generate_workspace_plan_if_present",
         return_value=(None, []),
     )
@@ -91,6 +100,7 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
         _mock_collect: unittest.mock.MagicMock,
         _mock_reset: unittest.mock.MagicMock,
         _mock_plan: unittest.mock.MagicMock,
+        _mock_sync: unittest.mock.MagicMock,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
             repo = _make_git_repo(Path(tmp))
@@ -122,6 +132,10 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
         mock_optimize.assert_called_once()
 
     @patch(
+        "triton_agent.pattern_validation_loop.orchestration.sync_batch_workspace_dependencies",
+        return_value=0,
+    )
+    @patch(
         "triton_agent.pattern_validation_loop.orchestration.generate_workspace_plan_if_present",
         return_value=(None, []),
     )
@@ -145,6 +159,7 @@ class PatternValidationOrchestrationTests(unittest.TestCase):
         _mock_collect: unittest.mock.MagicMock,
         mock_reset: unittest.mock.MagicMock,
         _mock_plan: unittest.mock.MagicMock,
+        _mock_sync: unittest.mock.MagicMock,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT) as tmp:
             repo = _make_git_repo(Path(tmp))

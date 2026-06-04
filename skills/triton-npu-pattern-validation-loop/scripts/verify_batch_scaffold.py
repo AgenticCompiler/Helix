@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from batch_layout import list_active_validation_workspaces
+from workspace_deps import verify_dependency_issues
 
 _DEFAULT_DEPENDENCY_DIR = "deps"
 _ROOT_ALLOWED_NAMES = frozenset({"__init__.py", "conftest.py"})
@@ -150,6 +151,17 @@ def verify_workspace(
             issues.append(
                 f"copied_dependencies entry {entry!r} must be under workspace {dependency_dir}/"
             )
+        elif not (workspace / normalized).is_file():
+            issues.append(f"copied_dependencies entry missing on disk: {entry}")
+
+    issues.extend(
+        verify_dependency_issues(
+            workspace,
+            meta,
+            operator_text=operator_text,
+            operator_filename=operator_name,
+        ),
+    )
 
     return {
         "workspace": workspace.name,

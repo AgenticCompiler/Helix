@@ -105,7 +105,8 @@ pattern-validation-batch/chunk_bwd_dv_local/
   chunk_bwd_dv_local.py    # minimal extract: launch + its kernel(s) + helpers
   test_*.py.txt          # reference only (dtype/shapes); not runnable pytest
   validation-meta.json
-  deps/                           # helper .py only under deps/
+  deps/                           # literal directory name deps (not {deps}); often empty when repo-path sync works
+    fla/                          # optional: copied only when import smoke fails or --copy-deps
     ...
 ```
 
@@ -122,6 +123,9 @@ pattern-validation-batch/chunk_bwd_dv_local/
   "knowledge_lessons": ["85171374766b", "a8cb0ffb2f7d"],
   "expected_patterns": ["layout-materialization-elision"],
   "dependency_dir": "deps",
+  "dependency_strategy": "repo_path",
+  "repo_path_injected": true,
+  "import_smoke_passed": true,
   "copied_dependencies": []
 }
 ```

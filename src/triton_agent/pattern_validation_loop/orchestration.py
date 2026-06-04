@@ -29,6 +29,7 @@ from triton_agent.pattern_validation_loop.workspace_plan import (
 )
 from triton_agent.pattern_validation_loop.prompts import build_analyze_prompt, build_prepare_prompt
 from triton_agent.pattern_validation_loop.scaffold_verify import run_pattern_validation_verify
+from triton_agent.pattern_validation_loop.workspace_sync import sync_batch_workspace_dependencies
 from triton_agent.pattern_validation_loop.seed_skills import (
     DEFAULT_SKILLS_DIR_NAME,
     seed_pattern_validation_skills_dir,
@@ -132,6 +133,19 @@ def run_pattern_validation_loop_orchestrated(
     prepare_code = _run_prepare_agent(config, workspace_plan_path=workspace_plan_path)
     if prepare_code != 0:
         return prepare_code
+
+    sync_code = sync_batch_workspace_dependencies(
+        config.batch_path,
+        config.repo_root,
+        stream=sys.stderr,
+    )
+    if sync_code != 0:
+        print(
+            "[pattern-validation-loop] dependency sync failed; fix workspaces before verify.",
+            file=sys.stderr,
+            flush=True,
+        )
+        return sync_code
 
     verify_code = run_pattern_validation_verify(config.batch_path, stream=sys.stderr)
     if verify_code != 0:
