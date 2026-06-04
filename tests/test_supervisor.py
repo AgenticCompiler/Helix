@@ -2,6 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 import tempfile
+import json
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -37,9 +38,70 @@ class RoundCreatingRunner(FakeRunner):
         self.workdir = workdir
 
     def resume(self, request: AgentRequest, summary: str) -> AgentResult:
-        next_round = self.workdir / "opt-round-2"
-        next_round.mkdir(exist_ok=True)
+        write_completed_round(self.workdir, "opt-round-2", parent_round="round-1")
         return super().resume(request, summary)
+
+
+def write_completed_round(workdir: Path, round_name: str, *, parent_round: str = "round-0") -> Path:
+    baseline_dir = workdir / "baseline"
+    baseline_dir.mkdir(exist_ok=True)
+    (workdir / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+    (workdir / "opt-note.md").write_text("## Round\n", encoding="utf-8")
+    (baseline_dir / "state.json").write_text(
+        json.dumps(
+            {
+                "baseline_kind": "prepared",
+                "source_operator": "kernel.py",
+                "baseline_operator": "baseline/kernel.py",
+                "test_file": "differential_test_kernel.py",
+                "test_mode": "differential",
+                "bench_file": "bench_kernel.py",
+                "bench_mode": "standalone",
+                "perf_artifact": "baseline/perf.txt",
+                "correctness_status": "passed",
+                "benchmark_status": "passed",
+                "baseline_established": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+    (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+    round_dir = workdir / round_name
+    round_dir.mkdir(exist_ok=True)
+    (round_dir / "opt_kernel.py").write_text(
+        "import triton\n"
+        "import triton.language as tl\n\n"
+        "@triton.jit\n"
+        "def _kernel(X, Y):\n"
+        "    return\n\n"
+        "def launch(x, y):\n"
+        "    _kernel[1](x, y)\n",
+        encoding="utf-8",
+    )
+    (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+    (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
+    (round_dir / "opt_kernel_perf.txt").write_text("latency-a: 0.9\n", encoding="utf-8")
+    (round_dir / "round-state.json").write_text(
+        json.dumps(
+            {
+                "round": round_name,
+                "parent_round": parent_round,
+                "hypothesis": "vectorize loads",
+                "evidence_sources": ["benchmark"],
+                "correctness_status": "passed",
+                "benchmark_status": "passed",
+                "perf_artifact": "opt_kernel_perf.txt",
+                "comparison_target": "baseline/perf.txt",
+                "effective_metric_source": "kernel",
+                "summary_path": "summary.md",
+                "opt_note_updated": True,
+                "round_disposition": "continue",
+            }
+        ),
+        encoding="utf-8",
+    )
+    return round_dir
 
 
 class OptimizeSupervisorTests(unittest.TestCase):
@@ -78,7 +140,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
     def test_supervised_restart_prompt_preserves_worker_round_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            (workspace / "opt-round-1").mkdir()
+            write_completed_round(workspace, "opt-round-1")
             request = AgentRequest(
                 command_kind=CommandKind.OPTIMIZE,
                 input_path=workspace / "op.py",
@@ -126,7 +188,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
     def test_recovery_resume_prompt_preserves_base_prompt_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            (workdir / "opt-round-1").mkdir()
+            write_completed_round(workdir, "opt-round-1")
             request = AgentRequest(
                 command_kind=CommandKind.OPTIMIZE,
                 input_path=Path("/tmp/op.py"),
@@ -204,7 +266,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
     def test_recovery_resume_prompt_preserves_user_instructions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            (workdir / "opt-round-1").mkdir()
+            write_completed_round(workdir, "opt-round-1")
             request = AgentRequest(
                 command_kind=CommandKind.OPTIMIZE,
                 input_path=Path("/tmp/op.py"),
@@ -267,7 +329,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
     def test_continuous_recovery_resume_prompt_is_not_double_wrapped(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            (workdir / "opt-round-1").mkdir()
+            write_completed_round(workdir, "opt-round-1")
             request = AgentRequest(
                 command_kind=CommandKind.OPTIMIZE,
                 input_path=Path("/tmp/op.py"),
@@ -335,7 +397,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
     def test_retries_with_progress_summary_after_stall(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            (workdir / "opt-round-1").mkdir()
+            write_completed_round(workdir, "opt-round-1")
             request = AgentRequest(
                 command_kind=CommandKind.OPTIMIZE,
                 input_path=Path("/tmp/op.py"),
@@ -440,7 +502,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
     def test_repeated_stalls_keep_using_resume_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            (workdir / "opt-round-1").mkdir()
+            write_completed_round(workdir, "opt-round-1")
             request = AgentRequest(
                 command_kind=CommandKind.OPTIMIZE,
                 input_path=Path("/tmp/op.py"),
@@ -495,7 +557,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
     def test_restarts_when_successful_run_has_too_few_rounds(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            (workspace / "opt-round-1").mkdir()
+            write_completed_round(workspace, "opt-round-1")
             request = AgentRequest(
                 command_kind=CommandKind.OPTIMIZE,
                 input_path=workspace / "op.py",
@@ -532,8 +594,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
                             round_mode=request.round_mode,
                         )
                     )
-                    next_round = workspace / "opt-round-2"
-                    next_round.mkdir(exist_ok=True)
+                    write_completed_round(workspace, "opt-round-2", parent_round="round-1")
                     return AgentResult(return_code=0, stdout="finished two rounds", stderr="")
 
             runner = BackendLikeRoundCreatingRunner()
@@ -550,7 +611,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
     def test_restarts_with_layered_analysis_wording_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            (workspace / "opt-round-1").mkdir()
+            write_completed_round(workspace, "opt-round-1")
             request = AgentRequest(
                 command_kind=CommandKind.OPTIMIZE,
                 input_path=workspace / "op.py",
@@ -587,8 +648,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
                             round_mode=request.round_mode,
                         )
                     )
-                    next_round = workspace / "opt-round-2"
-                    next_round.mkdir(exist_ok=True)
+                    write_completed_round(workspace, "opt-round-2", parent_round="round-1")
                     return AgentResult(return_code=0, stdout="finished two rounds", stderr="")
 
             runner = BackendLikeRoundCreatingRunner()
@@ -605,7 +665,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
     def test_continuous_min_rounds_fails_when_resume_makes_no_progress(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            (workspace / "opt-round-1").mkdir()
+            write_completed_round(workspace, "opt-round-1")
             request = AgentRequest(
                 command_kind=CommandKind.OPTIMIZE,
                 input_path=workspace / "op.py",
@@ -693,7 +753,7 @@ class OptimizeSupervisorTests(unittest.TestCase):
     def test_continuous_min_rounds_resume_prompt_is_not_double_wrapped(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            (workspace / "opt-round-1").mkdir()
+            write_completed_round(workspace, "opt-round-1")
             request = AgentRequest(
                 command_kind=CommandKind.OPTIMIZE,
                 input_path=workspace / "op.py",

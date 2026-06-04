@@ -19,6 +19,7 @@ from triton_agent.generation.outputs import (
 from triton_agent.generation.orchestration import build_generation_request
 from triton_agent.models import AgentResult, CommandKind
 from triton_agent.otel_trace import TRACE_PATH_ENV
+from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
 
 
 class GenerationHelpersTests(unittest.TestCase):
@@ -310,6 +311,36 @@ class GenerationHelpersTests(unittest.TestCase):
             self.assertEqual(trace_path.parent.parent, workdir / "triton-agent-logs")
             self.assertTrue(trace_path.parent.name.startswith("generate-"))
             self.assertEqual(trace_path.name, "tool-traces.jsonl")
+
+    def test_build_generation_request_injects_remote_env(self) -> None:
+        request = build_generation_request(
+            CommandKind.GEN_TEST,
+            Path("/tmp/kernel.py"),
+            Path("/tmp/kernel.py"),
+            Path("/tmp"),
+            GenerationOptions(
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                remote="alice@example.com:2200",
+                remote_workdir="/tmp/triton-agent",
+                min_rounds=None,
+                continue_optimize=False,
+                output=None,
+                test_mode="standalone",
+                bench_mode=None,
+                prompt=None,
+            ),
+        )
+
+        self.assertEqual(request.remote, "alice@example.com:2200")
+        self.assertEqual(request.remote_workdir, "/tmp/triton-agent")
+        self.assertIsNotNone(request.extra_env)
+        assert request.extra_env is not None
+        self.assertEqual(request.extra_env[remote_target_env_name()], "alice@example.com:2200")
+        self.assertEqual(request.extra_env[remote_workdir_env_name()], "/tmp/triton-agent")
 
 class GenerationCommandHandlerTests(unittest.TestCase):
     def test_handle_gen_test_rejects_openhands_interactive_mode(self) -> None:

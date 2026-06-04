@@ -12,6 +12,7 @@ import shutil
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from triton_agent import remote_execution_env as remote_env_module
 from triton_agent.skill_loader import load_operator_eval_script_module
 from tests.run_skill_test_utils import (
     load_compare_result_module,
@@ -74,6 +75,55 @@ class RemoteExecutionTests(unittest.TestCase):
 
         self.assertIn("[remote]", stderr.getvalue())
         self.assertIn("scp -P 2200 /tmp/local.txt alice@example.com:/tmp/remote.txt", stderr.getvalue())
+
+    def test_remote_execution_env_prefers_explicit_flags_over_environment(self) -> None:
+        remote, remote_workdir = remote_env_module.resolve_remote_execution(
+            "bob@example.com",
+            "/tmp/explicit",
+            {
+                remote_env_module.remote_target_env_name(): "alice@example.com",
+                remote_env_module.remote_workdir_env_name(): "/tmp/from-env",
+            },
+        )
+
+        self.assertEqual(remote, "bob@example.com")
+        self.assertEqual(remote_workdir, "/tmp/explicit")
+
+    def test_remote_execution_env_ignores_workdir_without_remote_target(self) -> None:
+        remote, remote_workdir = remote_env_module.resolve_remote_execution(
+            None,
+            "/tmp/explicit",
+            {},
+        )
+
+        self.assertIsNone(remote)
+        self.assertIsNone(remote_workdir)
+
+    def test_apply_remote_execution_env_sets_target_and_workdir(self) -> None:
+        env: dict[str, str] = {}
+
+        remote_env_module.apply_remote_execution_env(
+            "alice@example.com",
+            "/tmp/triton-agent",
+            env,
+        )
+
+        self.assertEqual(env[remote_env_module.remote_target_env_name()], "alice@example.com")
+        self.assertEqual(env[remote_env_module.remote_workdir_env_name()], "/tmp/triton-agent")
+
+    def test_apply_remote_execution_env_clears_missing_workdir_and_remote(self) -> None:
+        env = {
+            remote_env_module.remote_target_env_name(): "alice@example.com",
+            remote_env_module.remote_workdir_env_name(): "/tmp/old",
+        }
+
+        remote_env_module.apply_remote_execution_env("alice@example.com", None, env)
+        self.assertEqual(env[remote_env_module.remote_target_env_name()], "alice@example.com")
+        self.assertNotIn(remote_env_module.remote_workdir_env_name(), env)
+
+        remote_env_module.apply_remote_execution_env(None, None, env)
+        self.assertNotIn(remote_env_module.remote_target_env_name(), env)
+        self.assertNotIn(remote_env_module.remote_workdir_env_name(), env)
 
     def test_parse_standalone_case_payload_accepts_metrics_on_python39_runtime(self) -> None:
         module = load_bench_runner_module()

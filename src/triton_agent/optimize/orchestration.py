@@ -14,6 +14,7 @@ from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.resume import resolve_optimize_resume, reset_optimize_workspace
 from triton_agent.paths import default_generated_output_path
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
+from triton_agent.remote_execution_env import merge_remote_execution_env
 from triton_agent.resources import skills_root
 from triton_agent.skill_staging import resolve_staged_skills
 from triton_agent.skills import SkillLinkManager
@@ -134,6 +135,7 @@ def build_optimize_request(
         optimize_target=options.optimize_target,
         enable_cann_ext_api=options.enable_cann_ext_api,
     )
+    extra_env = merge_remote_execution_env(None, options.remote, options.remote_workdir)
     return AgentRequest(
         command_kind=CommandKind.OPTIMIZE,
         input_path=input_path,
@@ -151,6 +153,7 @@ def build_optimize_request(
         workdir=workdir,
         remote=options.remote,
         remote_workdir=options.remote_workdir,
+        extra_env=extra_env,
         min_rounds=options.min_rounds,
         continue_optimize=resolution.resume_existing_session,
         no_agent_session=options.no_agent_session,

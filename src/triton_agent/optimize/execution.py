@@ -8,6 +8,7 @@ from typing import Any, TextIO, cast
 from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult
 from triton_agent.optimize.checks import check_baseline, check_round
+from triton_agent.skill_loader import load_skill_script_module
 from triton_agent.optimize.session_artifacts import (
     OptimizeSessionArtifactsManager,
     OptimizeSessionArtifactsState,
@@ -165,14 +166,14 @@ def execute_continuous_optimize(
 
 
 def _latest_round_dir(workdir: Path) -> Path | None:
-    round_dirs = sorted(_iter_numeric_round_dirs(workdir), key=lambda path: _round_sort_key(path.name))
+    round_dirs = sorted(_iter_completed_round_dirs(workdir), key=lambda path: _round_sort_key(path.name))
     if not round_dirs:
         return None
     return round_dirs[-1]
 
 
 def _count_round_directories(workdir: Path) -> int:
-    return sum(1 for _ in _iter_numeric_round_dirs(workdir))
+    return len(_iter_completed_round_dirs(workdir))
 
 
 def _round_sort_key(name: str) -> tuple[int, str]:
@@ -214,12 +215,12 @@ def _parse_supervisor_blocking_issues_from_report(report_content: str) -> tuple[
     return tuple(issue.strip() for issue in raw_value.split(",") if issue.strip())
 
 
-def _iter_numeric_round_dirs(workdir: Path) -> list[Path]:
-    return [
-        path
-        for path in workdir.glob("opt-round-*")
-        if path.is_dir() and re.match(r"opt-round-\d+$", path.name)
-    ]
+def _iter_completed_round_dirs(workdir: Path) -> tuple[Path, ...]:
+    module = load_skill_script_module(
+        "triton-npu-optimize-submit-round",
+        "optimize_submit_round",
+    )
+    return tuple(cast(tuple[Path, ...], module.iter_completed_round_directories(workdir)))
 
 
 @dataclass(frozen=True)

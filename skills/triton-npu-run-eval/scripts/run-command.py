@@ -18,6 +18,14 @@ class ParseMetadataFn(Protocol):
     def __call__(self, path: Path) -> dict[str, str]: ...
 
 
+class ResolveRemoteExecutionFn(Protocol):
+    def __call__(
+        self,
+        explicit_remote: str | None,
+        explicit_remote_workdir: str | None,
+    ) -> tuple[str | None, str | None]: ...
+
+
 class RunLocalTestFn(Protocol):
     def __call__(
         self,
@@ -234,19 +242,20 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser()
     args = parser.parse_args(argv)
+    remote, remote_workdir = _resolve_remote_execution(args)
 
     if args.command == "compare-result":
         compare_result_files, compare_remote_result_files = _load_compare_result_functions()
         oracle_result = _resolve_existing_path(parser, args.oracle_result, "Oracle result")
         new_result = _resolve_existing_path(parser, args.new_result, "New result")
-        if args.remote:
+        if remote is not None:
             try:
                 return compare_remote_result_files(
                     oracle_result,
                     new_result,
                     args.compare_level,
-                    args.remote,
-                    args.remote_workdir,
+                    remote,
+                    remote_workdir,
                     verbose=args.verbose,
                     stderr=sys.stderr,
                 )
@@ -286,17 +295,19 @@ def main(argv: list[str] | None = None) -> int:
             test_file,
             run_local_test,
             run_remote_test,
+            remote,
+            remote_workdir,
             optimize_mode=args.command == "run-test-optimize",
         )
         remote_workspace: str | None = None
         try:
-            if args.remote:
+            if remote is not None:
                 result, archived_result, remote_workspace = run_remote_test(
                     test_file,
                     operator_file,
                     resolved_test_mode,
-                    args.remote,
-                    args.remote_workdir,
+                    remote,
+                    remote_workdir,
                     keep_remote_workdir=args.keep_remote_workdir,
                     verbose=args.verbose,
                     stderr=sys.stderr,
@@ -329,7 +340,7 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             final_code = 1
-        if args.remote and args.keep_remote_workdir:
+        if remote is not None and args.keep_remote_workdir:
             print(f"Remote workspace: {remote_workspace}")
         return final_code
 
@@ -340,13 +351,13 @@ def main(argv: list[str] | None = None) -> int:
         resolved_bench_mode = args.bench_mode or _resolve_bench_mode_from_metadata(bench_file)
         remote_workspace: str | None = None
         try:
-            if args.remote:
+            if remote is not None:
                 result, profile_dir, remote_workspace = run_remote_profile_bench(
                     bench_file,
                     operator_file,
                     resolved_bench_mode,
-                    args.remote,
-                    args.remote_workdir,
+                    remote,
+                    remote_workdir,
                     bench_case=args.bench,
                     case_id=args.case_id,
                     kernel_name=args.kernel_name,
@@ -373,7 +384,7 @@ def main(argv: list[str] | None = None) -> int:
         if profile_dir is not None:
             print(f"Profile directory: {profile_dir}")
             print(_build_profile_report(profile_dir, args.target_op))
-        if args.remote and args.keep_remote_workdir:
+        if remote is not None and args.keep_remote_workdir:
             print(f"Remote workspace: {remote_workspace}")
         return int(result["return_code"])
 
@@ -393,13 +404,13 @@ def main(argv: list[str] | None = None) -> int:
     resolved_bench_mode = args.bench_mode or _resolve_bench_mode_from_metadata(bench_file)
     remote_workspace: str | None = None
     try:
-        if args.remote:
+        if remote is not None:
             result, perf_path, remote_workspace = run_remote_bench(
                 bench_file,
                 operator_file,
                 resolved_bench_mode,
-                args.remote,
-                args.remote_workdir,
+                remote,
+                remote_workdir,
                 args.npu_devices,
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
@@ -419,7 +430,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if result["return_code"] != 0:
         _render_result(result, show_output=False)
-    if args.remote and args.keep_remote_workdir and remote_workspace is not None:
+    if remote is not None and args.keep_remote_workdir and remote_workspace is not None:
         print(f"Remote workspace: {remote_workspace}")
     if perf_path is not None:
         print(f"Perf file: {perf_path}")
@@ -470,6 +481,8 @@ def _resolve_run_test_comparison_inputs(
     test_file: Path,
     run_local_test: RunLocalTestFn,
     run_remote_test: RunRemoteTestFn,
+    remote: str | None,
+    remote_workdir: str | None,
     *,
     optimize_mode: bool,
 ) -> tuple[str, Path | None]:
@@ -491,14 +504,14 @@ def _resolve_run_test_comparison_inputs(
             return compare_level, derived_baseline_result
 
         baseline_mode = resolved_test_mode
-        if args.remote:
+        if remote is not None:
             try:
                 baseline_run_result, archived_result, remote_workspace = run_remote_test(
                     test_file,
                     baseline_operator_file,
                     baseline_mode,
-                    args.remote,
-                    args.remote_workdir,
+                    remote,
+                    remote_workdir,
                     keep_remote_workdir=args.keep_remote_workdir,
                     verbose=args.verbose,
                     stderr=sys.stderr,
@@ -511,7 +524,7 @@ def _resolve_run_test_comparison_inputs(
             print(f"Return code: {baseline_run_result['return_code']}")
             if archived_result is not None:
                 print(f"Archived result: {archived_result}")
-            if args.remote and args.keep_remote_workdir:
+            if args.keep_remote_workdir:
                 print(f"Remote workspace: {remote_workspace}")
             if int(baseline_run_result["return_code"]) != 0 or archived_result is None:
                 raise SystemExit(1)
@@ -555,14 +568,14 @@ def _resolve_run_test_comparison_inputs(
         return compare_level, derived_baseline_result
 
     baseline_mode = resolved_test_mode
-    if args.remote:
+    if remote is not None:
         try:
             baseline_run_result, archived_result, remote_workspace = run_remote_test(
                 test_file,
                 baseline_operator_file,
                 baseline_mode,
-                args.remote,
-                args.remote_workdir,
+                remote,
+                remote_workdir,
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
@@ -575,7 +588,7 @@ def _resolve_run_test_comparison_inputs(
         print(f"Return code: {baseline_run_result['return_code']}")
         if archived_result is not None:
             print(f"Archived result: {archived_result}")
-        if args.remote and args.keep_remote_workdir:
+        if args.keep_remote_workdir:
             print(f"Remote workspace: {remote_workspace}")
         if int(baseline_run_result["return_code"]) != 0 or archived_result is None:
             raise SystemExit(1)
@@ -619,6 +632,14 @@ def _render_result(result: ResultPayload, show_output: bool) -> None:
         print(stderr, file=sys.stderr, end="" if stderr.endswith("\n") else "\n")
 
 
+def _resolve_remote_execution(args: argparse.Namespace) -> tuple[str | None, str | None]:
+    resolve_remote_execution = _load_remote_execution_function()
+    return resolve_remote_execution(
+        getattr(args, "remote", None),
+        getattr(args, "remote_workdir", None),
+    )
+
+
 def _load_test_functions() -> tuple[ParseMetadataFn, RunLocalTestFn, RunRemoteTestFn]:
     with _script_dir_on_path():
         module = importlib.import_module("test_runner")
@@ -657,6 +678,13 @@ def _load_compare_perf_function() -> ComparePerfFn:
         from perf_artifacts import compare_perf_files
 
     return cast(ComparePerfFn, compare_perf_files)
+
+
+def _load_remote_execution_function() -> ResolveRemoteExecutionFn:
+    with _script_dir_on_path():
+        from remote_execution_env import resolve_remote_execution
+
+    return cast(ResolveRemoteExecutionFn, resolve_remote_execution)
 
 
 def _load_profile_functions() -> tuple[RunLocalProfileBenchFn, RunRemoteProfileBenchFn]:
