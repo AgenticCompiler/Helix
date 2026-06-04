@@ -120,6 +120,33 @@ triton-agent pattern-validation-verify -i "$BATCH"
 Fix every reported issue before the prepare agent finishes. The CLI runs the same command
 again before optimize as a hard gate.
 
+## Optional — Simulate optimize plan (fast path, separate from the loop)
+
+Use this **instead of** `pattern-validation-loop` when you only want to check whether staged
+pattern skills align with each workspace **before** spending time on real `optimize-batch`.
+This does **not** modify the loop orchestration.
+
+```bash
+uv run triton-agent pattern-validation-simulate -i "$REPO" \
+  --batch-dir pattern-validation-batch \
+  --skills-dir pattern-validation-skills \
+  --show-output \
+  --agent opencode
+```
+
+Per workspace the CLI:
+
+1. Syncs dependencies and runs `pattern-validation-verify` (use `--skip-verify` to skip).
+2. Launches **one** agent with the same staged optimize skills and workspace layout as
+   `optimize-batch`, but the prompt is a **simulate plan only** (no baseline, no
+   `opt-round-*`, no tests/benches).
+3. Requires `simulate-plan/report.json` with `ranked_patterns` (priority + hit + rationale),
+   `proposed_changes`, and `skills_alignment`.
+
+Batch summary: `$BATCH/simulate-plan-report.json` includes aggregated reports and prints a
+suggested **manual** `optimize-batch` command. Pass `--run-optimize` only when you explicitly
+want the CLI to chain into real optimize after all simulate plans succeed.
+
 ## Phase D — CLI optimize batch
 
 The **CLI** runs `optimize-batch` (not the prepare/analyze agents). It injects a prompt that

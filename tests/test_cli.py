@@ -366,6 +366,7 @@ class CliParserTests(unittest.TestCase):
             ("pattern_validation_loop", CommandKind.PATTERN_VALIDATION_LOOP),
             ("pattern_validation_verify", CommandKind.PATTERN_VALIDATION_VERIFY),
             ("pattern_validation_plan", CommandKind.PATTERN_VALIDATION_PLAN),
+            ("pattern_validation_simulate", CommandKind.PATTERN_VALIDATION_SIMULATE),
         ]
 
         for alias, expected_kind in cases:
@@ -378,6 +379,11 @@ class CliParserTests(unittest.TestCase):
                 elif expected_kind == CommandKind.VERIFY_BATCH:
                     argv = [alias, "-i", "workspace-root"]
                 elif expected_kind == CommandKind.CONVERT_BATCH:
+                    argv = [alias, "-i", "workspace-root"]
+                elif expected_kind in {
+                    CommandKind.PATTERN_VALIDATION_VERIFY,
+                    CommandKind.PATTERN_VALIDATION_SIMULATE,
+                }:
                     argv = [alias, "-i", "workspace-root"]
                 args = parser.parse_args(_normalize_command_aliases(argv))
                 self.assertEqual(args.command_kind, expected_kind)

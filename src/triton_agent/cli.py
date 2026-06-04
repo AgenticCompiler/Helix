@@ -25,6 +25,7 @@ from triton_agent.commands.report_batch import handle_report_batch
 from triton_agent.commands.report import handle_report
 from triton_agent.commands.pattern_validation_loop import handle_pattern_validation_loop
 from triton_agent.commands.pattern_validation_plan import handle_pattern_validation_plan
+from triton_agent.commands.pattern_validation_simulate import handle_pattern_validation_simulate
 from triton_agent.commands.pattern_validation_verify import handle_pattern_validation_verify
 from triton_agent.models import CommandKind
 
@@ -178,6 +179,7 @@ class _CommandSpec:
     has_url: bool = False
     has_pattern_validation_loop_options: bool = False
     has_pattern_validation_plan_options: bool = False
+    has_pattern_validation_simulate_options: bool = False
 
 
 _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
@@ -426,6 +428,21 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         ),
         has_output=False,
         has_pattern_validation_plan_options=True,
+    ),
+    CommandKind.PATTERN_VALIDATION_SIMULATE: _CommandSpec(
+        handler=handle_pattern_validation_simulate,
+        help_group="Optimization",
+        help_summary="Dry-run optimize planning per validation workspace (pattern hits + priorities).",
+        description=(
+            "Run one simulate-plan agent per workspace with the same skills and layout as "
+            "optimize-batch, writing simulate-plan/report.json and a batch summary. "
+            "Does not run optimize-batch unless --run-optimize is passed."
+        ),
+        has_output=False,
+        has_agent=True,
+        has_show_output=True,
+        has_prompt=True,
+        has_pattern_validation_simulate_options=True,
     ),
     CommandKind.OPTIMIZE_BATCH: _CommandSpec(
         handler=handle_optimize_batch,
@@ -677,6 +694,50 @@ def build_parser() -> argparse.ArgumentParser:
                 action="store_true",
                 help="Emit machine-readable JSON scaffold verification report.",
             )
+        if spec.has_pattern_validation_simulate_options:
+            subparser.add_argument(
+                "--batch-dir",
+                default="pattern-validation-batch",
+                help="Batch root with validation workspaces (default: pattern-validation-batch).",
+            )
+            subparser.add_argument(
+                "--skills-dir",
+                default="pattern-validation-skills",
+                help="Persistent skills workdir used as --skills-source-dir for simulate and optimize.",
+            )
+            subparser.add_argument(
+                "--optimize-knowledge",
+                default="v1",
+                choices=_OPTIMIZE_KNOWLEDGE_CHOICES,
+            )
+            subparser.add_argument(
+                "--target-chip",
+                default="A5",
+                choices=("A3", "A5"),
+            )
+            subparser.add_argument(
+                "--test-mode",
+                default=None,
+                choices=_TEST_MODE_CHOICES,
+            )
+            subparser.add_argument(
+                "--bench-mode",
+                default=None,
+                choices=_BENCH_MODE_CHOICES,
+            )
+            subparser.add_argument(
+                "--skip-verify",
+                action="store_true",
+                help="Skip pattern-validation-verify before simulate agents.",
+            )
+            subparser.add_argument(
+                "--run-optimize",
+                action="store_true",
+                help=(
+                    "After all simulate plans succeed, run real optimize-batch on the same batch. "
+                    "Default is manual: the command prints the suggested optimize-batch invocation."
+                ),
+            )
         if spec.has_pattern_validation_plan_options:
             subparser.add_argument(
                 "--knowledge",
@@ -829,6 +890,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "pattern_validation_loop": "pattern-validation-loop",
         "pattern_validation_verify": "pattern-validation-verify",
         "pattern_validation_plan": "pattern-validation-plan",
+        "pattern_validation_simulate": "pattern-validation-simulate",
     }
     normalized = list(argv)
     normalized[0] = aliases.get(normalized[0], normalized[0])
