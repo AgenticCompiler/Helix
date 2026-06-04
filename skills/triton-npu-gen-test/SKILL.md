@@ -59,9 +59,9 @@ The generated test file must include a short metadata header near the top of the
 
 Use the `triton-npu-run-eval` skill to validate generated tests.
 
-- Standalone: run `run-test` with `--test-mode standalone`.
-- Differential: run `run-test` with `--test-mode differential`.
-- Differential one-command compare: when you already have an oracle payload, run `run-test` with `--oracle-result <oracle_result.pt>` so the command executes the test and archived-result comparison together.
+- Standalone or baseline differential validation: run `run-test-baseline`.
+- Optimize differential validation: run `run-test-optimize`.
+- Differential one-command compare: run `run-test-optimize` with `--baseline-operator-file <baseline_operator.py>` so the command can derive or auto-produce the baseline `.pt` payload before comparing.
 - Differential manual compare: keep `compare-result` for reruns or for cases where you already have both archived payloads.
 - If validation is remote, carry the same remote flags through the relevant command path.
 
@@ -69,7 +69,7 @@ Use the `triton-npu-run-eval` skill to validate generated tests.
 
 1. Read the operator code, resolve the supported public entrypoint, and read the selected spec.
 2. Generate the test file to match the selected spec exactly.
-3. Validate with `run-test`; if the task is differential and an oracle payload is already available, prefer the one-command `--oracle-result` flow.
+3. Validate with `run-test-baseline`; if the task is optimize differential, prefer `run-test-optimize --baseline-operator-file ...`.
 4. If validation fails, repair the test and repeat.
    - For Triton Ascend compile, JIT, launch, or kernel-side failures, consult the `triton-npu-repair-guide` skill as a diagnostic reference before deciding on the smallest safe test-side change.
    - This workflow still owns only the generated test file. Do not treat `triton-npu-repair-guide` as permission to edit the operator file here.

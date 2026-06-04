@@ -720,7 +720,7 @@ def _classify_command(command: str) -> str:
         return "check_baseline"
     if "check-round" in lower:
         return "check_round"
-    if "run-test" in lower or "pytest" in lower or "differential_test_" in lower:
+    if "run-test" in lower or "run-test-baseline" in lower or "run-test-optimize" in lower or "pytest" in lower or "differential_test_" in lower:
         return "correctness_test"
     if "run-bench" in lower or "bench_" in lower:
         if "ssh" in lower or _command_has_remote(command):

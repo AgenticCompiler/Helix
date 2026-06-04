@@ -868,7 +868,7 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(gen_args.test_mode, "standalone")
         self.assertIsNone(run_args.test_mode)
 
-    def test_run_test_accepts_oracle_result_and_compare_level(self) -> None:
+    def test_run_test_accepts_baseline_result_and_compare_level(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
             [
@@ -877,14 +877,31 @@ class CliParserTests(unittest.TestCase):
                 "differential_test_kernel.py",
                 "--operator-file",
                 "kernel.py",
-                "--oracle-result",
-                "oracle_result.pt",
+                "--baseline-result",
+                "baseline_result.pt",
                 "--compare-level",
                 "strict",
             ]
         )
-        self.assertEqual(args.oracle_result, "oracle_result.pt")
+        self.assertEqual(args.baseline_result, "baseline_result.pt")
+        self.assertIsNone(args.baseline_operator_file)
         self.assertEqual(args.compare_level, "strict")
+
+    def test_run_test_accepts_baseline_operator_file(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run-test",
+                "--test-file",
+                "differential_test_kernel.py",
+                "--operator-file",
+                "opt_kernel.py",
+                "--baseline-operator-file",
+                "kernel.py",
+            ]
+        )
+        self.assertIsNone(args.baseline_result)
+        self.assertEqual(args.baseline_operator_file, "kernel.py")
 
     def test_gen_eval_defaults_to_differential_test_mode(self) -> None:
         parser = build_parser()
@@ -3683,16 +3700,16 @@ class PathResolutionTests(unittest.TestCase):
                 ),
             )
 
-    def test_main_run_test_auto_compares_differential_result_when_oracle_provided(self) -> None:
+    def test_main_run_test_auto_compares_differential_result_when_baseline_result_provided(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
             test_file = root / "differential_test_kernel.py"
             archive = root / "kernel_result.pt"
-            oracle = root / "oracle_result.pt"
+            baseline_result = root / "baseline_result.pt"
             operator.write_text("print('x')", encoding="utf-8")
             test_file.write_text("# test-mode: differential\nprint('test')", encoding="utf-8")
-            oracle.write_text("oracle", encoding="utf-8")
+            baseline_result.write_text("baseline", encoding="utf-8")
 
             stdout = StringIO()
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
@@ -3702,21 +3719,21 @@ class PathResolutionTests(unittest.TestCase):
                     with redirect_stdout(stdout):
                         exit_code = main(
                             [
-                                "run-test",
-                                "--test-file",
-                                str(test_file),
-                                "--operator-file",
-                                str(operator),
-                                "--test-mode",
-                                "differential",
-                                "--oracle-result",
-                                str(oracle),
-                            ]
-                        )
+                            "run-test",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                            "--test-mode",
+                            "differential",
+                            "--baseline-result",
+                            str(baseline_result),
+                        ]
+                    )
 
             self.assertEqual(exit_code, 1)
             compare_mock.assert_called_once_with(
-                oracle.resolve(),
+                baseline_result.resolve(),
                 archive,
                 "balanced",
             )

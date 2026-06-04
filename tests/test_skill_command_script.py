@@ -443,7 +443,58 @@ class SkillCommandScriptTests(unittest.TestCase):
         )
         self.assertEqual(stderr.getvalue(), "")
 
-    def test_script_run_test_auto_compares_when_oracle_result_is_provided(self) -> None:
+    def test_script_run_test_rejects_removed_oracle_result_flag(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            oracle = root / "oracle_result.pt"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            oracle.write_text("oracle\n", encoding="utf-8")
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with self.assertRaises(SystemExit) as exc:
+                    module.main(
+                        [
+                            "run-test",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                            "--test-mode",
+                            "differential",
+                            "--oracle-result",
+                            str(oracle),
+                        ]
+                    )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn("--oracle-result", stderr.getvalue())
+
+    def test_script_run_test_auto_compares_when_baseline_result_is_provided(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
@@ -462,10 +513,10 @@ class SkillCommandScriptTests(unittest.TestCase):
             operator = root / "kernel.py"
             test_file = root / "differential_test_kernel.py"
             archive = root / "kernel_result.pt"
-            oracle = root / "oracle_result.pt"
+            baseline_result = root / "baseline_result.pt"
             operator.write_text("print('x')\n", encoding="utf-8")
             test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
-            oracle.write_text("oracle\n", encoding="utf-8")
+            baseline_result.write_text("baseline\n", encoding="utf-8")
 
             def fake_run_local_test(
                 test_path: Path,
@@ -477,7 +528,6 @@ class SkillCommandScriptTests(unittest.TestCase):
                 self.assertEqual(test_path, test_file.resolve())
                 self.assertEqual(operator_path, operator.resolve())
                 self.assertEqual(test_mode, "differential")
-                self.assertFalse(verbose)
                 return (
                     {
                         "return_code": 0,
@@ -509,9 +559,9 @@ class SkillCommandScriptTests(unittest.TestCase):
                         module,
                         "_load_compare_result_functions",
                         return_value=(
-                            lambda oracle_path, new_path, compare_level: (
+                            lambda baseline_path, new_path, compare_level: (
                                 0
-                                if oracle_path == oracle.resolve()
+                                if baseline_path == baseline_result.resolve()
                                 and new_path == archive
                                 and compare_level == "balanced"
                                 else 2
@@ -526,10 +576,215 @@ class SkillCommandScriptTests(unittest.TestCase):
                                 str(test_file),
                                 "--operator-file",
                                 str(operator),
-                                "--test-mode",
-                                "differential",
-                                "--oracle-result",
-                                str(oracle),
+                                "--baseline-result",
+                                str(baseline_result),
+                            ]
+                        )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout.getvalue(), f"Return code: 0\nArchived result: {archive}\n")
+        self.assertEqual(stderr.getvalue(), "")
+
+    def test_script_run_test_uses_existing_derived_baseline_result(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline_operator = root / "baseline.py"
+            operator = root / "kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            archive = root / "kernel_result.pt"
+            derived_baseline_result = root / "baseline_result.pt"
+            baseline_operator.write_text("print('baseline')\n", encoding="utf-8")
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            derived_baseline_result.write_text("baseline\n", encoding="utf-8")
+
+            observed_calls: list[tuple[str, Path, Path, str]] = []
+
+            def fake_run_local_test(
+                test_path: Path,
+                operator_path: Path,
+                test_mode: str,
+                verbose: bool = False,
+                force_recompile: bool = False,
+            ) -> tuple[dict[str, object], Path]:
+                observed_calls.append(("local", test_path, operator_path, test_mode))
+                self.assertEqual(test_path, test_file.resolve())
+                self.assertEqual(operator_path, operator.resolve())
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    archive,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_test_functions",
+                    return_value=(
+                        lambda _path: {"test-mode": "differential"},
+                        fake_run_local_test,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ):
+                    with patch.object(
+                        module,
+                        "_load_compare_result_functions",
+                        return_value=(
+                            lambda baseline_path, new_path, compare_level: (
+                                0
+                                if baseline_path == derived_baseline_result.resolve()
+                                and new_path == archive
+                                and compare_level == "balanced"
+                                else 2
+                            ),
+                            lambda *_args, **_kwargs: 0,
+                        ),
+                    ):
+                        exit_code = module.main(
+                            [
+                                "run-test",
+                                "--test-file",
+                                str(test_file),
+                                "--operator-file",
+                                str(operator),
+                                "--baseline-operator-file",
+                                str(baseline_operator),
+                            ]
+                        )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(observed_calls, [("local", test_file.resolve(), operator.resolve(), "differential")])
+        self.assertEqual(stdout.getvalue(), f"Return code: 0\nArchived result: {archive}\n")
+        self.assertEqual(stderr.getvalue(), "")
+
+    def test_script_run_test_auto_runs_baseline_when_derived_result_missing(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline_operator = root / "baseline.py"
+            operator = root / "kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            baseline_archive = root / "baseline_result.pt"
+            archive = root / "kernel_result.pt"
+            baseline_operator.write_text("print('baseline')\n", encoding="utf-8")
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+
+            observed_calls: list[tuple[Path, Path, str]] = []
+
+            def fake_run_local_test(
+                test_path: Path,
+                operator_path: Path,
+                test_mode: str,
+                verbose: bool = False,
+                force_recompile: bool = False,
+            ) -> tuple[dict[str, object], Path]:
+                observed_calls.append((test_path, operator_path, test_mode))
+                if operator_path == baseline_operator.resolve():
+                    baseline_archive.write_text("baseline\n", encoding="utf-8")
+                    return (
+                        {
+                            "return_code": 0,
+                            "stdout": "",
+                            "stderr": "",
+                            "stalled": False,
+                            "session_id": None,
+                        },
+                        baseline_archive,
+                    )
+                self.assertEqual(operator_path, operator.resolve())
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    archive,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_test_functions",
+                    return_value=(
+                        lambda _path: {"test-mode": "differential"},
+                        fake_run_local_test,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ):
+                    with patch.object(
+                        module,
+                        "_load_compare_result_functions",
+                        return_value=(
+                            lambda baseline_path, new_path, compare_level: (
+                                0
+                                if baseline_path == baseline_archive.resolve()
+                                and new_path == archive
+                                and compare_level == "balanced"
+                                else 2
+                            ),
+                            lambda *_args, **_kwargs: 0,
+                        ),
+                    ):
+                        exit_code = module.main(
+                            [
+                                "run-test",
+                                "--test-file",
+                                str(test_file),
+                                "--operator-file",
+                                str(operator),
+                                "--baseline-operator-file",
+                                str(baseline_operator),
                             ]
                         )
             finally:
@@ -538,12 +793,488 @@ class SkillCommandScriptTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(
-            stdout.getvalue(),
-            (
-                "Return code: 0\n"
-                f"Archived result: {archive}\n"
-            ),
+            observed_calls,
+            [
+                (test_file.resolve(), baseline_operator.resolve(), "differential"),
+                (test_file.resolve(), operator.resolve(), "differential"),
+            ],
         )
+        self.assertIn(f"Archived result: {baseline_archive}\n", stdout.getvalue())
+        self.assertIn(f"Archived result: {archive}\n", stdout.getvalue())
+        self.assertEqual(stderr.getvalue(), "")
+
+    def test_run_test_baseline_parser_accepts_test_flags(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        args = module.build_parser().parse_args(
+            [
+                "run-test-baseline",
+                "--test-file",
+                "test_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--test-mode",
+                "standalone",
+            ]
+        )
+
+        self.assertEqual(args.command, "run-test-baseline")
+        self.assertEqual(args.test_file, "test_kernel.py")
+        self.assertEqual(args.operator_file, "kernel.py")
+        self.assertEqual(args.test_mode, "standalone")
+
+    def test_script_run_test_optimize_requires_baseline_source_in_differential_mode(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "opt_kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+
+            stderr = StringIO()
+            original_stderr = sys.stderr
+            try:
+                sys.stderr = stderr
+                with self.assertRaises(SystemExit) as exc:
+                    module.main(
+                        [
+                            "run-test-optimize",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                            "--test-mode",
+                            "differential",
+                        ]
+                    )
+            finally:
+                sys.stderr = original_stderr
+
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn("requires exactly one of --baseline-result or --baseline-operator-file", stderr.getvalue())
+
+    def test_script_run_test_optimize_requires_baseline_source_for_differential_metadata(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "opt_kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+
+            stderr = StringIO()
+            original_stderr = sys.stderr
+            try:
+                sys.stderr = stderr
+                with self.assertRaises(SystemExit) as exc:
+                    module.main(
+                        [
+                            "run-test-optimize",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                        ]
+                    )
+            finally:
+                sys.stderr = original_stderr
+
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn("requires exactly one of --baseline-result or --baseline-operator-file", stderr.getvalue())
+
+    def test_script_run_test_optimize_rejects_both_baseline_result_and_operator_file(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "opt_kernel.py"
+            baseline_operator = root / "kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            baseline_operator.write_text("print('baseline')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            baseline_result = root / "kernel_result.pt"
+            baseline_result.write_text("baseline\n", encoding="utf-8")
+
+            stderr = StringIO()
+            original_stderr = sys.stderr
+            try:
+                sys.stderr = stderr
+                with self.assertRaises(SystemExit) as exc:
+                    module.main(
+                        [
+                            "run-test-optimize",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                            "--baseline-result",
+                            str(baseline_result),
+                            "--baseline-operator-file",
+                            str(baseline_operator),
+                        ]
+                    )
+            finally:
+                sys.stderr = original_stderr
+
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn("requires exactly one of --baseline-result or --baseline-operator-file", stderr.getvalue())
+
+    def test_script_run_test_optimize_auto_compares_when_baseline_result_is_provided(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "opt_kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            archive = root / "opt_kernel_result.pt"
+            baseline_result = root / "kernel_result.pt"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            baseline_result.write_text("baseline\n", encoding="utf-8")
+
+            def fake_run_local_test(
+                test_path: Path,
+                operator_path: Path,
+                test_mode: str,
+                verbose: bool = False,
+                force_recompile: bool = False,
+            ) -> tuple[dict[str, object], Path]:
+                self.assertEqual(test_path, test_file.resolve())
+                self.assertEqual(operator_path, operator.resolve())
+                self.assertEqual(test_mode, "differential")
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    archive,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_test_functions",
+                    return_value=(
+                        lambda _path: {"test-mode": "differential"},
+                        fake_run_local_test,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ):
+                    with patch.object(
+                    module,
+                    "_load_compare_result_functions",
+                    return_value=(
+                            lambda baseline_path, new_path, compare_level: (
+                                0
+                                if baseline_path == baseline_result.resolve()
+                                and new_path == archive
+                                and compare_level == "balanced"
+                                else 2
+                            ),
+                            lambda *_args, **_kwargs: 0,
+                        ),
+                    ):
+                        exit_code = module.main(
+                            [
+                                "run-test-optimize",
+                                "--test-file",
+                                str(test_file),
+                                "--operator-file",
+                                str(operator),
+                                "--baseline-result",
+                                str(baseline_result),
+                            ]
+                        )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout.getvalue(), f"Return code: 0\nArchived result: {archive}\n")
+        self.assertEqual(stderr.getvalue(), "")
+
+    def test_script_run_test_optimize_uses_existing_derived_baseline_result(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline_operator = root / "kernel.py"
+            operator = root / "opt_kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            archive = root / "opt_kernel_result.pt"
+            derived_baseline_result = root / "kernel_result.pt"
+            baseline_operator.write_text("print('baseline')\n", encoding="utf-8")
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            derived_baseline_result.write_text("baseline\n", encoding="utf-8")
+
+            observed_calls: list[tuple[str, Path, Path, str]] = []
+
+            def fake_run_local_test(
+                test_path: Path,
+                operator_path: Path,
+                test_mode: str,
+                verbose: bool = False,
+                force_recompile: bool = False,
+            ) -> tuple[dict[str, object], Path]:
+                observed_calls.append(("local", test_path, operator_path, test_mode))
+                self.assertEqual(test_path, test_file.resolve())
+                self.assertEqual(operator_path, operator.resolve())
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    archive,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_test_functions",
+                    return_value=(
+                        lambda _path: {"test-mode": "differential"},
+                        fake_run_local_test,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ):
+                    with patch.object(
+                        module,
+                        "_load_compare_result_functions",
+                        return_value=(
+                            lambda baseline_path, new_path, compare_level: (
+                                0
+                                if baseline_path == derived_baseline_result.resolve()
+                                and new_path == archive
+                                and compare_level == "balanced"
+                                else 2
+                            ),
+                            lambda *_args, **_kwargs: 0,
+                        ),
+                    ):
+                        exit_code = module.main(
+                            [
+                                "run-test-optimize",
+                                "--test-file",
+                                str(test_file),
+                                "--operator-file",
+                                str(operator),
+                                "--baseline-operator-file",
+                                str(baseline_operator),
+                            ]
+                        )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(observed_calls, [("local", test_file.resolve(), operator.resolve(), "differential")])
+        self.assertEqual(stdout.getvalue(), f"Return code: 0\nArchived result: {archive}\n")
+        self.assertEqual(stderr.getvalue(), "")
+
+    def test_script_run_test_optimize_auto_runs_baseline_when_derived_result_missing(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline_operator = root / "kernel.py"
+            operator = root / "opt_kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            baseline_archive = root / "kernel_result.pt"
+            optimize_archive = root / "opt_kernel_result.pt"
+            baseline_operator.write_text("print('baseline')\n", encoding="utf-8")
+            operator.write_text("print('opt')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+
+            observed_calls: list[tuple[Path, Path, str]] = []
+
+            def fake_run_local_test(
+                test_path: Path,
+                operator_path: Path,
+                test_mode: str,
+                verbose: bool = False,
+                force_recompile: bool = False,
+            ) -> tuple[dict[str, object], Path]:
+                observed_calls.append((test_path, operator_path, test_mode))
+                if operator_path == baseline_operator.resolve():
+                    baseline_archive.write_text("baseline\n", encoding="utf-8")
+                    return (
+                        {
+                            "return_code": 0,
+                            "stdout": "",
+                            "stderr": "",
+                            "stalled": False,
+                            "session_id": None,
+                        },
+                        baseline_archive,
+                    )
+                self.assertEqual(operator_path, operator.resolve())
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    optimize_archive,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_test_functions",
+                    return_value=(
+                        lambda _path: {"test-mode": "differential"},
+                        fake_run_local_test,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ):
+                    with patch.object(
+                        module,
+                        "_load_compare_result_functions",
+                        return_value=(
+                            lambda baseline_path, new_path, compare_level: (
+                                0
+                                if baseline_path == baseline_archive.resolve()
+                                and new_path == optimize_archive
+                                and compare_level == "balanced"
+                                else 2
+                            ),
+                            lambda *_args, **_kwargs: 0,
+                        ),
+                    ):
+                        exit_code = module.main(
+                            [
+                                "run-test-optimize",
+                                "--test-file",
+                                str(test_file),
+                                "--operator-file",
+                                str(operator),
+                                "--baseline-operator-file",
+                                str(baseline_operator),
+                            ]
+                        )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            observed_calls,
+            [
+                (test_file.resolve(), baseline_operator.resolve(), "differential"),
+                (test_file.resolve(), operator.resolve(), "differential"),
+            ],
+        )
+        self.assertIn(f"Archived result: {baseline_archive}\n", stdout.getvalue())
+        self.assertIn(f"Archived result: {optimize_archive}\n", stdout.getvalue())
+        self.assertEqual(stderr.getvalue(), "")
 
     def test_script_run_test_threads_verbose_to_local_runner(self) -> None:
         script = (
@@ -641,9 +1372,11 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertIn("run-command.py", completed.stdout)
         self.assertNotIn("usage: triton-agent", completed.stdout)
         self.assertIn("run-test", completed.stdout)
+        self.assertIn("run-test-baseline", completed.stdout)
+        self.assertIn("run-test-optimize", completed.stdout)
         self.assertIn("compare-perf", completed.stdout)
         self.assertIn("profile-bench", completed.stdout)
-        self.assertNotIn("optimize", completed.stdout)
+        self.assertNotIn("usage: run-command.py optimize", completed.stdout)
         self.assertNotIn("gen-test", completed.stdout)
 
     def test_script_resolves_real_repo_root_when_called_through_symlink(self) -> None:
@@ -692,6 +1425,27 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertIn("--test-file", completed.stdout)
         self.assertIn("--operator-file", completed.stdout)
         self.assertIn("--keep-remote-workdir", completed.stdout)
+
+    def test_script_exposes_run_test_optimize_help(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        completed = subprocess.run(
+            [sys.executable, str(script), "run-test-optimize", "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0)
+        self.assertIn("usage: run-command.py run-test-optimize", completed.stdout)
+        self.assertNotIn("--oracle-result", completed.stdout)
+        self.assertIn("--baseline-result", completed.stdout)
+        self.assertIn("--baseline-operator-file", completed.stdout)
+        self.assertIn("--test-mode", completed.stdout)
 
     def test_script_exposes_profile_bench_help(self) -> None:
         script = (
