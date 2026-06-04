@@ -120,32 +120,39 @@ triton-agent pattern-validation-verify -i "$BATCH"
 Fix every reported issue before the prepare agent finishes. The CLI runs the same command
 again before optimize as a hard gate.
 
-## Optional — Simulate optimize plan (fast path, separate from the loop)
+## Simulate optimize plan loop (separate from pattern-validation-loop)
 
-Use this **instead of** `pattern-validation-loop` when you only want to check whether staged
-pattern skills align with each workspace **before** spending time on real `optimize-batch`.
-This does **not** modify the loop orchestration.
+Use `pattern-validation-simulate` when you want to iterate on **pattern skills** using dry-run
+simulate agents **before** real `optimize-batch`. This does **not** modify
+`pattern-validation-loop`.
 
 ```bash
 uv run triton-agent pattern-validation-simulate -i "$REPO" \
   --batch-dir pattern-validation-batch \
   --skills-dir pattern-validation-skills \
+  --max-iterations 5 \
   --show-output \
   --agent opencode
 ```
 
-Per workspace the CLI:
+Each iteration:
 
-1. Syncs dependencies and runs `pattern-validation-verify` (use `--skip-verify` to skip).
-2. Launches **one** agent with the same staged optimize skills and workspace layout as
-   `optimize-batch`, but the prompt is a **simulate plan only** (no baseline, no
-   `opt-round-*`, no tests/benches).
-3. Requires `simulate-plan/report.json` with `ranked_patterns` (priority + hit + rationale),
-   `proposed_changes`, and `skills_alignment`.
+1. Sync deps; `pattern-validation-verify` on iteration 1 only (`--skip-verify` to skip).
+2. **Simulate agents** (one per workspace): same inputs as optimize, write
+   `simulate-plan/report.json` with `ranked_patterns` (priority, hit, rationale) and
+   `skills_alignment`.
+3. If all workspaces report `skills_alignment: aligned`, the loop completes.
+4. Otherwise a **skill-audit agent** reads `$BATCH/simulate-plan-report.json`, edits
+   `$SKILLS/triton-npu-optimize-knowledge/references/patterns/`, regenerates
+   `pattern_index.md`, and may mark `.triton-agent/pattern-validation-simulate-state.json`
+   complete.
+5. Repeat until aligned or `--max-iterations`.
 
-Batch summary: `$BATCH/simulate-plan-report.json` includes aggregated reports and prints a
-suggested **manual** `optimize-batch` command. Pass `--run-optimize` only when you explicitly
-want the CLI to chain into real optimize after all simulate plans succeed.
+State file: `.triton-agent/pattern-validation-simulate-state.json`.
+
+After completion the CLI prints a suggested **manual** `optimize-batch` command. Pass
+`--run-optimize` only when you want the CLI to run real optimize after the simulate loop.
+Use `--max-iterations 1` for one simulate pass only (skill-audit still runs if not aligned).
 
 ## Phase D — CLI optimize batch
 

@@ -144,3 +144,79 @@ def build_simulate_plan_prompt(
         build_pattern_validation_optimize_reference_test_prompt(),
     )
     return append_additional_user_instructions(base, user_prompt)
+
+
+def build_simulate_skill_audit_prompt(
+    *,
+    repo_path: Path,
+    batch_dir: Path,
+    skills_workdir: Path,
+    state_path: Path,
+    simulate_report_path: Path,
+    iteration: int,
+    max_iterations: int,
+    skill_root: Path,
+    knowledge_root: Path,
+    record_script: Path,
+) -> str:
+    return f"""\
+Review simulate-plan reports and update pattern skills before another simulate iteration.
+
+Read:
+
+  {skill_root.as_posix()}/SKILL.md
+  {skill_root.as_posix()}/references/skill-update-contract.md
+  {simulate_report_path.as_posix()}
+  {knowledge_root.as_posix()}/references/pattern_index.md
+
+Repository root:
+
+  {repo_path.as_posix()}
+
+Batch root:
+
+  {batch_dir.as_posix()}
+
+Skills workdir (edit pattern cards here only):
+
+  {skills_workdir.as_posix()}
+
+Simulate loop state:
+
+  {state_path.as_posix()}
+
+Current iteration: {iteration} / {max_iterations}
+
+Required steps:
+
+1. Read `{simulate_report_path.as_posix()}`. For each workspace, compare `ranked_patterns`, \
+`skills_alignment`, and `skill_edit_notes` against `expected_patterns` in the embedded simulate reports.
+2. Update pattern cards under `{knowledge_root.as_posix()}/references/patterns/` when simulate plans show \
+`partial` or `mismatch`, or when pattern cards would mislead a real optimize worker.
+3. Regenerate the pattern index:
+
+   python3 {knowledge_root.as_posix()}/scripts/build_pattern_index.py \\
+     --patterns-dir {knowledge_root.as_posix()}/references/patterns \\
+     --output {knowledge_root.as_posix()}/references/pattern_index.md
+
+4. Record this skill-audit pass:
+
+   python3 {record_script.as_posix()} \\
+     --state {state_path.as_posix()} --phase skill-audit \\
+     --note "updated pattern cards from simulate-plan-report"
+
+5. If **every** workspace simulate report has `skills_alignment: aligned` and simulate agents succeeded, \
+mark the simulate loop complete:
+
+   python3 {record_script.as_posix()} \\
+     --state {state_path.as_posix()} --phase complete \\
+     --note "all workspaces aligned after skill audit"
+
+   Otherwise stop without `--phase complete` so the CLI runs another simulate iteration with updated skills.
+
+Rules:
+
+- Do not run `optimize-batch` or modify operator workspaces.
+- Do not edit staged backend install skills; only `{skills_workdir.as_posix()}`.
+- Do not hand-edit `pattern_index.md`.
+"""

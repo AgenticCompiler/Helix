@@ -59,6 +59,7 @@ class SimulatePlanConfig:
     show_output: bool
     skip_verify: bool
     run_optimize_after: bool
+    max_iterations: int = 5
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,7 @@ def build_simulate_plan_config(
     show_output: bool = True,
     skip_verify: bool = False,
     run_optimize_after: bool = False,
+    max_iterations: int = 5,
 ) -> SimulatePlanConfig:
     repo_root = resolve_git_worktree(target_path)
     batch_path = resolve_repo_path(repo_root, batch_dir)
@@ -106,6 +108,7 @@ def build_simulate_plan_config(
         show_output=show_output,
         skip_verify=skip_verify,
         run_optimize_after=run_optimize_after,
+        max_iterations=max(1, max_iterations),
     )
 
 
@@ -231,43 +234,14 @@ def run_simulate_plan_request(
     return 1
 
 
-def run_simulate_plan_batch(
+def run_simulate_workspace_agents(
     config: SimulatePlanConfig,
     *,
     stream: TextIO | None = None,
-) -> tuple[int, Path]:
+) -> tuple[list[WorkspaceSimulateResult], int]:
     out = stream or sys.stderr
-    batch_path = config.batch_path
-    if not batch_path.is_dir():
-        print(
-            f"[pattern-validation-simulate] batch directory not found: {batch_path}",
-            file=sys.stderr,
-        )
-        return 2, batch_path / BATCH_SIMULATE_REPORT_FILENAME
-
-    sync_code = sync_batch_workspace_dependencies(
-        batch_path,
-        config.repo_root,
-        stream=out,
-    )
-    if sync_code != 0:
-        print(
-            "[pattern-validation-simulate] dependency sync failed; fix imports before simulate.",
-            file=sys.stderr,
-        )
-        return sync_code, batch_path / BATCH_SIMULATE_REPORT_FILENAME
-
-    if not config.skip_verify:
-        verify_code = run_pattern_validation_verify(batch_path, stream=out)
-        if verify_code != 0:
-            print(
-                "[pattern-validation-simulate] scaffold verify failed; fix workspaces first.",
-                file=sys.stderr,
-            )
-            return verify_code, batch_path / BATCH_SIMULATE_REPORT_FILENAME
-
     discovered, failures = discover_batch_workspaces(
-        batch_path,
+        config.batch_path,
         resolve_operator_file=resolve_batch_optimize_operator_file,
         no_candidate_message=NO_CANDIDATE_OPERATOR_FILE,
     )
@@ -312,14 +286,66 @@ def run_simulate_plan_batch(
                 ),
             )
 
-    batch_report_path = write_batch_simulate_report(batch_path, results)
+    failed = [item for item in results if item.status != "ok"]
+    return results, 1 if failed else 0
+
+
+def prepare_simulate_batch(
+    config: SimulatePlanConfig,
+    *,
+    stream: TextIO | None = None,
+    run_verify: bool = True,
+) -> int:
+    out = stream or sys.stderr
+    if not config.batch_path.is_dir():
+        print(
+            f"[pattern-validation-simulate] batch directory not found: {config.batch_path}",
+            file=sys.stderr,
+        )
+        return 2
+
+    sync_code = sync_batch_workspace_dependencies(
+        config.batch_path,
+        config.repo_root,
+        stream=out,
+    )
+    if sync_code != 0:
+        print(
+            "[pattern-validation-simulate] dependency sync failed; fix imports before simulate.",
+            file=sys.stderr,
+        )
+        return sync_code
+
+    if run_verify and not config.skip_verify:
+        verify_code = run_pattern_validation_verify(config.batch_path, stream=out)
+        if verify_code != 0:
+            print(
+                "[pattern-validation-simulate] scaffold verify failed; fix workspaces first.",
+                file=sys.stderr,
+            )
+            return verify_code
+    return 0
+
+
+def run_simulate_plan_batch(
+    config: SimulatePlanConfig,
+    *,
+    stream: TextIO | None = None,
+    run_prepare: bool = True,
+) -> tuple[int, Path]:
+    out = stream or sys.stderr
+    batch_report_path = config.batch_path / BATCH_SIMULATE_REPORT_FILENAME
+    if run_prepare:
+        prep_code = prepare_simulate_batch(config, stream=out)
+        if prep_code != 0:
+            return prep_code, batch_report_path
+
+    results, agent_code = run_simulate_workspace_agents(config, stream=out)
+    batch_report_path = write_batch_simulate_report(config.batch_path, results)
     failed = [item for item in results if item.status != "ok"]
     print_batch_summary(config, batch_report_path, failed_count=len(failed), stream=out)
 
-    exit_code = 1 if failed else 0
-    if config.run_optimize_after and exit_code == 0:
-        optimize_code = _run_follow_up_optimize_batch(config, stream=out)
-        return optimize_code, batch_report_path
+    exit_code = 1 if agent_code != 0 else 0
     return exit_code, batch_report_path
 
 
@@ -356,6 +382,32 @@ def write_batch_simulate_report(
     report_path = batch_path / BATCH_SIMULATE_REPORT_FILENAME
     report_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return report_path
+
+
+def load_batch_simulate_report(batch_path: Path) -> dict[str, Any] | None:
+    report_path = batch_path / BATCH_SIMULATE_REPORT_FILENAME
+    if not report_path.is_file():
+        return None
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    return payload if isinstance(payload, dict) else None
+
+
+def batch_report_skills_aligned(payload: dict[str, Any]) -> bool:
+    workspaces = payload.get("workspaces")
+    if not isinstance(workspaces, list) or not workspaces:
+        return False
+    for entry in workspaces:
+        if not isinstance(entry, dict):
+            return False
+        if entry.get("status") != "ok":
+            return False
+        simulate_report = entry.get("simulate_report")
+        if not isinstance(simulate_report, dict):
+            return False
+        alignment = str(simulate_report.get("skills_alignment", "")).strip().lower()
+        if alignment != "aligned":
+            return False
+    return True
 
 
 def build_manual_optimize_command_hint(batch_path: Path) -> str:

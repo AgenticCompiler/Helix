@@ -434,9 +434,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         help_group="Optimization",
         help_summary="Dry-run optimize planning per validation workspace (pattern hits + priorities).",
         description=(
-            "Run one simulate-plan agent per workspace with the same skills and layout as "
-            "optimize-batch, writing simulate-plan/report.json and a batch summary. "
-            "Does not run optimize-batch unless --run-optimize is passed."
+            "Simulate optimize planning per workspace, then a skill-audit agent updates "
+            "pattern-validation-skills from simulate-plan-report.json; repeat until aligned "
+            "or --max-iterations. Real optimize-batch runs only with --run-optimize."
         ),
         has_output=False,
         has_agent=True,
@@ -734,8 +734,17 @@ def build_parser() -> argparse.ArgumentParser:
                 "--run-optimize",
                 action="store_true",
                 help=(
-                    "After all simulate plans succeed, run real optimize-batch on the same batch. "
-                    "Default is manual: the command prints the suggested optimize-batch invocation."
+                    "After the simulate loop completes (all workspaces aligned), run real "
+                    "optimize-batch. Default is manual: the CLI prints the suggested command."
+                ),
+            )
+            subparser.add_argument(
+                "--max-iterations",
+                type=int,
+                default=5,
+                help=(
+                    "Maximum simulate → skill-audit cycles before giving up (default: 5). "
+                    "Use 1 for a single simulate pass without a skill-audit agent."
                 ),
             )
         if spec.has_pattern_validation_plan_options:

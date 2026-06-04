@@ -1,28 +1,30 @@
-# Pattern Validation Simulate Plan
+# Pattern Validation Simulate Plan Loop
 
 ## Purpose
 
-`triton-agent pattern-validation-simulate` is a **standalone** fast path. It does not change
+`triton-agent pattern-validation-simulate` is a **standalone** loop. It does not change
 `pattern-validation-loop` orchestration.
 
-The command runs one dry-run agent per active validation workspace with the **same** inputs
-as `optimize-batch` (staged skills, `skills-source-dir`, operator workspace, test/bench modes
-in metadata), but the agent only writes `simulate-plan/report.json` — no compile, no rounds.
+Each cycle: **simulate agents** (per workspace, same inputs as optimize-batch) → **skill-audit
+agent** (updates `pattern-validation-skills` from reports) → repeat until all workspaces report
+`skills_alignment: aligned` or `--max-iterations` is reached.
 
 ## Outputs
 
 | Path | Content |
 |------|---------|
-| `<workspace>/simulate-plan/report.json` | Per-workspace pattern ranking, hit rationale, proposed changes, skills alignment |
-| `<batch>/simulate-plan-report.json` | Aggregated batch report + suggested manual `optimize-batch` command |
+| `<workspace>/simulate-plan/report.json` | Pattern ranking, hit rationale, proposed changes, skills alignment |
+| `<batch>/simulate-plan-report.json` | Aggregated batch report |
+| `.triton-agent/pattern-validation-simulate-state.json` | Loop iteration history |
 
 ## Typical workflow
 
-1. Prepare batch (manually or via prepare agent + verify) as today.
-2. `pattern-validation-simulate` → review `simulate-plan-report.json` and fix pattern cards under `pattern-validation-skills/`.
-3. When satisfied, run the printed `optimize-batch` command manually (or pass `--run-optimize`).
+1. Prepare batch (manually or via prepare agent + verify).
+2. `pattern-validation-simulate` until the loop completes.
+3. Run the printed `optimize-batch` command manually (or `--run-optimize`).
 
 ## Flags
 
-- `--skip-verify` — skip scaffold verify before simulate agents.
-- `--run-optimize` — chain into real `optimize-batch` after all simulate plans succeed (off by default).
+- `--max-iterations` — simulate → skill-audit cycles (default: 5); use `1` for one simulate pass only.
+- `--skip-verify` — skip scaffold verify before the first simulate iteration.
+- `--run-optimize` — run real `optimize-batch` after loop completion (off by default).

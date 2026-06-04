@@ -5,10 +5,8 @@ import sys
 from pathlib import Path
 from typing import Literal, cast
 
-from triton_agent.pattern_validation_loop.simulate_plan import (
-    build_simulate_plan_config,
-    run_simulate_plan_batch,
-)
+from triton_agent.pattern_validation_loop.simulate_loop import run_pattern_validation_simulate_loop
+from triton_agent.pattern_validation_loop.simulate_plan import build_simulate_plan_config
 
 
 def handle_pattern_validation_simulate(
@@ -34,12 +32,13 @@ def handle_pattern_validation_simulate(
             show_output=bool(getattr(args, "show_output", True)),
             skip_verify=bool(getattr(args, "skip_verify", False)),
             run_optimize_after=bool(getattr(args, "run_optimize", False)),
+            max_iterations=int(getattr(args, "max_iterations", 5)),
         )
     except ValueError as exc:
         print(f"[pattern-validation-simulate] {exc}", file=sys.stderr)
         return 2
 
-    exit_code, report_path = run_simulate_plan_batch(config, stream=sys.stderr)
+    exit_code, report_path = run_pattern_validation_simulate_loop(config)
     if exit_code == 0:
         print(report_path.as_posix())
     return exit_code
