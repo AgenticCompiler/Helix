@@ -4,7 +4,9 @@ import json
 import sys
 import threading
 from collections.abc import Callable
+from contextlib import nullcontext
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from dataclasses import replace
 from pathlib import Path
 from typing import TextIO, cast
 
@@ -13,7 +15,8 @@ from triton_agent.batch_utils import (
     PrefixedTextStream,
     discover_batch_workspaces,
 )
-from triton_agent.models import AgentResult
+from triton_agent.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
+from triton_agent.models import AgentResult, CommandKind
 from triton_agent.optimize.naming import (
     is_batch_optimize_operator_candidate,
     resolve_batch_optimize_operator_file,
@@ -30,6 +33,7 @@ from triton_agent.optimize.render import render_batch_optimize_results
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
 from triton_agent.optimize_upload.client import UploadUrlMissingError
 from triton_agent.optimize_upload.workflow import upload_optimize_workspace
+from triton_agent.skill_staging import resolve_staged_skills
 
 _BATCH_STATUS_FILENAME = "optimize-batch-status.json"
 _BATCH_STATUS_VERSION = 1
@@ -94,9 +98,13 @@ def run_optimize_batch(
     output_lock = threading.Lock()
     stream = stdout or sys.stdout
     devices = configured_batch_npu_devices()
-    validate_batch_affinity_capacity(devices, max_concurrency=max_concurrency)
-    slots = configured_batch_npu_slots()
-    pool = BatchNpuAffinityPool(slots) if slots is not None else None
+    if not options.enable_mcp:
+        validate_batch_affinity_capacity(devices, max_concurrency=max_concurrency)
+    affinity_pool = (
+        BatchNpuAffinityPool(slots)
+        if not options.enable_mcp and (slots := configured_batch_npu_slots()) is not None
+        else None
+    )
 
     def _run_item(
         item: BatchOptimizeWorkspace,
@@ -104,20 +112,35 @@ def run_optimize_batch(
         forwarded_stderr: TextIO | None = None,
     ) -> AgentResult:
         request = build_optimize_request(item.operator_file, item.workspace, options)
-        if pool is None:
-            if forwarded_stdout is not None or forwarded_stderr is not None:
-                return optimize_request_runner(request, forwarded_stdout, forwarded_stderr)
-            return optimize_request_runner(request)
-        with pool.acquire() as device:
-            request.extra_env = {
-                **(request.extra_env or {}),
-                **affinity_env_for_device(device),
-            }
-            if forwarded_stdout is not None or forwarded_stderr is not None:
-                return optimize_request_runner(request, forwarded_stdout, forwarded_stderr)
-            return optimize_request_runner(request)
+        if affinity_pool is not None:
+            with affinity_pool.acquire() as device:
+                request = replace(
+                    request,
+                    extra_env={
+                        **(request.extra_env or {}),
+                        **affinity_env_for_device(device),
+                    },
+                )
+                if forwarded_stdout is not None or forwarded_stderr is not None:
+                    return optimize_request_runner(request, forwarded_stdout, forwarded_stderr)
+                return optimize_request_runner(request)
+        if forwarded_stdout is not None or forwarded_stderr is not None:
+            return optimize_request_runner(request, forwarded_stdout, forwarded_stderr)
+        return optimize_request_runner(request)
 
-    with ThreadPoolExecutor(max_workers=max_concurrency) as executor:
+    staged_skill_names, _ = resolve_staged_skills(
+        CommandKind.OPTIMIZE,
+        optimize_knowledge=options.optimize_knowledge,
+        optimize_target=options.optimize_target,
+        enable_cann_ext_api=options.enable_cann_ext_api,
+        enable_mcp=options.enable_mcp,
+    )
+    scope = (
+        managed_mcp_scope()
+        if managed_mcp_server_names_for_request(staged_skill_names, enable_mcp=options.enable_mcp)
+        else nullcontext()
+    )
+    with scope, ThreadPoolExecutor(max_workers=max_concurrency) as executor:
         futures: dict[Future[AgentResult], BatchOptimizeWorkspace] = {}
         for item in runnable:
             if should_skip_optimize_batch_workspace(root, item.workspace, item.operator_file, batch_status):

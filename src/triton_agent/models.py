@@ -23,6 +23,7 @@ class CommandKind(str, Enum):
     LOG_CHECK = "log-check"
     LOG_CHECK_BATCH = "log-check-batch"
     TRACE_ANALYZE = "trace-analyze"
+    RUN_EVAL_MCP_SERVER = "run-eval-mcp-server"
     OPTIMIZE = "optimize"
     OPTIMIZE_BATCH = "optimize-batch"
     UPLOAD_OPTIMIZE = "upload-optimize"
@@ -48,6 +49,7 @@ COMMAND_TO_SKILL = {
     CommandKind.LOG_CHECK: "",
     CommandKind.LOG_CHECK_BATCH: "",
     CommandKind.TRACE_ANALYZE: "",
+    CommandKind.RUN_EVAL_MCP_SERVER: "",
     CommandKind.OPTIMIZE: "triton-npu-optimize",
     CommandKind.OPTIMIZE_BATCH: "",
     CommandKind.UPLOAD_OPTIMIZE: "",
@@ -92,6 +94,8 @@ class AgentRequest:
     enable_subagent: bool = False
     enable_agent_hooks: bool = False
     log_tools: bool = False
+    enable_mcp: bool = False
+    mcp_servers: tuple[str, ...] | None = None
     show_output_label: str = ""
     run_id: str = ""
 

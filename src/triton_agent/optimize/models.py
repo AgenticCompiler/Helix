@@ -48,6 +48,7 @@ class OptimizeRunOptions:
     upload_enabled: bool = True
     report: bool = True
     log_tools: bool = False
+    enable_mcp: bool = False
 
 
 @dataclass(frozen=True)

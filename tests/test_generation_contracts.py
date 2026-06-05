@@ -245,6 +245,35 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("Geomean speedup", compare_perf)
         self.assertIn("authority for claimed benchmark deltas and speedups", compare_perf)
 
+    def test_run_eval_skill_keeps_legacy_script_path(self) -> None:
+        skill = _read("skills/triton-npu-run-eval/SKILL.md")
+
+        self.assertIn("Use the bundled helper script in this skill", skill)
+        self.assertIn("run-test-baseline", skill)
+        self.assertIn("run-test-optimize", skill)
+        self.assertIn("run-bench", skill)
+        self.assertIn("profile-bench", skill)
+        self.assertIn("call `python3 ./scripts/run-command.py <subcommand> ...` directly", skill)
+        self.assertNotIn("use the corresponding MCP tool", skill)
+
+    def test_run_eval_mcp_skill_is_tool_first_and_omits_compare_result(self) -> None:
+        skill = _read("skills/triton-npu-run-eval-mcp/SKILL.md")
+
+        self.assertIn("use the corresponding MCP tool", skill)
+        self.assertIn("profile-report", skill)
+        self.assertIn("compare-perf", skill)
+        self.assertNotIn("compare-result", skill)
+        self.assertNotIn("python3 ./scripts/run-command.py", skill)
+        self.assertFalse(
+            (
+                REPO_ROOT
+                / "skills"
+                / "triton-npu-run-eval-mcp"
+                / "references"
+                / "compare-result.md"
+            ).exists()
+        )
+
     def test_eval_gen_skill_documents_direct_operator_repair_and_remote_validation(self) -> None:
         eval_gen = _read("skills/triton-npu-gen-eval-suite/SKILL.md")
         self.assertIn("repair the original operator file", eval_gen)

@@ -1,5 +1,6 @@
 import sys
 import tempfile
+import tomllib
 import unittest
 from io import StringIO
 from pathlib import Path
@@ -350,6 +351,55 @@ class CodexRunnerTests(unittest.TestCase):
             with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked:
                 runner.run(request)
             mocked.assert_called_once()
+
+    def test_run_stages_mcp_server_config_when_requested(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = CodexRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+                mcp_servers=("triton-agent-run-eval",),
+            )
+
+            def _inspect_config(*args, **kwargs):
+                del args, kwargs
+                config_path = workspace / ".codex" / "config.toml"
+                self.assertTrue(config_path.exists())
+                content = config_path.read_text(encoding="utf-8")
+                self.assertIn("[mcp_servers.triton-agent-run-eval]", content)
+                parsed = tomllib.loads(content)
+                server = parsed["mcp_servers"]["triton-agent-run-eval"]
+                self.assertTrue(server["url"].startswith("http://127.0.0.1:"))
+                self.assertIn("/mcp?workspace=", server["url"])
+                self.assertIn(str(workspace), server["url"])
+                return _ok_result()
+
+            with patch.dict(
+                "os.environ",
+                {
+                    "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
+                    "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                },
+                clear=False,
+            ):
+                with patch("triton_agent.backends.base.run_process", side_effect=_inspect_config):
+                    result = runner.run(request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertFalse((workspace / ".codex" / "config.toml").exists())
 
     def test_buffered_output_filters_bare_hunk_fragments_from_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

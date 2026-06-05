@@ -6,6 +6,7 @@ import unittest
 from io import StringIO
 from os import environ
 from pathlib import Path
+from typing import Optional
 from unittest.mock import patch
 
 from contextlib import redirect_stdout
@@ -14,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.cli import build_parser
 from triton_agent.convert.models import ConvertOptions
-from triton_agent.models import AgentResult, CommandKind
+from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.otel_trace import TRACE_PATH_ENV
 from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
 
@@ -90,6 +91,35 @@ class ConvertRuntimeTests(unittest.TestCase):
         self.assertIsNone(request.staged_skill_sources)
         self.assertEqual(request.skill_name, "triton-npu-convert-pytorch-operator")
         self.assertEqual(request.output_path, Path("/tmp/triton_kernel.py"))
+        self.assertIsNone(request.mcp_servers)
+
+    def test_build_convert_request_attaches_mcp_servers_when_enabled(self) -> None:
+        from triton_agent.convert.orchestration import build_convert_request
+
+        request = build_convert_request(
+            Path("/tmp/kernel.py"),
+            Path("/tmp/kernel.py"),
+            Path("/tmp"),
+            ConvertOptions(
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                remote=None,
+                remote_workdir=None,
+                output=None,
+                test_mode="differential",
+                prompt=None,
+                enable_mcp=True,
+            ),
+        )
+
+        self.assertEqual(
+            request.staged_skill_sources,
+            {"triton-npu-run-eval": "triton-npu-run-eval-mcp"},
+        )
+        self.assertEqual(request.mcp_servers, ("triton-agent-run-eval",))
 
     def test_build_convert_request_injects_remote_env(self) -> None:
         from triton_agent.convert.orchestration import build_convert_request
@@ -411,11 +441,11 @@ class ConvertBatchTests(unittest.TestCase):
                 operator = workspace / "kernel.py"
                 operator.write_text("print('x')\n", encoding="utf-8")
 
-            seen_envs: list[dict[str, str]] = []
+            seen_devices: list[Optional[str]] = []
 
             def _fake_run(request, stdout=None, stderr=None):
                 del stdout, stderr
-                seen_envs.append(request.extra_env or {})
+                seen_devices.append((request.extra_env or {}).get("ASCEND_RT_VISIBLE_DEVICES"))
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
             with patch.dict(environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0,1"}, clear=False):
@@ -438,10 +468,7 @@ class ConvertBatchTests(unittest.TestCase):
                 )
 
             self.assertEqual(exit_code, 0)
-            self.assertEqual(
-                {env["ASCEND_RT_VISIBLE_DEVICES"] for env in seen_envs},
-                {"0", "1"},
-            )
+            self.assertCountEqual(seen_devices, ["0", "1"])
 
     def test_run_convert_batch_allows_same_device_when_workers_per_npu_gt_1(self) -> None:
         from triton_agent.convert.batch import run_convert_batch
@@ -453,11 +480,11 @@ class ConvertBatchTests(unittest.TestCase):
                 workspace.mkdir()
                 (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
 
-            seen_envs: list[dict[str, str]] = []
+            seen_devices: list[Optional[str]] = []
 
             def _fake_run(request, stdout=None, stderr=None):
                 del stdout, stderr
-                seen_envs.append(request.extra_env or {})
+                seen_devices.append((request.extra_env or {}).get("ASCEND_RT_VISIBLE_DEVICES"))
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
             env_vars = {
@@ -484,11 +511,96 @@ class ConvertBatchTests(unittest.TestCase):
                 )
 
             self.assertEqual(exit_code, 0)
-            self.assertEqual(len(seen_envs), 2)
-            self.assertEqual(
-                {env["ASCEND_RT_VISIBLE_DEVICES"] for env in seen_envs},
-                {"0"},
+            self.assertEqual(len(seen_devices), 2)
+            self.assertEqual(seen_devices, ["0", "0"])
+
+    def test_run_convert_batch_does_not_inject_affinity_env_when_mcp_enabled(self) -> None:
+        from triton_agent.convert.batch import run_convert_batch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("alpha", "beta"):
+                workspace = root / name
+                workspace.mkdir()
+                (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+
+            seen_devices: list[Optional[str]] = []
+
+            def _fake_run(request, stdout=None, stderr=None):
+                del stdout, stderr
+                seen_devices.append((request.extra_env or {}).get("ASCEND_RT_VISIBLE_DEVICES"))
+                return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            with patch.dict(environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0"}, clear=False):
+                exit_code = run_convert_batch(
+                    root,
+                    ConvertOptions(
+                        interact=False,
+                        verbose=False,
+                        show_output=False,
+                        force_overwrite=False,
+                        agent_name="codex",
+                        remote=None,
+                        remote_workdir=None,
+                        output=None,
+                        test_mode="differential",
+                        prompt=None,
+                        enable_mcp=True,
+                    ),
+                    max_concurrency=2,
+                    run_request=_fake_run,
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(seen_devices, [None, None])
+
+    def test_run_convert_request_enters_managed_mcp_scope_when_request_requires_mcp(self) -> None:
+        from triton_agent.convert.orchestration import run_convert_request
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            request = AgentRequest(
+                command_kind=CommandKind.CONVERT,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "triton_op.py",
+                test_mode="differential",
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-convert-pytorch-operator",
+                prompt="Prompt body",
+                workdir=workspace,
+                mcp_servers=("triton-agent-run-eval",),
             )
+
+            entered: list[str] = []
+
+            class _DummyScope:
+                def __enter__(self):
+                    entered.append("enter")
+                    return None
+
+                def __exit__(self, exc_type, exc, tb):
+                    entered.append("exit")
+                    return False
+
+            class DummyRunner:
+                def run(self, request):
+                    del request
+                    return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.convert.orchestration.SkillLinkManager.prepare_skills", return_value=()):
+                with patch("triton_agent.convert.orchestration.SkillLinkManager.cleanup", return_value=[]):
+                    with patch("triton_agent.convert.orchestration.managed_mcp_scope", return_value=_DummyScope()):
+                        with patch("triton_agent.convert.orchestration.create_runner", return_value=DummyRunner()):
+                            result = run_convert_request(request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertEqual(entered, ["enter", "exit"])
 
     def test_render_batch_convert_results_renders_summary(self) -> None:
         from triton_agent.convert.batch import BatchConvertResult, render_batch_convert_results
