@@ -273,6 +273,56 @@ class ClaudeRunnerTests(unittest.TestCase):
             mocked.assert_called_once()
             self.assertIsNotNone(mocked.call_args.kwargs["output_filter"])
 
+    def test_run_stages_mcp_server_config_and_passes_mcp_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = ClaudeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="claude",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+                mcp_servers=("triton-agent-run-eval",),
+            )
+
+            def _inspect_run(*args, **kwargs):
+                command = args[0]
+                config_path = workspace / ".claude" / "mcp.json"
+                self.assertTrue(config_path.exists())
+                self.assertIn("--mcp-config", command)
+                self.assertIn(str(config_path), command)
+                payload = json.loads(config_path.read_text(encoding="utf-8"))
+                server = payload["mcpServers"]["triton-agent-run-eval"]
+                self.assertEqual(server["type"], "http")
+                self.assertTrue(server["url"].startswith("http://127.0.0.1:"))
+                self.assertIn("/mcp?workspace=", server["url"])
+                self.assertIn(str(workspace), server["url"])
+                return _ok_result()
+
+            with patch.dict(
+                "os.environ",
+                {
+                    "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
+                    "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                },
+                clear=False,
+            ):
+                with patch("triton_agent.backends.base.run_process", side_effect=_inspect_run):
+                    result = runner.run(request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertFalse((workspace / ".claude" / "mcp.json").exists())
+
     def test_verbose_logging_prints_launch_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)

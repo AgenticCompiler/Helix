@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 from typing import TextIO
 
 from triton_agent.backends.factory import create_runner
 
+from triton_agent.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
 from triton_agent.optimize import execution as optimize_execution
 from triton_agent.optimize.compiler_source import prepare_compiler_source
@@ -134,8 +136,13 @@ def build_optimize_request(
         optimize_knowledge=options.optimize_knowledge,
         optimize_target=options.optimize_target,
         enable_cann_ext_api=options.enable_cann_ext_api,
+        enable_mcp=options.enable_mcp,
     )
     extra_env = merge_remote_execution_env(None, options.remote, options.remote_workdir)
+    mcp_servers = managed_mcp_server_names_for_request(
+        staged_skill_names,
+        enable_mcp=options.enable_mcp,
+    )
     return AgentRequest(
         command_kind=CommandKind.OPTIMIZE,
         input_path=input_path,
@@ -169,6 +176,8 @@ def build_optimize_request(
         enable_subagent=options.enable_subagent,
         enable_agent_hooks=options.enable_agent_hooks,
         log_tools=options.log_tools,
+        enable_mcp=options.enable_mcp,
+        mcp_servers=mcp_servers,
     )
 
 
@@ -188,25 +197,27 @@ def run_optimize_request(
     if request.verbose:
         emit_verbose_lines(verbose_stream, "skills", manager.describe_prepare(links))
     try:
-        runner = create_runner(request.agent_name)
-        artifacts_manager = OptimizeSessionArtifactsManager()
-        if request.round_mode == "continuous":
-            return optimize_execution.execute_continuous_optimize(
+        scope = managed_mcp_scope() if request.mcp_servers else nullcontext()
+        with scope:
+            runner = create_runner(request.agent_name)
+            artifacts_manager = OptimizeSessionArtifactsManager()
+            if request.round_mode == "continuous":
+                return optimize_execution.execute_continuous_optimize(
+                    runner,
+                    artifacts_manager,
+                    request,
+                    stdout=stdout,
+                    stderr=stderr,
+                    verbose_stream=verbose_stream,
+                )
+            return optimize_execution.execute_multi_invocation_optimize(
                 runner,
                 artifacts_manager,
                 request,
                 stdout=stdout,
                 stderr=stderr,
                 verbose_stream=verbose_stream,
-            )
-        return optimize_execution.execute_multi_invocation_optimize(
-            runner,
-            artifacts_manager,
-            request,
-            stdout=stdout,
-            stderr=stderr,
-            verbose_stream=verbose_stream,
-            )
+                )
     finally:
         if request.verbose:
             emit_verbose_lines(verbose_stream, "skills", manager.describe_cleanup(links))

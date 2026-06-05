@@ -19,3 +19,4 @@ class GenerationOptions:
     bench_mode: str | None
     prompt: str | None = None
     log_tools: bool = False
+    enable_mcp: bool = False

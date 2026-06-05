@@ -50,6 +50,18 @@ class SkillStagingTests(unittest.TestCase):
         )
         self.assertIsNone(sources)
 
+    def test_resolve_staged_skills_for_gen_eval_uses_mcp_source_when_enabled(self) -> None:
+        names, sources = resolve_staged_skills(CommandKind.GEN_EVAL, enable_mcp=True)
+
+        self.assertIn("triton-npu-run-eval", names or ())
+        self.assertEqual(sources, {"triton-npu-run-eval": "triton-npu-run-eval-mcp"})
+
+    def test_resolve_staged_skills_for_convert_uses_mcp_source_when_enabled(self) -> None:
+        names, sources = resolve_staged_skills(CommandKind.CONVERT, enable_mcp=True)
+
+        self.assertIn("triton-npu-run-eval", names or ())
+        self.assertEqual(sources, {"triton-npu-run-eval": "triton-npu-run-eval-mcp"})
+
     def test_resolve_staged_skills_for_optimize_v2_maps_knowledge_source(self) -> None:
         names, sources = resolve_staged_skills(
             CommandKind.OPTIMIZE,

@@ -15,6 +15,7 @@ from triton_agent.commands.generation import handle_gen_eval
 from triton_agent.commands.generation import handle_gen_eval_batch
 from triton_agent.commands.status import handle_status
 from triton_agent.commands.log_check import handle_log_check, handle_log_check_batch
+from triton_agent.commands.mcp_server import handle_run_eval_mcp_server
 from triton_agent.commands.trace_analyze import handle_trace_analyze
 from triton_agent.commands.verify import handle_verify, handle_verify_batch
 from triton_agent.commands.optimize import (
@@ -369,6 +370,15 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_verbose=False,
         input_mode="trace-analyze",
     ),
+    CommandKind.RUN_EVAL_MCP_SERVER: _CommandSpec(
+        handler=handle_run_eval_mcp_server,
+        help_group="Execution",
+        help_summary="Start the shared run-eval HTTP MCP server in the foreground.",
+        description="Start the shared run-eval HTTP MCP server in the foreground for standalone debugging.",
+        has_output=False,
+        has_verbose=False,
+        input_mode="run-eval-mcp-server",
+    ),
     CommandKind.VERIFY: _CommandSpec(
         handler=handle_verify,
         help_group="Verification",
@@ -472,6 +482,14 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subparsers = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
+    mcp_enabled_commands = {
+        CommandKind.GEN_EVAL,
+        CommandKind.GEN_EVAL_BATCH,
+        CommandKind.CONVERT,
+        CommandKind.CONVERT_BATCH,
+        CommandKind.OPTIMIZE,
+        CommandKind.OPTIMIZE_BATCH,
+    }
 
     for command_kind in CommandKind:
         spec = _COMMAND_SPECS[command_kind]
@@ -507,6 +525,12 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--log-tools", "--log-tool", dest="log_tools", action="store_true")
         if spec.has_agent:
             subparser.add_argument("--agent", default="codex", choices=_AGENT_CHOICES)
+            if command_kind in mcp_enabled_commands:
+                subparser.add_argument(
+                    "--enable-mcp",
+                    action="store_true",
+                    help="Stage the MCP-backed run-eval skill and configure request-scoped MCP servers.",
+                )
         if spec.has_test_mode:
             subparser.add_argument(
                 "--test-mode",
@@ -673,6 +697,9 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
             choices=("auto", "kernel", "total-op", "all"),
         )
         return
+    if spec.input_mode == "run-eval-mcp-server":
+        subparser.add_argument("--port", type=int, default=0)
+        return
     if spec.input_mode == "trace-analyze":
         subparser.add_argument("-t", "--trace", required=True, help="Path to the otel trace.jsonl file.")
         return
@@ -690,6 +717,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "run_test": "run-test",
         "gen_bench": "gen-bench",
         "run_bench": "run-bench",
+        "run_eval_mcp_server": "run-eval-mcp-server",
         "compare_result": "compare-result",
         "compare_perf": "compare-perf",
         "verify_batch": "verify-batch",

@@ -3,10 +3,13 @@ from __future__ import annotations
 import json
 import re
 import sys
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, cast
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Optional, TextIO, cast
 
 from triton_agent.backends.base import AgentRunner
+from triton_agent.mcp import resolve_managed_mcp_servers
 from triton_agent.models import AgentRequest
 from triton_agent.otel_trace import trace_path_from_request
 
@@ -17,6 +20,9 @@ if TYPE_CHECKING:
 class ClaudeRunner(AgentRunner):
     def __init__(self, executable: str = "claude", stall_timeout_seconds: int = 900) -> None:
         super().__init__(executable, stall_timeout_seconds)
+
+    def supports_mcp_servers(self) -> bool:
+        return True
 
     def build_command(self, request: AgentRequest) -> list[str]:
         command = [self.executable]
@@ -29,6 +35,8 @@ class ClaudeRunner(AgentRunner):
                 command.extend(["--debug-file", "/dev/null"])
             if request.command_kind == request.command_kind.OPTIMIZE and request.no_agent_session:
                 command.append("--no-session-persistence")
+            if request.mcp_servers:
+                command.extend(["--mcp-config", str(request.workdir / ".claude" / "mcp.json")])
         command.append(request.prompt)
         return command
 
@@ -62,6 +70,25 @@ class ClaudeRunner(AgentRunner):
     def session_id_extractor(self) -> Callable[[str], str | None]:
         return _extract_claude_session_id
 
+    @contextmanager
+    def _prepare_run_context(
+        self,
+        request: AgentRequest,
+        stderr: Optional[TextIO] = None,
+    ) -> Iterator[None]:
+        del stderr
+        config_path: Path | None = None
+        if request.mcp_servers:
+            config_path = _write_claude_mcp_config(request)
+        try:
+            yield
+        finally:
+            if config_path is not None and config_path.exists():
+                config_path.unlink()
+                parent = config_path.parent
+                if parent.exists() and not any(parent.iterdir()):
+                    parent.rmdir()
+
 
 def _extract_claude_session_id(text: str) -> str | None:
     match = re.search(r'"session_id"\s*:\s*"([^"]+)"', text)
@@ -79,3 +106,21 @@ def _extract_claude_session_id(text: str) -> str | None:
         if isinstance(session_id, str) and session_id:
             return session_id
     return None
+
+
+def _write_claude_mcp_config(request: AgentRequest) -> Path:
+    resolved = resolve_managed_mcp_servers(
+        workdir=request.workdir,
+        server_names=request.mcp_servers,
+    )
+    servers: dict[str, object] = {}
+    for name, server in resolved.items():
+        servers[name] = {
+            "type": "http",
+            "url": server["url"],
+        }
+    payload: dict[str, object] = {"mcpServers": servers}
+    config_path = request.workdir / ".claude" / "mcp.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return config_path

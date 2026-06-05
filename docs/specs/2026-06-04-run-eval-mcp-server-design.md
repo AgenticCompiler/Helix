@@ -1,440 +1,223 @@
-# Run-Eval MCP Server Design
+# Run-Eval Shared HTTP MCP Server Design
+
+> Update note: this shared HTTP MCP runtime now applies when `--enable-mcp` is enabled for supported agent-backed run-eval workflows. The legacy script-backed run-eval skill remains the default when the toggle is omitted.
 
 ## Summary
 
-- Add a new FastMCP stdio server under `skills/triton-npu-run-eval/scripts/` for the run-eval workflow.
-- Expose four MCP tools whose names and arguments stay aligned with the existing run-eval command surface:
+`triton-agent` should stop launching a separate stdio MCP process for every code-agent invocation when the staged skills include `triton-npu-run-eval`.
+
+Instead, each top-level `triton-agent` execution should lazily start one shared local HTTP MCP server and point all participating agent invocations at that shared endpoint. This keeps `AgentRequest` simple, centralizes NPU slot management in one place, and avoids per-agent stdio isolation that breaks cross-agent concurrency control.
+
+## Goals
+
+- Keep `AgentRequest.mcp_servers` as a tuple of managed server names only.
+- Expose run-eval as MCP tools instead of asking skills to call `run-command.py` directly.
+- Share one run-eval MCP server across multiple code-agent invocations within the same `triton-agent` process.
+- Keep NPU slot leasing inside the MCP server so agent processes no longer receive `ASCEND_RT_VISIBLE_DEVICES` directly for run-eval-managed flows.
+- Support backend-native MCP config emission for `codex`, `claude`, and `opencode`.
+- Keep run-eval execution behavior aligned with the existing `run-command.py` subcommands.
+
+## Non-Goals
+
+- No attempt to share one MCP server across multiple independent `triton-agent` processes.
+- No generalized transport model in `AgentRequest`; managed servers remain name-based.
+- No migration of run-eval business logic into the CLI orchestration layer beyond the server lifecycle and config wiring needed to expose MCP.
+
+## User-Visible Semantics
+
+When a command stages the `triton-npu-run-eval` skill and the selected backend supports request-scoped MCP servers:
+
+- `triton-agent` stages the skill as before.
+- `triton-agent` starts a shared local HTTP MCP server on demand.
+- The backend receives MCP configuration that points to that local HTTP endpoint.
+- The endpoint includes the active workspace as an absolute path in the query string:
+  - `http://127.0.0.1:<port>/mcp?workspace=<abs-path>`
+- The skill instructs the code agent to use MCP tools instead of shelling out to `run-command.py`.
+- The MCP server handles NPU slot leasing for:
   - `run-test-baseline`
   - `run-test-optimize`
   - `run-bench`
   - `profile-bench`
-- Move NPU device allocation and concurrency control into that MCP server so agent prompts and skills no longer manage `ASCEND_RT_VISIBLE_DEVICES` directly.
-- Extend agent-backed requests with a generic `mcp_servers` field and have supported backends materialize backend-specific MCP config files inside their own workspace directories.
-- Keep `skills/triton-npu-run-eval/scripts/run-command.py` as a compatibility and manual CLI entrypoint, but stop making it the primary agent-facing contract.
 
-## Goals
+For standalone MCP debugging, `triton-agent` should also provide a dedicated subcommand that starts the shared HTTP run-eval MCP server in the foreground and prints its endpoint information. This command is not agent-backed and does not stage skills; it exists purely so developers can launch the managed MCP runtime directly, inspect its URL, and point external MCP clients at it during debugging.
 
-- Make run-eval execution available to supported code-agent backends through MCP tools instead of direct script calls in skills.
-- Keep the run-eval skill as the source of truth for run-eval behavior; do not move run-eval workflow logic into `src/triton_agent`.
-- Centralize NPU resource management in one place:
-  - parse the assigned device pool once at server startup
-  - lease one concrete device per tool invocation
-  - release that device when the invocation completes
-- Reuse the existing skill-local run-eval Python implementation as much as practical instead of rewriting test, benchmark, and profile behavior.
-- Support the agent backends that have a stable per-run MCP configuration path:
-  - `codex`
-  - `claude`
-  - `opencode`
-- Fail fast with a short actionable error for backends that do not have a confirmed per-run MCP injection path in this change.
+For unsupported backends, request-scoped MCP usage must fail with a clear validation error instead of silently falling back.
 
-## Non-Goals
+## Why HTTP Instead Of Stdio
 
-- Do not add a shared always-on MCP daemon across multiple agent sessions.
-- Do not redesign `compare-result`, `compare-perf`, or `profile-report` as MCP tools in this change.
-- Do not remove `run-command.py`.
-- Do not change the public CLI subcommand names.
-- Do not move run-eval implementation logic from `skills/triton-npu-run-eval/scripts/` into `src/triton_agent`.
-- Do not add automatic NPU discovery.
-- Do not silently fall back from MCP-backed execution to direct script execution when MCP injection is unavailable.
+With stdio transport, every code-agent invocation launches its own MCP process. In optimize multi-round flows and batch flows, that means NPU concurrency control is split across several independent MCP processes, so the semaphore no longer represents the real shared resource pool.
 
-## Current Problem
+HTTP solves the immediate problem because one top-level `triton-agent` process can own one shared MCP server instance and all agent invocations in that process can reuse it.
 
-Today the run-eval skill teaches agents to call:
+## Workspace Routing
 
-```bash
-python3 ./scripts/run-command.py <subcommand> ...
-```
+`AgentRequest` should stay transport-agnostic and carry only MCP server names. The active workspace will therefore be conveyed through the backend-emitted MCP URL rather than as extra request fields.
 
-That has three problems for agent-backed workflows:
+Managed run-eval URLs must take this shape:
 
-1. The top-level skill contract exposes script paths instead of stable capabilities.
-2. NPU device control is distributed across agent prompts, direct script flags, and environment variables instead of being owned by one runtime boundary.
-3. Backend-specific agent configuration has no generic way to declare per-request MCP servers, so run-eval cannot be surfaced as first-class tools.
+- `http://127.0.0.1:<port>/mcp?workspace=<absolute-path>`
 
-## User-Facing Semantics
+The server reads the `workspace` query parameter from the incoming HTTP request and uses it as request context where needed. This keeps the server reusable across multiple workspaces in the same top-level process while preserving the simple request model the user asked for.
 
-For agent-backed commands that stage `triton-npu-run-eval`, the agent should experience run-eval as four MCP tools instead of as shell commands.
+Tool arguments should still remain explicit and continue to match the existing `run-command.py` command arguments as closely as possible. File arguments are still expected to be absolute paths after the existing `run-command.py` normalization step.
 
-Those commands currently include:
+## Architecture
 
-- `gen-eval`
-- `gen-test`
-- `gen-bench`
-- `convert`
-- `optimize`
+### 1. Managed MCP Scope
 
-The four MCP tools keep the existing command-level semantics for inputs, outputs, and artifacts:
+Add a runtime-managed MCP scope in `src/triton_agent/mcp.py`.
 
-- `run-test-baseline` still runs the generated test harness in baseline mode.
-- `run-test-optimize` still runs the generated test harness in optimize mode.
-- `run-bench` still produces the same benchmark perf artifact behavior.
-- `profile-bench` still produces the same profile directory behavior.
+Responsibilities:
 
-The change is the invocation surface:
+- Map staged skills to managed MCP server names.
+- Lazily start the shared run-eval HTTP server only when a backend actually needs a concrete config entry.
+- Reuse one server instance within a process-wide scope.
+- Support nested and concurrent usage inside the same process.
+- Provide backend-ready resolved server definitions containing HTTP URLs.
 
-- agent-facing workflow: MCP tool call
-- manual CLI and compatibility workflow: `run-command.py`
+The scope must support two usage patterns:
 
-## Design Overview
+- Implicit per-request scope:
+  - if a request needs managed MCP servers and no outer scope exists, create one for that request only
+- Explicit top-level scope:
+  - batch commands and optimize multi-invocation flows should wrap the whole operation so every nested agent run shares the same server
 
-The design has four layers:
+### 2. Shared HTTP Server
 
-1. A new skill-local FastMCP stdio server under `skills/triton-npu-run-eval/scripts/`
-2. A generic request-time `mcp_servers` model on `AgentRequest`
-3. Orchestration logic that attaches the run-eval MCP server when `triton-npu-run-eval` is staged
-4. Backend-specific config writers that turn `mcp_servers` into concrete config files or CLI flags
+Move the MCP server implementation out of `skills/triton-npu-run-eval/scripts/` and into `src/triton_agent/`.
 
-## MCP Server Model
+Responsibilities:
 
-Add a backend-neutral MCP server definition model under `src/triton_agent` and store it on `AgentRequest` as:
+- Build a FastMCP app that exposes the four run-eval tools.
+- Serve it over local HTTP using a background ASGI server.
+- Parse `workspace` from the HTTP request query string.
+- Own the NPU slot pool built from:
+  - `TRITON_AGENT_BATCH_NPU_DEVICES`
+  - `TRITON_AGENT_BATCH_WORKERS_PER_NPU`
+- When those environment variables are absent during standalone MCP debugging, default to device `0` and `1` worker per NPU so the server remains easy to launch manually.
+- Lease exactly one NPU slot per tool invocation that needs device-bound execution.
+- Invoke the existing run-eval compatibility entrypoint so command semantics stay aligned.
 
-- `mcp_servers`
+The shared server remains process-local. That is sufficient for the current requirement and avoids premature cross-process coordination design.
 
-This field is generic on purpose. The request model should not special-case run-eval because future commands may need additional MCP servers.
+### 3. Tool Contract
 
-The neutral MCP server shape should include only what every supported backend needs for a local stdio server:
-
-- server name
-- transport type
-- command
-- args
-- env
-
-This change only needs stdio transport, but the request model should not hard-code run-eval-specific names or assumptions.
-
-## When Requests Attach MCP Servers
-
-Generation and optimize orchestration should attach the run-eval MCP server whenever:
-
-- the staged skill set contains `triton-npu-run-eval`
-
-That decision should remain backend-agnostic. The orchestration layer should not branch on agent type beyond constructing the shared `mcp_servers` definition.
-
-If a request has no `mcp_servers`, backend behavior stays unchanged.
-
-If a request has `mcp_servers` and the selected backend does not support request-scoped MCP injection in this design, the backend should fail before agent launch with a short actionable error.
-
-## Run-Eval MCP Server
-
-Add a new skill-local script:
-
-- `skills/triton-npu-run-eval/scripts/run_eval_mcp_server.py`
-
-Requirements:
-
-- use `fastmcp`
-- use stdio transport
-- stay self-contained inside `skills/triton-npu-run-eval/scripts/`
-- do not import `triton_agent`
-
-The server should expose exactly these four tools in this phase:
+Expose these tool names:
 
 - `run-test-baseline`
 - `run-test-optimize`
 - `run-bench`
 - `profile-bench`
 
-### Tool Naming
+Each tool keeps the same argument names and behavior shape already documented for the corresponding `run-command.py` subcommand.
 
-Use the existing command names directly as tool names.
+Inside the implementation:
 
-That keeps:
+- keep command construction close to the current `run-command.py` CLI shape
+- preserve remote execution flags
+- inject the leased NPU device through environment when invoking the compatibility path
 
-- skill wording consistent
-- trace and debugging terminology consistent
-- user and maintainer mental models aligned with existing commands
+### 4. Backend Config Emission
 
-### Tool Arguments
-
-Tool arguments should stay aligned with the existing command arguments for the corresponding subcommand, except for NPU device selection.
-
-The MCP tools should not expose `--npu-devices` or an equivalent per-call device-selection field.
-
-The server owns device selection centrally.
-
-### Tool Results
-
-The MCP server should return structured JSON-like results instead of terminal-only text.
-
-The result shape should preserve the information that the current command path already owns:
-
-- `return_code`
-- `stdout`
-- `stderr`
-- command-specific artifact path fields when present
-
-Examples:
-
-- test tools may return `archived_result`
-- `run-bench` may return `perf_path`
-- `profile-bench` may return `profile_dir`
-
-The goal is semantic equivalence with the current command behavior while making the result machine-readable for MCP clients.
-
-## NPU Resource Model
-
-The server should accept these startup options:
-
-- `--assigned-npus`
-- `--workers-per-npu`
-
-The CLI should source them from the existing environment variables:
-
-- `TRITON_AGENT_BATCH_NPU_DEVICES`
-- `TRITON_AGENT_BATCH_WORKERS_PER_NPU`
-
-These variables already define the current repository-wide NPU pool contract, so this change should reuse that contract instead of inventing a second naming scheme.
-
-### Startup Validation
-
-If a request needs the run-eval MCP server and `TRITON_AGENT_BATCH_NPU_DEVICES` is unset or invalid, request construction should fail with a short actionable error.
-
-If `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is unset, the current default of `1` should apply.
-
-If it is set but invalid, request construction should fail with a short actionable error.
-
-### Slot Pool Instead Of Global Semaphore Only
-
-The server should model capacity as concrete execution slots, not just as one count.
-
-Example:
-
-- `assigned_npus=0,1`
-- `workers_per_npu=2`
-
-produces this slot pool:
-
-- `0`
-- `0`
-- `1`
-- `1`
-
-Each tool invocation:
-
-1. acquires one slot
-2. receives one concrete device id
-3. runs with that device
-4. releases the slot in a `finally` path
-
-This preserves two required behaviors:
-
-- total concurrency is bounded by `len(assigned_npus) * workers_per_npu`
-- execution still knows which concrete device it owns
-
-### Environment Injection
-
-The leased device id should be applied as:
-
-- `ASCEND_RT_VISIBLE_DEVICES=<leased-device>`
-
-This environment variable should be injected at the actual execution boundary, not at agent launch time.
-
-That means:
-
-- local tool execution injects it into the local runner process
-- remote tool execution injects it into the remote command environment
-
-The agent process itself should no longer receive device-control environment variables for run-eval behavior.
-
-## Local And Remote Execution
-
-The existing run-eval commands support both local and remote execution. The MCP-backed design should preserve that behavior.
-
-For local execution:
-
-- the leased device id is injected into the local subprocess environment
-
-For remote execution:
-
-- the leased device id is injected into the remote subprocess environment
-- the server still owns the lease lifetime locally
-- the remote host is assumed to interpret the leased device id in the same way the current CLI path does
-
-This means the underlying skill-local helpers may need small signature extensions so all four tool paths can accept one leased device id consistently.
-
-## Backend-Specific MCP Materialization
-
-The backend layer should translate `AgentRequest.mcp_servers` into backend-specific runtime config under backend-owned workspace directories.
-
-### Codex
-
-Write project-scoped config to:
-
-- `workdir/.codex/config.toml`
-
-Use the existing Codex project config shape:
-
-```toml
-[mcp_servers.triton-agent-run-eval]
-command = "python3"
-args = ["..."]
-
-[mcp_servers.triton-agent-run-eval.env]
-KEY = "VALUE"
-```
-
-The backend should preserve unrelated existing Codex project config and only add or remove the managed MCP server entries it owns.
-
-### Claude
-
-Write the MCP config file to:
-
-- `workdir/.claude/mcp.json`
-
-Pass that file explicitly through:
-
-- `--mcp-config <path>`
-
-The file format should be the existing Claude MCP JSON shape:
-
-```json
-{
-  "mcpServers": {
-    "triton-agent-run-eval": {
-      "type": "stdio",
-      "command": "python3",
-      "args": ["..."],
-      "env": {
-        "KEY": "VALUE"
-      }
-    }
-  }
-}
-```
-
-The backend should preserve unrelated files under `.claude/`.
-
-### OpenCode
-
-Extend the backend-owned config file:
-
-- `workdir/.opencode/opencode.json`
-
-Use OpenCode's local MCP shape under the `mcp` section:
-
-- `type = "local"`
-- `command = [...]`
-- `environment = {...}`
-
-This should merge with the temporary OpenCode config that the backend already stages for permission control.
-
-### Unsupported Backends
-
-In this change, the supported MCP-injection backends are:
+Supported backends:
 
 - `codex`
 - `claude`
 - `opencode`
 
-If `mcp_servers` is non-empty and the selected backend is:
+Config shapes:
 
-- `pi`
-- `traecli`
-- `openhands`
+- Codex:
+  - `workdir/.codex/config.toml`
+  - `[mcp_servers.<name>]`
+  - `url = "http://127.0.0.1:<port>/mcp?workspace=<abs-path>"`
+- Claude:
+  - `workdir/.claude/mcp.json`
+  - passed through `--mcp-config`
+  - server entry:
+    - `{"type": "http", "url": "..."}`
+- OpenCode:
+  - `workdir/.opencode/opencode.json`
+  - server entry:
+    - `{"type": "remote", "url": "..."}`
 
-the backend should fail before launch with a short explicit error instead of silently bypassing MCP.
+Other backends should fail fast when `mcp_servers` is requested.
 
-## Managed Config Lifecycle
+## Lifecycle Placement
 
-Backend-owned MCP config should be treated as runtime artifacts, not as persistent user-facing project state.
+The shared scope should wrap the highest layer that meaningfully represents one user command execution.
 
-Requirements:
+Required top-level sharing points:
 
-- preserve unrelated existing user configuration where the backend config file already exists
-- add only the managed MCP server entries this run needs
-- remove only the managed entries this run added during cleanup
-- if the backend config file did not exist before and becomes empty after cleanup, remove it
+- `run_generation_request(...)`
+- `run_convert_request(...)`
+- `run_optimize_request(...)`
 
-If a managed server name already exists in a backend config file with a non-compatible user-owned definition, the backend should fail with a short actionable error instead of overwriting it silently.
+Additional explicit sharing is needed for batch entrypoints because they invoke several requests in one command:
 
-## Skill Contract Changes
+- `run_gen_eval_batch(...)`
+- `run_convert_batch(...)`
+- `run_optimize_batch(...)`
 
-Update `skills/triton-npu-run-eval/SKILL.md` so its primary contract becomes:
+This ensures:
 
-- use the corresponding MCP tool for run-eval execution tasks
+- single-item commands still work with a request-local shared scope
+- optimize multi-invocation loops reuse one shared server
+- batch worker threads reuse one shared server across all workspaces in the same command
 
-The skill should stop presenting `python3 ./scripts/run-command.py <subcommand> ...` as the normal agent-facing path.
+## NPU Resource Management
 
-`run-command.py` should remain documented only as:
+The run-eval MCP server owns the semaphore-equivalent slot pool.
 
-- a compatibility path
-- a manual CLI entrypoint
-- a useful debugging path when patching run-eval helpers directly
+Implementation rules:
 
-## Compatibility Strategy
+- Parse configured NPU devices from `TRITON_AGENT_BATCH_NPU_DEVICES`.
+- Parse workers per NPU from `TRITON_AGENT_BATCH_WORKERS_PER_NPU`, defaulting to `1`.
+- If `TRITON_AGENT_BATCH_NPU_DEVICES` is unset or blank for standalone server startup, default to a single device pool containing `0`.
+- Expand slots as `device * workers_per_npu`.
+- Use a blocking thread-safe queue/semaphore style pool to lease and release slots.
 
-This design is intentionally additive.
+Agent-side direct `ASCEND_RT_VISIBLE_DEVICES` injection is no longer the resource-management path for run-eval-managed agent flows.
 
-It should preserve:
+For batch commands, the environment variables still define overall capacity, but the shared MCP server performs the actual per-tool leasing.
 
-- the existing CLI commands
-- the existing skill-local Python helpers
-- the manual `run-command.py` workflow
-- the existing artifact formats
+## Compatibility With Existing Skill Scripts
 
-What changes is the preferred execution surface for supported agent-backed workflows.
+The run-eval MCP server should continue reusing the existing skill-side execution helpers rather than duplicating run-eval logic in the CLI package.
 
-## Implementation Areas
+Preferred compatibility approach:
 
-The main code areas affected by this design are:
+- keep `skills/triton-npu-run-eval/scripts/run-command.py` as the canonical compatibility entrypoint
+- invoke it from the shared HTTP MCP server with leased device environment
+- continue using `skill_loader` or resource helpers to locate the script from `src/triton_agent`
 
-- `skills/triton-npu-run-eval/SKILL.md`
-- `skills/triton-npu-run-eval/scripts/run_eval_mcp_server.py`
-- skill-local run-eval helper modules that need one leased-device execution path
-- `src/triton_agent/models.py`
-- generation and optimize orchestration that build `AgentRequest`
-- backend runners and backend config staging helpers for:
-  - `codex`
-  - `claude`
-  - `opencode`
+This preserves the project boundary that workflow logic lives with the skill while the CLI owns orchestration and managed server lifecycle.
+
+## Validation And Errors
+
+Validation requirements:
+
+- if `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is invalid, fail with a clear error naming the variable
+- if a backend requests managed MCP servers but no shared MCP scope is active when resolution occurs, the resolver may create a local scope automatically
+- if the workspace query parameter is missing or not absolute, the server should fail the tool invocation clearly
+- if an unknown managed server name is requested, fail with a `ValueError`
 
 ## Testing Strategy
 
-### Request And Orchestration
+Add or update tests for:
 
-Add tests that verify:
+- request model MCP name carriage
+- skill-to-managed-server-name mapping
+- backend config emission for HTTP URLs
+- shared scope reuse across multiple request resolutions
+- optimize and batch top-level wrappers sharing a single HTTP server
+- run-eval MCP tool registration
+- workspace query parsing
+- NPU slot reuse across sequential tool calls
+- unsupported backend fail-fast behavior
 
-- requests only attach run-eval MCP servers when `triton-npu-run-eval` is staged
-- `TRITON_AGENT_BATCH_NPU_DEVICES` is required for MCP-backed run-eval requests
-- `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is parsed consistently with the existing batch contract
-- the generated server command includes `--assigned-npus` and `--workers-per-npu`
+## Migration Notes
 
-### Backend Config Generation
-
-Add backend tests that verify:
-
-- Codex writes `workdir/.codex/config.toml` with the expected managed MCP entry
-- Claude writes `workdir/.claude/mcp.json` and appends `--mcp-config <path>`
-- OpenCode writes the expected `mcp` section into `.opencode/opencode.json`
-- unrelated pre-existing backend config is preserved
-- unsupported backends fail clearly when `mcp_servers` is non-empty
-
-### MCP Server
-
-Add tests that verify:
-
-- the server exposes exactly the four required tools
-- tool argument schemas stay aligned with the existing command semantics
-- leased devices are assigned from the slot pool correctly
-- devices are released after success and failure
-- command-specific artifact paths are returned correctly
-
-### Skill Contract
-
-Add tests that verify:
-
-- `triton-npu-run-eval/SKILL.md` instructs the agent to use MCP tools instead of direct script invocation as the primary workflow contract
-
-## Verification
-
-Implementation of this design should run the usual repository verification plus the skill-script checks required by repository policy.
-
-At minimum:
-
-- `uv run --group dev ruff check`
-- `uv run pyright`
-- `uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/`
-
-For touched skill-side Python files under `skills/*/scripts/`, also run:
-
-- `bash scripts/run-skill-script-pyright.sh <path-to-each-touched-skill-script>`
+- remove the skill-local stdio MCP server as the active implementation path
+- keep the skill contract MCP-first
+- update tests that currently expect batch-time `ASCEND_RT_VISIBLE_DEVICES` injection into agent requests for MCP-managed flows
