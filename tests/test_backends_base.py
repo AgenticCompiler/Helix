@@ -73,6 +73,36 @@ class SharedRunnerBaseTests(unittest.TestCase):
 
         self.assertEqual(mocked.call_args.kwargs["extra_env"], {"ASCEND_RT_VISIBLE_DEVICES": "2"})
 
+    def test_base_runner_rejects_request_scoped_mcp_servers_when_backend_unsupported(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = _DummyRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="dummy",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+                mcp_servers=("triton-agent-run-eval",),
+            )
+
+            with patch("triton_agent.backends.base.run_process") as mocked:
+                result = runner.run(request)
+
+        self.assertEqual(result.return_code, 1)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("does not support request-scoped MCP servers", result.stderr)
+        mocked.assert_not_called()
+
     def test_base_runner_skips_agent_hooks_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)

@@ -14,6 +14,7 @@ This README is organized by task so you can quickly find the right command for t
 - `convert-batch`: convert many operator workspaces.
 - `gen-bench`: generate a benchmark for one operator.
 - `run-bench`: run an existing generated benchmark.
+- `run-eval-mcp-server`: start the shared run-eval HTTP MCP server for standalone debugging.
 - `optimize`: optimize one operator.
 - `optimize-batch`: optimize many operator workspaces.
 - `upload-optimize`: upload one optimize workspace to an analysis server.
@@ -42,6 +43,7 @@ uv run triton-agent gen-bench --input a.py
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
 
 uv run triton-agent optimize --input a.py
+uv run triton-agent run-eval-mcp-server
 ```
 
 For batch workflows, point `--input` at either a directory whose immediate child directories are operator workspaces, or a single operator workspace directory:
@@ -118,6 +120,34 @@ uv run triton-agent gen-test --input a.py --agent openhands
 These variables are normally set by `triton-agent` for child processes. You usually do not need to export them yourself:
 
 - `ASCEND_RT_VISIBLE_DEVICES`: set for each batch workspace when `TRITON_AGENT_BATCH_NPU_DEVICES` is configured. Multiple concurrent workspaces may receive the same device when `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is greater than `1`.
+
+## Debug The Run-Eval MCP Server
+
+Use `run-eval-mcp-server` when you want to start the managed HTTP MCP runtime without launching an agent workflow.
+
+```bash
+uv run triton-agent run-eval-mcp-server
+```
+
+What it does:
+
+- starts the shared HTTP run-eval MCP server in the foreground
+- prints the base endpoint, for example `http://127.0.0.1:38745/mcp`
+- prints a workspace URL template of the form `http://127.0.0.1:<port>/mcp?workspace=<abs-path>`
+- keeps running until you stop it with `Ctrl-C`
+- defaults to NPU device `0` and `1` worker per NPU when the batch NPU environment variables are not set
+
+Common options:
+
+- `--port <int>`: bind a fixed local port instead of using an ephemeral one
+- `TRITON_AGENT_BATCH_NPU_DEVICES`: override the managed NPU device pool
+- `TRITON_AGENT_BATCH_WORKERS_PER_NPU`: override workers per device; defaults to `1`
+
+Example:
+
+```bash
+uv run triton-agent run-eval-mcp-server --port 8765
+```
 
 ## Generate Tests
 

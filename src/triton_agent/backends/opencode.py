@@ -6,26 +6,41 @@ from pathlib import Path
 from typing import Optional, TextIO
 
 from triton_agent.backends.base import AgentRunner
+from triton_agent.mcp import resolve_managed_mcp_servers
 from triton_agent.models import AgentRequest, AgentResult
 
 
 _OPENCODE_CONFIG_PATH = Path(".opencode") / "opencode.json"
 
 
-def _opencode_workspace_config() -> dict[str, object]:
+def _opencode_workspace_config(
+    managed_servers: dict[str, dict[str, object]] | None = None,
+) -> dict[str, object]:
     permission = {"task": {"general": "deny", "explore": "deny"}}
-    return {
+    config: dict[str, object] = {
         "$schema": "https://opencode.ai/config.json",
         "agent": {
             "build": {"mode": "primary", "permission": permission},
             "plan": {"mode": "primary", "permission": permission},
         },
     }
+    if managed_servers:
+        mcp: dict[str, object] = {}
+        for name, server in managed_servers.items():
+            mcp[name] = {
+                "type": "remote",
+                "url": server["url"],
+            }
+        config["mcp"] = mcp
+    return config
 
 
 class OpenCodeRunner(AgentRunner):
     def __init__(self, executable: str = "opencode", stall_timeout_seconds: int = 900) -> None:
         super().__init__(executable, stall_timeout_seconds)
+
+    def supports_mcp_servers(self) -> bool:
+        return True
 
     def build_command(self, request: AgentRequest) -> list[str]:
         if request.interact:
@@ -67,8 +82,15 @@ class OpenCodeRunner(AgentRunner):
             )
             return super().run(request, stdout=stdout, stderr=stderr)
 
+        managed_servers = resolve_managed_mcp_servers(
+            workdir=request.workdir,
+            server_names=request.mcp_servers,
+        )
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(json.dumps(_opencode_workspace_config(), indent=2) + "\n", encoding="utf-8")
+        config_path.write_text(
+            json.dumps(_opencode_workspace_config(managed_servers), indent=2) + "\n",
+            encoding="utf-8",
+        )
         try:
             return super().run(request, stdout=stdout, stderr=stderr)
         finally:

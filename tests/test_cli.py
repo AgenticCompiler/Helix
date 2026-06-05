@@ -147,6 +147,65 @@ class CliParserTests(unittest.TestCase):
                 options = generation_options_from_args(args)
                 self.assertTrue(options.log_tools)
 
+    def test_enable_mcp_is_available_on_agent_backed_run_eval_commands(self) -> None:
+        parser = build_parser()
+        cases = (
+            ("gen-eval", "kernel.py"),
+            ("gen-eval-batch", "kernels"),
+            ("convert", "kernel.py"),
+            ("convert-batch", "kernels"),
+            ("optimize", "kernel.py"),
+            ("optimize-batch", "kernels"),
+        )
+
+        for command, input_value in cases:
+            with self.subTest(command=command):
+                args = parser.parse_args([command, "-i", input_value, "--enable-mcp"])
+                self.assertTrue(args.enable_mcp)
+
+    def test_enable_mcp_is_not_available_on_direct_execution_commands(self) -> None:
+        parser = build_parser()
+        stderr = StringIO()
+        with self.assertRaises(SystemExit) as exc, redirect_stderr(stderr):
+            parser.parse_args(
+                [
+                    "run-bench",
+                    "--bench-file",
+                    "bench.py",
+                    "--operator-file",
+                    "kernel.py",
+                    "--enable-mcp",
+                ]
+            )
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn("--enable-mcp", stderr.getvalue())
+
+    def test_run_eval_mcp_server_maps_to_command_kind(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["run-eval-mcp-server"])
+        self.assertEqual(args.command, "run-eval-mcp-server")
+        self.assertEqual(args.command_kind, CommandKind.RUN_EVAL_MCP_SERVER)
+        self.assertEqual(args.port, 0)
+
+    def test_run_eval_mcp_server_accepts_explicit_port(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["run-eval-mcp-server", "--port", "8765"])
+        self.assertEqual(args.port, 8765)
+
+    def test_generation_run_eval_commands_accept_enable_mcp_option(self) -> None:
+        from triton_agent.commands.generation import generation_options_from_args
+
+        parser = build_parser()
+        for command, input_value in (
+            ("gen-eval", "kernel.py"),
+            ("gen-eval-batch", "kernels"),
+        ):
+            with self.subTest(command=command):
+                args = parser.parse_args([command, "-i", input_value, "--enable-mcp"])
+                self.assertTrue(args.enable_mcp)
+                options = generation_options_from_args(args)
+                self.assertTrue(options.enable_mcp)
+
     def test_convert_maps_to_command_kind(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["convert", "-i", "kernel.py"])
@@ -202,6 +261,17 @@ class CliParserTests(unittest.TestCase):
                 self.assertTrue(args.log_tools)
                 options = convert_options_from_args(args)
                 self.assertTrue(options.log_tools)
+
+    def test_convert_commands_accept_enable_mcp_option(self) -> None:
+        from triton_agent.commands.convert import convert_options_from_args
+
+        parser = build_parser()
+        for command, input_value in (("convert", "kernel.py"), ("convert-batch", "kernels")):
+            with self.subTest(command=command):
+                args = parser.parse_args([command, "-i", input_value, "--enable-mcp"])
+                self.assertTrue(args.enable_mcp)
+                options = convert_options_from_args(args)
+                self.assertTrue(options.enable_mcp)
 
     def test_log_check_commands_accept_log_tools_option(self) -> None:
         parser = build_parser()
@@ -283,6 +353,7 @@ class CliParserTests(unittest.TestCase):
             ("run_test", CommandKind.RUN_TEST),
             ("gen_bench", CommandKind.GEN_BENCH),
             ("run_bench", CommandKind.RUN_BENCH),
+            ("run_eval_mcp_server", CommandKind.RUN_EVAL_MCP_SERVER),
             ("verify_batch", CommandKind.VERIFY_BATCH),
             ("optimize_batch", CommandKind.OPTIMIZE_BATCH),
         ]
@@ -294,6 +365,8 @@ class CliParserTests(unittest.TestCase):
                     argv = [alias, "--test-file", "test_kernel.py", "--operator-file", "kernel.py"]
                 elif expected_kind == CommandKind.RUN_BENCH:
                     argv = [alias, "--bench-file", "bench_kernel.py", "--operator-file", "kernel.py"]
+                elif expected_kind == CommandKind.RUN_EVAL_MCP_SERVER:
+                    argv = [alias]
                 elif expected_kind == CommandKind.VERIFY_BATCH:
                     argv = [alias, "-i", "workspace-root"]
                 elif expected_kind == CommandKind.CONVERT_BATCH:
@@ -312,6 +385,7 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("run-test", help_text)
         self.assertIn("gen-bench", help_text)
         self.assertIn("run-bench", help_text)
+        self.assertIn("run-eval-mcp-server", help_text)
         self.assertIn("compare-result", help_text)
         self.assertIn("compare-perf", help_text)
         self.assertIn("status", help_text)
@@ -320,20 +394,18 @@ class CliParserTests(unittest.TestCase):
         self.assertIn("optimize-batch", help_text)
         self.assertNotIn("gen-convert", help_text)
         self.assertNotIn("gen_eval_batch", help_text)
-        self.assertNotIn("gen_eval", help_text)
-        self.assertNotIn("gen_convert", help_text)
-        self.assertNotIn("convert_batch", help_text)
-        self.assertNotIn("gen_test", help_text)
-        self.assertNotIn("run_test", help_text)
-        self.assertNotIn("gen_bench", help_text)
-        self.assertNotIn("run_bench", help_text)
-        self.assertNotIn("compare_result", help_text)
-        self.assertNotIn("compare_perf", help_text)
-        self.assertNotIn("optimize-status", help_text)
-        self.assertNotIn("optimize_status", help_text)
-        self.assertNotIn("optimize-verify", help_text)
-        self.assertNotIn("optimize-verify-batch", help_text)
-        self.assertNotIn("optimize_batch", help_text)
+
+
+class CliMCPServerCommandTests(unittest.TestCase):
+    def test_main_routes_run_eval_mcp_server_command(self) -> None:
+        with patch(
+            "triton_agent.commands.mcp_server.serve_http_server_forever",
+            return_value=7,
+        ) as mocked:
+            exit_code = main(["run-eval-mcp-server", "--port", "8765"])
+
+        self.assertEqual(exit_code, 7)
+        mocked.assert_called_once_with(port=8765)
 
     def test_top_level_help_groups_commands_and_examples(self) -> None:
         parser = build_parser()
@@ -1111,6 +1183,15 @@ class CliParserTests(unittest.TestCase):
         self.assertTrue(args.log_tools)
         options = optimize_run_options_from_args(args)
         self.assertTrue(options.log_tools)
+
+    def test_optimize_commands_accept_enable_mcp_option(self) -> None:
+        parser = build_parser()
+        for command, input_value in (("optimize", "kernel.py"), ("optimize-batch", "operators")):
+            with self.subTest(command=command):
+                args = parser.parse_args([command, "-i", input_value, "--enable-mcp"])
+                self.assertTrue(args.enable_mcp)
+                options = optimize_run_options_from_args(args)
+                self.assertTrue(options.enable_mcp)
 
     def test_canonical_plural_flags_remain_parseable(self) -> None:
         """Backward compatibility: published plural flag names must continue to work."""

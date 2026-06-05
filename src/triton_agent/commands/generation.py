@@ -109,4 +109,5 @@ def generation_options_from_args(args: argparse.Namespace) -> GenerationOptions:
         bench_mode=getattr(args, "bench_mode", None),
         prompt=getattr(args, "prompt", None),
         log_tools=bool(getattr(args, "log_tools", False)),
+        enable_mcp=bool(getattr(args, "enable_mcp", False)),
     )

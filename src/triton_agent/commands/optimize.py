@@ -177,6 +177,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         upload_enabled=upload_enabled,
         report=not bool(getattr(args, "no_report", False)) and not bool(getattr(args, "interact", False)),
         log_tools=log_tools_enabled,
+        enable_mcp=bool(getattr(args, "enable_mcp", False)),
     )
 
 

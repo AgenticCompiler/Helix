@@ -89,6 +89,7 @@ def resolve_staged_skills(
     optimize_knowledge: str | None = None,
     optimize_target: str = "kernel",
     enable_cann_ext_api: bool = False,
+    enable_mcp: bool = False,
 ) -> tuple[tuple[str, ...] | None, dict[str, str] | None]:
     rule = STAGE_RULES.get(command_kind)
     if rule is None:
@@ -108,6 +109,7 @@ def resolve_staged_skills(
         command_kind,
         staged_skill_names,
         optimize_knowledge=optimize_knowledge,
+        enable_mcp=enable_mcp,
     )
     return staged_skill_names, staged_skill_sources
 
@@ -145,12 +147,16 @@ def _resolve_skill_sources(
     staged_skill_names: tuple[str, ...] | None,
     *,
     optimize_knowledge: str | None = None,
+    enable_mcp: bool = False,
 ) -> dict[str, str] | None:
+    sources: dict[str, str] = {}
+    if enable_mcp and staged_skill_names is not None and "triton-npu-run-eval" in staged_skill_names:
+        sources["triton-npu-run-eval"] = "triton-npu-run-eval-mcp"
     if command_kind == CommandKind.OPTIMIZE and staged_skill_names is not None:
         if "triton-npu-optimize-knowledge" not in staged_skill_names:
-            return None
+            return sources or None
         if optimize_knowledge == "v2":
-            return {"triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v2"}
+            sources["triton-npu-optimize-knowledge"] = "triton-npu-optimize-knowledge-v2"
         if optimize_knowledge == "v3":
-            return {"triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v3"}
-    return None
+            sources["triton-npu-optimize-knowledge"] = "triton-npu-optimize-knowledge-v3"
+    return sources or None

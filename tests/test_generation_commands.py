@@ -17,7 +17,7 @@ from triton_agent.generation.outputs import (
     resolve_generation_output_path,
 )
 from triton_agent.generation.orchestration import build_generation_request
-from triton_agent.models import AgentResult, CommandKind
+from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.otel_trace import TRACE_PATH_ENV
 from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
 
@@ -172,6 +172,66 @@ class GenerationHelpersTests(unittest.TestCase):
             ),
         )
         self.assertIsNone(request.staged_skill_sources)
+        self.assertIsNone(request.mcp_servers)
+
+    def test_build_generation_request_attaches_mcp_servers_when_enabled(self) -> None:
+        request = build_generation_request(
+            CommandKind.GEN_TEST,
+            Path("/tmp/kernel.py"),
+            Path("/tmp/kernel.py"),
+            Path("/tmp"),
+            GenerationOptions(
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                remote=None,
+                remote_workdir=None,
+                min_rounds=None,
+                continue_optimize=False,
+                output=None,
+                test_mode="standalone",
+                bench_mode=None,
+                prompt=None,
+                enable_mcp=True,
+            ),
+        )
+
+        self.assertEqual(
+            request.staged_skill_sources,
+            {"triton-npu-run-eval": "triton-npu-run-eval-mcp"},
+        )
+        self.assertEqual(request.mcp_servers, ("triton-agent-run-eval",))
+
+    def test_build_generation_request_without_run_eval_skill_omits_mcp_servers(self) -> None:
+        with patch(
+            "triton_agent.generation.orchestration.resolve_staged_skills",
+            return_value=(("triton-npu-gen-test",), None),
+        ):
+            request = build_generation_request(
+                CommandKind.GEN_TEST,
+                Path("/tmp/kernel.py"),
+                Path("/tmp/kernel.py"),
+                Path("/tmp"),
+                GenerationOptions(
+                    interact=False,
+                    verbose=False,
+                    show_output=False,
+                    force_overwrite=False,
+                    agent_name="codex",
+                    remote=None,
+                    remote_workdir=None,
+                    min_rounds=None,
+                    continue_optimize=False,
+                    output=None,
+                    test_mode="standalone",
+                    bench_mode=None,
+                    prompt=None,
+                ),
+            )
+
+        self.assertIsNone(request.mcp_servers)
 
     def test_build_generation_request_for_gen_eval_omits_single_output_path(self) -> None:
         request = build_generation_request(
@@ -608,6 +668,54 @@ class GenerationCommandHandlerTests(unittest.TestCase):
             summary = json.loads((trace_path.parent / "summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary["command_kind"], "gen-test")
             self.assertEqual(summary["tool_trace_capability"], "agent_invocation_only")
+
+    def test_run_generation_request_enters_managed_mcp_scope_when_request_requires_mcp(self) -> None:
+        from triton_agent.generation.orchestration import run_generation_request
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+                mcp_servers=("triton-agent-run-eval",),
+            )
+
+            entered: list[str] = []
+
+            class _DummyScope:
+                def __enter__(self):
+                    entered.append("enter")
+                    return None
+
+                def __exit__(self, exc_type, exc, tb):
+                    entered.append("exit")
+                    return False
+
+            class DummyRunner:
+                def run(self, request):
+                    del request
+                    return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.generation.orchestration.SkillLinkManager.prepare_skills", return_value=()):
+                with patch("triton_agent.generation.orchestration.SkillLinkManager.cleanup", return_value=[]):
+                    with patch("triton_agent.generation.orchestration.managed_mcp_scope", return_value=_DummyScope()):
+                        with patch("triton_agent.generation.orchestration.create_runner", return_value=DummyRunner()):
+                            result = run_generation_request(request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertEqual(entered, ["enter", "exit"])
 
 
 if __name__ == "__main__":

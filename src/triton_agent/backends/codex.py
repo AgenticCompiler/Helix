@@ -4,10 +4,12 @@ import json
 import re
 import uuid
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Callable, Optional, cast
+from pathlib import Path
+from typing import TYPE_CHECKING, Callable, Optional, TextIO, cast
 
 from triton_agent.backends.base import AgentRunner
-from triton_agent.models import AgentRequest
+from triton_agent.mcp import resolve_managed_mcp_servers
+from triton_agent.models import AgentRequest, AgentResult
 from triton_agent.otel_trace import trace_path_from_request
 
 if TYPE_CHECKING:
@@ -17,6 +19,9 @@ if TYPE_CHECKING:
 class CodexRunner(AgentRunner):
     def __init__(self, executable: str = "codex", stall_timeout_seconds: int = 900) -> None:
         super().__init__(executable, stall_timeout_seconds)
+
+    def supports_mcp_servers(self) -> bool:
+        return True
 
     def build_command(self, request: AgentRequest) -> list[str]:
         if request.interact:
@@ -67,6 +72,24 @@ class CodexRunner(AgentRunner):
                 workspace_root=str(request.workdir),
             )
         return _UnifiedDiffFilter()
+
+    def run(
+        self,
+        request: AgentRequest,
+        stdout: Optional["TextIO"] = None,
+        stderr: Optional["TextIO"] = None,
+    ) -> "AgentResult":
+        config_path: Path | None = None
+        if request.mcp_servers:
+            config_path = _write_codex_mcp_config(request)
+        try:
+            return super().run(request, stdout=stdout, stderr=stderr)
+        finally:
+            if config_path is not None and config_path.exists():
+                config_path.unlink()
+                parent = config_path.parent
+                if parent.exists() and not any(parent.iterdir()):
+                    parent.rmdir()
 
 
 class _UnifiedDiffFilter:
@@ -233,3 +256,19 @@ def _extract_session_id(line: str) -> Optional[str]:
             except ValueError:
                 continue
     return None
+
+
+def _write_codex_mcp_config(request: AgentRequest) -> Path:
+    resolved = resolve_managed_mcp_servers(
+        workdir=request.workdir,
+        server_names=request.mcp_servers,
+    )
+    config_path = request.workdir / ".codex" / "config.toml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    lines: list[str] = []
+    for name, server in resolved.items():
+        lines.append(f"[mcp_servers.{name}]")
+        lines.append(f'url = {json.dumps(cast(str, server["url"]))}')
+        lines.append("")
+    config_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return config_path

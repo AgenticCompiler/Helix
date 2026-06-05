@@ -41,12 +41,21 @@ class AgentRunner(ABC):
     def build_command(self, request: AgentRequest) -> list[str]:
         raise NotImplementedError
 
+    def supports_mcp_servers(self) -> bool:
+        return False
+
     def run(
         self,
         request: AgentRequest,
         stdout: Optional[TextIO] = None,
         stderr: Optional[TextIO] = None,
     ) -> AgentResult:
+        if request.mcp_servers and not self.supports_mcp_servers():
+            return AgentResult(
+                return_code=1,
+                stdout="",
+                stderr=f"{request.agent_name} backend does not support request-scoped MCP servers.",
+            )
         command = self.build_command(request)
         if request.verbose:
             self._log_launch_command(command, stderr or sys.stderr)
