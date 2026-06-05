@@ -10,8 +10,8 @@ Use `tl.make_block_ptr` to model multidimensional contiguous tensor dimensions d
 - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
 - Profiling or IR suggests the 1D pointer path produces strided or non-coalesced loads across a dimension that is actually contiguous in memory.
 - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
-- `report.txt` overall `[Pipe Distribution]` section shows **high SCALAR-to-VECTOR ratio** — `%(SCALAR_dur) / %(VECTOR_dur) > 10`, indicating heavy scalar address computation dominates execution time.
-- `report.txt` overall `[Pipe Distribution]` section shows **high MTE3** — `%(MTE3_dur) > 10%` — and high scalar–MTE3 serialization `%(SCALAR&MTE3/SCALAR) > 20%`, meaning address generation and data transfer are pipelined poorly.
+- `report.txt` overall `[Pipe Distribution]` section shows **high SCALAR-to-VECTOR ratio** — `SCALAR_cycles% / VECTOR_cycles% > 10`, indicating heavy scalar address computation dominates execution time.
+- `report.txt` overall `[Pipe Distribution]` section shows **high MTE3** — `MTE3_cycles% > 10%` — and high scalar–MTE3 serialization `%(SCALAR&MTE3/SCALAR) > 20%`, meaning address generation and data transfer are pipelined poorly.
 - `report.txt` overall `[Pipe Distribution]` section shows **MTE2–MTE3 near-total overlap** — `%(MTE2&MTE3/MTE2) > 50%`, forcing the two memory transfer engines to service the same request serially.
 - `report.txt` overall `[Pipeline Flows]` section shows **both XToY and YToX flows** for some pair (e.g., `SCALARToMTE3` + `MTE3ToSCALAR`), indicating pipeline stages are serialized in a cycle.
 - `report.txt` overall `[Pipe Distribution]` section shows **low SCALAR–VECTOR overlap** — `%(SCALAR&VECTOR/SCALAR) < 2%` — while SCALAR is high `> 10%`, meaning scalar address generation is blocking vector execution.
@@ -21,7 +21,7 @@ Use `tl.make_block_ptr` to model multidimensional contiguous tensor dimensions d
 
 - `report.txt` overall `[Pipe Distribution]` section shows **SCALAR and VECTOR already well-overlapped** — `%(SCALAR&VECTOR/VECTOR) > 60%`; block_ptr cannot further improve overlap.
 - The kernel uses **gather/scatter access** — non-contiguous indirect access via `tl.gather` or `index_ptr` violates the contiguous-memory assumption of `make_block_ptr`.
-- `report.txt` overall `[Pipe Distribution]` section shows **MTE2 negligible** — `%(MTE2_dur) < 0.5%` — meaning memory access volume is too small to be the bottleneck; likely compute-bound or control-bound instead.
+- `report.txt` overall `[Pipe Distribution]` section shows **MTE2 negligible** — `MTE2_cycles% < 0.5%` — meaning memory access volume is too small to be the bottleneck; likely compute-bound or control-bound instead.
 
 ## Signals
 
@@ -31,11 +31,13 @@ Use `tl.make_block_ptr` to model multidimensional contiguous tensor dimensions d
 
 ### Profiling (from `extracted_bin_data/report.txt`)
 
+In the signals below, `PIPE_cycles%` refers to the `cycles%` column for pipe `PIPE` in `[Pipe Distribution]`. For example, given `SCALAR cycles=4594017 (45.1%)`, `SCALAR_cycles%` = 45.1%.
+
 #### Strong Signals
 
-1. **High SCALAR-to-VECTOR ratio** — `%(SCALAR_dur) / %(VECTOR_dur) > 10`. Flat 1D pointer arithmetic generates heavy scalar address computation (`//`, `%`, `* stride`) that dwarfs useful vector work. Multidimensional `make_block_ptr` replaces scalar address generation with DMA descriptors, sharply reducing SCALAR.
+1. **High SCALAR-to-VECTOR ratio** — `SCALAR_cycles% / VECTOR_cycles% > 10`. Flat 1D pointer arithmetic generates heavy scalar address computation (`//`, `%`, `* stride`) that dwarfs useful vector work. Multidimensional `make_block_ptr` replaces scalar address generation with DMA descriptors, sharply reducing SCALAR.
 
-2. **High MTE3 with SCALAR–MTE3 serialization** — `%(MTE3_dur) > 10%` AND `%(SCALAR&MTE3/SCALAR) > 20%`. High MTE3 plus high SCALAR–MTE3 overlap means scalar address computation and data transfer are serialized. Block_ptr eliminates this by letting the DMA engine handle addressing autonomously.
+2. **High MTE3 with SCALAR–MTE3 serialization** — `MTE3_cycles% > 10%` AND `%(SCALAR&MTE3/SCALAR) > 20%`. High MTE3 plus high SCALAR–MTE3 overlap means scalar address computation and data transfer are serialized. Block_ptr eliminates this by letting the DMA engine handle addressing autonomously.
 
 3. **MTE2–MTE3 near-total overlap** — `%(MTE2&MTE3/MTE2) > 50%`. When the two memory transfer engine levels overlap almost completely, the 1D pointer path is forcing them to service the same request serially. Multidimensional block_ptr lets MTE2 and MTE3 operate independently.
 
@@ -43,7 +45,7 @@ Use `tl.make_block_ptr` to model multidimensional contiguous tensor dimensions d
 
 4. **Pipeline flow cycle** — Pipeline Flows contain both `XToY` and `YToX` for some pair (e.g., `SCALARToMTE3` + `MTE3ToSCALAR`, or `SCALARToVECTOR` + `VECTORToSCALAR`). A cycle means pipeline stages are serialized. The optimization goal is to eliminate cycles and approach the ideal flow `MTE2ToVECTOR → VECTORToMTE3`.
 
-5. **Low SCALAR–VECTOR overlap with high SCALAR** — `%(SCALAR&VECTOR/SCALAR) < 2%` AND `%(SCALAR_dur) > 10%`. Scalar address generation is blocking vector execution. After block_ptr, SCALAR&VECTOR/SCALAR typically rises as the two run more concurrently.
+5. **Low SCALAR–VECTOR overlap with high SCALAR** — `%(SCALAR&VECTOR/SCALAR) < 2%` AND `SCALAR_cycles% > 10%`. Scalar address generation is blocking vector execution. After block_ptr, SCALAR&VECTOR/SCALAR typically rises as the two run more concurrently.
 
 #### Weak Signals
 
@@ -53,7 +55,7 @@ Use `tl.make_block_ptr` to model multidimensional contiguous tensor dimensions d
 
 1. **SCALAR and VECTOR already well-overlapped** — `%(SCALAR&VECTOR/VECTOR) > 60%` means scalar and vector are already running concurrently; block_ptr cannot further improve overlap.
 2. **Access pattern is gather/scatter** — Index-driven non-contiguous access (e.g., `tl.gather`, indirect loads via `index_ptr`) violates the contiguous-memory assumption of `make_block_ptr`.
-3. **MTE2 is negligible** — `%(MTE2_dur) < 0.5%` means memory access volume is too small to be the bottleneck; the issue is likely compute-bound or control-bound instead.
+3. **MTE2 is negligible** — `MTE2_cycles% < 0.5%` means memory access volume is too small to be the bottleneck; the issue is likely compute-bound or control-bound instead.
 
 #### Decision Rule
 
