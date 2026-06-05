@@ -208,6 +208,42 @@ class RunEvalMCPServerTests(unittest.TestCase):
             {"return_code": 0, "stdout": "ok\n", "stderr": ""},
         )
 
+    def test_compare_perf_tool_maps_skip_errors_to_legacy_subcommand_flag(self) -> None:
+        server = module.create_server(slot_pool=module.NpuDevicePool(("0",)))
+        observed: dict[str, object] = {}
+
+        def fake_run_subcommand(
+            subcommand: str,
+            arguments: list[str],
+            *,
+            leased_device: Optional[str] = None,
+            workspace: Path,
+        ):
+            observed["subcommand"] = subcommand
+            observed["arguments"] = arguments
+            observed["leased_device"] = leased_device
+            observed["workspace"] = workspace
+            return {"return_code": 0, "stdout": "ok\n", "stderr": ""}
+
+        async def _call_tool():
+            with (
+                patch.object(module, "_run_subcommand", side_effect=fake_run_subcommand),
+                patch.object(module, "current_workspace", return_value=Path("/tmp/ws")),
+            ):
+                return await server.call_tool(
+                    "compare-perf",
+                    {
+                        "baseline": "/tmp/base.txt",
+                        "compare": "/tmp/candidate.txt",
+                        "skip_error": True,
+                    },
+                )
+
+        asyncio.run(_call_tool())
+
+        self.assertEqual(observed["subcommand"], "compare-perf")
+        self.assertIn("--skip-error", cast(list[str], observed["arguments"]))
+
     def test_profile_report_tool_does_not_lease_device(self) -> None:
         server = module.create_server(slot_pool=module.NpuDevicePool(("0",)))
         observed: dict[str, object] = {}
