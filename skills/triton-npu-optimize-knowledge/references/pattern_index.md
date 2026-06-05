@@ -18,10 +18,17 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Summary: Use Triton-Ascend autotune as the default way to search split sizes, tile sizes, and selected compile options when the kernel structure is already reasonable and the main open question is parameter choice.
 - Source: [autotune.md](patterns/autotune.md)
 
+
 ### `grid-flatten-and-ub-buffering`
 
 - Summary: Flatten logical work items onto physical cores and batch small row-wise memory transfers into wider UB stores to reduce launch overhead and improve per-core work density.
 - Source: [grid-flatten-and-ub-buffering.md](patterns/grid-flatten-and-ub-buffering.md)
+
+### `software-pipeline-dependency-profiling`
+
+- Summary: Use this pattern when `extracted_bin_data/report.txt` suggests transfer and compute are weakly overlapped, the kernel contains `tl.load`, and the load latency can plausibly be hidden behind vector/cube compute. Constructing a `for` loop or steady-state loop around regular `tl.load` work can enable compiler prefetch, improve pipeline parallelism, and then be tuned with `num_stages` or manual prefetch when needed.
+- Source: [software-pipeline-dependency-profiling.md](patterns/software-pipeline-dependency-profiling.md)
+
 
 ## Generated Pattern Summaries
 
@@ -71,15 +78,17 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `autotune`
 
-- Summary: Use Triton-Ascend autotune as the default way to search split sizes, tile sizes, and selected compile options when the kernel structure is already reasonable and the main open question is parameter choice.
+- Summary: Three-phase signal-driven optimization from `report.txt`. Phase 1 (Pre-Gate A-Cat-5): determine whether autotune is the right tool — if memory layout is fragmented, route to `compile_hint`/`discrete_memory_access` instead. Phase 2: match `report.txt` statistical features against A-Cat-6 through A-Cat-4 to identify which parameters need tuning. Phase 3: choose Route 1 (`configs=[]` auto-infer), Route 2 (`hints`), or Route 3 (hand-written Configs using Category examples). Each Category includes concrete `triton.Config` examples and worked simulation cases.
 - Source: [autotune.md](patterns/autotune.md)
 - Use When:
-  - The kernel structure already looks semantically correct, and the likely headroom is in `BLOCK_*` selection, split shape, or Ascend-specific compile options such as `multibuffer`.
-  - The current optimization loop is drifting toward repeated manual tiling edits without strong evidence that a structural rewrite is needed first.
+  - The kernel logic is mathematically correct, stable, and passes validation tests.
+  - You have a `report.txt` output from `extracted_bin_data`.
+  - **Pre-Gate (always check first):** A-Cat-5 fires when `[MTE2 Data Transport]` ProcessBytes avg < 128B or Data movers = 0 with `tl.load` present. If fired, stop — autotune cannot fix this; fix memory layout/compiler hints first.
+  - **Parameter Diagnostics (only if Pre-Gate passes):** A-Cat-6 (Register Spilling), A-Cat-1 (Pipeline Overlap Deficit), A-Cat-2 (Scalar Overhead Dominance) are diagnosed from `report.txt`. A-Cat-3 (Parallelism Starvation) and A-Cat-4 (Autotune Key Mismatch) require additional data sources.
   - The hot path exposes one or more free `tl.constexpr` parameters that are not hard-coded at launch time.
   - Bounds masks or loop structure still map cleanly back to runtime shape arguments, so a shape-keyed autotune cache is plausible.
-  - The operator is vector-like rather than a Cube-only kernel path that needs a different optimization route.
-  - You are not already in a launch-mode experiment that explicitly changes execution style; if you are applying the A5 SIMT-only discrete-access pattern, `num_warps` and grid decomposition are rechecked there after `force_simt_only=True`.
+  - The operator is vector-like rather than a Cube-only kernel path.
+  - You are not already in a launch-mode experiment that explicitly changes execution style; if applying the A5 SIMT-only discrete-access pattern, `num_warps` and grid decomposition are rechecked there after `force_simt_only=True`.
 
 ### `block-pointer-dimensionality`
 
@@ -89,6 +98,13 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - A high-dimensional contiguous tensor is accessed through flattened one-dimensional offsets that stride through an inner dimension.
   - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
   - Profiling or IR suggests the 1D pointer path produces strided or non-coalesced loads across a dimension that is actually contiguous in memory.
+  - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
+  - `report.txt` overall `[Pipe Distribution]` section shows **high SCALAR-to-VECTOR ratio** — `%(SCALAR_dur) / %(VECTOR_dur) > 10`, indicating heavy scalar address computation dominates execution time.
+  - `report.txt` overall `[Pipe Distribution]` section shows **high MTE3** — `%(MTE3_dur) > 10%` — and high scalar–MTE3 serialization `%(SCALAR&MTE3/SCALAR) > 20%`, meaning address generation and data transfer are pipelined poorly.
+  - `report.txt` overall `[Pipe Distribution]` section shows **MTE2–MTE3 near-total overlap** — `%(MTE2&MTE3/MTE2) > 50%`, forcing the two memory transfer engines to service the same request serially.
+  - `report.txt` overall `[Pipeline Flows]` section shows **both XToY and YToX flows** for some pair (e.g., `SCALARToMTE3` + `MTE3ToSCALAR`), indicating pipeline stages are serialized in a cycle.
+  - `report.txt` overall `[Pipe Distribution]` section shows **low SCALAR–VECTOR overlap** — `%(SCALAR&VECTOR/SCALAR) < 2%` — while SCALAR is high `> 10%`, meaning scalar address generation is blocking vector execution.
+  - `report.txt` overall `[Pipe Distribution Over Each Core]` section lists **very few cores active** relative to hardware capacity, suggesting flat 1D grid decomposition is too coarse.
 
 ### `classic-matmul`
 
@@ -100,6 +116,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - profiling or IR suggests the hot loop is spending too much effort on scalar address generation or repeated reduction structure
   - a block-pointer rewrite reduced one scalar chain but the full loop is still not a regular matmul
   - dtype-specialized or shape-specialized paths are acceptable when one tiled regime is clearly better but a unified rewrite would change numerics too much
+  - simulation `report.txt` shows CUBE instr = 0 (or CUBE row absent) AND kernel source contains `tl.sum(a*b)` or equivalent K-reduction loop instead of `tl.dot`
 
 ### `compile_hint`
 
@@ -193,6 +210,12 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - The kernel has a hot inner loop (often a K loop in GEMM-like kernels).
   - Each loop iteration repeats substantial pointer math, mask construction, type casts, or shape bookkeeping.
   - Profiling shows scalar/control work is disproportionately high relative to useful compute.
+  - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
+  - `report.txt` overall `[Pipe Distribution]` shows high SCALAR instruction/cycle share while VECTOR or CUBE useful compute is not dominant.
+  - `report.txt` overall `[Key Ratios]` shows SCALAR much larger than VECTOR, suggesting bookkeeping is heavier than useful vector work.
+  - For matmul, reduction, or dot-like kernels, `report.txt` shows CUBE work is low or not sustained even though `tl.dot` should be the main work.
+  - `report.txt` overall `[Pipe Distribution]` shows MTE2/MTE3 are not the dominant buckets.
+  - `[SCALAR Instr Types]` or `[TRACE Events]` are dominated by `ADD`, `ADD_IMM`, `MUL`, `MADD`, `CMP`, `JUMPCMP`, `SIGNEXT`, or `ZEROEXT` around address generation, mask construction, casts, or bounds checks.
 
 ### `merge-adjacent-stores`
 
@@ -250,6 +273,12 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - The kernel is **naturally row-wise**: each output row depends mainly on one row of input (e.g. row-wise LogSumExp, row norms, row softmax statistics).
   - Profiling or timeline views suggest **high scalar/control overhead**, **under-filled vector work per program**, or **many tiny programs** relative to problem size `B` (batch / number of rows).
   - The row-wise math already uses **tile loops along `N`** (`BLOCK_N`); increasing **`BLOCK_M`** does not force an extra full pass over global memory if you keep a **single streaming pass** over `N` per program.
+  - `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR imbalance, such as `%(SCALAR instr) >= 70%` or `%(SCALAR cycles) >= 40%`, while `%(VECTOR instr) <= 15%` or `%(VECTOR cycles) <= 15%`.
+  - `report.txt` overall `[Key Ratios]` shows a high `SCALAR:VECTOR` ratio, such as `SCALAR:VECTOR_instr >= 8:1` or `SCALAR:VECTOR_cycles >= 3:1`, and code inspection shows `program_id(0)` maps one-to-one to rows.
+  - `report.txt` overall `[VECTOR Unit]` shows low utilization or a small amount of vector work per program, such as only tens of VECTOR instructions, near-zero utilization, or mask/setup-heavy top VECTOR instructions.
+  - `report.txt` total instruction/event counts are small, or only one/few cores appear active, while the same report still shows SCALAR-heavy / VECTOR-thin ratios.
+  - `report.txt` `[WAIT_FLAG / BAR Sync]`, `[Pipeline Flows]`, or timeline views show short-program synchronization/control traces rather than long sustained vector work. When these traits appear with scalar/vector thin-program ratios, `program-multiple-rows` is worth trying; frequent wait/barrier patterns strengthen the signal, but low counts do not rule it out.
+  - `report.txt` `[Pipe Distribution Over Each Core]` shows similar SCALAR-heavy / VECTOR-thin behavior across cores.
 
 ### `reduce-avoid-transpose-copy`
 
@@ -308,6 +337,24 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - IR shows `tt.broadcast`, `tt.reduce`, helper outlined functions, or temporary mask tensors dedicated to shift assembly rather than the core math.
   - Profiling indicates scalar/control overhead, UB pressure, vector-function fragmentation, or poor vector utilization around the shift path.
 
+### `scalar-vector-simulation-signal`
+
+- Summary: Match observed signals in overall content of `report.txt` against the categories below to identify the simulation bottleneck type, then follow the mapped pattern to the optimization.
+- Source: [scalar-vector-simulation-signal.md](patterns/scalar-vector-simulation-signal.md)
+- Use When:
+  - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
+  - Simulation data shows **abnormal Pipe distribution** in `report.txt` overall `[Pipe Distribution]` section (e.g., SCALAR instructions > 75%, VECTOR instructions < 15%, MTE2 cycles disproportionately high or zero).
+  - `report.txt` overall `[Pipeline Flows]` section shows **no MTE2ToVECTOR flows** despite the kernel loading from global memory (Signal Category 5), or SCALARToVECTOR **avg > 50ns** (Signal Category 2).
+  - `report.txt` overall `[TRACE Events]` section has **> 10,000 events** dominated by SIGNEXT/ADD/MUL/DIV/SUB/MADD (Signal Category 1).
+  - `report.txt` overall `[VECTOR Unit]` UB Read or Write Conflict exceeds 100 (Signal Category 3).
+  - `report.txt` overall `[VECTOR Unit]` Utilization avg < 30% (Signal Category 4).
+  - You need to map an observed simulation signal to a related pattern and a concrete optimization direction.
+  - You see `tl.load` with `mask`/`other` and want to determine whether the load is taking the slow SCALAR→VECTOR→MTE2 path (Path A) or the fast SCALAR→MTE2→VECTOR path (Path B).
+  - The optimization target is **pure tiling parameter tuning** (BLOCK_M/BLOCK_N/BLOCK_K, num_warps, grid config) — these are invisible in single-program simulation and must use hardware profiling.
+  - The optimization target is **multi-program atomic contention** (e.g., `tl.atomic_add` under concurrent access) — simulation cannot reproduce this and signals will be misleading.
+  - Simulation data shows **no signal hitting any threshold**.
+  - The kernel is **inherently lightweight** (e.g., a trivial load+store touch kernel, a copy kernel, or a kernel with no compute loop) — an abnormal Pipe distribution is the natural characteristic of such operations, not an optimization target.
+
 ### `slice_coalesce`
 
 - Summary: When the kernel performs scatter/gather operations with non-contiguous memory access patterns, such as token rearrangement in MOE layers, sparse data processing, or any operation involving index-based data movement, use `extract_slice` or `insert_slice` to data reuse while minimizing expensive global memory transactions.
@@ -324,6 +371,18 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Intermediate tensors, rather than just inputs or outputs, are the main source of UB pressure.
   - The overall algorithm is still reasonable, but staged slice processing is needed to keep temporary values within on-chip memory limits.
 
+### `software-pipeline-dependency-profiling`
+
+- Summary: Use this pattern when `extracted_bin_data/report.txt` suggests transfer and compute are weakly overlapped, the kernel contains `tl.load`, and the load latency can plausibly be hidden behind vector/cube compute. Constructing a `for` loop or steady-state loop around regular `tl.load` work can enable compiler prefetch, improve pipeline parallelism, and then be tuned with `num_stages` or manual prefetch when needed.
+- Source: [software-pipeline-dependency-profiling.md](patterns/software-pipeline-dependency-profiling.md)
+- Use When:
+  - `extracted_bin_data/report.txt` is available.
+  - The `[Pipe Overlap Ratio]` section shows a software-pipeline signal: very low `%((VECTOR+CUBE)&MTE2/(VECTOR+CUBE))` and very low `%((VECTOR+CUBE)&MTE2/MTE2)`.
+  - In `[Pipe Distribution]`, compute `compute_cycles%` from both `VECTOR cycles%` and `CUBE cycles%` when both rows exist; if only one of the two rows exists, use the available row. Prefer this pattern when `compute_cycles%` and `MTE2 cycles%` are relatively balanced, such as each being at least about one-third of the other.
+  - `SCALAR cycles%` is not the dominant share in `[Pipe Distribution]`; if scalar cycles dominate, prefer scalar-related optimization first.
+  - The kernel contains `tl.load`.
+  - The `tl.load` path is regular enough that constructing a `for` loop or steady-state loop can enable compiler prefetch and improve performance through pipeline parallelism.
+
 ### `software-pipeline`
 
 - Summary: Improve overlap between memory movement and compute in a hot loop that is already structurally tiled, typically by combining block pointers, prefetching, and pipelined loop structure.
@@ -331,6 +390,18 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Use When:
   - The hot loop already has a real tiled structure, but loads and computation still happen too serially.
   - Profiling suggests wait-heavy or overlap-poor behavior, and the next question is pipeline quality rather than basic kernel structure.
+
+### `static-range-to-range`
+
+- Summary: Replace `tl.static_range` with `tl.range` in hot loops with lightweight, independent iterations so the compiler preserves loop structure and applies software pipelining, overlapping memory transfers and compute across iterations instead of fully unrolling into a flat serialized sequence.
+- Source: [static-range-to-range.md](patterns/static-range-to-range.md)
+- Use When:
+  - The hot loop uses `tl.static_range` (or `tl.range` with a `tl.constexpr` bound that triggers full unrolling).
+  - Loop iterations are **independent** — no loop-carried data dependency between iterations.
+  - The loop body is lightweight (simple elementwise ops, few intermediates).
+  - Profiling shows MTE2 (DMA) ratio is disproportionately low relative to VECTOR, and SCALAR/MTE2 overlap is poor.
+  - Pipeline flows are unidirectional only (`MTE2→VECTOR`, `VECTOR→MTE3`) with no reverse cascade flows, indicating each iteration completes fully before the next begins.
+  - `BLOCK_SIZE` and `num_warps` are moderate enough that the rename pressure from `tl.range` will not cause register spills.
 
 ### `stencil-resize-gm-to-ub-staging`
 
@@ -358,3 +429,9 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Use When:
   - Explicit `i64` or `i32` comparisons appear on the hot path outside the compiler's normal fast load/store mask cases.
   - Comparison-heavy control flow or masking looks like a real vectorization blocker rather than just minor boundary handling.
+  - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
+  - `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR ratio: `%(SCALAR_dur) / %(VECTOR_dur) > 10`.
+  - `report.txt` overall `[Key Ratios]` shows a high `SCALAR:VECTOR` ratio, such as `SCALAR:VECTOR_instr` much larger than `4:1`.
+  - `report.txt` overall `[VECTOR Unit]` shows low or zero utilization, and the top VECTOR instructions are mask-like operations such as `MOVEMASK`.
+  - `report.txt` overall `[TRACE Events]` contains many mask/control-related scalar events such as `CMP_IMM`, `JUMPC`, `JUMPCMP`, `MOVEMASK`, or `SIGNEXT`.
+  - UB conflicts are low and MTE2/MTE3 activity does not explain the regression by itself, making scalarized mask/control work a plausible cause.
