@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional, TextIO
 
 from triton_agent.backends.base import AgentRunner
 from triton_agent.mcp import resolve_managed_mcp_servers
-from triton_agent.models import AgentRequest, AgentResult
+from triton_agent.models import AgentRequest
 
 
 _OPENCODE_CONFIG_PATH = Path(".opencode") / "opencode.json"
@@ -67,12 +69,12 @@ class OpenCodeRunner(AgentRunner):
             command.insert(5, "--pure")
         return command
 
-    def run(
+    @contextmanager
+    def _prepare_run_context(
         self,
         request: AgentRequest,
-        stdout: Optional[TextIO] = None,
         stderr: Optional[TextIO] = None,
-    ) -> AgentResult:
+    ) -> Iterator[None]:
         config_path = request.workdir / _OPENCODE_CONFIG_PATH
         if config_path.exists() or config_path.is_symlink():
             warning_stream = stderr or sys.stderr
@@ -80,7 +82,8 @@ class OpenCodeRunner(AgentRunner):
                 f"Warning: Existing OpenCode workspace config detected; skipping staged config: {config_path}",
                 file=warning_stream,
             )
-            return super().run(request, stdout=stdout, stderr=stderr)
+            yield
+            return
 
         managed_servers = resolve_managed_mcp_servers(
             workdir=request.workdir,
@@ -92,7 +95,7 @@ class OpenCodeRunner(AgentRunner):
             encoding="utf-8",
         )
         try:
-            return super().run(request, stdout=stdout, stderr=stderr)
+            yield
         finally:
             if config_path.exists() or config_path.is_symlink():
                 config_path.unlink()

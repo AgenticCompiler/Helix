@@ -4,6 +4,8 @@ import os
 import sys
 import time
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Callable, Optional, TextIO
 
@@ -44,6 +46,15 @@ class AgentRunner(ABC):
     def supports_mcp_servers(self) -> bool:
         return False
 
+    @contextmanager
+    def _prepare_run_context(
+        self,
+        request: AgentRequest,
+        stderr: Optional[TextIO] = None,
+    ) -> Iterator[None]:
+        del request, stderr
+        yield
+
     def run(
         self,
         request: AgentRequest,
@@ -56,33 +67,34 @@ class AgentRunner(ABC):
                 stdout="",
                 stderr=f"{request.agent_name} backend does not support request-scoped MCP servers.",
             )
-        command = self.build_command(request)
-        if request.verbose:
-            self._log_launch_command(command, stderr or sys.stderr)
-
-        if not request.enable_agent_hooks and not request.log_tools:
-            return self._run_with_retry(command, request, stdout=stdout)
-
-        hook_manager = self._hook_manager()
-        extra_allowed_read_roots = (
-            (request.compiler_source_path,) if request.compiler_source_path is not None else ()
-        )
-        hook_state = hook_manager.prepare_hooks(
-            request.agent_name,
-            request.workdir,
-            self._hook_options(request),
-            extra_allowed_read_roots=extra_allowed_read_roots,
-        )
-        if request.verbose:
-            emit_verbose_lines(stderr or sys.stderr, "hooks", hook_manager.describe_prepare(hook_state))
-        try:
-            return self._run_with_retry(command, request, stdout=stdout)
-        finally:
+        with self._prepare_run_context(request, stderr=stderr):
+            command = self.build_command(request)
             if request.verbose:
-                emit_verbose_lines(stderr or sys.stderr, "hooks", hook_manager.describe_cleanup(hook_state))
-            cleanup_warnings = hook_manager.cleanup(hook_state)
-            if cleanup_warnings:
-                emit_verbose_lines(stderr or sys.stderr, "hooks", cleanup_warnings)
+                self._log_launch_command(command, stderr or sys.stderr)
+
+            if not request.enable_agent_hooks and not request.log_tools:
+                return self._run_with_retry(command, request, stdout=stdout)
+
+            hook_manager = self._hook_manager()
+            extra_allowed_read_roots = (
+                (request.compiler_source_path,) if request.compiler_source_path is not None else ()
+            )
+            hook_state = hook_manager.prepare_hooks(
+                request.agent_name,
+                request.workdir,
+                self._hook_options(request),
+                extra_allowed_read_roots=extra_allowed_read_roots,
+            )
+            if request.verbose:
+                emit_verbose_lines(stderr or sys.stderr, "hooks", hook_manager.describe_prepare(hook_state))
+            try:
+                return self._run_with_retry(command, request, stdout=stdout)
+            finally:
+                if request.verbose:
+                    emit_verbose_lines(stderr or sys.stderr, "hooks", hook_manager.describe_cleanup(hook_state))
+                cleanup_warnings = hook_manager.cleanup(hook_state)
+                if cleanup_warnings:
+                    emit_verbose_lines(stderr or sys.stderr, "hooks", cleanup_warnings)
 
     def interrupt_policy(self, request: AgentRequest) -> InterruptPolicy | None:
         if request.interact or request.command_kind != request.command_kind.OPTIMIZE:

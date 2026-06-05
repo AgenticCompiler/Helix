@@ -2,8 +2,10 @@ import sys
 import tempfile
 import unittest
 from os import environ
+from contextlib import contextmanager
 from pathlib import Path
 from io import StringIO
+from typing import Optional, TextIO
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -102,6 +104,42 @@ class SharedRunnerBaseTests(unittest.TestCase):
         self.assertEqual(result.stdout, "")
         self.assertIn("does not support request-scoped MCP servers", result.stderr)
         mocked.assert_not_called()
+
+    def test_base_runner_wraps_command_build_and_execution_in_prepare_cleanup_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            events: list[str] = []
+            runner = _PreparedDummyRunner(events)
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="dummy",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+            )
+
+            def _inspect_run(*args, **kwargs):
+                del args, kwargs
+                events.append("run")
+                return _ok_result()
+
+            with patch("triton_agent.backends.base.run_process", side_effect=_inspect_run):
+                result = runner.run(request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertEqual(
+                events,
+                ["prepare-enter", "build-command", "run", "prepare-exit"],
+            )
 
     def test_base_runner_skips_agent_hooks_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -643,6 +681,29 @@ class _DummyRunner(AgentRunner):
 
     def build_command(self, request: AgentRequest) -> list[str]:
         return ["dummy", request.prompt]
+
+
+class _PreparedDummyRunner(_DummyRunner):
+    def __init__(self, events: list[str]) -> None:
+        super().__init__()
+        self._events = events
+
+    @contextmanager
+    def _prepare_run_context(
+        self,
+        request: AgentRequest,
+        stderr: Optional[TextIO] = None,
+    ):
+        del request, stderr
+        self._events.append("prepare-enter")
+        try:
+            yield
+        finally:
+            self._events.append("prepare-exit")
+
+    def build_command(self, request: AgentRequest) -> list[str]:
+        self._events.append("build-command")
+        return super().build_command(request)
 
 
 def _ok_result() -> AgentResult:
