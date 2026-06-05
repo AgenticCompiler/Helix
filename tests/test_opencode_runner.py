@@ -333,6 +333,43 @@ class OpenCodeRunnerTests(unittest.TestCase):
             self.assertEqual(result.return_code, 0)
             self.assertFalse((workspace / ".opencode" / "opencode.json").exists())
 
+    def test_run_stages_backend_hooks_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = OpenCodeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="opencode",
+                skill_name="triton-npu-optimize",
+                prompt="Continue work",
+                workdir=workspace,
+                enable_agent_hooks=True,
+            )
+
+            def _inspect_hooks(*args, **kwargs):
+                del args, kwargs
+                plugin_file = workspace / ".opencode" / "plugins" / "triton-agent-hook-guard.js"
+                hook_dir = workspace / ".opencode" / "triton-agent-hooks"
+                self.assertTrue(plugin_file.exists())
+                self.assertTrue((hook_dir / "policy.json").exists())
+                return _ok_result()
+
+            with patch("triton_agent.backends.base.run_process", side_effect=_inspect_hooks):
+                result = runner.run(request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertFalse((workspace / ".opencode" / "plugins" / "triton-agent-hook-guard.js").exists())
+            self.assertFalse((workspace / ".opencode" / "triton-agent-hooks").exists())
+
     def test_verbose_logging_prints_launch_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)

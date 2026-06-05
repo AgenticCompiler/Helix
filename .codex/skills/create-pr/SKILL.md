@@ -30,6 +30,11 @@ bash ./scripts/check-skill-scripts.sh
 
 Only run the strict skill-script pyright check on `skills/*/scripts/*.py` files changed in this branch (diff against `origin/main`). If the diff produces no matching files, the loop is a no-op. If any required command fails, stop, fix it, and rerun the full set before creating the PR.
 
+## PR Description Style
+
+- Write short, bullet-point key points only. Do not include long prose, verification tables, or redundant summaries.
+- The description should make it clear at a glance what changed and why.
+
 ## Final Handoff
 
 Use `$managing-gitcode-prs` for the actual PR creation step. Keep GitCode-specific flags and API details there instead of duplicating them here.
