@@ -8,8 +8,11 @@ from pathlib import Path
 from typing import Optional, TextIO
 
 from triton_agent.backends.base import AgentRunner
+from triton_agent.backends.hook_common import cleanup_hook_stage, describe_cleanup, describe_prepare
+from triton_agent.backends.opencode_hooks import prepare_opencode_hooks
 from triton_agent.mcp import resolve_managed_mcp_servers
 from triton_agent.models import AgentRequest
+from triton_agent.verbose import emit_verbose_lines
 
 
 _OPENCODE_CONFIG_PATH = Path(".opencode") / "opencode.json"
@@ -75,6 +78,17 @@ class OpenCodeRunner(AgentRunner):
         request: AgentRequest,
         stderr: Optional[TextIO] = None,
     ) -> Iterator[None]:
+        hook_state = None
+        if request.enable_agent_hooks or request.log_tools:
+            hook_state = prepare_opencode_hooks(
+                _hooks_root(),
+                request.workdir,
+                self._hook_options(request),
+                extra_allowed_read_roots=self._extra_allowed_read_roots(request),
+            )
+            if request.verbose:
+                emit_verbose_lines(stderr or sys.stderr, "hooks", describe_prepare(hook_state))
+
         config_path = request.workdir / _OPENCODE_CONFIG_PATH
         if config_path.exists() or config_path.is_symlink():
             warning_stream = stderr or sys.stderr
@@ -99,3 +113,14 @@ class OpenCodeRunner(AgentRunner):
         finally:
             if config_path.exists() or config_path.is_symlink():
                 config_path.unlink()
+            if hook_state is not None:
+                if request.verbose:
+                    emit_verbose_lines(stderr or sys.stderr, "hooks", describe_cleanup(hook_state))
+                cleanup_warnings = cleanup_hook_stage(hook_state)
+                if cleanup_warnings:
+                    emit_verbose_lines(stderr or sys.stderr, "hooks", cleanup_warnings)
+
+
+def _hooks_root() -> Path:
+    repo_root = Path(__file__).resolve().parents[3]
+    return repo_root / "hooks"
