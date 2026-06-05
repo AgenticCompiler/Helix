@@ -401,6 +401,45 @@ class CodexRunnerTests(unittest.TestCase):
             self.assertEqual(result.return_code, 0)
             self.assertFalse((workspace / ".codex" / "config.toml").exists())
 
+    def test_run_stages_backend_hooks_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = CodexRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-optimize",
+                prompt="Continue work",
+                workdir=workspace,
+                enable_agent_hooks=True,
+            )
+
+            def _inspect_hooks(*args, **kwargs):
+                del args, kwargs
+                hooks_json = workspace / ".codex" / "hooks.json"
+                hook_dir = workspace / ".codex" / "triton-agent-hooks"
+                self.assertTrue(hooks_json.exists())
+                self.assertTrue((hook_dir / "policy.json").exists())
+                self.assertTrue((hook_dir / "pretooluse_guard.py").exists())
+                self.assertTrue((hook_dir / "tool_trace_hook.py").exists())
+                return _ok_result()
+
+            with patch("triton_agent.backends.base.run_process", side_effect=_inspect_hooks):
+                result = runner.run(request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertFalse((workspace / ".codex" / "hooks.json").exists())
+            self.assertFalse((workspace / ".codex" / "triton-agent-hooks").exists())
+
     def test_buffered_output_filters_bare_hunk_fragments_from_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)

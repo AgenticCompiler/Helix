@@ -9,7 +9,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Callable, Optional, TextIO
 
-from triton_agent.agent_hooks import AgentHookManager, AgentHookOptions
+from triton_agent.backends.hook_common import HookStageOptions
 from triton_agent.models import AgentRequest, AgentResult
 from triton_agent.optimize.prompts import build_optimize_resume_prompt
 from triton_agent.otel_trace import (
@@ -25,7 +25,7 @@ from triton_agent.show_output_log import (
     write_show_output_chunk,
 )
 from triton_agent.transient_failures import contains_transient_agent_failure_text
-from triton_agent.verbose import emit_command_block, emit_verbose_lines
+from triton_agent.verbose import emit_command_block
 
 
 class AgentRunner(ABC):
@@ -72,29 +72,12 @@ class AgentRunner(ABC):
             if request.verbose:
                 self._log_launch_command(command, stderr or sys.stderr)
 
-            if not request.enable_agent_hooks and not request.log_tools:
-                return self._run_with_retry(command, request, stdout=stdout)
+            return self._run_with_retry(command, request, stdout=stdout)
 
-            hook_manager = self._hook_manager()
-            extra_allowed_read_roots = (
-                (request.compiler_source_path,) if request.compiler_source_path is not None else ()
-            )
-            hook_state = hook_manager.prepare_hooks(
-                request.agent_name,
-                request.workdir,
-                self._hook_options(request),
-                extra_allowed_read_roots=extra_allowed_read_roots,
-            )
-            if request.verbose:
-                emit_verbose_lines(stderr or sys.stderr, "hooks", hook_manager.describe_prepare(hook_state))
-            try:
-                return self._run_with_retry(command, request, stdout=stdout)
-            finally:
-                if request.verbose:
-                    emit_verbose_lines(stderr or sys.stderr, "hooks", hook_manager.describe_cleanup(hook_state))
-                cleanup_warnings = hook_manager.cleanup(hook_state)
-                if cleanup_warnings:
-                    emit_verbose_lines(stderr or sys.stderr, "hooks", cleanup_warnings)
+    def _extra_allowed_read_roots(self, request: AgentRequest) -> tuple[Path, ...]:
+        if request.compiler_source_path is None:
+            return ()
+        return (request.compiler_source_path,)
 
     def interrupt_policy(self, request: AgentRequest) -> InterruptPolicy | None:
         if request.interact or request.command_kind != request.command_kind.OPTIMIZE:
@@ -127,14 +110,10 @@ class AgentRunner(ABC):
     def _log_launch_command(self, command: list[str], stream: TextIO) -> None:
         emit_command_block(stream, command)
 
-    def _hook_manager(self) -> AgentHookManager:
-        repo_root = Path(__file__).resolve().parents[3]
-        return AgentHookManager(repo_root / "hooks")
-
-    def _hook_options(self, request: AgentRequest) -> AgentHookOptions:
+    def _hook_options(self, request: AgentRequest) -> HookStageOptions:
         trace_path = trace_path_from_request(request)
         run_id = request.run_id or (request.extra_env or {}).get(TRACE_RUN_ID_ENV, "") if trace_path is not None else None
-        return AgentHookOptions(
+        return HookStageOptions(
             trace_enabled=request.log_tools and trace_path is not None,
             guard_enabled=request.enable_agent_hooks,
             trace_path=trace_path,

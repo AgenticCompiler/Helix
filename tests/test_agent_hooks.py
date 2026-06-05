@@ -6,20 +6,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from triton_agent.agent_hooks import AgentHookManager
+from triton_agent.backends.codex_hooks import prepare_codex_hooks
+from triton_agent.backends.hook_common import cleanup_hook_stage
+from triton_agent.backends.opencode_hooks import prepare_opencode_hooks
 
 
-class AgentHookManagerTests(unittest.TestCase):
+class AgentHookStageTests(unittest.TestCase):
     def test_prepare_codex_hooks_includes_extra_allowed_read_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             compiler_source = Path(tmp) / "compiler-sources" / "AscendNPU-IR"
             workspace.mkdir()
             compiler_source.mkdir(parents=True)
-            manager = AgentHookManager(Path(__file__).resolve().parents[1] / "hooks")
 
-            state = manager.prepare_hooks(
-                "codex",
+            state = prepare_codex_hooks(
+                Path(__file__).resolve().parents[1] / "hooks",
                 workspace,
                 extra_allowed_read_roots=(compiler_source,),
             )
@@ -32,17 +33,16 @@ class AgentHookManagerTests(unittest.TestCase):
                 [str(workspace.resolve()), str(compiler_source.resolve())],
             )
 
-            self.assertEqual(manager.cleanup(state), [])
+            self.assertEqual(cleanup_hook_stage(state), [])
 
     def test_prepare_codex_hooks_stages_workspace_policy_and_cleans_owned_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
             templates_root = Path(__file__).resolve().parents[1] / "hooks"
-            manager = AgentHookManager(templates_root)
             self.assertFalse((templates_root / "codex" / "policy.json").exists())
 
-            state = manager.prepare_hooks("codex", workspace)
+            state = prepare_codex_hooks(templates_root, workspace)
 
             hooks_json = workspace / ".codex" / "hooks.json"
             hook_dir = workspace / ".codex" / "triton-agent-hooks"
@@ -84,7 +84,7 @@ class AgentHookManagerTests(unittest.TestCase):
             self.assertIn("triton-agent-logs", policy["deny_message"])
             self.assertIn("triton-agent workspace policy", policy["deny_message"])
 
-            warnings = manager.cleanup(state)
+            warnings = cleanup_hook_stage(state)
 
             self.assertEqual(warnings, [])
             self.assertFalse(hooks_json.exists())
@@ -96,9 +96,8 @@ class AgentHookManagerTests(unittest.TestCase):
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
             templates_root = Path(__file__).resolve().parents[1] / "hooks"
-            manager = AgentHookManager(templates_root)
 
-            state = manager.prepare_hooks("opencode", workspace)
+            state = prepare_opencode_hooks(templates_root, workspace)
 
             plugin_file = workspace / ".opencode" / "plugins" / "triton-agent-hook-guard.js"
             hook_dir = workspace / ".opencode" / "triton-agent-hooks"
@@ -121,7 +120,7 @@ class AgentHookManagerTests(unittest.TestCase):
             self.assertIn("triton-agent workspace policy", policy["deny_message"])
             self.assertIn(".opencode/skills/*/scripts/", policy["deny_message"])
 
-            warnings = manager.cleanup(state)
+            warnings = cleanup_hook_stage(state)
 
             self.assertEqual(warnings, [])
             self.assertFalse(plugin_file.exists())
@@ -135,10 +134,9 @@ class AgentHookManagerTests(unittest.TestCase):
             compiler_source = Path(tmp) / "compiler-sources" / "AscendNPU-IR"
             workspace.mkdir()
             compiler_source.mkdir(parents=True)
-            manager = AgentHookManager(Path(__file__).resolve().parents[1] / "hooks")
 
-            state = manager.prepare_hooks(
-                "opencode",
+            state = prepare_opencode_hooks(
+                Path(__file__).resolve().parents[1] / "hooks",
                 workspace,
                 extra_allowed_read_roots=(compiler_source,),
             )
@@ -151,7 +149,7 @@ class AgentHookManagerTests(unittest.TestCase):
                 [str(workspace.resolve()), str(compiler_source.resolve())],
             )
 
-            self.assertEqual(manager.cleanup(state), [])
+            self.assertEqual(cleanup_hook_stage(state), [])
 
     def test_prepare_codex_hooks_rejects_existing_hooks_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -161,10 +159,8 @@ class AgentHookManagerTests(unittest.TestCase):
             hooks_json.parent.mkdir()
             hooks_json.write_text('{"hooks": {}}\n', encoding="utf-8")
 
-            manager = AgentHookManager(Path(__file__).resolve().parents[1] / "hooks")
-
             with self.assertRaisesRegex(RuntimeError, "Existing Codex hooks config"):
-                manager.prepare_hooks("codex", workspace)
+                prepare_codex_hooks(Path(__file__).resolve().parents[1] / "hooks", workspace)
 
     def test_prepare_codex_hooks_rejects_existing_owned_hook_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -173,10 +169,8 @@ class AgentHookManagerTests(unittest.TestCase):
             hook_dir = workspace / ".codex" / "triton-agent-hooks"
             hook_dir.mkdir(parents=True)
 
-            manager = AgentHookManager(Path(__file__).resolve().parents[1] / "hooks")
-
             with self.assertRaisesRegex(RuntimeError, "Existing Codex hook directory"):
-                manager.prepare_hooks("codex", workspace)
+                prepare_codex_hooks(Path(__file__).resolve().parents[1] / "hooks", workspace)
 
     def test_prepare_opencode_hooks_rejects_existing_plugin_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -186,10 +180,8 @@ class AgentHookManagerTests(unittest.TestCase):
             plugin_file.parent.mkdir(parents=True)
             plugin_file.write_text("export default async function Plugin() {}\n", encoding="utf-8")
 
-            manager = AgentHookManager(Path(__file__).resolve().parents[1] / "hooks")
-
             with self.assertRaisesRegex(RuntimeError, "Existing OpenCode hook plugin"):
-                manager.prepare_hooks("opencode", workspace)
+                prepare_opencode_hooks(Path(__file__).resolve().parents[1] / "hooks", workspace)
 
     def test_prepare_opencode_hooks_rejects_existing_owned_hook_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -198,23 +190,8 @@ class AgentHookManagerTests(unittest.TestCase):
             hook_dir = workspace / ".opencode" / "triton-agent-hooks"
             hook_dir.mkdir(parents=True)
 
-            manager = AgentHookManager(Path(__file__).resolve().parents[1] / "hooks")
-
             with self.assertRaisesRegex(RuntimeError, "Existing OpenCode hook directory"):
-                manager.prepare_hooks("opencode", workspace)
-
-    def test_prepare_hooks_for_non_codex_backend_is_noop(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            workspace = Path(tmp) / "workspace"
-            workspace.mkdir()
-            manager = AgentHookManager(Path(__file__).resolve().parents[1] / "hooks")
-
-            state = manager.prepare_hooks("claude", workspace)
-
-            self.assertEqual(state.created_paths, [])
-            self.assertFalse((workspace / ".codex").exists())
-            self.assertFalse((workspace / ".opencode").exists())
-            self.assertEqual(manager.cleanup(state), [])
+                prepare_opencode_hooks(Path(__file__).resolve().parents[1] / "hooks", workspace)
 
 
 if __name__ == "__main__":
