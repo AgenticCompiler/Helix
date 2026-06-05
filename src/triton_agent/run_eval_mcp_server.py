@@ -12,10 +12,12 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import parse_qs, quote
 
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_request
+from pydantic import Field
 import uvicorn
 
 from triton_agent.npu_affinity import parse_batch_npu_devices, parse_batch_workers_per_npu
@@ -77,30 +79,32 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> FastMCP:
     pool = slot_pool or configured_slot_pool()
     server = FastMCP(RUN_EVAL_MCP_SERVER_NAME)
 
-    @server.tool(name="run-test-baseline")
+    @server.tool(
+        name="run-test-baseline",
+        description="Run the baseline operator against a test case and optionally compare an archived differential result.",
+    )
     def run_test_baseline(
-        test_file: str,
-        operator_file: str,
-        test_mode: str | None = None,
-        compare_level: str | None = None,
-        baseline_result: str | None = None,
-        remote: str | None = None,
-        remote_workdir: str | None = None,
-        keep_remote_workdir: bool = False,
-        verbose: bool = False,
+        test_file: Annotated[str, Field(description="Absolute path to the test entry file.")],
+        operator_file: Annotated[str, Field(description="Absolute path to the operator implementation file.")],
+        test_mode: Annotated[
+            str | None,
+            Field(description="Optional test mode override. Supported values: standalone, differential."),
+        ] = None,
+        remote: Annotated[str | None, Field(description="Optional remote execution target.")] = None,
+        remote_workdir: Annotated[str | None, Field(description="Optional remote workspace root override.")] = None,
     ) -> dict[str, object]:
         workspace = current_workspace()
         arguments = _build_run_test_arguments(
             test_file=test_file,
             operator_file=operator_file,
             test_mode=test_mode,
-            compare_level=compare_level,
-            baseline_result=baseline_result,
+            compare_level=None,
+            baseline_result=None,
             baseline_operator_file=None,
             remote=remote,
             remote_workdir=remote_workdir,
-            keep_remote_workdir=keep_remote_workdir,
-            verbose=verbose,
+            keep_remote_workdir=False,
+            verbose=False,
         )
         with _lease_device(pool) as leased_device:
             return _run_subcommand(
@@ -110,18 +114,31 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> FastMCP:
                 workspace=workspace,
             )
 
-    @server.tool(name="run-test-optimize")
+    @server.tool(
+        name="run-test-optimize",
+        description="Run the optimized operator against a test case and compare it with baseline evidence.",
+    )
     def run_test_optimize(
-        test_file: str,
-        operator_file: str,
-        baseline_operator_file: str | None = None,
-        baseline_result: str | None = None,
-        test_mode: str | None = None,
-        compare_level: str | None = None,
-        remote: str | None = None,
-        remote_workdir: str | None = None,
-        keep_remote_workdir: bool = False,
-        verbose: bool = False,
+        test_file: Annotated[str, Field(description="Absolute path to the test entry file.")],
+        operator_file: Annotated[str, Field(description="Absolute path to the optimized operator implementation file.")],
+        baseline_operator_file: Annotated[
+            str | None,
+            Field(description="Absolute path to the baseline operator file used to produce comparison output."),
+        ] = None,
+        baseline_result: Annotated[
+            str | None,
+            Field(description="Absolute path to an archived baseline result used for differential comparison."),
+        ] = None,
+        test_mode: Annotated[
+            str | None,
+            Field(description="Optional test mode override. Supported values: standalone, differential."),
+        ] = None,
+        compare_level: Annotated[
+            str | None,
+            Field(description="Optional differential comparison strictness. Supported values: strict, balanced, relaxed."),
+        ] = None,
+        remote: Annotated[str | None, Field(description="Optional remote execution target.")] = None,
+        remote_workdir: Annotated[str | None, Field(description="Optional remote workspace root override.")] = None,
     ) -> dict[str, object]:
         workspace = current_workspace()
         arguments = _build_run_test_arguments(
@@ -133,8 +150,8 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> FastMCP:
             baseline_operator_file=baseline_operator_file,
             remote=remote,
             remote_workdir=remote_workdir,
-            keep_remote_workdir=keep_remote_workdir,
-            verbose=verbose,
+            keep_remote_workdir=False,
+            verbose=False,
         )
         with _lease_device(pool) as leased_device:
             return _run_subcommand(
@@ -144,15 +161,19 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> FastMCP:
                 workspace=workspace,
             )
 
-    @server.tool(name="run-bench")
+    @server.tool(
+        name="run-bench",
+        description="Run a benchmark workload on the operator and return the generated perf artifact path.",
+    )
     def run_bench(
-        bench_file: str,
-        operator_file: str,
-        bench_mode: str | None = None,
-        remote: str | None = None,
-        remote_workdir: str | None = None,
-        keep_remote_workdir: bool = False,
-        verbose: bool = False,
+        bench_file: Annotated[str, Field(description="Absolute path to the benchmark entry file.")],
+        operator_file: Annotated[str, Field(description="Absolute path to the operator implementation file.")],
+        bench_mode: Annotated[
+            str | None,
+            Field(description="Optional benchmark mode override. Supported values: standalone, msprof."),
+        ] = None,
+        remote: Annotated[str | None, Field(description="Optional remote execution target.")] = None,
+        remote_workdir: Annotated[str | None, Field(description="Optional remote workspace root override.")] = None,
     ) -> dict[str, object]:
         workspace = current_workspace()
         arguments = [
@@ -167,8 +188,8 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> FastMCP:
             arguments,
             remote=remote,
             remote_workdir=remote_workdir,
-            keep_remote_workdir=keep_remote_workdir,
-            verbose=verbose,
+            keep_remote_workdir=False,
+            verbose=False,
         )
         with _lease_device(pool) as leased_device:
             return _run_subcommand(
@@ -178,19 +199,26 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> FastMCP:
                 workspace=workspace,
             )
 
-    @server.tool(name="profile-bench")
+    @server.tool(
+        name="profile-bench",
+        description="Run a benchmark profile collection and return the generated profile directory.",
+    )
     def profile_bench(
-        bench_file: str,
-        operator_file: str,
-        bench_mode: str | None = None,
-        case_id: str | None = None,
-        bench: int | None = None,
-        kernel_name: str | None = None,
-        target_op: str | None = None,
-        remote: str | None = None,
-        remote_workdir: str | None = None,
-        keep_remote_workdir: bool = False,
-        verbose: bool = False,
+        bench_file: Annotated[str, Field(description="Absolute path to the benchmark entry file.")],
+        operator_file: Annotated[str, Field(description="Absolute path to the operator implementation file.")],
+        bench_mode: Annotated[
+            str | None,
+            Field(description="Optional benchmark mode override. Supported values: standalone, msprof."),
+        ] = None,
+        case_id: Annotated[str | None, Field(description="Optional benchmark case id to profile.")] = None,
+        bench: Annotated[int | None, Field(description="Optional numeric benchmark case index to profile.")] = None,
+        kernel_name: Annotated[str | None, Field(description="Optional kernel name filter for profiling.")] = None,
+        target_op: Annotated[
+            str | None,
+            Field(description="Optional operator name to highlight in the generated profile summary."),
+        ] = None,
+        remote: Annotated[str | None, Field(description="Optional remote execution target.")] = None,
+        remote_workdir: Annotated[str | None, Field(description="Optional remote workspace root override.")] = None,
     ) -> dict[str, object]:
         workspace = current_workspace()
         arguments = [
@@ -213,8 +241,8 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> FastMCP:
             arguments,
             remote=remote,
             remote_workdir=remote_workdir,
-            keep_remote_workdir=keep_remote_workdir,
-            verbose=verbose,
+            keep_remote_workdir=False,
+            verbose=False,
         )
         with _lease_device(pool) as leased_device:
             return _run_subcommand(
@@ -224,12 +252,15 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> FastMCP:
                 workspace=workspace,
             )
 
-    @server.tool(name="profile-report")
+    @server.tool(
+        name="profile-report",
+        description="Summarize an existing profile directory without running a new benchmark.",
+    )
     def profile_report(
-        profile_dir: str,
-        target_op: str | None = None,
-        format: str | None = None,
-        top: int | None = None,
+        profile_dir: Annotated[str, Field(description="Absolute path to an existing profile output directory.")],
+        target_op: Annotated[str | None, Field(description="Optional operator name filter for the summary.")] = None,
+        format: Annotated[str | None, Field(description="Optional report format override.")] = None,
+        top: Annotated[int | None, Field(description="Optional number of top items to include in the summary.")] = None,
     ) -> dict[str, object]:
         workspace = current_workspace()
         arguments = ["--profile-dir", profile_dir]
@@ -246,17 +277,26 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> FastMCP:
             workspace=workspace,
         )
 
-    @server.tool(name="compare-perf")
+    @server.tool(
+        name="compare-perf",
+        description="Compare two existing perf artifacts and report latency regressions or improvements.",
+    )
     def compare_perf(
-        baseline: str,
-        compare: str,
-        skip_latency_errors: bool = False,
-        metric_source: str | None = None,
+        baseline: Annotated[str, Field(description="Absolute path to the baseline perf artifact.")],
+        compare: Annotated[str, Field(description="Absolute path to the candidate perf artifact.")],
+        skip_error: Annotated[
+            bool,
+            Field(description="Skip parse errors encountered while reading perf artifacts and continue comparing valid entries."),
+        ] = False,
+        metric_source: Annotated[
+            str | None,
+            Field(description="Metric source selection for the comparison view. Supported values: auto, kernel, total-op, all."),
+        ] = None,
     ) -> dict[str, object]:
         workspace = current_workspace()
         arguments = ["--baseline", baseline, "--compare", compare]
-        if skip_latency_errors:
-            arguments.append("--skip-latency-errors")
+        if skip_error:
+            arguments.append("--skip-error")
         if metric_source is not None:
             arguments.extend(["--metric-source", metric_source])
         return _run_subcommand(
