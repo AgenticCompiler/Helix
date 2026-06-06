@@ -28,6 +28,7 @@ On Ascend NPU, this pattern converts a serialized "load→compute→store per it
 - `tl.static_range(BLOCK_M)` or `tl.range(BLOCK_M)` where `BLOCK_M` is `tl.constexpr` in a hot loop.
 - Loop body contains load → compute → store with no dependency on previous iteration's output.
 - Simple per-iteration work: elementwise activation, copy, or light arithmetic.
+- Per-element scalar `tl.load` in a `tl.static_range` loop — each unrolled iteration issues a separate SCALAR→VECTOR dispatch, contributing to high SCALARToVECTOR avg latency. (Cat 1 Manifestation B / Cat 2 Dispatch Bottleneck)
 
 ### Profile
 

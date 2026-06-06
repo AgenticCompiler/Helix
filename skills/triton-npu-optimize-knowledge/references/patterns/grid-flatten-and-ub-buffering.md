@@ -16,6 +16,18 @@ Flatten logical work items onto physical cores and batch small row-wise memory t
 - Gather-like code has continuous destination rows but still stores one row at a time.
 - Scatter-weight-gradient-like code has repeated row loads that can be batched from continuous source rows.
 
+## Signals
+
+### Code
+
+- Each program processes a single scalar element (1 output = 1 program), producing zero MTE2→VECTOR activity because each transfer is too narrow for the memory engine.
+- Logical grid is much larger than the physical core count.
+- Work is partitioned by batch or sequence buckets with visible load imbalance.
+
+### Profile
+
+- `report.txt` overall `[Pipeline Flows]` MTE2ToVECTOR count = 0 AND SCALARToVECTOR count > 0 AND each program loads a single scalar element — per-element scalar `tl.load` produces zero MTE2ToVECTOR flows because each transfer is too narrow. Flattening logical work onto physical cores with vectorized loads enables MTE2→VECTOR. (Cat 5 Manifestation B: Per-element scalar load)
+
 ## Repairs
 
 ### Flatten logical tasks

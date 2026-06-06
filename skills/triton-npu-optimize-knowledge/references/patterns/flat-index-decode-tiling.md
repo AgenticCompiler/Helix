@@ -37,10 +37,37 @@ This is broader than permute. It applies to materialized transpose/permute, resh
 
 ### Profile
 
+- `report.txt` overall `[Pipe Distribution]` SCALAR instr% > 80% AND `[TRACE Events]` total events > 10,000 — scalar coordinate decoding via `//` and `%` dominates execution. This is the primary simulation signal for flat-index decode.
+- `report.txt` overall `[TRACE Events]` top events dominated by ADD, MUL, DIV, SUB, or MADD — classic scalar address computation for coordinate decoding.
 - Scalar/control overhead is high for a copy-like kernel.
 - Changing only flat `BLOCK_SIZE` gives weak or unstable gains.
 - Cases with more rank dimensions or larger flattened extents regress disproportionately.
 - Specialized row-column or multidimensional tile variants improve regular shape regimes.
+
+### Worked Example
+
+Origin simulation: 30,912 trace events, top events SIGNEXT(6,168), ADD(4,240), MUL(2,096), DIV(2,072), SUB(2,076), MADD(2,052). SCALAR instructions > 80%.
+
+Code anti-pattern (coordinate decode via `//` and `%`):
+
+```python
+while start < TOT:
+    c_rel = idx // HW        # scalar division every iteration
+    hw = idx - c_rel * HW    # scalar multiply + subtract
+    ptrs = base_n + c_idx * HW + hw
+    x = tl.load(x_ptr + ptrs, ...)
+```
+
+Fix: explicit channel unrolling with direct base+offset addressing.
+
+```python
+while start < HW:
+    x0 = tl.load(x_ptr + base + 0*HW + idx, ...)  # channel 0
+    x1 = tl.load(x_ptr + base + 1*HW + idx, ...)  # channel 1
+    ...
+```
+
+Simulation after: 1,308 events (-95.8%), zero scalar arithmetic events. SCALARToVECTOR flows 12→6.
 
 ## Repairs
 

@@ -129,7 +129,52 @@ Cycle N+1: load A → load B (parallelizable)
 
 ### Profile
 
+- `report.txt` overall `[VECTOR Unit]` UB Read Conflict > 100 OR UB Write Conflict > 100 — multiple vector operations reading from the same UB bank simultaneously, causing stall cycles and reducing effective VECTOR throughput. Conflicts without low utilization may be benign; fire when utilization on conflicted instructions is also < 50%. (Cat 3: UB Conflict Bottleneck)
+- `report.txt` overall `[VECTOR Unit]` top-conflict instructions show utilization < 50% (U% column) — confirms conflicts are causing real stalls, not just hardware-managed contention.
 - The kernel behaves memory-bound, and reducing avoidable wait between independent loads looks more promising than changing arithmetic.
+
+### UB Conflict Manifestations
+
+#### Multiple `tl.load` into same UB region + immediate reduction
+
+When several loads write to overlapping UB banks and subsequent reductions read from those same banks:
+
+```python
+# detect
+vals0 = tl.load(base0 + idx, ...)    # writes to UB
+vals1 = tl.load(base1 + idx, ...)    # may conflict with vals0's UB banks
+s0 += tl.sum(vals0)                  # reads from UB — may conflict with vals1 write
+s1 += tl.sum(vals1)
+```
+
+```python
+# transform: separate load phase from reduction phase
+vals0 = tl.load(base0 + idx, ...)    # load phase: all loads first
+vals1 = tl.load(base1 + idx, ...)
+# ... other scalar work here to separate load and reduce ...
+s0 += tl.sum(vals0)                  # reduce phase: all reductions after
+s1 += tl.sum(vals1)
+```
+
+#### `tl.gather` (VGATHER) causing UB conflicts
+
+When `tl.gather` on loaded slabs creates bank conflicts on read and write:
+
+```python
+# detect (report.txt: top-conflict instrs are VGATHER)
+slab = tl.load(...)
+for kw in tl.static_range(0, KW):
+    val = tl.gather(slab, offsets + kw, axis=0)  # VGATHER → UB read/write conflict
+    acc += val
+```
+
+Transform: reduce gather iterations, reorganize slab layout, or pad slab length to avoid same-bank alignment.
+
+### Worked Example
+
+Simulation: UB Read Conflict 480 on VECTOR, all on VADD/VMUL reduction operations. Utilization 0-50% on conflicted instructions.
+
+The optimization (separate loads from reductions) removes bank conflicts by interleaving loads from different channels with independent scalar work, so subsequent reductions hit different UB banks.
 
 ## Avoid When
 

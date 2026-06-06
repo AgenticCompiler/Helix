@@ -29,8 +29,30 @@ Stage a contiguous range into the Unified Buffer first, then use on-chip indexin
 
 ### Profile
 
+- `report.txt` overall `[Pipeline Flows]` MTE2ToVECTOR count = 0 AND SCALARToVECTOR count > 0 — the memory engine (MTE2) is not being used to feed the VECTOR unit; data is routed through SCALAR first. This is a severe signal when the kernel logically loads from global memory. (Cat 5: Missing Memory Engine)
 - Direct discrete global-memory reads appear as the dominant cost in the hot path.
 - MTE bandwidth utilization is low relative to the amount of data consumed, indicating poor coalescing.
+
+### Code Manifestation: Scattered index-driven `tl.load` bypassing MTE2
+
+When non-contiguous index vectors drive `tl.load`, routing data through SCALAR→VECTOR instead of MTE2→VECTOR:
+
+```python
+# detect
+idx = tl.load(idx_ptr + rn * stride_idx)      # load index vector
+val = tl.load(x_ptr + idx * stride_x, mask=mask)  # non-contiguous gather → scalar path
+```
+
+```python
+# transform: contiguous tile load + local gather
+rm = tl.arange(0, M)
+rn = tl.arange(0, N)
+idx = tl.load(idx_ptr + rn * stride_idx)
+x_shared = tl.load(x_ptr + rm * stride_x)    # contiguous MTE2ToVECTOR load, shape [M]
+val = tl.gather(x_shared, idx, axis=0)         # local gather on loaded tile, shape [N]
+```
+
+The contiguous `tl.load` now uses MTE2ToVECTOR, and `tl.gather` operates on already-loaded UB data.
 
 ## Related Patterns
 

@@ -15,6 +15,28 @@ Remove scalarizing constructs that block vector hardware utilization on Ascend N
 - `tl.cumsum` runs on a long one-dimensional vector and profiling or IR suggests scalar degradation.
 - A boundary-only mask repeats validity conditions that earlier `tl.load(..., boundary_check=...)` or safe zero-padding already handled.
 
+## Signals
+
+### Code
+
+- Runtime values that are shape constants are passed as normal arguments instead of `tl.constexpr`.
+- Pointer variables are updated with `+=` inside a loop, creating loop-carried address dependencies.
+- Address expressions use modulo addressing (`%`) to wrap tail tiles or index boundaries.
+- `tl.where` masks all lanes except a single special position, or has exactly one false lane in a vector.
+- Loop-carried pointer recurrence: `ptr = ptr + stride` inside a loop instead of `base + i * stride`.
+- Scalar condition feeding vector work: `if gamma >= 0: acc = tl.where(...)` — scalar branch per element that should be a vector mask.
+- Per-iteration mask + predicated load + `tl.sum` in while-loop: every iteration computes a mask, does a predicated load, and reduces — creating SCALAR→VECTOR→SCALAR sync per iteration.
+- Many small `tl.sum` / `tl.max` reductions instead of fewer larger ones, producing per-channel VECTOR→SCALAR syncs.
+
+### Profile
+
+- `report.txt` overall `[Pipe Distribution]` SCALAR instr% > 80% AND `[TRACE Events]` total events > 10,000 — scalar address computation, pointer arithmetic, or coordinate decoding dominates. (Cat 1: Scalar Arithmetic Explosion)
+- `report.txt` overall `[TRACE Events]` top events dominated by SIGNEXT, ADD, MUL, DIV, SUB, or MADD — direct signatures of scalar arithmetic or implicit dtype widening. When SIGNEXT dominates over ADD/MUL/DIV, root cause is likely implicit dtype widening rather than address computation.
+- `report.txt` overall `[Pipeline Flows]` SCALARToVECTOR avg > 50ns AND SCALAR instr% > 75% — dispatch bottleneck where SCALAR waits for VECTOR. Takes priority over Cat 1 when both SCALAR% > 80% and avg > 50ns, because the dispatch bottleneck is the more actionable issue. (Cat 2: Dispatch Bottleneck)
+- `report.txt` overall `[Pipeline Flows]` VECTORToSCALAR count > 300 — many VECTOR→SCALAR synchronization points, typical of many `tl.sum` operations each producing a scalar from a vector reduction.
+- `report.txt` overall `[VECTOR Unit]` Utilization avg < 30% AND `[Pipe Distribution]` VECTOR instr% < 15% — vector underutilization as a consequence of scalar overload. Only treat as primary signal when Cat 1 and Cat 2 do NOT match. (Cat 4: Vector Underutilization)
+- UB conflicts are low and MTE2/MTE3 activity does not explain the regression by itself — confirms scalar/control work as the plausible cause.
+
 ## Repairs
 
 ### Static parameters

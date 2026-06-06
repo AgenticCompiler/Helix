@@ -16,6 +16,7 @@ Use `tl.make_block_ptr` to model multidimensional contiguous tensor dimensions d
 - `report.txt` overall `[Pipeline Flows]` section shows **both XToY and YToX flows** for some pair (e.g., `SCALARToMTE3` + `MTE3ToSCALAR`), indicating pipeline stages are serialized in a cycle.
 - `report.txt` overall `[Pipe Distribution]` section shows **low SCALAR–VECTOR overlap** — `%(SCALAR&VECTOR/SCALAR) < 2%` — while SCALAR is high `> 10%`, meaning scalar address generation is blocking vector execution.
 - `report.txt` overall `[Pipe Distribution Over Each Core]` section lists **very few cores active** relative to hardware capacity, suggesting flat 1D grid decomposition is too coarse.
+- `report.txt` overall `[Pipeline Flows]` MTE2ToVECTOR count = 0 despite the kernel loading from global memory — the 1D pointer path routes data through SCALAR→VECTOR instead of MTE2→VECTOR. Multidimensional `make_block_ptr` enables the fast MTE2→VECTOR path. (Cat 5: Missing Memory Engine)
 
 ### Exclusion Signals
 

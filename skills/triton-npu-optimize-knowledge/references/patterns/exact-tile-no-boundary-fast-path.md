@@ -30,8 +30,38 @@ Split exact-tile hot paths from generic masked kernels when dispatch-time shape 
 
 ### Profile
 
+- `report.txt` overall `[Pipeline Flows]` SCALARToVECTOR avg > 50ns AND SCALAR instr% > 75% — per-iteration mask computation and predicated loads in while-loops create dispatch bottleneck. Splitting full-tile (no mask) from partial-tile (masked) eliminates SCALAR mask compute and VECTOR predication overhead for full tiles. (Cat 2: Dispatch Bottleneck)
+- `report.txt` overall `[VECTOR Unit]` UB Read Conflict > 100 OR UB Write Conflict > 100 — predicated loads on full-tile shapes produce fragmented UB write patterns that conflict with subsequent reductions. Unmasked loads on exact tiles produce cleaner UB layout. (Cat 3: UB Conflict)
 - Parent kernel is close to the target but still shows scalar/control overhead.
 - Expected gain is modest, often small single-digit percent to low double-digit percent.
+
+### Code Manifestation: Per-iteration mask + predicated load + `tl.sum`
+
+When a while-loop computes a mask and does a predicated load + scalar reduction every iteration:
+
+```python
+# detect
+while m < M:
+    idx = m + offs
+    mask = idx < M                    # SCALAR mask compute every iteration
+    vals = tl.load(base + idx, mask=mask, other=0.0, ...)  # predicated load
+    s += tl.sum(vals)                 # VECTOR→SCALAR sync every iteration
+    m += BLOCK_M
+```
+
+```python
+# transform: split full-tile (no mask) + partial-tile tail
+while m + BLOCK_M <= M:
+    idx = m + offs
+    vals = tl.load(base + idx).to(tl.float32)  # no mask, no predication
+    s += tl.sum(vals)
+    m += BLOCK_M
+if m < M:
+    idx = m + offs
+    mask = idx < M
+    vals = tl.load(base + idx, mask=mask, other=0.0, ...)
+    s += tl.sum(vals)
+```
 
 ## Optimization Strategy
 

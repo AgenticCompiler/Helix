@@ -4,20 +4,149 @@ Use this file to choose optimization directions before reading any detailed patt
 
 Read this generated index first. Then read only the one or two most relevant detailed pattern files for the current bottleneck.
 
-Before scanning the full list, first analyze whether the operator matches any high-priority patterns below. If it does, try those directions first.
+## Signal-Based Pattern Routing
+
+Read this section when you have profiling data (simulation or on-card) or source code available. Follow steps in order; the first matching step wins.
+
+### Step 1: Code Structure Priority
+
+Code features do not depend on profiling data. Check these first. Each row lists a code feature, candidate patterns, and how to differentiate.
+
+| Code Feature | Candidate Patterns | Differentiation |
+|---|---|---|
+| `//` / `%` coordinate decode | `flat-index-decode-tiling`, `scalar-latency-traps`, `padded_row_col_copy`, `block-pointer-dimensionality` | Multidimensional copy/slice/pad → flat-index-decode-tiling; reduction kernel → scalar-latency-traps; pad boundary heavy → padded_row_col_copy; high-dimensional contiguous tensor → block-pointer-dimensionality |
+| `ptr += stride` loop | `scalar-latency-traps` | Loop pointer recurrence |
+| `tl.static_range` in hot loop | `static-range-to-range` | Loop iterations independent + lightweight body |
+| `tl.sum(a * b)` instead of `tl.dot` | `classic-matmul` | Manual matmul / K-reduction |
+| `tl.where` with int64 operands | `vec-cmp` | Integer mask on hot path |
+| `tl.load(x_ptr + idx * stride)` scatter | `discrete_memory_access` | Index-driven gather |
+| Multiple `tl.store` to adjacent addresses | `merge-adjacent-stores` | Loop emit per-iteration |
+| `tl.parallel` opportunity | `parallel` | Independent vector work |
+| Accumulator shape `(N,M)` vs output `(M,N)` | `accumulator-layout-alignment` | Store-time transpose |
+| Layout-copy kernel before/after main compute | `layout-materialization-elision` | Unnecessary layout transform |
+| Copy op before reduction | `reduce-avoid-transpose-copy` | Non-last-dim reduction |
+| Attention kernel with scale/mask/softmax | `attention-cv-pipeline` | Cube+Vector fused |
+| Large BLOCK_SIZE / multi-tensor load | `tiling` | UB overflow risk |
+| Grid much larger than physical cores | `grid-flatten-and-ub-buffering` | Launch overhead |
+| 2D mask-and-reduce for shifting | `shift-2d-mask-to-1d-index-stream` | 2D → 1D index stream |
+| Matrix traversal bank conflict | `diagonal` | Diagonal traversal |
+| `BLOCK_*` tile ≫ valid extent | `effective-extent-tiling` | Masked lane waste |
+| Kernel structure correct, tuning needed | `autotune` | Parameter search |
+| Conservative lowering despite known layout | `compile_hint` | Layout hints |
+
+### Step 2: Simulation Signal Routing (extracted_bin_data/report.txt)
+
+When you have `extracted_bin_data/report.txt`, scan sections in order below. Each row lists a canonical feature condition and candidate patterns. Feature names correspond directly to `report.txt` columns.
+
+#### Section 1: `[Pipeline Flows]`
+
+| Feature Condition | Candidate Patterns | Differentiation |
+|---|---|---|
+| `flow_MTE2_to_VECTOR_exists = false` AND code has `tl.load` | `discrete_memory_access` | Scatter `tl.load(x_ptr + idx * stride)` |
+| `flow_MTE2_to_VECTOR_exists = false` AND code has `tl.load` | `grid-flatten-and-ub-buffering` | Per-element scalar load |
+| `flow_SCALAR_to_VECTOR_avg_ns > 50` AND `SCALAR_instr% > 75` | `static-range-to-range` | Code uses `tl.static_range` |
+| `flow_bidirectional_exists = true` | `block-pointer-dimensionality` | Needs Section 3 other signals |
+| `flow_CUBE_related_exists = false` AND `TRACE_MADD_count > 0` | `classic-matmul` | Code has K-reduction loop — only applies when kernel is matmul-like |
+
+#### Section 2: `[MTE2 Data Transport]`
+
+| Feature Condition | Candidate Patterns | Differentiation |
+|---|---|---|
+| `MTE2_ProcessBytes_avg < 128` OR `MTE2_Data_movers = 0` | **Gate**: stop autotune | Route to `compile_hint` or `discrete_memory_access` |
+
+#### Section 3: `[Pipe Distribution]` — Pipe Balance
+
+Multiple patterns use pipe distribution data. Check by pipe dimension:
+
+**3a. SCALAR dominant:**
+
+| Feature Condition | Candidate Patterns | Differentiation |
+|---|---|---|
+| `SCALAR_instr% > 80` AND `TRACE_total_events > 10000` | `flat-index-decode-tiling` | Code has `//`/`%` coordinate decode |
+| `SCALAR_instr% > 80` AND `TRACE_total_events > 10000` | `scalar-latency-traps` | Code has `ptr += stride` or `tl.where` single lane mask |
+| `SCALAR_instr% > 80` AND `TRACE_top_types` SIGNEXT dominant | `vec-cmp` | Code has integer mask + `tl.where` with int64 |
+| `SCALAR_instr% > 80` | `loop-invariant-hoisting` | Code has loop-invariant computation |
+| `SCALAR_instr% > 80` | `block-pointer-dimensionality` | High-dimensional contiguous + flat 1D offset |
+
+**3b. SCALAR/VECTOR cycles ratio abnormal:**
+
+| Feature Condition | Candidate Patterns | Differentiation |
+|---|---|---|
+| `SCALAR_cycles% / VECTOR_cycles% > 10` AND `MTE3_cycles% > 10` | `block-pointer-dimensionality` | High-dimensional contiguous + flat 1D offset |
+| `SCALAR_cycles% / VECTOR_cycles% > 10` AND `TRACE_CMP_IMM_count` high | `vec-cmp` | Code has integer mask |
+
+**3c. CUBE engine status:**
+
+> **Prerequisite:** CUBE signals only apply when the source code has matmul-like characteristics — e.g., the kernel computes `sum_k A[k] * B[k]`, has a K-reduction loop, or logically performs matrix multiplication. For non-matmul kernels (elementwise, reduction-only, copy, etc.), CUBE absence is expected and not a routing signal. Check whether the CUBE row exists in `[Pipe Distribution]`; CUBE row absent = no CUBE instructions.
+
+| Feature Condition | Candidate Patterns | Differentiation |
+|---|---|---|
+| `CUBE_present = false` AND `TRACE_MADD_count > 0` | `classic-matmul` | Code has `tl.sum(a*b)` or K-reduction loop |
+| `CUBE_present = false` AND `flow_CUBE_related_exists = false` | `classic-matmul` | Code has `tl.sum(a*b)` (cross-check with Section 1) |
+
+**3d. MTE3 output bottleneck:**
+
+| Feature Condition | Candidate Patterns | Differentiation |
+|---|---|---|
+| `MTE3_cycles% > 10` AND `SCALAR_and_MTE3_over_SCALAR > 20%` | `block-pointer-dimensionality` | High-dimensional contiguous |
+| `MTE3_cycles% > 10` | `merge-adjacent-stores` | Code has multiple adjacent `tl.store` |
+
+#### Section 4: `[Pipe Overlap Ratio]`
+
+| Feature Condition | Candidate Patterns | Differentiation |
+|---|---|---|
+| `COMPUTE_and_MTE2_over_COMPUTE < 1%` | `software-pipeline-dependency-profiling` | Code has `tl.load` + for loop for regular prefetch |
+| `COMPUTE_and_MTE2_over_COMPUTE < 1%` | `static-range-to-range` | Code uses `tl.static_range` |
+| `SCALAR_and_MTE2_over_SCALAR < 50%` | `static-range-to-range` | Code uses `tl.static_range` |
+| `MTE2_and_MTE3_over_MTE2 > 50%` | `block-pointer-dimensionality` | Needs Section 3 MTE3_cycles% high |
+| `SCALAR_and_VECTOR_over_VECTOR < 5%` AND `SCALAR_cycles% > 10` | `static-range-to-range` | Code uses `tl.static_range` |
+
+#### Section 5: `[VECTOR Unit]`
+
+| Feature Condition | Candidate Patterns | Differentiation |
+|---|---|---|
+| `VECTOR_UB_read_conflict > 100` OR `VECTOR_UB_write_conflict > 100` | `reorder-load` | Code has load + immediate reduce |
+| `VECTOR_UB_read_conflict > 100` OR `VECTOR_UB_write_conflict > 100` | `exact-tile-no-boundary-fast-path` | Predicated loads on full-tile |
+| `VECTOR_utilization_avg < 30` AND `VECTOR_instr% < 15` | `vec-cmp` | Code has integer mask |
+| `VECTOR_utilization_avg < 30` AND `VECTOR_instr% < 15` | `classic-matmul` | Code has manual matmul |
+| `VECTOR_utilization_avg < 30` AND `VECTOR_instr% < 15` | `accumulator-layout-alignment` | Accumulator layout mismatch |
+| `VECTOR_top_instr` contains MOVEMASK | `vec-cmp` | Code has `tl.where` with int operands |
+
+#### Section 6: `[TRACE Events]`
+
+| Feature Condition | Candidate Patterns | Differentiation |
+|---|---|---|
+| `TRACE_top_types` contains CMP_IMM/JUMPC/MOVEMASK/SIGNEXT/ZEROEXT dominant | `vec-cmp` | Code has integer mask |
+| `TRACE_top_types` contains LD_XD_XN_IMM/ST_XD_XN_IMM/ADD/CMP_IMM dominant | `loop-invariant-hoisting` | Code has loop-invariant computation |
+
+### Step 3: On-Card Profile Routing (msprof)
+
+On-card msprof data routing only. Uses `op_summary` fields and timeline data.
+
+| Condition | Candidate Patterns | Differentiation |
+|---|---|---|
+| `aiv_scalar_ratio` ≫ `aiv_vec_ratio` | `a5-force-simt-only-discrete-access` | A5 hardware + discrete access code |
+| `aiv_scalar_ratio` high | `pooling-inner-w-slab-gather`, `program-multiple-rows` | Pooling / row-wise |
+| `aiv_mte2_ratio` not dominant | `program-multiple-rows` | Merge programs |
+| `WAIT_FLAG_DEVI` dominant in CUBE timeline | `remove-implicit-transpose` | Around matmul |
+| `MOV_OUT_TO_L1_MULTI_ND2NZ` / nd2nz frequent | `remove-implicit-transpose` | Format conversion |
+| `LD_XD_XN_IMM`/`ST_XD_XN_IMM`/`ADD`/`CMP_IMM` dominant | `loop-invariant-hoisting` | Loop invariant |
+| Cube/Vector gaps while MTE fetches | `software-pipeline` | Already tiled |
+| `code_exe` cycles high + hotspot `call_count` 100k+ | `stencil-resize-gm-to-ub-staging` | Stencil kernel |
+| Op Avg latency improves with fewer launches | `program-multiple-rows` | Merge programs |
+| NotEqual/BroadcastTo grows with expanded numel | `algebraic-optimization` | Broadcast fusion |
 
 ## High Priority Patterns
 
 ### `a5-force-simt-only-discrete-access`
 
-- Summary: Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, after first ruling out or applying structural fixes for flat linear-index traversal with per-lane `//` / `%` coordinate recovery. This profile-gated launch-mode experiment targets kernels whose hot path remains primarily scalar/index-driven memory access.
+- Summary: Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, then retune `num_warps` and grid decomposition. This profile-gated launch-mode experiment targets kernels whose hot path is primarily scalar/index-driven memory access.
 - Source: [a5-force-simt-only-discrete-access.md](patterns/a5-force-simt-only-discrete-access.md)
 
 ### `autotune`
 
-- Summary: Use Triton-Ascend autotune as the default way to search split sizes, tile sizes, and selected compile options when the kernel structure is already reasonable and the main open question is parameter choice.
+- Summary: Two-phase optimization from `report.txt` simulation data:
 - Source: [autotune.md](patterns/autotune.md)
-
 
 ### `grid-flatten-and-ub-buffering`
 
@@ -29,12 +158,11 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Summary: Use this pattern when `extracted_bin_data/report.txt` suggests transfer and compute are weakly overlapped, the kernel contains `tl.load`, and the load latency can plausibly be hidden behind vector/cube compute. Constructing a `for` loop or steady-state loop around regular `tl.load` work can enable compiler prefetch, improve pipeline parallelism, and then be tuned with `num_stages` or manual prefetch when needed.
 - Source: [software-pipeline-dependency-profiling.md](patterns/software-pipeline-dependency-profiling.md)
 
-
 ## Generated Pattern Summaries
 
 ### `a5-force-simt-only-discrete-access`
 
-- Summary: Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, after first ruling out or applying structural fixes for flat linear-index traversal with per-lane `//` / `%` coordinate recovery. This profile-gated launch-mode experiment targets kernels whose hot path remains primarily scalar/index-driven memory access.
+- Summary: Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, then retune `num_warps` and grid decomposition. This profile-gated launch-mode experiment targets kernels whose hot path is primarily scalar/index-driven memory access.
 - Source: [a5-force-simt-only-discrete-access.md](patterns/a5-force-simt-only-discrete-access.md)
 - Use When:
   - Target hardware is confirmed as A5 by user statement, profile metadata, runtime/compile logs, runtime device query, or environment/CANN target settings.
@@ -78,17 +206,17 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `autotune`
 
-- Summary: Three-phase signal-driven optimization from `report.txt`. Phase 1 (Pre-Gate A-Cat-5): determine whether autotune is the right tool — if memory layout is fragmented, route to `compile_hint`/`discrete_memory_access` instead. Phase 2: match `report.txt` statistical features against A-Cat-6 through A-Cat-4 to identify which parameters need tuning. Phase 3: choose Route 1 (`configs=[]` auto-infer), Route 2 (`hints`), or Route 3 (hand-written Configs using Category examples). Each Category includes concrete `triton.Config` examples and worked simulation cases.
+- Summary: Two-phase optimization from `report.txt` simulation data:
 - Source: [autotune.md](patterns/autotune.md)
 - Use When:
   - The kernel logic is mathematically correct, stable, and passes validation tests.
-  - You have a `report.txt` output from `extracted_bin_data`.
-  - **Pre-Gate (always check first):** A-Cat-5 fires when `[MTE2 Data Transport]` ProcessBytes avg < 128B or Data movers = 0 with `tl.load` present. If fired, stop — autotune cannot fix this; fix memory layout/compiler hints first.
-  - **Parameter Diagnostics (only if Pre-Gate passes):** A-Cat-6 (Register Spilling), A-Cat-1 (Pipeline Overlap Deficit), A-Cat-2 (Scalar Overhead Dominance) are diagnosed from `report.txt`. A-Cat-3 (Parallelism Starvation) and A-Cat-4 (Autotune Key Mismatch) require additional data sources.
+  - You have a `report.txt` output from `extracted_bin_data`. Focus on its overall sections.
+  - The kernel structure already looks semantically correct, and the likely headroom is in `BLOCK_*` selection, split shape, `num_stages`, or autotune `key` configuration.
   - The hot path exposes one or more free `tl.constexpr` parameters that are not hard-coded at launch time.
   - Bounds masks or loop structure still map cleanly back to runtime shape arguments, so a shape-keyed autotune cache is plausible.
-  - The operator is vector-like rather than a Cube-only kernel path.
-  - You are not already in a launch-mode experiment that explicitly changes execution style; if applying the A5 SIMT-only discrete-access pattern, `num_warps` and grid decomposition are rechecked there after `force_simt_only=True`.
+  - The operator is vector-like rather than a Cube-only kernel path that needs a different optimization route.
+  - `report.txt` shows one or more of: near-0% MTE2&VECTOR overlap, SCALAR dominance, small ProcessBytes per MTE fetch, high WAIT_FLAG without compute overlap, register pressure symptoms.
+  - For A-Cat-3 and A-Cat-4, additional data sources beyond `report.txt` are required (see category notes).
 
 ### `block-pointer-dimensionality`
 
@@ -99,12 +227,16 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - An inner dimension is processed by an explicit loop or decoded from `program_id` even though it could be included in the block shape.
   - Profiling or IR suggests the 1D pointer path produces strided or non-coalesced loads across a dimension that is actually contiguous in memory.
   - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
-  - `report.txt` overall `[Pipe Distribution]` section shows **high SCALAR-to-VECTOR ratio** — `%(SCALAR_dur) / %(VECTOR_dur) > 10`, indicating heavy scalar address computation dominates execution time.
-  - `report.txt` overall `[Pipe Distribution]` section shows **high MTE3** — `%(MTE3_dur) > 10%` — and high scalar–MTE3 serialization `%(SCALAR&MTE3/SCALAR) > 20%`, meaning address generation and data transfer are pipelined poorly.
+  - `report.txt` overall `[Pipe Distribution]` section shows **high SCALAR-to-VECTOR ratio** — `SCALAR_cycles% / VECTOR_cycles% > 10`, indicating heavy scalar address computation dominates execution time.
+  - `report.txt` overall `[Pipe Distribution]` section shows **high MTE3** — `MTE3_cycles% > 10%` — and high scalar–MTE3 serialization `%(SCALAR&MTE3/SCALAR) > 20%`, meaning address generation and data transfer are pipelined poorly.
   - `report.txt` overall `[Pipe Distribution]` section shows **MTE2–MTE3 near-total overlap** — `%(MTE2&MTE3/MTE2) > 50%`, forcing the two memory transfer engines to service the same request serially.
   - `report.txt` overall `[Pipeline Flows]` section shows **both XToY and YToX flows** for some pair (e.g., `SCALARToMTE3` + `MTE3ToSCALAR`), indicating pipeline stages are serialized in a cycle.
   - `report.txt` overall `[Pipe Distribution]` section shows **low SCALAR–VECTOR overlap** — `%(SCALAR&VECTOR/SCALAR) < 2%` — while SCALAR is high `> 10%`, meaning scalar address generation is blocking vector execution.
   - `report.txt` overall `[Pipe Distribution Over Each Core]` section lists **very few cores active** relative to hardware capacity, suggesting flat 1D grid decomposition is too coarse.
+  - `report.txt` overall `[Pipeline Flows]` MTE2ToVECTOR count = 0 despite the kernel loading from global memory — the 1D pointer path routes data through SCALAR→VECTOR instead of MTE2→VECTOR. Multidimensional `make_block_ptr` enables the fast MTE2→VECTOR path. (Cat 5: Missing Memory Engine)
+  - `report.txt` overall `[Pipe Distribution]` section shows **SCALAR and VECTOR already well-overlapped** — `%(SCALAR&VECTOR/VECTOR) > 60%`; block_ptr cannot further improve overlap.
+  - The kernel uses **gather/scatter access** — non-contiguous indirect access via `tl.gather` or `index_ptr` violates the contiguous-memory assumption of `make_block_ptr`.
+  - `report.txt` overall `[Pipe Distribution]` section shows **MTE2 negligible** — `MTE2_cycles% < 0.5%` — meaning memory access volume is too small to be the bottleneck; likely compute-bound or control-bound instead.
 
 ### `classic-matmul`
 
@@ -147,31 +279,6 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - The gather source array is small or medium enough that contiguous staging in shared memory is plausible.
   - The hot loop repeatedly reads fixed fields from AoS records with stride-C offsets, such as `[N, 3]` coordinates loaded as `atom_idx * 3 + channel`, and the input is reused enough to amortize wrapper-side SoA materialization.
 
-### `flat-index-decode-tiling`
-
-- Summary: Replace scalar-heavy 1D linear-index traversal with layout-aware multidimensional tiles when the logical operation is an affine data movement. This removes per-lane `//` / `%` coordinate recovery and turns regular layout copies into base-plus-stride accesses over contiguous or low-stride dimensions.
-- Source: [flat-index-decode-tiling.md](patterns/flat-index-decode-tiling.md)
-- Use When:
-  - The kernel is mostly data movement, not dense arithmetic or reduction.
-  - Work is launched over flat `n_elements` or `out.numel()`.
-  - Each lane recovers coordinates with repeated `//`, `%`, or residual chains.
-  - The output-to-input mapping is affine: axis reorder, fixed offsets, padding bounds, slice windows, or stride-based copy.
-  - At least one logical dimension can be made contiguous or low-stride inside the tile.
-- Avoid When:
-  - Indices are value-dependent or irregular enough that the hot path is true gather/scatter.
-  - The tensor layout materialization can be removed by folding layout into the next consumer.
-  - Rank/stride/shape assumptions are not guarded.
-  - A multidimensional tile would exceed UB/register budget or create invalid grid dimensions.
-- Signals / Code:
-  - `offsets = pid * BLOCK + tl.arange(...)` is the main work assignment.
-  - `coord0 = linear // stride0`, `residual = linear % stride0`, then more decode steps.
-  - One flattened mask combines all rank or boundary conditions for every lane.
-  - Simple identity, transpose, slice, pad, or reshape-copy cases share one generic flat kernel.
-- Signals / Profile:
-  - Scalar/control overhead is high for a copy-like kernel.
-  - Changing only flat `BLOCK_SIZE` gives weak or unstable gains.
-  - Specialized row-column or multidimensional tile variants improve regular shape regimes.
-
 ### `effective-extent-tiling`
 
 - Summary: Choose tile widths from the live logical extent on each axis instead of a legacy maximum or blanket power-of-two rule, so masked lanes do not dominate loop trip counts, transfer work, or vector-path work.
@@ -191,6 +298,18 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Python dispatch can guard the aligned branch before launch and keep the original masked kernel as fallback.
   - MLIR, LLVM, or profiler traces still show boundary checks, masks, padding, or branch/control overhead on the exact-tile hot path.
   - The kernel is already structurally reasonable, so a bounded control-overhead cleanup can matter.
+
+### `flat-index-decode-tiling`
+
+- Summary: Replace scalar-heavy 1D linear-index traversal with layout-aware multidimensional tiles when the logical operation is an affine data movement.
+- Source: [flat-index-decode-tiling.md](patterns/flat-index-decode-tiling.md)
+- Use When:
+  - The kernel is mostly data movement, not dense arithmetic or reduction.
+  - Work is launched over a flat `n_elements` or `out.numel()` stream.
+  - Each lane recovers coordinates with repeated `//`, `%`, or residual chains.
+  - The output-to-input mapping is affine: coordinates map through strides, axis reorder, fixed offsets, padding bounds, or simple slice windows.
+  - At least one logical dimension can be made contiguous or low-stride inside the tile.
+  - Shape/rank regimes are known enough to dispatch to specialized tile layouts or guarded fallbacks.
 
 ### `grid-flatten-and-ub-buffering`
 
@@ -338,24 +457,6 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - IR shows `tt.broadcast`, `tt.reduce`, helper outlined functions, or temporary mask tensors dedicated to shift assembly rather than the core math.
   - Profiling indicates scalar/control overhead, UB pressure, vector-function fragmentation, or poor vector utilization around the shift path.
 
-### `scalar-vector-simulation-signal`
-
-- Summary: Match observed signals in overall content of `report.txt` against the categories below to identify the simulation bottleneck type, then follow the mapped pattern to the optimization.
-- Source: [scalar-vector-simulation-signal.md](patterns/scalar-vector-simulation-signal.md)
-- Use When:
-  - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
-  - Simulation data shows **abnormal Pipe distribution** in `report.txt` overall `[Pipe Distribution]` section (e.g., SCALAR instructions > 75%, VECTOR instructions < 15%, MTE2 cycles disproportionately high or zero).
-  - `report.txt` overall `[Pipeline Flows]` section shows **no MTE2ToVECTOR flows** despite the kernel loading from global memory (Signal Category 5), or SCALARToVECTOR **avg > 50ns** (Signal Category 2).
-  - `report.txt` overall `[TRACE Events]` section has **> 10,000 events** dominated by SIGNEXT/ADD/MUL/DIV/SUB/MADD (Signal Category 1).
-  - `report.txt` overall `[VECTOR Unit]` UB Read or Write Conflict exceeds 100 (Signal Category 3).
-  - `report.txt` overall `[VECTOR Unit]` Utilization avg < 30% (Signal Category 4).
-  - You need to map an observed simulation signal to a related pattern and a concrete optimization direction.
-  - You see `tl.load` with `mask`/`other` and want to determine whether the load is taking the slow SCALAR→VECTOR→MTE2 path (Path A) or the fast SCALAR→MTE2→VECTOR path (Path B).
-  - The optimization target is **pure tiling parameter tuning** (BLOCK_M/BLOCK_N/BLOCK_K, num_warps, grid config) — these are invisible in single-program simulation and must use hardware profiling.
-  - The optimization target is **multi-program atomic contention** (e.g., `tl.atomic_add` under concurrent access) — simulation cannot reproduce this and signals will be misleading.
-  - Simulation data shows **no signal hitting any threshold**.
-  - The kernel is **inherently lightweight** (e.g., a trivial load+store touch kernel, a copy kernel, or a kernel with no compute loop) — an abnormal Pipe distribution is the natural characteristic of such operations, not an optimization target.
-
 ### `slice_coalesce`
 
 - Summary: When the kernel performs scatter/gather operations with non-contiguous memory access patterns, such as token rearrangement in MOE layers, sparse data processing, or any operation involving index-based data movement, use `extract_slice` or `insert_slice` to data reuse while minimizing expensive global memory transactions.
@@ -394,15 +495,13 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `static-range-to-range`
 
-- Summary: Replace `tl.static_range` with `tl.range` in hot loops with lightweight, independent iterations so the compiler preserves loop structure and applies software pipelining, overlapping memory transfers and compute across iterations instead of fully unrolling into a flat serialized sequence.
+- Summary: Replace `tl.static_range` with `tl.range` in hot loops where iteration bodies are lightweight and iterations have no cross-iteration data dependencies. This allows the compiler to preserve loop structure and apply software pipelining, overlapping memory transfers and compute across iterations — instead of fully unrolling the loop into a flat instruction sequence that prevents inter-iteration overlap.
 - Source: [static-range-to-range.md](patterns/static-range-to-range.md)
 - Use When:
-  - The hot loop uses `tl.static_range` (or `tl.range` with a `tl.constexpr` bound that triggers full unrolling).
+  - Hot loop uses `tl.static_range` (or `tl.range` with a `tl.constexpr` bound that triggers full unrolling).
   - Loop iterations are **independent** — no loop-carried data dependency between iterations.
-  - The loop body is lightweight (simple elementwise ops, few intermediates).
+  - Loop body is lightweight (simple elementwise ops, few intermediates).
   - Profiling shows MTE2 (DMA) ratio is disproportionately low relative to VECTOR, and SCALAR/MTE2 overlap is poor.
-  - Pipeline flows are unidirectional only (`MTE2→VECTOR`, `VECTOR→MTE3`) with no reverse cascade flows, indicating each iteration completes fully before the next begins.
-  - `BLOCK_SIZE` and `num_warps` are moderate enough that the rename pressure from `tl.range` will not cause register spills.
 
 ### `stencil-resize-gm-to-ub-staging`
 
@@ -431,7 +530,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Explicit `i64` or `i32` comparisons appear on the hot path outside the compiler's normal fast load/store mask cases.
   - Comparison-heavy control flow or masking looks like a real vectorization blocker rather than just minor boundary handling.
   - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
-  - `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR ratio: `%(SCALAR_dur) / %(VECTOR_dur) > 10`.
+  - `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR ratio: `SCALAR_cycles% / VECTOR_cycles% > 10`.
   - `report.txt` overall `[Key Ratios]` shows a high `SCALAR:VECTOR` ratio, such as `SCALAR:VECTOR_instr` much larger than `4:1`.
   - `report.txt` overall `[VECTOR Unit]` shows low or zero utilization, and the top VECTOR instructions are mask-like operations such as `MOVEMASK`.
   - `report.txt` overall `[TRACE Events]` contains many mask/control-related scalar events such as `CMP_IMM`, `JUMPC`, `JUMPCMP`, `MOVEMASK`, or `SIGNEXT`.

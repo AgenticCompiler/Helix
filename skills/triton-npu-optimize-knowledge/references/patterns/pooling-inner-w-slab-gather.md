@@ -93,8 +93,10 @@ The overlapping columns (**`2`**, **`4`**, **`6`**) are loaded once from global 
 
 ### Profile
 
-- **`high-transfer-pressure`** or many **discrete / narrow LD** ops on the pooling kernel name; **Avg** improves when IR shows fewer per-`kw` GM touches.
-- **High `aiv_scalar_ratio`** alone does **not** mean “skip slab”—often means **add boundary specialization**, not **drop gather**.
+- `report.txt` overall `[Pipe Distribution]` SCALAR instr% > 80% AND `[TRACE Events]` total events > 10,000 — per-element scalar `tl.load` in a `tl.static_range` loop produces scalar arithmetic explosion.
+- `report.txt` overall `[TRACE Events]` top events dominated by ADD, MUL, SUB — scalar address computation for per-kw load offsets.
+- `high-transfer-pressure` or many discrete / narrow LD ops on the pooling kernel name; Avg improves when IR shows fewer per-`kw` GM touches.
+- High `aiv_scalar_ratio` alone does not mean “skip slab”—often means add boundary specialization, not drop gather.
 
 ### IR
 

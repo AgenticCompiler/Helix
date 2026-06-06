@@ -18,6 +18,9 @@ Improve overlap between memory movement and compute in a hot loop that is alread
 
 ### Profile
 
+- `report.txt` overall `[Pipeline Flows]` SCALARToVECTOR avg > 50ns AND SCALAR instr% > 75% — dispatch bottleneck where SCALAR waits for VECTOR to become ready. Software pipelining (increasing `num_stages`) hides SCALAR→VECTOR dispatch latency by overlapping iterations. (Cat 2: Dispatch Bottleneck)
+- `report.txt` overall `[Pipeline Flows]` VECTORToSCALAR count > 300 — many VECTOR→SCALAR synchronization points from frequent `tl.sum`/`tl.max` operations. Batch more work per dispatch to reduce sync frequency.
+- `report.txt` overall `[VECTOR Unit]` Utilization avg < 30% AND `[Pipe Distribution]` VECTOR instr% < 15% — each loop iteration has lots of scalar address computation but only one or two vector operations. Increase the ratio of VECTOR work per SCALAR dispatch (wider loads, larger tiles). (Cat 4: Vector Underutilization)
 - `msprof` timelines show Cube or Vector gaps while the MTE engines fetch the next tile.
 - Wait-heavy behavior suggests insufficient memory/compute overlap rather than a missing tiled-kernel rewrite.
 

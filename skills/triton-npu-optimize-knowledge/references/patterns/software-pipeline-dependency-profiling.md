@@ -63,6 +63,7 @@ Use the full report section, not a single isolated line. Near-zero overlap, such
 - The `tl.load` path is regular enough that a `for` loop or steady-state loop can expose repeated load/compute stages and enable compiler prefetch.
 - `tl.load` is inside a loop, which already exposes repeated stages for `num_stages` tuning or manual prefetch.
 - `tl.load` is outside a loop, but the kernel has a regular single-tile program shape that can be safely converted into a steady-state loop.
+- Each loop iteration has lots of scalar address computation but only one or two vector operations — widening the vector work per iteration (wider loads, larger tiles) increases the ratio of VECTOR work per SCALAR dispatch. (Cat 4 Manifestation B: Scalar-heavy loop with tiny vector work)
 
 ## Dependency Features
 

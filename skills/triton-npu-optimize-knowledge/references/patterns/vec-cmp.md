@@ -9,7 +9,7 @@ Rewrite explicit integer compare-heavy logic into a form that is more vector-fri
 - Explicit `i64` or `i32` comparisons appear on the hot path outside the compiler's normal fast load/store mask cases.
 - Comparison-heavy control flow or masking looks like a real vectorization blocker rather than just minor boundary handling.
 - You have a `report.txt` output from `extracted_bin_data` (or you have already extracted simulation data and are about to analyze it). Focus on its overall content section.
-- `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR ratio: `%(SCALAR_dur) / %(VECTOR_dur) > 10`.
+- `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR ratio: `SCALAR_cycles% / VECTOR_cycles% > 10`.
 - `report.txt` overall `[Key Ratios]` shows a high `SCALAR:VECTOR` ratio, such as `SCALAR:VECTOR_instr` much larger than `4:1`.
 - `report.txt` overall `[VECTOR Unit]` shows low or zero utilization, and the top VECTOR instructions are mask-like operations such as `MOVEMASK`.
 - `report.txt` overall `[TRACE Events]` contains many mask/control-related scalar events such as `CMP_IMM`, `JUMPC`, `JUMPCMP`, `MOVEMASK`, or `SIGNEXT`.
@@ -25,7 +25,7 @@ Rewrite explicit integer compare-heavy logic into a form that is more vector-fri
 
 ### Profile
 
-- `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR ratio, for example `%(SCALAR_dur) / %(VECTOR_dur) > 10`. This supports `vec-cmp` only when the code has explicit integer masks, because scalarized integer compares can spend most cycles building control/mask state instead of doing useful vector selection.
+- `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR ratio, for example `SCALAR_cycles% / VECTOR_cycles% > 10`. This supports `vec-cmp` only when the code has explicit integer masks, because scalarized integer compares can spend most cycles building control/mask state instead of doing useful vector selection.
 - `report.txt` overall `[Key Ratios]` shows a high `SCALAR:VECTOR` ratio, such as `SCALAR:VECTOR_instr` much larger than `4:1` or `SCALAR:VECTOR_cycles > 10:1`. This matches `vec-cmp` when integer compare masks feed hot-path `tl.where`, conditional assignments, or reused masks, because those masks should become cheaper if the comparison is lowered through vector-friendly `fp32` compare.
 - `report.txt` overall `[VECTOR Unit]` shows low or zero utilization, and the top VECTOR instructions are mask-like operations such as `MOVEMASK`. This suggests the vector pipe is mostly receiving or materializing masks rather than performing sustained vector compute, which is the failure mode `vec-cmp` tries to avoid.
 - `report.txt` overall `[TRACE Events]` or `[SCALAR Instr Types]` contains many mask/control-related scalar events such as `CMP_IMM`, `JUMPC`, `JUMPCMP`, `MOVEMASK`, `SIGNEXT`, `ZEROEXT`, or `AND`. These are direct signatures of integer compare, branch/control, integer widening, and mask materialization; they strengthen the `vec-cmp` diagnosis when they line up with explicit compare-mask code.
@@ -159,3 +159,37 @@ x = tl.load(x_ptr + offsets, mask=mask_fp32)
 - Re-check downstream dtype expectations and confirm the comparison is no longer a scalarization bottleneck.
 - Re-check `extracted_bin_data/report.txt` when available and confirm the scalar/vector balance improved instead of merely moving the bottleneck.
 - Re-check `tl.maximum()` and `tl.minimum()` call sites on the hot path and document any intentional `propagate_nan` choice as a semantics change.
+
+## Worked Example: LayerNorm Vectorized Compare Fix
+
+Profiling evidence for `_layer_norm_fwd_fused` kernel: `aiv_vec_ratio < 10%`, `aiv_scalar_ratio ~60%`. The simulation pipeline shows SCALAR and FLOWCTRL saturated while MTE2/VECTOR are regularly interrupted.
+
+Root cause: `tl.where` with `int64` comparison operands causes NPU scalar fallback instead of hardware vectorized compare (`vec_cmp`).
+
+Code anti-pattern:
+
+```python
+@triton.jit
+def layer_norm_fwd_fused(
+    X, Y, W, B, RES, Mean, Rstd,
+    stride, N, eps,
+    BLOCK_SIZE: tl.constexpr
+):
+    cols = tl.arange(0, BLOCK_SIZE)
+    x = tl.load(X + cols, mask=cols < N, other=0.0).to(tl.float32)
+    mean = tl.sum(x, axis=0) / N
+    xbar = tl.where(cols < N, x - mean, 0.0)   # cols is int64 -> scalar fallback
+    # ... rest of norm computation
+```
+
+Fix: explicitly cast index to `float32` before comparison, enabling `vec_cmp` hardware path:
+
+```python
+    cols = tl.arange(0, BLOCK_SIZE)
+    x = tl.load(X + cols, mask=cols < N, other=0.0).to(tl.float32)
+    mean = tl.sum(x, axis=0) / N
+    cols_cmp = cols.to(tl.float32)                         # int64 -> float32 cast
+    xbar = tl.where(cols_cmp < N, x - mean, 0.0)          # now uses vec_cmp
+```
+
+After fix: VECTOR utilization increases significantly, scalar ratio drops. The `tl.load`/`tl.store` mask parameter (`cols < N`) is auto-optimized by the compiler, but `tl.where` requires manual vectorization via dtype cast.
