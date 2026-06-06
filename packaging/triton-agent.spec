@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from PyInstaller.utils.hooks import copy_metadata
+
 
 SPEC_DIR = Path(SPECPATH).resolve()
 ROOT = SPEC_DIR.parent if SPEC_DIR.name == "packaging" else SPEC_DIR
@@ -18,11 +20,18 @@ def collect_skills():
     return datas
 
 
+def collect_optional_metadata(package_name):
+    try:
+        return copy_metadata(package_name)
+    except Exception:
+        return []
+
+
 a = Analysis(
     [str(ROOT / "src" / "triton_agent" / "cli.py")],
     pathex=[str(ROOT / "src")],
     binaries=[],
-    datas=collect_skills(),
+    datas=collect_skills() + collect_optional_metadata("fastmcp"),
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
