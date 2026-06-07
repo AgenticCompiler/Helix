@@ -6,7 +6,7 @@ Read this generated index first. Then read only the one or two most relevant det
 
 ## Signal-Based Pattern Routing
 
-Read this section when you have profiling data (simulation or on-card) or source code available. Follow steps in order; the first matching step wins.
+Read this section when you have source code, simulation data, or on-card profiling data available. Always start with Step 1 for code-structure candidates. Step 2 is optional: execute it only when `extracted_bin_data/report.txt` exists, which happens only in simulation optimize mode; otherwise skip Step 2 entirely. When Step 2 or Step 3 data exists, first collect the relevant canonical features across all available sections, then match the routing rows against that complete feature set. Use Step 2 and Step 3 as supplementary evidence to confirm severity and discover additional candidates. Combine the matched rows into a short final candidate list instead of stopping at the first match.
 
 ### Step 1: Code Structure Priority
 
@@ -36,7 +36,9 @@ Code features do not depend on profiling data. Check these first. Each row lists
 
 ### Step 2: Simulation Signal Routing (extracted_bin_data/report.txt)
 
-When you have `extracted_bin_data/report.txt`, scan sections in order below. Each row lists a canonical feature condition and candidate patterns. Feature names correspond directly to `report.txt` columns.
+Execute this step only when `extracted_bin_data/report.txt` exists and has been read. This report is produced only in simulation optimize mode; if it is absent, skip Step 2 and rely on Step 1 plus any Step 3 profiling data. When the report is available, first collect canonical features from all available report sections into a single feature map. Then evaluate the routing rows below against that complete feature map. This is required because some conditions combine features from different sections, such as `CUBE_present = false` from `[Pipe Distribution]` and `TRACE_MADD_count > 0` from `[TRACE Events]`. Feature names correspond directly to `report.txt` columns.
+
+Collect features from sections in this order: `[Pipeline Flows]` → `[MTE2 Data Transport]` → `[Pipe Distribution]` → `[Key Ratios]` → `[Pipe Overlap Ratio]` → `[VECTOR Unit]` → `[TRACE Events]`. If conditional `[CUBE/MMA]` data exists, use it only as extra CUBE diagnostic detail, not as a separate routing entry point. Do not stop after the first section match; record all matched feature conditions, then narrow the final candidates with the code-feature differentiation column.
 
 #### Section 1: `[Pipeline Flows]`
 
@@ -46,7 +48,7 @@ When you have `extracted_bin_data/report.txt`, scan sections in order below. Eac
 | `flow_MTE2_to_VECTOR_exists = false` AND code has `tl.load` | `grid-flatten-and-ub-buffering` | Per-element scalar load |
 | `flow_SCALAR_to_VECTOR_avg_ns > 50` AND `SCALAR_instr% > 75` | `static-range-to-range` | Code uses `tl.static_range` |
 | `flow_bidirectional_exists = true` | `block-pointer-dimensionality` | Needs Section 3 other signals |
-| `flow_CUBE_related_exists = false` AND `TRACE_MADD_count > 0` | `classic-matmul` | Code has K-reduction loop — only applies when kernel is matmul-like |
+| `flow_CUBE_related_exists = false` AND `TRACE_MADD_count > 0` AND source is matmul-like | `classic-matmul` | Code has K-reduction loop or `tl.sum(a*b)` |
 
 #### Section 2: `[MTE2 Data Transport]`
 
@@ -81,8 +83,8 @@ Multiple patterns use pipe distribution data. Check by pipe dimension:
 
 | Feature Condition | Candidate Patterns | Differentiation |
 |---|---|---|
-| `CUBE_present = false` AND `TRACE_MADD_count > 0` | `classic-matmul` | Code has `tl.sum(a*b)` or K-reduction loop |
-| `CUBE_present = false` AND `flow_CUBE_related_exists = false` | `classic-matmul` | Code has `tl.sum(a*b)` (cross-check with Section 1) |
+| `CUBE_present = false` AND `TRACE_MADD_count > 0` AND source is matmul-like | `classic-matmul` | Code has `tl.sum(a*b)` or K-reduction loop |
+| `CUBE_present = false` AND `flow_CUBE_related_exists = false` AND source is matmul-like | `classic-matmul` | Code has `tl.sum(a*b)` (cross-check with Section 1) |
 
 **3d. MTE3 output bottleneck:**
 
@@ -91,7 +93,17 @@ Multiple patterns use pipe distribution data. Check by pipe dimension:
 | `MTE3_cycles% > 10` AND `SCALAR_and_MTE3_over_SCALAR > 20%` | `block-pointer-dimensionality` | High-dimensional contiguous |
 | `MTE3_cycles% > 10` | `merge-adjacent-stores` | Code has multiple adjacent `tl.store` |
 
-#### Section 4: `[Pipe Overlap Ratio]`
+#### Section 4: `[Key Ratios]`
+
+Prefer these derived ratio features instead of embedding arithmetic in final routing traces. If `[Key Ratios]` is absent but `[Pipe Distribution]` has the source values, derive the same canonical features from `SCALAR_cycles% / VECTOR_cycles%` and `SCALAR_instr% / VECTOR_instr%`.
+
+| Feature Condition | Candidate Patterns | Differentiation |
+|---|---|---|
+| `SCALAR_to_VECTOR_cycles > 10` | `block-pointer-dimensionality` | High-dimensional contiguous + flat 1D offset |
+| `SCALAR_to_VECTOR_cycles > 10` AND `TRACE_CMP_IMM_count` high | `vec-cmp` | Code has integer mask |
+| `SCALAR_to_VECTOR_instr > 10` AND `SCALAR_instr% > 80` | `scalar-latency-traps` | Code has pointer recurrence or single-lane mask |
+
+#### Section 5: `[Pipe Overlap Ratio]`
 
 | Feature Condition | Candidate Patterns | Differentiation |
 |---|---|---|
@@ -101,7 +113,7 @@ Multiple patterns use pipe distribution data. Check by pipe dimension:
 | `MTE2_and_MTE3_over_MTE2 > 50%` | `block-pointer-dimensionality` | Needs Section 3 MTE3_cycles% high |
 | `SCALAR_and_VECTOR_over_VECTOR < 5%` AND `SCALAR_cycles% > 10` | `static-range-to-range` | Code uses `tl.static_range` |
 
-#### Section 5: `[VECTOR Unit]`
+#### Section 6: `[VECTOR Unit]`
 
 | Feature Condition | Candidate Patterns | Differentiation |
 |---|---|---|
@@ -112,7 +124,7 @@ Multiple patterns use pipe distribution data. Check by pipe dimension:
 | `VECTOR_utilization_avg < 30` AND `VECTOR_instr% < 15` | `accumulator-layout-alignment` | Accumulator layout mismatch |
 | `VECTOR_top_instr` contains MOVEMASK | `vec-cmp` | Code has `tl.where` with int operands |
 
-#### Section 6: `[TRACE Events]`
+#### Section 7: `[TRACE Events]`
 
 | Feature Condition | Candidate Patterns | Differentiation |
 |---|---|---|

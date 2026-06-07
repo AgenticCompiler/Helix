@@ -59,6 +59,8 @@ def get_pipe_ration_given_cycle(items):
         summary[item["Pipe"]] += item["Cycles"]
     sum_data = sum(summary.values())
     ratios = {}
+    if sum_data == 0:
+        return ratios
     for key in summary.keys():
         ratios[key] = summary[key] / sum_data
     return ratios
@@ -84,9 +86,11 @@ def dump_source_info(summary):
     cycles_info = {}
     for filename in summary.keys():
         for line_no in summary[filename].keys():
-            if "Cycles" not in summary[filename][line_no]:
+            if "Cycles" not in summary[filename][line_no] or summary[filename][line_no]["Cycles"] == "NA":
                 continue
             cycles_info[summary[filename][line_no]["Cycles"]] = [filename, line_no]
+    if len(cycles_info) == 0:
+        return ""
     cycles = sorted(cycles_info.keys(), reverse=True)[:MAX_SOURCE]
     text = "[Source Code Info]\n"
     for cycle in cycles:
