@@ -33,7 +33,7 @@ from triton_agent.paths import (
 from triton_agent.prompts import (
     append_additional_user_instructions,
     build_optimize_baseline_prompt,
-    build_optimize_continuous_prompt,
+    build_optimize_round_prompt,
     build_optimize_resume_prompt,
     build_optimize_supervisor_prompt,
     build_prompt,
@@ -1353,12 +1353,19 @@ class CliMCPServerCommandTests(unittest.TestCase):
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.prompt, "Focus on memory access.")
 
-    def test_optimize_command_defaults_round_mode_continuous(self) -> None:
+    def test_optimize_command_defaults_round_mode_checked(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize", "-i", "kernel.py"])
-        self.assertEqual(args.round_mode, "continuous")
+        self.assertEqual(args.round_mode, "checked")
         options = optimize_run_options_from_args(args)
-        self.assertEqual(options.round_mode, "continuous")
+        self.assertEqual(options.round_mode, "checked")
+
+    def test_optimize_command_accepts_round_batch_size(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--round-batch-size", "3"])
+        self.assertEqual(args.round_batch_size, 3)
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.round_batch_size, 3)
 
     def test_optimize_run_options_rejects_invalid_round_mode(self) -> None:
         args = argparse.Namespace(
@@ -1406,12 +1413,14 @@ class CliMCPServerCommandTests(unittest.TestCase):
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.prompt, "Avoid numerics changes.")
 
-    def test_optimize_batch_defaults_round_mode_continuous(self) -> None:
+    def test_optimize_batch_defaults_round_batch_size_to_ten(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize-batch", "-i", "kernels"])
-        self.assertEqual(args.round_mode, "continuous")
+        self.assertEqual(args.round_mode, "checked")
+        self.assertEqual(args.round_batch_size, 10)
         options = optimize_run_options_from_args(args)
-        self.assertEqual(options.round_mode, "continuous")
+        self.assertEqual(options.round_mode, "checked")
+        self.assertEqual(options.round_batch_size, 10)
         self.assertEqual(args.target_chip, "A5")
         self.assertEqual(options.target_chip, "A5")
 
@@ -2711,7 +2720,7 @@ class PathResolutionTests(unittest.TestCase):
                 remote_workdir,
                 min_rounds,
                 continue_optimize,
-                round_mode="continuous",
+                round_mode="checked",
                 target_chip=None,
             ):
                 captured["output_path"] = output_path
@@ -2862,63 +2871,41 @@ class PathResolutionTests(unittest.TestCase):
             operator = root / "kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
 
-            captured = {}
-
-            def _fake_build_prompt(
-                command_kind,
-                input_path,
-                operator_path,
-                output_path,
-                test_mode,
-                bench_mode,
-                force_overwrite,
-                remote,
-                remote_workdir,
-                min_rounds,
-                resume_existing_session,
-                round_mode="continuous",
-                target_chip=None,
-                enable_subagent=False,
-            ):
-                captured["test_mode"] = test_mode
-                captured["bench_mode"] = bench_mode
-                captured["resume_existing_session"] = resume_existing_session
-                return "Prompt body"
-
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
-                with patch(
-                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
-                    return_value=fake_result,
-                ):
-                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+            with patch(
+                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                return_value=fake_result,
+            ) as mocked:
+                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                    with patch(
+                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        return_value=[],
+                    ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
-                            with patch(
-                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
-                                return_value=[],
-                            ):
-                                exit_code = main(
-                                    [
-                                        "optimize",
-                                        "-i",
-                                        str(operator),
-                                        "--resume",
-                                        "auto",
-                                        "--test-mode",
-                                        "standalone",
-                                        "--bench-mode",
-                                        "msprof",
-                                        "--no-report",
-                                    ]
-                                )
+                            exit_code = main(
+                                [
+                                    "optimize",
+                                    "-i",
+                                    str(operator),
+                                    "--resume",
+                                    "auto",
+                                    "--test-mode",
+                                    "standalone",
+                                    "--bench-mode",
+                                    "msprof",
+                                    "--no-report",
+                                ]
+                            )
 
             self.assertEqual(exit_code, 0)
-            self.assertEqual(captured["test_mode"], "standalone")
-            self.assertEqual(captured["bench_mode"], "msprof")
-            self.assertFalse(captured["resume_existing_session"])
+            request = mocked.call_args.args[2]
+            self.assertEqual(request.test_mode, "standalone")
+            self.assertEqual(request.bench_mode, "msprof")
+            self.assertFalse(request.continue_optimize)
+            self.assertEqual(request.prompt, "")
 
     def test_main_optimize_resume_auto_treats_prepared_harnesses_as_no_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2938,50 +2925,28 @@ class PathResolutionTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            captured = {}
-
-            def _fake_build_prompt(
-                command_kind,
-                input_path,
-                operator_path,
-                output_path,
-                test_mode,
-                bench_mode,
-                force_overwrite,
-                remote,
-                remote_workdir,
-                min_rounds,
-                resume_existing_session,
-                round_mode="continuous",
-                target_chip=None,
-                enable_subagent=False,
-            ):
-                captured["test_mode"] = test_mode
-                captured["bench_mode"] = bench_mode
-                captured["resume_existing_session"] = resume_existing_session
-                return "Prompt body"
-
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
-                with patch(
-                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
-                    return_value=fake_result,
-                ):
-                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+            with patch(
+                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                return_value=fake_result,
+            ) as mocked:
+                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                    with patch(
+                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        return_value=[],
+                    ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
-                            with patch(
-                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
-                                return_value=[],
-                            ):
-                                exit_code = main(["optimize", "-i", str(operator), "--resume", "auto", "--no-report"])
+                            exit_code = main(["optimize", "-i", str(operator), "--resume", "auto", "--no-report"])
 
             self.assertEqual(exit_code, 0)
-            self.assertEqual(captured["test_mode"], "differential")
-            self.assertEqual(captured["bench_mode"], "standalone")
-            self.assertFalse(captured["resume_existing_session"])
+            request = mocked.call_args.args[2]
+            self.assertEqual(request.test_mode, "differential")
+            self.assertEqual(request.bench_mode, "standalone")
+            self.assertFalse(request.continue_optimize)
+            self.assertEqual(request.prompt, "")
 
     def test_main_optimize_resume_auto_allows_baseline_without_opt_note(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3014,50 +2979,28 @@ class PathResolutionTests(unittest.TestCase):
             (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
             (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
 
-            captured = {}
-
-            def _fake_build_prompt(
-                command_kind,
-                input_path,
-                operator_path,
-                output_path,
-                test_mode,
-                bench_mode,
-                force_overwrite,
-                remote,
-                remote_workdir,
-                min_rounds,
-                resume_existing_session,
-                round_mode="continuous",
-                target_chip=None,
-                enable_subagent=False,
-            ):
-                captured["test_mode"] = test_mode
-                captured["bench_mode"] = bench_mode
-                captured["resume_existing_session"] = resume_existing_session
-                return "Prompt body"
-
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
-                with patch(
-                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
-                    return_value=fake_result,
-                ):
-                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+            with patch(
+                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                return_value=fake_result,
+            ) as mocked:
+                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                    with patch(
+                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        return_value=[],
+                    ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
-                            with patch(
-                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
-                                return_value=[],
-                            ):
-                                exit_code = main(["optimize", "-i", str(operator), "--resume", "auto", "--no-report"])
+                            exit_code = main(["optimize", "-i", str(operator), "--resume", "auto", "--no-report"])
 
             self.assertEqual(exit_code, 0)
-            self.assertEqual(captured["test_mode"], "differential")
-            self.assertEqual(captured["bench_mode"], "standalone")
-            self.assertFalse(captured["resume_existing_session"])
+            request = mocked.call_args.args[2]
+            self.assertEqual(request.test_mode, "differential")
+            self.assertEqual(request.bench_mode, "standalone")
+            self.assertFalse(request.continue_optimize)
+            self.assertEqual(request.prompt, "")
 
     def test_main_optimize_resume_auto_rejects_partial_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3196,7 +3139,7 @@ class PathResolutionTests(unittest.TestCase):
             )
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.execution.OptimizeRunLoop.run", return_value=fake_result):
+            with patch("triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize", return_value=fake_result):
                 with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
                     with patch(
                         "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
@@ -3267,55 +3210,30 @@ class PathResolutionTests(unittest.TestCase):
                 "# bench-mode: msprof\n# kernel: k\nprint('bench')\n", encoding="utf-8"
             )
 
-            captured = {}
-
-            def _fake_build_prompt(
-                command_kind,
-                input_path,
-                operator_path,
-                output_path,
-                test_mode,
-                bench_mode,
-                force_overwrite,
-                remote,
-                remote_workdir,
-                min_rounds,
-                resume_existing_session,
-                round_mode="continuous",
-                target_chip=None,
-                enable_subagent=False,
-            ):
-                captured["test_mode"] = test_mode
-                captured["bench_mode"] = bench_mode
-                captured["resume_existing_session"] = resume_existing_session
-                return "Prompt body"
-
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
-                with patch(
-                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
-                    return_value=fake_result,
-                ) as mocked:
-                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+            with patch(
+                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                return_value=fake_result,
+            ) as mocked:
+                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                    with patch(
+                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        return_value=[],
+                    ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
-                            with patch(
-                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
-                                return_value=[],
-                            ):
-                                exit_code = main(
-                                    ["optimize", "-i", str(operator), "--resume", "auto", "--no-report"]
-                                )
+                            exit_code = main(
+                                ["optimize", "-i", str(operator), "--resume", "auto", "--no-report"]
+                            )
 
             self.assertEqual(exit_code, 0)
-            self.assertEqual(captured["test_mode"], "differential")
-            self.assertEqual(captured["bench_mode"], "msprof")
-            self.assertTrue(captured["resume_existing_session"])
-            request = mocked.call_args.args[1]
+            request = mocked.call_args.args[2]
             self.assertEqual(request.test_mode, "differential")
             self.assertEqual(request.bench_mode, "msprof")
+            self.assertTrue(request.continue_optimize)
+            self.assertEqual(request.prompt, "")
 
     def test_main_optimize_resume_auto_accepts_explicit_bench_mode_for_resumable_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3356,64 +3274,39 @@ class PathResolutionTests(unittest.TestCase):
                 "# bench-mode: msprof\n# kernel: k\nprint('bench')\n", encoding="utf-8"
             )
 
-            captured = {}
-
-            def _fake_build_prompt(
-                command_kind,
-                input_path,
-                operator_path,
-                output_path,
-                test_mode,
-                bench_mode,
-                force_overwrite,
-                remote,
-                remote_workdir,
-                min_rounds,
-                resume_existing_session,
-                round_mode="continuous",
-                target_chip=None,
-                enable_subagent=False,
-            ):
-                captured["test_mode"] = test_mode
-                captured["bench_mode"] = bench_mode
-                captured["resume_existing_session"] = resume_existing_session
-                return "Prompt body"
-
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
-                with patch(
-                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
-                    return_value=fake_result,
-                ) as mocked:
-                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+            with patch(
+                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                return_value=fake_result,
+            ) as mocked:
+                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                    with patch(
+                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        return_value=[],
+                    ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
-                            with patch(
-                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
-                                return_value=[],
-                            ):
-                                exit_code = main(
-                                    [
-                                        "optimize",
-                                        "-i",
-                                        str(operator),
-                                        "--resume",
-                                        "auto",
-                                        "--bench-mode",
-                                        "standalone",
-                                        "--no-report",
-                                    ]
-                                )
+                            exit_code = main(
+                                [
+                                    "optimize",
+                                    "-i",
+                                    str(operator),
+                                    "--resume",
+                                    "auto",
+                                    "--bench-mode",
+                                    "standalone",
+                                    "--no-report",
+                                ]
+                            )
 
             self.assertEqual(exit_code, 0)
-            self.assertEqual(captured["test_mode"], "differential")
-            self.assertEqual(captured["bench_mode"], "msprof")
-            self.assertTrue(captured["resume_existing_session"])
-            request = mocked.call_args.args[1]
+            request = mocked.call_args.args[2]
             self.assertEqual(request.test_mode, "differential")
             self.assertEqual(request.bench_mode, "msprof")
+            self.assertTrue(request.continue_optimize)
+            self.assertEqual(request.prompt, "")
 
     def test_handle_optimize_rejects_enable_subagent_for_pi(self) -> None:
         parser = build_parser()
@@ -3479,52 +3372,30 @@ class PathResolutionTests(unittest.TestCase):
                 "# bench-mode: standalone\n# kernel: k\nprint('bench')\n", encoding="utf-8"
             )
 
-            captured = {}
-
-            def _fake_build_prompt(
-                command_kind,
-                input_path,
-                operator_path,
-                output_path,
-                test_mode,
-                bench_mode,
-                force_overwrite,
-                remote,
-                remote_workdir,
-                min_rounds,
-                resume_existing_session,
-                round_mode="continuous",
-                target_chip=None,
-                enable_subagent=False,
-            ):
-                captured["resume_existing_session"] = resume_existing_session
-                captured["test_mode"] = test_mode
-                captured["bench_mode"] = bench_mode
-                return "Prompt body"
-
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
-                with patch(
-                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
-                    return_value=fake_result,
-                ):
-                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+            with patch(
+                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                return_value=fake_result,
+            ) as mocked:
+                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                    with patch(
+                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        return_value=[],
+                    ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
-                            with patch(
-                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
-                                return_value=[],
-                            ):
-                                exit_code = main(
-                                    ["optimize", "-i", str(operator), "--resume", "auto", "--no-report"]
-                                )
+                            exit_code = main(
+                                ["optimize", "-i", str(operator), "--resume", "auto", "--no-report"]
+                            )
 
             self.assertEqual(exit_code, 0)
-            self.assertTrue(captured["resume_existing_session"])
-            self.assertEqual(captured["test_mode"], "differential")
-            self.assertEqual(captured["bench_mode"], "standalone")
+            request = mocked.call_args.args[2]
+            self.assertTrue(request.continue_optimize)
+            self.assertEqual(request.test_mode, "differential")
+            self.assertEqual(request.bench_mode, "standalone")
+            self.assertEqual(request.prompt, "")
 
     def test_main_optimize_accepts_workspace_directory_input(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3533,24 +3404,23 @@ class PathResolutionTests(unittest.TestCase):
             operator.write_text("print('x')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.orchestration.build_prompt", return_value="Prompt body"):
-                with patch(
-                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
-                    return_value=fake_result,
-                ) as mocked:
-                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+            with patch(
+                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                return_value=fake_result,
+            ) as mocked:
+                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                    with patch(
+                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        return_value=[],
+                    ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
-                            with patch(
-                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
-                                return_value=[],
-                            ):
-                                exit_code = main(["optimize", "-i", str(root), "--no-report"])
+                            exit_code = main(["optimize", "-i", str(root), "--no-report"])
 
             self.assertEqual(exit_code, 0)
-            request = mocked.call_args.args[1]
+            request = mocked.call_args.args[2]
             self.assertEqual(request.input_path, operator.resolve())
             self.assertEqual(request.operator_path, operator.resolve())
             self.assertEqual(request.workdir, root.resolve())
@@ -3565,26 +3435,25 @@ class PathResolutionTests(unittest.TestCase):
             original_cwd = Path.cwd()
             try:
                 os.chdir(root)
-                with patch("triton_agent.optimize.orchestration.build_prompt", return_value="Prompt body"):
-                    with patch(
-                        "triton_agent.optimize.execution.OptimizeRunLoop.run",
-                        return_value=fake_result,
-                    ) as mocked:
-                        with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                with patch(
+                    "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                    return_value=fake_result,
+                ) as mocked:
+                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                        with patch(
+                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                            return_value=[],
+                        ):
                             with patch(
-                                "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                                 return_value=[],
                             ):
-                                with patch(
-                                    "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
-                                    return_value=[],
-                                ):
-                                    exit_code = main(["optimize", "-i", ".", "--no-report"])
+                                exit_code = main(["optimize", "-i", ".", "--no-report"])
             finally:
                 os.chdir(original_cwd)
 
             self.assertEqual(exit_code, 0)
-            request = mocked.call_args.args[1]
+            request = mocked.call_args.args[2]
             self.assertEqual(request.input_path, operator.resolve())
             self.assertEqual(request.operator_path, operator.resolve())
             self.assertEqual(request.workdir, root.resolve())
@@ -3622,54 +3491,30 @@ class PathResolutionTests(unittest.TestCase):
             operator = root / "kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
 
-            captured = {}
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
-            def _fake_build_prompt(
-                command_kind,
-                input_path,
-                operator_path,
-                output_path,
-                test_mode,
-                bench_mode,
-                force_overwrite,
-                remote,
-                remote_workdir,
-                min_rounds,
-                resume_existing_session,
-                round_mode="continuous",
-                target_chip=None,
-                enable_subagent=False,
-            ):
-                captured["round_mode"] = round_mode
-                captured["target_chip"] = target_chip
-                return "Prompt body"
-
-            with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
-                with patch(
-                    "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
-                    return_value=fake_result,
-                ) as mocked:
-                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+            with patch(
+                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                return_value=fake_result,
+            ) as mocked:
+                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                    with patch(
+                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        return_value=[],
+                    ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
-                            with patch(
-                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
-                                return_value=[],
-                            ):
-                                exit_code = main(
-                                    ["optimize", "-i", str(operator), "--round-mode", "checked", "--no-report"]
-                                )
+                            exit_code = main(
+                                ["optimize", "-i", str(operator), "--round-mode", "checked", "--no-report"]
+                            )
 
             self.assertEqual(exit_code, 0)
-            self.assertEqual(captured["round_mode"], "checked")
-            self.assertEqual(captured["target_chip"], "A5")
             request = mocked.call_args.args[2]
             self.assertEqual(request.round_mode, "checked")
-            self.assertEqual(request.optimize_role, "worker")
             self.assertEqual(request.target_chip, "A5")
+            self.assertEqual(request.prompt, "")
 
     def test_main_optimize_passes_target_chip_to_prompt_and_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3677,50 +3522,29 @@ class PathResolutionTests(unittest.TestCase):
             operator = root / "kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
 
-            captured = {}
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
-            def _fake_build_prompt(
-                command_kind,
-                input_path,
-                operator_path,
-                output_path,
-                test_mode,
-                bench_mode,
-                force_overwrite,
-                remote,
-                remote_workdir,
-                min_rounds,
-                resume_existing_session,
-                round_mode="continuous",
-                target_chip=None,
-                enable_subagent=False,
-            ):
-                captured["target_chip"] = target_chip
-                return "Prompt body"
-
-            with patch("triton_agent.optimize.orchestration.build_prompt", side_effect=_fake_build_prompt):
-                with patch(
-                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
-                    return_value=fake_result,
-                ) as mocked:
-                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+            with patch(
+                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                return_value=fake_result,
+            ) as mocked:
+                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                    with patch(
+                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        return_value=[],
+                    ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
-                            with patch(
-                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
-                                return_value=[],
-                            ):
-                                exit_code = main(
-                                    ["optimize", "-i", str(operator), "--target-chip", "A3", "--no-report"]
-                                )
+                            exit_code = main(
+                                ["optimize", "-i", str(operator), "--target-chip", "A3", "--no-report"]
+                            )
 
             self.assertEqual(exit_code, 0)
-            self.assertEqual(captured["target_chip"], "A3")
-            request = mocked.call_args.args[1]
+            request = mocked.call_args.args[2]
             self.assertEqual(request.target_chip, "A3")
+            self.assertEqual(request.prompt, "")
 
     def test_main_optimize_passes_no_agent_session_to_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3729,28 +3553,26 @@ class PathResolutionTests(unittest.TestCase):
             operator.write_text("print('x')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.orchestration.build_prompt", return_value="Prompt body"):
-                with patch(
-                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
-                    return_value=fake_result,
-                ) as mocked:
-                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+            with patch(
+                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                return_value=fake_result,
+            ) as mocked:
+                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                    with patch(
+                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        return_value=[],
+                    ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
-                            with patch(
-                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
-                                return_value=[],
-                            ):
-                                exit_code = main(
-                                    ["optimize", "-i", str(operator), "--no-agent-session", "--no-report"]
-                                )
+                            exit_code = main(
+                                ["optimize", "-i", str(operator), "--no-agent-session", "--no-report"]
+                            )
 
             self.assertEqual(exit_code, 0)
-            request = mocked.call_args.args[1]
+            request = mocked.call_args.args[2]
             self.assertTrue(request.no_agent_session)
-            self.assertIsNone(request.optimize_role)
 
     def test_main_optimize_appends_user_prompt_to_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3759,36 +3581,34 @@ class PathResolutionTests(unittest.TestCase):
             operator.write_text("print('x')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch("triton_agent.optimize.orchestration.build_prompt", return_value="Prompt body"):
-                with patch(
-                    "triton_agent.optimize.execution.OptimizeRunLoop.run",
-                    return_value=fake_result,
-                ) as mocked:
-                    with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+            with patch(
+                "triton_agent.optimize.orchestration.optimize_execution.execute_multi_invocation_optimize",
+                return_value=fake_result,
+            ) as mocked:
+                with patch("triton_agent.optimize.orchestration.create_runner", return_value=object()):
+                    with patch(
+                        "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                        return_value=[],
+                    ):
                         with patch(
-                            "triton_agent.optimize.orchestration.SkillLinkManager.prepare_skills",
+                            "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
-                            with patch(
-                                "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
-                                return_value=[],
-                            ):
-                                exit_code = main(
-                                    [
-                                        "optimize",
-                                        "-i",
-                                        str(operator),
-                                        "--prompt",
-                                        "Focus on memory coalescing.",
-                                        "--no-report",
-                                    ]
-                                )
+                            exit_code = main(
+                                [
+                                    "optimize",
+                                    "-i",
+                                    str(operator),
+                                    "--prompt",
+                                    "Focus on memory coalescing.",
+                                    "--no-report",
+                                ]
+                            )
 
             self.assertEqual(exit_code, 0)
-            request = mocked.call_args.args[1]
-            self.assertIn("Prompt body", request.prompt)
-            self.assertIn("Additional user instructions:", request.prompt)
-            self.assertIn("Focus on memory coalescing.", request.prompt)
+            request = mocked.call_args.args[2]
+            self.assertEqual(request.prompt, "")
+            self.assertEqual(request.user_prompt, "Focus on memory coalescing.")
 
     def test_main_run_bench_reports_missing_bench_file_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -4460,113 +4280,6 @@ class PathResolutionTests(unittest.TestCase):
 
 
 class PromptTests(unittest.TestCase):
-    def test_build_optimize_continuous_prompt_mentions_baseline_state_contract(self) -> None:
-        prompt = build_optimize_continuous_prompt(
-            Path("/tmp/op.py"),
-            Path("/tmp/opt_op.py"),
-            test_mode="differential",
-            bench_mode="standalone",
-        )
-        self.assertIn("This invocation is a continuous optimize run.", prompt)
-        self.assertIn("Use the staged `triton-npu-prepare-optimize-baseline` skill", prompt)
-        self.assertIn("Use the staged `triton-npu-optimize-submit-round` skill", prompt)
-        self.assertIn(
-            "baseline preparation is needed, use the staged `triton-npu-prepare-optimize-baseline` skill",
-            prompt.lower(),
-        )
-        self.assertIn(
-            "continue only after it has repaired the baseline through `triton-npu-optimize-submit-baseline`",
-            prompt.lower(),
-        )
-        self.assertIn(
-            "use the staged `triton-npu-optimize-submit-round` skill to submit the current round with `--min-rounds 5`",
-            prompt.lower(),
-        )
-        self.assertIn("continue optimizing until the session should stop", prompt)
-        self.assertIn(
-            "Do not begin the next round until the current round passes the staged `triton-npu-optimize-submit-round` skill.",
-            prompt,
-        )
-        self.assertIn(
-            "Use the staged `triton-npu-optimize-start-round` skill before opening the next round.",
-            prompt,
-        )
-        self.assertIn("Use the staged `triton-npu-analyze-round-performance` skill", prompt)
-        self.assertIn("write `opt-round-n/perf-analysis.md`", prompt.lower())
-        self.assertIn(
-            "When pattern triage is used, record candidate patterns, the selected pattern if one is chosen, and why that pattern looks plausible in `opt-round-N/attempts.md`.",
-            prompt,
-        )
-        self.assertIn(
-            "When a named pattern guides the round, record the final selected pattern direction in `opt-round-N/summary.md`.",
-            prompt,
-        )
-        self.assertIn(
-            "`learned_lessons.md` is only for reusable, evidence-backed optimization or profiling rules",
-            prompt,
-        )
-        self.assertIn("Do not put round narrative, command failures, or operator-specific details", prompt)
-        self.assertIn("Write `baseline/state.json` with these required fields:", prompt)
-        self.assertIn("`baseline_established`", prompt)
-        self.assertIn("Set `baseline_established` to `true` only after", prompt)
-        self.assertIn("PyTorch-facing public API may remain as a wrapper", prompt)
-        self.assertIn("must continue optimizing the Triton Ascend NPU kernel path itself", prompt)
-        self.assertIn("Do not replace the core computation with a pure PyTorch implementation", prompt)
-        self.assertIn("does not count as a successful optimize round", prompt)
-        self.assertIn("prefer the kernel-oriented `compare-perf` view", prompt)
-        self.assertIn("record the resolved `effective_metric_source`", prompt)
-        self.assertIn("Target chip for this optimize session: A5.", prompt)
-        self.assertIn("prefer changes that fit A5", prompt)
-
-    def test_build_optimize_continuous_prompt_mentions_compiler_source_when_enabled(self) -> None:
-        prompt = build_optimize_continuous_prompt(
-            Path("/tmp/op.py"),
-            Path("/tmp/opt_op.py"),
-            test_mode="differential",
-            bench_mode="standalone",
-            compiler_source_path=Path("/tmp/AscendNPU-IR"),
-            compiler_source_commit="abc123",
-        )
-
-        self.assertIn("Compiler source analysis is enabled", prompt)
-        self.assertIn("Compiler source path: /tmp/AscendNPU-IR", prompt)
-        self.assertIn("Compiler source commit: abc123.", prompt)
-        self.assertIn("Use the staged `triton-npu-analyze-compiler-source` skill", prompt)
-        self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", prompt)
-
-    def test_build_optimize_continuous_prompt_mentions_cann_ext_api_when_enabled(self) -> None:
-        prompt = build_optimize_continuous_prompt(
-            Path("/tmp/op.py"),
-            Path("/tmp/opt_op.py"),
-            test_mode="differential",
-            bench_mode="standalone",
-            enable_cann_ext_api=True,
-        )
-
-        self.assertIn("CANN Triton extension API pattern access is enabled for this optimize run.", prompt)
-        self.assertIn("Use the staged `triton-npu-cann-ext-api-patterns` skill", prompt)
-
-    def test_build_optimize_continuous_prompt_mentions_operator_target_contract(self) -> None:
-        prompt = build_optimize_continuous_prompt(
-            Path("/tmp/op.py"),
-            Path("/tmp/opt_op.py"),
-            test_mode="differential",
-            bench_mode="standalone",
-            optimize_target="operator",
-        )
-
-        self.assertIn("Target optimization scope for this optimize session: operator.", prompt)
-        self.assertIn("Optimize end-to-end operator latency.", prompt)
-        self.assertIn(
-            "wrapper logic, data movement, scheduling, pre-processing, post-processing, and kernel code",
-            prompt,
-        )
-        self.assertIn(
-            "Use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and operator-level pattern references.",
-            prompt,
-        )
-        self.assertNotIn("must continue optimizing the Triton Ascend NPU kernel path itself", prompt)
-
     def test_build_optimize_resume_prompt_preserves_compiler_source_when_enabled(self) -> None:
         prompt = build_optimize_resume_prompt(
             "Round gate passed.",
@@ -4632,100 +4345,12 @@ class PromptTests(unittest.TestCase):
             prompt,
         )
 
-    def test_build_optimize_continuous_prompt_mentions_min_rounds_when_requested(self) -> None:
-        prompt = build_optimize_continuous_prompt(
-            Path("/tmp/op.py"),
-            Path("/tmp/opt_op.py"),
-            test_mode="differential",
-            bench_mode="standalone",
-            min_rounds=4,
-        )
-        self.assertIn("Complete at least 4 optimization rounds", prompt)
-        self.assertIn("Once 4 optimization rounds are complete", prompt)
-        self.assertIn(
-            "stop the session after the current round passes the staged `triton-npu-optimize-submit-round` skill",
-            prompt,
-        )
-
-    def test_build_optimize_continuous_prompt_mentions_local_optimum_followup(self) -> None:
-        prompt = build_optimize_continuous_prompt(
-            Path("/tmp/op.py"),
-            Path("/tmp/opt_op.py"),
-            test_mode="differential",
-            bench_mode="standalone",
-        )
-
-        self.assertIn("If the staged `triton-npu-optimize-submit-round` skill passes with a warning", prompt)
-        self.assertIn("may be stuck in a local optimum", prompt)
-        self.assertIn(
-            "review earlier rounds and consider resuming from before that flat sequence",
-            prompt,
-        )
-
-    def test_build_optimize_continuous_prompt_requires_pre_round_reflection(self) -> None:
-        prompt = build_optimize_continuous_prompt(
-            Path("/tmp/op.py"),
-            Path("/tmp/opt_op.py"),
-            test_mode="differential",
-            bench_mode="standalone",
-        )
-
-        self.assertIn("Do not rush from a passed round submission directly into the next edit.", prompt)
-        self.assertIn(
-            "Use the staged `triton-npu-optimize-start-round` skill before opening the next round.",
-            prompt,
-        )
-        self.assertIn(
-            "Before opening the next round, reflect on which operator, kernel path, or wrapper bottleneck should anchor it.",
-            prompt,
-        )
-        self.assertIn(
-            "Decide whether existing evidence is already sufficient or whether profiling, IR, or compiler-source analysis is needed before more code changes.",
-            prompt,
-        )
-        self.assertIn(
-            "Do not treat the next round as a parameter-only tuning sweep; make a bottleneck-backed change instead.",
-            prompt,
-        )
-
-    def test_build_optimize_continuous_prompt_recommends_subagent_when_enabled(self) -> None:
-        prompt = build_optimize_continuous_prompt(
-            Path("/tmp/op.py"),
-            Path("/tmp/opt_op.py"),
-            test_mode="differential",
-            bench_mode="standalone",
-            enable_subagent=True,
-        )
-
-        self.assertIn(
-            "A diagnosis subagent named `triton-agent-perf-diagnosis-advisor` is available in this workspace.",
-            prompt,
-        )
-        self.assertIn(
-            "Use it proactively when the bottleneck hypothesis is still unclear before deeper optimize edits.",
-            prompt,
-        )
-        self.assertIn("must not perform optimization work", prompt)
-
-    def test_build_optimize_continuous_prompt_requires_sequential_rounds_without_parallel_subagents(
-        self,
-    ) -> None:
-        prompt = build_optimize_continuous_prompt(
-            Path("/tmp/op.py"),
-            Path("/tmp/opt_op.py"),
-            test_mode="differential",
-            bench_mode="standalone",
-        )
-
-        self.assertIn("Complete optimize rounds strictly one at a time in sequence.", prompt)
-        self.assertIn("Do not use subagents to implement or advance multiple optimize rounds in parallel.", prompt)
-
-    def test_build_optimize_supervisor_prompt_mentions_audit_role(self) -> None:
+    def test_build_optimize_supervisor_prompt_mentions_audit_pass(self) -> None:
         prompt = build_optimize_supervisor_prompt(
             Path("/tmp"),
             latest_round_dir=Path("/tmp/opt-round-3"),
         )
-        self.assertIn("This invocation is the optimize supervisor role.", prompt)
+        self.assertIn("This invocation is the optimize supervisor pass.", prompt)
         self.assertIn("This invocation is an audit and handoff pass", prompt)
         self.assertIn("Read `/tmp/opt-round-3`", prompt)
         self.assertIn("Use only existing `compare-perf` results", prompt)
@@ -5006,7 +4631,9 @@ class PromptTests(unittest.TestCase):
             force_overwrite=False,
             round_mode="checked",
         )
-        self.assertIn("This invocation owns exactly one round.", prompt)
+        self.assertIn("This invocation owns rounds 1 through 5.", prompt)
+        self.assertIn("Execute those rounds strictly one at a time.", prompt)
+        self.assertIn("Do not pre-plan the full batch before acting.", prompt)
         self.assertIn("Requested test mode: differential", prompt)
         self.assertIn("Requested bench mode: standalone", prompt)
         self.assertIn("Reuse existing correctness tests and benchmark cases when they already exist", prompt)
@@ -5024,8 +4651,8 @@ class PromptTests(unittest.TestCase):
             bench_mode="standalone",
             force_overwrite=False,
         )
-        self.assertIn("Complete at least 5 optimization rounds", prompt)
-        self.assertIn("Once 5 optimization rounds are complete", prompt)
+        self.assertIn("This invocation owns rounds 1 through 5.", prompt)
+        self.assertNotIn("This invocation is a continuous optimize run.", prompt)
 
     def test_optimize_prompt_keeps_min_rounds_out_of_worker_prompt(self) -> None:
         prompt = build_prompt(
@@ -5040,7 +4667,7 @@ class PromptTests(unittest.TestCase):
             round_mode="checked",
         )
         self.assertNotIn("Complete at least 4 optimization rounds", prompt)
-        self.assertIn("This invocation owns exactly one round.", prompt)
+        self.assertIn("This invocation owns rounds 1 through 4.", prompt)
 
     def test_optimize_prompt_supervised_worker_does_not_mention_audit_pass(self) -> None:
         prompt = build_prompt(
@@ -5053,9 +4680,24 @@ class PromptTests(unittest.TestCase):
             force_overwrite=False,
             round_mode="supervised",
         )
-        self.assertIn("This invocation owns exactly one round.", prompt)
+        self.assertIn("This invocation owns rounds 1 through 5.", prompt)
         self.assertNotIn("supervisor audit pass", prompt)
         self.assertNotIn("will review it", prompt)
+
+    def test_build_optimize_round_prompt_mentions_current_and_final_round(self) -> None:
+        prompt = build_optimize_round_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            round_mode="checked",
+            current_round=2,
+            final_round=4,
+            round_batch_size=3,
+        )
+        self.assertIn("This invocation owns rounds 2 through 4.", prompt)
+        self.assertIn("Execute those rounds strictly one at a time.", prompt)
+        self.assertIn("Do not pre-plan the full batch before acting.", prompt)
 
     def test_optimize_prompt_mentions_continue_mode_for_resolved_resume(self) -> None:
         prompt = build_prompt(
@@ -5115,7 +4757,7 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("Do not begin with blind tiling or launch-parameter search", prompt)
 
-    def test_optimize_prompt_defaults_to_continuous_mode(self) -> None:
+    def test_optimize_prompt_defaults_to_checked_batch_mode(self) -> None:
         prompt = build_prompt(
             CommandKind.OPTIMIZE,
             Path("/tmp/op.py"),
@@ -5125,26 +4767,9 @@ class PromptTests(unittest.TestCase):
             bench_mode="standalone",
             force_overwrite=False,
         )
-        self.assertIn("This invocation is a continuous optimize run.", prompt)
-        self.assertNotIn("This invocation is the optimize worker role.", prompt)
-
-    def test_optimize_prompt_continuous_avoids_role_brief_artifacts(self) -> None:
-        prompt = build_prompt(
-            CommandKind.OPTIMIZE,
-            Path("/tmp/op.py"),
-            Path("/tmp/op.py"),
-            Path("/tmp/opt_op.py"),
-            test_mode="differential",
-            bench_mode="standalone",
-            force_overwrite=False,
-            round_mode="continuous",
-        )
-        self.assertIn("This invocation is a continuous optimize run.", prompt)
-        self.assertIn("Own the end-to-end optimize session", prompt)
-        self.assertNotIn("optimize worker role", prompt)
-        self.assertNotIn("owns exactly one round", prompt)
-        self.assertNotIn(".triton-agent/roles/optimize-worker.md", prompt)
-        self.assertNotIn(".triton-agent/round-brief.md", prompt)
+        self.assertIn("This invocation owns rounds 1 through 5.", prompt)
+        self.assertNotIn("This invocation is a continuous optimize run.", prompt)
+        self.assertNotIn("Own the end-to-end optimize session", prompt)
 
     def test_append_additional_user_instructions_adds_section(self) -> None:
         prompt = append_additional_user_instructions(

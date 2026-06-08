@@ -60,7 +60,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     round_parser = subparsers.add_parser("check-round")
     round_parser.add_argument("--round-dir", required=True)
-    round_parser.add_argument("--min-rounds", "--min-round", dest="min_rounds", type=int, default=None)
+    round_parser.add_argument("--current-round", type=int, default=None)
+    round_parser.add_argument("--final-round", type=int, default=None)
     round_parser.add_argument(
         "--optimize-target",
         choices=("kernel", "operator"),
@@ -71,9 +72,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _build_cli_payload(result: OptimizeCheckResult) -> dict[str, object]:
     payload: dict[str, object] = {
-        "ok": result.ok,
         "kind": result.kind,
-        "decision": result.decision,
+        "status": result.status,
         "issues": list(result.issues),
     }
     if result.next_option is not None:
@@ -88,15 +88,14 @@ def main(argv: list[str] | None = None) -> int:
 
     result = check_round(
         Path(args.round_dir).expanduser().resolve(),
-        min_rounds=args.min_rounds,
+        current_round=args.current_round,
+        final_round=args.final_round,
         optimize_target=args.optimize_target,
     )
 
     print(json.dumps(_build_cli_payload(result), ensure_ascii=True))
-    if result.decision == "pass":
+    if result.status == "pass":
         return 0
-    if result.decision == "hard-fail":
-        return 2
     return 1
 
 

@@ -55,9 +55,9 @@ class TestCodexJsonLineParser(unittest.TestCase):
         trace_path = tmpdir / "trace.jsonl"
         return tmpdir, trace_path
 
-    def _make_parser(self, trace_path: Path | None, run_id: str = "test-run-id", role: str = "worker") -> CodexJsonLineParser:
+    def _make_parser(self, trace_path: Path | None, run_id: str = "test-run-id") -> CodexJsonLineParser:
         workspace_root = trace_path.parent if trace_path is not None else Path(tempfile.mkdtemp())
-        return CodexJsonLineParser(trace_path, run_id=run_id, role=role, workspace_root=str(workspace_root))
+        return CodexJsonLineParser(trace_path, run_id=run_id, workspace_root=str(workspace_root))
 
     def test_non_json_line_passed_through(self) -> None:
         _, trace_path = self._make_trace_path()
@@ -260,10 +260,9 @@ class TestCodexJsonOutputFilter(unittest.TestCase):
         _, trace_path = self._make_trace_path()
         extra_env = {
             "TRITON_AGENT_OTEL_RUN_ID": "test-run",
-            "TRITON_AGENT_OTEL_ROLE": "worker",
             "TRITON_AGENT_WORKSPACE_ROOT": str(trace_path.parent.parent),
         }
-        filter_obj = CodexJsonOutputFilter(trace_path, extra_env, run_id="test-run", role="worker", workspace_root=str(trace_path.parent.parent))
+        filter_obj = CodexJsonOutputFilter(trace_path, extra_env, run_id="test-run", workspace_root=str(trace_path.parent.parent))
         result = filter_obj.feed('{"type":"tool_start","tool":"Read","tool_use_id":"call-1","timestamp":"2026-05-17T10:29:18Z"}\n', flush=True)
         # parse_line returns human text without trailing newline (newline consumed by line split)
         self.assertIn("[tool:start] Read call-1", result)
@@ -275,7 +274,6 @@ class TestCodexJsonOutputFilter(unittest.TestCase):
         trace_path = workspace / "trace.jsonl"
         extra_env = {
             "TRITON_AGENT_OTEL_RUN_ID": "test-run",
-            "TRITON_AGENT_OTEL_ROLE": "worker",
             "TRITON_AGENT_WORKSPACE_ROOT": str(workspace),
         }
         filter_obj = CodexJsonOutputFilter(None, extra_env)
@@ -322,10 +320,9 @@ class TestCodexJsonOutputFilter(unittest.TestCase):
         _, trace_path = self._make_trace_path()
         extra_env = {
             "TRITON_AGENT_OTEL_RUN_ID": "test-run",
-            "TRITON_AGENT_OTEL_ROLE": "worker",
             "TRITON_AGENT_WORKSPACE_ROOT": str(trace_path.parent.parent),
         }
-        filter_obj = CodexJsonOutputFilter(trace_path, extra_env, run_id="test-run", role="worker", workspace_root=str(trace_path.parent.parent))
+        filter_obj = CodexJsonOutputFilter(trace_path, extra_env, run_id="test-run", workspace_root=str(trace_path.parent.parent))
         result = filter_obj.feed("Hello world\n", flush=True)
         self.assertEqual(result, "Hello world\n")
 
@@ -333,16 +330,15 @@ class TestCodexJsonOutputFilter(unittest.TestCase):
 class TestBuildCodexTraceEnv(unittest.TestCase):
     def test_build_env_sets_trace_vars(self) -> None:
         trace_path = Path(tempfile.gettempdir()) / "trace.jsonl"
-        env = build_codex_trace_env(None, trace_path=trace_path, run_id="run-123", role="worker", workspace_root=Path(tempfile.gettempdir()))
+        env = build_codex_trace_env(None, trace_path=trace_path, run_id="run-123", workspace_root=Path(tempfile.gettempdir()))
         self.assertEqual(env["TRITON_AGENT_OTEL_TRACE_PATH"], str(trace_path))
         self.assertEqual(env["TRITON_AGENT_OTEL_RUN_ID"], "run-123")
-        self.assertEqual(env["TRITON_AGENT_OTEL_ROLE"], "worker")
         self.assertEqual(env["TRITON_AGENT_WORKSPACE_ROOT"], str(Path(tempfile.gettempdir())))
 
     def test_existing_env_preserved(self) -> None:
         trace_path = Path(tempfile.gettempdir()) / "trace.jsonl"
         existing = {"MY_VAR": "my_value"}
-        env = build_codex_trace_env(existing, trace_path=trace_path, run_id="run-123", role="worker", workspace_root=Path(tempfile.gettempdir()))
+        env = build_codex_trace_env(existing, trace_path=trace_path, run_id="run-123", workspace_root=Path(tempfile.gettempdir()))
         self.assertEqual(env["MY_VAR"], "my_value")
         self.assertEqual(env["TRITON_AGENT_OTEL_TRACE_PATH"], str(trace_path))
 

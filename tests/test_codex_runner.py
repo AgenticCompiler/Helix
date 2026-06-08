@@ -554,7 +554,7 @@ class CodexRunnerTests(unittest.TestCase):
                 runner.resume(request, "one round done")
 
             resumed_request = mocked.call_args.args[0][-1]
-            self.assertIn("This invocation owns exactly one round.", resumed_request)
+            self.assertIn("This invocation owns rounds 1 through 5.", resumed_request)
             self.assertIn("Continue the existing optimize task", resumed_request)
             self.assertIn("Read `opt-note.md`", resumed_request)
             self.assertIn("existing `opt-round-*` directories", resumed_request)

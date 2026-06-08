@@ -40,7 +40,7 @@ _FORMAT_CHOICES = ("text", "markdown")
 _TEST_MODE_CHOICES = ("standalone", "differential")
 _BENCH_MODE_CHOICES = ("standalone", "msprof")
 _RESUME_CHOICES = ("auto", "continue", "fresh")
-_ROUND_MODE_CHOICES = ("continuous", "checked", "supervised")
+_ROUND_MODE_CHOICES = ("checked", "supervised")
 _TARGET_CHIP_CHOICES = ("A3", "A5")
 _OPTIMIZE_TARGET_CHOICES = ("kernel", "operator")
 _OPTIMIZE_KNOWLEDGE_CHOICES = ("v1", "v2", "v3")
@@ -547,6 +547,7 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--npu-devices")
         if spec.has_optimize_options:
             subparser.add_argument("--min-rounds", "--min-round", dest="min_rounds", type=int, default=5)
+            subparser.add_argument("--round-batch-size", type=int, default=10)
             subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES)
             subparser.add_argument("--reset-optimize", action="store_true")
             subparser.add_argument("--enable-compiler-source-analysis", action="store_true")
@@ -568,7 +569,7 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--no-agent-session", action="store_true")
             subparser.add_argument(
                 "--round-mode",
-                default="continuous",
+                default="checked",
                 choices=_ROUND_MODE_CHOICES,
             )
             subparser.add_argument("--no-upload", action="store_true")

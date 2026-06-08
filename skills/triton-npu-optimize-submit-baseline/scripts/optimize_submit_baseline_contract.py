@@ -21,9 +21,8 @@ _BASELINE_METADATA_FILENAMES = {
 
 @dataclass(frozen=True)
 class OptimizeCheckResult:
-    ok: bool
-    kind: Literal["baseline"]
-    decision: Literal["pass", "revise-required", "hard-fail"]
+    kind: Literal["baseline", "round"]
+    status: Literal["pass", "fail"]
     issues: tuple[str, ...]
     summary: str
     next_option: str | None = None
@@ -153,10 +152,10 @@ def check_baseline(baseline_dir_path: Path) -> OptimizeCheckResult:
     issues = baseline_gate_issues(baseline_dir_path.parent)
     if issues:
         return _build_result(
-            decision="revise-required",
+            status="fail",
             issues=issues,
         )
-    return _build_result(decision="pass", issues=())
+    return _build_result(status="pass", issues=())
 
 
 def _load_json_object(path: Path, *, display_name: str) -> dict[str, Any]:
@@ -214,17 +213,19 @@ def _missing_issue(relative_path: str | None, *, default_path: str) -> str:
 
 def _build_result(
     *,
-    decision: Literal["pass", "revise-required", "hard-fail"],
+    status: Literal["pass", "fail"],
     issues: tuple[str, ...],
     summary: str | None = None,
 ) -> OptimizeCheckResult:
-    ok = decision == "pass"
     if summary is None:
-        summary = "baseline check passed" if ok else f"baseline check requires fixes: {'; '.join(issues)}"
+        summary = (
+            "baseline check passed"
+            if status == "pass"
+            else f"baseline check requires fixes: {'; '.join(issues)}"
+        )
     return OptimizeCheckResult(
-        ok=ok,
         kind="baseline",
-        decision=decision,
+        status=status,
         issues=issues,
         summary=summary,
         next_option=None,

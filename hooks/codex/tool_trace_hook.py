@@ -35,7 +35,6 @@ WINDOWS_PATH_FRAGMENT_RE = re.compile(
 )
 TRACE_PATH_ENV = "TRITON_AGENT_OTEL_TRACE_PATH"
 TRACE_RUN_ID_ENV = "TRITON_AGENT_OTEL_RUN_ID"
-TRACE_ROLE_ENV = "TRITON_AGENT_OTEL_ROLE"
 TRACE_WORKSPACE_ROOT_ENV = "TRITON_AGENT_WORKSPACE_ROOT"
 READ_TOOLS = {"Read", "Grep", "Glob"}
 EDIT_TOOLS = {"Edit", "MultiEdit", "Write"}
@@ -128,13 +127,11 @@ def append_trace_events(policy: dict[str, Any], payload: dict[str, Any], *, bloc
 
     timestamp = _timestamp()
     run_id = str(trace_policy.get("run_id") or os.environ.get(TRACE_RUN_ID_ENV) or "")
-    role = str(trace_policy.get("role") or os.environ.get(TRACE_ROLE_ENV) or "")
 
     base_event = {
         "timestamp": timestamp,
         "schema_version": 1,
         "run_id": run_id,
-        "role": role,
         "type": "tool_call",
         "phase": "start",
         "tool": tool_name,
@@ -154,7 +151,6 @@ def append_trace_events(policy: dict[str, Any], payload: dict[str, Any], *, bloc
                 "timestamp": timestamp,
                 "schema_version": 1,
                 "run_id": run_id,
-                "role": role,
                 "type": "command",
                 "phase": "start",
                 "command_kind": _classify_command(command),
@@ -181,7 +177,6 @@ def append_trace_events(policy: dict[str, Any], payload: dict[str, Any], *, bloc
                             "timestamp": timestamp,
                             "schema_version": 1,
                             "run_id": run_id,
-                            "role": role,
                             "type": "file_access",
                             "phase": "instant",
                             "action": "read",
@@ -200,12 +195,12 @@ def append_trace_events(policy: dict[str, Any], payload: dict[str, Any], *, bloc
     if tool_name in READ_TOOLS:
         _append_non_bash_file_access_trace(
             Path(trace_path), trace_policy, tool_name=tool_name, tool_input=tool_input,
-            timestamp=timestamp, workspace_root=workspace_root, cwd=cwd, blocked=blocked, run_id=run_id, role=role,
+            timestamp=timestamp, workspace_root=workspace_root, cwd=cwd, blocked=blocked, run_id=run_id,
         )
     elif tool_name in EDIT_TOOLS:
         _append_non_bash_edit_trace(
             Path(trace_path), trace_policy, tool_name=tool_name, tool_input=tool_input,
-            timestamp=timestamp, workspace_root=workspace_root, cwd=cwd, blocked=blocked, run_id=run_id, role=role,
+            timestamp=timestamp, workspace_root=workspace_root, cwd=cwd, blocked=blocked, run_id=run_id,
         )
 
 
@@ -225,7 +220,6 @@ def append_posttooluse_trace(policy: dict[str, Any], payload: dict[str, Any]) ->
 
     timestamp = _timestamp()
     run_id = str(trace_policy.get("run_id") or os.environ.get(TRACE_RUN_ID_ENV) or "")
-    role = str(trace_policy.get("role") or os.environ.get(TRACE_ROLE_ENV) or "")
     tool_use_id = payload.get("tool_use_id")
 
     # Get tool result info from payload
@@ -241,7 +235,6 @@ def append_posttooluse_trace(policy: dict[str, Any], payload: dict[str, Any]) ->
         "timestamp": timestamp,
         "schema_version": 1,
         "run_id": run_id,
-        "role": role,
         "type": "tool_call",
         "phase": "end",
         "tool": tool_name if isinstance(tool_name, str) else "unknown",
@@ -264,7 +257,6 @@ def append_posttooluse_trace(policy: dict[str, Any], payload: dict[str, Any]) ->
             "timestamp": timestamp,
             "schema_version": 1,
             "run_id": run_id,
-            "role": role,
             "type": "command",
             "phase": "end",
             "tool_use_id": tool_use_id,
@@ -327,7 +319,6 @@ def _append_non_bash_file_access_trace(
     cwd: Path,
     blocked: bool,
     run_id: str,
-    role: str,
 ) -> None:
     for raw_path in _tool_input_paths(tool_name, tool_input):
         resolved = _resolve_candidate(raw_path, cwd, workspace_root)
@@ -337,7 +328,6 @@ def _append_non_bash_file_access_trace(
             "timestamp": timestamp,
             "schema_version": 1,
             "run_id": run_id,
-            "role": role,
             "type": "file_access",
             "phase": "instant",
             "action": "search" if tool_name in {"Grep", "Glob"} else "read",
@@ -366,7 +356,6 @@ def _append_non_bash_edit_trace(
     cwd: Path,
     blocked: bool,
     run_id: str,
-    role: str,
 ) -> None:
     raw_path = _first_tool_input_path(tool_input)
     if raw_path is None:
@@ -379,7 +368,6 @@ def _append_non_bash_edit_trace(
         "timestamp": timestamp,
         "schema_version": 1,
         "run_id": run_id,
-        "role": role,
         "type": "edit",
         "phase": "instant",
         "path": _display_path(resolved, workspace_root),

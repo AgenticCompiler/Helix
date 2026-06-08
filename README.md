@@ -389,13 +389,13 @@ Common options:
 - `--enable-cann-ext-api`: allow A5-only CANN Triton extension API optimization patterns during optimize runs.
 - `--enable-agent-hooks`: enable the workspace-local Codex hook guard for this optimize run. Agent hooks are disabled by default.
 - `--min-rounds <N>`: require at least N optimization rounds.
-- `--round-mode continuous|checked|supervised`: default is `continuous`. Controls how the optimize session is structured:
-  - `continuous`: one long-running optimize agent owns multiple rounds end-to-end.
-  - `checked`: one round per invocation; the CLI validates each round and decides whether to continue, stop, or fail.
-  - `supervised`: one round per invocation; the CLI validates each round, then a supervisor audit pass reviews it and decides whether to continue, stop, or fail.
-  For `checked` and `supervised`, optimize runs a baseline preflight before the round loop and repairs `baseline/` when needed.
+- `--round-mode checked|supervised`: default is `checked`. Controls how the optimize session is structured:
+  - `checked`: the CLI launches a worker for a bounded batch of rounds, validates each newly created round in order, and decides whether to continue, stop, or fail.
+  - `supervised`: same batched worker flow, plus one supervisor audit pass after each worker batch before the next worker launch.
+  Optimize runs a baseline preflight before the round loop and repairs `baseline/` when needed.
+- `--round-batch-size <N>`: default is `10`. Each worker invocation owns at most `N` sequential rounds before the CLI validates the batch and relaunches the next worker when needed.
 - `--no-agent-session`: disable persistent agent sessions when supported.
-- `--interact`: only supported with `--round-mode continuous`; when you exit the attached agent session, the optimize command stops instead of auto-resuming to satisfy `--min-rounds`.
+- `--interact`: not supported for optimize batched round modes.
 - `--show-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
