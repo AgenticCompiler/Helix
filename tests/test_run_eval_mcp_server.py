@@ -15,10 +15,10 @@ from triton_agent import run_eval_mcp_server as module
 
 
 class RunEvalMCPServerTests(unittest.TestCase):
-    def test_build_slot_pool_expands_devices_by_workers(self) -> None:
+    def test_build_slot_pool_ignores_workers_per_npu(self) -> None:
         self.assertEqual(
             module.build_slot_pool("0,1", 2),
-            ("0", "0", "1", "1"),
+            ("0", "1"),
         )
 
     def test_configured_slot_pool_defaults_to_device_zero_and_one_worker(self) -> None:
@@ -36,6 +36,25 @@ class RunEvalMCPServerTests(unittest.TestCase):
         with pool.acquire() as device:
             seen_devices.append(device)
         self.assertEqual(seen_devices, ["0"])
+
+    def test_configured_slot_pool_ignores_workers_per_npu_when_devices_are_configured(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
+                "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "3",
+            },
+            clear=False,
+        ):
+            pool = module.configured_slot_pool()
+
+        seen_devices: list[str] = []
+        with pool.acquire() as first:
+            seen_devices.append(first)
+            with pool.acquire() as second:
+                seen_devices.append(second)
+
+        self.assertEqual(seen_devices, ["0", "1"])
 
     def test_build_mcp_url_embeds_absolute_workspace_query(self) -> None:
         workspace = Path("/tmp/demo-workspace").resolve()
