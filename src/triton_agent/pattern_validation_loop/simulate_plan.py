@@ -309,14 +309,26 @@ def run_simulate_workspace_agents(
             code = run_simulate_plan_request(request, stdout=stdout, stderr=stderr)
         report_path = workspace / SIMULATE_PLAN_DIR / SIMULATE_REPORT_FILENAME
         if code == 0 and report_path.is_file():
-            results.append(
-                WorkspaceSimulateResult(
-                    workspace=workspace,
-                    status="ok",
-                    message="simulate plan report written",
-                    report_path=report_path,
-                ),
-            )
+            _payload, validation_errors = _load_simulate_report_payload(report_path)
+            if validation_errors:
+                results.append(
+                    WorkspaceSimulateResult(
+                        workspace=workspace,
+                        status="failed",
+                        message="simulate report failed CLI validation: "
+                        + "; ".join(validation_errors),
+                        report_path=report_path,
+                    ),
+                )
+            else:
+                results.append(
+                    WorkspaceSimulateResult(
+                        workspace=workspace,
+                        status="ok",
+                        message="simulate plan report passed CLI validation",
+                        report_path=report_path,
+                    ),
+                )
         elif code == 0:
             results.append(
                 WorkspaceSimulateResult(
@@ -479,6 +491,9 @@ def write_batch_simulate_report(
                 payload = json.loads(item.report_path.read_text(encoding="utf-8"))
                 if isinstance(payload, dict):
                     entry["simulate_report"] = payload
+                    validation_errors = validate_simulate_report(payload)
+                    if validation_errors:
+                        entry["validation_errors"] = validation_errors
             except json.JSONDecodeError:
                 entry["simulate_report_error"] = "invalid JSON in workspace report"
         workspace_reports.append(entry)
@@ -522,6 +537,77 @@ def load_batch_simulate_report(batch_path: Path) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+def validate_simulate_report(simulate_report: dict[str, Any]) -> list[str]:
+    """CLI structural checks — do not trust agent self-assessment alone."""
+    errors: list[str] = []
+    ranked = simulate_report.get("ranked_patterns")
+    if not isinstance(ranked, list) or not ranked:
+        errors.append("ranked_patterns missing or empty")
+
+    proposed = simulate_report.get("proposed_code_changes")
+    if not isinstance(proposed, dict):
+        errors.append("proposed_code_changes missing")
+        proposed = {}
+
+    diff = str(proposed.get("unified_diff", "")).strip()
+    if not (diff.startswith("---") and "+++" in diff):
+        errors.append("proposed_code_changes.unified_diff missing or not a unified diff")
+
+    edits = proposed.get("edits_by_pattern")
+    if not isinstance(edits, list) or not edits:
+        errors.append("proposed_code_changes.edits_by_pattern missing or empty")
+
+    if isinstance(ranked, list):
+        hit_ids: list[str] = []
+        for entry in ranked:
+            if isinstance(entry, dict) and entry.get("hit") is True:
+                pattern_id = str(entry.get("pattern_id", "")).strip()
+                if pattern_id:
+                    hit_ids.append(pattern_id)
+        edit_ids = {
+            str(entry.get("pattern_id", "")).strip()
+            for entry in (edits if isinstance(edits, list) else [])
+            if isinstance(entry, dict) and str(entry.get("pattern_id", "")).strip()
+        }
+        for pattern_id in hit_ids:
+            if pattern_id not in edit_ids:
+                errors.append(f"hit pattern {pattern_id!r} has no edits_by_pattern entry")
+            else:
+                edit = next(
+                    item
+                    for item in edits
+                    if isinstance(item, dict) and str(item.get("pattern_id", "")).strip() == pattern_id
+                )
+                before = str(edit.get("before_excerpt", "")).strip()
+                after = str(edit.get("after_excerpt", "")).strip()
+                if not before or not after:
+                    errors.append(
+                        f"edits_by_pattern for {pattern_id!r} missing before_excerpt or after_excerpt",
+                    )
+
+    alignment = str(simulate_report.get("skills_alignment", "")).strip().lower()
+    if alignment not in {"aligned", "partial", "mismatch"}:
+        errors.append("skills_alignment must be aligned | partial | mismatch")
+
+    quality = str(simulate_report.get("code_plan_quality", "")).strip().lower()
+    if quality not in {"concrete", "vague", "missing"}:
+        errors.append("code_plan_quality must be concrete | vague | missing")
+
+    return errors
+
+
+def _load_simulate_report_payload(report_path: Path) -> tuple[dict[str, Any] | None, list[str]]:
+    if not report_path.is_file():
+        return None, [f"missing report file: {report_path.as_posix()}"]
+    try:
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None, ["invalid JSON in workspace report"]
+    if not isinstance(payload, dict):
+        return None, ["workspace report must be a JSON object"]
+    return payload, validate_simulate_report(payload)
+
+
 def _simulate_report_code_plan_concrete(simulate_report: dict[str, Any]) -> bool:
     quality = str(simulate_report.get("code_plan_quality", "")).strip().lower()
     if quality == "concrete":
@@ -546,8 +632,13 @@ def batch_report_skills_aligned(payload: dict[str, Any]) -> bool:
             return False
         if entry.get("status") != "ok":
             return False
+        validation_errors = entry.get("validation_errors")
+        if isinstance(validation_errors, list) and validation_errors:
+            return False
         simulate_report = entry.get("simulate_report")
         if not isinstance(simulate_report, dict):
+            return False
+        if validate_simulate_report(simulate_report):
             return False
         alignment = str(simulate_report.get("skills_alignment", "")).strip().lower()
         if alignment != "aligned":
@@ -582,7 +673,8 @@ def print_batch_summary(
         )
     else:
         print(
-            "[pattern-validation-simulate] all workspace simulate plans succeeded.",
+            "[pattern-validation-simulate] simulate loop complete after skill-audit review "
+            "(all workspaces structurally valid and skills_alignment=aligned).",
             file=stream,
         )
     if not config.run_optimize_after:

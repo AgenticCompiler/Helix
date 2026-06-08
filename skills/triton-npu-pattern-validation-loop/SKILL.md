@@ -155,8 +155,9 @@ Each simulate iteration:
    must **not** read PERF markdown. Write `simulate-plan/report.json` with `ranked_patterns`,
    `proposed_code_changes` (required `unified_diff` and per-hit `edits_by_pattern`),
    `code_plan_quality`, and `skills_alignment`.
-3. If all workspaces report `skills_alignment: aligned` and `code_plan_quality: concrete`, the
-   loop completes.
+3. If all workspaces pass **CLI structural validation** and the **skill-audit agent** confirms
+   `skills_alignment: aligned` with `code_plan_quality: concrete`, the loop completes. The CLI
+   never finishes on simulate self-assessment alone.
 4. Otherwise a **skill-audit agent** reads `$BATCH/simulate-plan-report.json`, reviews proposed
    code changes (not only pattern hits), edits
    `$SKILLS/triton-npu-optimize-knowledge/references/patterns/`, regenerates
@@ -168,7 +169,7 @@ State file: `.triton-agent/pattern-validation-simulate-state.json`.
 
 After completion the CLI prints a suggested **manual** `optimize-batch` command. Pass
 `--run-optimize` only when you want the CLI to run real optimize after the simulate loop.
-Use `--max-iterations 1` for one simulate pass only (skill-audit still runs if not aligned).
+Use `--max-iterations 1` for one simulate → skill-audit cycle (skill-audit always runs).
 
 ## Phase D — CLI optimize batch
 

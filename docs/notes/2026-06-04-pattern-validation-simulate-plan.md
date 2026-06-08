@@ -9,9 +9,9 @@ Bootstrap (once): workspace plan from knowledge → **prepare agent** when the b
 dependency sync → scaffold verify. CLI/prepare may read PERF markdown; simulate agents may not.
 
 Each cycle: **simulate agents** (skills + operator only; CLI hides `validation-meta.json` during
-the agent run; no PERF reports) → **skill-audit**
-(updates `pattern-validation-skills` from simulate reports, including proposed code diffs) →
-repeat until `skills_alignment: aligned`, `code_plan_quality: concrete`, or `--max-iterations`.
+the agent run; no PERF reports) → **CLI structural validation** of each report → **skill-audit**
+(independent review; updates `pattern-validation-skills` when needed) → repeat until skill-audit
+marks complete or `--max-iterations`.
 
 After real optimize, the **analyze agent** compares each workspace's `simulate-plan/report.json`
 (`proposed_code_changes`) against `baseline/` and `opt-round-*` operator edits (no

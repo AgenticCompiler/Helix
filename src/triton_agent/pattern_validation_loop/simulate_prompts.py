@@ -204,7 +204,8 @@ Required steps:
 
 1. Read `{simulate_report_path.as_posix()}` and per-workspace `simulate-plan/report.json` files only. \
 Do **not** read PERF markdown, `batch-evaluation.json`, or `validation-meta.json`.
-2. For each workspace report, review **code**, not only patterns:
+2. For each workspace report, review **code**, not only patterns — do **not** trust simulate \
+self-assessment fields without reading the diff and excerpts:
    - `proposed_code_changes.unified_diff` must be present and implementation-specific when `code_plan_quality` is `concrete`.
    - Every `ranked_patterns[]` entry with `hit: true` should appear in `edits_by_pattern` with matching `before_excerpt`/`after_excerpt`.
    - If the plan is pattern-only prose with no real diff, set `skills_alignment` to `partial` or `mismatch` in your notes and fix cards so the next simulate pass produces code-level guidance.
@@ -222,7 +223,8 @@ Do **not** read PERF markdown, `batch-evaluation.json`, or `validation-meta.json
      --state {state_path.as_posix()} --phase skill-audit \\
      --note "updated pattern cards from simulate-plan-report"
 
-6. If **every** workspace simulate report has `skills_alignment: aligned`, `code_plan_quality: concrete`, \
+6. If **every** workspace simulate report passes your independent review (structural code plan,
+   pattern-card quality, and `skills_alignment: aligned` with `code_plan_quality: concrete`), \
 and simulate agents succeeded, \
 mark the simulate loop complete:
 

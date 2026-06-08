@@ -780,7 +780,7 @@ def build_parser() -> argparse.ArgumentParser:
                 default=5,
                 help=(
                     "Maximum simulate → skill-audit cycles before giving up (default: 5). "
-                    "Use 1 for a single simulate pass without a skill-audit agent."
+                    "Use 1 for a single simulate → skill-audit cycle."
                 ),
             )
         if spec.has_pattern_validation_plan_options:

@@ -11,9 +11,7 @@ from triton_agent.backends.factory import create_runner
 from triton_agent.models import AgentRequest, CommandKind
 from triton_agent.pattern_validation_loop.simulate_plan import (
     SimulatePlanConfig,
-    batch_report_skills_aligned,
     bootstrap_simulate_batch,
-    load_batch_simulate_report,
     prepare_simulate_batch,
     run_simulate_workspace_agents,
     write_batch_simulate_report,
@@ -111,15 +109,13 @@ def run_pattern_validation_simulate_loop(config: SimulatePlanConfig) -> tuple[in
             _record_simulate_phase(ctx, phase="failed", note="simulate agent failures")
             return agent_code, report_path
 
-        payload = load_batch_simulate_report(config.batch_path)
-        if payload is not None and batch_report_skills_aligned(payload):
-            _record_simulate_phase(
-                ctx,
-                phase="complete",
-                note="all workspaces skills_alignment=aligned (CLI heuristic)",
+        if config.verbose:
+            print(
+                "[pattern-validation-simulate] running skill-audit "
+                "(independent review of simulate reports and pattern cards)",
+                file=sys.stderr,
+                flush=True,
             )
-            return _finish_simulate_loop(ctx, report_path)
-
         audit_code = _run_skill_audit_agent(ctx, report_path=report_path, iteration=iteration)
         if audit_code != 0:
             _record_simulate_phase(ctx, phase="failed", note=f"skill-audit agent exit {audit_code}")
@@ -127,6 +123,11 @@ def run_pattern_validation_simulate_loop(config: SimulatePlanConfig) -> tuple[in
 
         state = _load_simulate_state(ctx.state_path)
         if state.get("status") == "complete":
+            _record_simulate_phase(
+                ctx,
+                phase="complete",
+                note="skill-audit confirmed simulate loop complete",
+            )
             return _finish_simulate_loop(ctx, report_path)
 
         if iteration >= config.max_iterations:
