@@ -47,7 +47,24 @@ Code features do not depend on profiling data. Check these first. Each row lists
 
 Execute this step only when `extracted_bin_data/report.txt` exists and has been read. This report is produced only in simulation optimize mode; if it is absent, skip Step 2 and rely on Step 1 plus any Step 3 profiling data. When the report is available, first collect canonical features from all available report sections into a single feature map. Then evaluate the routing rows below against that complete feature map. This is required because some conditions combine features from different sections, such as `CUBE_present = false` from `[Pipe Distribution]` and `TRACE_MADD_count > 0` from `[TRACE Events]`. Feature names correspond directly to `report.txt` columns.
 
-Collect features from sections in this order: `[Pipeline Flows]` → `[MTE2 Data Transport]` → `[Pipe Distribution]` → `[Key Ratios]` → `[Pipe Overlap Ratio]` → `[VECTOR Unit]` → `[TRACE Events]`. If conditional `[CUBE/MMA]` data exists, use it only as extra CUBE diagnostic detail, not as a separate routing entry point. Do not stop after the first section match; record all matched feature conditions, then narrow the final candidates with the code-feature differentiation column.
+Collect features from sections in this order: `[Pipeline Flows]` → `[MTE2 Data Transport]` → `[WAIT_FLAG / BAR Sync]` → `[Pipe Distribution]` → `[Key Ratios]` → `[Pipe Overlap Ratio]` → `[VECTOR Unit]` → `[SCALAR Instr Types]` → `[TRACE Events]` → `[Simulator Runtime]` and available per-core sections. If conditional `[CUBE/MMA]` data exists, use it only as extra CUBE diagnostic detail, not as a separate routing entry point. Do not stop after the first section match; record all matched feature conditions, then narrow the final candidates with the code-feature differentiation column.
+
+Step 2 has two layers:
+
+1. **Signal scan tables:** still organized by `report.txt` section. Each row is one signal condition and lists possible candidate directions or composite rules it can support.
+2. **Composite match rules:** evaluated after the complete feature map is collected. These rules express AND/ANY/reject semantics for patterns that require multiple source/profile conditions.
+
+For composite routes, use the fields below instead of compressing all logic into one signal-table cell:
+
+| Field | Meaning |
+|---|---|
+| Source gate | Source-code condition that must be true before the route can fire. |
+| Required signals | Simulation/profile conditions that must all be true. Treat each bullet as an AND requirement unless it explicitly says ANY. |
+| Supporting signals | Optional evidence that raises confidence but does not fire the route by itself. |
+| Reject when | Negative gates. If any reject condition is true, do not fire this route even if required signals match. |
+| Candidate | Pattern produced by the route. |
+
+Simple single-signal routes may still fire directly from the signal scan tables. Composite routes must be confirmed in the `Composite Match Rules` section before they produce a candidate.
 
 #### Section 1: `[Pipeline Flows]`
 
@@ -56,8 +73,7 @@ Collect features from sections in this order: `[Pipeline Flows]` → `[MTE2 Data
 | `flow_MTE2_to_VECTOR_exists = false` AND code has `tl.load` | `discrete_memory_access` | Scatter `tl.load(x_ptr + idx * stride)` |
 | `flow_MTE2_to_VECTOR_exists = false` AND code has `tl.load` | `grid-flatten-and-ub-buffering` | Per-element scalar load |
 | `flow_SCALAR_to_VECTOR_avg_ns > 50` AND `SCALAR_instr% > 75` | `static-range-to-range` | Code uses `tl.static_range` |
-| `flow_bidirectional_exists = true` | `block-pointer-dimensionality` | Needs Section 3 other signals |
-| `flow_CUBE_related_exists = false` AND `TRACE_MADD_count > 0` AND source is matmul-like | `classic-matmul` | Code has K-reduction loop or `tl.sum(a*b)` |
+| `flow_bidirectional_exists = true` | Support composite `block-pointer-dimensionality` route | Does not fire alone; needs source gate plus strong scalar/MTE/overlap evidence |
 | `flow_SCALAR_to_VECTOR_avg_ns > 50` AND `SCALAR_instr% > 75` | `software-pipeline` | Code has tiled loop with synchronous load-then-compute |
 | `flow_VECTOR_to_SCALAR_count > 300` | `software-pipeline` | Many VECTOR→SCALAR sync points from frequent `tl.sum`/`tl.max` |
 
@@ -81,14 +97,13 @@ Multiple patterns use pipe distribution data. Check by pipe dimension:
 | `SCALAR_instr% > 80` AND `TRACE_total_events > 10000` | `padded_row_col_copy` | Code has pad/slice + heavy div/mod on last-dim boundary |
 | `SCALAR_instr% > 80` AND `TRACE_top_types` SIGNEXT dominant | `vec-cmp` | Code has integer mask + `tl.where` with int64 |
 | `SCALAR_instr% > 80` | `loop-invariant-hoisting` | Code has loop-invariant computation |
-| `SCALAR_instr% > 80` | `block-pointer-dimensionality` | High-dimensional contiguous + flat 1D offset |
 | `SCALAR_instr% >= 70` AND `VECTOR_instr% <= 15` | `program-multiple-rows` | Code has `program_id(0)` 1:1 to rows |
 
 **3b. SCALAR/VECTOR cycles ratio abnormal:**
 
 | Feature Condition | Candidate Patterns | Differentiation |
 |---|---|---|
-| `SCALAR_cycles% / VECTOR_cycles% > 10` AND `MTE3_cycles% > 10` | `block-pointer-dimensionality` | High-dimensional contiguous + flat 1D offset |
+| `SCALAR_cycles% / VECTOR_cycles% > 10` AND `MTE3_cycles% > 10` | Support composite `block-pointer-dimensionality` route | Does not fire alone; source must be high-dimensional contiguous + flat 1D offset |
 | `SCALAR_cycles% / VECTOR_cycles% > 10` AND `TRACE_CMP_IMM_count` high | `vec-cmp` | Code has integer mask |
 
 **3c. CUBE engine status:**
@@ -97,14 +112,14 @@ Multiple patterns use pipe distribution data. Check by pipe dimension:
 
 | Feature Condition | Candidate Patterns | Differentiation |
 |---|---|---|
-| `CUBE_present = false` AND `TRACE_MADD_count > 0` AND source is matmul-like | `classic-matmul` | Code has `tl.sum(a*b)` or K-reduction loop |
-| `CUBE_present = false` AND `flow_CUBE_related_exists = false` AND source is matmul-like | `classic-matmul` | Code has `tl.sum(a*b)` (cross-check with Section 1) |
+| `CUBE_present = false` | Support composite `classic-matmul` route | Does not fire alone; CUBE absence is normal for non-matmul kernels |
+| `CUBE_present = false` AND `TRACE_MADD_count > 0` | Support composite `classic-matmul` route | Needs source gate: manual matmul / K-reduction |
 
 **3d. MTE3 output bottleneck:**
 
 | Feature Condition | Candidate Patterns | Differentiation |
 |---|---|---|
-| `MTE3_cycles% > 10` AND `SCALAR_and_MTE3_over_SCALAR > 20%` | `block-pointer-dimensionality` | High-dimensional contiguous |
+| `MTE3_cycles% > 10` AND `SCALAR_and_MTE3_over_SCALAR > 20%` | Support composite `block-pointer-dimensionality` route | Strong signal only when source gate matches |
 | `MTE3_cycles% > 10` | `merge-adjacent-stores` | Code has multiple adjacent `tl.store` |
 
 #### Section 4: `[Key Ratios]`
@@ -113,7 +128,7 @@ Prefer these derived ratio features instead of embedding arithmetic in final rou
 
 | Feature Condition | Candidate Patterns | Differentiation |
 |---|---|---|
-| `SCALAR_to_VECTOR_cycles > 10` | `block-pointer-dimensionality` | High-dimensional contiguous + flat 1D offset |
+| `SCALAR_to_VECTOR_cycles > 10` | Support composite `block-pointer-dimensionality` route | Strong signal only when source gate matches |
 | `SCALAR_to_VECTOR_cycles > 10` AND `TRACE_CMP_IMM_count` high | `vec-cmp` | Code has integer mask |
 | `SCALAR_to_VECTOR_instr > 10` AND `SCALAR_instr% > 80` | `scalar-latency-traps` | Code has pointer recurrence or single-lane mask |
 
@@ -121,11 +136,11 @@ Prefer these derived ratio features instead of embedding arithmetic in final rou
 
 | Feature Condition | Candidate Patterns | Differentiation |
 |---|---|---|
-| `COMPUTE_and_MTE2_over_COMPUTE < 1%` AND `COMPUTE_and_MTE2_over_MTE2 < 1%` | `software-pipeline-dependency-profiling` | Code has `tl.load` + for loop for regular prefetch |
 | `COMPUTE_and_MTE2_over_COMPUTE < 1%` | `static-range-to-range` | Code uses `tl.static_range` |
 | `SCALAR_and_MTE2_over_SCALAR < 50%` | `static-range-to-range` | Code uses `tl.static_range` |
-| `MTE2_and_MTE3_over_MTE2 > 50%` | `block-pointer-dimensionality` | Needs Section 3 MTE3_cycles% high |
+| `MTE2_and_MTE3_over_MTE2 > 50%` | Support composite `block-pointer-dimensionality` route | Strong signal only when source gate matches |
 | `SCALAR_and_VECTOR_over_VECTOR < 5%` AND `SCALAR_cycles% > 10` | `static-range-to-range` | Code uses `tl.static_range` |
+| `COMPUTE_and_MTE2_over_COMPUTE < 1%` AND `COMPUTE_and_MTE2_over_MTE2 < 1%` | Support composite `software-pipeline-dependency-profiling` route | Needs source gate and balance/reject checks |
 
 #### Section 6: `[VECTOR Unit]`
 
@@ -146,6 +161,40 @@ Prefer these derived ratio features instead of embedding arithmetic in final rou
 | `TRACE_top_types` contains CMP_IMM/JUMPC/MOVEMASK/SIGNEXT/ZEROEXT dominant | `vec-cmp` | Code has integer mask |
 | `TRACE_top_types` contains LD_XD_XN_IMM/ST_XD_XN_IMM/ADD/CMP_IMM dominant | `loop-invariant-hoisting` | Code has loop-invariant computation |
 | `TRACE_top_types` contains ADD/MUL/SUB dominant AND `SCALAR_instr% > 80` | `pooling-inner-w-slab-gather` | Scalar address computation for per-kw load offsets |
+
+#### Composite Match Rules
+
+Evaluate these after collecting all available canonical features and scanning the section tables. A signal-table row that says "support composite route" is supporting evidence only; it does not fire the pattern by itself.
+
+**Composite route: `classic-matmul`**
+
+| Field | Requirement |
+|---|---|
+| Source gate | Source is matmul-like: K-reduction loop, `tl.sum(a * b)`, or equivalent manual multiply-accumulate structure. |
+| Required signals | `CUBE_present = false` from `[Pipe Distribution]` AND `TRACE_MADD_count > 0` from `[TRACE Events]`. |
+| Supporting signals | `flow_CUBE_related_exists = false` from `[Pipeline Flows]`; `[CUBE/MMA]` absent or `CUBE_MMAD_count = 0`. |
+| Reject when | Source is elementwise, copy, reduction-only without multiply-accumulate, or already uses `tl.dot` on the hot path. |
+| Candidate | `classic-matmul` |
+
+**Composite route: `block-pointer-dimensionality`**
+
+| Field | Requirement |
+|---|---|
+| Source gate | High-dimensional contiguous tensor is accessed through flattened 1D offsets, manual coordinate decode, or inner-dimension stride arithmetic that could be modeled with `tl.make_block_ptr`. |
+| Required signals | ANY strong signal: `SCALAR_to_VECTOR_cycles > 10`; OR `MTE3_cycles% > 10` AND `SCALAR_and_MTE3_over_SCALAR > 20%`; OR `MTE2_and_MTE3_over_MTE2 > 50%`. |
+| Supporting signals | `flow_bidirectional_exists = true`; `SCALAR_and_VECTOR_over_SCALAR < 2%` AND `SCALAR_cycles% > 10`; few active cores in per-core sections. |
+| Reject when | Access is truly gather/scatter or index-pointer driven; `SCALAR_and_VECTOR_over_VECTOR > 60%`; `MTE2_cycles% < 0.5%`. |
+| Candidate | `block-pointer-dimensionality` |
+
+**Composite route: `software-pipeline-dependency-profiling`**
+
+| Field | Requirement |
+|---|---|
+| Source gate | Kernel has `tl.load` inside a loop or tiled load/compute structure where load latency can plausibly be hidden by later vector/cube compute. |
+| Required signals | `COMPUTE_and_MTE2_over_COMPUTE < 1%` AND `COMPUTE_and_MTE2_over_MTE2 < 1%`. |
+| Supporting signals | `compute_cycles%` and `MTE2_cycles%` are relatively balanced; `SCALAR_cycles%` is not the dominant share; WAIT/BAR evidence shows load/compute serialization rather than pure scalar overhead. |
+| Reject when | Compute and MTE2 are already well overlapped; one side is more than about 3x the other; scalar cycles dominate and point to scalar/index/mask optimization first. |
+| Candidate | `software-pipeline-dependency-profiling` |
 
 ### Step 3: On-Card Profile Routing (msprof)
 
