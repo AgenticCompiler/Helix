@@ -335,10 +335,6 @@ def check_baseline(baseline_dir_path: Path) -> OptimizeCheckResult:
     return _build_result(kind="baseline", status="pass", issues=())
 
 
-def _count_round_directories(workspace: Path) -> int:
-    return len(iter_completed_round_directories(workspace))
-
-
 def _inspect_round_minimum_artifact_package(
     round_dir: Path,
 ) -> tuple[RoundArtifactsInspection, RoundState | None, str | None]:
@@ -377,16 +373,6 @@ def iter_completed_round_directories(workspace: Path) -> tuple[Path, ...]:
         for path in sorted(workspace.glob("opt-round-*"))
         if is_completed_round_directory(path)
     )
-
-
-def _next_round_name_for_round(round_dir: Path, *, completed: int) -> str:
-    name = round_dir.name
-    prefix = "opt-round-"
-    if name.startswith(prefix):
-        suffix = name[len(prefix):]
-        if suffix.isdigit():
-            return f"{prefix}{int(suffix) + 1}"
-    return f"{prefix}{completed + 1}"
 
 
 def check_round(
