@@ -64,7 +64,7 @@ def compare_perf_files(
     compare_perf: Path,
     *,
     skip_latency_errors: bool = False,
-    metric_source: MetricSource = "auto",
+    metric_source: MetricSource = "total-op",
 ) -> int:
     if metric_source == "all":
         return _compare_perf_files_all(
@@ -272,7 +272,7 @@ def parse_required_perf_file(path: Path, required_latency_ids: RequiredLatencyId
 def parse_perf_file_for_metric_source(
     path: Path,
     *,
-    metric_source: MetricSource = "auto",
+    metric_source: MetricSource = "total-op",
 ) -> dict[str, float]:
     if metric_source == "all":
         raise ValueError("parse_perf_file_for_metric_source does not support metric_source='all'")
@@ -293,7 +293,7 @@ def parse_required_perf_file_for_metric_source(
     path: Path,
     required_latency_ids: RequiredLatencyIds,
     *,
-    metric_source: MetricSource = "auto",
+    metric_source: MetricSource = "total-op",
 ) -> dict[str, float]:
     if metric_source == "all":
         raise ValueError(
@@ -467,7 +467,7 @@ def _parse_perf_entries_impl(
     path: Path,
     *,
     tolerate_latency_errors: bool,
-    metric_source: MetricSource = "auto",
+    metric_source: MetricSource = "total-op",
 ) -> PerfParseOutcome:
     lines = path.read_text(encoding="utf-8").splitlines()
     for raw_line in lines:
@@ -564,7 +564,7 @@ def _parse_required_perf_entries_impl(
     required_latency_ids: RequiredLatencyIds,
     *,
     tolerate_latency_errors: bool,
-    metric_source: MetricSource = "auto",
+    metric_source: MetricSource = "total-op",
 ) -> PerfParseOutcome:
     required_ids, comparison_modes = _resolve_required_latency_requirements(required_latency_ids)
     if not required_ids:
@@ -641,7 +641,7 @@ def _parse_perf_entries_from_jsonl(
     lines: list[str],
     *,
     tolerate_latency_errors: bool,
-    metric_source: MetricSource = "auto",
+    metric_source: MetricSource = "total-op",
     required_ids: set[str] | None = None,
     comparison_modes: dict[str, ComparisonMode] | None = None,
 ) -> PerfParseOutcome:
@@ -1009,7 +1009,7 @@ def _format_speedup(value: float | None) -> str:
 def _summarize_metric_source(
     entries: dict[str, PerfEntry],
     *,
-    metric_source: MetricSource = "auto",
+    metric_source: MetricSource = "total-op",
 ) -> str:
     if not entries:
         return "unknown"

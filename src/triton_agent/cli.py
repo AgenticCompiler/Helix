@@ -533,7 +533,7 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--target-chip", default="A5", choices=_TARGET_CHIP_CHOICES)
             subparser.add_argument(
                 "--optimize-target",
-                default="kernel",
+                default="operator",
                 choices=_OPTIMIZE_TARGET_CHOICES,
             )
             subparser.add_argument(
@@ -669,7 +669,7 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--skip-latency-errors", "--skip-error", dest="skip_latency_errors", action="store_true")
         subparser.add_argument(
             "--metric-source",
-            default="auto",
+            default="total-op",
             choices=("auto", "kernel", "total-op", "all"),
         )
         return

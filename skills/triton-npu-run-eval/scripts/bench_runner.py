@@ -450,7 +450,7 @@ def compare_perf_files(
     compare_perf: Path,
     *,
     skip_latency_errors: bool = False,
-    metric_source: MetricSource = "auto",
+    metric_source: MetricSource = "total-op",
 ) -> int:
     return _compare_perf_files(
         baseline_perf,
@@ -471,7 +471,7 @@ def parse_required_perf_file(path: Path, required_latency_ids: RequiredLatencyId
 def parse_perf_file_for_metric_source(
     path: Path,
     *,
-    metric_source: MetricSource = "auto",
+    metric_source: MetricSource = "total-op",
 ) -> dict[str, float]:
     return _parse_perf_file_for_metric_source(path, metric_source=metric_source)
 
@@ -480,7 +480,7 @@ def parse_required_perf_file_for_metric_source(
     path: Path,
     required_latency_ids: RequiredLatencyIds,
     *,
-    metric_source: MetricSource = "auto",
+    metric_source: MetricSource = "total-op",
 ) -> dict[str, float]:
     return _parse_required_perf_file_for_metric_source(
         path,

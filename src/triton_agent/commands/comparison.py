@@ -36,7 +36,7 @@ class ComparePerfModule(Protocol):
         compare_perf: Path,
         *,
         skip_latency_errors: bool = False,
-        metric_source: str = "auto",
+        metric_source: str = "total-op",
     ) -> int: ...
 
 
@@ -78,7 +78,7 @@ def compare_perf_files(
     compare_perf: Path,
     *,
     skip_latency_errors: bool = False,
-    metric_source: str = "auto",
+    metric_source: str = "total-op",
 ) -> int:
     return _load_compare_perf().compare_perf_files(
         baseline_perf,
