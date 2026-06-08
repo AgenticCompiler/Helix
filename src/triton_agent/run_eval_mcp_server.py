@@ -12,16 +12,19 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Any, Annotated, cast
 from urllib.parse import parse_qs, quote
 
-from fastmcp import FastMCP
-from fastmcp.server.dependencies import get_http_request
 from pydantic import Field
 import uvicorn
 
 from triton_agent.npu_affinity import parse_batch_npu_devices, parse_batch_workers_per_npu
 from triton_agent.skill_loader import operator_eval_script_path
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from fastmcp import FastMCP
 
 
 RUN_EVAL_MCP_SERVER_NAME = "triton-agent-run-eval"
@@ -76,6 +79,7 @@ def configured_slot_pool() -> NpuDevicePool:
 
 
 def create_server(*, slot_pool: NpuDevicePool | None = None) -> FastMCP:
+    FastMCP, _ = _load_fastmcp_dependencies()
     pool = slot_pool or configured_slot_pool()
     server = FastMCP(RUN_EVAL_MCP_SERVER_NAME)
 
@@ -311,7 +315,7 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> FastMCP:
 
 def current_workspace() -> Path:
     request = get_http_request()
-    raw_query = request.scope.get("query_string", b"")
+    raw_query = cast(bytes, request.scope.get("query_string", b""))
     parsed = parse_qs(raw_query.decode("utf-8"))
     values = parsed.get("workspace", [])
     if not values:
@@ -544,3 +548,15 @@ def cast_port(sock: socket.socket) -> int:
     host, port = sock.getsockname()[:2]
     assert host == _HOST
     return int(port)
+
+
+def get_http_request() -> Any:
+    _, request_loader = _load_fastmcp_dependencies()
+    return request_loader()
+
+
+def _load_fastmcp_dependencies() -> tuple[type[FastMCP], Callable[[], Any]]:
+    from fastmcp import FastMCP
+    from fastmcp.server.dependencies import get_http_request
+
+    return FastMCP, get_http_request
