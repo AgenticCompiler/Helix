@@ -121,7 +121,7 @@ Prefer these derived ratio features instead of embedding arithmetic in final rou
 
 | Feature Condition | Candidate Patterns | Differentiation |
 |---|---|---|
-| `COMPUTE_and_MTE2_over_COMPUTE < 1%` AND `MTE2_and_COMPUTE_over_MTE2 < 1%` | `software-pipeline-dependency-profiling` | Code has `tl.load` + for loop for regular prefetch |
+| `COMPUTE_and_MTE2_over_COMPUTE < 1%` AND `COMPUTE_and_MTE2_over_MTE2 < 1%` | `software-pipeline-dependency-profiling` | Code has `tl.load` + for loop for regular prefetch |
 | `COMPUTE_and_MTE2_over_COMPUTE < 1%` | `static-range-to-range` | Code uses `tl.static_range` |
 | `SCALAR_and_MTE2_over_SCALAR < 50%` | `static-range-to-range` | Code uses `tl.static_range` |
 | `MTE2_and_MTE3_over_MTE2 > 50%` | `block-pointer-dimensionality` | Needs Section 3 MTE3_cycles% high |
