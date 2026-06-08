@@ -135,13 +135,13 @@ What it does:
 - prints the base endpoint, for example `http://127.0.0.1:38745/mcp`
 - prints a workspace URL template of the form `http://127.0.0.1:<port>/mcp?workspace=<abs-path>`
 - keeps running until you stop it with `Ctrl-C`
-- defaults to NPU device `0` and `1` worker per NPU when the batch NPU environment variables are not set
+- defaults to NPU device `0` when the batch NPU environment variables are not set
 
 Common options:
 
 - `--port <int>`: bind a fixed local port instead of using an ephemeral one
 - `TRITON_AGENT_BATCH_NPU_DEVICES`: override the managed NPU device pool
-- `TRITON_AGENT_BATCH_WORKERS_PER_NPU`: override workers per device; defaults to `1`
+- `TRITON_AGENT_BATCH_WORKERS_PER_NPU`: accepted for compatibility, but ignored by the managed MCP runtime
 
 Example:
 

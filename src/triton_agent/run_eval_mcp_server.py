@@ -12,13 +12,11 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any, Callable, TYPE_CHECKING
 from urllib.parse import parse_qs, quote
 
-from fastmcp import FastMCP
-from fastmcp.server.dependencies import get_http_request
-from pydantic import Field
-import uvicorn
+if TYPE_CHECKING:
+    from fastmcp import FastMCP
 
 from triton_agent.npu_affinity import parse_batch_npu_devices, parse_batch_workers_per_npu
 from triton_agent.skill_loader import operator_eval_script_path
@@ -35,10 +33,7 @@ def build_slot_pool(assigned_npus: str, workers_per_npu: int) -> tuple[str, ...]
         raise ValueError("TRITON_AGENT_BATCH_NPU_DEVICES must not be empty")
     if workers_per_npu < 1:
         raise ValueError("TRITON_AGENT_BATCH_WORKERS_PER_NPU must be at least 1")
-    slots: list[str] = []
-    for device in devices:
-        slots.extend([device] * workers_per_npu)
-    return tuple(slots)
+    return devices
 
 
 def parse_npu_devices(raw: str | None) -> tuple[str, ...] | None:
@@ -75,7 +70,8 @@ def configured_slot_pool() -> NpuDevicePool:
     return NpuDevicePool(build_slot_pool(",".join(devices), workers_per_npu))
 
 
-def create_server(*, slot_pool: NpuDevicePool | None = None) -> FastMCP:
+def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
+    FastMCP, _ = _load_fastmcp_dependencies()
     pool = slot_pool or configured_slot_pool()
     server = FastMCP(RUN_EVAL_MCP_SERVER_NAME)
 
@@ -452,9 +448,9 @@ def _reserved_socket_for_port(port: int) -> socket.socket:
 
 @dataclass
 class RunningHttpMCPServer:
-    server: FastMCP
+    server: "FastMCP"
     port: int
-    _uvicorn_server: uvicorn.Server
+    _uvicorn_server: Any
     _thread: threading.Thread
 
     @property
@@ -472,6 +468,7 @@ class RunningHttpMCPServer:
 
 
 def start_http_server(*, port: int = 0) -> RunningHttpMCPServer:
+    uvicorn = _load_uvicorn()
     server = create_server()
     app = server.http_app(path=_MCP_PATH, transport="http")
     sock = _reserved_socket() if port == 0 else _reserved_socket_for_port(port)
@@ -544,3 +541,26 @@ def cast_port(sock: socket.socket) -> int:
     host, port = sock.getsockname()[:2]
     assert host == _HOST
     return int(port)
+
+def get_http_request() -> Any:
+    _, request_loader = _load_fastmcp_dependencies()
+    return request_loader()
+
+
+def Field(*args: Any, **kwargs: Any) -> Any:
+    from pydantic import Field as pydantic_field
+
+    return pydantic_field(*args, **kwargs)
+
+
+def _load_fastmcp_dependencies() -> tuple["type[FastMCP]", Callable[[], Any]]:
+    from fastmcp import FastMCP
+    from fastmcp.server.dependencies import get_http_request
+
+    return FastMCP, get_http_request
+
+
+def _load_uvicorn() -> Any:
+    import uvicorn
+
+    return uvicorn
