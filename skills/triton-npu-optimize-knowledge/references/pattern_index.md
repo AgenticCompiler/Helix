@@ -14,7 +14,7 @@ Code features do not depend on profiling data. Check these first. Each row lists
 
 | Code Feature | Candidate Patterns | Differentiation |
 |---|---|---|
-| `//` / `%` coordinate decode | `flat-index-decode-tiling`, `scalar-latency-traps`, `padded_row_col_copy`, `block-pointer-dimensionality` | Multidimensional copy/slice/pad → flat-index-decode-tiling; reduction kernel → scalar-latency-traps; pad boundary heavy → padded_row_col_copy; high-dimensional contiguous tensor → block-pointer-dimensionality |
+| `//` / `%` coordinate decode | `flat-index-decode-tiling`, `scalar-latency-traps`, `padded_row_col_copy`, `block-pointer-dimensionality` | Multidimensional copy/slice/pad → `flat-index-decode-tiling`; reduction kernel → `scalar-latency-traps`; pad boundary heavy → `padded_row_col_copy`; high-dimensional contiguous tensor → `block-pointer-dimensionality` |
 | `ptr += stride` loop | `scalar-latency-traps` | Loop pointer recurrence |
 | `tl.static_range` in hot loop | `static-range-to-range` | Loop iterations independent + lightweight body |
 | `tl.sum(a * b)` instead of `tl.dot` | `classic-matmul` | Manual matmul / K-reduction |
@@ -33,6 +33,15 @@ Code features do not depend on profiling data. Check these first. Each row lists
 | `BLOCK_*` tile ≫ valid extent | `effective-extent-tiling` | Masked lane waste |
 | Kernel structure correct, tuning needed | `autotune` | Parameter search |
 | Conservative lowering despite known layout | `compile_hint` | Layout hints |
+| `M % BLOCK_M == 0` exact-divisible shape | `exact-tile-no-boundary-fast-path` | No tail tile on dominant shape |
+| `for kw` loop with per-kw `tl.load(..., mask=window_mask)` | `pooling-inner-w-slab-gather` | Sliding-window pooling on contiguous W |
+| `program_id(0)` maps 1:1 to rows, inner loop tiles N only | `program-multiple-rows` | Row-wise kernel with thin per-program work |
+| `tl.trans(b).to(dtype)` before `tl.dot` | `remove-implicit-transpose` | Transpose before dtype cast in dot operand |
+| Tiled loop but synchronous load-then-compute rhythm | `software-pipeline` | Already tiled, pipeline quality is the issue |
+| 2D output tile through 1D program layout + dynamic-index GM loads | `stencil-resize-gm-to-ub-staging` | Stencil kernel with per-sample GM reads |
+| Scatter/gather + UB batching opportunity | `slice_coalesce` | Token rearrangement / sparse reordering |
+| Intermediate tensors exceed UB capacity | `slice_intermediate` | Staged slice processing needed |
+| Two traversals of same data for statistics/normalization | `algebraic-optimization` | Mergeable full-data passes |
 
 ### Step 2: Simulation Signal Routing (extracted_bin_data/report.txt)
 
@@ -49,6 +58,8 @@ Collect features from sections in this order: `[Pipeline Flows]` → `[MTE2 Data
 | `flow_SCALAR_to_VECTOR_avg_ns > 50` AND `SCALAR_instr% > 75` | `static-range-to-range` | Code uses `tl.static_range` |
 | `flow_bidirectional_exists = true` | `block-pointer-dimensionality` | Needs Section 3 other signals |
 | `flow_CUBE_related_exists = false` AND `TRACE_MADD_count > 0` AND source is matmul-like | `classic-matmul` | Code has K-reduction loop or `tl.sum(a*b)` |
+| `flow_SCALAR_to_VECTOR_avg_ns > 50` AND `SCALAR_instr% > 75` | `software-pipeline` | Code has tiled loop with synchronous load-then-compute |
+| `flow_VECTOR_to_SCALAR_count > 300` | `software-pipeline` | Many VECTOR→SCALAR sync points from frequent `tl.sum`/`tl.max` |
 
 #### Section 2: `[MTE2 Data Transport]`
 
@@ -66,9 +77,12 @@ Multiple patterns use pipe distribution data. Check by pipe dimension:
 |---|---|---|
 | `SCALAR_instr% > 80` AND `TRACE_total_events > 10000` | `flat-index-decode-tiling` | Code has `//`/`%` coordinate decode |
 | `SCALAR_instr% > 80` AND `TRACE_total_events > 10000` | `scalar-latency-traps` | Code has `ptr += stride` or `tl.where` single lane mask |
+| `SCALAR_instr% > 80` AND `TRACE_total_events > 10000` | `pooling-inner-w-slab-gather` | Code has `for kw` + per-kw `tl.load` in sliding-window pooling |
+| `SCALAR_instr% > 80` AND `TRACE_total_events > 10000` | `padded_row_col_copy` | Code has pad/slice + heavy div/mod on last-dim boundary |
 | `SCALAR_instr% > 80` AND `TRACE_top_types` SIGNEXT dominant | `vec-cmp` | Code has integer mask + `tl.where` with int64 |
 | `SCALAR_instr% > 80` | `loop-invariant-hoisting` | Code has loop-invariant computation |
 | `SCALAR_instr% > 80` | `block-pointer-dimensionality` | High-dimensional contiguous + flat 1D offset |
+| `SCALAR_instr% >= 70` AND `VECTOR_instr% <= 15` | `program-multiple-rows` | Code has `program_id(0)` 1:1 to rows |
 
 **3b. SCALAR/VECTOR cycles ratio abnormal:**
 
@@ -107,7 +121,7 @@ Prefer these derived ratio features instead of embedding arithmetic in final rou
 
 | Feature Condition | Candidate Patterns | Differentiation |
 |---|---|---|
-| `COMPUTE_and_MTE2_over_COMPUTE < 1%` | `software-pipeline-dependency-profiling` | Code has `tl.load` + for loop for regular prefetch |
+| `COMPUTE_and_MTE2_over_COMPUTE < 1%` AND `MTE2_and_COMPUTE_over_MTE2 < 1%` | `software-pipeline-dependency-profiling` | Code has `tl.load` + for loop for regular prefetch |
 | `COMPUTE_and_MTE2_over_COMPUTE < 1%` | `static-range-to-range` | Code uses `tl.static_range` |
 | `SCALAR_and_MTE2_over_SCALAR < 50%` | `static-range-to-range` | Code uses `tl.static_range` |
 | `MTE2_and_MTE3_over_MTE2 > 50%` | `block-pointer-dimensionality` | Needs Section 3 MTE3_cycles% high |
@@ -120,8 +134,9 @@ Prefer these derived ratio features instead of embedding arithmetic in final rou
 | `VECTOR_UB_read_conflict > 100` OR `VECTOR_UB_write_conflict > 100` | `reorder-load` | Code has load + immediate reduce |
 | `VECTOR_UB_read_conflict > 100` OR `VECTOR_UB_write_conflict > 100` | `exact-tile-no-boundary-fast-path` | Predicated loads on full-tile |
 | `VECTOR_utilization_avg < 30` AND `VECTOR_instr% < 15` | `vec-cmp` | Code has integer mask |
-| `VECTOR_utilization_avg < 30` AND `VECTOR_instr% < 15` | `classic-matmul` | Code has manual matmul |
+| `VECTOR_utilization_avg < 30` AND `VECTOR_instr% < 15` AND source is matmul-like | `classic-matmul` | Code has manual matmul |
 | `VECTOR_utilization_avg < 30` AND `VECTOR_instr% < 15` | `accumulator-layout-alignment` | Accumulator layout mismatch |
+| `VECTOR_utilization_avg < 30` AND `VECTOR_instr% < 15` | `program-multiple-rows` | Code has `program_id(0)` 1:1 to rows |
 | `VECTOR_top_instr` contains MOVEMASK | `vec-cmp` | Code has `tl.where` with int operands |
 
 #### Section 7: `[TRACE Events]`
@@ -130,6 +145,7 @@ Prefer these derived ratio features instead of embedding arithmetic in final rou
 |---|---|---|
 | `TRACE_top_types` contains CMP_IMM/JUMPC/MOVEMASK/SIGNEXT/ZEROEXT dominant | `vec-cmp` | Code has integer mask |
 | `TRACE_top_types` contains LD_XD_XN_IMM/ST_XD_XN_IMM/ADD/CMP_IMM dominant | `loop-invariant-hoisting` | Code has loop-invariant computation |
+| `TRACE_top_types` contains ADD/MUL/SUB dominant AND `SCALAR_instr% > 80` | `pooling-inner-w-slab-gather` | Scalar address computation for per-kw load offsets |
 
 ### Step 3: On-Card Profile Routing (msprof)
 
