@@ -18,7 +18,7 @@ def strict_learned_lessons_lines() -> list[str]:
     ]
 
 
-def continuous_round_serialization_lines() -> list[str]:
+def sequential_round_execution_lines() -> list[str]:
     return [
         "Complete optimize rounds strictly one at a time in sequence.",
         "Only one optimize round may be active at a time.",
@@ -175,7 +175,7 @@ def _finalize_optimize_prompt_lines(
                 "Continue the existing optimization session instead of restarting from scratch.",
                 "Read `opt-note.md`, existing `opt-round-*` directories, and existing round logs before making changes.",
             ]
-    )
+        )
     return "\n".join(lines)
 
 
@@ -207,7 +207,7 @@ def build_optimize_supervisor_prompt(
     cli_followup_summary: str | None = None,
 ) -> str:
     lines = [
-        "This invocation is the optimize supervisor role.",
+        "This invocation is the optimize supervisor pass.",
         "This invocation is an audit and handoff pass, not a new optimization round.",
         f"Target optimization scope for this optimize session: {optimize_target}.",
         f"Read `{_display_path(workdir / 'opt-note.md')}` before acting.",
@@ -241,10 +241,10 @@ def build_optimize_supervisor_prompt(
                     else "Allow fallback-driven rounds to pass when their recorded `effective_metric_source` is `total-op` or `mixed`, but require that mismatch to be called out as a warning."
                 ),
                 "Reject rounds that preserve only the public API shape but replace the Triton kernel path with pure PyTorch computation.",
-                "Write `.triton-agent/supervisor-report.md` with a `Decision:` line and a `Blocking issues:` line.",
-                "Use only these supervisor decisions: `pass`, `revise-metadata`, `revise-required`, or `hard-fail`.",
+                "Write `.triton-agent/supervisor-report.md` with a `Status:` line and a `Blocking issues:` line.",
+                "Use only these supervisor statuses: `pass` or `fail`.",
                 "The CLI will read that supervisor report and pass the relevant continuation context into any later worker invocation.",
-                "The CLI decides whether another round is required from the round-loop policy; do not encode stop-versus-continue in the supervisor decision.",
+                "The CLI decides whether another round is required from the round-loop policy; do not encode stop-versus-continue in the supervisor report.",
                 "Do not edit the operator implementation.",
                 "Do not perform open-ended optimization work.",
                 "Do not fabricate missing correctness, benchmark, profiler, or IR evidence.",
@@ -259,7 +259,7 @@ def build_optimize_resume_prompt(
     summary: str,
     *,
     base_prompt: str | None = None,
-    round_mode: str = "continuous",
+    round_mode: Literal["checked", "supervised"] = "checked",
     optimize_target: str = "kernel",
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
@@ -269,24 +269,17 @@ def build_optimize_resume_prompt(
     if base_prompt:
         lines.extend([base_prompt.strip(), ""])
     if not base_prompt:
-        if round_mode != "continuous":
-            lines.extend(
-                [
-                    "This invocation is the optimize worker role.",
-                    "This invocation owns exactly one round.",
-                    "Treat this as a long-running task.",
-                    "Keep making progress until the current round is complete.",
-                    "Do not self-approve whether the optimize session should continue.",
-                    "",
-                ]
-            )
-        else:
-            lines.extend(
-                [
-                    "This invocation continues a continuous optimize task.",
-                    "",
-                ]
-            )
+        del round_mode
+        lines.extend(
+            [
+                "This invocation continues the optimize task.",
+                "This invocation owns exactly one round.",
+                "Treat this as a long-running task.",
+                "Keep making progress until the current round is complete.",
+                "Do not self-approve whether the optimize session should continue.",
+                "",
+            ]
+        )
     continuation_lines = [
         f"Target optimization scope for this optimize session: {optimize_target}.",
         (
@@ -300,7 +293,7 @@ def build_optimize_resume_prompt(
         "Keep the optimize workflow hypothesis-driven: explain why each next change may help and what evidence supports it.",
         "Use `compare-perf` output as the only source for performance deltas and speedup metrics.",
         *next_round_reflection_lines(),
-        *(continuous_round_serialization_lines() if round_mode == "continuous" else []),
+        *sequential_round_execution_lines(),
         *(
             [
                 "Use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and operator-level pattern references.",
@@ -316,8 +309,6 @@ def build_optimize_resume_prompt(
         *layered_analysis_lines(round_scope="the round"),
         *strict_learned_lessons_lines(),
     ]
-    if round_mode == "continuous" and base_prompt:
-        continuation_lines.insert(0, "This invocation continues a continuous optimize task.")
     lines.extend(continuation_lines)
     lines.extend(
         compiler_source_analysis_lines(
@@ -327,77 +318,6 @@ def build_optimize_resume_prompt(
     )
     lines.extend(["", f"Progress summary:\n{summary}"])
     return "\n".join(lines)
-
-
-def build_optimize_continuous_prompt(
-    input_path: Path,
-    output_path: Path | None,
-    *,
-    test_mode: str | None,
-    bench_mode: str | None,
-    target_chip: str = "A5",
-    optimize_target: str = "kernel",
-    min_rounds: int = 5,
-    resume_existing_session: bool = False,
-    compiler_source_path: Path | None = None,
-    compiler_source_commit: str | None = None,
-    enable_cann_ext_api: bool = False,
-    enable_subagent: bool = False,
-    baseline_ready: bool | None = None,
-) -> str:
-    del input_path, output_path, test_mode, bench_mode
-    lines = [
-        "This invocation is a continuous optimize run.",
-        "Own the end-to-end optimize session and continue optimizing until the session should stop.",
-        f"Complete at least {min_rounds} optimization rounds before deciding the session should stop.",
-        f"Once {min_rounds} optimization rounds are complete, stop the session after the current round passes the staged `triton-npu-optimize-submit-round` skill unless there is a concrete reason to continue.",
-    ]
-    if baseline_ready is True:
-        lines.append("The baseline has already been validated. Reuse it and do not rebuild it.")
-    elif baseline_ready is False:
-        lines.append("Repair or establish `baseline/` before opening round 1.")
-    lines.append("Treat this as a long-running task.")
-    lines.extend(continuous_round_serialization_lines())
-    lines.extend(
-        _shared_optimize_prompt_lines(
-            target_chip=target_chip,
-            optimize_check_line="Use the staged `triton-npu-optimize-submit-round` skill to validate every completed round.",
-            optimize_target=optimize_target,
-            enable_subagent=enable_subagent,
-        )
-    )
-    lines.append(
-        f"After finishing each round, use the staged `triton-npu-optimize-submit-round` skill to submit the current round with `--min-rounds {min_rounds}` and repair the round until it passes. Read the summary for the exit signal."
-    )
-    lines.extend(
-        [
-            "Do not rush from a passed round submission directly into the next edit.",
-            "Use the staged `triton-npu-optimize-start-round` skill before opening the next round.",
-            "Before opening the next round, reflect on which operator, kernel path, or wrapper bottleneck should anchor it.",
-            "Decide whether existing evidence is already sufficient or whether profiling, IR, or compiler-source analysis is needed before more code changes.",
-            "Do not treat the next round as a parameter-only tuning sweep; make a bottleneck-backed change instead. "
-"Do not use a script to create multiple optimize rounds where each round only adjusts parameters in order to speed up the optimization process. "
-"This is cheating behavior and is strictly prohibited.",
-        ]
-    )
-    lines.append(
-        "If the staged `triton-npu-optimize-submit-round` skill passes with a warning that recent baseline-relative gains are nearly flat "
-        "or may be stuck in a local optimum, review earlier rounds and consider resuming from "
-        "before that flat sequence to explore a different optimization path."
-    )
-    lines.extend(
-        [
-            "Do not begin the next round until the current round passes the staged `triton-npu-optimize-submit-round` skill.",
-            "Record round outcomes and keep optimize artifacts up to date before stopping.",
-        ]
-    )
-    return _finalize_optimize_prompt_lines(
-        lines=lines,
-        resume_existing_session=resume_existing_session,
-        compiler_source_path=compiler_source_path,
-        compiler_source_commit=compiler_source_commit,
-        enable_cann_ext_api=enable_cann_ext_api,
-    )
 
 
 def build_optimize_round_prompt(
@@ -415,24 +335,30 @@ def build_optimize_round_prompt(
     enable_subagent: bool = False,
     round_mode: Literal["checked", "supervised"],
     baseline_ready: bool = True,
+    current_round: int = 1,
+    final_round: int = 1,
+    round_batch_size: int = 10,
 ) -> str:
-    del input_path, output_path, test_mode, bench_mode
+    del input_path, output_path, test_mode, bench_mode, round_batch_size, baseline_ready, round_mode
     lines = [
-        "This invocation owns exactly one round.",
-        "The baseline has already been validated before this round.",
+        f"This invocation owns rounds {current_round} through {final_round}.",
+        "Execute those rounds strictly one at a time.",
+        "Do not pre-plan the full batch before acting.",
+        "The baseline has already been validated before this worker batch.",
         "Produce all required round artifacts before stopping.",
-        "The CLI will validate this round after the invocation exits.",
-        "If the round needs repairs or continuation, a later invocation will return with direct CLI guidance in the prompt.",
+        "The CLI will validate the completed batch after the invocation exits.",
+        "If a round needs repairs or continuation, a later invocation will return with direct CLI guidance in the prompt.",
     ]
     lines.extend(
         _shared_optimize_prompt_lines(
             target_chip=target_chip,
-            optimize_check_line="The CLI will run the staged `triton-npu-optimize-submit-round` skill after this round completes. Your role is to produce the round artifacts, not to submit the round yourself.",
+            optimize_check_line="The CLI will run the staged `triton-npu-optimize-submit-round` skill after each completed round in this batch. Produce the round artifacts only; do not submit the rounds yourself.",
             optimize_target=optimize_target,
             enable_subagent=enable_subagent,
         )
     )
     lines.append("Do not self-approve whether the optimize session should continue.")
+    lines.append("Before each round, re-evaluate the next bottleneck and choose the right analysis depth from the current evidence.")
     return _finalize_optimize_prompt_lines(
         lines=lines,
         resume_existing_session=resume_existing_session,

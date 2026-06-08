@@ -11,16 +11,19 @@ from triton_agent.subagents import SubagentManager, SubagentStageSet
 
 
 @dataclass
-class SharedOptimizeSessionArtifactsState:
-    """Session-scoped artifacts shared by supervised and continuous optimize runs."""
+class OptimizeSessionArtifactsState:
+    """Full artifact bundle for multi-invocation optimize runs."""
 
     memory_file: MemoryFileState
     archive: ArchiveState
     subagent_stage_set: SubagentStageSet | None = None
 
+    hidden_triton_agent_dir: Path | None = None
+    supervisor_report_path: Path | None = None
+    supervisor_history_dir: Path | None = None
+
     @property
     def guidance_path(self) -> Path:
-        """Compatibility view of the temporary top-level memory file path."""
         return self.memory_file.guidance_path
 
     @property
@@ -42,14 +45,6 @@ class SharedOptimizeSessionArtifactsState:
     @property
     def otel_trace_path(self) -> Path:
         return self.archive.otel_trace_path
-
-@dataclass
-class OptimizeSessionArtifactsState(SharedOptimizeSessionArtifactsState):
-    """Full artifact bundle for multi-invocation optimize runs."""
-
-    hidden_triton_agent_dir: Path | None = None
-    supervisor_report_path: Path | None = None
-    supervisor_history_dir: Path | None = None
 
     @property
     def shared_guidance_snapshot_path(self) -> Path | None:
@@ -78,54 +73,6 @@ class OptimizeSessionArtifactsManager:
         self._memory_files = memory_files or MemoryFileManager()
         self._archives = archives or ArchiveManager()
         self._subagents = subagents or SubagentManager()
-
-    def prepare_continuous_session(
-        self,
-        workdir: Path,
-        *,
-        operator_path: Path,
-        test_mode: str,
-        bench_mode: str,
-        agent_name: str,
-        optimize_target: str = "kernel",
-        compiler_source_path: Path | None = None,
-        compiler_source_commit: str | None = None,
-        enable_cann_ext_api: bool = False,
-        enable_subagent: bool = False,
-        optimize_knowledge_skill_name: str | None = None,
-    ) -> SharedOptimizeSessionArtifactsState:
-        """Prepare only the artifacts needed by a single-agent optimize session."""
-        archive_state = self._archives.prepare(workdir)
-        subagent_stage_set = self._prepare_subagents(
-            agent_name=agent_name,
-            workdir=workdir,
-            optimize_target=optimize_target,
-            enable_cann_ext_api=enable_cann_ext_api,
-            enable_subagent=enable_subagent,
-        )
-        try:
-            memory_file_state = self._memory_files.prepare_continuous(
-                workdir,
-                operator_path=operator_path,
-                test_mode=test_mode,
-                bench_mode=bench_mode,
-                agent_name=agent_name,
-                optimize_target=optimize_target,
-                compiler_source_path=compiler_source_path,
-                compiler_source_commit=compiler_source_commit,
-                enable_cann_ext_api=enable_cann_ext_api,
-                enable_subagent=enable_subagent,
-                optimize_knowledge_skill_name=optimize_knowledge_skill_name,
-            )
-        except Exception:
-            if subagent_stage_set is not None:
-                self._subagents.cleanup(subagent_stage_set)
-            raise
-        return SharedOptimizeSessionArtifactsState(
-            memory_file=memory_file_state,
-            archive=archive_state,
-            subagent_stage_set=subagent_stage_set,
-        )
 
     def prepare_checked_session(
         self,
@@ -235,10 +182,7 @@ class OptimizeSessionArtifactsManager:
             history_dir=state.supervisor_history_dir,
         )
 
-    def cleanup_continuous_session(
-        self,
-        state: SharedOptimizeSessionArtifactsState,
-    ) -> list[str]:
+    def cleanup_session(self, state: OptimizeSessionArtifactsState) -> list[str]:
         """Remove or restore the temporary top-level memory file for an optimize run."""
         warnings: list[str] = []
         warnings.extend(self._memory_files.cleanup(state.memory_file))
@@ -248,16 +192,14 @@ class OptimizeSessionArtifactsManager:
 
     def record_agent_session(
         self,
-        state: SharedOptimizeSessionArtifactsState,
+        state: OptimizeSessionArtifactsState,
         *,
-        role: str,
         session_id: str | None,
         agent: str,
     ) -> str | None:
         """Append a compact session-id record to the optimize archive."""
         return self._archives.record_agent_session(
             state.archive,
-            role=role,
             session_id=session_id,
             agent=agent,
         )
@@ -271,7 +213,7 @@ class OptimizeSessionArtifactsManager:
             warnings.append(f"Failed to archive optimize supervised logs: {exc}")
 
         warnings.extend(self._cleanup_hidden_triton_agent_dir(state.hidden_triton_agent_dir))
-        warnings.extend(self.cleanup_continuous_session(state))
+        warnings.extend(self.cleanup_session(state))
         return warnings
 
     def cleanup_checked_session(self, state: OptimizeSessionArtifactsState) -> list[str]:
@@ -282,19 +224,8 @@ class OptimizeSessionArtifactsManager:
         except Exception as exc:
             warnings.append(f"Failed to archive optimize checked logs: {exc}")
 
-        warnings.extend(self.cleanup_continuous_session(state))
+        warnings.extend(self.cleanup_session(state))
         return warnings
-
-    def describe_prepare_continuous_session(
-        self,
-        state: SharedOptimizeSessionArtifactsState,
-    ) -> list[str]:
-        messages = self._memory_files.describe_prepare(
-            state.memory_file,
-            description="continuous optimize guidance file",
-        )
-        messages.extend(self._describe_prepare_subagents(state.subagent_stage_set))
-        return messages
 
     def describe_prepare_supervised_session(
         self,
@@ -320,10 +251,7 @@ class OptimizeSessionArtifactsManager:
         messages.extend(self._describe_prepare_subagents(state.subagent_stage_set))
         return messages
 
-    def describe_cleanup_continuous_session(
-        self,
-        state: SharedOptimizeSessionArtifactsState,
-    ) -> list[str]:
+    def describe_cleanup_session(self, state: OptimizeSessionArtifactsState) -> list[str]:
         messages = self._memory_files.describe_cleanup(state.memory_file)
         messages.extend(self._describe_cleanup_subagents(state.subagent_stage_set))
         return messages
@@ -340,7 +268,7 @@ class OptimizeSessionArtifactsManager:
                 "removing temporary optimize runtime directory tree "
                 f"{state.hidden_triton_agent_dir}"
             )
-        messages.extend(self.describe_cleanup_continuous_session(state))
+        messages.extend(self.describe_cleanup_session(state))
         return messages
 
     def describe_cleanup_checked_session(
@@ -348,7 +276,7 @@ class OptimizeSessionArtifactsManager:
         state: OptimizeSessionArtifactsState,
     ) -> list[str]:
         messages = [f"archiving checked optimize logs to {state.run_archive_dir}"]
-        messages.extend(self.describe_cleanup_continuous_session(state))
+        messages.extend(self.describe_cleanup_session(state))
         return messages
 
     def _prepare_subagents(

@@ -54,7 +54,6 @@ class ClaudeRunner(AgentRunner):
                 request.extra_env,
                 trace_path=trace_path,
                 run_id=request.run_id,
-                role=request.optimize_role or "worker",
                 workspace_root=request.workdir,
             )
         else:
@@ -63,7 +62,6 @@ class ClaudeRunner(AgentRunner):
             trace_path if request.log_tools else None,
             extra_env,
             run_id=request.run_id,
-            role=request.optimize_role or "worker",
             workspace_root=str(request.workdir),
         )
 

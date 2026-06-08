@@ -118,7 +118,6 @@ class AgentRunner(ABC):
             guard_enabled=request.enable_agent_hooks,
             trace_path=trace_path,
             run_id=run_id,
-            role=request.optimize_role or "worker",
         )
 
     def _select_mode(self, request: AgentRequest) -> str:

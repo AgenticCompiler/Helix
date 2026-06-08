@@ -38,9 +38,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _build_cli_payload(result: OptimizeCheckResult) -> dict[str, object]:
     return {
-        "ok": result.ok,
         "kind": result.kind,
-        "decision": result.decision,
+        "status": result.status,
         "issues": list(result.issues),
         "guideline": result.summary,
     }
@@ -52,10 +51,8 @@ def main(argv: list[str] | None = None) -> int:
     result = check_baseline(Path(args.baseline_dir).expanduser().resolve())
 
     print(json.dumps(_build_cli_payload(result), ensure_ascii=True))
-    if result.decision == "pass":
+    if result.status == "pass":
         return 0
-    if result.decision == "hard-fail":
-        return 2
     return 1
 
 

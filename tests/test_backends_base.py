@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.backends.base import AgentRunner
 from triton_agent.backends.hook_common import HookStageOptions
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
-from triton_agent.otel_trace import TRACE_PATH_ENV, TRACE_ROLE_ENV, TRACE_RUN_ID_ENV
+from triton_agent.otel_trace import TRACE_PATH_ENV, TRACE_RUN_ID_ENV
 from triton_agent.prompts import build_prompt
 
 
@@ -227,10 +227,8 @@ class SharedRunnerBaseTests(unittest.TestCase):
                 extra_env={
                     TRACE_PATH_ENV: str(workspace / "triton-agent-logs" / "otel" / "run-001" / "trace.jsonl"),
                     TRACE_RUN_ID_ENV: "run-001",
-                    TRACE_ROLE_ENV: "worker",
                 },
                 run_id="run-override",
-                optimize_role="reviewer",
                 enable_agent_hooks=True,
                 log_tools=True,
             )
@@ -242,7 +240,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
             self.assertTrue(options.guard_enabled)
             self.assertEqual(options.trace_path, workspace / "triton-agent-logs" / "otel" / "run-001" / "trace.jsonl")
             self.assertEqual(options.run_id, "run-override")
-            self.assertEqual(options.role, "reviewer")
+            self.assertFalse(hasattr(options, "role"))
 
     def test_base_runner_returns_extra_allowed_read_roots_from_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -602,7 +600,7 @@ class SharedRunnerBaseTests(unittest.TestCase):
 
             resumed_prompt = mocked.call_args.args[0][-1]
             self.assertIn("Continue the existing optimize task", resumed_prompt)
-            self.assertIn("This invocation owns exactly one round.", resumed_prompt)
+            self.assertIn("This invocation owns rounds 1 through 5.", resumed_prompt)
             self.assertIn(
                 "Escalate analysis in this order: pattern triage, profiling diagnosis, IR attribution, compiler-source escalation.",
                 resumed_prompt,

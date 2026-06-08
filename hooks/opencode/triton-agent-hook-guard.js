@@ -169,7 +169,6 @@ async function appendTraceEvents(policy, input, output) {
     schema_version: 1,
     timestamp,
     run_id: typeof tracePolicy.run_id === "string" ? tracePolicy.run_id : "",
-    role: typeof tracePolicy.role === "string" ? tracePolicy.role : "",
     type: "tool_call",
     phase: "start",
     tool,
@@ -186,7 +185,6 @@ async function appendTraceEvents(policy, input, output) {
       schema_version: 1,
       timestamp,
       run_id: baseEvent.run_id,
-      role: baseEvent.role,
       type: "command",
       phase: "start",
       command_kind: classifyCommand(command),
@@ -232,7 +230,6 @@ async function appendTraceEvents(policy, input, output) {
           schema_version: 1,
           timestamp,
           run_id: baseEvent.run_id,
-          role: baseEvent.role,
           type: "edit",
           phase: "instant",
           path: displayPath(resolved, workspaceRoot),
@@ -254,7 +251,6 @@ async function appendFileAccessTrace(tracePath, baseEvent, workspaceRoot, resolv
     schema_version: 1,
     timestamp: baseEvent.timestamp,
     run_id: baseEvent.run_id,
-    role: baseEvent.role,
     type: "file_access",
     phase: "instant",
     action,
@@ -653,13 +649,10 @@ async function handleToolAfter(policy, input, output) {
 
   const timestamp = new Date().toISOString();
   const runId = typeof tracePolicy.run_id === "string" ? tracePolicy.run_id : "";
-  const role = typeof tracePolicy.role === "string" ? tracePolicy.role : "";
-
   await appendTraceEvent(tracePolicy.path, {
     schema_version: 1,
     timestamp,
     run_id: runId,
-    role,
     type: "tool_call",
     phase: "end",
     tool,
@@ -677,7 +670,6 @@ async function handleToolAfter(policy, input, output) {
       schema_version: 1,
       timestamp,
       run_id: runId,
-      role,
       type: "command",
       phase: "end",
       tool_use_id: toolUseId,

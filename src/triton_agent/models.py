@@ -81,10 +81,13 @@ class AgentRequest:
     min_rounds: Optional[int] = None
     continue_optimize: bool = False
     no_agent_session: bool = False
-    round_mode: Literal["continuous", "checked", "supervised"] = "continuous"
+    round_mode: Literal["checked", "supervised"] = "checked"
+    round_batch_size: int = 10
+    current_round: int = 1
+    final_round: int = 1
+    user_prompt: Optional[str] = None
     staged_skill_names: tuple[str, ...] | None = None
     staged_skill_sources: dict[str, str] | None = None
-    optimize_role: str | None = None
     supervisor_report_path: Optional[Path] = None
     target_chip: Literal["A3", "A5"] = "A5"
     optimize_target: Literal["kernel", "operator"] = "kernel"

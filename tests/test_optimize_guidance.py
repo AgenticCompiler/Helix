@@ -77,7 +77,6 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
 
             warning = manager.record_agent_session(
                 state,
-                role="worker",
                 session_id="019da9c2-dfcb-7c71-a2f9-7a90bab2e0f5",
                 agent="codex",
             )
@@ -86,7 +85,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             lines = state.agent_sessions_path.read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(lines), 1)
             payload = json.loads(lines[0])
-            self.assertEqual(set(payload), {"timestamp", "role", "session_id", "agent"})
+            self.assertEqual(set(payload), {"timestamp", "session_id", "agent"})
 
     def test_render_bullet_block_formats_markdown_list(self) -> None:
         rendered = optimize_memory_file._render_bullet_block(
@@ -115,21 +114,6 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
         )
         self.assertEqual(optimize_memory_file._render_line_block([]), "")
 
-    def test_continuous_guidance_template_inlines_shared_rule_block(self) -> None:
-        template = optimize_memory_file._CONTINUOUS_GUIDANCE_TEMPLATE
-
-        self.assertIn("{guidance_filename}", template)
-        self.assertIn("{test_mode}", template)
-        self.assertIn("{bench_mode}", template)
-        self.assertIn("{operator_name}", template)
-        self.assertIn("{analysis_block}", template)
-        self.assertIn("{compiler_source_block}", template)
-        self.assertIn(
-            "- Read files cautiously. Do not read unrelated files speculatively or just in case.\n",
-            template,
-        )
-        self.assertNotIn("{guidance_rules_block}", template)
-
     def test_shared_guidance_template_inlines_shared_rule_block(self) -> None:
         template = optimize_memory_file._SHARED_GUIDANCE_TEMPLATE
 
@@ -142,7 +126,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
         )
         self.assertNotIn("{guidance_rules_block}", template)
 
-    def test_prepare_continuous_session_rejects_subagent_on_unsupported_backend(self) -> None:
+    def test_prepare_checked_session_rejects_subagent_on_unsupported_backend(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
@@ -154,31 +138,25 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 RuntimeError,
                 "Optimize subagent staging only supports `codex`, `claude`, and `opencode`; got `pi`.",
             ):
-                manager.prepare_continuous_session(
+                manager.prepare_checked_session(
                     workdir,
-                    operator_path=operator,
                     agent_name="pi",
-                    test_mode="differential",
-                    bench_mode="standalone",
                     enable_subagent=True,
                 )
 
             self.assertFalse((workdir / "AGENTS.md").exists())
             self.assertFalse((workdir / ".pi").exists())
 
-    def test_prepare_continuous_session_stages_perf_diagnosis_subagent_when_enabled(self) -> None:
+    def test_prepare_checked_session_stages_perf_diagnosis_subagent_when_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
 
             manager = OptimizeSessionArtifactsManager()
-            state = manager.prepare_continuous_session(
+            state = manager.prepare_checked_session(
                 workdir,
-                operator_path=operator,
                 agent_name="codex",
-                test_mode="differential",
-                bench_mode="standalone",
                 enable_subagent=True,
             )
 
@@ -197,24 +175,21 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             )
             self.assertIn("must not perform optimization work", guidance_content)
 
-            warnings = manager.cleanup_continuous_session(state)
+            warnings = manager.cleanup_checked_session(state)
             self.assertEqual(warnings, [])
             self.assertFalse(agent_path.exists())
             self.assertFalse((workdir / ".codex").exists())
 
-    def test_prepare_continuous_session_creates_self_contained_guidance_file_only(self) -> None:
+    def test_prepare_checked_session_creates_round_loop_guidance_file_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
 
             manager = OptimizeSessionArtifactsManager()
-            state = manager.prepare_continuous_session(
+            state = manager.prepare_checked_session(
                 workdir,
-                operator_path=operator,
                 agent_name="codex",
-                test_mode="differential",
-                bench_mode="standalone",
             )
 
             agents_path = workdir / "AGENTS.md"
@@ -224,9 +199,8 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertEqual(state.guidance_path, agents_path)
             self.assertIsNone(state.backup_path)
             self.assertTrue(state.created_guidance)
-            self.assertIn("## Triton Agent Optimize Session", guidance_content)
-            self.assertIn("This workspace is under a continuous optimize run.", guidance_content)
-            self.assertIn("Own the end-to-end optimize session.", guidance_content)
+            self.assertIn("## Triton Agent Optimize Round Loop", guidance_content)
+            self.assertIn("This workspace is under an optimize round loop.", guidance_content)
             self.assertIn(
                 "Read files cautiously. Do not read unrelated files speculatively or just in case.",
                 guidance_content,
@@ -235,14 +209,16 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 "Follow the user's instructions strictly.",
                 guidance_content,
             )
-            self.assertIn("Use `differential` correctness validation", guidance_content)
-            self.assertIn("Use `standalone` benchmark validation", guidance_content)
-            self.assertIn("Use the staged `triton-npu-optimize` skill", guidance_content)
+            self.assertIn("Use the staged workspace skills as the workflow source of truth.", guidance_content)
+            self.assertIn(
+                "The CLI will inject previous round validation results directly into the next worker prompt when another round is needed.",
+                guidance_content,
+            )
             self.assertNotIn("Read the role brief", guidance_content)
             self.assertNotIn("Worker and supervisor roles", guidance_content)
             self.assertNotIn(".triton-agent/roles/", guidance_content)
 
-            warnings = manager.cleanup_continuous_session(state)
+            warnings = manager.cleanup_checked_session(state)
             self.assertEqual(warnings, [])
             self.assertFalse(agents_path.exists())
             self.assertFalse((workdir / ".triton-agent").exists())
@@ -274,7 +250,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertIn("## Triton Agent Optimize Orchestration", shared_content)
             self.assertIn("This workspace is under optimize orchestration.", shared_content)
             self.assertIn("Use the staged workspace skills as the workflow source of truth.", shared_content)
-            self.assertIn("Role-specific behavior comes from the launch prompt.", shared_content)
+            self.assertIn("Invocation-specific behavior comes from the launch prompt.", shared_content)
             self.assertIn(
                 "Use `.triton-agent/supervisor-report.md` as the supervisor audit report file when supervised mode is active.",
                 shared_content,
@@ -293,19 +269,16 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertTrue((state.run_archive_dir / "supervisor-report.md").exists())
             self.assertTrue((state.run_archive_dir / "history").exists())
 
-    def test_prepare_continuous_session_mentions_operator_target_when_selected(self) -> None:
+    def test_prepare_checked_session_mentions_operator_target_when_selected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
 
             manager = OptimizeSessionArtifactsManager()
-            state = manager.prepare_continuous_session(
+            state = manager.prepare_checked_session(
                 workdir,
-                operator_path=operator,
                 agent_name="codex",
-                test_mode="differential",
-                bench_mode="standalone",
                 optimize_target="operator",
             )
 
@@ -314,24 +287,20 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertIn("Optimize end-to-end operator latency.", guidance_content)
             self.assertIn("both kernel and total-op `compare-perf` views visible", guidance_content)
 
-            warnings = manager.cleanup_continuous_session(state)
+            warnings = manager.cleanup_checked_session(state)
             self.assertEqual(warnings, [])
 
     def test_record_agent_session_appends_compact_jsonl(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             manager = OptimizeSessionArtifactsManager()
-            state = manager.prepare_continuous_session(
+            state = manager.prepare_checked_session(
                 workdir,
-                operator_path=workdir / "kernel.py",
                 agent_name="codex",
-                test_mode="differential",
-                bench_mode="standalone",
             )
 
             manager.record_agent_session(
                 state,
-                role="worker",
                 session_id="019da9c2-dfcb-7c71-a2f9-7a90bab2e0f5",
                 agent="codex",
             )
@@ -339,12 +308,11 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             lines = state.agent_sessions_path.read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(lines), 1)
             payload = json.loads(lines[0])
-            self.assertEqual(set(payload), {"timestamp", "role", "session_id", "agent"})
-            self.assertEqual(payload["role"], "worker")
+            self.assertEqual(set(payload), {"timestamp", "session_id", "agent"})
             self.assertEqual(payload["session_id"], "019da9c2-dfcb-7c71-a2f9-7a90bab2e0f5")
             self.assertEqual(payload["agent"], "codex")
 
-            warnings = manager.cleanup_continuous_session(state)
+            warnings = manager.cleanup_checked_session(state)
             self.assertEqual(warnings, [])
             self.assertTrue(state.agent_sessions_path.exists())
 
@@ -352,17 +320,13 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             manager = OptimizeSessionArtifactsManager()
-            state = manager.prepare_continuous_session(
+            state = manager.prepare_checked_session(
                 workdir,
-                operator_path=workdir / "kernel.py",
                 agent_name="codex",
-                test_mode="differential",
-                bench_mode="standalone",
             )
 
             manager.record_agent_session(
                 state,
-                role="worker",
                 session_id=None,
                 agent="codex",
             )
@@ -398,7 +362,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 "Follow the user's instructions strictly.",
                 shared_content,
             )
-            self.assertIn("Role-specific behavior comes from the launch prompt.", shared_content)
+            self.assertIn("Invocation-specific behavior comes from the launch prompt.", shared_content)
             self.assertNotIn("Improve the Triton operator", shared_content)
 
             warnings = manager.cleanup_supervised_session(state)
@@ -519,7 +483,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             warnings = manager.cleanup_supervised_session(state)
             self.assertEqual(warnings, [])
 
-    def test_prepare_continuous_mentions_compiler_source_when_enabled(self) -> None:
+    def test_prepare_checked_mentions_compiler_source_when_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             source_path = workdir / "AscendNPU-IR"
@@ -527,12 +491,9 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             operator.write_text("print('x')\n", encoding="utf-8")
 
             manager = OptimizeSessionArtifactsManager()
-            state = manager.prepare_continuous_session(
+            state = manager.prepare_checked_session(
                 workdir,
-                operator_path=operator,
                 agent_name="codex",
-                test_mode="differential",
-                bench_mode="standalone",
                 compiler_source_path=source_path,
                 compiler_source_commit="abc123",
             )
@@ -545,22 +506,19 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertIn("Do not run git clone, git fetch, git pull", guidance_content)
             self.assertNotIn("https://gitcode.com/Ascend/AscendNPU-IR.git", guidance_content)
 
-            warnings = manager.cleanup_continuous_session(state)
+            warnings = manager.cleanup_checked_session(state)
             self.assertEqual(warnings, [])
 
-    def test_prepare_continuous_mentions_cann_ext_api_when_enabled(self) -> None:
+    def test_prepare_checked_mentions_cann_ext_api_when_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
 
             manager = OptimizeSessionArtifactsManager()
-            state = manager.prepare_continuous_session(
+            state = manager.prepare_checked_session(
                 workdir,
-                operator_path=operator,
                 agent_name="codex",
-                test_mode="differential",
-                bench_mode="standalone",
                 enable_cann_ext_api=True,
             )
 
@@ -570,7 +528,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertIn("high-value optimization direction", guidance_content)
             self.assertIn("Give serious attention", guidance_content)
 
-            warnings = manager.cleanup_continuous_session(state)
+            warnings = manager.cleanup_checked_session(state)
             self.assertEqual(warnings, [])
 
     def test_prepare_supervised_mentions_compiler_source_when_enabled(self) -> None:
