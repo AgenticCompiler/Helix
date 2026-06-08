@@ -16,7 +16,6 @@ class HookStageOptions:
     guard_enabled: bool = False
     trace_path: Path | None = None
     run_id: str | None = None
-    role: str | None = None
 
 
 def cleanup_hook_stage(state: HookStageState) -> list[str]:
@@ -44,4 +43,3 @@ def describe_cleanup(state: HookStageState) -> list[str]:
     if not state.created_paths:
         return ["No backend-specific hooks to clean up."]
     return [f"Cleaning up staged agent hooks: {', '.join(str(path) for path in state.created_paths)}"]
-

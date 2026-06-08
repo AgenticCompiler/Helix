@@ -66,14 +66,12 @@ class CodexRunner(AgentRunner):
                     request.extra_env,
                     trace_path=trace_path,
                     run_id=request.run_id,
-                    role=request.optimize_role or "worker",
                     workspace_root=request.workdir,
                 )
             return CodexJsonOutputFilter(
                 trace_path if request.log_tools else None,
                 extra_env,
                 run_id=request.run_id,
-                role=request.optimize_role or "worker",
                 workspace_root=str(request.workdir),
             )
         return _UnifiedDiffFilter()

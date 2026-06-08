@@ -124,7 +124,6 @@ class ArchiveManager:
         self,
         state: ArchiveState,
         *,
-        role: str,
         session_id: str | None,
         agent: str,
     ) -> str | None:
@@ -134,7 +133,6 @@ class ArchiveManager:
             .replace(microsecond=0)
             .isoformat()
             .replace("+00:00", "Z"),
-            "role": role,
             "session_id": session_id or "unknown",
             "agent": agent,
         }

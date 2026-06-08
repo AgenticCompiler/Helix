@@ -1729,7 +1729,7 @@ class SkillCommandScriptTests(unittest.TestCase):
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
             payload = json.loads(completed.stdout)
-            self.assertEqual(payload["decision"], "pass")
+            self.assertEqual(payload["status"], "pass")
             self.assertIn("guideline", payload)
             self.assertNotIn("summary", payload)
             self.assertEqual(completed.stderr, "")
@@ -1810,7 +1810,9 @@ class SkillCommandScriptTests(unittest.TestCase):
                     "check-round",
                     "--round-dir",
                     str(round_dir),
-                    "--min-round",
+                    "--current-round",
+                    "4",
+                    "--final-round",
                     "25",
                 ],
                 capture_output=True,
@@ -1822,11 +1824,11 @@ class SkillCommandScriptTests(unittest.TestCase):
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
             payload = json.loads(completed.stdout)
-            self.assertEqual(payload["decision"], "pass")
+            self.assertEqual(payload["status"], "pass")
             self.assertEqual(payload["next_option"], "opt-round-5")
             self.assertIn("guideline", payload)
             self.assertNotIn("summary", payload)
-            self.assertIn("Round 1/25 complete", payload["guideline"])
+            self.assertIn("Round 4/25 in the current worker batch is complete.", payload["guideline"])
             self.assertEqual(completed.stderr, "")
 
 

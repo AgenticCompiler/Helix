@@ -196,13 +196,11 @@ class ClaudeJsonLineParser:
         extra_env: dict[str, str] | None = None,
         *,
         run_id: str = "",
-        role: str = "worker",
         workspace_root: str = "",
     ) -> None:
         self._trace_path = trace_path
         self._extra_env = extra_env or {}
         self._run_id = run_id
-        self._role = role
         self._workspace_root = workspace_root
         self._pending: dict[str, _ClaudeToolLifecycle] = {}
         self._seen: set[tuple[str, str, str]] = set()
@@ -284,7 +282,6 @@ class ClaudeJsonLineParser:
                     "source": "claude_native_json",
                     "confidence": "high",
                     "run_id": self._run_id,
-                    "role": self._role,
                     "session_id": self._session_id or event.get("session_id", ""),
                 })
 
@@ -354,7 +351,6 @@ class ClaudeJsonLineParser:
                 "source": "claude_native_json",
                 "confidence": "high",
                 "run_id": self._run_id,
-                "role": self._role,
                 "session_id": self._session_id or event.get("session_id", ""),
             })
 
@@ -452,7 +448,6 @@ class ClaudeJsonLineParser:
             "source": "claude_native_json",
             "confidence": "high",
             "run_id": self._run_id,
-            "role": self._role,
         })
 
     def _derive_file_access_event(
@@ -487,7 +482,6 @@ class ClaudeJsonLineParser:
             "source": "claude_native_json",
             "confidence": "high",
             "run_id": self._run_id,
-            "role": self._role,
         })
 
     def _derive_edit_event(
@@ -517,7 +511,6 @@ class ClaudeJsonLineParser:
             "source": "claude_native_json",
             "confidence": "high",
             "run_id": self._run_id,
-            "role": self._role,
         })
 
     def _classify_command(self, command: str) -> str:
@@ -565,7 +558,6 @@ class ClaudeJsonLineParser:
             "source": "claude_native_json",
             "confidence": "high",
             "run_id": self._run_id,
-            "role": self._role,
             "timestamp": utc_timestamp(),
         })
 
@@ -588,7 +580,6 @@ class ClaudeJsonLineParser:
                 "source": "claude_native_json",
                 "confidence": "medium",
                 "run_id": self._run_id,
-                "role": self._role,
             })
             human_parts.append(
                 self._renderer.render_tool_end(
@@ -622,11 +613,10 @@ class ClaudeJsonOutputFilter:
         extra_env: dict[str, str] | None = None,
         *,
         run_id: str = "",
-        role: str = "worker",
         workspace_root: str = "",
     ) -> None:
         self._parser = ClaudeJsonLineParser(
-            trace_path, extra_env, run_id=run_id, role=role, workspace_root=workspace_root
+            trace_path, extra_env, run_id=run_id, workspace_root=workspace_root
         )
         self._buffer = ""
 
@@ -666,13 +656,11 @@ def build_claude_trace_env(
     *,
     trace_path: Path,
     run_id: str,
-    role: str,
     workspace_root: Path,
 ) -> dict[str, str]:
     env = dict(existing or {})
     env["TRITON_AGENT_OTEL_TRACE_PATH"] = str(trace_path)
     env["TRITON_AGENT_OTEL_RUN_ID"] = run_id
-    env["TRITON_AGENT_OTEL_ROLE"] = role
     env["TRITON_AGENT_WORKSPACE_ROOT"] = str(workspace_root)
     return env
 

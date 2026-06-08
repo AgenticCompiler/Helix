@@ -113,7 +113,6 @@ def _trace_policy(options: HookStageOptions) -> dict[str, str | bool | None]:
         "enabled": options.trace_enabled,
         "path": str(options.trace_path) if options.trace_path is not None else None,
         "run_id": options.run_id,
-        "role": options.role,
     }
 
 
@@ -125,11 +124,9 @@ def _write_trace_setup_event(options: HookStageOptions, hook_dir: Path) -> None:
         "type": "diagnostic",
         "phase": "instant",
         "code": "trace_setup",
-        "detail": f"Codex trace hooks staged: hook_dir={hook_dir}, run_id={options.run_id}, role={options.role}",
+        "detail": f"Codex trace hooks staged: hook_dir={hook_dir}, run_id={options.run_id}",
         "source": "codex_hook",
         "confidence": "high",
         "run_id": options.run_id or "",
-        "role": options.role or "worker",
         "timestamp": utc_timestamp(),
     })
-

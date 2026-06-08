@@ -25,6 +25,7 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
         validate_optimize_options(
             CommandKind.OPTIMIZE,
             min_rounds=options.min_rounds,
+            round_batch_size=options.round_batch_size,
             max_concurrency=None,
             resume_mode=options.resume_mode,
             reset_optimize=options.reset_optimize,
@@ -108,6 +109,7 @@ def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
         validate_optimize_options(
             CommandKind.OPTIMIZE_BATCH,
             min_rounds=options.min_rounds,
+            round_batch_size=options.round_batch_size,
             max_concurrency=max_concurrency,
             resume_mode=options.resume_mode,
             reset_optimize=options.reset_optimize,
@@ -127,12 +129,12 @@ def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
     return run_optimize_batch(root, options, max_concurrency=max_concurrency)
 
 
-def _validate_round_mode(args: argparse.Namespace) -> Literal["continuous", "checked", "supervised"]:
-    value = getattr(args, "round_mode", "continuous")
+def _validate_round_mode(args: argparse.Namespace) -> Literal["checked", "supervised"]:
+    value = getattr(args, "round_mode", "checked")
     round_mode = str(value)
-    if round_mode not in {"continuous", "checked", "supervised"}:
-        raise ValueError(f"--round-mode must be one of 'continuous', 'checked', or 'supervised', got {value!r}")
-    return cast(Literal["continuous", "checked", "supervised"], round_mode)
+    if round_mode not in {"checked", "supervised"}:
+        raise ValueError(f"--round-mode must be one of 'checked' or 'supervised', got {value!r}")
+    return cast(Literal["checked", "supervised"], round_mode)
 
 
 def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptions:
@@ -159,6 +161,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         remote=getattr(args, "remote", None),
         remote_workdir=getattr(args, "remote_workdir", None),
         min_rounds=getattr(args, "min_rounds", 5),
+        round_batch_size=getattr(args, "round_batch_size", 10),
         resume_mode=str(getattr(args, "resume", "auto")),
         reset_optimize=bool(getattr(args, "reset_optimize", False)),
         no_agent_session=bool(getattr(args, "no_agent_session", False)),
@@ -186,8 +189,8 @@ def _validate_agent_options(
     args: argparse.Namespace,
     options: OptimizeRunOptions,
 ) -> None:
-    if options.interact and options.round_mode != "continuous":
-        parser.error("--interact only supports --round-mode continuous.")
+    if options.interact:
+        parser.error("--interact is not supported for batched optimize round modes.")
     if getattr(args, "agent", None) == "openhands" and bool(getattr(args, "interact", False)):
         parser.error("OpenHands backend does not support --interact yet.")
     if options.enable_subagent and options.agent_name not in {"codex", "opencode", "claude"}:

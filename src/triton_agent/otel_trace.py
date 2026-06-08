@@ -12,7 +12,6 @@ from triton_agent.models import AgentRequest, AgentResult
 
 TRACE_PATH_ENV = "TRITON_AGENT_OTEL_TRACE_PATH"
 TRACE_RUN_ID_ENV = "TRITON_AGENT_OTEL_RUN_ID"
-TRACE_ROLE_ENV = "TRITON_AGENT_OTEL_ROLE"
 TRACE_WORKSPACE_ROOT_ENV = "TRITON_AGENT_WORKSPACE_ROOT"
 
 
@@ -49,22 +48,16 @@ def tool_trace_path(run_dir: Path) -> Path:
     return run_dir / "tool-traces.jsonl"
 
 
-def trace_role_from_request(request: AgentRequest) -> str:
-    return request.optimize_role or "worker"
-
-
 def build_trace_env(
     existing: dict[str, str] | None,
     *,
     trace_path: Path,
     run_id: str,
-    role: str,
     workspace_root: Path,
 ) -> dict[str, str]:
     env = dict(existing or {})
     env[TRACE_PATH_ENV] = str(trace_path)
     env[TRACE_RUN_ID_ENV] = run_id
-    env[TRACE_ROLE_ENV] = role
     env[TRACE_WORKSPACE_ROOT_ENV] = str(workspace_root)
     return env
 
@@ -73,7 +66,6 @@ def build_tool_trace_env(
     existing: dict[str, str] | None,
     *,
     workdir: Path,
-    role: str = "worker",
     run_id: str | None = None,
     run_id_prefix: str = "",
 ) -> tuple[dict[str, str], Path, str]:
@@ -85,7 +77,6 @@ def build_tool_trace_env(
             existing,
             trace_path=trace_path,
             run_id=resolved_run_id,
-            role=role,
             workspace_root=workdir,
         ),
         trace_path,
@@ -193,7 +184,6 @@ def build_code_agent_event(
         "return_code": return_code,
         "command_kind": request.command_kind.value,
         "agent": request.agent_name,
-        "role": trace_role_from_request(request),
         "source": "runner",
         "confidence": "high",
     }

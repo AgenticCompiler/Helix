@@ -1,6 +1,8 @@
 import ast
+from dataclasses import fields
 import importlib.util
 import sys
+from typing import get_type_hints
 import unittest
 from pathlib import Path
 
@@ -103,6 +105,28 @@ class RunSkillLoaderTests(unittest.TestCase):
         self.assertIs(baseline_module.BaselineState, BaselineState)
         self.assertIs(round_module.OptimizeCheckResult, OptimizeCheckResult)
         self.assertIs(round_module.RoundState, RoundState)
+
+    def test_optimize_submit_baseline_and_round_contracts_share_check_result_shape(self) -> None:
+        baseline_module = load_skill_script_module(
+            "triton-npu-optimize-submit-baseline",
+            "optimize_submit_baseline",
+        )
+        round_module = load_skill_script_module(
+            "triton-npu-optimize-submit-round",
+            "optimize_submit_round",
+        )
+
+        baseline_result_type = baseline_module.OptimizeCheckResult
+        round_result_type = round_module.OptimizeCheckResult
+
+        self.assertEqual(
+            [field.name for field in fields(baseline_result_type)],
+            [field.name for field in fields(round_result_type)],
+        )
+        self.assertEqual(
+            get_type_hints(baseline_result_type)["kind"],
+            get_type_hints(round_result_type)["kind"],
+        )
 
     def test_optimize_runtime_naming_helpers_reuse_round_submit_skill_contract_functions(self) -> None:
         module = load_skill_script_module(

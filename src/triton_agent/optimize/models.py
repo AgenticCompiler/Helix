@@ -33,11 +33,12 @@ class OptimizeRunOptions:
     resume_mode: str
     reset_optimize: bool
     no_agent_session: bool
-    round_mode: Literal["continuous", "checked", "supervised"]
+    round_mode: Literal["checked", "supervised"]
     output: str | None
     test_mode: str | None
     bench_mode: str | None
     prompt: str | None
+    round_batch_size: int = 10
     target_chip: Literal["A3", "A5"] = "A5"
     optimize_target: Literal["kernel", "operator"] = "kernel"
     optimize_knowledge: Literal["v1", "v2", "v3"] = "v1"
@@ -89,25 +90,6 @@ class OptimizeStatusWorkspace:
     latest_verify_state: Path | None = None
     verified: bool = False
     verified_geomean_speedup: float | None = None
-
-
-class GateDecision(str, Enum):
-    PASS = "pass"
-    REVISE_METADATA = "revise-metadata"
-    REVISE_REQUIRED = "revise-required"
-    HARD_FAIL = "hard-fail"
-
-
-@dataclass(frozen=True)
-class GateResult:
-    decision: GateDecision
-    blocking_issues: tuple[str, ...]
-    continue_required: bool = False
-    auto_repairs_applied: tuple[str, ...] = ()
-    next_parent_round: str | None = None
-    next_hypothesis: str | None = None
-    required_evidence_for_next_round: tuple[str, ...] = ()
-
 
 class BaselinePreflightState(str, Enum):
     READY = "ready"

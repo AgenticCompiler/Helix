@@ -107,6 +107,4 @@ def _trace_policy(options: HookStageOptions) -> dict[str, str | bool | None]:
         "enabled": options.trace_enabled,
         "path": str(options.trace_path) if options.trace_path is not None else None,
         "run_id": options.run_id,
-        "role": options.role,
     }
-
