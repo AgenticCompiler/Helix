@@ -33,7 +33,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
 
             self.assertEqual(exc.exception.code, 2)
 
-    def test_handle_optimize_rejects_interactive_batched_mode(self) -> None:
+    def test_handle_optimize_allows_interactive_mode(self) -> None:
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
             operator = Path(tmp) / "kernel.py"
@@ -47,10 +47,31 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
                 ]
             )
 
-            with self.assertRaises(SystemExit) as exc:
-                handle_optimize(parser, args)
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
-            self.assertEqual(exc.exception.code, 2)
+            with patch("triton_agent.commands.optimize.run_optimize_request", return_value=fake_result) as run_mock:
+                exit_code = handle_optimize(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            run_mock.assert_called_once()
+
+    def test_optimize_interactive_mode_forces_long_round_batch(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "optimize",
+                "-i",
+                "kernel.py",
+                "--interact",
+                "--no-report",
+            ]
+        )
+
+        options = optimize_run_options_from_args(args)
+
+        self.assertTrue(options.interact)
+        self.assertEqual(options.round_batch_size, 99)
+        self.assertFalse(options.report)
 
     def test_optimize_run_options_maps_compiler_source_analysis(self) -> None:
         parser = build_parser()

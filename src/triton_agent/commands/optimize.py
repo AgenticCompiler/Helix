@@ -138,6 +138,7 @@ def _validate_round_mode(args: argparse.Namespace) -> Literal["checked", "superv
 
 
 def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptions:
+    interact = bool(getattr(args, "interact", False))
     target_chip = cast(Literal["A3", "A5"], getattr(args, "target_chip", "A5"))
     optimize_target = cast(
         Literal["kernel", "operator"],
@@ -153,15 +154,16 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
     subagent_enabled = bool(getattr(args, "enable_subagent", False))
     upload_enabled = not bool(getattr(args, "no_upload", False))
     log_tools_enabled = bool(getattr(args, "log_tools", False))
+    round_batch_size = 99 if interact else getattr(args, "round_batch_size", 10)
     return OptimizeRunOptions(
         agent_name=args.agent,
-        interact=bool(getattr(args, "interact", False)),
+        interact=interact,
         verbose=bool(getattr(args, "verbose", False)),
         show_output=bool(getattr(args, "show_output", False)),
         remote=getattr(args, "remote", None),
         remote_workdir=getattr(args, "remote_workdir", None),
         min_rounds=getattr(args, "min_rounds", 5),
-        round_batch_size=getattr(args, "round_batch_size", 10),
+        round_batch_size=round_batch_size,
         resume_mode=str(getattr(args, "resume", "auto")),
         reset_optimize=bool(getattr(args, "reset_optimize", False)),
         no_agent_session=bool(getattr(args, "no_agent_session", False)),
@@ -178,7 +180,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         enable_subagent=subagent_enabled,
         enable_agent_hooks=agent_hooks_enabled,
         upload_enabled=upload_enabled,
-        report=not bool(getattr(args, "no_report", False)) and not bool(getattr(args, "interact", False)),
+        report=not bool(getattr(args, "no_report", False)) and not interact,
         log_tools=log_tools_enabled,
         enable_mcp=bool(getattr(args, "enable_mcp", False)),
     )
@@ -189,8 +191,6 @@ def _validate_agent_options(
     args: argparse.Namespace,
     options: OptimizeRunOptions,
 ) -> None:
-    if options.interact:
-        parser.error("--interact is not supported for batched optimize round modes.")
     if getattr(args, "agent", None) == "openhands" and bool(getattr(args, "interact", False)):
         parser.error("OpenHands backend does not support --interact yet.")
     if options.enable_subagent and options.agent_name not in {"codex", "opencode", "claude"}:

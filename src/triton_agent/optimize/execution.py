@@ -179,21 +179,22 @@ def execute_multi_invocation_optimize(
             stderr=stderr,
             verbose_stream=verbose_stream,
         )
-        baseline_result = controller.preflight_baseline(request)
-        if baseline_result.state is not BaselinePreflightState.READY:
-            baseline_fix_result = controller.run_baseline_phase(request, baseline_result)
-            if not baseline_fix_result.succeeded:
-                return baseline_fix_result
+        if not request.interact:
             baseline_result = controller.preflight_baseline(request)
             if baseline_result.state is not BaselinePreflightState.READY:
-                return AgentResult(
-                    return_code=1,
-                    stdout=baseline_fix_result.stdout,
-                    stderr=(
-                        "baseline preflight still failed after repair attempt:\n"
-                        + "\n".join(baseline_result.issues)
-                    ),
-                )
+                baseline_fix_result = controller.run_baseline_phase(request, baseline_result)
+                if not baseline_fix_result.succeeded:
+                    return baseline_fix_result
+                baseline_result = controller.preflight_baseline(request)
+                if baseline_result.state is not BaselinePreflightState.READY:
+                    return AgentResult(
+                        return_code=1,
+                        stdout=baseline_fix_result.stdout,
+                        stderr=(
+                            "baseline preflight still failed after repair attempt:\n"
+                            + "\n".join(baseline_result.issues)
+                        ),
+                    )
         return controller.run_round_loop(request)
     finally:
         if request.verbose:
@@ -495,10 +496,22 @@ class MultiInvocationOptimizeController:
             no_agent_session=True,
             supervisor_report_path=self._artifacts_state.supervisor_report_path,
         )
-        if self._stdout is None and self._stderr is None:
-            result = cast(Any, self._runner).run(request)
-        else:
-            result = cast(Any, self._runner).run(request, stdout=self._stdout, stderr=self._stderr)
+        try:
+            if self._stdout is None and self._stderr is None:
+                result = cast(Any, self._runner).run(request)
+            else:
+                result = cast(Any, self._runner).run(request, stdout=self._stdout, stderr=self._stderr)
+        finally:
+            try:
+                cleaned_pt = cleanup_workspace_pt_files(request.workdir)
+                if request.verbose and cleaned_pt:
+                    emit_verbose(
+                        self._verbose_stream,
+                        "agents",
+                        f"cleaned up {len(cleaned_pt)} unused pt file(s): {', '.join(cleaned_pt)}",
+                    )
+            except Exception:
+                pass
         self._artifacts_manager.record_agent_session(
             self._artifacts_state,
             session_id=result.session_id,
@@ -535,6 +548,7 @@ class MultiInvocationOptimizeController:
                 current_round=batch_start,
                 final_round=batch_end,
                 round_batch_size=request.round_batch_size,
+                optimize_baseline_ready=not request.interact,
             ),
             _request_user_prompt(request),
         )

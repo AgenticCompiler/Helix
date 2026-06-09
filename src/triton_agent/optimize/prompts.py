@@ -339,16 +339,26 @@ def build_optimize_round_prompt(
     final_round: int = 1,
     round_batch_size: int = 10,
 ) -> str:
-    del input_path, output_path, test_mode, bench_mode, round_batch_size, baseline_ready, round_mode
+    del input_path, output_path, test_mode, bench_mode, round_batch_size, round_mode
     lines = [
         f"This invocation owns rounds {current_round} through {final_round}.",
         "Execute those rounds strictly one at a time.",
         "Do not pre-plan the full batch before acting.",
-        "The baseline has already been validated before this worker batch.",
         "Produce all required round artifacts before stopping.",
         "The CLI will validate the completed batch after the invocation exits.",
-        "If a round needs repairs or continuation, a later invocation will return with direct CLI guidance in the prompt.",
     ]
+    if baseline_ready:
+        lines.append("The baseline has already been validated before this worker batch.")
+        lines.append(
+            "If a round needs repairs or continuation, a later invocation will return with direct CLI guidance in the prompt."
+        )
+    else:
+        lines.append(
+            "In this interactive session, repair or establish `baseline/` before `opt-round-1` if it is missing or invalid."
+        )
+        lines.append(
+            "Do not rely on a separate baseline-preflight invocation or a later worker batch to do that setup for you."
+        )
     lines.extend(
         _shared_optimize_prompt_lines(
             target_chip=target_chip,
