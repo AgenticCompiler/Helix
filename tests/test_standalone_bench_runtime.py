@@ -24,7 +24,7 @@ class StandaloneBenchRuntimeTests(unittest.TestCase):
             operator_file = root / "operator_case.py"
             trace_file = root / "trace.txt"
             bench_file.write_text(
-                f"""# bench-mode: standalone
+                f"""# bench-mode: torch-npu-profiler
 # api-name: build_api
 # api-kind: torch-function
 # kernels: KernelA, KernelB
@@ -126,7 +126,7 @@ def build_bench_case_fn(operator_api, case):
             operator_file.write_text("def build_api():\n    return lambda *_args, **_kwargs: None\n", encoding="utf-8")
 
             bench_file.write_text(
-                """# bench-mode: standalone
+                """# bench-mode: torch-npu-profiler
 # api-name: build_api
 # api-kind: torch-function
 # kernels: KernelA
@@ -146,7 +146,7 @@ def build_bench_case_fn(operator_api, case):
                 module.load_bench_cases(bench_file, operator_file)
 
             bench_file.write_text(
-                """# bench-mode: standalone
+                """# bench-mode: torch-npu-profiler
 # api-name: build_api
 # api-kind: torch-function
 # kernels: KernelA
@@ -183,7 +183,7 @@ def build_bench_case_fn(operator_api, case):
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
             bench_file.write_text(
-                """# bench-mode: standalone
+                """# bench-mode: torch-npu-profiler
 # api-name: build_api
 # api-kind: torch-function
 # kernels: KernelA, KernelB
@@ -218,7 +218,7 @@ def build_standalone_bench_cases(operator_api):
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
             bench_file.write_text(
-                """# bench-mode: standalone
+                """# bench-mode: torch-npu-profiler
 # api-name: build_api
 # api-kind: torch-function
 # kernels: KernelA, KernelB
@@ -275,7 +275,7 @@ def build_bench_case_fn(operator_api, case):
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
             bench_file.write_text(
-                """# bench-mode: standalone
+                """# bench-mode: torch-npu-profiler
 # api-name: build_api
 # api-kind: torch-function
 # kernels: KernelA
@@ -324,7 +324,7 @@ def build_bench_case_fn(operator_api, case):
             operator_file = root / "operator_case.py"
             keep_root = root / "kept-profile"
             bench_file.write_text(
-                """# bench-mode: standalone
+                """# bench-mode: torch-npu-profiler
 # api-name: build_api
 # api-kind: torch-function
 # kernels: KernelA
@@ -392,7 +392,7 @@ def build_bench_case_fn(operator_api, case):
             operator_file = root / "operator_case.py"
             keep_root = root / "relative-keep-root"
             bench_file.write_text(
-                """# bench-mode: standalone
+                """# bench-mode: torch-npu-profiler
 # api-name: build_api
 # api-kind: torch-function
 # kernels: KernelA
@@ -463,7 +463,7 @@ def build_bench_case_fn(operator_api, case):
             extra_info = root / "extra-info"
             extra_info.mkdir()
             bench_file.write_text(
-                """# bench-mode: standalone
+                """# bench-mode: torch-npu-profiler
 # api-name: build_api
 # api-kind: torch-function
 # kernels: KernelA
@@ -523,7 +523,7 @@ def build_bench_case_fn(operator_api, case):
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
             bench_file.write_text(
-                """# bench-mode: standalone
+                """# bench-mode: torch-npu-profiler
 # api-name: build_api
 # api-kind: torch-function
 # kernels: KernelA
@@ -578,7 +578,7 @@ def build_bench_case_fn(operator_api, case):
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
             bench_file.write_text(
-                """# bench-mode: standalone
+                """# bench-mode: torch-npu-profiler
 # api-name: build_api
 # api-kind: torch-function
 # kernels: KernelA

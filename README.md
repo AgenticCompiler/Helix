@@ -86,7 +86,7 @@ These are the environment variables that `triton-agent` reads directly at runtim
 | `TRITON_AGENT_BATCH_NPU_DEVICES` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Comma-separated Ascend device list that also supports inclusive numeric ranges such as `0,3-5,8-9`. When set, concurrent batch workspaces are pinned to these devices. See also `TRITON_AGENT_BATCH_WORKERS_PER_NPU` to allow multiple workers per device. |
 | `TRITON_AGENT_BATCH_WORKERS_PER_NPU` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Positive integer that allows each configured NPU device to host multiple concurrent batch workers. Only effective when `TRITON_AGENT_BATCH_NPU_DEVICES` is set; defaults to `1`. Effective capacity is `device_count × workers_per_npu`. |
 | `TRITON_AGENT_CODE_AGENT_MAX_RETRIES` | No | Agent-backed commands | Non-negative integer retry budget for transient code-agent failures such as rate limits. Default is `2`. Set `0` to disable retries. |
-| `TRITON_AGENT_BENCH_OUTPUT_DIR` | No | Local `run-bench`, `verify`, and optimize benchmark validation | Preserves local benchmark profiler output directories under the given root instead of using auto-cleaned temporary directories. Applies to both `standalone` and `msprof` benchmark modes so you can inspect raw profiler artifacts after local benchmark runs. |
+| `TRITON_AGENT_BENCH_OUTPUT_DIR` | No | Local `run-bench`, `verify`, and optimize benchmark validation | Preserves local benchmark profiler output directories under the given root instead of using auto-cleaned temporary directories. Applies to both `torch-npu-profiler` and `msprof` benchmark modes so you can inspect raw profiler artifacts after local benchmark runs. |
 | `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` | No | Ordinary `optimize`, `optimize-batch` PT cleanup | Opts back into deleting optimize-owned archived PT results during ordinary round and end-of-run cleanup. By default those PT files are preserved. This variable does not affect the `triton-npu-optimize-submit-baseline` skill, which never deletes PT files, or `--reset-optimize`, which still deletes known optimize PT artifacts. |
 | `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW` | No | `triton-npu-optimize-submit-round`, optimize continuation guidance | Number of recent comparable rounds to inspect for advisory local-optimum warnings after a round already passes the contract. Default is `3`. Minimum effective value is `2`. |
 | `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN` | No | `triton-npu-optimize-submit-round`, optimize continuation guidance | Maximum adjacent baseline-relative geomean speedup gain that still counts as nearly flat for advisory local-optimum warnings. Default is `0.02`. |
@@ -240,7 +240,7 @@ Common options:
 
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--test-mode standalone|differential`: default is `differential`
-- `--bench-mode standalone|msprof`: default is `standalone`
+- `--bench-mode torch-npu-profiler|msprof`: default is `torch-npu-profiler`
 - `--interact`
 - `--show-output`
 - `--force-overwrite`
@@ -307,7 +307,7 @@ You may also point `--input` at a single operator workspace directory when that 
 Common options:
 
 - `--output bench_a.py`
-- `--bench-mode standalone|msprof`: default is `standalone`
+- `--bench-mode torch-npu-profiler|msprof`: default is `torch-npu-profiler`
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--interact`
 - `--show-output`
@@ -318,7 +318,7 @@ Common options:
 Example:
 
 ```bash
-uv run triton-agent gen-bench --input a.py --bench-mode standalone
+uv run triton-agent gen-bench --input a.py --bench-mode torch-npu-profiler
 ```
 
 ## Run Benchmarks
@@ -331,7 +331,7 @@ uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
 
 Common options:
 
-- `--bench-mode standalone|msprof`: override the mode recorded in the benchmark file.
+- `--bench-mode torch-npu-profiler|msprof`: override the mode recorded in the benchmark file.
 - `--npu-devices 0,1,4-7`: run benchmark cases concurrently across the listed Ascend devices. Supports inclusive numeric ranges and preserves current serial behavior when omitted.
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -345,12 +345,12 @@ uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py --bench-mode msprof --npu-devices 0,1,2,3
 ```
 
-For `standalone` benchmarks:
+For `torch-npu-profiler` benchmarks:
 
 - the benchmark file is import-only and exports `build_operator_api(operator_module)`, `build_bench_cases()`, and `build_bench_case_fn(operator_api, case)`
 - `run-bench` profiles each declared case with `torch_npu.profiler`
-- `run-bench --npu-devices ...` runs declared standalone cases in parallel through isolated case workers and assigns one visible device per case
-- `profile-bench` requires `--case-id <id>` for standalone profiling
+- `run-bench --npu-devices ...` runs declared `torch-npu-profiler` cases in parallel through isolated case workers and assigns one visible device per case
+- `profile-bench` requires `--case-id <id>` for `torch-npu-profiler` profiling
 
 For `msprof` benchmarks:
 
@@ -380,7 +380,7 @@ Common options:
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--prompt "..."`: append extra worker instructions without replacing the built-in optimize contract.
 - `--test-mode standalone|differential`: default is `differential`
-- `--bench-mode standalone|msprof`: default is `standalone`. Sets the benchmark mode for fresh runs. With `--resume auto`, resumable workspaces keep the benchmark mode recorded in their existing benchmark harness.
+- `--bench-mode torch-npu-profiler|msprof`: default is `torch-npu-profiler`. Sets the benchmark mode for fresh runs. With `--resume auto`, resumable workspaces keep the benchmark mode recorded in their existing benchmark harness.
 - `--optimize-target kernel|operator`: default is `kernel`. `kernel` keeps the session focused on optimizing the Triton Ascend NPU kernel path itself. `operator` broadens the target to end-to-end operator latency and allows coordinated wrapper/data-movement/scheduling/pre/post-processing/kernel changes while still requiring a real Triton Ascend NPU computation path.
 - `--resume auto|continue|fresh`: default is `auto`
 - `--reset-optimize`: only valid with `--resume fresh`; remove known optimize-session artifacts before starting a new run while keeping reusable test and benchmark harnesses.
@@ -511,7 +511,7 @@ Common options:
 
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--test-mode standalone|differential`
-- `--bench-mode standalone|msprof`
+- `--bench-mode torch-npu-profiler|msprof`
 - `--concurrency <N|max>`: defaults to `1`
 - `--show-output`
 - `--remote user@host[:port]`
@@ -584,7 +584,7 @@ Common options:
 
 - `--phase all|test|bench`: default is `all`.
 - `--test-mode standalone|differential`: override the mode recorded in `baseline/state.json`.
-- `--bench-mode standalone|msprof`: override the mode recorded in `baseline/state.json`.
+- `--bench-mode torch-npu-profiler|msprof`: override the mode recorded in `baseline/state.json`.
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
 - `--keep-remote-workdir`
@@ -634,7 +634,7 @@ Common options:
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--prompt "..."`: append the same extra worker instructions to every workspace optimize run.
 - `--test-mode standalone|differential`
-- `--bench-mode standalone|msprof`: sets the benchmark mode for fresh workspaces. With `--resume auto`, resumable workspaces keep the benchmark mode recorded in their existing benchmark harness.
+- `--bench-mode torch-npu-profiler|msprof`: sets the benchmark mode for fresh workspaces. With `--resume auto`, resumable workspaces keep the benchmark mode recorded in their existing benchmark harness.
 - `--resume auto|continue|fresh`
 - `--reset-optimize`: when used with `--resume fresh`, clear known optimize artifacts for each workspace and reset the batch status file before rerunning
 - `--optimize-knowledge v1|v2|v3`

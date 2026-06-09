@@ -47,7 +47,7 @@ This is useful when you want to:
 ## Working rules
 
 - Prefer `python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench ...` for benchmark profiling, especially when the workflow is remote-aware.
-- profile one selected `--case-id <id>` case for both `standalone` and `msprof`; benchmark profiling must not receive `--bench` or `--num-bench`.
+- profile one selected `--case-id <id>` case for both `torch-npu-profiler` and `msprof`; benchmark profiling must not receive `--bench` or `--num-bench`.
 - If the benchmark file declares exactly one case, the helper may auto-select it; otherwise provide `--case-id`.
 - If the benchmark metadata says `# bench-mode: msprof`, the selected case still requires resolvable `# kernels:` metadata in the benchmark header.
 - When the outer task is remote-aware, pass the same `--remote` and `--remote-workdir` settings through `profile-bench` so profiling runs on the remote machine while the resulting `PROF_*` directory is copied back locally.
@@ -61,7 +61,7 @@ This is useful when you want to:
 
 ## Bench mode contract
 
-- `standalone`
+- `torch-npu-profiler`
   - Use:
     ```bash
     python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py --case-id <id>

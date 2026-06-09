@@ -15,7 +15,7 @@ Rules:
 Mode notes:
 
 - In both modes, pass `--case-id <id>` and do not pass numeric case selectors.
-- In `standalone` mode, the helper profiles one declared benchmark case through the shared benchmark runtime helper.
+- In `torch-npu-profiler` mode, the helper profiles one declared benchmark case through the shared benchmark runtime helper.
 - In `msprof` mode, the helper resolves the selected benchmark case by `case_id`, wraps shared runtime-helper case execution in `msprof`, and defaults to the sole declared case only when the benchmark declares exactly one case.
 - In `msprof` mode, do not pass kernel filter arguments; `msprof` profiles the selected benchmark case and the report can be filtered later with `--target-op`.
 

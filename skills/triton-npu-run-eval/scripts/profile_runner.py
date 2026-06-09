@@ -26,6 +26,10 @@ def _profile_timeout() -> int:
     return env_int("TRITON_AGENT_PROFILE_TIMEOUT_SECONDS", 900)
 
 
+def _normalize_bench_mode(bench_mode: str) -> str:
+    return "torch-npu-profiler" if bench_mode == "standalone" else bench_mode
+
+
 def run_local_profile_bench(
     bench_file: Path,
     operator_file: Path,
@@ -33,13 +37,14 @@ def run_local_profile_bench(
     case_id: str | None = None,
     kernel_name: str | None = None,
 ) -> tuple[ResultPayload, Path | None]:
+    bench_mode = _normalize_bench_mode(bench_mode)
     del kernel_name
     if bench_mode == "msprof":
         result = _run_local_profile_msprof(bench_file, operator_file, case_id)
     else:
         if case_id is None:
-            raise ValueError("Standalone benchmark profiling requires --case-id <id>.")
-        result = _run_local_profile_standalone(
+            raise ValueError("torch-npu-profiler benchmark profiling requires --case-id <id>.")
+        result = _run_local_profile_torch_npu_profiler(
             bench_file, operator_file, case_id,
         )
     if not result_succeeded(result):
@@ -60,6 +65,7 @@ def run_remote_profile_bench(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
+    bench_mode = _normalize_bench_mode(bench_mode)
     del kernel_name
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
@@ -98,8 +104,8 @@ def run_remote_profile_bench(
                 )
         else:
             if case_id is None:
-                raise ValueError("Standalone benchmark profiling requires --case-id <id>.")
-            result = _run_remote_profile_standalone(
+                raise ValueError("torch-npu-profiler benchmark profiling requires --case-id <id>.")
+            result = _run_remote_profile_torch_npu_profiler(
                 spec,
                 remote_workspace,
                 bench_file,
@@ -133,7 +139,7 @@ def run_remote_profile_bench(
             cleanup_remote_workspace(spec, remote_workspace, verbose=verbose, stderr=stderr)
 
 
-def _run_local_profile_standalone(
+def _run_local_profile_torch_npu_profiler(
     bench_file: Path,
     operator_file: Path,
     case_id: str,
@@ -141,7 +147,7 @@ def _run_local_profile_standalone(
     prev = os.environ.get("TRITON_ALWAYS_COMPILE")
     os.environ["TRITON_ALWAYS_COMPILE"] = "1"
     try:
-        return profile_local_standalone_case(bench_file, operator_file, case_id)
+        return profile_local_torch_npu_profiler_case(bench_file, operator_file, case_id)
     finally:
         if prev is None:
             del os.environ["TRITON_ALWAYS_COMPILE"]
@@ -175,7 +181,7 @@ def _run_local_profile_msprof(
     )
 
 
-def _run_remote_profile_standalone(
+def _run_remote_profile_torch_npu_profiler(
     spec: RemoteSpec,
     remote_workspace: str,
     bench_file: Path,
@@ -199,7 +205,7 @@ def _run_remote_profile_standalone(
         [
             "python3",
             "-c",
-            _build_remote_standalone_profile_script(),
+            _build_remote_torch_npu_profiler_profile_script(),
             bench_file.name,
             operator_file.name,
             case_id,
@@ -297,7 +303,7 @@ def _validate_profile_dir(profile_dir: Path) -> None:
         raise FileNotFoundError(f"Profiler output is incomplete: no op_statistic_*.csv under {output_dir}")
 
 
-def profile_local_standalone_case(
+def profile_local_torch_npu_profiler_case(
     bench_file: Path,
     operator_file: Path,
     case_id: str,
@@ -355,7 +361,7 @@ def _resolve_bench_case(bench_file: Path, operator_file: Path, case_id: str | No
     raise ValueError(f"Unknown benchmark case id '{case_id}'. Available case ids: {available}")
 
 
-def _build_remote_standalone_profile_script() -> str:
+def _build_remote_torch_npu_profiler_profile_script() -> str:
     return (
         "import pathlib, sys; "
         "import bench_runtime as runtime; "

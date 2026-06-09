@@ -202,13 +202,13 @@ class LocalBenchRunnerTests(unittest.TestCase):
         self.assertNotIn("class _BenchRunnerDeps", source)
         self.assertNotIn("_DEPS =", source)
 
-    def test_run_local_bench_standalone_delegates_to_hook_runtime(self) -> None:
+    def test_run_local_bench_torch_npu_profiler_delegates_to_hook_runtime(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: abs_kernel\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: abs_kernel\n", encoding="utf-8")
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
             fake_result = make_skill_result(0, "bench stdout\n", "")
@@ -216,7 +216,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             perf_file.write_text("latency-case-a: 1.0\n", encoding="utf-8")
             with patch.object(
                 module,
-                "run_local_standalone_bench",
+                "run_local_torch_npu_profiler_bench",
                 create=True,
                 return_value=(fake_result, perf_file),
             ) as helper, patch.object(module, "run_streaming_process") as streaming:
@@ -238,7 +238,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: abs_kernel\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: abs_kernel\n", encoding="utf-8")
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
             fake_result = make_skill_result(0, "", "")
@@ -254,7 +254,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             ):
                 with patch.object(
                     module,
-                    "run_local_standalone_bench",
+                    "run_local_torch_npu_profiler_bench",
                     create=True,
                     return_value=(fake_result, perf_file),
                 ):
@@ -269,20 +269,20 @@ class LocalBenchRunnerTests(unittest.TestCase):
         self.assertEqual(resolved_perf, perf_file)
         self.assertIn("[TRITON_AGENT_DEBUG] ASCEND_RT_VISIBLE_DEVICES=5", stdout.getvalue())
 
-    def test_run_local_bench_standalone_preserves_helper_perf_path(self) -> None:
+    def test_run_local_bench_torch_npu_profiler_preserves_helper_perf_path(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "opt_abs.py"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: abs_kernel\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: abs_kernel\n", encoding="utf-8")
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
             fake_result = make_skill_result(0, "bench stdout\n", "")
             perf_file = root / "opt_abs_perf.txt"
             with patch.object(
                 module,
-                "run_local_standalone_bench",
+                "run_local_torch_npu_profiler_bench",
                 create=True,
                 return_value=(fake_result, perf_file),
             ):
@@ -294,7 +294,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             self.assertEqual(perf_path, root / "opt_abs_perf.txt")
 
-    def test_run_local_bench_standalone_runs_in_bench_workdir_and_cleans_extra_info(self) -> None:
+    def test_run_local_bench_torch_npu_profiler_runs_in_bench_workdir_and_cleans_extra_info(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -304,7 +304,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             operator_file = root / "abs.py"
             extra_info = bench_dir / "extra-info"
             extra_info.mkdir()
-            bench_file.write_text("# bench-mode: standalone\n# kernel: abs_kernel\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: abs_kernel\n", encoding="utf-8")
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
             observed_cwds: list[Path] = []
@@ -324,7 +324,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             with patch.object(
                 module,
-                "run_local_standalone_bench",
+                "run_local_torch_npu_profiler_bench",
                 create=True,
                 side_effect=_fake_helper,
             ):
@@ -472,14 +472,14 @@ class LocalBenchRunnerTests(unittest.TestCase):
             helper.assert_called_once_with(bench_file, operator_file, verbose=False,
                                              output=None)
 
-    def test_run_local_bench_standalone_parallel_uses_isolated_case_workdirs_and_device_envs(self) -> None:
+    def test_run_local_bench_torch_npu_profiler_parallel_uses_isolated_case_workdirs_and_device_envs(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
             runtime_script = root / "bench_runtime.py"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
             runtime_script.write_text("def run_one_bench_case_record(*_args, **_kwargs):\n    return None\n", encoding="utf-8")
 
@@ -590,7 +590,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             perf_text = perf_path.read_text(encoding="utf-8")
             self.assertLess(perf_text.index('"case_label":"case-a"'), perf_text.index('"case_label":"case-b"'))
 
-    def test_run_local_bench_standalone_parallel_normalizes_relative_preserved_run_dir(self) -> None:
+    def test_run_local_bench_torch_npu_profiler_parallel_normalizes_relative_preserved_run_dir(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -599,7 +599,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             keep_root = root / "kept-profile"
             runtime_script = root / "bench_runtime.py"
             relative_run_dir = Path("./kept-profile/run-123")
-            bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
             runtime_script.write_text("def run_one_bench_case_record(*_args, **_kwargs):\n    return None\n", encoding="utf-8")
 
@@ -662,7 +662,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertTrue(observed_preserved_run_dirs[0].is_absolute())
             self.assertTrue(keep_root.resolve() in observed_preserved_run_dirs[0].parents)
 
-    def test_run_local_bench_standalone_parallel_uses_absolute_preserved_run_dir_for_relative_output_root(self) -> None:
+    def test_run_local_bench_torch_npu_profiler_parallel_uses_absolute_preserved_run_dir_for_relative_output_root(self) -> None:
         module = load_bench_runner_module()
         runtime = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -732,7 +732,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertTrue(observed_preserved_run_dirs[0].is_absolute())
             self.assertTrue(keep_root.resolve() in observed_preserved_run_dirs[0].parents)
 
-    def test_run_local_bench_standalone_parallel_imports_nested_runtime_support_script(self) -> None:
+    def test_run_local_bench_torch_npu_profiler_parallel_imports_nested_runtime_support_script(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -740,7 +740,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             operator_file = root / "operator_case.py"
             runtime_dir = root / ".opencode" / "skills" / "triton-npu-run-eval" / "scripts"
             runtime_script = runtime_dir / "bench_runtime.py"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
             runtime_dir.mkdir(parents=True)
             runtime_script.write_text(
@@ -792,14 +792,14 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             self.assertIn('"case_label":"case-a"', perf_text)
             self.assertIn('"kernel_avg_time_us":1.0', perf_text)
 
-    def test_run_remote_bench_standalone_uses_module_helper_files(self) -> None:
+    def test_run_remote_bench_torch_npu_profiler_uses_module_helper_files(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
             perf_file = root / "abs_perf.txt"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: abs_kernel\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: abs_kernel\n", encoding="utf-8")
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
             with patch.object(
@@ -2298,7 +2298,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
             runtime_script = root / "bench_runtime.py"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
             runtime_script.write_text(
                 "def run_one_bench_case_record(bench_file, operator_file, case_id, "
@@ -2414,7 +2414,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
             runtime_script = root / "bench_runtime.py"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
             runtime_script.write_text(
                 "def run_one_bench_case_record(bench_file, operator_file, case_id, "

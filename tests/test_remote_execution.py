@@ -171,7 +171,7 @@ class RemoteExecutionTests(unittest.TestCase):
             "",
         )
 
-        record = module._parse_standalone_case_result_payload(
+        record = module._parse_torch_npu_profiler_case_result_payload(
             result,
             case_id="case-a",
             fallback_kernel_source="metadata",
@@ -199,7 +199,7 @@ result = {
     "stalled": False,
     "session_id": None,
 }
-record = module._parse_standalone_case_result_payload(
+record = module._parse_torch_npu_profiler_case_result_payload(
     result,
     case_id="case-a",
     fallback_kernel_source="metadata",
@@ -461,14 +461,14 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             ],
         )
 
-    def test_run_remote_bench_standalone_uses_runtime_helper_and_copies_perf_back(self) -> None:
+    def test_run_remote_bench_torch_npu_profiler_uses_runtime_helper_and_copies_perf_back(self) -> None:
         module = load_bench_runner_module()
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_kernel.py"
             operator_file = root / "kernel.py"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: k\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: k\n", encoding="utf-8")
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
             local_perf_path = root / "kernel_perf.txt"
 
@@ -526,14 +526,14 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
         )
         cleanup.assert_called_once_with("spec", "/tmp/remote-clean", verbose=False, stderr=None)
 
-    def test_run_remote_bench_standalone_parallel_uses_isolated_case_workspaces_and_device_envs(self) -> None:
+    def test_run_remote_bench_torch_npu_profiler_parallel_uses_isolated_case_workspaces_and_device_envs(self) -> None:
         module = load_bench_runner_module()
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
 
             streamed_commands: list[tuple[str, Optional[str], list[str]]] = []
@@ -723,7 +723,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                 module,
                 "create_remote_workspace",
                 return_value=("spec", "/tmp/remote-msprof"),
-            ), patch.object(module, "copy_file_to_remote"), patch.object(
+            ), patch.object(module, "copy_file_to_remote") as copy_to_remote, patch.object(
                 module,
                 "run_remote_command_buffered",
                 side_effect=_fake_remote_buffered,
@@ -744,6 +744,9 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             self.assertEqual(remote_workspace, "/tmp/remote-msprof")
             self.assertEqual(issued_tmp_dirs, temp_dirs)
             self.assertEqual(removed_tmp_dirs, temp_dirs)
+            copied_targets = [call.args[2].rsplit("/", 1)[-1] for call in copy_to_remote.call_args_list]
+            self.assertIn("bench_runtime.py", copied_targets)
+            self.assertIn("profile_csv_parser.py", copied_targets)
             if perf_path is None:
                 self.fail("expected msprof perf path")
             self.assertEqual(
@@ -1359,7 +1362,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             root = Path(tmp)
             bench_file = root / "bench kernel.py"
             operator_file = root / "kernel op.py"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: k\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: k\n", encoding="utf-8")
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
 
             with patch.object(

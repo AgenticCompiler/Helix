@@ -15,12 +15,12 @@ class ProfileRunnerTests(unittest.TestCase):
             bench_file = root / "bench_kernel.py"
             operator_file = root / "kernel.py"
             profile_dir = root / "PROF_demo"
-            bench_file.write_text("# bench-mode: standalone\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n", encoding="utf-8")
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
 
             with patch.object(
                 module,
-                "profile_local_standalone_case",
+                "profile_local_torch_npu_profiler_case",
                 create=True,
                 return_value=make_skill_result(0, "profile stdout\n", ""),
             ) as helper, patch.object(
@@ -408,7 +408,7 @@ def build_bench_case_fn(operator_api, case):
             root = Path(tmp)
             bench_file = root / "bench_kernel.py"
             operator_file = root / "kernel.py"
-            bench_file.write_text("# bench-mode: standalone\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n", encoding="utf-8")
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
 
             copied_profile_dir = root / "PROF_remote"

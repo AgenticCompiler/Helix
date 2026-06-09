@@ -171,7 +171,7 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
         operator_file: Annotated[str, Field(description="Absolute path to the operator implementation file.")],
         bench_mode: Annotated[
             str | None,
-            Field(description="Optional benchmark mode override. Supported values: standalone, msprof."),
+            Field(description="Optional benchmark mode override. Supported values: torch-npu-profiler, msprof."),
         ] = None,
         remote: Annotated[str | None, Field(description="Optional remote execution target.")] = None,
         remote_workdir: Annotated[str | None, Field(description="Optional remote workspace root override.")] = None,
@@ -209,7 +209,7 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
         operator_file: Annotated[str, Field(description="Absolute path to the operator implementation file.")],
         bench_mode: Annotated[
             str | None,
-            Field(description="Optional benchmark mode override. Supported values: standalone, msprof."),
+            Field(description="Optional benchmark mode override. Supported values: torch-npu-profiler, msprof."),
         ] = None,
         case_id: Annotated[str | None, Field(description="Optional benchmark case id to profile.")] = None,
         kernel_name: Annotated[str | None, Field(description="Optional kernel name filter for profiling.")] = None,
