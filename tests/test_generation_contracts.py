@@ -179,6 +179,14 @@ class GenerationContractTests(unittest.TestCase):
         self.assertNotIn("run-test --input", optimize)
         self.assertNotIn("run-bench --input", optimize)
 
+    def test_convert_skill_requires_reusing_existing_tests_before_regeneration(self) -> None:
+        convert_skill = _read("skills/triton-npu-convert-pytorch-operator/SKILL.md")
+
+        self.assertIn("If a suitable test already exists in the operator workspace, reuse it", convert_skill)
+        self.assertIn("This includes existing standalone and differential test cases", convert_skill)
+        self.assertIn("Do not create a new test when an existing suitable test can be reused", convert_skill)
+        self.assertIn("unless the user explicitly asks to regenerate", convert_skill)
+
     def test_generation_skills_include_explicit_run_command_examples(self) -> None:
         test_gen = _read("skills/triton-npu-gen-test/SKILL.md")
         self.assertIn("## Validation Commands", test_gen)

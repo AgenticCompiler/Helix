@@ -4617,6 +4617,9 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Target Ascend NPU only for this conversion flow", prompt)
         self.assertIn("Do not benchmark this workflow.", prompt)
         self.assertIn("Do not create `baseline/`.", prompt)
+        self.assertIn("If a suitable test already exists in the workspace, reuse it", prompt)
+        self.assertIn("This includes existing standalone or differential test cases when they already cover the operator workspace", prompt)
+        self.assertIn("Only generate a new test when no suitable reusable test exists", prompt)
         self.assertNotIn("triton-npu-prepare-optimize-baseline", prompt)
         self.assertIn("Requested output: /tmp/triton_op.py", prompt)
 

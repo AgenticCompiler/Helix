@@ -211,7 +211,10 @@ class ConvertRuntimeTests(unittest.TestCase):
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
             operator = Path(tmp) / "kernel.py"
+            converted = Path(tmp) / "triton_kernel.py"
+            test_file = Path(tmp) / "differential_test_kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\n", encoding="utf-8")
             args = parser.parse_args(
                 [
                     "convert",
@@ -226,10 +229,19 @@ class ConvertRuntimeTests(unittest.TestCase):
             def _fake_run(request):
                 captured["output_path"] = request.output_path
                 captured["staged_skill_names"] = request.staged_skill_names
+                converted.write_text("converted\n", encoding="utf-8")
                 return fake_result
 
             with patch("triton_agent.commands.convert.run_convert_request", side_effect=_fake_run):
-                exit_code = handle_convert(parser, args)
+                with patch(
+                    "triton_agent.commands.convert._verify_converted_output",
+                    return_value=type(
+                        "Verify",
+                        (),
+                        {"return_code": 0, "summary": "ok", "baseline_result": None},
+                    )(),
+                ):
+                    exit_code = handle_convert(parser, args)
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(
@@ -253,7 +265,10 @@ class ConvertRuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             operator = workspace / "kernel.py"
+            converted = workspace / "triton_kernel.py"
+            test_file = workspace / "differential_test_kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\n", encoding="utf-8")
             args = parser.parse_args(
                 [
                     "convert",
@@ -269,10 +284,19 @@ class ConvertRuntimeTests(unittest.TestCase):
                 captured["input_path"] = request.input_path
                 captured["workdir"] = request.workdir
                 captured["output_path"] = request.output_path
+                converted.write_text("converted\n", encoding="utf-8")
                 return fake_result
 
             with patch("triton_agent.commands.convert.run_convert_request", side_effect=_fake_run):
-                exit_code = handle_convert(parser, args)
+                with patch(
+                    "triton_agent.commands.convert._verify_converted_output",
+                    return_value=type(
+                        "Verify",
+                        (),
+                        {"return_code": 0, "summary": "ok", "baseline_result": None},
+                    )(),
+                ):
+                    exit_code = handle_convert(parser, args)
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(captured["input_path"], operator.resolve())
@@ -281,6 +305,355 @@ class ConvertRuntimeTests(unittest.TestCase):
                 captured["output_path"],
                 (workspace / "triton_kernel.py").resolve(),
             )
+
+    def test_handle_convert_reuses_default_differential_test_for_cli_verification(self) -> None:
+        from triton_agent.commands.convert import handle_convert
+
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            test_file = workspace / "differential_test_kernel.py"
+            operator.write_text("print('src')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\n", encoding="utf-8")
+            args = parser.parse_args(["convert", "-i", str(operator)])
+
+            run_result = AgentResult(return_code=0, stdout="", stderr="")
+            archived_oracle = workspace / "kernel_result.pt"
+            archived_candidate = workspace / "triton_kernel_result.pt"
+
+            observed_test_calls: list[tuple[Path, Path, str]] = []
+
+            def _fake_run_convert(request):
+                assert request.output_path is not None
+                request.output_path.write_text("print('dst')\n", encoding="utf-8")
+                self.assertEqual(request.output_path, (workspace / "triton_kernel.py").resolve())
+                return run_result
+
+            def _fake_run_local_test(test_path, operator_path, test_mode, *, verbose=False):
+                del verbose
+                observed_test_calls.append((test_path, operator_path, test_mode))
+                if operator_path == operator.resolve():
+                    return AgentResult(return_code=0, stdout="oracle\n", stderr=""), archived_oracle
+                return AgentResult(return_code=0, stdout="candidate\n", stderr=""), archived_candidate
+
+            with patch("triton_agent.commands.convert.run_convert_request", side_effect=_fake_run_convert):
+                with patch("triton_agent.commands.convert.run_local_test", side_effect=_fake_run_local_test):
+                    with patch("triton_agent.commands.convert.compare_result_files", return_value=0) as compare_mock:
+                        exit_code = handle_convert(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(
+                observed_test_calls,
+                [
+                    (test_file.resolve(), operator.resolve(), "differential"),
+                    ((workspace / "differential_test_kernel.py").resolve(), (workspace / "triton_kernel.py").resolve(), "differential"),
+                ],
+            )
+            compare_mock.assert_called_once_with(
+                archived_oracle,
+                archived_candidate,
+                "balanced",
+            )
+
+    def test_resolve_convert_test_file_falls_back_to_unique_standalone_test(self) -> None:
+        from triton_agent.commands.convert import _resolve_convert_test_file
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            standalone_test = workspace / "test_kernel.py"
+            operator.write_text("print('src')\n", encoding="utf-8")
+            standalone_test.write_text("# test-mode: standalone\n", encoding="utf-8")
+
+            request = AgentRequest(
+                command_kind=CommandKind.CONVERT,
+                input_path=operator.resolve(),
+                operator_path=operator.resolve(),
+                output_path=(workspace / "triton_kernel.py").resolve(),
+                test_mode="differential",
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-convert-pytorch-operator",
+                prompt="convert",
+                workdir=workspace.resolve(),
+            )
+
+            resolved = _resolve_convert_test_file(request)
+
+        self.assertEqual(resolved, standalone_test.resolve())
+
+    def test_resolve_convert_test_file_prefers_differential_over_standalone(self) -> None:
+        from triton_agent.commands.convert import _resolve_convert_test_file
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            differential_test = workspace / "differential_test_kernel.py"
+            standalone_test = workspace / "test_kernel.py"
+            operator.write_text("print('src')\n", encoding="utf-8")
+            differential_test.write_text("# test-mode: differential\n", encoding="utf-8")
+            standalone_test.write_text("# test-mode: standalone\n", encoding="utf-8")
+
+            request = AgentRequest(
+                command_kind=CommandKind.CONVERT,
+                input_path=operator.resolve(),
+                operator_path=operator.resolve(),
+                output_path=(workspace / "triton_kernel.py").resolve(),
+                test_mode="differential",
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-convert-pytorch-operator",
+                prompt="convert",
+                workdir=workspace.resolve(),
+            )
+
+            resolved = _resolve_convert_test_file(request)
+
+        self.assertEqual(resolved, differential_test.resolve())
+
+    def test_verify_converted_output_uses_standalone_mode_without_result_comparison(self) -> None:
+        from triton_agent.commands.convert import _verify_converted_output
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            converted = workspace / "triton_kernel.py"
+            standalone_test = workspace / "test_kernel.py"
+            operator.write_text("print('src')\n", encoding="utf-8")
+            converted.write_text("print('dst')\n", encoding="utf-8")
+            standalone_test.write_text("# test-mode: standalone\n", encoding="utf-8")
+
+            request = AgentRequest(
+                command_kind=CommandKind.CONVERT,
+                input_path=operator.resolve(),
+                operator_path=operator.resolve(),
+                output_path=converted.resolve(),
+                test_mode="differential",
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-convert-pytorch-operator",
+                prompt="convert",
+                workdir=workspace.resolve(),
+            )
+
+            observed_modes: list[str] = []
+            observed_targets: list[Path] = []
+
+            def _fake_run_local_test(test_path, operator_path, test_mode, *, verbose=False):
+                del test_path, verbose
+                observed_modes.append(test_mode)
+                observed_targets.append(operator_path)
+                return AgentResult(return_code=0, stdout="ok\n", stderr=""), None
+
+            with patch("triton_agent.commands.convert.run_local_test", side_effect=_fake_run_local_test):
+                with patch("triton_agent.commands.convert.compare_result_files") as compare_mock:
+                    verification = _verify_converted_output(request)
+
+        self.assertEqual(verification.return_code, 0)
+        self.assertEqual(observed_modes, ["standalone"])
+        self.assertEqual(observed_targets, [converted.resolve()])
+        compare_mock.assert_not_called()
+
+    def test_verify_converted_output_reports_standalone_failure_context(self) -> None:
+        from triton_agent.commands.convert import _verify_converted_output
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            converted = workspace / "triton_kernel.py"
+            standalone_test = workspace / "test_kernel.py"
+            operator.write_text("print('src')\n", encoding="utf-8")
+            converted.write_text("print('dst')\n", encoding="utf-8")
+            standalone_test.write_text("# test-mode: standalone\n", encoding="utf-8")
+
+            request = AgentRequest(
+                command_kind=CommandKind.CONVERT,
+                input_path=operator.resolve(),
+                operator_path=operator.resolve(),
+                output_path=converted.resolve(),
+                test_mode="differential",
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-convert-pytorch-operator",
+                prompt="convert",
+                workdir=workspace.resolve(),
+            )
+
+            def _fake_run_local_test(test_path, operator_path, test_mode, *, verbose=False):
+                del test_path, test_mode, verbose
+                self.assertEqual(operator_path, converted.resolve())
+                return AgentResult(return_code=7, stdout="", stderr="boom\n"), None
+
+            with patch("triton_agent.commands.convert.run_local_test", side_effect=_fake_run_local_test):
+                verification = _verify_converted_output(request)
+
+        self.assertEqual(verification.return_code, 7)
+        self.assertIn("Standalone test file:", verification.summary)
+        self.assertNotIn("Differential test file:", verification.summary)
+        self.assertIn("Converted output:", verification.summary)
+
+    def test_verify_converted_output_reuses_existing_differential_baseline_result(self) -> None:
+        from triton_agent.commands.convert import _verify_converted_output
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            converted = workspace / "triton_kernel.py"
+            test_file = workspace / "differential_test_kernel.py"
+            baseline_result = workspace / "kernel_result.pt"
+            candidate_result = workspace / "triton_kernel_result.pt"
+            operator.write_text("print('src')\n", encoding="utf-8")
+            converted.write_text("print('dst')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\n", encoding="utf-8")
+            baseline_result.write_text("baseline\n", encoding="utf-8")
+
+            request = AgentRequest(
+                command_kind=CommandKind.CONVERT,
+                input_path=operator.resolve(),
+                operator_path=operator.resolve(),
+                output_path=converted.resolve(),
+                test_mode="differential",
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-convert-pytorch-operator",
+                prompt="convert",
+                workdir=workspace.resolve(),
+            )
+
+            observed_test_calls: list[tuple[Path, Path, str]] = []
+
+            def _fake_run_local_test(test_path, operator_path, test_mode, *, verbose=False):
+                del verbose
+                observed_test_calls.append((test_path, operator_path, test_mode))
+                candidate_result.write_text("candidate\n", encoding="utf-8")
+                return AgentResult(return_code=0, stdout="candidate\n", stderr=""), candidate_result
+
+            with patch("triton_agent.commands.convert.run_local_test", side_effect=_fake_run_local_test):
+                with patch("triton_agent.commands.convert.compare_result_files", return_value=0) as compare_mock:
+                    verification = _verify_converted_output(request)
+
+        self.assertEqual(verification.return_code, 0)
+        self.assertEqual(
+            observed_test_calls,
+            [(test_file.resolve(), converted.resolve(), "differential")],
+        )
+        compare_mock.assert_called_once_with(
+            baseline_result.resolve(),
+            candidate_result,
+            "balanced",
+        )
+
+    def test_handle_convert_repairs_once_after_cli_verification_failure(self) -> None:
+        from triton_agent.commands.convert import handle_convert
+
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            test_file = workspace / "differential_test_kernel.py"
+            operator.write_text("print('src')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\n", encoding="utf-8")
+            args = parser.parse_args(["convert", "-i", str(operator)])
+
+            prompts: list[str] = []
+            observed_test_calls: list[tuple[Path, Path, str]] = []
+
+            def _fake_run_convert(request):
+                prompts.append(request.prompt)
+                assert request.output_path is not None
+                request.output_path.write_text("print('dst')\n", encoding="utf-8")
+                return AgentResult(return_code=0, stdout="agent ok\n", stderr="")
+
+            call_index = {"value": 0}
+
+            def _fake_run_local_test(test_path, operator_path, test_mode, *, verbose=False):
+                del verbose
+                observed_test_calls.append((test_path, operator_path, test_mode))
+                call_index["value"] += 1
+                current = call_index["value"]
+                archive = workspace / f"archive_{current}.pt"
+                if current in {1, 3}:
+                    archive.write_text("oracle\n", encoding="utf-8")
+                    return AgentResult(return_code=0, stdout=f"oracle-{current}\n", stderr=""), archive
+                return AgentResult(return_code=0, stdout=f"candidate-{current}\n", stderr=""), archive
+
+            compare_codes = iter([1, 0])
+
+            with patch("triton_agent.commands.convert.run_convert_request", side_effect=_fake_run_convert):
+                with patch("triton_agent.commands.convert.run_local_test", side_effect=_fake_run_local_test):
+                    with patch("triton_agent.commands.convert.compare_result_files", side_effect=lambda *_args: next(compare_codes)):
+                        exit_code = handle_convert(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(len(prompts), 2)
+            self.assertIn("Follow-up convert verification failed.", prompts[1])
+            self.assertIn("Differential test file:", prompts[1])
+            self.assertIn("Converted operator:", prompts[1])
+            self.assertIn("Comparison result: compare-result failed at level balanced.", prompts[1])
+            self.assertEqual(
+                observed_test_calls,
+                [
+                    (test_file.resolve(), operator.resolve(), "differential"),
+                    ((workspace / "differential_test_kernel.py").resolve(), (workspace / "triton_kernel.py").resolve(), "differential"),
+                    ((workspace / "differential_test_kernel.py").resolve(), (workspace / "triton_kernel.py").resolve(), "differential"),
+                ],
+            )
+
+    def test_handle_convert_stops_after_second_cli_verification_failure(self) -> None:
+        from triton_agent.commands.convert import handle_convert
+
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            test_file = workspace / "differential_test_kernel.py"
+            operator.write_text("print('src')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\n", encoding="utf-8")
+            args = parser.parse_args(["convert", "-i", str(operator)])
+
+            def _fake_run_convert(request):
+                assert request.output_path is not None
+                request.output_path.write_text("print('dst')\n", encoding="utf-8")
+                return AgentResult(return_code=0, stdout="agent ok\n", stderr="")
+
+            run_calls = {"count": 0}
+
+            def _fake_run_local_test(test_path, operator_path, test_mode, *, verbose=False):
+                del test_path, operator_path, test_mode, verbose
+                run_calls["count"] += 1
+                archive = workspace / f"archive_{run_calls['count']}.pt"
+                if run_calls["count"] == 1:
+                    archive.write_text("oracle\n", encoding="utf-8")
+                return AgentResult(return_code=0, stdout="", stderr=""), archive
+
+            with patch("triton_agent.commands.convert.run_convert_request", side_effect=_fake_run_convert):
+                with patch("triton_agent.commands.convert.run_local_test", side_effect=_fake_run_local_test):
+                    with patch("triton_agent.commands.convert.compare_result_files", return_value=1):
+                        exit_code = handle_convert(parser, args)
+
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(run_calls["count"], 3)
 
     def test_run_convert_request_writes_tool_trace_summary(self) -> None:
         from triton_agent.convert.orchestration import build_convert_request, run_convert_request
