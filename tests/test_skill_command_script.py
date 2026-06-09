@@ -1557,7 +1557,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertIn("--bench-file", completed.stdout)
         self.assertIn("--operator-file", completed.stdout)
         self.assertIn("--case-id", completed.stdout)
-        self.assertIn("--bench", completed.stdout)
+        self.assertNotIn("  --bench ", completed.stdout)
         self.assertNotIn("--kernel-name", completed.stdout)
         self.assertIn("--target-op", completed.stdout)
         self.assertIn("--keep-remote-workdir", completed.stdout)

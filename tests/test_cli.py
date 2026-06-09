@@ -163,6 +163,18 @@ class CliParserTests(unittest.TestCase):
                 args = parser.parse_args([command, "-i", input_value, "--enable-mcp"])
                 self.assertTrue(args.enable_mcp)
 
+    def test_optimize_commands_accept_enable_report_option(self) -> None:
+        parser = build_parser()
+        cases = (
+            ("optimize", "kernel.py"),
+            ("optimize-batch", "kernels"),
+        )
+
+        for command, input_value in cases:
+            with self.subTest(command=command):
+                args = parser.parse_args([command, "-i", input_value, "--enable-report"])
+                self.assertTrue(args.enable_report)
+
     def test_enable_mcp_is_not_available_on_direct_execution_commands(self) -> None:
         parser = build_parser()
         stderr = StringIO()
@@ -2004,7 +2016,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
-                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh", "--no-report"])
+                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(
@@ -2027,7 +2039,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
-                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh", "--no-report"])
+                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(seen_inputs, [(root / "operator.py").resolve()])
@@ -2046,7 +2058,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
-                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh", "--no-report"])
+                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(seen_inputs, [(root / "operator.py").resolve()])
@@ -2071,7 +2083,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
-                    exit_code = main(["optimize-batch", "-i", str(root), "--no-report"])
+                    exit_code = main(["optimize-batch", "-i", str(root)])
 
             self.assertEqual(exit_code, 1)
             self.assertEqual(seen_inputs, [(good / "kernel.py").resolve()])
@@ -2098,7 +2110,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
-                    exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh", "--no-report"])
+                    exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(seen_inputs, [(good / "kernel.py").resolve()])
@@ -2128,7 +2140,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
-                    exit_code = main(["optimize-batch", "-i", str(root), "--no-report"])
+                    exit_code = main(["optimize-batch", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual([path.parent.name for path in seen_inputs], ["beta"])
@@ -2165,7 +2177,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
-                exit_code = main(["optimize-batch", "-i", str(root), "--concurrency", "2", "--no-report"])
+                exit_code = main(["optimize-batch", "-i", str(root), "--concurrency", "2"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(max_active, 2)
@@ -2193,7 +2205,7 @@ class PathResolutionTests(unittest.TestCase):
                     side_effect=_fake_run_optimize_batch,
                 ):
                     exit_code = main(
-                        ["optimize-batch", "-i", str(root), "--concurrency", "max", "--no-report"]
+                        ["optimize-batch", "-i", str(root), "--concurrency", "max"]
                     )
 
             self.assertEqual(exit_code, 0)
@@ -2218,7 +2230,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
-                    exit_code = main(["optimize-batch", "-i", str(root), "--show-output", "--no-report"])
+                    exit_code = main(["optimize-batch", "-i", str(root), "--show-output"])
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()
@@ -2288,7 +2300,6 @@ class PathResolutionTests(unittest.TestCase):
                         "auto",
                         "--bench-mode",
                         "msprof",
-                        "--no-report",
                     ]
                 )
 
@@ -2303,7 +2314,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with redirect_stderr(stderr):
                 with self.assertRaises(SystemExit) as exc:
-                    main(["optimize-batch", "-i", str(root), "--concurrency", "0", "--no-report"])
+                    main(["optimize-batch", "-i", str(root), "--concurrency", "0"])
 
             self.assertEqual(exc.exception.code, 2)
             self.assertIn("--concurrency must be at least 1", stderr.getvalue())
@@ -2896,7 +2907,6 @@ class PathResolutionTests(unittest.TestCase):
                                     "standalone",
                                     "--bench-mode",
                                     "msprof",
-                                    "--no-report",
                                 ]
                             )
 
@@ -2939,7 +2949,7 @@ class PathResolutionTests(unittest.TestCase):
                             "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
-                            exit_code = main(["optimize", "-i", str(operator), "--resume", "auto", "--no-report"])
+                            exit_code = main(["optimize", "-i", str(operator), "--resume", "auto"])
 
             self.assertEqual(exit_code, 0)
             request = mocked.call_args.args[2]
@@ -2993,7 +3003,7 @@ class PathResolutionTests(unittest.TestCase):
                             "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
-                            exit_code = main(["optimize", "-i", str(operator), "--resume", "auto", "--no-report"])
+                            exit_code = main(["optimize", "-i", str(operator), "--resume", "auto"])
 
             self.assertEqual(exit_code, 0)
             request = mocked.call_args.args[2]
@@ -3157,7 +3167,6 @@ class PathResolutionTests(unittest.TestCase):
                                     "--resume",
                                     "fresh",
                                     "--reset-optimize",
-                                    "--no-report",
                                 ]
                             )
 
@@ -3225,7 +3234,7 @@ class PathResolutionTests(unittest.TestCase):
                             return_value=[],
                         ):
                             exit_code = main(
-                                ["optimize", "-i", str(operator), "--resume", "auto", "--no-report"]
+                                ["optimize", "-i", str(operator), "--resume", "auto"]
                             )
 
             self.assertEqual(exit_code, 0)
@@ -3297,7 +3306,6 @@ class PathResolutionTests(unittest.TestCase):
                                     "auto",
                                     "--bench-mode",
                                     "standalone",
-                                    "--no-report",
                                 ]
                             )
 
@@ -3387,7 +3395,7 @@ class PathResolutionTests(unittest.TestCase):
                             return_value=[],
                         ):
                             exit_code = main(
-                                ["optimize", "-i", str(operator), "--resume", "auto", "--no-report"]
+                                ["optimize", "-i", str(operator), "--resume", "auto"]
                             )
 
             self.assertEqual(exit_code, 0)
@@ -3417,7 +3425,7 @@ class PathResolutionTests(unittest.TestCase):
                             "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
-                            exit_code = main(["optimize", "-i", str(root), "--no-report"])
+                            exit_code = main(["optimize", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
             request = mocked.call_args.args[2]
@@ -3448,7 +3456,7 @@ class PathResolutionTests(unittest.TestCase):
                                 "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                                 return_value=[],
                             ):
-                                exit_code = main(["optimize", "-i", ".", "--no-report"])
+                                exit_code = main(["optimize", "-i", "."])
             finally:
                 os.chdir(original_cwd)
 
@@ -3507,7 +3515,7 @@ class PathResolutionTests(unittest.TestCase):
                             return_value=[],
                         ):
                             exit_code = main(
-                                ["optimize", "-i", str(operator), "--round-mode", "checked", "--no-report"]
+                                ["optimize", "-i", str(operator), "--round-mode", "checked"]
                             )
 
             self.assertEqual(exit_code, 0)
@@ -3538,7 +3546,7 @@ class PathResolutionTests(unittest.TestCase):
                             return_value=[],
                         ):
                             exit_code = main(
-                                ["optimize", "-i", str(operator), "--target-chip", "A3", "--no-report"]
+                                ["optimize", "-i", str(operator), "--target-chip", "A3"]
                             )
 
             self.assertEqual(exit_code, 0)
@@ -3567,7 +3575,7 @@ class PathResolutionTests(unittest.TestCase):
                             return_value=[],
                         ):
                             exit_code = main(
-                                ["optimize", "-i", str(operator), "--no-agent-session", "--no-report"]
+                                ["optimize", "-i", str(operator), "--no-agent-session"]
                             )
 
             self.assertEqual(exit_code, 0)
@@ -3601,7 +3609,6 @@ class PathResolutionTests(unittest.TestCase):
                                     str(operator),
                                     "--prompt",
                                     "Focus on memory coalescing.",
-                                    "--no-report",
                                 ]
                             )
 

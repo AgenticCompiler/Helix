@@ -142,7 +142,7 @@ def capture_local_archive(
     bench_file: Path,
     operator_file: Path,
     archive_dir: Path,
-    bench_case: int | None = None,
+    case_id: str | None = None,
 ) -> Path:
     _prepare_empty_archive_dir(archive_dir)
     bench_mode = _resolve_bench_mode(bench_file)
@@ -150,7 +150,7 @@ def capture_local_archive(
         bench_file=bench_file,
         operator_file=operator_file,
         bench_mode=bench_mode,
-        bench_case=bench_case,
+        case_id=case_id,
     )
     result = _run_local_command(command, cwd=bench_file.parent)
     if int(str(result["return_code"])) != 0:
@@ -187,7 +187,7 @@ def capture_remote_archive(
     remote: str,
     remote_workdir: str | None,
     keep_remote_workdir: bool,
-    bench_case: int | None = None,
+    case_id: str | None = None,
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[Path, str]:
@@ -203,7 +203,7 @@ def capture_remote_archive(
         operator_file=remote_operator_file,
         python_executable="python3",
         bench_mode=bench_mode,
-        bench_case=bench_case,
+        case_id=case_id,
     )
     try:
         run_remote_command_buffered(
@@ -306,7 +306,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ir-dir", required=True)
     parser.add_argument("--bench-file", required=True)
     parser.add_argument("--operator-file", required=True)
-    parser.add_argument("--bench", type=int)
+    parser.add_argument("--case-id")
     parser.add_argument("--remote")
     parser.add_argument("--remote-workdir")
     parser.add_argument("--keep-remote-workdir", action="store_true")
@@ -328,7 +328,7 @@ def main(argv: list[str] | None = None) -> int:
                 remote=args.remote,
                 remote_workdir=args.remote_workdir,
                 keep_remote_workdir=args.keep_remote_workdir,
-                bench_case=args.bench,
+                case_id=args.case_id,
                 verbose=args.verbose,
                 stderr=sys.stderr,
             )
@@ -341,7 +341,7 @@ def main(argv: list[str] | None = None) -> int:
             bench_file=bench_file,
             operator_file=operator_file,
             archive_dir=archive_dir,
-            bench_case=args.bench,
+            case_id=args.case_id,
         )
         print(f"Capture manifest: {manifest_path}")
         return 0
@@ -466,34 +466,24 @@ def build_execution_command(
     operator_file: Path,
     python_executable: str | None = None,
     bench_mode: str | None = None,
-    bench_case: int | None = None,
+    case_id: str | None = None,
 ) -> list[str]:
     operator_arg = operator_file.name
     if bench_file.parent != operator_file.parent:
         operator_arg = os.path.relpath(operator_file, bench_file.parent)
     interpreter = sys.executable if python_executable is None else python_executable
     resolved_bench_mode = bench_mode or _resolve_bench_mode(bench_file)
-    if resolved_bench_mode == "standalone":
-        if bench_case is not None:
-            raise ValueError("--bench is only valid for msprof benchmark capture")
-        helper_script = (
-            _standalone_runtime_script_path() if python_executable is None else Path("standalone_bench_runtime.py")
-        )
-        return [
-            interpreter,
-            str(helper_script),
-            "run-one",
-            "--bench-file",
-            bench_file.name,
-            "--operator-file",
-            operator_arg,
-        ]
+    del resolved_bench_mode
+    helper_script = _bench_runtime_script_path() if python_executable is None else Path("bench_runtime.py")
     return [
         interpreter,
+        str(helper_script),
+        "run-one",
+        "--bench-file",
         bench_file.name,
         "--operator-file",
         operator_arg,
-        *([] if bench_case is None else ["--bench", str(bench_case)]),
+        *([] if case_id is None else ["--case-id", case_id]),
     ]
 
 
@@ -533,8 +523,8 @@ def _stage_required_files(
         verbose=verbose,
         stderr=stderr,
     )
-    if _resolve_bench_mode(bench_file) == "standalone":
-        for helper_path in _standalone_runtime_support_paths():
+    if _resolve_bench_mode(bench_file) in {"standalone", "msprof"}:
+        for helper_path in _bench_runtime_support_paths():
             copy_file_to_remote(
                 spec,
                 helper_path,
@@ -557,25 +547,25 @@ def _resolve_bench_mode(bench_file: Path) -> str:
     return "standalone"
 
 
-def _standalone_runtime_script_path() -> Path:
+def _bench_runtime_script_path() -> Path:
     return (
         Path(__file__).resolve().parents[2]
         / "triton-npu-run-eval"
         / "scripts"
-        / "standalone_bench_runtime.py"
+        / "bench_runtime.py"
     )
 
 
-def _standalone_runtime_support_paths() -> list[Path]:
-    runtime = _load_standalone_runtime_module()
+def _bench_runtime_support_paths() -> list[Path]:
+    runtime = _load_bench_runtime_module()
     return list(runtime.runtime_support_paths())
 
 
-def _load_standalone_runtime_module() -> Any:
-    script_path = _standalone_runtime_script_path()
-    spec = importlib.util.spec_from_file_location("capture_ir_standalone_runtime", script_path)
+def _load_bench_runtime_module() -> Any:
+    script_path = _bench_runtime_script_path()
+    spec = importlib.util.spec_from_file_location("capture_ir_bench_runtime", script_path)
     if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load standalone runtime helper: {script_path}")
+        raise ImportError(f"Unable to load bench runtime helper: {script_path}")
     module = importlib.util.module_from_spec(spec)
     script_dir = str(script_path.parent)
     added_path = False

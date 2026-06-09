@@ -2,7 +2,7 @@
 
 This document describes declarative differential comparison test files for Triton Ascend operators. The goal is to produce an import-only module that declares deterministic NPU test cases while the runner executes them and archives the final result as `<operator>_result.pt`.
 
-The differential test must not call the resolved public entrypoint directly from a `main()` flow. Raw `@triton.jit` kernels are not valid direct harness APIs.
+The differential test must not call the resolved public entrypoint through a self-executing script flow. Raw `@triton.jit` kernels are not valid direct harness APIs.
 
 ### 1. File naming and location
 
@@ -21,8 +21,7 @@ The test file must include this metadata header near the top of the file:
 ```
 
 The file must be **import-only**:
-- Do not generate `main()`.
-- Do not parse `--operator-file`.
+- Do not make the test file a self-executing command-line program.
 - Do not execute the test when the module is imported.
 - Do not introduce pytest or unittest scaffolding.
 
@@ -36,12 +35,12 @@ The module must export:
 - `id`: a non-empty string case identifier
 - `fn`: a callable that executes one deterministic case and returns the operator output
 
-The runner owns `--operator-file`, case execution, and archiving.
+External execution tooling owns case execution and archiving.
 
 ### 3. Operator API loading
 
 - The test file **must not** hard-code an import of the operator module.
-- The runner loads the operator module by file path and passes the imported module object into `build_operator_api(operator_module)`.
+- External execution tooling provides the imported operator module object to `build_operator_api(operator_module)`.
 - If the named API does not exist in the runtime operator module, fail explicitly instead of guessing.
 - For `torch-module`, support no-argument construction only; if constructor arguments are required, fail explicitly with an actionable error.
 
@@ -94,10 +93,10 @@ def build_operator_api(operator_module):
 
 ### 5. Differential output behavior
 
-- The runner calls each case function in execution order and collects outputs into a `results` list.
+- External execution tooling calls each case function in execution order and collects outputs into a `results` list.
 - Do **not** perform result assertions in this file.
 - Each entry in `results` must be the operator output for one case, appended in execution order.
-- The runner writes the result directly to `<operator>_result.pt`.
+- External execution tooling writes the result directly to `<operator>_result.pt`.
 
 ### 6. Test function structure
 
@@ -131,5 +130,5 @@ def build_differential_test_cases(operator_api):
     ]
 ```
 
-- The runner executes `build_differential_test_cases(operator_api)` and writes the result directly to `<operator>_result.pt` after success.
+- External execution tooling executes `build_differential_test_cases(operator_api)` and writes the result directly to `<operator>_result.pt` after success.
 - Running the file directly is not part of this contract.

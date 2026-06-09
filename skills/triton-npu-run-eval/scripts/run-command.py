@@ -110,7 +110,6 @@ class RunLocalProfileBenchFn(Protocol):
         bench_file: Path,
         operator_file: Path,
         bench_mode: str,
-        bench_case: int | None = None,
         case_id: str | None = None,
         kernel_name: str | None = None,
     ) -> tuple[ResultPayload, Path | None]: ...
@@ -124,7 +123,6 @@ class RunRemoteProfileBenchFn(Protocol):
         bench_mode: str,
         remote: str,
         remote_workdir: str | None,
-        bench_case: int | None = None,
         case_id: str | None = None,
         kernel_name: str | None = None,
         keep_remote_workdir: bool = False,
@@ -171,7 +169,6 @@ def build_parser() -> argparse.ArgumentParser:
     profile_bench.add_argument("--operator-file", required=True)
     profile_bench.add_argument("--bench-mode", choices=["standalone", "msprof"])
     profile_bench.add_argument("--case-id")
-    profile_bench.add_argument("--bench", type=int)
     profile_bench.add_argument("--kernel-name", help=argparse.SUPPRESS)
     profile_bench.add_argument("--target-op")
     profile_bench.add_argument("--remote")
@@ -341,7 +338,6 @@ def main(argv: list[str] | None = None) -> int:
                     resolved_bench_mode,
                     remote,
                     remote_workdir,
-                    bench_case=args.bench,
                     case_id=args.case_id,
                     kernel_name=args.kernel_name,
                     keep_remote_workdir=args.keep_remote_workdir,
@@ -353,7 +349,6 @@ def main(argv: list[str] | None = None) -> int:
                     bench_file,
                     operator_file,
                     resolved_bench_mode,
-                    bench_case=args.bench,
                     case_id=args.case_id,
                     kernel_name=args.kernel_name,
                 )

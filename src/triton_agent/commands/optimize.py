@@ -180,7 +180,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         enable_subagent=subagent_enabled,
         enable_agent_hooks=agent_hooks_enabled,
         upload_enabled=upload_enabled,
-        report=not bool(getattr(args, "no_report", False)) and not interact,
+        report=bool(getattr(args, "enable_report", False)) and not interact,
         log_tools=log_tools_enabled,
         enable_mcp=bool(getattr(args, "enable_mcp", False)),
     )

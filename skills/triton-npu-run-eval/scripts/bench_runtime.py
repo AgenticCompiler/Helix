@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import argparse
 from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_stdout
 import importlib
 import importlib.util
+import json
 import os
 import shutil
 import sys
@@ -38,34 +40,51 @@ _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched profiler operator det
 _LOCAL_BENCH_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_OUTPUT_DIR"
 
 
-def _resolve_output_path(operator_file: Path, *, output: str | None = None) -> Path:
-    if output is not None:
-        return Path(output).expanduser().resolve()
-    return perf_output_path(operator_file)
-
 @dataclass(frozen=True)
-class StandaloneBenchCase:
+class BenchCase:
     case_id: str
     fn: Callable[[], object]
     warmup: int
     repeats: int
+    case_data: Mapping[str, object]
 
-def load_standalone_bench_cases(
+
+def load_bench_cases(
     bench_file: Path,
     operator_file: Path,
-) -> tuple[list[StandaloneBenchCase], KernelResolution]:
+) -> tuple[list[BenchCase], KernelResolution]:
     bench_path = bench_file.resolve()
     operator_path = operator_file.resolve()
-    bench_module = _load_module(bench_path, f"standalone_bench_{bench_path.stem}")
-    operator_module = _load_module(operator_path, f"standalone_operator_{operator_path.stem}")
+    bench_module = _load_module(bench_path, f"bench_runtime_bench_{bench_path.stem}")
+    operator_module = _load_module(operator_path, f"bench_runtime_operator_{operator_path.stem}")
     build_operator_api = _require_callable(bench_module, "build_operator_api", bench_path)
-    build_cases = _require_callable(bench_module, "build_standalone_bench_cases", bench_path)
+    build_cases = _require_callable(bench_module, "build_bench_cases", bench_path)
+    build_case_fn = _require_callable(bench_module, "build_bench_case_fn", bench_path)
     operator_api = build_operator_api(operator_module)
-    raw_cases = build_cases(operator_api)
-    return _normalize_cases(raw_cases), resolve_bench_kernel_resolution(bench_path, operator_path)
+    raw_cases = build_cases()
+    return _normalize_cases(raw_cases, operator_api, build_case_fn), resolve_bench_kernel_resolution(
+        bench_path,
+        operator_path,
+    )
 
 
-def run_local_standalone_bench(
+def select_bench_case(cases: list[BenchCase], case_id: str | None) -> BenchCase:
+    if case_id is None:
+        if len(cases) == 1:
+            return cases[0]
+        available = ", ".join(case.case_id for case in cases)
+        raise ValueError(
+            "Benchmark profiling requires --case-id when multiple cases exist. "
+            f"Available case ids: {available}"
+        )
+    for case in cases:
+        if case.case_id == case_id:
+            return case
+    available = ", ".join(case.case_id for case in cases)
+    raise ValueError(f"Unknown benchmark case id '{case_id}'. Available case ids: {available}")
+
+
+def run_local_bench(
     bench_file: Path,
     operator_file: Path,
     *,
@@ -75,14 +94,21 @@ def run_local_standalone_bench(
     prev = os.environ.get("TRITON_ALWAYS_COMPILE")
     os.environ["TRITON_ALWAYS_COMPILE"] = "1"
     try:
-        cases, resolution = load_standalone_bench_cases(bench_file, operator_file)
+        cases, resolution = load_bench_cases(bench_file, operator_file)
         case_records: list[PerfCaseRecord] = []
         had_failures = False
         stderr_chunks: list[str] = []
-        preserved_run_dir = _create_local_preserved_profile_run_dir(prefix="triton-agent-standalone-bench-")
+        preserved_run_dir = _create_local_preserved_profile_run_dir(prefix="triton-agent-bench-")
 
         for case in cases:
-            record = _run_standalone_case(case, resolution, preserved_run_dir, bench_file.parent, verbose=verbose)
+            record = run_one_bench_case_record(
+                bench_file,
+                operator_file,
+                case.case_id,
+                preserved_run_dir=preserved_run_dir,
+                verbose=verbose,
+                preloaded=(cases, resolution),
+            )
             if record.error_message is not None:
                 had_failures = True
                 stderr_chunks.append(f"{case.case_id}: {record.error_message}")
@@ -111,13 +137,13 @@ def run_local_standalone_bench(
             os.environ["TRITON_ALWAYS_COMPILE"] = prev
 
 
-def profile_local_standalone_case(
+def profile_local_bench_case(
     bench_file: Path,
     operator_file: Path,
-    case_id: str,
+    case_id: str | None,
 ) -> ResultPayload:
-    cases, resolution = load_standalone_bench_cases(bench_file, operator_file)
-    case = _select_case(cases, case_id)
+    cases, resolution = load_bench_cases(bench_file, operator_file)
+    case = select_bench_case(cases, case_id)
     profile_root = _profile_output_root(bench_file.parent, case.case_id)
     _metrics, error_message = _profile_case_with_profiler(case, resolution, profile_root)
     if error_message is not None:
@@ -125,28 +151,29 @@ def profile_local_standalone_case(
     return make_result(return_code=0, stdout="", stderr="")
 
 
-def run_one_standalone_case(
+def run_one_bench_case(
     bench_file: Path,
     operator_file: Path,
     case_id: str | None = None,
 ) -> ResultPayload:
-    cases, _ = load_standalone_bench_cases(bench_file, operator_file)
-    case = _select_case(cases, case_id)
+    cases, _resolution = load_bench_cases(bench_file, operator_file)
+    case = select_bench_case(cases, case_id)
     case.fn()
     return make_result(return_code=0, stdout="", stderr="")
 
 
-def run_one_standalone_case_record(
+def run_one_bench_case_record(
     bench_file: Path,
     operator_file: Path,
-    case_id: str,
+    case_id: str | None,
     *,
     preserved_run_dir: Path | None = None,
     verbose: bool = False,
+    preloaded: tuple[list[BenchCase], KernelResolution] | None = None,
 ) -> PerfCaseRecord:
-    cases, resolution = load_standalone_bench_cases(bench_file, operator_file)
-    case = _select_case(cases, case_id)
-    return _run_standalone_case(
+    cases, resolution = preloaded or load_bench_cases(bench_file, operator_file)
+    case = select_bench_case(cases, case_id)
+    return _run_bench_case(
         case,
         resolution,
         preserved_run_dir,
@@ -159,11 +186,21 @@ def runtime_support_paths() -> list[Path]:
     script_dir = Path(__file__).resolve().parent
     return [
         script_dir / "result_payload.py",
-        script_dir / "standalone_bench_runtime.py",
+        script_dir / "bench_runtime.py",
         script_dir / "bench_contract.py",
         script_dir / "perf_artifacts.py",
         script_dir / "profile_csv_parser.py",
     ]
+
+
+def create_local_preserved_profile_run_dir(prefix: str) -> Path | None:
+    return _create_local_preserved_profile_run_dir(prefix)
+
+
+def _resolve_output_path(operator_file: Path, *, output: str | None = None) -> Path:
+    if output is not None:
+        return Path(output).expanduser().resolve()
+    return perf_output_path(operator_file)
 
 
 def _load_module(module_path: Path, module_name: str):
@@ -182,71 +219,74 @@ def _load_module(module_path: Path, module_name: str):
 def _require_callable(module: object, name: str, bench_file: Path) -> Callable[..., Any]:
     candidate = getattr(module, name, None)
     if not callable(candidate):
-        raise ValueError(f"Standalone benchmark module missing required hook '{name}': {bench_file}")
+        raise ValueError(f"Benchmark module missing required hook '{name}': {bench_file}")
     return candidate
 
 
-def _normalize_cases(raw_cases: object) -> list[StandaloneBenchCase]:
+def _normalize_cases(
+    raw_cases: object,
+    operator_api: object,
+    build_case_fn: Callable[[object, Mapping[str, object]], object],
+) -> list[BenchCase]:
     if isinstance(raw_cases, (str, bytes)) or isinstance(raw_cases, Mapping) or not isinstance(raw_cases, Iterable):
-        raise ValueError("Standalone benchmark hook 'build_standalone_bench_cases' must return an iterable of cases")
-    cases: list[StandaloneBenchCase] = []
+        raise ValueError("Benchmark hook 'build_bench_cases' must return an iterable of cases")
+    cases: list[BenchCase] = []
     seen_case_ids: set[str] = set()
     for raw_case in cast(Iterable[object], raw_cases):
         if not isinstance(raw_case, Mapping):
-            raise ValueError("Standalone benchmark cases must be mappings")
+            raise ValueError("Benchmark cases must be mappings")
         case_map = cast(Mapping[str, object], raw_case)
         case_id = case_map.get("id")
         if not isinstance(case_id, str) or not case_id.strip():
-            raise ValueError("Standalone benchmark case is missing required string field 'id'")
+            raise ValueError("Benchmark case is missing required string field 'id'")
         if case_id in seen_case_ids:
-            raise ValueError(f"Duplicate standalone benchmark case id: {case_id}")
-        case_fn = case_map.get("fn")
-        if not callable(case_fn):
-            raise ValueError(f"Standalone benchmark case '{case_id}' is missing required callable field 'fn'")
+            raise ValueError(f"Duplicate benchmark case id: {case_id}")
         warmup = _normalize_non_negative_int(case_map.get("warmup", WARMUP_DEFAULT), "warmup", case_id)
         repeats = _normalize_positive_int(case_map.get("repeats", REPEATS_DEFAULT), "repeats", case_id)
         seen_case_ids.add(case_id)
         cases.append(
-            StandaloneBenchCase(
+            BenchCase(
                 case_id=case_id,
-                fn=cast(Callable[[], object], case_fn),
+                fn=_resolve_case_fn(operator_api, build_case_fn, case_map, case_id),
                 warmup=warmup,
                 repeats=repeats,
+                case_data=case_map,
             )
         )
     if not cases:
-        raise ValueError("Standalone benchmark hook 'build_standalone_bench_cases' returned no cases")
+        raise ValueError("Benchmark hook 'build_bench_cases' returned no cases")
     return cases
+
+
+def _resolve_case_fn(
+    operator_api: object,
+    build_case_fn: Callable[[object, Mapping[str, object]], object],
+    case_map: Mapping[str, object],
+    case_id: str,
+) -> Callable[[], object]:
+    candidate = build_case_fn(operator_api, case_map)
+    if not callable(candidate):
+        raise ValueError(f"Benchmark hook 'build_bench_case_fn' for case '{case_id}' must return a callable")
+    return cast(Callable[[], object], candidate)
 
 
 def _normalize_non_negative_int(value: object, field_name: str, case_id: str) -> int:
     if not isinstance(value, int):
-        raise ValueError(f"Standalone benchmark case '{case_id}' field '{field_name}' must be an integer")
+        raise ValueError(f"Benchmark case '{case_id}' field '{field_name}' must be an integer")
     if value < 0:
-        raise ValueError(f"Standalone benchmark case '{case_id}' field '{field_name}' must be >= 0")
+        raise ValueError(f"Benchmark case '{case_id}' field '{field_name}' must be >= 0")
     return value
 
 
 def _normalize_positive_int(value: object, field_name: str, case_id: str) -> int:
     if not isinstance(value, int):
-        raise ValueError(f"Standalone benchmark case '{case_id}' field '{field_name}' must be an integer")
+        raise ValueError(f"Benchmark case '{case_id}' field '{field_name}' must be an integer")
     if value <= 0:
-        raise ValueError(f"Standalone benchmark case '{case_id}' field '{field_name}' must be > 0")
+        raise ValueError(f"Benchmark case '{case_id}' field '{field_name}' must be > 0")
     return value
 
-
-def _select_case(cases: list[StandaloneBenchCase], case_id: str | None) -> StandaloneBenchCase:
-    if case_id is None:
-        return cases[0]
-    for case in cases:
-        if case.case_id == case_id:
-            return case
-    available = ", ".join(case.case_id for case in cases)
-    raise ValueError(f"Unknown standalone benchmark case id '{case_id}'. Available case ids: {available}")
-
-
 def _profile_case_with_profiler(
-    case: StandaloneBenchCase,
+    case: BenchCase,
     resolution: KernelResolution,
     profile_root: Path,
     *,
@@ -314,15 +354,15 @@ def _profile_case_with_profiler(
         return None, f"{type(exc).__name__}: {exc}"
 
 
-def _run_standalone_case(
-    case: StandaloneBenchCase,
+def _run_bench_case(
+    case: BenchCase,
     resolution: KernelResolution,
     preserved_run_dir: Path | None,
     cleanup_workdir: Path,
     *,
     verbose: bool = False,
 ) -> PerfCaseRecord:
-    profile_root, temp_dir = _create_local_standalone_profile_dir(case.case_id, preserved_run_dir)
+    profile_root, temp_dir = _create_local_bench_profile_dir(case.case_id, preserved_run_dir)
     try:
         t0 = time.monotonic()
         metrics, error_message = _profile_case_with_profiler(
@@ -476,16 +516,12 @@ def _create_local_preserved_profile_run_dir(prefix: str) -> Path | None:
     return run_dir
 
 
-def create_local_preserved_profile_run_dir(prefix: str) -> Path | None:
-    return _create_local_preserved_profile_run_dir(prefix)
-
-
-def _create_local_standalone_profile_dir(
+def _create_local_bench_profile_dir(
     case_id: str,
     preserved_run_dir: Path | None,
 ) -> tuple[Path, tempfile.TemporaryDirectory[str] | None]:
     if preserved_run_dir is None:
-        temp_dir = tempfile.TemporaryDirectory(prefix=f"triton-agent-standalone-bench-{_sanitize_case_id(case_id)}-")
+        temp_dir = tempfile.TemporaryDirectory(prefix=f"triton-agent-bench-{_sanitize_case_id(case_id)}-")
         return Path(temp_dir.name), temp_dir
     profile_root = preserved_run_dir.resolve() / f"case-{_sanitize_case_id(case_id)}"
     profile_root.mkdir(parents=True, exist_ok=False)
@@ -507,3 +543,135 @@ def _cleanup_local_bench_extra_info(workdir: Path) -> None:
     if not extra_info_dir.is_dir():
         return
     shutil.rmtree(extra_info_dir)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Shared benchmark runtime helper.",
+        allow_abbrev=False,
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    list_cases = subparsers.add_parser("list-cases")
+    _add_common_case_arguments(list_cases)
+
+    run_one = subparsers.add_parser("run-one")
+    _add_common_case_arguments(run_one)
+
+    profile_one = subparsers.add_parser("profile-one")
+    _add_common_case_arguments(profile_one)
+    profile_one.add_argument(
+        "--emit-record",
+        action="store_true",
+        help="Print the selected case record as compact JSON.",
+    )
+    profile_one.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Keep profiler helper diagnostics visible.",
+    )
+
+    run_all = subparsers.add_parser("run-all")
+    _add_common_case_arguments(run_all, include_case_id=False)
+    run_all.add_argument("--output")
+    run_all.add_argument("--verbose", action="store_true")
+    return parser
+
+
+def _add_common_case_arguments(
+    parser: argparse.ArgumentParser,
+    *,
+    include_case_id: bool = True,
+) -> None:
+    parser.add_argument("--bench-file", required=True)
+    parser.add_argument("--operator-file", required=True)
+    if include_case_id:
+        parser.add_argument("--case-id")
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    bench_file = _resolve_existing_path(args.bench_file, "Bench file")
+    operator_file = _resolve_existing_path(args.operator_file, "Operator file")
+
+    try:
+        if args.command == "list-cases":
+            cases, _resolution = load_bench_cases(bench_file, operator_file)
+            for case in cases:
+                print(case.case_id)
+            return 0
+
+        if args.command == "run-one":
+            result = run_one_bench_case(
+                bench_file,
+                operator_file,
+                args.case_id,
+            )
+            return _emit_result(result)
+
+        if args.command == "profile-one":
+            if bool(args.emit_record):
+                record = run_one_bench_case_record(
+                    bench_file,
+                    operator_file,
+                    args.case_id,
+                    verbose=bool(args.verbose),
+                )
+                print(_render_case_record_json(record))
+                return 1 if record.error_message is not None else 0
+            result = profile_local_bench_case(
+                bench_file,
+                operator_file,
+                args.case_id,
+            )
+            return _emit_result(result)
+
+        if args.command == "run-all":
+            result, perf_path = run_local_bench(
+                bench_file,
+                operator_file,
+                verbose=bool(args.verbose),
+                output=args.output,
+            )
+            print(f"Perf file: {perf_path}")
+            return _emit_result(result)
+    except (FileNotFoundError, RuntimeError, ValueError, ImportError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    raise AssertionError(f"Unhandled bench runtime command: {args.command}")
+
+
+def _resolve_existing_path(raw_path: str, label: str) -> Path:
+    path = Path(raw_path).expanduser().resolve()
+    if not path.exists():
+        raise FileNotFoundError(f"{label} path does not exist: {path}")
+    if not path.is_file():
+        raise FileNotFoundError(f"{label} path is not a file: {path}")
+    return path
+
+
+def _emit_result(result: ResultPayload) -> int:
+    stdout_text = str(result["stdout"]).strip()
+    stderr_text = str(result["stderr"]).strip()
+    if stdout_text:
+        print(stdout_text)
+    if stderr_text:
+        print(stderr_text, file=sys.stderr)
+    return int(result["return_code"])
+
+
+def _render_case_record_json(record: PerfCaseRecord) -> str:
+    payload = {
+        "case_label": record.case_label,
+        "kernel_names": record.kernel_names,
+        "kernel_source": record.kernel_source,
+        "metrics": record.metrics,
+        "error_message": record.error_message,
+        "case_wall_clock_seconds": record.case_wall_clock_seconds,
+    }
+    return json.dumps(payload, separators=(",", ":"))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

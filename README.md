@@ -347,7 +347,7 @@ uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py -
 
 For `standalone` benchmarks:
 
-- the benchmark file is import-only and exports `build_operator_api(operator_module)` plus `build_standalone_bench_cases(operator_api)`
+- the benchmark file is import-only and exports `build_operator_api(operator_module)`, `build_bench_cases()`, and `build_bench_case_fn(operator_api, case)`
 - `run-bench` profiles each declared case with `torch_npu.profiler`
 - `run-bench --npu-devices ...` runs declared standalone cases in parallel through isolated case workers and assigns one visible device per case
 - `profile-bench` requires `--case-id <id>` for standalone profiling
@@ -358,7 +358,7 @@ For `msprof` benchmarks:
 - `run-bench --npu-devices ...` runs benchmark cases in parallel through isolated case workspaces and assigns one visible device per case
 - a failed benchmark case does not stop later cases from running
 - the generated perf file is still written and includes `# latency-error-case-*` comments for failed cases
-- `profile-bench` profiles a selected benchmark case with `--bench <N>` and does not pass kernel filter arguments to `msprof`
+- `profile-bench` profiles a selected benchmark case with `--case-id <id>` and does not pass kernel filter arguments to `msprof`
 
 Remote note:
 
