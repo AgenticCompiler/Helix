@@ -549,8 +549,22 @@ def run_local_bench(
                 verbose=verbose,
                 force_recompile=force_recompile,
             )
-        return _run_local_bench_standalone(bench_file, operator_file, verbose=verbose,
-                                           force_recompile=force_recompile)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            simulator_future = executor.submit(
+                _run_local_bench_msprof_simulator_standalone,
+                bench_file,
+                operator_file,
+                extract_dest_dir=extract_dest_dir,
+            )
+            standalone_future = executor.submit(
+                _run_local_bench_standalone,
+                bench_file,
+                operator_file,
+                verbose=verbose,
+                force_recompile=force_recompile,
+            )
+            simulator_future.result()
+            return standalone_future.result()
 
 
 def run_remote_bench(
@@ -846,6 +860,7 @@ def _run_local_bench_msprof_parallel(
         verbose=verbose,
         force_recompile=force_recompile,
     )
+
 
 
 def _run_remote_bench_msprof(
@@ -1265,18 +1280,28 @@ def _run_local_bench_msprof_simulator(
                 stdout=quiet_stdout,
             )
         elapsed = time.monotonic() - t0
-        stdout_chunks.append(str(result["stdout"]))
-        stderr_chunks.append(str(result["stderr"]))
+        stdout_text = str(result["stdout"])
+        stderr_text = str(result["stderr"])
+        print(f"[standalone-msprof-simulator] elapsed={elapsed:.1f}s "
+              f"return_code={int(result['return_code'])}", flush=True)
+        if stdout_text.strip():
+            print(f"[standalone-msprof-simulator] stdout: {stdout_text.strip()}", flush=True)
+        if stderr_text.strip():
+            print(f"[standalone-msprof-simulator] stderr: {stderr_text.strip()}", flush=True)
+        stdout_chunks.append(stdout_text)
+        stderr_chunks.append(stderr_text)
         had_stalls = had_stalls or bool(result["stalled"])
         if result["session_id"] is not None:
             session_id = result["session_id"]
 
         isTimeOut = (
-            _TIMEOUT_MESSAGE in str(result["stdout"])
-            or _TIMEOUT_MESSAGE in str(result["stderr"])
+            _TIMEOUT_MESSAGE in stdout_text
+            or _TIMEOUT_MESSAGE in stderr_text
         )
 
         if not result_succeeded(result):
+            print(f"[standalone-msprof-simulator] FAILED: "
+                  f"{_format_msprof_command_failure(result)}", flush=True)
             case_record = PerfCaseRecord(
                 case_label="0",
                 kernel_names=resolution.kernel_names,
@@ -1325,6 +1350,126 @@ def _run_local_bench_msprof_simulator(
         if temp_dir is not None:
             temp_dir.cleanup()
         _cleanup_local_bench_extra_info(bench_file.parent)
+
+
+def _run_local_bench_msprof_simulator_standalone(
+    bench_file: Path,
+    operator_file: Path,
+    extract_dest_dir: Path | None = None,
+) -> tuple[ResultPayload, Path | None]:
+    resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
+    runtime = _load_standalone_runtime_module()
+    cases, _ = runtime.load_standalone_bench_cases(bench_file, operator_file)
+    if not cases:
+        raise ValueError("No standalone bench cases found")
+    selected_case = cases[len(cases) // 2]
+    print(f"[standalone-msprof-simulator] starting for case={selected_case.case_id}", flush=True)
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+    preserved_run_dir = _create_local_msprof_preserved_run_dir()
+    had_stalls = False
+    session_id: str | None = None
+    wrapper_script = _msprof._build_standalone_msprof_wrapper_script()
+    wrapper_script_path = bench_file.parent / f"_standalone_msprof_wrapper_{selected_case.case_id}.py"
+    try:
+        wrapper_script_path.write_text(wrapper_script, encoding="utf-8")
+    except Exception:
+        pass
+
+    output_dir, temp_dir = _create_local_msprof_output_dir(0, preserved_run_dir)
+    try:
+        command = [
+            "msprof",
+            "op",
+            "simulator",
+            "--timeout=5",
+            f"--output={output_dir}",
+            local_python_executable(),
+            str(wrapper_script_path),
+            str(bench_file),
+            str(operator_file),
+            selected_case.case_id,
+        ]
+        print(f"[standalone-msprof-simulator] cmd: {' '.join(command)}", flush=True)
+        t0 = time.monotonic()
+        with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
+            result = run_streaming_process(
+                command,
+                str(bench_file.parent),
+                stall_timeout_seconds=_bench_timeout(),
+                stdout=quiet_stdout,
+            )
+        elapsed = time.monotonic() - t0
+        stdout_text = str(result["stdout"])
+        stderr_text = str(result["stderr"])
+        print(f"[standalone-msprof-simulator] elapsed={elapsed:.1f}s "
+              f"return_code={int(result['return_code'])}", flush=True)
+        if stdout_text.strip():
+            print(f"[standalone-msprof-simulator] stdout: {stdout_text.strip()}", flush=True)
+        if stderr_text.strip():
+            print(f"[standalone-msprof-simulator] stderr: {stderr_text.strip()}", flush=True)
+        stdout_chunks.append(stdout_text)
+        stderr_chunks.append(stderr_text)
+        had_stalls = had_stalls or bool(result["stalled"])
+        if result["session_id"] is not None:
+            session_id = result["session_id"]
+
+        isTimeOut = (
+            _TIMEOUT_MESSAGE in str(result["stdout"])
+            or _TIMEOUT_MESSAGE in str(result["stderr"])
+        )
+
+        if not result_succeeded(result):
+            case_record = PerfCaseRecord(
+                case_label=selected_case.case_id,
+                kernel_names=resolution.kernel_names,
+                kernel_source=resolution.kernel_source,
+                error_message=_format_msprof_command_failure(result),
+                case_wall_clock_seconds=elapsed,
+            )
+            perf_path = write_perf_lines(
+                perf_output_path(operator_file),
+                render_perf_case_records(
+                    [case_record],
+                    latency_prefix="latency-case",
+                    raw_prefix="raw-op-statistic-case",
+                    resolved_kernels_prefix="resolved-kernels-case",
+                    kernel_source_prefix="kernel-source-case",
+                    latency_error_prefix="latency-error-case",
+                    missing_kernel_match_error=_MISSING_KERNEL_MATCH_ERROR,
+                    elapsed_id_prefix="case",
+                ),
+            )
+            return (
+                make_result(
+                    return_code=1,
+                    stdout="".join(stdout_chunks),
+                    stderr="".join(stderr_chunks),
+                    stalled=had_stalls,
+                    session_id=session_id,
+                ),
+                perf_path,
+            )
+
+        print(f"[standalone-msprof-simulator] OK, output_dir={output_dir}", flush=True)
+        _run_extract_and_copy(output_dir, bench_file, isTimeOut, dest_dir=extract_dest_dir)
+
+        return (
+            make_result(
+                return_code=0,
+                stdout="".join(stdout_chunks),
+                stderr="".join(stderr_chunks),
+                stalled=had_stalls,
+                session_id=session_id,
+            ),
+            None,
+        )
+
+    finally:
+        if temp_dir is not None:
+            temp_dir.cleanup()
+        _cleanup_local_bench_extra_info(bench_file.parent)
+        print("[standalone-msprof-simulator] done", flush=True)
 
 
 def _format_msprof_command_failure(result: ResultPayload) -> str:

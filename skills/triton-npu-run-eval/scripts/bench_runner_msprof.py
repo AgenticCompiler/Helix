@@ -701,3 +701,31 @@ def _create_local_msprof_preserved_run_dir(deps: BenchRunnerDeps) -> Path | None
     run_dir = Path(tempfile.mkdtemp(prefix="triton-agent-msprof-", dir=str(root)))
     deps._set_directory_owner_only(run_dir)
     return run_dir
+
+
+_STANDALONE_RUNTIME_DIR = str(Path(__file__).resolve().parent)
+
+
+def _build_standalone_msprof_wrapper_script() -> str:
+    return (
+        "import sys\n"
+        f"sys.path.insert(0, {_STANDALONE_RUNTIME_DIR!r})\n"
+        "sys.path.insert(0, '.')\n"
+        "import pathlib\n"
+        "import standalone_bench_runtime as runtime\n"
+        "bench_file = pathlib.Path(sys.argv[1])\n"
+        "operator_file = pathlib.Path(sys.argv[2])\n"
+        "case_id = sys.argv[3]\n"
+        "cases, _ = runtime.load_standalone_bench_cases(bench_file, operator_file)\n"
+        "matching = [c for c in cases if c.case_id == case_id]\n"
+        "if not matching:\n"
+        "    raise SystemExit(f'case_id {case_id!r} not found, available: "
+        "        {[c.case_id for c in cases]!r}')\n"
+        "case = matching[0]\n"
+        "print(f'[standalone-msprof] case={case.case_id} repeats={case.repeats}', "
+        "      flush=True)\n"
+        "for i in range(case.repeats):\n"
+        "    case.fn()\n"
+        "    print(f'[standalone-msprof] repeat {i+1}/{case.repeats} done', flush=True)\n"
+        "print('[standalone-msprof] done', flush=True)\n"
+    )
