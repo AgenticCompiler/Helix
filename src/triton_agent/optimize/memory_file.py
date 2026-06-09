@@ -8,6 +8,7 @@ from typing import Optional
 from triton_agent.optimize.pattern_reminders import (
     build_high_priority_pattern_reminder_lines,
 )
+from triton_agent.optimize.subagents import optimize_subagent_recommendation_lines
 from triton_agent.optimize.prompts import (
     cann_ext_api_lines,
     compiler_source_analysis_lines,
@@ -72,30 +73,6 @@ _OPTIMIZE_GUIDANCE_RULES_BLOCK = dedent(
 )
 
 
-_CONTINUOUS_GUIDANCE_TEMPLATE = (
-    dedent(
-        """\
-        # {guidance_filename}
-
-        ## Triton Agent Optimize Session
-
-        This workspace is under a continuous optimize run.
-
-        """
-    )
-    + _OPTIMIZE_GUIDANCE_RULES_BLOCK
-    + dedent(
-        """\
-        Own the end-to-end optimize session.
-        Use the staged `triton-npu-optimize` skill as the workflow source of truth.
-        Use `{test_mode}` correctness validation for this optimize session.
-        Use `{bench_mode}` benchmark validation for this optimize session.
-        Optimize the operator at `{operator_name}`.
-        {analysis_block}{high_priority_pattern_block}{compiler_source_block}{cann_ext_api_block}"""
-    )
-)
-
-
 _SHARED_GUIDANCE_TEMPLATE = (
     dedent(
         """\
@@ -111,7 +88,7 @@ _SHARED_GUIDANCE_TEMPLATE = (
     + dedent(
         """\
         Use the staged workspace skills as the workflow source of truth.
-        Role-specific behavior comes from the launch prompt.
+        Invocation-specific behavior comes from the launch prompt.
         Use `.triton-agent/supervisor-report.md` as the supervisor audit report file when supervised mode is active.
         Treat `baseline/` as the canonical optimize baseline.
         Use `compare-perf` as the authoritative source for round performance summaries.
@@ -135,7 +112,7 @@ _ROUND_GATED_GUIDANCE_TEMPLATE = (
     + dedent(
         """\
         Use the staged workspace skills as the workflow source of truth.
-        Role-specific behavior comes from the launch prompt.
+        Invocation-specific behavior comes from the launch prompt.
         The CLI will inject previous round validation results directly into the next worker prompt when another round is needed.
         Treat `baseline/` as the canonical optimize baseline.
         Use `compare-perf` as the authoritative source for round performance summaries.
@@ -152,37 +129,6 @@ class MemoryFileManager:
             return "CLAUDE.md"
         return "AGENTS.md"
 
-    def prepare_continuous(
-        self,
-        workdir: Path,
-        *,
-        operator_path: Path,
-        test_mode: str,
-        bench_mode: str,
-        agent_name: str,
-        optimize_target: str = "kernel",
-        compiler_source_path: Path | None = None,
-        compiler_source_commit: str | None = None,
-        enable_cann_ext_api: bool = False,
-        optimize_knowledge_skill_name: str | None = None,
-    ) -> MemoryFileState:
-        """Write the single-agent optimize memory file into the workspace root."""
-        return self._prepare(
-            workdir,
-            agent_name=agent_name,
-            content=self._render_continuous_guidance(
-                guidance_filename=self.guidance_filename(agent_name),
-                operator_path=operator_path,
-                test_mode=test_mode,
-                bench_mode=bench_mode,
-                optimize_target=optimize_target,
-                compiler_source_path=compiler_source_path,
-                compiler_source_commit=compiler_source_commit,
-                enable_cann_ext_api=enable_cann_ext_api,
-                optimize_knowledge_skill_name=optimize_knowledge_skill_name,
-            ),
-        )
-
     def prepare_shared(
         self,
         workdir: Path,
@@ -192,6 +138,7 @@ class MemoryFileManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
     ) -> MemoryFileState:
         """Write the shared orchestration memory file used by supervised optimize."""
@@ -204,6 +151,7 @@ class MemoryFileManager:
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
                 enable_cann_ext_api=enable_cann_ext_api,
+                enable_subagent=enable_subagent,
                 optimize_knowledge_skill_name=optimize_knowledge_skill_name,
             ),
         )
@@ -218,6 +166,7 @@ class MemoryFileManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
     ) -> MemoryFileState:
         """Write the round-gated optimize memory file for checked/supervised modes."""
@@ -232,6 +181,7 @@ class MemoryFileManager:
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
                 enable_cann_ext_api=enable_cann_ext_api,
+                enable_subagent=enable_subagent,
                 optimize_knowledge_skill_name=optimize_knowledge_skill_name,
             ),
         )
@@ -300,51 +250,6 @@ class MemoryFileManager:
             counter += 1
         return candidate
 
-    def _render_continuous_guidance(
-        self,
-        *,
-        guidance_filename: str,
-        operator_path: Path,
-        test_mode: str,
-        bench_mode: str,
-        optimize_target: str = "kernel",
-        compiler_source_path: Path | None = None,
-        compiler_source_commit: str | None = None,
-        enable_cann_ext_api: bool = False,
-        optimize_knowledge_skill_name: str | None = None,
-    ) -> str:
-        return _CONTINUOUS_GUIDANCE_TEMPLATE.format(
-            guidance_filename=guidance_filename,
-            test_mode=test_mode,
-            bench_mode=bench_mode,
-            operator_name=operator_path.name,
-            analysis_block=_render_bullet_block(
-                layered_analysis_lines(round_scope="each round")
-                + (
-                    [
-                        "Use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and operator-level pattern references.",
-                    ]
-                    if optimize_target == "operator"
-                    else []
-                )
-            ),
-            high_priority_pattern_block=_render_high_priority_pattern_block(
-                optimize_knowledge_skill_name=optimize_knowledge_skill_name
-            ),
-            compiler_source_block=_render_line_block(
-                _optimize_target_guidance_lines(optimize_target=optimize_target)
-            )
-            + _render_line_block(
-                compiler_source_analysis_lines(
-                    compiler_source_path=compiler_source_path,
-                    compiler_source_commit=compiler_source_commit,
-                )
-            ),
-            cann_ext_api_block=_render_line_block(
-                cann_ext_api_lines(enabled=enable_cann_ext_api)
-            ),
-        )
-
     def _render_shared_guidance(
         self,
         *,
@@ -353,6 +258,7 @@ class MemoryFileManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
     ) -> str:
         return _SHARED_GUIDANCE_TEMPLATE.format(
@@ -364,6 +270,11 @@ class MemoryFileManager:
                         "Use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and operator-level pattern references.",
                     ]
                     if optimize_target == "operator"
+                    else []
+                )
+                + (
+                    optimize_subagent_recommendation_lines()
+                    if enable_subagent
                     else []
                 )
             ),
@@ -393,6 +304,7 @@ class MemoryFileManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
     ) -> str:
         base = _ROUND_GATED_GUIDANCE_TEMPLATE.format(
@@ -404,6 +316,11 @@ class MemoryFileManager:
                         "Use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and operator-level pattern references.",
                     ]
                     if optimize_target == "operator"
+                    else []
+                )
+                + (
+                    optimize_subagent_recommendation_lines()
+                    if enable_subagent
                     else []
                 )
             ),

@@ -89,7 +89,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             result = _evaluate_plugin(
                 _policy(workspace),
                 "bash",
-                f"python3 {script} run-test --test-file differential_test_file.py",
+                f"python3 {script} run-test-optimize --test-file differential_test_file.py",
                 workspace,
             )
 

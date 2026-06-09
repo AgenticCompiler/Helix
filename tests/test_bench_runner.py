@@ -184,8 +184,45 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(result["return_code"], 0)
             self.assertEqual(resolved_perf, perf_file)
             helper.assert_called_once_with(bench_file, operator_file, verbose=False,
-                                             force_recompile=False)
+                                             output=None)
             streaming.assert_not_called()
+
+    def test_run_local_bench_prints_visible_devices_when_debug_enabled(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_abs.py"
+            operator_file = root / "abs.py"
+            bench_file.write_text("# bench-mode: standalone\n# kernel: abs_kernel\n", encoding="utf-8")
+            operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
+
+            fake_result = make_skill_result(0, "", "")
+            perf_file = root / "abs_perf.txt"
+            stdout = StringIO()
+            with patch.dict(
+                module.os.environ,
+                {
+                    "TRITON_AGENT_DEBUG": "true",
+                    "ASCEND_RT_VISIBLE_DEVICES": "5",
+                },
+                clear=False,
+            ):
+                with patch.object(
+                    module,
+                    "run_local_standalone_bench",
+                    create=True,
+                    return_value=(fake_result, perf_file),
+                ):
+                    with redirect_stdout(stdout):
+                        result, resolved_perf = module.run_local_bench(
+                            bench_file,
+                            operator_file,
+                            "standalone",
+                        )
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertEqual(resolved_perf, perf_file)
+        self.assertIn("[TRITON_AGENT_DEBUG] ASCEND_RT_VISIBLE_DEVICES=5", stdout.getvalue())
 
     def test_run_local_bench_standalone_preserves_helper_perf_path(self) -> None:
         module = load_bench_runner_module()
@@ -229,9 +266,14 @@ class LocalBenchRunnerTests(unittest.TestCase):
             fake_result = make_skill_result(0, "", "")
             perf_file = root / "abs_perf.txt"
 
-            def _fake_helper(passed_bench: Path, passed_operator: Path, *, verbose: bool = False,
-                             force_recompile: bool = False):
-                del passed_bench, passed_operator, verbose, force_recompile
+            def _fake_helper(
+                passed_bench: Path,
+                passed_operator: Path,
+                *,
+                verbose: bool = False,
+                output: Optional[str] = None,
+            ):
+                del passed_bench, passed_operator, verbose, output
                 observed_cwds.append(Path.cwd())
                 return fake_result, perf_file
 
@@ -383,7 +425,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertEqual(result, fake_result)
             self.assertEqual(resolved_perf, perf_file)
             helper.assert_called_once_with(bench_file, operator_file, verbose=False,
-                                             force_recompile=False)
+                                             output=None)
 
     def test_run_local_bench_standalone_parallel_uses_isolated_case_workdirs_and_device_envs(self) -> None:
         module = load_bench_runner_module()
@@ -668,8 +710,8 @@ def build_standalone_bench_cases(operator_api):
             runtime_script.write_text(
                 """from types import SimpleNamespace
 
-def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved_run_dir=None):
-    del bench_file, operator_file, preserved_run_dir
+def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved_run_dir=None, verbose=False):
+    del bench_file, operator_file, preserved_run_dir, verbose
     return SimpleNamespace(
         case_label=case_id,
         kernel_names=["KernelA"],
@@ -2162,7 +2204,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIn("baseline=0.0038", output)
             self.assertIn("compare=0.0254", output)
 
-    def test_force_recompile_standalone_parallel_injects_env(self) -> None:
+    def test_always_compile_standalone_parallel_injects_env(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2230,7 +2272,6 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                     result, _perf_path = module.run_local_bench(
                         bench_file, operator_file, "standalone",
                         npu_devices="0",
-                        force_recompile=True,
                     )
 
             self.assertEqual(result["return_code"], 0)
@@ -2240,7 +2281,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertEqual(extra["TRITON_ALWAYS_COMPILE"], "1")  # type: ignore[index]
             self.assertIn("ASCEND_RT_VISIBLE_DEVICES", extra)  # type: ignore[index]
 
-    def test_force_recompile_msprof_local_injects_env(self) -> None:
+    def test_always_compile_msprof_local_injects_env(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2270,7 +2311,6 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                  ):
                 result, _perf_path = module.run_local_bench(
                     bench_file, operator_file, "msprof",
-                    force_recompile=True,
                 )
 
             self.assertEqual(result["return_code"], 0)
@@ -2279,7 +2319,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIsNotNone(extra)
             self.assertEqual(extra["TRITON_ALWAYS_COMPILE"], "1")  # type: ignore[index]
 
-    def test_force_recompile_false_does_not_set_env(self) -> None:
+    def test_always_compile_standalone_parallel_with_npu_devices_injects_env(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2349,7 +2389,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertEqual(result["return_code"], 0)
             for extra in observed_extra_env:
                 if extra is not None:
-                    self.assertNotIn("TRITON_ALWAYS_COMPILE", extra)
+                    self.assertEqual(extra["TRITON_ALWAYS_COMPILE"], "1")  # type: ignore[index]
 
 
 if __name__ == "__main__":

@@ -6,18 +6,24 @@ from pathlib import Path
 
 from triton_agent.optimize.archive import ArchiveManager, ArchiveState
 from triton_agent.optimize.memory_file import MemoryFileManager, MemoryFileState
+from triton_agent.optimize.subagents import perf_diagnosis_subagent_definition
+from triton_agent.subagents import SubagentManager, SubagentStageSet
 
 
 @dataclass
-class SharedOptimizeSessionArtifactsState:
-    """Session-scoped artifacts shared by supervised and continuous optimize runs."""
+class OptimizeSessionArtifactsState:
+    """Full artifact bundle for multi-invocation optimize runs."""
 
     memory_file: MemoryFileState
     archive: ArchiveState
+    subagent_stage_set: SubagentStageSet | None = None
+
+    hidden_triton_agent_dir: Path | None = None
+    supervisor_report_path: Path | None = None
+    supervisor_history_dir: Path | None = None
 
     @property
     def guidance_path(self) -> Path:
-        """Compatibility view of the temporary top-level memory file path."""
         return self.memory_file.guidance_path
 
     @property
@@ -40,14 +46,6 @@ class SharedOptimizeSessionArtifactsState:
     def otel_trace_path(self) -> Path:
         return self.archive.otel_trace_path
 
-@dataclass
-class OptimizeSessionArtifactsState(SharedOptimizeSessionArtifactsState):
-    """Full artifact bundle for multi-invocation optimize runs."""
-
-    hidden_triton_agent_dir: Path | None = None
-    supervisor_report_path: Path | None = None
-    supervisor_history_dir: Path | None = None
-
     @property
     def shared_guidance_snapshot_path(self) -> Path | None:
         """Archive destination for the shared memory-file snapshot, when enabled."""
@@ -56,6 +54,8 @@ class OptimizeSessionArtifactsState(SharedOptimizeSessionArtifactsState):
     @property
     def created_paths(self) -> tuple[Path, ...]:
         created: list[Path] = []
+        if self.subagent_stage_set is not None:
+            created.extend(self.subagent_stage_set.created_paths)
         if self.supervisor_report_path is not None:
             created.append(self.supervisor_report_path)
         return tuple(created)
@@ -68,42 +68,11 @@ class OptimizeSessionArtifactsManager:
         self,
         memory_files: MemoryFileManager | None = None,
         archives: ArchiveManager | None = None,
+        subagents: SubagentManager | None = None,
     ) -> None:
         self._memory_files = memory_files or MemoryFileManager()
         self._archives = archives or ArchiveManager()
-
-    def prepare_continuous_session(
-        self,
-        workdir: Path,
-        *,
-        operator_path: Path,
-        test_mode: str,
-        bench_mode: str,
-        agent_name: str,
-        optimize_target: str = "kernel",
-        compiler_source_path: Path | None = None,
-        compiler_source_commit: str | None = None,
-        enable_cann_ext_api: bool = False,
-        optimize_knowledge_skill_name: str | None = None,
-    ) -> SharedOptimizeSessionArtifactsState:
-        """Prepare only the artifacts needed by a single-agent optimize session."""
-        archive_state = self._archives.prepare(workdir)
-        memory_file_state = self._memory_files.prepare_continuous(
-            workdir,
-            operator_path=operator_path,
-            test_mode=test_mode,
-            bench_mode=bench_mode,
-            agent_name=agent_name,
-            optimize_target=optimize_target,
-            compiler_source_path=compiler_source_path,
-            compiler_source_commit=compiler_source_commit,
-            enable_cann_ext_api=enable_cann_ext_api,
-            optimize_knowledge_skill_name=optimize_knowledge_skill_name,
-        )
-        return SharedOptimizeSessionArtifactsState(
-            memory_file=memory_file_state,
-            archive=archive_state,
-        )
+        self._subagents = subagents or SubagentManager()
 
     def prepare_checked_session(
         self,
@@ -113,23 +82,38 @@ class OptimizeSessionArtifactsManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
     ) -> OptimizeSessionArtifactsState:
         """Prepare artifacts for checked optimize without a live handoff file."""
         archive_state = self._archives.prepare(workdir, include_shared_guidance_snapshot=True)
-        memory_file_state = self._memory_files.prepare_round_gated(
-            workdir,
+        subagent_stage_set = self._prepare_subagents(
             agent_name=agent_name,
+            workdir=workdir,
             optimize_target=optimize_target,
-            include_supervisor_handoff=False,
-            compiler_source_path=compiler_source_path,
-            compiler_source_commit=compiler_source_commit,
             enable_cann_ext_api=enable_cann_ext_api,
-            optimize_knowledge_skill_name=optimize_knowledge_skill_name,
+            enable_subagent=enable_subagent,
         )
+        try:
+            memory_file_state = self._memory_files.prepare_round_gated(
+                workdir,
+                agent_name=agent_name,
+                optimize_target=optimize_target,
+                include_supervisor_handoff=False,
+                compiler_source_path=compiler_source_path,
+                compiler_source_commit=compiler_source_commit,
+                enable_cann_ext_api=enable_cann_ext_api,
+                enable_subagent=enable_subagent,
+                optimize_knowledge_skill_name=optimize_knowledge_skill_name,
+            )
+        except Exception:
+            if subagent_stage_set is not None:
+                self._subagents.cleanup(subagent_stage_set)
+            raise
         return OptimizeSessionArtifactsState(
             memory_file=memory_file_state,
             archive=archive_state,
+            subagent_stage_set=subagent_stage_set,
         )
 
     def prepare_supervised_session(
@@ -140,6 +124,7 @@ class OptimizeSessionArtifactsManager:
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
         enable_cann_ext_api: bool = False,
+        enable_subagent: bool = False,
         optimize_knowledge_skill_name: str | None = None,
     ) -> OptimizeSessionArtifactsState:
         """Prepare the full artifact set used by worker/supervisor orchestration."""
@@ -155,18 +140,34 @@ class OptimizeSessionArtifactsManager:
             workdir,
             include_shared_guidance_snapshot=True,
         )
-        memory_file_state = self._memory_files.prepare_shared(
-            workdir,
-            agent_name=agent_name,
-            optimize_target=optimize_target,
-            compiler_source_path=compiler_source_path,
-            compiler_source_commit=compiler_source_commit,
-            enable_cann_ext_api=enable_cann_ext_api,
-            optimize_knowledge_skill_name=optimize_knowledge_skill_name,
-        )
+        subagent_stage_set: SubagentStageSet | None = None
+        try:
+            subagent_stage_set = self._prepare_subagents(
+                agent_name=agent_name,
+                workdir=workdir,
+                optimize_target=optimize_target,
+                enable_cann_ext_api=enable_cann_ext_api,
+                enable_subagent=enable_subagent,
+            )
+            memory_file_state = self._memory_files.prepare_shared(
+                workdir,
+                agent_name=agent_name,
+                optimize_target=optimize_target,
+                compiler_source_path=compiler_source_path,
+                compiler_source_commit=compiler_source_commit,
+                enable_cann_ext_api=enable_cann_ext_api,
+                enable_subagent=enable_subagent,
+                optimize_knowledge_skill_name=optimize_knowledge_skill_name,
+            )
+        except Exception:
+            if subagent_stage_set is not None:
+                self._subagents.cleanup(subagent_stage_set)
+            self._cleanup_hidden_triton_agent_dir(hidden_triton_agent_dir)
+            raise
         return OptimizeSessionArtifactsState(
             memory_file=memory_file_state,
             archive=archive_state,
+            subagent_stage_set=subagent_stage_set,
             hidden_triton_agent_dir=hidden_triton_agent_dir,
             supervisor_report_path=supervisor_report_path,
             supervisor_history_dir=supervisor_history_dir,
@@ -181,27 +182,24 @@ class OptimizeSessionArtifactsManager:
             history_dir=state.supervisor_history_dir,
         )
 
-    def cleanup_continuous_session(
-        self,
-        state: SharedOptimizeSessionArtifactsState,
-    ) -> list[str]:
+    def cleanup_session(self, state: OptimizeSessionArtifactsState) -> list[str]:
         """Remove or restore the temporary top-level memory file for an optimize run."""
         warnings: list[str] = []
         warnings.extend(self._memory_files.cleanup(state.memory_file))
+        if state.subagent_stage_set is not None:
+            warnings.extend(self._subagents.cleanup(state.subagent_stage_set))
         return warnings
 
     def record_agent_session(
         self,
-        state: SharedOptimizeSessionArtifactsState,
+        state: OptimizeSessionArtifactsState,
         *,
-        role: str,
         session_id: str | None,
         agent: str,
     ) -> str | None:
         """Append a compact session-id record to the optimize archive."""
         return self._archives.record_agent_session(
             state.archive,
-            role=role,
             session_id=session_id,
             agent=agent,
         )
@@ -215,7 +213,7 @@ class OptimizeSessionArtifactsManager:
             warnings.append(f"Failed to archive optimize supervised logs: {exc}")
 
         warnings.extend(self._cleanup_hidden_triton_agent_dir(state.hidden_triton_agent_dir))
-        warnings.extend(self.cleanup_continuous_session(state))
+        warnings.extend(self.cleanup_session(state))
         return warnings
 
     def cleanup_checked_session(self, state: OptimizeSessionArtifactsState) -> list[str]:
@@ -226,17 +224,8 @@ class OptimizeSessionArtifactsManager:
         except Exception as exc:
             warnings.append(f"Failed to archive optimize checked logs: {exc}")
 
-        warnings.extend(self.cleanup_continuous_session(state))
+        warnings.extend(self.cleanup_session(state))
         return warnings
-
-    def describe_prepare_continuous_session(
-        self,
-        state: SharedOptimizeSessionArtifactsState,
-    ) -> list[str]:
-        return self._memory_files.describe_prepare(
-            state.memory_file,
-            description="continuous optimize guidance file",
-        )
 
     def describe_prepare_supervised_session(
         self,
@@ -246,6 +235,7 @@ class OptimizeSessionArtifactsManager:
             state.memory_file,
             description="supervised optimize guidance file",
         )
+        messages.extend(self._describe_prepare_subagents(state.subagent_stage_set))
         if state.supervisor_report_path is not None:
             messages.append(f"wrote optimize supervisor report {state.supervisor_report_path}")
         return messages
@@ -254,16 +244,17 @@ class OptimizeSessionArtifactsManager:
         self,
         state: OptimizeSessionArtifactsState,
     ) -> list[str]:
-        return self._memory_files.describe_prepare(
+        messages = self._memory_files.describe_prepare(
             state.memory_file,
             description="checked optimize guidance file",
         )
+        messages.extend(self._describe_prepare_subagents(state.subagent_stage_set))
+        return messages
 
-    def describe_cleanup_continuous_session(
-        self,
-        state: SharedOptimizeSessionArtifactsState,
-    ) -> list[str]:
-        return self._memory_files.describe_cleanup(state.memory_file)
+    def describe_cleanup_session(self, state: OptimizeSessionArtifactsState) -> list[str]:
+        messages = self._memory_files.describe_cleanup(state.memory_file)
+        messages.extend(self._describe_cleanup_subagents(state.subagent_stage_set))
+        return messages
 
     def describe_cleanup_supervised_session(
         self,
@@ -277,7 +268,7 @@ class OptimizeSessionArtifactsManager:
                 "removing temporary optimize runtime directory tree "
                 f"{state.hidden_triton_agent_dir}"
             )
-        messages.extend(self.describe_cleanup_continuous_session(state))
+        messages.extend(self.describe_cleanup_session(state))
         return messages
 
     def describe_cleanup_checked_session(
@@ -285,8 +276,57 @@ class OptimizeSessionArtifactsManager:
         state: OptimizeSessionArtifactsState,
     ) -> list[str]:
         messages = [f"archiving checked optimize logs to {state.run_archive_dir}"]
-        messages.extend(self.describe_cleanup_continuous_session(state))
+        messages.extend(self.describe_cleanup_session(state))
         return messages
+
+    def _prepare_subagents(
+        self,
+        *,
+        agent_name: str,
+        workdir: Path,
+        optimize_target: str,
+        enable_cann_ext_api: bool,
+        enable_subagent: bool,
+    ) -> SubagentStageSet | None:
+        if not enable_subagent:
+            return None
+        definition = perf_diagnosis_subagent_definition(
+            optimize_target=optimize_target,
+            enable_cann_ext_api=enable_cann_ext_api,
+        )
+        if agent_name not in definition.supported_backends:
+            supported_backends = definition.supported_backends
+            supported = ", ".join(f"`{name}`" for name in supported_backends[:-1])
+            if supported:
+                supported = f"{supported}, and `{supported_backends[-1]}`"
+            else:
+                supported = f"`{supported_backends[-1]}`"
+            raise RuntimeError(
+                f"Optimize subagent staging only supports {supported}; got `{agent_name}`."
+            )
+        return self._subagents.prepare(agent_name, workdir, (definition,))
+
+    def _describe_prepare_subagents(
+        self,
+        stage_set: SubagentStageSet | None,
+    ) -> list[str]:
+        if stage_set is None:
+            return []
+        files = [path for path in stage_set.created_paths if path.suffix in {".md", ".toml"}]
+        if not files:
+            return []
+        return [f"staged optimize subagent file(s): {', '.join(str(path) for path in files)}"]
+
+    def _describe_cleanup_subagents(
+        self,
+        stage_set: SubagentStageSet | None,
+    ) -> list[str]:
+        if stage_set is None:
+            return []
+        files = [path for path in stage_set.created_paths if path.suffix in {".md", ".toml"}]
+        if not files:
+            return []
+        return [f"removing staged optimize subagent file(s): {', '.join(str(path) for path in files)}"]
 
     def _prepare_hidden_triton_agent_dir(self, workdir: Path) -> Path:
         hidden_triton_agent_dir = workdir / ".triton-agent"

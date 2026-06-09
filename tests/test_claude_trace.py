@@ -37,8 +37,8 @@ class TestClaudeJsonLineParser(unittest.TestCase):
         trace_path = tmpdir / "trace.jsonl"
         return tmpdir, trace_path
 
-    def _make_parser(self, trace_path: Path, run_id: str = "test-run-id", role: str = "worker") -> ClaudeJsonLineParser:
-        return ClaudeJsonLineParser(trace_path, run_id=run_id, role=role, workspace_root=str(trace_path.parent.parent))
+    def _make_parser(self, trace_path: Path, run_id: str = "test-run-id") -> ClaudeJsonLineParser:
+        return ClaudeJsonLineParser(trace_path, run_id=run_id, workspace_root=str(trace_path.parent.parent))
 
     def test_non_json_line_passed_through(self) -> None:
         _, trace_path = self._make_trace_path()
@@ -331,6 +331,8 @@ class TestClaudeJsonLineParser(unittest.TestCase):
         self.assertEqual(parser._classify_command("python run-bench --bench-mode msprof"), "benchmark")
         self.assertEqual(parser._classify_command("ssh user@host python run-bench"), "remote_bench")
         self.assertEqual(parser._classify_command("pytest test.py"), "correctness_test")
+        self.assertEqual(parser._classify_command("python run-command.py run-test-baseline --test-file test.py"), "correctness_test")
+        self.assertEqual(parser._classify_command("python run-command.py run-test-optimize --test-file differential_test.py"), "correctness_test")
         self.assertEqual(parser._classify_command("compare-perf"), "compare_perf")
         self.assertEqual(parser._classify_command("check-round"), "check_round")
         self.assertEqual(parser._classify_command("check-baseline"), "check_baseline")
@@ -426,7 +428,6 @@ class TestClaudeJsonOutputFilter(unittest.TestCase):
         _, trace_path = self._make_trace_path()
         extra_env = {
             "TRITON_AGENT_OTEL_RUN_ID": "test-run",
-            "TRITON_AGENT_OTEL_ROLE": "worker",
             "TRITON_AGENT_WORKSPACE_ROOT": str(trace_path.parent.parent),
         }
         filter_obj = ClaudeJsonOutputFilter(trace_path, extra_env)
@@ -465,7 +466,6 @@ class TestClaudeJsonOutputFilter(unittest.TestCase):
         _, trace_path = self._make_trace_path()
         extra_env = {
             "TRITON_AGENT_OTEL_RUN_ID": "test-run",
-            "TRITON_AGENT_OTEL_ROLE": "worker",
             "TRITON_AGENT_WORKSPACE_ROOT": str(trace_path.parent.parent),
         }
         filter_obj = ClaudeJsonOutputFilter(trace_path, extra_env)
@@ -480,12 +480,10 @@ class TestBuildClaudeTraceEnv(unittest.TestCase):
             None,
             trace_path=trace_path,
             run_id="run-123",
-            role="worker",
             workspace_root=Path(tempfile.gettempdir()),
         )
         self.assertEqual(env["TRITON_AGENT_OTEL_TRACE_PATH"], str(trace_path))
         self.assertEqual(env["TRITON_AGENT_OTEL_RUN_ID"], "run-123")
-        self.assertEqual(env["TRITON_AGENT_OTEL_ROLE"], "worker")
 
     def test_existing_env_preserved(self) -> None:
         trace_path = Path(tempfile.gettempdir()) / "trace.jsonl"
@@ -494,7 +492,6 @@ class TestBuildClaudeTraceEnv(unittest.TestCase):
             existing,
             trace_path=trace_path,
             run_id="run-123",
-            role="worker",
             workspace_root=Path(tempfile.gettempdir()),
         )
         self.assertEqual(env["MY_VAR"], "my_value")

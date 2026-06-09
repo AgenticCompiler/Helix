@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Optional
@@ -14,6 +15,7 @@ from triton_agent.commands.generation import handle_gen_eval
 from triton_agent.commands.generation import handle_gen_eval_batch
 from triton_agent.commands.status import handle_status
 from triton_agent.commands.log_check import handle_log_check, handle_log_check_batch
+from triton_agent.commands.mcp_server import handle_run_eval_mcp_server
 from triton_agent.commands.trace_analyze import handle_trace_analyze
 from triton_agent.commands.verify import handle_verify, handle_verify_batch
 from triton_agent.commands.optimize import (
@@ -24,6 +26,11 @@ from triton_agent.commands.upload_optimize import handle_upload_optimize
 from triton_agent.commands.report_batch import handle_report_batch
 from triton_agent.commands.report import handle_report
 from triton_agent.models import CommandKind
+from triton_agent.remote_execution_env import (
+    apply_remote_execution_env,
+    remote_target_env_name,
+    remote_workdir_env_name,
+)
 
 
 _Handler = Callable[[argparse.ArgumentParser, argparse.Namespace], int]
@@ -33,7 +40,7 @@ _FORMAT_CHOICES = ("text", "markdown")
 _TEST_MODE_CHOICES = ("standalone", "differential")
 _BENCH_MODE_CHOICES = ("standalone", "msprof", "msprof-simulator")
 _RESUME_CHOICES = ("auto", "continue", "fresh")
-_ROUND_MODE_CHOICES = ("continuous", "checked", "supervised")
+_ROUND_MODE_CHOICES = ("checked", "supervised")
 _TARGET_CHIP_CHOICES = ("A3", "A5")
 _OPTIMIZE_TARGET_CHOICES = ("kernel", "operator")
 _OPTIMIZE_KNOWLEDGE_CHOICES = ("v1", "v2", "v3")
@@ -74,12 +81,25 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
                 "Directory used to keep local benchmark profiler output.",
             ),
             (
+                "TRITON_AGENT_DEBUG",
+                "When set to true, print NPU device diagnostics before run-test and run-bench execution.",
+            ),
+            (
+                remote_target_env_name(),
+                "Injected remote target for agent child processes; remote-aware run helpers use it as a fallback when "
+                "`--remote` is omitted.",
+            ),
+            (
+                remote_workdir_env_name(),
+                "Injected remote workspace root for agent child processes; used together with the remote target fallback.",
+            ),
+            (
                 "TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES",
                 "Enable ordinary optimize PT cleanup; default keeps PT files and does not affect --reset-optimize.",
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW",
-                "Recent comparable round count for advisory local-optimum warnings in check-round (default: 3).",
+                "Recent comparable round count for advisory local-optimum warnings in triton-npu-optimize-submit-round (default: 3).",
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN",
@@ -161,7 +181,6 @@ class _CommandSpec:
     has_bench_mode: bool = False
     bench_mode_default: str | None = None
     has_npu_devices: bool = False
-    has_force_recompile: bool = False
     has_optimize_options: bool = False
     has_prompt: bool = False
     concurrency_default: int | None = None
@@ -268,7 +287,6 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_remote=True,
         keep_remote_workdir=True,
         has_test_mode=True,
-        has_force_recompile=True,
     ),
     CommandKind.GEN_BENCH: _CommandSpec(
         handler=handle_gen_bench,
@@ -295,7 +313,6 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         keep_remote_workdir=True,
         has_bench_mode=True,
         has_npu_devices=True,
-        has_force_recompile=True,
     ),
     CommandKind.COMPARE_RESULT: _CommandSpec(
         handler=handle_compare_result,
@@ -352,6 +369,15 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_output=False,
         has_verbose=False,
         input_mode="trace-analyze",
+    ),
+    CommandKind.RUN_EVAL_MCP_SERVER: _CommandSpec(
+        handler=handle_run_eval_mcp_server,
+        help_group="Execution",
+        help_summary="Start the shared run-eval HTTP MCP server in the foreground.",
+        description="Start the shared run-eval HTTP MCP server in the foreground for standalone debugging.",
+        has_output=False,
+        has_verbose=False,
+        input_mode="run-eval-mcp-server",
     ),
     CommandKind.VERIFY: _CommandSpec(
         handler=handle_verify,
@@ -456,6 +482,14 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subparsers = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
+    mcp_enabled_commands = {
+        CommandKind.GEN_EVAL,
+        CommandKind.GEN_EVAL_BATCH,
+        CommandKind.CONVERT,
+        CommandKind.CONVERT_BATCH,
+        CommandKind.OPTIMIZE,
+        CommandKind.OPTIMIZE_BATCH,
+    }
 
     for command_kind in CommandKind:
         spec = _COMMAND_SPECS[command_kind]
@@ -488,9 +522,15 @@ def build_parser() -> argparse.ArgumentParser:
         if spec.has_show_output:
             subparser.add_argument("--show-output", action="store_true")
         if spec.has_log_tools:
-            subparser.add_argument("--log-tools", action="store_true")
+            subparser.add_argument("--log-tools", "--log-tool", dest="log_tools", action="store_true")
         if spec.has_agent:
             subparser.add_argument("--agent", default="codex", choices=_AGENT_CHOICES)
+            if command_kind in mcp_enabled_commands:
+                subparser.add_argument(
+                    "--enable-mcp",
+                    action="store_true",
+                    help="Stage the MCP-backed run-eval skill and configure request-scoped MCP servers.",
+                )
         if spec.has_test_mode:
             subparser.add_argument(
                 "--test-mode",
@@ -505,19 +545,16 @@ def build_parser() -> argparse.ArgumentParser:
             )
         if spec.has_npu_devices:
             subparser.add_argument("--npu-devices")
-        if spec.has_force_recompile:
-            subparser.add_argument(
-                "--force-recompile", action="store_true",
-                help="Force Triton kernel recompilation (sets TRITON_ALWAYS_COMPILE=1)",
-            )
         if spec.has_optimize_options:
-            subparser.add_argument("--min-rounds", type=int, default=5)
+            subparser.add_argument("--min-rounds", "--min-round", dest="min_rounds", type=int, default=5)
+            subparser.add_argument("--round-batch-size", type=int, default=10)
             subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES)
             subparser.add_argument("--reset-optimize", action="store_true")
             subparser.add_argument("--enable-compiler-source-analysis", action="store_true")
             subparser.add_argument("--enable-cann-ext-api", action="store_true")
+            subparser.add_argument("--enable-subagent", action="store_true")
             if command_kind == CommandKind.OPTIMIZE:
-                subparser.add_argument("--enable-agent-hooks", action="store_true")
+                subparser.add_argument("--enable-agent-hooks", "--enable-agent-hook", dest="enable_agent_hooks", action="store_true")
             subparser.add_argument("--target-chip", default="A5", choices=_TARGET_CHIP_CHOICES)
             subparser.add_argument(
                 "--optimize-target",
@@ -532,7 +569,7 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--no-agent-session", action="store_true")
             subparser.add_argument(
                 "--round-mode",
-                default="continuous",
+                default="checked",
                 choices=_ROUND_MODE_CHOICES,
             )
             subparser.add_argument("--no-upload", action="store_true")
@@ -605,8 +642,17 @@ def _build_environment_variables_section() -> list[str]:
 def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(_normalize_command_aliases(argv))
+    _apply_remote_execution_env_from_args(args)
     command_kind = args.command_kind
     return _COMMAND_SPECS[command_kind].handler(parser, args)
+
+
+def _apply_remote_execution_env_from_args(args: argparse.Namespace) -> None:
+    apply_remote_execution_env(
+        getattr(args, "remote", None) if hasattr(args, "remote") else None,
+        getattr(args, "remote_workdir", None) if hasattr(args, "remote_workdir") else None,
+        os.environ,
+    )
 
 
 def _parse_concurrency_value(value: str) -> int | str:
@@ -629,7 +675,8 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
     if spec.input_mode == "run-test":
         subparser.add_argument("--test-file", required=True)
         subparser.add_argument("--operator-file", required=True)
-        subparser.add_argument("--oracle-result")
+        subparser.add_argument("--baseline-result")
+        subparser.add_argument("--baseline-operator-file")
         subparser.add_argument("--compare-level", choices=_COMPARE_LEVEL_CHOICES)
         return
     if spec.input_mode == "run-bench":
@@ -644,12 +691,15 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
     if spec.input_mode == "compare-perf":
         subparser.add_argument("--baseline", required=True)
         subparser.add_argument("--compare", required=True)
-        subparser.add_argument("--skip-latency-errors", action="store_true")
+        subparser.add_argument("--skip-latency-errors", "--skip-error", dest="skip_latency_errors", action="store_true")
         subparser.add_argument(
             "--metric-source",
             default="auto",
             choices=("auto", "kernel", "total-op", "all"),
         )
+        return
+    if spec.input_mode == "run-eval-mcp-server":
+        subparser.add_argument("--port", type=int, default=0)
         return
     if spec.input_mode == "trace-analyze":
         subparser.add_argument("-t", "--trace", required=True, help="Path to the otel trace.jsonl file.")
@@ -668,6 +718,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "run_test": "run-test",
         "gen_bench": "gen-bench",
         "run_bench": "run-bench",
+        "run_eval_mcp_server": "run-eval-mcp-server",
         "compare_result": "compare-result",
         "compare_perf": "compare-perf",
         "verify_batch": "verify-batch",

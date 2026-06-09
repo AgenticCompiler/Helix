@@ -37,6 +37,12 @@ REPEATS_DEFAULT = 50
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched profiler operator details"
 _LOCAL_BENCH_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_OUTPUT_DIR"
 
+
+def _resolve_output_path(operator_file: Path, *, output: str | None = None) -> Path:
+    if output is not None:
+        return Path(output).expanduser().resolve()
+    return perf_output_path(operator_file)
+
 @dataclass(frozen=True)
 class StandaloneBenchCase:
     case_id: str
@@ -64,11 +70,10 @@ def run_local_standalone_bench(
     operator_file: Path,
     *,
     verbose: bool = False,
-    force_recompile: bool = False,
+    output: str | None = None,
 ) -> tuple[ResultPayload, Path]:
-    prev = os.environ.get("TRITON_ALWAYS_COMPILE") if force_recompile else None
-    if force_recompile:
-        os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+    prev = os.environ.get("TRITON_ALWAYS_COMPILE")
+    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
     try:
         cases, resolution = load_standalone_bench_cases(bench_file, operator_file)
         case_records: list[PerfCaseRecord] = []
@@ -83,7 +88,7 @@ def run_local_standalone_bench(
                 stderr_chunks.append(f"{case.case_id}: {record.error_message}")
             case_records.append(record)
 
-        perf_path = perf_output_path(operator_file)
+        perf_path = _resolve_output_path(operator_file, output=output)
         write_perf_lines(
             perf_path,
             render_perf_case_records_jsonl(
@@ -100,9 +105,9 @@ def run_local_standalone_bench(
             perf_path,
         )
     finally:
-        if prev is None and force_recompile:
+        if prev is None:
             del os.environ["TRITON_ALWAYS_COMPILE"]
-        elif prev is not None:
+        else:
             os.environ["TRITON_ALWAYS_COMPILE"] = prev
 
 
@@ -304,7 +309,7 @@ def _profile_case_with_profiler(
                     _run_once()
                     profiler.step()
 
-        return _read_profiler_metrics(profile_root, case.repeats, resolution.kernel_names), None
+        return _read_profiler_metrics(profile_root, case.repeats, resolution.kernel_names, verbose=verbose), None
     except Exception as exc:
         return None, f"{type(exc).__name__}: {exc}"
 
@@ -378,37 +383,67 @@ def _read_profiler_metrics(
     profile_root: Path,
     active_count: int,
     kernel_names: list[str],
+    *,
+    verbose: bool = False,
 ) -> PerfMetrics:
     operator_details_path = find_optional_profile_csv(profile_root, "operator_details.csv")
     operator_details_rows = None
     if operator_details_path is not None:
+        if verbose:
+            print(f"[metrics] found operator_details.csv at {operator_details_path}", file=sys.stderr)
         operator_details_rows = parse_operator_details_csv(
             operator_details_path,
             active_count=active_count,
             kernel_names=kernel_names,
+            verbose=verbose,
         )
         if operator_details_rows.total_time_us > 0:
-            return resolve_perf_metrics(operator_details_rows.ops, kernel_names)
+            return resolve_perf_metrics(operator_details_rows.ops, kernel_names, verbose=verbose)
+        if verbose:
+            print(
+                f"[metrics] operator_details.csv total_time_us={operator_details_rows.total_time_us}, "
+                f"falling back to kernel_details.csv",
+                file=sys.stderr,
+            )
 
     kernel_details_path = find_optional_profile_csv(profile_root, "kernel_details.csv")
     kernel_details_rows = None
     if kernel_details_path is not None:
+        if verbose:
+            print(f"[metrics] found kernel_details.csv at {kernel_details_path}", file=sys.stderr)
         kernel_details_rows = parse_kernel_details_csv(
             kernel_details_path,
             active_count=active_count,
+            verbose=verbose,
         )
         if kernel_details_rows.total_time_us > 0:
-            return resolve_perf_metrics(kernel_details_rows.ops, kernel_names)
+            return resolve_perf_metrics(kernel_details_rows.ops, kernel_names, verbose=verbose)
+        if verbose:
+            print(
+                f"[metrics] kernel_details.csv total_time_us={kernel_details_rows.total_time_us}, "
+                f"falling back to op_statistic.csv",
+                file=sys.stderr,
+            )
 
     op_statistic_path = find_latest_op_statistic_csv(profile_root)
     if op_statistic_path is not None:
-        return resolve_perf_metrics(parse_op_statistic_csv(op_statistic_path).ops, kernel_names)
+        if verbose:
+            print(f"[metrics] found op_statistic.csv at {op_statistic_path}", file=sys.stderr)
+        return resolve_perf_metrics(
+            parse_op_statistic_csv(op_statistic_path, verbose=verbose).ops,
+            kernel_names,
+            verbose=verbose,
+        )
 
     if operator_details_rows is not None:
-        return resolve_perf_metrics(operator_details_rows.ops, kernel_names)
+        if verbose:
+            print("[metrics] operator_details.csv total_time_us=0, no other CSV found", file=sys.stderr)
+        return resolve_perf_metrics(operator_details_rows.ops, kernel_names, verbose=verbose)
 
     if kernel_details_rows is not None:
-        return resolve_perf_metrics(kernel_details_rows.ops, kernel_names)
+        if verbose:
+            print("[metrics] kernel_details.csv total_time_us=0, no other CSV found", file=sys.stderr)
+        return resolve_perf_metrics(kernel_details_rows.ops, kernel_names, verbose=verbose)
 
     raise FileNotFoundError(
         f"No operator_details.csv, kernel_details.csv, or op_statistic.csv found under {profile_root}"

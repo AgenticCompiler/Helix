@@ -103,6 +103,11 @@ Each completed round must also include `round-state.json`.
 - `opt_note_updated`
 - `round_disposition`: `"continue"` when the round produced a meaningful improvement and the optimization session should continue, or `"stop"` when no further optimization direction is justified by current evidence. Do not use this field to write forward-looking optimization plans or predict what to try next—that must be determined by fresh profiling or benchmark evidence after the code changes.
 
+Path fields in `round-state.json` must be **round-relative bare filenames** (no directory prefix):
+
+- `perf_artifact`: use `"opt_<operator>_perf.txt"` (e.g. `"opt_kernel_perf.txt"`), NOT `"opt-round-1/opt_kernel_perf.txt"`
+- `summary_path`: use `"summary.md"`, NOT `"opt-round-1/summary.md"`
+
 `effective_metric_source` records the resolved `compare-perf` basis used for the round conclusion:
 
 - `kernel`: kernel latency was the comparison basis

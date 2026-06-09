@@ -3,7 +3,9 @@ from __future__ import annotations
 import sys
 import threading
 from collections.abc import Callable
+from contextlib import nullcontext
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from dataclasses import replace
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO, cast
@@ -17,6 +19,7 @@ from triton_agent.batch_utils import (
 )
 from triton_agent.generation.models import GenerationOptions
 from triton_agent.generation.orchestration import build_generation_request, run_generation_request
+from triton_agent.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
 from triton_agent.models import AgentResult, CommandKind
 from triton_agent.npu_affinity import (
     BatchNpuAffinityPool,
@@ -25,6 +28,7 @@ from triton_agent.npu_affinity import (
     configured_batch_npu_slots,
     validate_batch_affinity_capacity,
 )
+from triton_agent.skill_staging import resolve_staged_skills
 
 _BATCH_GEN_EVAL_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")
 _BATCH_GEN_EVAL_EXCLUDED_NAMES = {"__init__.py"}
@@ -72,9 +76,13 @@ def run_gen_eval_batch(
     output_lock = threading.Lock()
     stream = stdout or sys.stdout
     devices = configured_batch_npu_devices()
-    validate_batch_affinity_capacity(devices, max_concurrency=max_concurrency)
-    slots = configured_batch_npu_slots()
-    pool = BatchNpuAffinityPool(slots) if slots is not None else None
+    if not options.enable_mcp:
+        validate_batch_affinity_capacity(devices, max_concurrency=max_concurrency)
+    affinity_pool = (
+        BatchNpuAffinityPool(slots)
+        if not options.enable_mcp and (slots := configured_batch_npu_slots()) is not None
+        else None
+    )
 
     def _run_item(
         item: BatchGenEvalWorkspace,
@@ -88,12 +96,15 @@ def run_gen_eval_batch(
             item.workspace,
             options,
         )
-        if pool is not None:
-            with pool.acquire() as device:
-                request.extra_env = {
-                    **(request.extra_env or {}),
-                    **affinity_env_for_device(device),
-                }
+        if affinity_pool is not None:
+            with affinity_pool.acquire() as device:
+                request = replace(
+                    request,
+                    extra_env={
+                        **(request.extra_env or {}),
+                        **affinity_env_for_device(device),
+                    },
+                )
                 if forwarded_stdout is not None or forwarded_stderr is not None:
                     return generation_request_runner(request, forwarded_stdout, forwarded_stderr)
                 return generation_request_runner(request)
@@ -101,7 +112,13 @@ def run_gen_eval_batch(
             return generation_request_runner(request, forwarded_stdout, forwarded_stderr)
         return generation_request_runner(request)
 
-    with ThreadPoolExecutor(max_workers=max_concurrency) as executor:
+    staged_skill_names, _ = resolve_staged_skills(CommandKind.GEN_EVAL, enable_mcp=options.enable_mcp)
+    scope = (
+        managed_mcp_scope()
+        if managed_mcp_server_names_for_request(staged_skill_names, enable_mcp=options.enable_mcp)
+        else nullcontext()
+    )
+    with scope, ThreadPoolExecutor(max_workers=max_concurrency) as executor:
         futures: dict[Future[AgentResult], BatchGenEvalWorkspace] = {}
         for item in runnable:
             if options.show_output:

@@ -76,19 +76,17 @@ def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
 
 class OptimizeCheckTests(unittest.TestCase):
-    def test_optimize_checks_delegate_to_optimize_check_script_module(self) -> None:
+    def test_optimize_checks_delegate_to_split_submit_script_modules(self) -> None:
         module = SimpleNamespace(
             check_baseline=lambda path: {
-                "ok": False,
+                "status": "fail",
                 "kind": "baseline",
-                "decision": "revise-required",
                 "issues": ("baseline issue",),
                 "summary": f"checked {path.name}",
             },
             check_round=lambda path, **__: SimpleNamespace(
-                ok=True,
+                status="pass",
                 kind="round",
-                decision="pass",
                 issues=(),
                 summary=f"checked {path.name}",
             ),
@@ -97,16 +95,21 @@ class OptimizeCheckTests(unittest.TestCase):
             baseline_result = optimize_checks.check_baseline(Path("/tmp/baseline"))
             round_result = optimize_checks.check_round(Path("/tmp/opt-round-1"))
 
-        self.assertFalse(baseline_result.ok)
+        self.assertEqual(baseline_result.status, "fail")
         self.assertEqual(baseline_result.kind, "baseline")
-        self.assertEqual(baseline_result.decision, "revise-required")
         self.assertEqual(baseline_result.issues, ("baseline issue",))
         self.assertEqual(baseline_result.summary, "checked baseline")
-        self.assertTrue(round_result.ok)
+        self.assertEqual(round_result.status, "pass")
         self.assertEqual(round_result.kind, "round")
-        self.assertEqual(round_result.decision, "pass")
         self.assertEqual(round_result.summary, "checked opt-round-1")
-        mocked.assert_any_call("triton-npu-optimize-check", "optimize_check")
+        mocked.assert_any_call(
+            "triton-npu-optimize-submit-baseline",
+            "optimize_submit_baseline",
+        )
+        mocked.assert_any_call(
+            "triton-npu-optimize-submit-round",
+            "optimize_submit_round",
+        )
 
     def test_check_baseline_reports_missing_perf_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -135,9 +138,8 @@ class OptimizeCheckTests(unittest.TestCase):
 
             result = optimize_checks.check_baseline(baseline_dir)
 
-            self.assertFalse(result.ok)
+            self.assertEqual(result.status, "fail")
             self.assertEqual(result.kind, "baseline")
-            self.assertEqual(result.decision, "revise-required")
             self.assertIn("missing baseline/perf.txt", result.issues)
 
     def test_check_round_passes_with_complete_round_artifacts(self) -> None:
@@ -148,9 +150,8 @@ class OptimizeCheckTests(unittest.TestCase):
 
             result = optimize_checks.check_round(round_dir)
 
-            self.assertTrue(result.ok)
+            self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
-            self.assertEqual(result.decision, "pass")
             self.assertEqual(result.issues, ())
 
     def test_check_round_preserves_pt_files_by_default(self) -> None:
@@ -163,9 +164,8 @@ class OptimizeCheckTests(unittest.TestCase):
 
             result = optimize_checks.check_round(round_dir)
 
-            self.assertTrue(result.ok)
+            self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
-            self.assertEqual(result.decision, "pass")
             self.assertTrue(pt_file.exists())
 
     def test_check_round_deletes_pt_files_when_env_var_enabled(self) -> None:
@@ -179,9 +179,8 @@ class OptimizeCheckTests(unittest.TestCase):
             with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "1"}, clear=False):
                 result = optimize_checks.check_round(round_dir)
 
-            self.assertTrue(result.ok)
+            self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
-            self.assertEqual(result.decision, "pass")
             self.assertFalse(pt_file.exists())
 
     def test_check_round_allows_missing_perf_analysis_when_not_declared(self) -> None:
@@ -192,7 +191,7 @@ class OptimizeCheckTests(unittest.TestCase):
 
             result = optimize_checks.check_round(round_dir)
 
-            self.assertTrue(result.ok)
+            self.assertEqual(result.status, "pass")
 
     def test_check_round_flags_missing_declared_perf_analysis(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -207,8 +206,7 @@ class OptimizeCheckTests(unittest.TestCase):
 
             result = optimize_checks.check_round(round_dir)
 
-            self.assertFalse(result.ok)
-            self.assertEqual(result.decision, "revise-required")
+            self.assertEqual(result.status, "fail")
             self.assertIn("missing perf-analysis.md", result.issues)
 
     def test_check_round_rejects_pure_pytorch_operator_rewrite(self) -> None:
@@ -224,9 +222,8 @@ class OptimizeCheckTests(unittest.TestCase):
 
             result = optimize_checks.check_round(round_dir)
 
-            self.assertFalse(result.ok)
+            self.assertEqual(result.status, "fail")
             self.assertEqual(result.kind, "round")
-            self.assertEqual(result.decision, "revise-required")
             self.assertIn(
                 "round operator no longer preserves a recognizable Triton kernel launch path",
                 result.issues,
@@ -245,9 +242,8 @@ class OptimizeCheckTests(unittest.TestCase):
 
             result = optimize_checks.check_round(round_dir)
 
-            self.assertTrue(result.ok)
+            self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
-            self.assertEqual(result.decision, "pass")
 
     def test_check_round_accepts_legacy_round_artifact_names(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -282,9 +278,8 @@ class OptimizeCheckTests(unittest.TestCase):
 
             result = optimize_checks.check_round(round_dir)
 
-            self.assertTrue(result.ok)
+            self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
-            self.assertEqual(result.decision, "pass")
 
     def test_check_round_accepts_operator_named_baseline_perf(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -319,9 +314,8 @@ class OptimizeCheckTests(unittest.TestCase):
 
             result = optimize_checks.check_round(round_dir)
 
-            self.assertTrue(result.ok)
+            self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
-            self.assertEqual(result.decision, "pass")
 
     def test_check_round_accepts_total_op_effective_metric_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -338,9 +332,8 @@ class OptimizeCheckTests(unittest.TestCase):
 
             result = optimize_checks.check_round(round_dir)
 
-            self.assertTrue(result.ok)
+            self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
-            self.assertEqual(result.decision, "pass")
 
     def test_check_round_kernel_target_warns_when_effective_metric_source_falls_back(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -357,9 +350,8 @@ class OptimizeCheckTests(unittest.TestCase):
 
             result = optimize_checks.check_round(round_dir, optimize_target="kernel")
 
-            self.assertTrue(result.ok)
+            self.assertEqual(result.status, "pass")
             self.assertEqual(result.kind, "round")
-            self.assertEqual(result.decision, "pass")
             self.assertTrue(
                 any(
                     issue.startswith(
@@ -397,8 +389,7 @@ class OptimizeCheckTests(unittest.TestCase):
 
             result = optimize_checks.check_round(round_dir)
 
-            self.assertTrue(result.ok)
-            self.assertEqual(result.decision, "pass")
+            self.assertEqual(result.status, "pass")
             self.assertTrue(
                 any("optimization may be stagnating in the current direction" in issue for issue in result.issues)
             )
@@ -438,8 +429,7 @@ class OptimizeCheckTests(unittest.TestCase):
 
             result = optimize_checks.check_round(round_dir)
 
-            self.assertTrue(result.ok)
-            self.assertEqual(result.decision, "pass")
+            self.assertEqual(result.status, "pass")
             self.assertFalse(
                 any("optimization may be stagnating in the current direction" in issue for issue in result.issues)
             )
@@ -479,24 +469,23 @@ class OptimizeCheckTests(unittest.TestCase):
 
             result = optimize_checks.check_round(round_dir)
 
-            self.assertTrue(result.ok)
-            self.assertEqual(result.decision, "pass")
+            self.assertEqual(result.status, "pass")
             self.assertFalse(
                 any("optimization may be stagnating in the current direction" in issue for issue in result.issues)
             )
 
-    def test_check_round_with_remaining_min_rounds_names_next_round_and_reflection(self) -> None:
+    def test_check_round_with_remaining_batch_rounds_names_next_round_and_reflection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             self._write_baseline(workdir)
-            round_dir = self._write_round(workdir, "opt-round-1", round_disposition="continue")
+            round_dir = self._write_round(workdir, "opt-round-2", round_disposition="continue")
 
-            result = optimize_checks.check_round(round_dir, min_rounds=2)
+            result = optimize_checks.check_round(round_dir, current_round=2, final_round=4)
 
-            self.assertTrue(result.ok)
-            self.assertEqual(result.decision, "pass")
-            self.assertEqual(result.next_option, "opt-round-2")
-            self.assertIn("Next round: opt-round-2.", result.summary)
+            self.assertEqual(result.status, "pass")
+            self.assertEqual(result.next_option, "opt-round-3")
+            self.assertIn("Round 2/4 in the current worker batch is complete.", result.summary)
+            self.assertIn("Next round: opt-round-3.", result.summary)
             self.assertIn("Do not rush into the next code change.", result.summary)
             self.assertIn(
                 "First decide which operator, kernel path, or wrapper bottleneck should anchor the next round.",
@@ -515,6 +504,18 @@ class OptimizeCheckTests(unittest.TestCase):
                 result.summary,
             )
 
+    def test_check_round_final_batch_round_says_batch_target_is_complete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            self._write_baseline(workdir)
+            round_dir = self._write_round(workdir, "opt-round-4", round_disposition="continue")
+
+            result = optimize_checks.check_round(round_dir, current_round=4, final_round=4)
+
+            self.assertEqual(result.status, "pass")
+            self.assertIsNone(result.next_option)
+            self.assertIn("This round satisfied the current worker batch target.", result.summary)
+
     def test_check_round_warns_when_local_optimum_env_vars_are_invalid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
@@ -531,13 +532,10 @@ class OptimizeCheckTests(unittest.TestCase):
             ):
                 result = optimize_checks.check_round(round_dir)
 
-            self.assertTrue(result.ok)
-            self.assertEqual(result.decision, "pass")
-            self.assertTrue(
-                any("invalid TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW='abc'; using default 3" in issue for issue in result.issues)
-            )
-            self.assertTrue(
-                any("invalid TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN='-1'; using default 0.02" in issue for issue in result.issues)
+            self.assertEqual(result.status, "pass")
+            # Invalid env vars silently fall back to defaults without warnings.
+            self.assertFalse(
+                any("invalid" in issue and "LOCAL_OPTIMUM" in issue for issue in result.issues),
             )
 
     def _write_baseline_with_perf_text(self, workdir: Path, *, perf_text: str) -> None:

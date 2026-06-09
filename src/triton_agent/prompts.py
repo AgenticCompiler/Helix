@@ -6,7 +6,6 @@ from typing import Literal
 from triton_agent.models import COMMAND_TO_SKILL, CommandKind
 from triton_agent.optimize.prompts import (
     build_optimize_baseline_prompt,
-    build_optimize_continuous_prompt,
     build_optimize_resume_prompt,
     build_optimize_round_prompt,
     build_optimize_supervisor_prompt,
@@ -17,7 +16,6 @@ __all__ = [
     "PROMPT_INTROS",
     "append_additional_user_instructions",
     "build_optimize_baseline_prompt",
-    "build_optimize_continuous_prompt",
     "build_optimize_resume_prompt",
     "build_optimize_round_prompt",
     "build_optimize_supervisor_prompt",
@@ -65,17 +63,22 @@ def build_prompt(
     min_rounds: int | None = 5,
     continue_optimize: bool = False,
     resume_existing_session: bool | None = None,
-    round_mode: Literal["continuous", "checked", "supervised"] = "continuous",
+    round_mode: Literal["checked", "supervised"] = "checked",
     target_chip: str | None = None,
     optimize_target: str = "kernel",
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
     enable_cann_ext_api: bool = False,
+    enable_subagent: bool = False,
+    current_round: int = 1,
+    final_round: int | None = None,
+    round_batch_size: int = 10,
 ) -> str:
     should_resume_existing_session = (
         continue_optimize if resume_existing_session is None else resume_existing_session
     )
     resolved_min_rounds = 5 if min_rounds is None else min_rounds
+    resolved_final_round = resolved_min_rounds if final_round is None else final_round
     skill_name = COMMAND_TO_SKILL[command_kind]
     lines = [PROMPT_INTROS[command_kind]]
     if skill_name:
@@ -185,6 +188,9 @@ def build_prompt(
                 "Write the converted operator to the requested output path and keep the original input file unchanged.",
                 "Preserve the trailing input-helper block from the input file in the converted output so later harnesses can reuse it.",
                 "When generating or validating harnesses, you may add broader coverage and do not need to limit yourself to only the preserved trailing helpers.",
+                "If a suitable test already exists in the workspace, reuse it instead of creating a new one.",
+                "This includes existing standalone or differential test cases when they already cover the operator workspace.",
+                "Only generate a new test when no suitable reusable test exists or the user explicitly asks to regenerate it.",
                 "Do not introduce unnecessary wrappers, compatibility branches, helper layers, or scaffolding.",
                 "Keep the converted artifact as a PyTorch-facing operator backed by a real Triton Ascend NPU kernel path.",
                 "A PyTorch-facing wrapper or module API may remain when that is the intended public interface.",
@@ -199,39 +205,26 @@ def build_prompt(
         )
 
     if command_kind == CommandKind.OPTIMIZE:
-        if round_mode == "continuous":
-            lines.extend(
-                build_optimize_continuous_prompt(
-                    input_path,
-                    output_path,
-                    test_mode=test_mode,
-                    bench_mode=bench_mode,
-                    target_chip=target_chip or "A5",
-                    optimize_target=optimize_target,
-                    min_rounds=resolved_min_rounds,
-                    resume_existing_session=should_resume_existing_session,
-                    compiler_source_path=compiler_source_path,
-                    compiler_source_commit=compiler_source_commit,
-                    enable_cann_ext_api=enable_cann_ext_api,
-                ).splitlines()
-            )
-        else:
-            lines.extend(
-                build_optimize_round_prompt(
-                    input_path,
-                    output_path,
-                    test_mode=test_mode,
-                    bench_mode=bench_mode,
-                    target_chip=target_chip or "A5",
-                    optimize_target=optimize_target,
-                    resume_existing_session=should_resume_existing_session,
-                    compiler_source_path=compiler_source_path,
-                    compiler_source_commit=compiler_source_commit,
-                    enable_cann_ext_api=enable_cann_ext_api,
-                    round_mode=round_mode,
-                    baseline_ready=True,
-                ).splitlines()
-            )
+        lines.extend(
+            build_optimize_round_prompt(
+                input_path,
+                output_path,
+                test_mode=test_mode,
+                bench_mode=bench_mode,
+                target_chip=target_chip or "A5",
+                optimize_target=optimize_target,
+                resume_existing_session=should_resume_existing_session,
+                compiler_source_path=compiler_source_path,
+                compiler_source_commit=compiler_source_commit,
+                enable_cann_ext_api=enable_cann_ext_api,
+                enable_subagent=enable_subagent,
+                round_mode=round_mode,
+                baseline_ready=True,
+                current_round=current_round,
+                final_round=resolved_final_round,
+                round_batch_size=round_batch_size,
+            ).splitlines()
+        )
     else:
         lines.append("Complete the requested task and summarize assumptions briefly.")
     return "\n".join(lines)

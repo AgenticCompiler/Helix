@@ -30,7 +30,7 @@ Rename the remaining skills as follows:
 - `eval-gen` -> `triton-npu-gen-eval-suite`
 - `operator-eval` -> `triton-npu-run-eval`
 - `optimize` -> `triton-npu-optimize`
-- `optimize-check` -> `triton-npu-optimize-check`
+- `optimize-check` -> `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`
 - `ascend-npu-operator-profiler` -> `triton-npu-profile-operator`
 - `ascend-operator-ir-analyzer` -> `triton-npu-analyze-ir`
 - `triton-repair-experience` -> `triton-npu-repair-guide`

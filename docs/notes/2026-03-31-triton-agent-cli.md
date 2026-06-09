@@ -1,6 +1,6 @@
 # Triton Agent CLI for Test, Benchmark, and Optimization
 
-> **Superseded note:** This early design predates the current repository skill naming and backend expansion. Treat it as historical context only; the current skill mapping uses `triton-npu-gen-test`, `triton-npu-gen-bench`, `triton-npu-gen-eval-suite`, `triton-npu-run-eval`, `triton-npu-optimize`, and `triton-npu-optimize-check`.
+> **Superseded note:** This early design predates the current repository skill naming and backend expansion. Treat it as historical context only; the current skill mapping uses `triton-npu-gen-test`, `triton-npu-gen-bench`, `triton-npu-gen-eval-suite`, `triton-npu-run-eval`, `triton-npu-optimize`, and `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`.
 
 ## Summary
 

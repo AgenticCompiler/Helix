@@ -60,9 +60,8 @@ _ROUND_METADATA_FILENAMES = {
 }
 @dataclass(frozen=True)
 class OptimizeCheckResult:
-    ok: bool
     kind: Literal["baseline", "round"]
-    decision: Literal["pass", "revise-required", "hard-fail"]
+    status: Literal["pass", "fail"]
     issues: tuple[str, ...]
     summary: str
     next_option: str | None = None
@@ -288,7 +287,7 @@ def inspect_round_artifacts(round_dir: Path) -> RoundArtifactsInspection:
         perf_path = _declared_round_file(round_dir, declared_perf)
         perf_analysis_path = _declared_round_file(round_dir, declared_analysis)
 
-    if state is None and summary_path is None:
+    if summary_path is None:
         summary_path = _existing_file(round_dir / "summary.md")
     expected_operator_name_value, expected_perf_name_value = _expected_round_artifact_names(workspace)
     if perf_path is None:
@@ -300,11 +299,13 @@ def inspect_round_artifacts(round_dir: Path) -> RoundArtifactsInspection:
         issues.append("missing attempts.md")
     if summary_path is None:
         issues.append(_missing_issue(declared_summary, default_path="summary.md"))
+    elif state is not None and declared_summary is not None and Path(declared_summary).name != summary_path.name:
+        issues.append("summary_path must be summary.md")
     if round_state_path is None:
         issues.append("missing round-state.json")
     if perf_path is None:
         issues.append(_missing_issue(declared_perf, default_path=expected_perf_name_value))
-    elif state is not None and declared_perf != perf_path.name:
+    elif state is not None and declared_perf is not None and Path(declared_perf).name != perf_path.name:
         issues.append(f"perf_artifact must be {expected_perf_name_value}")
     if declared_analysis is not None and perf_analysis_path is None:
         issues.append(_missing_issue(declared_analysis, default_path="perf-analysis.md"))
@@ -328,60 +329,86 @@ def check_baseline(baseline_dir_path: Path) -> OptimizeCheckResult:
     if issues:
         return _build_result(
             kind="baseline",
-            decision="revise-required",
+            status="fail",
             issues=issues,
         )
-    return _build_result(kind="baseline", decision="pass", issues=())
+    return _build_result(kind="baseline", status="pass", issues=())
 
 
-def _count_round_directories(workspace: Path) -> int:
-    return sum(1 for path in workspace.glob("opt-round-*") if path.is_dir())
+def _inspect_round_minimum_artifact_package(
+    round_dir: Path,
+) -> tuple[RoundArtifactsInspection, RoundState | None, str | None]:
+    artifact_inspection = inspect_round_artifacts(round_dir)
+    if artifact_inspection.issues:
+        return artifact_inspection, None, None
+    try:
+        return artifact_inspection, load_round_state(round_dir), None
+    except ValueError as exc:
+        return artifact_inspection, None, str(exc)
 
 
-def _next_round_name_for_round(round_dir: Path, *, completed: int) -> str:
+def is_completed_round_directory(round_dir: Path) -> bool:
+    if not round_dir.is_dir():
+        return False
     name = round_dir.name
-    prefix = "opt-round-"
-    if name.startswith(prefix):
-        suffix = name[len(prefix):]
-        if suffix.isdigit():
-            return f"{prefix}{int(suffix) + 1}"
-    return f"{prefix}{completed + 1}"
+    if not name.startswith("opt-round-"):
+        return False
+    suffix = name[len("opt-round-"):]
+    if not suffix.isdigit():
+        return False
+
+    inspection, round_state, _state_error = _inspect_round_minimum_artifact_package(round_dir)
+    if inspection.issues or round_state is None:
+        return False
+
+    return (
+        round_state.correctness_status == "passed"
+        and round_state.benchmark_status == "passed"
+    )
+
+
+def iter_completed_round_directories(workspace: Path) -> tuple[Path, ...]:
+    return tuple(
+        path
+        for path in sorted(workspace.glob("opt-round-*"))
+        if is_completed_round_directory(path)
+    )
 
 
 def check_round(
     round_dir: Path,
     *,
-    min_rounds: int | None = None,
+    current_round: int | None = None,
+    final_round: int | None = None,
     optimize_target: Literal["kernel", "operator"] | None = None,
 ) -> OptimizeCheckResult:
-    artifact_inspection = inspect_round_artifacts(round_dir)
+    artifact_inspection, round_state, state_error = _inspect_round_minimum_artifact_package(round_dir)
     artifact_issues = artifact_inspection.issues
     if artifact_issues:
         return _build_result(
             kind="round",
-            decision="revise-required",
+            status="fail",
             issues=artifact_issues,
         )
 
-    try:
-        round_state = load_round_state(round_dir)
-    except ValueError as exc:
+    if state_error is not None:
         return _build_result(
             kind="round",
-            decision="revise-required",
-            issues=(str(exc),),
+            status="fail",
+            issues=(state_error,),
         )
+    assert round_state is not None
 
     if round_state.correctness_status != "passed":
         return _build_result(
             kind="round",
-            decision="hard-fail",
+            status="fail",
             issues=(f"correctness_status={round_state.correctness_status}",),
         )
     if round_state.benchmark_status != "passed":
         return _build_result(
             kind="round",
-            decision="revise-required",
+            status="fail",
             issues=(f"benchmark_status={round_state.benchmark_status}",),
         )
 
@@ -389,7 +416,7 @@ def check_round(
     if baseline_issues:
         return _build_result(
             kind="round",
-            decision="revise-required",
+            status="fail",
             issues=baseline_issues,
         )
 
@@ -415,7 +442,7 @@ def check_round(
     if semantic_issues:
         return _build_result(
             kind="round",
-            decision="revise-required",
+            status="fail",
             issues=tuple(semantic_issues),
         )
 
@@ -424,7 +451,7 @@ def check_round(
         expected_operator_name_value, _expected_perf_name_value = _expected_round_artifact_names(round_dir.parent)
         return _build_result(
             kind="round",
-            decision="revise-required",
+            status="fail",
             issues=(f"missing {expected_operator_name_value}",),
         )
 
@@ -432,7 +459,7 @@ def check_round(
     if not continuity.ok:
         return _build_result(
             kind="round",
-            decision="revise-required",
+            status="fail",
             issues=((continuity.reason or "round operator failed Triton continuity check"),),
         )
 
@@ -444,66 +471,52 @@ def check_round(
             "the round may still participate in best-round selection, but review the comparison basis."
         )
 
-    cleaned: list[str] = []
     if ordinary_optimize_pt_cleanup_enabled():
-        cleaned = cleanup_dir_pt_files(round_dir)
+        cleanup_dir_pt_files(round_dir)
     local_optimum_warnings: tuple[str, ...] = ()
     if baseline_perf_path is not None:
         local_optimum_warnings = collect_local_optimum_warnings(
             round_dir,
             baseline_perf_path=baseline_perf_path,
         )
-    if cleaned:
-        result = _build_result(
-            kind="round",
-            decision="pass",
-            issues=(
-                *tuple(runtime_warnings),
-                *local_optimum_warnings,
-                f"cleaned up {len(cleaned)} unused pt file(s) in {round_dir.name}: {', '.join(cleaned)}",
-            ),
-        )
-    else:
-        result = _build_result(
-            kind="round",
-            decision="pass",
-            issues=(*tuple(runtime_warnings), *local_optimum_warnings),
-        )
+    result = _build_result(
+        kind="round",
+        status="pass",
+        issues=(*tuple(runtime_warnings), *local_optimum_warnings),
+    )
 
-    if min_rounds is not None:
-        completed = _count_round_directories(round_dir.parent)
-        if completed >= min_rounds:
+    if current_round is not None and final_round is not None:
+        if current_round < final_round:
+            next_round_name = f"opt-round-{current_round + 1}"
             result = _build_result(
                 kind="round",
-                decision="pass",
+                status="pass",
                 issues=result.issues,
                 summary=_append_pass_issues_to_summary(
                     f"round check passed. "
-                    f"Minimum round requirement satisfied ({completed}/{min_rounds}) — "
-                    f"the optimize session may stop after this round.",
-                    result.issues,
-                ),
-                next_option=None,
-            )
-        else:
-            next_round_name = _next_round_name_for_round(round_dir, completed=completed)
-            result = _build_result(
-                kind="round",
-                decision="pass",
-                issues=result.issues,
-                summary=_append_pass_issues_to_summary(
-                    f"round check passed. "
-                    f"Round {completed}/{min_rounds} complete — "
-                    f"at least {min_rounds - completed} more round(s) required before stopping. "
+                    f"Round {current_round}/{final_round} in the current worker batch is complete. "
                     f"Next round: {next_round_name}. "
                     "Do not rush into the next code change. "
                     "First decide which operator, kernel path, or wrapper bottleneck should anchor the next round. "
                     "Decide whether existing evidence is already sufficient or whether profiling, IR, or compiler-source analysis is needed first. "
                     "Do not use agents or subagents to optimize multiple rounds in parallel. "
-                    "Do not treat the next round as a parameter-only tuning sweep.",
+                    "Do not treat the next round as a parameter-only tuning sweep. "
+                    "Do not use a script to create multiple optimize rounds where each round only adjusts parameters in order to speed up the optimization process. "
+                    "This is cheating behavior and is strictly prohibited.",
                     result.issues,
                 ),
                 next_option=next_round_name,
+            )
+        else:
+            result = _build_result(
+                kind="round",
+                status="pass",
+                issues=result.issues,
+                summary=_append_pass_issues_to_summary(
+                    "round check passed. This round satisfied the current worker batch target.",
+                    result.issues,
+                ),
+                next_option=None,
             )
 
     return result
@@ -687,22 +700,20 @@ def _missing_issue(relative_path: str | None, *, default_path: str) -> str:
 def _build_result(
     *,
     kind: Literal["baseline", "round"],
-    decision: Literal["pass", "revise-required", "hard-fail"],
+    status: Literal["pass", "fail"],
     issues: tuple[str, ...],
     summary: str | None = None,
     next_option: str | None = None,
 ) -> OptimizeCheckResult:
-    ok = decision == "pass"
     if summary is None:
         summary = (
             _append_pass_issues_to_summary(f"{kind} check passed", issues)
-            if ok
+            if status == "pass"
             else f"{kind} check requires fixes: {'; '.join(issues)}"
         )
     return OptimizeCheckResult(
-        ok=ok,
         kind=kind,
-        decision=decision,
+        status=status,
         issues=issues,
         summary=summary,
         next_option=next_option,

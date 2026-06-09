@@ -34,21 +34,18 @@ def run_local_profile_bench(
     bench_case: int | None = None,
     case_id: str | None = None,
     kernel_name: str | None = None,
-    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     if bench_mode == "msprof":
         if case_id is not None:
             raise ValueError("--case-id is only valid for standalone benchmark profiling")
         result = _run_local_profile_msprof(
             bench_file, operator_file, bench_case, kernel_name,
-            force_recompile=force_recompile,
         )
     else:
         if case_id is None:
             raise ValueError("Standalone benchmark profiling requires --case-id <id>.")
         result = _run_local_profile_standalone(
             bench_file, operator_file, case_id,
-            force_recompile=force_recompile,
         )
     if not result_succeeded(result):
         return result, None
@@ -68,7 +65,6 @@ def run_remote_profile_bench(
     keep_remote_workdir: bool = False,
     verbose: bool = False,
     stderr: TextIO | None = None,
-    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None, str]:
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
@@ -96,7 +92,6 @@ def run_remote_profile_bench(
                 kernel_name,
                 verbose=verbose,
                 stderr=stderr,
-                force_recompile=force_recompile,
             )
         else:
             if case_id is None:
@@ -109,7 +104,6 @@ def run_remote_profile_bench(
                 case_id,
                 verbose=verbose,
                 stderr=stderr,
-                force_recompile=force_recompile,
             )
         if not result_succeeded(result):
             return result, None, remote_workspace
@@ -140,18 +134,15 @@ def _run_local_profile_standalone(
     bench_file: Path,
     operator_file: Path,
     case_id: str,
-    *,
-    force_recompile: bool = False,
 ) -> ResultPayload:
-    prev = os.environ.get("TRITON_ALWAYS_COMPILE") if force_recompile else None
-    if force_recompile:
-        os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+    prev = os.environ.get("TRITON_ALWAYS_COMPILE")
+    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
     try:
         return profile_local_standalone_case(bench_file, operator_file, case_id)
     finally:
-        if prev is None and force_recompile:
+        if prev is None:
             del os.environ["TRITON_ALWAYS_COMPILE"]
-        elif prev is not None:
+        else:
             os.environ["TRITON_ALWAYS_COMPILE"] = prev
 
 
@@ -160,8 +151,6 @@ def _run_local_profile_msprof(
     operator_file: Path,
     bench_case: int | None,
     _requested_kernel_name: str | None,
-    *,
-    force_recompile: bool = False,
 ) -> ResultPayload:
     selected_case = _resolve_bench_case_local(bench_file, bench_case)
     operator_arg = os.path.relpath(operator_file, bench_file.parent)
@@ -177,7 +166,7 @@ def _run_local_profile_msprof(
         ],
         str(bench_file.parent),
         stall_timeout_seconds=_profile_timeout(),
-        extra_env={"TRITON_ALWAYS_COMPILE": "1"} if force_recompile else None,
+        extra_env={"TRITON_ALWAYS_COMPILE": "1"},
     )
 
 
@@ -189,7 +178,6 @@ def _run_remote_profile_standalone(
     case_id: str,
     verbose: bool = False,
     stderr: TextIO | None = None,
-    force_recompile: bool = False,
 ) -> ResultPayload:
     for support_path in _standalone_runtime_support_paths():
         copy_file_to_remote(
@@ -199,7 +187,7 @@ def _run_remote_profile_standalone(
             verbose=verbose,
             stderr=stderr,
         )
-    extra_env = {"TRITON_ALWAYS_COMPILE": "1"} if force_recompile else None
+    extra_env = {"TRITON_ALWAYS_COMPILE": "1"}
     return run_remote_command_streaming(
         spec,
         remote_workspace,
@@ -227,7 +215,6 @@ def _run_remote_profile_msprof(
     _requested_kernel_name: str | None,
     verbose: bool = False,
     stderr: TextIO | None = None,
-    force_recompile: bool = False,
 ) -> ResultPayload:
     selected_case = _resolve_bench_case_remote(
         spec,
@@ -237,7 +224,7 @@ def _run_remote_profile_msprof(
         verbose=verbose,
         stderr=stderr,
     )
-    extra_env = {"TRITON_ALWAYS_COMPILE": "1"} if force_recompile else None
+    extra_env = {"TRITON_ALWAYS_COMPILE": "1"}
     return run_remote_command_streaming(
         spec,
         remote_workspace,

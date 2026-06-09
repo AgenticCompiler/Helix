@@ -154,10 +154,11 @@ class OpenHandsRunnerTests(unittest.TestCase):
                         result = runner.run(self._request(workspace, show_output=True), stdout=io.StringIO())
 
             self.assertEqual(result.return_code, 0)
+            self.assertEqual(result.stdout, "")
             log_path = workspace / "triton-agent-logs" / "gen-test.show-output.log"
             self.assertTrue(log_path.exists())
             content = log_path.read_text(encoding="utf-8")
-            self.assertIn("attempt=1", content)
+            self.assertNotIn("attempt=1", content)
             self.assertIn("assistant update", content)
             self.assertIn("assistant final", content)
 
@@ -217,7 +218,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
 
             resumed_request = mocked.call_args.args[0]
             self.assertIn("Continue the existing optimize task", resumed_request.prompt)
-            self.assertIn("This invocation owns exactly one round.", resumed_request.prompt)
+            self.assertIn("This invocation owns rounds 1 through 5.", resumed_request.prompt)
 
     def test_run_does_not_inject_repo_agents_file_into_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

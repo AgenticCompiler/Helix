@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from os import environ
 from pathlib import Path
+from typing import Optional
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -118,11 +119,11 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                 workspace.mkdir()
                 (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
 
-            seen_envs: list[dict[str, str]] = []
+            seen_devices: list[Optional[str]] = []
 
             def _fake_run(request, stdout=None, stderr=None):
                 del stdout, stderr
-                seen_envs.append(request.extra_env or {})
+                seen_devices.append((request.extra_env or {}).get("ASCEND_RT_VISIBLE_DEVICES"))
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
             with patch.dict(environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0,1"}, clear=False):
@@ -148,10 +149,7 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                 )
 
             self.assertEqual(exit_code, 0)
-            self.assertEqual(
-                {env["ASCEND_RT_VISIBLE_DEVICES"] for env in seen_envs},
-                {"0", "1"},
-            )
+            self.assertCountEqual(seen_devices, ["0", "1"])
 
     def test_run_gen_eval_batch_allows_same_device_when_workers_per_npu_gt_1(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -161,11 +159,11 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                 workspace.mkdir()
                 (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
 
-            seen_envs: list[dict[str, str]] = []
+            seen_devices: list[Optional[str]] = []
 
             def _fake_run(request, stdout=None, stderr=None):
                 del stdout, stderr
-                seen_envs.append(request.extra_env or {})
+                seen_devices.append((request.extra_env or {}).get("ASCEND_RT_VISIBLE_DEVICES"))
                 return AgentResult(return_code=0, stdout="ok", stderr="")
 
             env_vars = {
@@ -195,11 +193,123 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                 )
 
             self.assertEqual(exit_code, 0)
-            self.assertEqual(len(seen_envs), 2)
-            self.assertEqual(
-                {env["ASCEND_RT_VISIBLE_DEVICES"] for env in seen_envs},
-                {"0"},
-            )
+            self.assertEqual(len(seen_devices), 2)
+            self.assertEqual(seen_devices, ["0", "0"])
+
+    def test_run_gen_eval_batch_does_not_inject_affinity_env_when_mcp_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("alpha", "beta"):
+                workspace = root / name
+                workspace.mkdir()
+                (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+
+            seen_devices: list[Optional[str]] = []
+
+            def _fake_run(request, stdout=None, stderr=None):
+                del stdout, stderr
+                seen_devices.append((request.extra_env or {}).get("ASCEND_RT_VISIBLE_DEVICES"))
+                return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            with patch.dict(environ, {"TRITON_AGENT_BATCH_NPU_DEVICES": "0"}, clear=False):
+                exit_code = run_gen_eval_batch(
+                    root,
+                    GenerationOptions(
+                        interact=False,
+                        verbose=False,
+                        show_output=False,
+                        force_overwrite=False,
+                        agent_name="codex",
+                        remote=None,
+                        remote_workdir=None,
+                        min_rounds=None,
+                        continue_optimize=False,
+                        output=None,
+                        test_mode="differential",
+                        bench_mode="standalone",
+                        prompt=None,
+                        enable_mcp=True,
+                    ),
+                    max_concurrency=2,
+                    run_request=_fake_run,
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(seen_devices, [None, None])
+
+    def test_run_gen_eval_batch_preserves_affinity_capacity_validation_without_mcp(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "alpha"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+
+            with patch("triton_agent.generation.batch.validate_batch_affinity_capacity") as mocked:
+                exit_code = run_gen_eval_batch(
+                    root,
+                    GenerationOptions(
+                        interact=False,
+                        verbose=False,
+                        show_output=False,
+                        force_overwrite=False,
+                        agent_name="codex",
+                        remote=None,
+                        remote_workdir=None,
+                        min_rounds=None,
+                        continue_optimize=False,
+                        output=None,
+                        test_mode="differential",
+                        bench_mode="standalone",
+                        prompt=None,
+                        enable_mcp=False,
+                    ),
+                    max_concurrency=1,
+                    run_request=lambda request, stdout=None, stderr=None: AgentResult(
+                        return_code=0,
+                        stdout="ok",
+                        stderr="",
+                    ),
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once()
+
+    def test_run_gen_eval_batch_skips_affinity_capacity_validation_when_mcp_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "alpha"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+
+            with patch("triton_agent.generation.batch.validate_batch_affinity_capacity") as mocked:
+                exit_code = run_gen_eval_batch(
+                    root,
+                    GenerationOptions(
+                        interact=False,
+                        verbose=False,
+                        show_output=False,
+                        force_overwrite=False,
+                        agent_name="codex",
+                        remote=None,
+                        remote_workdir=None,
+                        min_rounds=None,
+                        continue_optimize=False,
+                        output=None,
+                        test_mode="differential",
+                        bench_mode="standalone",
+                        prompt=None,
+                        enable_mcp=True,
+                    ),
+                    max_concurrency=8,
+                    run_request=lambda request, stdout=None, stderr=None: AgentResult(
+                        return_code=0,
+                        stdout="ok",
+                        stderr="",
+                    ),
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_not_called()
 
 
 if __name__ == "__main__":

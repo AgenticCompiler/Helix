@@ -33,7 +33,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
 
             self.assertEqual(exc.exception.code, 2)
 
-    def test_handle_optimize_rejects_checked_interactive_mode(self) -> None:
+    def test_handle_optimize_rejects_interactive_batched_mode(self) -> None:
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
             operator = Path(tmp) / "kernel.py"
@@ -44,29 +44,6 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
                     "-i",
                     str(operator),
                     "--interact",
-                    "--round-mode",
-                    "checked",
-                ]
-            )
-
-            with self.assertRaises(SystemExit) as exc:
-                handle_optimize(parser, args)
-
-            self.assertEqual(exc.exception.code, 2)
-
-    def test_handle_optimize_rejects_supervised_interactive_mode(self) -> None:
-        parser = build_parser()
-        with tempfile.TemporaryDirectory() as tmp:
-            operator = Path(tmp) / "kernel.py"
-            operator.write_text("print('x')\n", encoding="utf-8")
-            args = parser.parse_args(
-                [
-                    "optimize",
-                    "-i",
-                    str(operator),
-                    "--interact",
-                    "--round-mode",
-                    "supervised",
                 ]
             )
 
@@ -108,7 +85,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
 
     def test_optimize_run_options_maps_agent_hooks(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize", "-i", "kernel.py", "--enable-agent-hooks"])
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--enable-agent-hook"])
 
         options = optimize_run_options_from_args(args)
 
@@ -116,7 +93,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
 
     def test_optimize_run_options_maps_log_tools(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["optimize", "-i", "kernel.py", "--log-tools"])
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--log-tool"])
 
         options = optimize_run_options_from_args(args)
 

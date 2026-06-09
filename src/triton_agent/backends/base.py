@@ -4,10 +4,12 @@ import os
 import sys
 import time
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Callable, Optional, TextIO
 
-from triton_agent.agent_hooks import AgentHookManager, AgentHookOptions
+from triton_agent.backends.hook_common import HookStageOptions
 from triton_agent.models import AgentRequest, AgentResult
 from triton_agent.optimize.prompts import build_optimize_resume_prompt
 from triton_agent.otel_trace import (
@@ -20,10 +22,10 @@ from triton_agent.otel_trace import (
 from triton_agent.process_runner import InterruptPolicy, OutputFilter, run_process
 from triton_agent.show_output_log import (
     open_show_output_log,
-    write_show_output_attempt_result,
-    write_show_output_attempt_start,
+    write_show_output_chunk,
 )
-from triton_agent.verbose import emit_command_block, emit_verbose_lines
+from triton_agent.transient_failures import contains_transient_agent_failure_text
+from triton_agent.verbose import emit_command_block
 
 
 class AgentRunner(ABC):
@@ -41,39 +43,41 @@ class AgentRunner(ABC):
     def build_command(self, request: AgentRequest) -> list[str]:
         raise NotImplementedError
 
+    def supports_mcp_servers(self) -> bool:
+        return False
+
+    @contextmanager
+    def _prepare_run_context(
+        self,
+        request: AgentRequest,
+        stderr: Optional[TextIO] = None,
+    ) -> Iterator[None]:
+        del request, stderr
+        yield
+
     def run(
         self,
         request: AgentRequest,
         stdout: Optional[TextIO] = None,
         stderr: Optional[TextIO] = None,
     ) -> AgentResult:
-        command = self.build_command(request)
-        if request.verbose:
-            self._log_launch_command(command, stderr or sys.stderr)
-
-        if not request.enable_agent_hooks and not request.log_tools:
-            return self._run_with_retry(command, request, stdout=stdout)
-
-        hook_manager = self._hook_manager()
-        extra_allowed_read_roots = (
-            (request.compiler_source_path,) if request.compiler_source_path is not None else ()
-        )
-        hook_state = hook_manager.prepare_hooks(
-            request.agent_name,
-            request.workdir,
-            self._hook_options(request),
-            extra_allowed_read_roots=extra_allowed_read_roots,
-        )
-        if request.verbose:
-            emit_verbose_lines(stderr or sys.stderr, "hooks", hook_manager.describe_prepare(hook_state))
-        try:
-            return self._run_with_retry(command, request, stdout=stdout)
-        finally:
+        if request.mcp_servers and not self.supports_mcp_servers():
+            return AgentResult(
+                return_code=1,
+                stdout="",
+                stderr=f"{request.agent_name} backend does not support request-scoped MCP servers.",
+            )
+        with self._prepare_run_context(request, stderr=stderr):
+            command = self.build_command(request)
             if request.verbose:
-                emit_verbose_lines(stderr or sys.stderr, "hooks", hook_manager.describe_cleanup(hook_state))
-            cleanup_warnings = hook_manager.cleanup(hook_state)
-            if cleanup_warnings:
-                emit_verbose_lines(stderr or sys.stderr, "hooks", cleanup_warnings)
+                self._log_launch_command(command, stderr or sys.stderr)
+
+            return self._run_with_retry(command, request, stdout=stdout)
+
+    def _extra_allowed_read_roots(self, request: AgentRequest) -> tuple[Path, ...]:
+        if request.compiler_source_path is None:
+            return ()
+        return (request.compiler_source_path,)
 
     def interrupt_policy(self, request: AgentRequest) -> InterruptPolicy | None:
         if request.interact or request.command_kind != request.command_kind.OPTIMIZE:
@@ -92,6 +96,7 @@ class AgentRunner(ABC):
             base_prompt=request.prompt,
             round_mode=request.round_mode,
             optimize_target=request.optimize_target,
+            enable_subagent=request.enable_subagent,
         )
         return self.run(request.with_prompt(resumed_prompt), stdout=stdout, stderr=stderr)
 
@@ -105,19 +110,14 @@ class AgentRunner(ABC):
     def _log_launch_command(self, command: list[str], stream: TextIO) -> None:
         emit_command_block(stream, command)
 
-    def _hook_manager(self) -> AgentHookManager:
-        repo_root = Path(__file__).resolve().parents[3]
-        return AgentHookManager(repo_root / "hooks")
-
-    def _hook_options(self, request: AgentRequest) -> AgentHookOptions:
+    def _hook_options(self, request: AgentRequest) -> HookStageOptions:
         trace_path = trace_path_from_request(request)
         run_id = request.run_id or (request.extra_env or {}).get(TRACE_RUN_ID_ENV, "") if trace_path is not None else None
-        return AgentHookOptions(
+        return HookStageOptions(
             trace_enabled=request.log_tools and trace_path is not None,
             guard_enabled=request.enable_agent_hooks,
             trace_path=trace_path,
             run_id=run_id,
-            role=request.optimize_role or "worker",
         )
 
     def _select_mode(self, request: AgentRequest) -> str:
@@ -135,10 +135,21 @@ class AgentRunner(ABC):
         stdout: Optional[TextIO] = None,
     ) -> AgentResult:
         with open_show_output_log(request) as log_stream:
-            attempt_number = 1
-            write_show_output_attempt_start(log_stream, request=request, attempt_number=attempt_number)
-            result = self._run_once(command, request, stdout=stdout)
-            write_show_output_attempt_result(log_stream, result=result)
+            rendered_chunk_sink: Callable[[str], None] | None = None
+            if log_stream is not None:
+                def _write_rendered_chunk(text: str) -> None:
+                    write_show_output_chunk(log_stream, text)
+
+                rendered_chunk_sink = _write_rendered_chunk
+
+            collect_stdout = not request.show_output
+            result = self._run_once(
+                command,
+                request,
+                stdout=stdout,
+                rendered_chunk_sink=rendered_chunk_sink,
+                collect_stdout=collect_stdout,
+            )
             if request.interact:
                 return result
 
@@ -147,10 +158,13 @@ class AgentRunner(ABC):
             while _is_transient_agent_failure(result) and attempt < max_retries:
                 attempt += 1
                 time.sleep(_retry_delay_seconds(attempt))
-                attempt_number += 1
-                write_show_output_attempt_start(log_stream, request=request, attempt_number=attempt_number)
-                result = self._run_once(command, request, stdout=stdout)
-                write_show_output_attempt_result(log_stream, result=result)
+                result = self._run_once(
+                    command,
+                    request,
+                    stdout=stdout,
+                    rendered_chunk_sink=rendered_chunk_sink,
+                    collect_stdout=collect_stdout,
+                )
             return result
 
     def _run_once(
@@ -159,6 +173,8 @@ class AgentRunner(ABC):
         request: AgentRequest,
         *,
         stdout: Optional[TextIO] = None,
+        rendered_chunk_sink: Callable[[str], None] | None = None,
+        collect_stdout: bool = True,
     ) -> AgentResult:
         trace_path = trace_path_from_request(request)
         start_time = utc_timestamp()
@@ -175,6 +191,8 @@ class AgentRunner(ABC):
                 output_filter=self.output_filter(request),
                 interrupt_policy=self.interrupt_policy(request),
                 extra_env=request.extra_env,
+                rendered_chunk_sink=rendered_chunk_sink,
+                collect_stdout=collect_stdout,
             )
             return result
         except BaseException as exc:
@@ -209,12 +227,6 @@ class AgentRunner(ABC):
                     ),
                 )
 
-
-_TRANSIENT_AGENT_FAILURE_PATTERNS = (
-    "429 too many requests",
-    "exceeded retry limit",
-    "rate limit",
-)
 _CODE_AGENT_MAX_RETRIES_ENV = "TRITON_AGENT_CODE_AGENT_MAX_RETRIES"
 _DEFAULT_CODE_AGENT_MAX_RETRIES = 2
 _STALL_TIMEOUT_SECONDS_ENV = "TRITON_AGENT_STALL_TIMEOUT_SECONDS"
@@ -224,8 +236,10 @@ _DEFAULT_STALL_TIMEOUT_SECONDS = 900
 def _is_transient_agent_failure(result: AgentResult) -> bool:
     if result.stalled or result.return_code == 130:
         return False
+    if result.retryable_failure:
+        return True
     combined = f"{result.stdout}\n{result.stderr}".lower()
-    return any(pattern in combined for pattern in _TRANSIENT_AGENT_FAILURE_PATTERNS)
+    return contains_transient_agent_failure_text(combined)
 
 
 def _retry_delay_seconds(retry_number: int) -> float:

@@ -1,6 +1,6 @@
 ---
 name: triton-npu-prepare-optimize-baseline
-description: Establish a reusable canonical optimize baseline by reusing or generating harnesses, performing minimum repair, and passing `check-baseline`.
+description: Establish a reusable canonical optimize baseline by reusing or generating harnesses, performing minimum repair, and passing `triton-npu-optimize-submit-baseline`.
 ---
 
 # Prepare Optimize Baseline
@@ -43,8 +43,8 @@ Use this skill when optimize work cannot yet start because baseline artifacts ar
 
 ### 4. Gate The Baseline
 
-- Use the sibling `triton-npu-optimize-check` skill to run `check-baseline`.
-- Keep repairing baseline state until `check-baseline` passes.
+- Use the sibling `triton-npu-optimize-submit-baseline` skill to submit the baseline and validate it.
+- Keep repairing baseline state until the baseline submission passes.
 - Stop once the workspace has a reusable canonical baseline.
 
 ## Completion Condition
@@ -55,7 +55,7 @@ This skill is complete only when:
 - `baseline/` exists
 - `baseline/state.json` exists and matches the optimize artifact contract
 - `baseline/<operator>_perf.txt` exists
-- `triton-npu-optimize-check` `check-baseline` passes
+- `triton-npu-optimize-submit-baseline` passes
 
 ## Hard Rules
 

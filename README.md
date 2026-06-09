@@ -14,6 +14,7 @@ This README is organized by task so you can quickly find the right command for t
 - `convert-batch`: convert many operator workspaces.
 - `gen-bench`: generate a benchmark for one operator.
 - `run-bench`: run an existing generated benchmark.
+- `run-eval-mcp-server`: start the shared run-eval HTTP MCP server for standalone debugging.
 - `optimize`: optimize one operator.
 - `optimize-batch`: optimize many operator workspaces.
 - `upload-optimize`: upload one optimize workspace to an analysis server.
@@ -42,6 +43,7 @@ uv run triton-agent gen-bench --input a.py
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
 
 uv run triton-agent optimize --input a.py
+uv run triton-agent run-eval-mcp-server
 ```
 
 For batch workflows, point `--input` at either a directory whose immediate child directories are operator workspaces, or a single operator workspace directory:
@@ -85,9 +87,9 @@ These are the environment variables that `triton-agent` reads directly at runtim
 | `TRITON_AGENT_BATCH_WORKERS_PER_NPU` | No | `gen-eval-batch`, `convert-batch`, `optimize-batch` | Positive integer that allows each configured NPU device to host multiple concurrent batch workers. Only effective when `TRITON_AGENT_BATCH_NPU_DEVICES` is set; defaults to `1`. Effective capacity is `device_count × workers_per_npu`. |
 | `TRITON_AGENT_CODE_AGENT_MAX_RETRIES` | No | Agent-backed commands | Non-negative integer retry budget for transient code-agent failures such as rate limits. Default is `2`. Set `0` to disable retries. |
 | `TRITON_AGENT_BENCH_OUTPUT_DIR` | No | Local `run-bench`, `verify`, and optimize benchmark validation | Preserves local benchmark profiler output directories under the given root instead of using auto-cleaned temporary directories. Applies to both `standalone` and `msprof` benchmark modes so you can inspect raw profiler artifacts after local benchmark runs. |
-| `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` | No | Ordinary `optimize`, `optimize-batch` PT cleanup | Opts back into deleting optimize-owned archived PT results during ordinary round and end-of-run cleanup. By default those PT files are preserved. This variable does not affect `check-baseline`, which never deletes PT files, or `--reset-optimize`, which still deletes known optimize PT artifacts. |
-| `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW` | No | `check-round`, optimize continuation guidance | Number of recent comparable rounds to inspect for advisory local-optimum warnings after a round already passes the contract. Default is `3`. Minimum effective value is `2`. |
-| `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN` | No | `check-round`, optimize continuation guidance | Maximum adjacent baseline-relative geomean speedup gain that still counts as nearly flat for advisory local-optimum warnings. Default is `0.02`. |
+| `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES` | No | Ordinary `optimize`, `optimize-batch` PT cleanup | Opts back into deleting optimize-owned archived PT results during ordinary round and end-of-run cleanup. By default those PT files are preserved. This variable does not affect the `triton-npu-optimize-submit-baseline` skill, which never deletes PT files, or `--reset-optimize`, which still deletes known optimize PT artifacts. |
+| `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW` | No | `triton-npu-optimize-submit-round`, optimize continuation guidance | Number of recent comparable rounds to inspect for advisory local-optimum warnings after a round already passes the contract. Default is `3`. Minimum effective value is `2`. |
+| `TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN` | No | `triton-npu-optimize-submit-round`, optimize continuation guidance | Maximum adjacent baseline-relative geomean speedup gain that still counts as nearly flat for advisory local-optimum warnings. Default is `0.02`. |
 | `TRITON_AGENT_OPTIMIZE_UPLOAD_URL` | No | `upload-optimize` | HTTP endpoint for optimize workspace uploads. |
 | `LLM_API_KEY` | Only for `--agent openhands` | OpenHands backend | API key forwarded to the OpenHands SDK LLM client. |
 | `LLM_MODEL` | Only for `--agent openhands` | OpenHands backend | Model name passed to the OpenHands SDK LLM client. |
@@ -118,6 +120,34 @@ uv run triton-agent gen-test --input a.py --agent openhands
 These variables are normally set by `triton-agent` for child processes. You usually do not need to export them yourself:
 
 - `ASCEND_RT_VISIBLE_DEVICES`: set for each batch workspace when `TRITON_AGENT_BATCH_NPU_DEVICES` is configured. Multiple concurrent workspaces may receive the same device when `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is greater than `1`.
+
+## Debug The Run-Eval MCP Server
+
+Use `run-eval-mcp-server` when you want to start the managed HTTP MCP runtime without launching an agent workflow.
+
+```bash
+uv run triton-agent run-eval-mcp-server
+```
+
+What it does:
+
+- starts the shared HTTP run-eval MCP server in the foreground
+- prints the base endpoint, for example `http://127.0.0.1:38745/mcp`
+- prints a workspace URL template of the form `http://127.0.0.1:<port>/mcp?workspace=<abs-path>`
+- keeps running until you stop it with `Ctrl-C`
+- defaults to NPU device `0` when the batch NPU environment variables are not set
+
+Common options:
+
+- `--port <int>`: bind a fixed local port instead of using an ephemeral one
+- `TRITON_AGENT_BATCH_NPU_DEVICES`: override the managed NPU device pool
+- `TRITON_AGENT_BATCH_WORKERS_PER_NPU`: accepted for compatibility, but ignored by the managed MCP runtime
+
+Example:
+
+```bash
+uv run triton-agent run-eval-mcp-server --port 8765
+```
 
 ## Generate Tests
 
@@ -157,8 +187,9 @@ uv run triton-agent run-test --test-file test_a.py --operator-file a.py
 Common options:
 
 - `--test-mode standalone|differential`: override the mode recorded in the test file.
-- `--oracle-result <path>`: in `differential` mode, automatically compare the new archived result against an existing oracle payload.
-- `--compare-level strict|balanced|relaxed`: comparison tolerance to use with `--oracle-result`. Default is `balanced`.
+- `--baseline-result <path>`: in `differential` mode, automatically compare the new archived result against an existing baseline payload.
+- `--baseline-operator-file <path>`: in `differential` mode, derive the baseline payload path from the baseline operator and auto-run the baseline test first if the payload does not exist yet.
+- `--compare-level strict|balanced|relaxed`: comparison tolerance to use with `--baseline-result` or `--baseline-operator-file`. Default is `balanced`.
 - `--remote user@host[:port]`: run through SSH on a remote machine.
 - `--remote-workdir <path>`: set the remote working root.
 - `--keep-remote-workdir`: keep the remote workspace for debugging.
@@ -170,14 +201,24 @@ Example:
 uv run triton-agent run-test --test-file differential_test_a.py --operator-file opt_a.py
 ```
 
-If you already have an oracle payload from a baseline or source run, you can finish the differential check in one command:
+If you already have a baseline payload from a baseline or source run, you can finish the differential check in one command:
 
 ```bash
 uv run triton-agent run-test \
   --test-file differential_test_a.py \
   --operator-file opt_a.py \
   --test-mode differential \
-  --oracle-result a_result.pt
+  --baseline-result a_result.pt
+```
+
+If you prefer, you can point at the baseline operator instead and let `run-test` derive or auto-produce the baseline payload:
+
+```bash
+uv run triton-agent run-test \
+  --test-file differential_test_a.py \
+  --operator-file opt_a.py \
+  --test-mode differential \
+  --baseline-operator-file a.py
 ```
 
 ## Generate Evaluation Assets
@@ -348,13 +389,13 @@ Common options:
 - `--enable-cann-ext-api`: allow A5-only CANN Triton extension API optimization patterns during optimize runs.
 - `--enable-agent-hooks`: enable the workspace-local Codex hook guard for this optimize run. Agent hooks are disabled by default.
 - `--min-rounds <N>`: require at least N optimization rounds.
-- `--round-mode continuous|checked|supervised`: default is `continuous`. Controls how the optimize session is structured:
-  - `continuous`: one long-running optimize agent owns multiple rounds end-to-end.
-  - `checked`: one round per invocation; the CLI validates each round and decides whether to continue, stop, or fail.
-  - `supervised`: one round per invocation; the CLI validates each round, then a supervisor audit pass reviews it and decides whether to continue, stop, or fail.
-  For `checked` and `supervised`, optimize runs a baseline preflight before the round loop and repairs `baseline/` when needed.
+- `--round-mode checked|supervised`: default is `checked`. Controls how the optimize session is structured:
+  - `checked`: the CLI launches a worker for a bounded batch of rounds, validates each newly created round in order, and decides whether to continue, stop, or fail.
+  - `supervised`: same batched worker flow, plus one supervisor audit pass after each worker batch before the next worker launch.
+  Optimize runs a baseline preflight before the round loop and repairs `baseline/` when needed.
+- `--round-batch-size <N>`: default is `10`. Each worker invocation owns at most `N` sequential rounds before the CLI validates the batch and relaunches the next worker when needed.
 - `--no-agent-session`: disable persistent agent sessions when supported.
-- `--interact`: only supported with `--round-mode continuous`; when you exit the attached agent session, the optimize command stops instead of auto-resuming to satisfy `--min-rounds`.
+- `--interact`: not supported for optimize batched round modes.
 - `--show-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -400,7 +441,7 @@ Optimize behavior:
 - In `--optimize-target operator`, optimize should inspect both kernel and total-op comparison views and use the total-op conclusion as the canonical round basis.
 - Each round records exactly one resolved comparison basis in `round-state.json` as `effective_metric_source`.
 - If `baseline/` is missing or invalid, baseline preparation is handled by `triton-npu-prepare-optimize-baseline` before round work begins.
-- `check-baseline` never deletes archived PT result files.
+- The `triton-npu-optimize-submit-baseline` skill never deletes archived PT result files.
 - Ordinary optimize cleanup preserves archived PT result files by default. Set `TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES=1` to re-enable round and end-of-run PT cleanup.
 - `--reset-optimize` still deletes known optimize PT artifacts, including workspace-root `*_result.pt` files.
 - Every optimize run follows the default layered analysis ladder: pattern triage -> profiling diagnosis -> IR attribution -> compiler-source escalation.
@@ -783,5 +824,5 @@ Generated files and archived outputs follow predictable naming based on the oper
 ```bash
 uv run --group dev ruff check
 uv run pyright
-uv run python -m unittest discover -s tests -v
+uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/
 ```

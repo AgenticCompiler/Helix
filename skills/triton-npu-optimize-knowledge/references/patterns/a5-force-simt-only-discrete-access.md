@@ -65,8 +65,9 @@ This ordering keeps SIMT-only as an architecture-specific launch-mode experiment
 1. Confirm the profile row and kernel-name match from `op_summary_*.csv`.
 2. Confirm A5 using the evidence rules above.
 3. Inspect the kernel for flat `numel` traversal plus `//` / `%` coordinate recovery. If present and the mapping is affine, route to the flat-index-decode tiling repair first.
-4. Confirm the remaining kernel is discrete-memory-access dominated by reading the Triton kernel body.
-5. Add `force_simt_only=True` to the Triton kernel launch:
+4. For fixed-kernel pooling (AvgPool/MaxPool), enable and validate SIMT-only launch first; if inner loops still scan `KERNEL_D×H×W` with per-tap validity masks and runtime divisor counting, route to `pooling-clip-window-closed-divisor` **after** SIMT is active.
+5. Confirm the remaining kernel is discrete-memory-access dominated by reading the Triton kernel body.
+6. Add `force_simt_only=True` to the Triton kernel launch:
 
    ```python
    _kernel[grid](
@@ -77,15 +78,15 @@ This ordering keeps SIMT-only as an architecture-specific launch-mode experiment
    )
    ```
 
-6. Run correctness first. Do not trust performance if precision or functional comparison fails.
-7. Benchmark representative shapes and compare against the parent candidate.
-8. Tune launch parameters after enabling SIMT-only mode:
+7. Run correctness first. Do not trust performance if precision or functional comparison fails.
+8. Benchmark representative shapes and compare against the parent candidate.
+9. Tune launch parameters after enabling SIMT-only mode:
    - `num_warps`
    - grid decomposition
    - per-program work size
    - block size when it affects scalar/index work
-9. If enabling SIMT-only mode fails with compile error `507035`, follow the compile-failure repair below before abandoning the experiment.
-10. Keep the change only if correctness passes and measured performance improves.
+10. If enabling SIMT-only mode fails with compile error `507035`, follow the compile-failure repair below before abandoning the experiment.
+11. Keep the change only if correctness passes and measured performance improves.
 
 ## Compile Failure: 507035
 
@@ -140,3 +141,8 @@ Treat this as an environment-level repair. Record the original error, the `acl_d
 - The best `num_warps` or grid under SIMT-only mode may differ from the previous best configuration.
 - A scalar-heavy profile can point to code-structure problems that should be fixed directly instead of hidden by launch mode.
 - Changing `acl_default.json` affects the active runtime environment, so keep the change explicit, reversible, and tied to the measured experiment.
+
+## Related Patterns
+
+- `flat-index-decode-tiling`
+- `pooling-clip-window-closed-divisor`

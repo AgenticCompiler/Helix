@@ -10,6 +10,7 @@ from triton_agent.models import AgentRequest, CommandKind
 from triton_agent.otel_trace import new_trace_run_id
 from triton_agent.prompts import build_prompt
 from triton_agent.resources import skills_root
+from triton_agent.show_output_log import show_output_log_path
 from triton_agent.skill_staging import resolve_staged_skills
 from triton_agent.skills import SkillLinkManager
 
@@ -142,6 +143,11 @@ def generate_workspace_report(
         manager.cleanup(links)
 
     if not result.succeeded:
+        if request.show_output:
+            detail = result.stderr.strip()
+            if detail:
+                return False, detail
+            return False, f"agent execution failed; see show-output log: {show_output_log_path(request)}"
         detail = result.stderr.strip() or result.stdout.strip() or "agent execution failed"
         return False, detail[:120]
 

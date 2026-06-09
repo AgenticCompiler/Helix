@@ -125,6 +125,38 @@ while k < K:
     ...
 ```
 
+## Specialization C: Closed-form window divisor (pooling)
+
+### Goal
+
+Replace **per-tap counting** inside a fixed-kernel window loop with an **O(1) algebraic divisor** computed from the same clip bounds used for loads.
+
+### Before
+
+```python
+for kd in range(KERNEL_D):
+    for kh in range(KERNEL_H):
+        for kw in range(KERNEL_W):
+            if window_mask:
+                acc += load(...)
+                valid_count += 1
+divisor = valid_count
+```
+
+### After
+
+```python
+tstart_d, ..., d_len, h_len, w_len = clip_window(...)
+divisor = closed_form_volume(start_*, tend_*, COUNT_INCLUDE_PAD, ...)
+for kd in range(KERNEL_D):
+    ti = tstart_d + kd
+    if kd < d_len:
+        ...
+        acc += load(x_base + ti * stride_d + ...)
+```
+
+This is not mere hoisting: the counting loop is **eliminated**, not moved. See `pooling-clip-window-closed-divisor` for padding semantics and Triton/Ascend details.
+
 ## Performance impact expectations
 
 - Lower AIV scalar/control overhead, especially on large-K loops.
@@ -155,3 +187,4 @@ while k < K:
 - Complements **`compile-hint`**: after LICM, add alignment/contiguity hints.
 - Complements **`software-pipeline`**: LICM simplifies loop bodies; pipeline overlaps remaining transfer/compute.
 - Complements **`remove-implicit-transpose`**: layout fixes reduce transform work; LICM reduces residual loop control cost.
+- `pooling-clip-window-closed-divisor` — algebraic divisor replacement plus clip-window loads for pooling kernels

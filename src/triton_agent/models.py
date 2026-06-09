@@ -23,6 +23,7 @@ class CommandKind(str, Enum):
     LOG_CHECK = "log-check"
     LOG_CHECK_BATCH = "log-check-batch"
     TRACE_ANALYZE = "trace-analyze"
+    RUN_EVAL_MCP_SERVER = "run-eval-mcp-server"
     OPTIMIZE = "optimize"
     OPTIMIZE_BATCH = "optimize-batch"
     UPLOAD_OPTIMIZE = "upload-optimize"
@@ -48,6 +49,7 @@ COMMAND_TO_SKILL = {
     CommandKind.LOG_CHECK: "",
     CommandKind.LOG_CHECK_BATCH: "",
     CommandKind.TRACE_ANALYZE: "",
+    CommandKind.RUN_EVAL_MCP_SERVER: "",
     CommandKind.OPTIMIZE: "triton-npu-optimize",
     CommandKind.OPTIMIZE_BATCH: "",
     CommandKind.UPLOAD_OPTIMIZE: "",
@@ -79,18 +81,24 @@ class AgentRequest:
     min_rounds: Optional[int] = None
     continue_optimize: bool = False
     no_agent_session: bool = False
-    round_mode: Literal["continuous", "checked", "supervised"] = "continuous"
+    round_mode: Literal["checked", "supervised"] = "checked"
+    round_batch_size: int = 10
+    current_round: int = 1
+    final_round: int = 1
+    user_prompt: Optional[str] = None
     staged_skill_names: tuple[str, ...] | None = None
     staged_skill_sources: dict[str, str] | None = None
-    optimize_role: str | None = None
     supervisor_report_path: Optional[Path] = None
     target_chip: Literal["A3", "A5"] = "A5"
     optimize_target: Literal["kernel", "operator"] = "kernel"
     compiler_source_analysis: Literal["off", "auto"] = "off"
     compiler_source_path: Optional[Path] = None
     compiler_source_commit: Optional[str] = None
+    enable_subagent: bool = False
     enable_agent_hooks: bool = False
     log_tools: bool = False
+    enable_mcp: bool = False
+    mcp_servers: tuple[str, ...] | None = None
     show_output_label: str = ""
     run_id: str = ""
 
@@ -105,6 +113,7 @@ class AgentResult:
     stderr: str
     stalled: bool = False
     session_id: Optional[str] = None
+    retryable_failure: bool = False
 
     @property
     def succeeded(self) -> bool:

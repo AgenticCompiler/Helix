@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.cli import build_parser
 import triton_agent.commands.comparison as comparison_module
 from triton_agent.commands.comparison import compare_perf_files, handle_compare_perf, handle_compare_result
+from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
 from tests.run_skill_test_utils import load_compare_result_module, load_perf_artifacts_module
 
 
@@ -166,6 +167,49 @@ class ComparisonCommandHandlerTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             mocked.assert_called_once()
+
+    def test_handle_compare_result_uses_remote_env_when_flag_missing(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            oracle = root / "oracle.pt"
+            new = root / "new.pt"
+            oracle.write_text("oracle", encoding="utf-8")
+            new.write_text("new", encoding="utf-8")
+            args = parser.parse_args(
+                [
+                    "compare-result",
+                    "--oracle-result",
+                    str(oracle),
+                    "--new-result",
+                    str(new),
+                ]
+            )
+
+            with patch.dict(
+                "os.environ",
+                {
+                    remote_target_env_name(): "alice@example.com",
+                    remote_workdir_env_name(): "/tmp/triton-agent",
+                },
+                clear=False,
+            ):
+                with patch(
+                    "triton_agent.commands.comparison.compare_remote_result_files",
+                    return_value=0,
+                ) as mocked:
+                    exit_code = handle_compare_result(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                oracle.resolve(),
+                new.resolve(),
+                "balanced",
+                "alice@example.com",
+                "/tmp/triton-agent",
+                verbose=False,
+                stderr=sys.stderr,
+            )
 
     def test_handle_compare_perf_dispatches_local_comparison(self) -> None:
         parser = build_parser()

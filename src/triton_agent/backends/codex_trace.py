@@ -36,12 +36,10 @@ class CodexJsonLineParser:
         trace_path: Path | None,
         *,
         run_id: str = "",
-        role: str = "worker",
         workspace_root: str = "",
     ) -> None:
         self._trace_path = trace_path
         self._run_id = run_id
-        self._role = role
         self._workspace_root = workspace_root
 
         # tool_use_id -> ToolLifecycle buffer for join
@@ -131,7 +129,6 @@ class CodexJsonLineParser:
                 "source": "codex_native_json",
                 "confidence": "high",
                 "run_id": self._run_id,
-                "role": self._role,
             })
             return _block(
                 f"[tool:start] exec {item_id or 'unknown'}",
@@ -161,7 +158,6 @@ class CodexJsonLineParser:
                 "source": "codex_native_json",
                 "confidence": "high",
                 "run_id": self._run_id,
-                "role": self._role,
             })
             return _block(
                 f"[tool:start] file_change {item_id or 'unknown'}",
@@ -207,7 +203,6 @@ class CodexJsonLineParser:
                 "source": "codex_native_json",
                 "confidence": "high",
                 "run_id": self._run_id,
-                "role": self._role,
             })
             self._derive_command_event(
                 raw_command=raw_command,
@@ -259,7 +254,6 @@ class CodexJsonLineParser:
                 "source": "codex_native_json",
                 "confidence": "high",
                 "run_id": self._run_id,
-                "role": self._role,
             })
             self._derive_edit_events(
                 changes=changes,
@@ -335,7 +329,6 @@ class CodexJsonLineParser:
             "source": "codex_native_json",
             "confidence": "high",
             "run_id": self._run_id,
-            "role": self._role,
         })
         return human
 
@@ -376,7 +369,6 @@ class CodexJsonLineParser:
             "source": "codex_native_json",
             "confidence": "high",
             "run_id": self._run_id,
-            "role": self._role,
         })
 
         # Also derive command/file_access/edit events
@@ -471,7 +463,6 @@ class CodexJsonLineParser:
             "source": "codex_native_json",
             "confidence": "high",
             "run_id": self._run_id,
-            "role": self._role,
         })
 
     def _derive_command_event(
@@ -513,7 +504,6 @@ class CodexJsonLineParser:
             "source": "codex_native_json",
             "confidence": "high",
             "run_id": self._run_id,
-            "role": self._role,
         })
 
     def _derive_file_access_events(
@@ -550,7 +540,6 @@ class CodexJsonLineParser:
                 "source": "codex_native_json",
                 "confidence": "medium",
                 "run_id": self._run_id,
-                "role": self._role,
             }
             try:
                 if resolved.is_file():
@@ -591,7 +580,6 @@ class CodexJsonLineParser:
                 "source": "codex_native_json",
                 "confidence": "high",
                 "run_id": self._run_id,
-                "role": self._role,
             })
 
     def _classify_command(self, command: str) -> str:
@@ -604,7 +592,7 @@ class CodexJsonLineParser:
             return "check_baseline"
         if "check-round" in lower:
             return "check_round"
-        if "run-test" in lower or "pytest" in lower or "differential_test_" in lower:
+        if "run-test" in lower or "run-test-baseline" in lower or "run-test-optimize" in lower or "pytest" in lower or "differential_test_" in lower:
             return "correctness_test"
         if "run-bench" in lower or "bench_" in lower:
             return "remote_bench" if "ssh" in lower or remote_from_command(command) else "benchmark"
@@ -803,7 +791,6 @@ class CodexJsonLineParser:
             "source": "codex_native_json",
             "confidence": "high",
             "run_id": self._run_id,
-            "role": self._role,
             "timestamp": utc_timestamp(),
         })
 
@@ -840,7 +827,6 @@ class CodexJsonLineParser:
                 "source": "codex_native_json",
                 "confidence": "medium",
                 "run_id": self._run_id,
-                "role": self._role,
             })
         self._pending.clear()
 
@@ -955,11 +941,10 @@ class CodexJsonOutputFilter:
         extra_env: dict[str, str] | None = None,
         *,
         run_id: str = "",
-        role: str = "worker",
         workspace_root: str = "",
     ) -> None:
         self._parser = CodexJsonLineParser(
-            trace_path, run_id=run_id, role=role, workspace_root=workspace_root
+            trace_path, run_id=run_id, workspace_root=workspace_root
         )
         self._buffer = ""
 
@@ -997,13 +982,11 @@ def build_codex_trace_env(
     *,
     trace_path: Path,
     run_id: str,
-    role: str,
     workspace_root: Path,
 ) -> dict[str, str]:
     """Build environment dict with trace variables for Codex JSON capture."""
     env = dict(existing or {})
     env["TRITON_AGENT_OTEL_TRACE_PATH"] = str(trace_path)
     env["TRITON_AGENT_OTEL_RUN_ID"] = run_id
-    env["TRITON_AGENT_OTEL_ROLE"] = role
     env["TRITON_AGENT_WORKSPACE_ROOT"] = str(workspace_root)
     return env

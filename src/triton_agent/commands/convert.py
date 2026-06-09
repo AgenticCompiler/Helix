@@ -2,16 +2,42 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
+from triton_agent.commands.comparison import compare_result_files
 from triton_agent.commands.input_resolution import resolve_single_operator_input
 from triton_agent.convert.batch import resolve_batch_convert_operator_file, run_convert_batch
 from triton_agent.convert.models import ConvertOptions
 from triton_agent.convert.orchestration import build_convert_request, run_convert_request
 from triton_agent.convert.outputs import prepare_convert_target
+from triton_agent.execution import parse_test_metadata, run_local_test, run_remote_test
+from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.npu_affinity import resolve_batch_concurrency
 from triton_agent.output import render_result
+from triton_agent.paths import default_generated_output_path
 from triton_agent.verbose import emit_verbose_lines
+
+_CONVERT_COMPARE_LEVEL = "balanced"
+_MAX_CONVERT_AGENT_ATTEMPTS = 2
+
+
+def _convert_test_label(test_mode: str) -> str:
+    return "Standalone test file" if test_mode == "standalone" else "Differential test file"
+
+
+@dataclass(frozen=True)
+class _ConvertLoopResult:
+    agent_result: AgentResult
+    return_code: int
+    validation_summary: str | None = None
+
+
+@dataclass(frozen=True)
+class _ConvertVerificationResult:
+    return_code: int
+    summary: str
+    baseline_result: Path | None = None
 
 
 def handle_convert(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -46,14 +72,16 @@ def handle_convert(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
     if options.verbose:
         emit_verbose_lines(sys.stderr, "files", file_messages)
     try:
-        result = run_convert_request(request)
+        loop_result = _run_convert_with_verification_loop(request)
     except FileNotFoundError as exc:
         parser.error(
             f"Agent executable not found: {exc}. "
             f"Make sure the '{options.agent_name}' CLI is installed and available in PATH."
         )
-    render_result(result, show_output=request.show_output)
-    return result.return_code
+    render_result(loop_result.agent_result, show_output=request.show_output)
+    if loop_result.validation_summary is not None:
+        print(loop_result.validation_summary, file=sys.stderr)
+    return loop_result.return_code
 
 
 def handle_convert_batch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -91,4 +119,324 @@ def convert_options_from_args(args: argparse.Namespace) -> ConvertOptions:
         test_mode=getattr(args, "test_mode", None),
         prompt=getattr(args, "prompt", None),
         log_tools=bool(getattr(args, "log_tools", False)),
+        enable_mcp=bool(getattr(args, "enable_mcp", False)),
+    )
+
+
+def _run_convert_with_verification_loop(request: AgentRequest) -> _ConvertLoopResult:
+    base_prompt = request.prompt
+    current_request = request
+    cached_baseline_result: Path | None = None
+    for attempt_index in range(_MAX_CONVERT_AGENT_ATTEMPTS):
+        agent_result = run_convert_request(current_request)
+        if agent_result.return_code != 0:
+            return _ConvertLoopResult(agent_result=agent_result, return_code=agent_result.return_code)
+
+        verification = _verify_converted_output(
+            current_request,
+            cached_baseline_result=cached_baseline_result,
+        )
+        if verification.baseline_result is not None:
+            cached_baseline_result = verification.baseline_result
+        if verification.return_code == 0:
+            return _ConvertLoopResult(agent_result=agent_result, return_code=0)
+
+        if attempt_index + 1 >= _MAX_CONVERT_AGENT_ATTEMPTS:
+            return _ConvertLoopResult(
+                agent_result=agent_result,
+                return_code=verification.return_code,
+                validation_summary=verification.summary,
+            )
+
+        current_request = current_request.with_prompt(
+            _build_convert_repair_prompt(base_prompt, verification.summary)
+        )
+
+    raise AssertionError("convert verification loop exited without returning a result")
+
+
+def _verify_converted_output(
+    request: AgentRequest,
+    *,
+    cached_baseline_result: Path | None = None,
+) -> _ConvertVerificationResult:
+    converted_output = request.output_path
+    if converted_output is None:
+        return _ConvertVerificationResult(
+            return_code=1,
+            summary="Convert verification failed.\nMissing converted output path in request.",
+        )
+    if not converted_output.exists():
+        return _ConvertVerificationResult(
+            return_code=1,
+            summary=(
+                "Convert verification failed.\n"
+                f"Converted operator does not exist: {converted_output}"
+            ),
+        )
+
+    try:
+        test_file = _resolve_convert_test_file(request)
+    except (FileNotFoundError, ValueError) as exc:
+        return _ConvertVerificationResult(
+            return_code=1,
+            summary=f"Convert verification failed.\n{exc}",
+            baseline_result=cached_baseline_result,
+        )
+
+    test_mode = _resolve_convert_validation_mode(test_file)
+    if test_mode == "standalone":
+        candidate_result, _candidate_archive, candidate_summary = _run_convert_validation_test(
+            request,
+            test_file,
+            converted_output,
+            role="converted output",
+            test_mode="standalone",
+        )
+        if candidate_result.return_code != 0:
+            return _ConvertVerificationResult(
+                return_code=candidate_result.return_code,
+                summary=candidate_summary,
+                baseline_result=cached_baseline_result,
+            )
+        return _ConvertVerificationResult(
+            return_code=0,
+            summary=(
+                "Convert verification passed.\n"
+                f"Test file: {test_file}\n"
+                f"Converted operator: {converted_output}"
+            ),
+            baseline_result=cached_baseline_result,
+        )
+
+    baseline_result = cached_baseline_result or _resolve_convert_baseline_result(request, test_file)
+    if baseline_result is None:
+        baseline_run_result, baseline_archive, baseline_summary = _run_convert_validation_test(
+            request,
+            test_file,
+            request.input_path,
+            role="original operator",
+            test_mode="differential",
+        )
+        if baseline_run_result.return_code != 0:
+            return _ConvertVerificationResult(
+                return_code=baseline_run_result.return_code,
+                summary=baseline_summary,
+                baseline_result=None,
+            )
+        if baseline_archive is None:
+            return _ConvertVerificationResult(
+                return_code=1,
+                summary=(
+                    "Convert verification failed.\n"
+                    f"{_convert_test_label(test_mode)}: {test_file}\n"
+                    f"Original operator: {request.input_path}\n"
+                    "Original operator differential run did not produce an archived result."
+                ),
+                baseline_result=None,
+            )
+        baseline_result = baseline_archive
+
+    candidate_result, candidate_archive, candidate_summary = _run_convert_validation_test(
+        request,
+        test_file,
+        converted_output,
+        role="converted output",
+        test_mode="differential",
+    )
+    if candidate_result.return_code != 0:
+        return _ConvertVerificationResult(
+            return_code=candidate_result.return_code,
+            summary=candidate_summary,
+            baseline_result=baseline_result,
+        )
+    if candidate_archive is None:
+        return _ConvertVerificationResult(
+            return_code=1,
+            summary=(
+                "Convert verification failed.\n"
+                f"{_convert_test_label(test_mode)}: {test_file}\n"
+                f"Converted operator: {converted_output}\n"
+                "Converted-operator differential run did not produce an archived result."
+            ),
+            baseline_result=baseline_result,
+        )
+
+    compare_code = compare_result_files(baseline_result, candidate_archive, _CONVERT_COMPARE_LEVEL)
+    if compare_code != 0:
+        return _ConvertVerificationResult(
+            return_code=compare_code,
+            summary=(
+                "Convert verification failed.\n"
+                f"{_convert_test_label(test_mode)}: {test_file}\n"
+                f"Original operator: {request.input_path}\n"
+                f"Converted operator: {converted_output}\n"
+                f"Baseline result: {baseline_result}\n"
+                f"Candidate result: {candidate_archive}\n"
+                f"Comparison result: compare-result failed at level {_CONVERT_COMPARE_LEVEL}."
+            ),
+            baseline_result=baseline_result,
+        )
+
+    return _ConvertVerificationResult(
+        return_code=0,
+        summary=(
+            "Convert verification passed.\n"
+            f"Test file: {test_file}\n"
+            f"Converted operator: {converted_output}"
+        ),
+        baseline_result=baseline_result,
+    )
+
+
+def _resolve_convert_baseline_result(request: AgentRequest, test_file: Path) -> Path | None:
+    expected_result = request.input_path.parent / f"{request.input_path.stem}_result.pt"
+    if expected_result.exists():
+        return expected_result.resolve()
+
+    legacy_result = test_file.parent / "TEST_RESULT.pt"
+    if legacy_result.exists():
+        return legacy_result.resolve()
+
+    return None
+
+
+def _resolve_convert_test_file(request: AgentRequest) -> Path:
+    default_test = default_generated_output_path(
+        CommandKind.GEN_TEST,
+        request.input_path,
+        test_mode="differential",
+    ).resolve()
+    if default_test.exists():
+        return default_test
+
+    standalone_default = default_generated_output_path(
+        CommandKind.GEN_TEST,
+        request.input_path,
+        test_mode="standalone",
+    ).resolve()
+    if standalone_default.exists():
+        return standalone_default
+
+    differential_candidates = sorted(
+        path.resolve()
+        for path in request.workdir.iterdir()
+        if path.is_file() and path.suffix == ".py" and path.name.startswith("differential_test_")
+    )
+    if len(differential_candidates) == 1:
+        return differential_candidates[0]
+    if len(differential_candidates) > 1:
+        raise ValueError(
+            "convert verification found multiple reusable differential test files. "
+            f"Expected {default_test} or exactly one differential_test_*.py file in {request.workdir}."
+        )
+
+    standalone_candidates = sorted(
+        path.resolve()
+        for path in request.workdir.iterdir()
+        if path.is_file()
+        and path.suffix == ".py"
+        and path.name.startswith("test_")
+        and not path.name.startswith("differential_test_")
+    )
+    if len(standalone_candidates) == 1:
+        return standalone_candidates[0]
+    if not standalone_candidates:
+        raise FileNotFoundError(
+            "convert verification could not find a reusable test file. "
+            f"Expected {default_test}, {standalone_default}, exactly one differential_test_*.py file, "
+            f"or exactly one test_*.py file in {request.workdir}."
+        )
+    raise ValueError(
+        "convert verification found multiple reusable standalone test files. "
+        f"Expected {standalone_default} or exactly one test_*.py file in {request.workdir}."
+    )
+
+
+def _resolve_convert_validation_mode(test_file: Path) -> str:
+    metadata = parse_test_metadata(test_file)
+    mode = metadata.get("test-mode")
+    if mode not in {"standalone", "differential"}:
+        return "differential"
+    return str(mode)
+
+
+def _run_convert_validation_test(
+    request: AgentRequest,
+    test_file: Path,
+    operator_file: Path,
+    *,
+    role: str,
+    test_mode: str,
+) -> tuple[AgentResult, Path | None, str]:
+    try:
+        if request.remote is not None:
+            result, archived_result, _remote_workspace = run_remote_test(
+                test_file,
+                operator_file,
+                test_mode,
+                request.remote,
+                request.remote_workdir,
+                keep_remote_workdir=False,
+                verbose=request.verbose,
+                stderr=sys.stderr,
+            )
+        else:
+            result, archived_result = run_local_test(
+                test_file,
+                operator_file,
+                test_mode,
+                verbose=request.verbose,
+            )
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        summary = (
+            "Convert verification failed.\n"
+            f"{_convert_test_label(test_mode)}: {test_file}\n"
+            f"{role.capitalize()}: {operator_file}\n"
+            f"Validation runner error: {exc}"
+        )
+        return AgentResult(return_code=1, stdout="", stderr=str(exc)), None, summary
+
+    if result.return_code != 0:
+        summary = (
+            "Convert verification failed.\n"
+            f"{_convert_test_label(test_mode)}: {test_file}\n"
+            f"{role.capitalize()}: {operator_file}\n"
+            f"Validation run failed with return code {result.return_code}.\n"
+            f"{_format_result_excerpt(result)}"
+        )
+        return result, archived_result, summary
+
+    return result, archived_result, ""
+
+
+def _format_result_excerpt(result: AgentResult) -> str:
+    stdout = _truncate_text(result.stdout)
+    stderr = _truncate_text(result.stderr)
+    lines: list[str] = []
+    if stdout:
+        lines.extend(["Stdout:", stdout])
+    if stderr:
+        lines.extend(["Stderr:", stderr])
+    if not lines:
+        return "No stdout or stderr was captured."
+    return "\n".join(lines)
+
+
+def _truncate_text(text: str, *, limit: int = 1200) -> str:
+    stripped = text.strip()
+    if not stripped:
+        return ""
+    if len(stripped) <= limit:
+        return stripped
+    return stripped[:limit].rstrip() + "\n...[truncated]"
+
+
+def _build_convert_repair_prompt(base_prompt: str, validation_summary: str) -> str:
+    return (
+        f"{base_prompt}\n\n"
+        "Follow-up convert verification failed.\n"
+        "Use this follow-up failure context to repair the converted output or its reused/generated test, "
+        "then rerun the same convert workflow expectations.\n\n"
+        f"{validation_summary}"
     )

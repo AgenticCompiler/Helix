@@ -45,7 +45,7 @@ def run_local_bench_msprof(
     operator_file: Path,
     *,
     verbose: bool = False,
-    force_recompile: bool = False,
+    output: str | None = None,
 ) -> tuple[ResultPayload, Path | None]:
     resolution = deps.resolve_bench_kernel_resolution(bench_file, operator_file)
     count_result = deps.run_buffered_process(
@@ -86,7 +86,7 @@ def run_local_bench_msprof(
                     str(bench_file.parent),
                     stall_timeout_seconds=deps._bench_timeout(),
                     stdout=stream_target,
-                    extra_env={"TRITON_ALWAYS_COMPILE": "1"} if force_recompile else None,
+                    extra_env={"TRITON_ALWAYS_COMPILE": "1"},
                 )
             elapsed = deps._now() - t0
             stdout_chunks.append(str(result["stdout"]))
@@ -136,7 +136,7 @@ def run_local_bench_msprof(
                 temp_dir.cleanup()
             deps._cleanup_local_bench_extra_info(bench_file.parent)
 
-    perf_path = _write_msprof_perf(deps, operator_file, case_records)
+    perf_path = _write_msprof_perf(deps, operator_file, case_records, output=output)
     return (
         make_result(
             return_code=1 if had_case_failures else 0,
@@ -158,7 +158,7 @@ def run_local_bench_msprof_parallel(
     source_root: Path,
     json_search_root: Path,
     verbose: bool = False,
-    force_recompile: bool = False,
+    output: str | None = None,
 ) -> tuple[ResultPayload, Path | None]:
     resolution = deps.resolve_bench_kernel_resolution(bench_file, operator_file)
     count_result = deps.run_buffered_process(
@@ -192,7 +192,6 @@ def run_local_bench_msprof_parallel(
             source_root,
             json_search_root,
             verbose,
-            force_recompile=force_recompile,
         )
 
     outcomes = deps._run_parallel_case_workers(
@@ -201,7 +200,7 @@ def run_local_bench_msprof_parallel(
         _worker,
     )
     outcomes.sort(key=_msprof_case_outcome_sort_key)
-    perf_path = _write_msprof_perf(deps, operator_file, [outcome.record for outcome in outcomes])
+    perf_path = _write_msprof_perf(deps, operator_file, [outcome.record for outcome in outcomes], output=output)
     for outcome in outcomes:
         stdout_chunks.append(outcome.stdout)
         stderr_chunks.append(outcome.stderr)
@@ -217,7 +216,7 @@ def run_remote_bench_msprof(
     *,
     verbose: bool = False,
     stderr: TextIO | None = None,
-    force_recompile: bool = False,
+    output: str | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
     resolution = deps.resolve_bench_kernel_resolution(bench_file, operator_file)
     count_result = deps.run_remote_command_buffered(
@@ -324,7 +323,7 @@ def run_remote_bench_msprof(
                 stderr=stderr,
             )
 
-    perf_path = _write_msprof_perf(deps, operator_file, case_records)
+    perf_path = _write_msprof_perf(deps, operator_file, case_records, output=output)
     return (
         make_result(
             return_code=1 if had_case_failures else 0,
@@ -350,7 +349,7 @@ def run_remote_bench_msprof_parallel(
     json_search_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
-    force_recompile: bool = False,
+    output: str | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
     resolution = deps.resolve_bench_kernel_resolution(bench_file, operator_file)
     count_result = deps.run_remote_command_buffered(
@@ -384,7 +383,6 @@ def run_remote_bench_msprof_parallel(
             json_search_root,
             verbose,
             stderr,
-            force_recompile=force_recompile,
         )
 
     outcomes = deps._run_parallel_case_workers(
@@ -393,7 +391,7 @@ def run_remote_bench_msprof_parallel(
         _worker,
     )
     outcomes.sort(key=_msprof_case_outcome_sort_key)
-    perf_path = _write_msprof_perf(deps, operator_file, [outcome.record for outcome in outcomes])
+    perf_path = _write_msprof_perf(deps, operator_file, [outcome.record for outcome in outcomes], output=output)
     for outcome in outcomes:
         stdout_chunks.append(outcome.stdout)
         stderr_chunks.append(outcome.stderr)
@@ -413,7 +411,6 @@ def _run_local_msprof_case_parallel(
     source_root: Path,
     json_search_root: Path,
     verbose: bool,
-    force_recompile: bool = False,
 ) -> _MsprofCaseOutcome:
     case_workspace, cleanup = deps._create_local_msprof_case_workspace(
         bench_file,
@@ -427,8 +424,7 @@ def _run_local_msprof_case_parallel(
     try:
         with pool.acquire() as device:
             extra_env = affinity_env_for_device(device)
-            if force_recompile:
-                extra_env["TRITON_ALWAYS_COMPILE"] = "1"
+            extra_env["TRITON_ALWAYS_COMPILE"] = "1"
             command = [
                 "msprof",
                 f"--output={output_dir}",
@@ -470,7 +466,6 @@ def _run_remote_msprof_case_parallel(
     json_search_root: Path,
     verbose: bool,
     stderr: TextIO | None,
-    force_recompile: bool = False,
 ) -> _MsprofCaseOutcome:
     case_workspace = f"{remote_workspace}/case-{case_idx}"
     deps.run_remote_command_buffered(
@@ -496,8 +491,7 @@ def _run_remote_msprof_case_parallel(
     try:
         with pool.acquire() as device:
             extra_env = affinity_env_for_device(device)
-            if force_recompile:
-                extra_env["TRITON_ALWAYS_COMPILE"] = "1"
+            extra_env["TRITON_ALWAYS_COMPILE"] = "1"
             t0 = deps._now()
             result = deps.run_remote_command_streaming(
                 spec,
@@ -658,14 +652,26 @@ def _write_msprof_perf(
     deps: BenchRunnerDeps,
     operator_file: Path,
     case_records: list[PerfCaseRecord],
+    output: str | None = None,
 ) -> Path:
     return deps.write_perf_lines(
-        deps.perf_output_path(operator_file),
+        _resolve_msprof_output_path(deps, operator_file, output=output),
         deps.render_perf_case_records_jsonl(
             case_records,
             missing_kernel_match_error=_MISSING_KERNEL_MATCH_ERROR,
         ),
     )
+
+
+def _resolve_msprof_output_path(
+    deps: BenchRunnerDeps,
+    operator_file: Path,
+    *,
+    output: str | None = None,
+) -> Path:
+    if output is not None:
+        return Path(output).expanduser().resolve()
+    return deps.perf_output_path(operator_file)
 
 
 def _load_msprof_avg_rows(output_dir: Path) -> list[PerfOpRow]:

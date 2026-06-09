@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 import importlib.util
+import os
 import shutil
 import sys
 import traceback
@@ -11,6 +12,7 @@ from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any, TextIO, cast
 
+from debug_device import maybe_print_visible_devices
 from run_runtime import (
     env_int,
     ResultPayload,
@@ -50,8 +52,8 @@ def run_local_test(
     test_mode: str,
     *,
     verbose: bool = False,
-    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
+    maybe_print_visible_devices()
     if test_mode == "differential" and _has_differential_test_contract(test_file):
         archive_path = _differential_archive_path(operator_file)
         result = _run_declarative_differential_test(test_file, operator_file, archive_path)
@@ -59,7 +61,6 @@ def run_local_test(
         return _filter_result_payload(result, verbose=verbose), archived_result
     result, archived_result = _run_legacy_local_test(
         test_file, operator_file, test_mode,
-        force_recompile=force_recompile,
     )
     return _filter_result_payload(result, verbose=verbose), archived_result
 
@@ -143,6 +144,8 @@ def _run_declarative_differential_test(
             stderr=f"Missing differential test dependency: {exc}",
         )
 
+    prev = os.environ.get("TRITON_ALWAYS_COMPILE")
+    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
     try:
         cases = load_differential_test_cases(test_file, operator_file)
         stdout_buffer = StringIO()
@@ -164,17 +167,20 @@ def _run_declarative_differential_test(
             stdout="",
             stderr=traceback.format_exc(),
         )
+    finally:
+        if prev is None:
+            del os.environ["TRITON_ALWAYS_COMPILE"]
+        else:
+            os.environ["TRITON_ALWAYS_COMPILE"] = prev
 
 
 def _run_legacy_local_test(
     test_file: Path,
     operator_file: Path,
     test_mode: str,
-    *,
-    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     command = [sys.executable, str(test_file), "--operator-file", str(operator_file)]
-    extra_env = {"TRITON_ALWAYS_COMPILE": "1"} if force_recompile else None
+    extra_env = {"TRITON_ALWAYS_COMPILE": "1"}
     result = run_streaming_process(
         command, str(test_file.parent),
         stall_timeout_seconds=_test_timeout(),
@@ -195,9 +201,8 @@ def _run_legacy_remote_test(
     *,
     verbose: bool = False,
     stderr: TextIO | None = None,
-    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None, str]:
-    extra_env = {"TRITON_ALWAYS_COMPILE": "1"} if force_recompile else None
+    extra_env = {"TRITON_ALWAYS_COMPILE": "1"}
     result = run_remote_command_streaming(
         spec,
         remote_workspace,
@@ -342,8 +347,8 @@ def run_remote_test(
     keep_remote_workdir: bool = False,
     verbose: bool = False,
     stderr: TextIO | None = None,
-    force_recompile: bool = False,
 ) -> tuple[ResultPayload, Path | None, str]:
+    maybe_print_visible_devices()
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
     )
@@ -364,7 +369,7 @@ def run_remote_test(
         copy_file_to_remote(spec, operator_file, remote_operator, verbose=verbose, stderr=stderr)
         if test_mode == "differential" and _has_differential_test_contract(test_file):
             archive_path = _differential_archive_path(operator_file)
-            extra_env = {"TRITON_ALWAYS_COMPILE": "1"} if force_recompile else None
+            extra_env = {"TRITON_ALWAYS_COMPILE": "1"}
             result = run_remote_command_streaming(
                 spec,
                 remote_workspace,
@@ -392,7 +397,6 @@ def run_remote_test(
             test_mode,
             verbose=verbose,
             stderr=stderr,
-            force_recompile=force_recompile,
         )
         return _filter_result_payload(result, verbose=verbose), archived_result, remote_workspace
     finally:

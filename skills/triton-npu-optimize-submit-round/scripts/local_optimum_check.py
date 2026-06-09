@@ -96,7 +96,6 @@ def collect_local_optimum_warnings(
 
 
 def load_local_optimum_config_from_env() -> LocalOptimumConfig:
-    warnings: list[str] = []
     window = _DEFAULT_LOCAL_OPTIMUM_WINDOW
     raw_window = os.environ.get(_LOCAL_OPTIMUM_WINDOW_ENV)
     if raw_window is not None:
@@ -106,9 +105,7 @@ def load_local_optimum_config_from_env() -> LocalOptimumConfig:
                 raise ValueError
             window = parsed_window
         except ValueError:
-            warnings.append(
-                f"invalid {_LOCAL_OPTIMUM_WINDOW_ENV}={raw_window!r}; using default {_DEFAULT_LOCAL_OPTIMUM_WINDOW}"
-            )
+            pass
 
     max_geomean_gain = _DEFAULT_LOCAL_OPTIMUM_MAX_GAIN
     raw_gain = os.environ.get(_LOCAL_OPTIMUM_MAX_GAIN_ENV)
@@ -119,14 +116,12 @@ def load_local_optimum_config_from_env() -> LocalOptimumConfig:
                 raise ValueError
             max_geomean_gain = parsed_gain
         except ValueError:
-            warnings.append(
-                f"invalid {_LOCAL_OPTIMUM_MAX_GAIN_ENV}={raw_gain!r}; using default {_DEFAULT_LOCAL_OPTIMUM_MAX_GAIN}"
-            )
+            pass
 
     return LocalOptimumConfig(
         window=window,
         max_geomean_gain=max_geomean_gain,
-        warnings=tuple(warnings),
+        warnings=(),
     )
 
 

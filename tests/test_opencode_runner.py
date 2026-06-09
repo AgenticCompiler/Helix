@@ -237,8 +237,16 @@ class OpenCodeRunnerTests(unittest.TestCase):
                 self.assertEqual(config["agent"]["plan"]["permission"]["task"]["explore"], "deny")
                 return _ok_result()
 
-            with patch("triton_agent.backends.base.run_process", side_effect=_inspect_config):
-                result = runner.run(request)
+            with patch.dict(
+                "os.environ",
+                {
+                    "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
+                    "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                },
+                clear=False,
+            ):
+                with patch("triton_agent.backends.base.run_process", side_effect=_inspect_config):
+                    result = runner.run(request)
 
             self.assertEqual(result.return_code, 0)
             self.assertFalse((workspace / ".opencode" / "opencode.json").exists())
@@ -276,6 +284,91 @@ class OpenCodeRunnerTests(unittest.TestCase):
             self.assertIn("Warning:", stderr.getvalue())
             self.assertIn("Existing OpenCode workspace config", stderr.getvalue())
             self.assertEqual(config_path.read_text(encoding="utf-8"), "{}\n")
+
+    def test_run_stages_mcp_server_config_into_workspace_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = OpenCodeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="opencode",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+                mcp_servers=("triton-agent-run-eval",),
+            )
+
+            def _inspect_config(*args, **kwargs):
+                del args, kwargs
+                config_path = workspace / ".opencode" / "opencode.json"
+                self.assertTrue(config_path.exists())
+                config = json.loads(config_path.read_text(encoding="utf-8"))
+                server = config["mcp"]["triton-agent-run-eval"]
+                self.assertEqual(server["type"], "remote")
+                self.assertTrue(server["url"].startswith("http://127.0.0.1:"))
+                self.assertIn("/mcp?workspace=", server["url"])
+                self.assertIn(str(workspace), server["url"])
+                return _ok_result()
+
+            with patch.dict(
+                "os.environ",
+                {
+                    "TRITON_AGENT_BATCH_NPU_DEVICES": "0,1",
+                    "TRITON_AGENT_BATCH_WORKERS_PER_NPU": "2",
+                },
+                clear=False,
+            ):
+                with patch("triton_agent.backends.base.run_process", side_effect=_inspect_config):
+                    result = runner.run(request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertFalse((workspace / ".opencode" / "opencode.json").exists())
+
+    def test_run_stages_backend_hooks_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = OpenCodeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="opencode",
+                skill_name="triton-npu-optimize",
+                prompt="Continue work",
+                workdir=workspace,
+                enable_agent_hooks=True,
+            )
+
+            def _inspect_hooks(*args, **kwargs):
+                del args, kwargs
+                plugin_file = workspace / ".opencode" / "plugins" / "triton-agent-hook-guard.js"
+                hook_dir = workspace / ".opencode" / "triton-agent-hooks"
+                self.assertTrue(plugin_file.exists())
+                self.assertTrue((hook_dir / "policy.json").exists())
+                return _ok_result()
+
+            with patch("triton_agent.backends.base.run_process", side_effect=_inspect_hooks):
+                result = runner.run(request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertFalse((workspace / ".opencode" / "plugins" / "triton-agent-hook-guard.js").exists())
+            self.assertFalse((workspace / ".opencode" / "triton-agent-hooks").exists())
 
     def test_verbose_logging_prints_launch_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -342,7 +435,7 @@ class OpenCodeRunnerTests(unittest.TestCase):
                 runner.resume(request, "one round done")
 
             resumed_request = mocked.call_args.args[0][-1]
-            self.assertIn("This invocation owns exactly one round.", resumed_request)
+            self.assertIn("This invocation owns rounds 1 through 5.", resumed_request)
             self.assertIn("Continue the existing optimize task", resumed_request)
             self.assertIn("Read `opt-note.md`", resumed_request)
             self.assertIn("existing `opt-round-*` directories", resumed_request)

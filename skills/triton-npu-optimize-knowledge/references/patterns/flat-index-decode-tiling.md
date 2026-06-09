@@ -131,3 +131,4 @@ This lets a smaller physical grid cover a large logical tensor.
 - `scalar-latency-traps`
 - `gather-load`
 - `discrete_memory_access`
+- `pooling-clip-window-closed-divisor` — inner window loop and divisor repair for pooling after outer tiling

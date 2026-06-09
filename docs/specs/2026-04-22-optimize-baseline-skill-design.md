@@ -9,7 +9,7 @@
   - doing the minimum repair required to reach a correct, benchmarkable starting point
   - creating `baseline/`
   - writing `baseline/state.json` and `baseline/perf.txt`
-  - running `triton-npu-optimize-check` `check-baseline` until the baseline is reusable
+  - running `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` `check-baseline` until the baseline is reusable
 - Rewrite `triton-npu-optimize` so it delegates baseline setup to the new skill when baseline artifacts are missing or invalid.
 - Stop teaching `triton-npu-optimize` to call helper scripts directly; the optimize skill should reference owning skills instead of script paths.
 
@@ -49,7 +49,7 @@ That violates the repository's preferred boundary. Top-level workflow skills sho
 ## Non-Goals
 
 - Do not change optimize runtime orchestration in this design.
-- Do not remove `triton-npu-optimize-check`.
+- Do not remove `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`.
 - Do not move artifact contracts out of `references/artifacts.md`.
 - Do not weaken the requirement that optimize work must be correctness- and benchmark-validated.
 - Do not rewrite the run-eval, generation, profiling, or optimize-check helper scripts.
@@ -71,7 +71,7 @@ Its responsibilities should be:
 - establish canonical baseline artifacts under `baseline/`
 - write `baseline/state.json`
 - write `baseline/perf.txt`
-- call `triton-npu-optimize-check` to run `check-baseline`
+- call `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` to run `check-baseline`
 - keep repairing baseline state until `check-baseline` passes
 
 The new skill should stop after the workspace has a reusable canonical baseline.
@@ -90,9 +90,9 @@ It should say:
 
 This makes optimize rounds the primary concern of the optimize skill instead of making it a mixed baseline-plus-rounds contract.
 
-### Existing Skill: `triton-npu-optimize-check`
+### Existing Skill: `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round`
 
-`triton-npu-optimize-check` should stay narrow.
+`triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` should stay narrow.
 
 It should continue to:
 
@@ -121,7 +121,7 @@ The new baseline skill should consider its work complete only when:
 - `baseline/` exists
 - `baseline/state.json` exists and matches the artifact contract
 - `baseline/perf.txt` exists
-- `triton-npu-optimize-check check-baseline` passes
+- `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round check-baseline` passes
 
 ## Skill-First Reference Boundary
 
@@ -140,7 +140,7 @@ Instead, it should say:
 - use `triton-npu-analyze-round-performance` for deeper round-local performance analysis
 - use `triton-npu-analyze-ir` for IR attribution
 - use `triton-npu-analyze-compiler-source` only for the final compiler-source escalation
-- use `triton-npu-optimize-check` for baseline and round gating
+- use `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` for baseline and round gating
 
 Helper scripts may still be documented inside the owning skill that directly wraps them.
 
@@ -170,7 +170,7 @@ Create a new skill document that explains:
 
 This new skill becomes the place where baseline-specific procedural detail belongs.
 
-### `triton-npu-optimize-check/SKILL.md`
+### `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md`
 
 No major behavior change is needed, but its contract should remain clearly gate-only so it does not overlap with the new baseline-preparation skill.
 

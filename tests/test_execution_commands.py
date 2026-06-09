@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from triton_agent.cli import build_parser
 from triton_agent.commands.execution import handle_run_bench, handle_run_test
 from triton_agent.models import AgentResult
+from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
 
 
 class ExecutionCommandHandlerTests(unittest.TestCase):
@@ -46,20 +47,19 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 operator.resolve(),
                 "differential",
                 verbose=False,
-                force_recompile=False,
             )
 
-    def test_handle_run_test_auto_compares_differential_result_when_oracle_provided(self) -> None:
+    def test_handle_run_test_auto_compares_differential_result_when_baseline_result_provided(self) -> None:
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
             test_file = root / "differential_test_kernel.py"
-            oracle = root / "oracle_result.pt"
+            baseline_result = root / "baseline_result.pt"
             archive = root / "kernel_result.pt"
             operator.write_text("print('x')", encoding="utf-8")
             test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
-            oracle.write_text("oracle", encoding="utf-8")
+            baseline_result.write_text("baseline", encoding="utf-8")
 
             args = parser.parse_args(
                 [
@@ -68,8 +68,8 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                     str(test_file),
                     "--operator-file",
                     str(operator),
-                    "--oracle-result",
-                    str(oracle),
+                    "--baseline-result",
+                    str(baseline_result),
                 ]
             )
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
@@ -90,10 +90,9 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 operator.resolve(),
                 "differential",
                 verbose=False,
-                force_recompile=False,
             )
             compare_mock.assert_called_once_with(
-                oracle.resolve(),
+                baseline_result.resolve(),
                 archive,
                 "balanced",
             )
@@ -131,7 +130,52 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 operator.resolve(),
                 "standalone",
                 verbose=True,
-                force_recompile=False,
+            )
+
+    def test_handle_run_test_uses_remote_env_when_flag_missing(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+
+            args = parser.parse_args(
+                [
+                    "run-test",
+                    "--test-file",
+                    str(test_file),
+                    "--operator-file",
+                    str(operator),
+                ]
+            )
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch.dict(
+                "os.environ",
+                {
+                    remote_target_env_name(): "alice@example.com",
+                    remote_workdir_env_name(): "/tmp/triton-agent",
+                },
+                clear=False,
+            ):
+                with patch(
+                    "triton_agent.commands.execution.run_remote_test",
+                    return_value=(fake_result, None, "/tmp/triton-agent-123"),
+                ) as mocked:
+                    exit_code = handle_run_test(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                test_file.resolve(),
+                operator.resolve(),
+                "standalone",
+                "alice@example.com",
+                "/tmp/triton-agent",
+                keep_remote_workdir=False,
+                verbose=False,
+                stderr=sys.stderr,
             )
 
     def test_handle_run_bench_prints_perf_file(self) -> None:
@@ -204,6 +248,54 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             self.assertEqual(exit_code, 1)
             self.assertIn("raw stdout", stdout.getvalue())
             self.assertIn("raw stderr", stderr.getvalue())
+
+    def test_handle_run_bench_uses_remote_env_when_flag_missing(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+
+            args = parser.parse_args(
+                [
+                    "run-bench",
+                    "--bench-file",
+                    str(bench_file),
+                    "--operator-file",
+                    str(operator),
+                ]
+            )
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch.dict(
+                "os.environ",
+                {
+                    remote_target_env_name(): "alice@example.com",
+                    remote_workdir_env_name(): "/tmp/triton-agent",
+                },
+                clear=False,
+            ):
+                with patch(
+                    "triton_agent.commands.execution.run_remote_bench",
+                    return_value=(fake_result, None, "/tmp/triton-agent-123"),
+                ) as mocked:
+                    exit_code = handle_run_bench(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                bench_file.resolve(),
+                operator.resolve(),
+                "standalone",
+                "alice@example.com",
+                "/tmp/triton-agent",
+                None,
+                keep_remote_workdir=False,
+                verbose=False,
+                stderr=sys.stderr,
+                output=None,
+            )
 
 
 if __name__ == "__main__":

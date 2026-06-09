@@ -179,13 +179,21 @@ class GenerationContractTests(unittest.TestCase):
         self.assertNotIn("run-test --input", optimize)
         self.assertNotIn("run-bench --input", optimize)
 
+    def test_convert_skill_requires_reusing_existing_tests_before_regeneration(self) -> None:
+        convert_skill = _read("skills/triton-npu-convert-pytorch-operator/SKILL.md")
+
+        self.assertIn("If a suitable test already exists in the operator workspace, reuse it", convert_skill)
+        self.assertIn("This includes existing standalone and differential test cases", convert_skill)
+        self.assertIn("Do not create a new test when an existing suitable test can be reused", convert_skill)
+        self.assertIn("unless the user explicitly asks to regenerate", convert_skill)
+
     def test_generation_skills_include_explicit_run_command_examples(self) -> None:
         test_gen = _read("skills/triton-npu-gen-test/SKILL.md")
         self.assertIn("## Validation Commands", test_gen)
         self.assertIn("Use the `triton-npu-run-eval` skill to validate generated tests.", test_gen)
-        self.assertIn("run `run-test` with `--test-mode standalone`", test_gen)
-        self.assertIn("run `run-test` with `--test-mode differential`", test_gen)
-        self.assertIn("run `run-test` with `--oracle-result <oracle_result.pt>`", test_gen)
+        self.assertIn("run `run-test-baseline`", test_gen)
+        self.assertIn("run `run-test-optimize`", test_gen)
+        self.assertIn("run `run-test-optimize` with `--baseline-operator-file <baseline_operator.py>`", test_gen)
         self.assertIn("keep `compare-result` for reruns", test_gen)
 
         bench_gen = _read("skills/triton-npu-gen-bench/SKILL.md")
@@ -220,13 +228,13 @@ class GenerationContractTests(unittest.TestCase):
         self.assertFalse((REPO_ROOT / "skills" / "triton-npu-run-eval" / "compare-result.md").exists())
         self.assertFalse((REPO_ROOT / "skills" / "triton-npu-run-eval" / "compare-perf.md").exists())
 
+        self.assertIn("run-test-baseline", run_test)
+        self.assertIn("run-test-optimize", run_test)
         self.assertIn("Always pass both `--test-file` and `--operator-file`.", run_test)
-        self.assertIn("--test-mode differential", run_test)
-        self.assertIn("--oracle-result", run_test)
+        self.assertNotIn("--oracle-result", run_test)
+        self.assertIn("--baseline-operator-file", run_test)
+        self.assertIn("run-test-optimize` requires `--baseline-operator-file`", run_test)
         self.assertIn("--remote user@host:2222", run_test)
-        self.assertIn("generated tests are import-only modules", run_test)
-        self.assertIn("build_operator_api(operator_module)", run_test)
-        self.assertIn("build_differential_test_cases(operator_api)", run_test)
 
         self.assertIn("Always pass both `--bench-file` and `--operator-file`.", run_bench)
         self.assertIn("build_operator_api(operator_module)", run_bench)
@@ -237,13 +245,42 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("do not pass kernel filter arguments", profile_bench)
         self.assertIn("--keep-remote-workdir", profile_bench)
 
-        self.assertIn("rerun or inspect the comparison separately from `run-test`", compare_result)
-        self.assertIn("Prefer `run-test --oracle-result ...`", compare_result)
+        self.assertIn("rerun or inspect the comparison separately from `run-test-optimize`", compare_result)
+        self.assertIn("Prefer `run-test-optimize --baseline-operator-file ...`", compare_result)
         self.assertIn("--compare-level balanced", compare_result)
 
         self.assertIn("Avg improvement", compare_perf)
         self.assertIn("Geomean speedup", compare_perf)
         self.assertIn("authority for claimed benchmark deltas and speedups", compare_perf)
+
+    def test_run_eval_skill_keeps_legacy_script_path(self) -> None:
+        skill = _read("skills/triton-npu-run-eval/SKILL.md")
+
+        self.assertIn("Use the bundled helper script in this skill", skill)
+        self.assertIn("run-test-baseline", skill)
+        self.assertIn("run-test-optimize", skill)
+        self.assertIn("run-bench", skill)
+        self.assertIn("profile-bench", skill)
+        self.assertIn("call `python3 ./scripts/run-command.py <subcommand> ...` directly", skill)
+        self.assertNotIn("use the corresponding MCP tool", skill)
+
+    def test_run_eval_mcp_skill_is_tool_first_and_omits_compare_result(self) -> None:
+        skill = _read("skills/triton-npu-run-eval-mcp/SKILL.md")
+
+        self.assertIn("use the corresponding MCP tool", skill)
+        self.assertIn("profile-report", skill)
+        self.assertIn("compare-perf", skill)
+        self.assertNotIn("compare-result", skill)
+        self.assertNotIn("python3 ./scripts/run-command.py", skill)
+        self.assertFalse(
+            (
+                REPO_ROOT
+                / "skills"
+                / "triton-npu-run-eval-mcp"
+                / "references"
+                / "compare-result.md"
+            ).exists()
+        )
 
     def test_eval_gen_skill_documents_direct_operator_repair_and_remote_validation(self) -> None:
         eval_gen = _read("skills/triton-npu-gen-eval-suite/SKILL.md")
@@ -252,6 +289,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("triton-npu-gen-bench", eval_gen)
         self.assertIn("triton-npu-run-eval", eval_gen)
         self.assertIn("Use the `triton-npu-run-eval` skill for correctness validation", eval_gen)
+        self.assertIn("run-test-baseline", eval_gen)
         self.assertIn("Use the `triton-npu-run-eval` skill for benchmark validation", eval_gen)
         self.assertIn("carry the same remote flags", eval_gen)
         self.assertIn("Do not", eval_gen)
@@ -296,7 +334,17 @@ class GenerationContractTests(unittest.TestCase):
     def test_optimize_baseline_preparation_uses_dedicated_skill(self) -> None:
         optimize = _read("skills/triton-npu-optimize/SKILL.md")
         baseline = _read("skills/triton-npu-prepare-optimize-baseline/SKILL.md")
-        optimize_check = _read("skills/triton-npu-optimize-check/SKILL.md")
+        baseline_submit_path = (
+            REPO_ROOT / "skills" / "triton-npu-optimize-submit-baseline" / "SKILL.md"
+        )
+        round_submit_path = REPO_ROOT / "skills" / "triton-npu-optimize-submit-round" / "SKILL.md"
+        start_round_path = REPO_ROOT / "skills" / "triton-npu-optimize-start-round" / "SKILL.md"
+        self.assertTrue(baseline_submit_path.exists())
+        self.assertTrue(round_submit_path.exists())
+        self.assertTrue(start_round_path.exists())
+        baseline_submit = baseline_submit_path.read_text(encoding="utf-8")
+        round_submit = round_submit_path.read_text(encoding="utf-8")
+        start_round = start_round_path.read_text(encoding="utf-8")
         readme = _read("README.md")
 
         self.assertTrue(
@@ -306,9 +354,13 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("triton-npu-gen-test", baseline)
         self.assertIn("triton-npu-gen-bench", baseline)
         self.assertIn("triton-npu-run-eval", baseline)
-        self.assertIn("triton-npu-optimize-check", baseline)
+        self.assertIn("triton-npu-optimize-submit-baseline", baseline)
+        self.assertIn("triton-npu-optimize-submit-round", optimize)
+        self.assertIn("triton-npu-optimize-start-round", optimize)
         self.assertNotIn("../triton-npu-run-eval/scripts/run-command.py", optimize)
-        self.assertIn("Do not use this skill to generate missing harnesses", optimize_check)
+        self.assertIn("Do not use this skill to generate missing harnesses", baseline_submit)
+        self.assertIn("Do not start the next optimize round until this submission passes", round_submit)
+        self.assertIn("Only one optimize round may be active at a time", start_round)
         self.assertIn("triton-npu-prepare-optimize-baseline", readme)
         self.assertIn("triton-npu-profile-operator", optimize)
         self.assertIn("triton-npu-analyze-round-performance", optimize)
@@ -598,22 +650,56 @@ class GenerationContractTests(unittest.TestCase):
         self,
     ) -> None:
         agents = _read("AGENTS.md")
+        self.assertIn("create-optimize-pattern", agents)
+        skill = _read(".codex/skills/create-optimize-pattern/SKILL.md")
         self.assertIn(
-            "skills/triton-npu-optimize-knowledge/references/patterns/*.md",
-            agents,
+            "skills/triton-npu-optimize-knowledge/references/patterns/",
+            skill,
         )
         self.assertIn(
-            "skills/triton-npu-optimize-knowledge/references/symptoms/*.md",
-            agents,
+            "skills/torch-npu-optimize-knowledge/references/patterns/",
+            skill,
         )
-        self.assertIn("## Evidence To Confirm", agents)
-        self.assertIn("## Candidate Pattern Directions", agents)
+        self.assertIn(
+            "skills/triton-npu-cann-ext-api-patterns/references/patterns/",
+            skill,
+        )
+        self.assertIn(
+            "skills/triton-npu-optimize-knowledge/references/symptoms/",
+            skill,
+        )
+        self.assertIn("## Evidence To Confirm", skill)
+        self.assertIn("## Candidate Pattern Directions", skill)
 
-    def test_agents_declares_pattern_priority_authoring_rule(self) -> None:
-        agents = _read("AGENTS.md")
-        self.assertIn("priority: high|normal", agents)
-        self.assertIn("default to `normal`", agents)
-        self.assertIn("## High Priority Patterns", agents)
+    def test_create_optimize_pattern_skill_declares_priority_rule(self) -> None:
+        skill = _read(".codex/skills/create-optimize-pattern/SKILL.md")
+        self.assertIn("priority: high|normal", skill)
+        self.assertIn("default to `normal`", skill)
+        self.assertIn("## High Priority Patterns", skill)
+
+    def test_skill_points_to_shared_optimize_knowledge_index_update_script(self) -> None:
+        skill = _read(".codex/skills/create-optimize-pattern/SKILL.md")
+        script = _read("scripts/update-optimize-knowledge-indices.sh")
+
+        self.assertIn("bash scripts/update-optimize-knowledge-indices.sh", skill)
+        self.assertIn("build_pattern_index.py", script)
+        self.assertIn("build_symptom_index.py", script)
+        self.assertIn(
+            "skills/triton-npu-optimize-knowledge/references/pattern_index.md",
+            script,
+        )
+        self.assertIn(
+            "skills/torch-npu-optimize-knowledge/references/pattern_index.md",
+            script,
+        )
+        self.assertIn(
+            "skills/triton-npu-cann-ext-api-patterns/references/patterns/index.md",
+            script,
+        )
+        self.assertIn(
+            "skills/triton-npu-optimize-knowledge/references/symptom_index.md",
+            script,
+        )
 
     def test_pattern_and_symptom_authoring_notes_point_to_knowledge_skill(self) -> None:
         pattern_note = _read("docs/notes/2026-04-29-optimize-pattern-card-authoring.md")

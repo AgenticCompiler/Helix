@@ -193,7 +193,7 @@ This lets the optimize workflow point to the analysis artifact when present with
 
 ### Optimize Check Behavior
 
-`triton-npu-optimize-check` should not require `perf-analysis.md` for every round in the first iteration.
+`triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round` should not require `perf-analysis.md` for every round in the first iteration.
 
 If `round-state.json` declares `perf_analysis_path`, the checker may verify that the declared file exists. The checker should not attempt semantic validation of the analysis contents in this change.
 
@@ -219,7 +219,7 @@ If `round-state.json` declares `perf_analysis_path`, the checker may verify that
 - add or update tests for the new IR performance-signal entrypoint
 - add prompt tests that pin the new optimize guidance
 - add round-contract tests for optional `perf_analysis_path` parsing
-- add triton-npu-optimize-check tests that validate the declared analysis path only when present
+- add triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round tests that validate the declared analysis path only when present
 - run skill validation for the new skill
 - run the standard repository verification commands after implementation
 

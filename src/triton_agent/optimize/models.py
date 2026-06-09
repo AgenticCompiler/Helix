@@ -5,16 +5,20 @@ from enum import Enum
 from pathlib import Path
 from typing import Literal
 
-from triton_agent.optimize.skill_contract import optimize_check_module
+from triton_agent.optimize.skill_contract import (
+    optimize_submit_baseline_module,
+    optimize_submit_round_module,
+)
 
 
-_OPTIMIZE_CHECK_MODULE = optimize_check_module()
+_OPTIMIZE_BASELINE_MODULE = optimize_submit_baseline_module()
+_OPTIMIZE_ROUND_MODULE = optimize_submit_round_module()
 
-BaselineState = _OPTIMIZE_CHECK_MODULE.BaselineState  # type: ignore[reportUnknownVariableType]
-BaselineArtifactsInspection = _OPTIMIZE_CHECK_MODULE.BaselineArtifactsInspection  # type: ignore[reportUnknownVariableType]
-RoundState = _OPTIMIZE_CHECK_MODULE.RoundState  # type: ignore[reportUnknownVariableType]
-RoundArtifactsInspection = _OPTIMIZE_CHECK_MODULE.RoundArtifactsInspection  # type: ignore[reportUnknownVariableType]
-OptimizeCheckResult = _OPTIMIZE_CHECK_MODULE.OptimizeCheckResult  # type: ignore[reportUnknownVariableType]
+BaselineState = _OPTIMIZE_BASELINE_MODULE.BaselineState  # type: ignore[reportUnknownVariableType]
+BaselineArtifactsInspection = _OPTIMIZE_BASELINE_MODULE.BaselineArtifactsInspection  # type: ignore[reportUnknownVariableType]
+RoundState = _OPTIMIZE_ROUND_MODULE.RoundState  # type: ignore[reportUnknownVariableType]
+RoundArtifactsInspection = _OPTIMIZE_ROUND_MODULE.RoundArtifactsInspection  # type: ignore[reportUnknownVariableType]
+OptimizeCheckResult = _OPTIMIZE_ROUND_MODULE.OptimizeCheckResult  # type: ignore[reportUnknownVariableType]
 
 
 @dataclass(frozen=True)
@@ -29,20 +33,23 @@ class OptimizeRunOptions:
     resume_mode: str
     reset_optimize: bool
     no_agent_session: bool
-    round_mode: Literal["continuous", "checked", "supervised"]
+    round_mode: Literal["checked", "supervised"]
     output: str | None
     test_mode: str | None
     bench_mode: str | None
     prompt: str | None
+    round_batch_size: int = 10
     target_chip: Literal["A3", "A5"] = "A5"
     optimize_target: Literal["kernel", "operator"] = "kernel"
     optimize_knowledge: Literal["v1", "v2", "v3"] = "v1"
     compiler_source_analysis: Literal["off", "auto"] = "off"
     enable_cann_ext_api: bool = False
+    enable_subagent: bool = False
     enable_agent_hooks: bool = False
     upload_enabled: bool = True
     report: bool = True
     log_tools: bool = False
+    enable_mcp: bool = False
 
 
 @dataclass(frozen=True)
@@ -83,25 +90,6 @@ class OptimizeStatusWorkspace:
     latest_verify_state: Path | None = None
     verified: bool = False
     verified_geomean_speedup: float | None = None
-
-
-class GateDecision(str, Enum):
-    PASS = "pass"
-    REVISE_METADATA = "revise-metadata"
-    REVISE_REQUIRED = "revise-required"
-    HARD_FAIL = "hard-fail"
-
-
-@dataclass(frozen=True)
-class GateResult:
-    decision: GateDecision
-    blocking_issues: tuple[str, ...]
-    continue_required: bool = False
-    auto_repairs_applied: tuple[str, ...] = ()
-    next_parent_round: str | None = None
-    next_hypothesis: str | None = None
-    required_evidence_for_next_round: tuple[str, ...] = ()
-
 
 class BaselinePreflightState(str, Enum):
     READY = "ready"
