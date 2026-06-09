@@ -63,7 +63,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
                 "-i",
                 "kernel.py",
                 "--interact",
-                "--no-report",
+                "--enable-report",
             ]
         )
 
@@ -120,6 +120,22 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
 
         self.assertTrue(options.log_tools)
 
+    def test_optimize_run_options_disables_report_by_default(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py"])
+
+        options = optimize_run_options_from_args(args)
+
+        self.assertFalse(options.report)
+
+    def test_optimize_run_options_enables_report_when_requested(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize", "-i", "kernel.py", "--enable-report"])
+
+        options = optimize_run_options_from_args(args)
+
+        self.assertTrue(options.report)
+
     def test_handle_optimize_rejects_cann_ext_api_without_a5(self) -> None:
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
@@ -147,7 +163,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
             workspace = Path(tmp)
             operator = workspace / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
-            args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh", "--no-report"])
+            args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh"])
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             captured: dict[str, Path] = {}
 
@@ -169,15 +185,42 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
             workspace = Path(tmp)
             operator = workspace / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
-            args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh", "--no-report"])
+            args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh"])
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
 
             with patch("triton_agent.commands.optimize.run_optimize_request", return_value=fake_result):
                 with patch("triton_agent.commands.optimize.upload_optimize_workspace") as mock_upload:
-                    exit_code = handle_optimize(parser, args)
+                    with patch("triton_agent.commands.optimize.generate_workspace_report") as mock_report:
+                        exit_code = handle_optimize(parser, args)
 
             self.assertEqual(exit_code, 0)
             mock_upload.assert_called_once()
+            mock_report.assert_not_called()
+
+    def test_handle_optimize_auto_report_when_enabled(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh", "--enable-report"])
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch("triton_agent.commands.optimize.run_optimize_request", return_value=fake_result):
+                with patch("triton_agent.commands.optimize.upload_optimize_workspace") as mock_upload:
+                    with patch(
+                        "triton_agent.commands.optimize.generate_workspace_report",
+                        return_value=(True, "report.md"),
+                    ) as mock_report:
+                        exit_code = handle_optimize(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            mock_upload.assert_called_once()
+            mock_report.assert_called_once_with(
+                workspace=workspace.resolve(),
+                agent_name="codex",
+                show_output=False,
+            )
 
     def test_handle_optimize_no_auto_upload_on_failure(self) -> None:
         parser = build_parser()
@@ -185,7 +228,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
             workspace = Path(tmp)
             operator = workspace / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
-            args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh", "--no-report"])
+            args = parser.parse_args(["optimize", "-i", str(workspace), "--resume", "fresh"])
             fake_result = AgentResult(return_code=1, stdout="", stderr="error")
 
             with patch("triton_agent.commands.optimize.run_optimize_request", return_value=fake_result):
@@ -202,7 +245,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
             operator = workspace / "kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
             args = parser.parse_args(
-                ["optimize", "-i", str(workspace), "--resume", "fresh", "--no-upload", "--no-report"]
+                ["optimize", "-i", str(workspace), "--resume", "fresh", "--no-upload"]
             )
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")

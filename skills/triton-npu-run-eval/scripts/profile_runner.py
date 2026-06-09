@@ -16,7 +16,6 @@ from run_runtime import (
     create_remote_workspace,
     local_python_executable,
     result_succeeded,
-    run_buffered_process,
     run_remote_command_buffered,
     run_remote_command_streaming,
     run_streaming_process,
@@ -31,16 +30,12 @@ def run_local_profile_bench(
     bench_file: Path,
     operator_file: Path,
     bench_mode: str,
-    bench_case: int | None = None,
     case_id: str | None = None,
     kernel_name: str | None = None,
 ) -> tuple[ResultPayload, Path | None]:
+    del kernel_name
     if bench_mode == "msprof":
-        if case_id is not None:
-            raise ValueError("--case-id is only valid for standalone benchmark profiling")
-        result = _run_local_profile_msprof(
-            bench_file, operator_file, bench_case, kernel_name,
-        )
+        result = _run_local_profile_msprof(bench_file, operator_file, case_id)
     else:
         if case_id is None:
             raise ValueError("Standalone benchmark profiling requires --case-id <id>.")
@@ -59,13 +54,13 @@ def run_remote_profile_bench(
     bench_mode: str,
     remote: str,
     remote_workdir: str | None,
-    bench_case: int | None = None,
     case_id: str | None = None,
     kernel_name: str | None = None,
     keep_remote_workdir: bool = False,
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
+    del kernel_name
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
     )
@@ -82,17 +77,25 @@ def run_remote_profile_bench(
         )
         if bench_mode == "msprof":
             if case_id is not None:
-                raise ValueError("--case-id is only valid for standalone benchmark profiling")
-            result = _run_remote_profile_msprof(
-                spec,
-                remote_workspace,
-                bench_file,
-                operator_file,
-                bench_case,
-                kernel_name,
-                verbose=verbose,
-                stderr=stderr,
-            )
+                result = _run_remote_profile_msprof(
+                    spec,
+                    remote_workspace,
+                    bench_file,
+                    operator_file,
+                    case_id,
+                    verbose=verbose,
+                    stderr=stderr,
+                )
+            else:
+                result = _run_remote_profile_msprof(
+                    spec,
+                    remote_workspace,
+                    bench_file,
+                    operator_file,
+                    None,
+                    verbose=verbose,
+                    stderr=stderr,
+                )
         else:
             if case_id is None:
                 raise ValueError("Standalone benchmark profiling requires --case-id <id>.")
@@ -149,20 +152,22 @@ def _run_local_profile_standalone(
 def _run_local_profile_msprof(
     bench_file: Path,
     operator_file: Path,
-    bench_case: int | None,
-    _requested_kernel_name: str | None,
+    case_id: str | None,
 ) -> ResultPayload:
-    selected_case = _resolve_bench_case_local(bench_file, bench_case)
+    selected_case = _resolve_bench_case(bench_file, operator_file, case_id)
     operator_arg = os.path.relpath(operator_file, bench_file.parent)
     return run_streaming_process(
         [
             "msprof",
             local_python_executable(),
+            "bench_runtime.py",
+            "run-one",
+            "--bench-file",
             bench_file.name,
             "--operator-file",
             operator_arg,
-            "--bench",
-            str(selected_case),
+            "--case-id",
+            selected_case,
         ],
         str(bench_file.parent),
         stall_timeout_seconds=_profile_timeout(),
@@ -179,7 +184,7 @@ def _run_remote_profile_standalone(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> ResultPayload:
-    for support_path in _standalone_runtime_support_paths():
+    for support_path in _bench_runtime_support_paths():
         copy_file_to_remote(
             spec,
             support_path,
@@ -211,87 +216,40 @@ def _run_remote_profile_msprof(
     remote_workspace: str,
     bench_file: Path,
     operator_file: Path,
-    bench_case: int | None,
-    _requested_kernel_name: str | None,
+    case_id: str | None,
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> ResultPayload:
-    selected_case = _resolve_bench_case_remote(
-        spec,
-        remote_workspace,
-        bench_file,
-        bench_case,
-        verbose=verbose,
-        stderr=stderr,
-    )
+    selected_case = _resolve_bench_case(bench_file, operator_file, case_id)
+    for support_path in _bench_runtime_support_paths():
+        copy_file_to_remote(
+            spec,
+            support_path,
+            f"{remote_workspace}/{support_path.name}",
+            verbose=verbose,
+            stderr=stderr,
+        )
     extra_env = {"TRITON_ALWAYS_COMPILE": "1"}
     return run_remote_command_streaming(
         spec,
         remote_workspace,
         [
             "msprof",
-            "op",
             "python3",
+            "bench_runtime.py",
+            "run-one",
+            "--bench-file",
             bench_file.name,
             "--operator-file",
             operator_file.name,
-            "--bench",
-            str(selected_case),
+            "--case-id",
+            selected_case,
         ],
         stall_timeout_seconds=_profile_timeout(),
         verbose=verbose,
         stderr=stderr,
         extra_env=extra_env,
     )
-
-def _resolve_bench_case_local(bench_file: Path, bench_case: int | None) -> int:
-    count_result = run_buffered_process(
-        [local_python_executable(), bench_file.name, "--num-bench"],
-        str(bench_file.parent),
-        stall_timeout_seconds=_profile_timeout(),
-    )
-    if not result_succeeded(count_result):
-        raise RuntimeError(str(count_result["stderr"]) or str(count_result["stdout"]) or "Unable to query benchmark cases.")
-    return _normalize_bench_case(_parse_case_count(str(count_result["stdout"])), bench_case)
-
-
-def _resolve_bench_case_remote(
-    spec: RemoteSpec,
-    remote_workspace: str,
-    bench_file: Path,
-    bench_case: int | None,
-    verbose: bool = False,
-    stderr: TextIO | None = None,
-) -> int:
-    count_result = run_remote_command_buffered(
-        spec,
-        remote_workspace,
-        ["python3", bench_file.name, "--num-bench"],
-        stall_timeout_seconds=_profile_timeout(),
-        verbose=verbose,
-        stderr=stderr,
-    )
-    if not result_succeeded(count_result):
-        raise RuntimeError(str(count_result["stderr"]) or str(count_result["stdout"]) or "Unable to query benchmark cases.")
-    return _normalize_bench_case(_parse_case_count(str(count_result["stdout"])), bench_case)
-
-
-def _normalize_bench_case(case_count: int, bench_case: int | None) -> int:
-    selected_case = 1 if bench_case is None else bench_case
-    if selected_case < 1 or selected_case > case_count:
-        raise ValueError(
-            f"Requested benchmark case {selected_case} is out of range; available cases: 1..{case_count}"
-        )
-    return selected_case
-
-
-def _parse_case_count(stdout: str) -> int:
-    for line in reversed(stdout.splitlines()):
-        stripped = line.strip()
-        if stripped.isdigit():
-            return int(stripped)
-    raise ValueError("Unable to parse benchmark case count from --num-bench output.")
-
 
 def _resolve_local_profile_dir(search_root: Path) -> Path:
     candidates = [candidate for candidate in search_root.iterdir() if candidate.is_dir() and candidate.name.startswith("PROF_")]
@@ -344,25 +302,25 @@ def profile_local_standalone_case(
     operator_file: Path,
     case_id: str,
 ) -> ResultPayload:
-    runtime = _load_standalone_runtime_module()
-    return runtime.profile_local_standalone_case(bench_file, operator_file, case_id)
+    runtime = _load_bench_runtime_module()
+    return runtime.profile_local_bench_case(bench_file, operator_file, case_id)
 
 
-def _standalone_runtime_script_path() -> Path:
-    return Path(__file__).resolve().with_name("standalone_bench_runtime.py")
+def _bench_runtime_script_path() -> Path:
+    return Path(__file__).resolve().with_name("bench_runtime.py")
 
 
-def _standalone_runtime_support_paths() -> list[Path]:
-    runtime = _load_standalone_runtime_module()
+def _bench_runtime_support_paths() -> list[Path]:
+    runtime = _load_bench_runtime_module()
     return list(runtime.runtime_support_paths())
 
 
-def _load_standalone_runtime_module():
-    script_path = _standalone_runtime_script_path()
-    module_name = f"triton_agent_standalone_bench_runtime_{script_path.stem}"
+def _load_bench_runtime_module():
+    script_path = _bench_runtime_script_path()
+    module_name = f"triton_agent_bench_runtime_{script_path.stem}"
     spec = importlib.util.spec_from_file_location(module_name, script_path)
     if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load standalone runtime helper: {script_path}")
+        raise ImportError(f"Unable to load bench runtime helper: {script_path}")
     module = importlib.util.module_from_spec(spec)
     script_dir = str(script_path.parent)
     added = False
@@ -379,13 +337,31 @@ def _load_standalone_runtime_module():
     return module
 
 
+def _resolve_bench_case(bench_file: Path, operator_file: Path, case_id: str | None) -> str:
+    runtime = _load_bench_runtime_module()
+    cases, _resolution = runtime.load_bench_cases(bench_file, operator_file)
+    if case_id is None:
+        if len(cases) == 1:
+            return cases[0].case_id
+        available = ", ".join(case.case_id for case in cases)
+        raise ValueError(
+            "Benchmark profiling requires --case-id when multiple cases exist. "
+            f"Available case ids: {available}"
+        )
+    for case in cases:
+        if case.case_id == case_id:
+            return case.case_id
+    available = ", ".join(case.case_id for case in cases)
+    raise ValueError(f"Unknown benchmark case id '{case_id}'. Available case ids: {available}")
+
+
 def _build_remote_standalone_profile_script() -> str:
     return (
         "import pathlib, sys; "
-        "import standalone_bench_runtime as runtime; "
+        "import bench_runtime as runtime; "
         "bench_file = pathlib.Path(sys.argv[1]); "
         "operator_file = pathlib.Path(sys.argv[2]); "
         "case_id = sys.argv[3]; "
-        "result = runtime.profile_local_standalone_case(bench_file, operator_file, case_id); "
+        "result = runtime.profile_local_bench_case(bench_file, operator_file, case_id); "
         "raise SystemExit(int(result['return_code']))"
     )

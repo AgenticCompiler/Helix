@@ -222,13 +222,15 @@ class RunSkillLoaderTests(unittest.TestCase):
         self.assertNotIn("globals()[name]", content)
         self.assertNotIn("_FACADE_COMPAT_EXPORTS", content)
 
-    def test_bench_runner_submodules_use_explicit_dependency_protocols(self) -> None:
+    def test_bench_runner_is_single_file_without_submodule_dependency_adapter(self) -> None:
         scripts_dir = Path(__file__).resolve().parents[1] / "skills" / "triton-npu-run-eval" / "scripts"
-        msprof_content = (scripts_dir / "bench_runner_msprof.py").read_text(encoding="utf-8")
-        standalone_content = (scripts_dir / "bench_runner_standalone.py").read_text(encoding="utf-8")
+        bench_runner = scripts_dir / "bench_runner.py"
+        content = bench_runner.read_text(encoding="utf-8")
 
-        self.assertNotIn("deps: Any", msprof_content)
-        self.assertNotIn("deps: Any", standalone_content)
+        self.assertFalse((scripts_dir / "bench_runner_deps.py").exists())
+        self.assertFalse((scripts_dir / "bench_runner_msprof.py").exists())
+        self.assertFalse((scripts_dir / "bench_runner_standalone.py").exists())
+        self.assertNotIn("BenchRunnerDeps", content)
 
 
 if __name__ == "__main__":
