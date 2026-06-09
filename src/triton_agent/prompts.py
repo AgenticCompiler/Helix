@@ -73,6 +73,7 @@ def build_prompt(
     current_round: int = 1,
     final_round: int | None = None,
     round_batch_size: int = 10,
+    optimize_baseline_ready: bool = True,
 ) -> str:
     should_resume_existing_session = (
         continue_optimize if resume_existing_session is None else resume_existing_session
@@ -219,7 +220,7 @@ def build_prompt(
                 enable_cann_ext_api=enable_cann_ext_api,
                 enable_subagent=enable_subagent,
                 round_mode=round_mode,
-                baseline_ready=True,
+                baseline_ready=optimize_baseline_ready,
                 current_round=current_round,
                 final_round=resolved_final_round,
                 round_batch_size=round_batch_size,

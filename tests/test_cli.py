@@ -4702,6 +4702,22 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Execute those rounds strictly one at a time.", prompt)
         self.assertIn("Do not pre-plan the full batch before acting.", prompt)
 
+    def test_build_optimize_round_prompt_interactive_baseline_guidance(self) -> None:
+        prompt = build_optimize_round_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="standalone",
+            round_mode="checked",
+            baseline_ready=False,
+            current_round=1,
+            final_round=30,
+            round_batch_size=99,
+        )
+        self.assertIn("repair or establish `baseline/` before `opt-round-1`", prompt)
+        self.assertIn("Do not rely on a separate baseline-preflight invocation", prompt)
+        self.assertNotIn("The baseline has already been validated before this worker batch.", prompt)
+
     def test_optimize_prompt_mentions_continue_mode_for_resolved_resume(self) -> None:
         prompt = build_prompt(
             CommandKind.OPTIMIZE,
