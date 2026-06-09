@@ -55,7 +55,7 @@ def build_optimize_request(
         requested_bench_mode=options.bench_mode,
     )
     test_mode = resolution.test_mode or "differential"
-    bench_mode = resolution.bench_mode or "standalone"
+    bench_mode = resolution.bench_mode or "torch-npu-profiler"
 
     output_path = (
         Path(options.output).expanduser().resolve()

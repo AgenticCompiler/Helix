@@ -83,6 +83,10 @@ def _bench_timeout() -> int:
     return env_int("TRITON_AGENT_BENCH_TIMEOUT_SECONDS", 900)
 
 
+def _normalize_bench_mode(bench_mode: str) -> str:
+    return "torch-npu-profiler" if bench_mode == "standalone" else bench_mode
+
+
 def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
     return _parse_bench_metadata(bench_file)
 
@@ -153,6 +157,7 @@ def run_local_bench(
     verbose: bool = False,
     output: str | None = None,
 ) -> tuple[ResultPayload, Path | None]:
+    bench_mode = _normalize_bench_mode(bench_mode)
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
     maybe_print_visible_devices()
@@ -181,7 +186,7 @@ def run_local_bench(
                 operator_file,
                 invocation_root=invocation_root,
             )
-            return _run_local_bench_standalone_parallel(
+            return _run_local_bench_torch_npu_profiler_parallel(
                 bench_file,
                 operator_file,
                 devices,
@@ -190,7 +195,7 @@ def run_local_bench(
                 verbose=verbose,
                 output=output,
             )
-        return _run_local_bench_standalone(bench_file, operator_file, verbose=verbose,
+        return _run_local_bench_torch_npu_profiler(bench_file, operator_file, verbose=verbose,
                                            output=output)
 
 
@@ -206,6 +211,7 @@ def run_remote_bench(
     stderr: TextIO | None = None,
     output: str | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
+    bench_mode = _normalize_bench_mode(bench_mode)
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
     maybe_print_visible_devices()
@@ -266,7 +272,7 @@ def run_remote_bench(
                 operator_file,
                 invocation_root=invocation_root,
             )
-            return _run_remote_bench_standalone_parallel(
+            return _run_remote_bench_torch_npu_profiler_parallel(
                 spec,
                 remote_workspace,
                 bench_file,
@@ -278,7 +284,7 @@ def run_remote_bench(
                 stderr=stderr,
                 output=output,
             )
-        return _run_remote_bench_standalone(
+        return _run_remote_bench_torch_npu_profiler(
             spec,
             remote_workspace,
             bench_file,
@@ -292,14 +298,14 @@ def run_remote_bench(
             cleanup_remote_workspace(spec, remote_workspace, verbose=verbose, stderr=stderr)
 
 
-def _run_local_bench_standalone(
+def _run_local_bench_torch_npu_profiler(
     bench_file: Path,
     operator_file: Path,
     *,
     verbose: bool = False,
     output: str | None = None,
 ) -> tuple[ResultPayload, Path | None]:
-    return run_local_standalone_bench(
+    return run_local_torch_npu_profiler_bench(
         bench_file,
         operator_file,
         verbose=verbose,
@@ -333,15 +339,13 @@ def _stream_target_for_verbosity(verbose: bool) -> Iterator[TextIO]:
         yield quiet_stdout
 
 
-def _run_remote_bench_standalone(
+def _stage_remote_bench_runtime_support_files(
     spec: RemoteSpec,
     remote_workspace: str,
-    bench_file: Path,
-    operator_file: Path,
+    *,
     verbose: bool = False,
     stderr: TextIO | None = None,
-    output: str | None = None,
-) -> tuple[ResultPayload, Path | None, str]:
+) -> None:
     for support_path in _bench_runtime_support_paths():
         copy_file_to_remote(
             spec,
@@ -350,6 +354,23 @@ def _run_remote_bench_standalone(
             verbose=verbose,
             stderr=stderr,
         )
+
+
+def _run_remote_bench_torch_npu_profiler(
+    spec: RemoteSpec,
+    remote_workspace: str,
+    bench_file: Path,
+    operator_file: Path,
+    verbose: bool = False,
+    stderr: TextIO | None = None,
+    output: str | None = None,
+) -> tuple[ResultPayload, Path | None, str]:
+    _stage_remote_bench_runtime_support_files(
+        spec,
+        remote_workspace,
+        verbose=verbose,
+        stderr=stderr,
+    )
     perf_path = _resolve_perf_output_path(operator_file, output=output)
     extra_env: dict[str, str] | None = {"TRITON_ALWAYS_COMPILE": "1"}
     with _stream_target_for_verbosity(verbose) as stream_target:
@@ -359,7 +380,7 @@ def _run_remote_bench_standalone(
             [
                 "python3",
                 "-c",
-                _build_remote_standalone_run_all_script(verbose=verbose),
+                _build_remote_torch_npu_profiler_run_all_script(verbose=verbose),
                 bench_file.name,
                 operator_file.name,
                 perf_path.name,
@@ -386,7 +407,7 @@ def _run_remote_bench_standalone(
     return result, copied_perf_path, remote_workspace
 
 
-def run_local_standalone_bench(
+def run_local_torch_npu_profiler_bench(
     bench_file: Path,
     operator_file: Path,
     *,
@@ -402,7 +423,7 @@ def run_local_standalone_bench(
     )
 
 
-def _run_local_bench_standalone_parallel(
+def _run_local_bench_torch_npu_profiler_parallel(
     bench_file: Path,
     operator_file: Path,
     devices: tuple[str, ...],
@@ -421,11 +442,11 @@ def _run_local_bench_standalone_parallel(
     if callable(create_preserved_run_dir):
         preserved_run_dir = cast(
             Path | None,
-            create_preserved_run_dir(prefix="triton-agent-standalone-bench-"),
+            create_preserved_run_dir(prefix="triton-agent-torch-npu-profiler-bench-"),
         )
 
     def _worker(case_id: str) -> PerfCaseRecord:
-        case_workspace, cleanup = _create_local_standalone_case_workspace(
+        case_workspace, cleanup = _create_local_torch_npu_profiler_case_workspace(
             bench_file,
             operator_file,
             case_id,
@@ -435,7 +456,7 @@ def _run_local_bench_standalone_parallel(
         )
         try:
             with pool.acquire() as device:
-                return _run_local_standalone_case_in_subprocess(
+                return _run_local_torch_npu_profiler_case_in_subprocess(
                     case_workspace,
                     bench_file,
                     operator_file,
@@ -450,11 +471,11 @@ def _run_local_bench_standalone_parallel(
 
     case_records = _run_parallel_case_workers(case_ids, min(len(case_ids), len(devices)), _worker)
     _sort_case_records(case_records, case_ids)
-    perf_path = _write_standalone_perf(operator_file, case_records, output=output)
-    return _build_standalone_result(case_records), perf_path
+    perf_path = _write_torch_npu_profiler_perf(operator_file, case_records, output=output)
+    return _build_torch_npu_profiler_result(case_records), perf_path
 
 
-def _run_remote_bench_standalone_parallel(
+def _run_remote_bench_torch_npu_profiler_parallel(
     spec: RemoteSpec,
     remote_workspace: str,
     bench_file: Path,
@@ -481,7 +502,7 @@ def _run_remote_bench_standalone_parallel(
             verbose=verbose,
             stderr=stderr,
         )
-        workspace_root = _stage_remote_standalone_case_workspace(
+        workspace_root = _stage_remote_torch_npu_profiler_case_workspace(
             spec,
             bench_file,
             operator_file,
@@ -493,7 +514,7 @@ def _run_remote_bench_standalone_parallel(
         )
         try:
             with pool.acquire() as device:
-                return _run_remote_standalone_case(
+                return _run_remote_torch_npu_profiler_case(
                     spec,
                     workspace_root,
                     bench_file,
@@ -515,8 +536,8 @@ def _run_remote_bench_standalone_parallel(
 
     case_records = _run_parallel_case_workers(case_ids, min(len(case_ids), len(devices)), _worker)
     _sort_case_records(case_records, case_ids)
-    perf_path = _write_standalone_perf(operator_file, case_records, output=output)
-    return _build_standalone_result(case_records), perf_path, remote_workspace
+    perf_path = _write_torch_npu_profiler_perf(operator_file, case_records, output=output)
+    return _build_torch_npu_profiler_result(case_records), perf_path, remote_workspace
 
 
 def _bench_runtime_script_path() -> Path:
@@ -730,6 +751,13 @@ def _run_remote_bench_msprof(
     had_case_failures = False
     had_stalls = False
     session_id: str | None = None
+
+    _stage_remote_bench_runtime_support_files(
+        spec,
+        remote_workspace,
+        verbose=verbose,
+        stderr=stderr,
+    )
 
     for case in cases:
         output_dir = _create_remote_msprof_output_dir(
@@ -1275,7 +1303,7 @@ def _cleanup_remote_msprof_output_dir(
     )
 
 
-def _create_local_standalone_case_workspace(
+def _create_local_torch_npu_profiler_case_workspace(
     bench_file: Path,
     operator_file: Path,
     case_id: str,
@@ -1285,7 +1313,7 @@ def _create_local_standalone_case_workspace(
     verbose: bool = False,
 ) -> tuple[Path, Callable[[], None]]:
     return _create_local_case_workspace(
-        prefix=f"triton-agent-standalone-case-{case_id}-",
+        prefix=f"triton-agent-torch-npu-profiler-case-{case_id}-",
         input_paths=_bench_case_input_paths(
             bench_file,
             operator_file,
@@ -1297,7 +1325,7 @@ def _create_local_standalone_case_workspace(
     )
 
 
-def _build_remote_standalone_run_all_script(*, verbose: bool = False) -> str:
+def _build_remote_torch_npu_profiler_run_all_script(*, verbose: bool = False) -> str:
     return (
         "import pathlib, shutil, sys; "
         "import bench_runtime as runtime; "
@@ -1311,7 +1339,7 @@ def _build_remote_standalone_run_all_script(*, verbose: bool = False) -> str:
     )
 
 
-def _build_standalone_run_one_case_script(*, verbose: bool = False) -> str:
+def _build_torch_npu_profiler_run_one_case_script(*, verbose: bool = False) -> str:
     return (
         "import json, pathlib, sys; "
         "import bench_runtime as runtime; "
@@ -1336,7 +1364,7 @@ def _build_standalone_run_one_case_script(*, verbose: bool = False) -> str:
     )
 
 
-def _run_local_standalone_case_in_subprocess(
+def _run_local_torch_npu_profiler_case_in_subprocess(
     workspace_root: Path,
     bench_file: Path,
     operator_file: Path,
@@ -1356,7 +1384,7 @@ def _run_local_standalone_case_in_subprocess(
         [
             local_python_executable(),
             "-c",
-            _build_standalone_run_one_case_script(verbose=verbose),
+            _build_torch_npu_profiler_run_one_case_script(verbose=verbose),
             _case_workspace_command_path(bench_file, source_root=source_root),
             _case_workspace_command_path(operator_file, source_root=source_root),
             case_id,
@@ -1373,14 +1401,14 @@ def _run_local_standalone_case_in_subprocess(
     if verbose and result["stderr"]:
         for line in str(result["stderr"]).strip().splitlines():
             print(f"[profiler] {case_id}: {line}", file=sys.stderr)
-    return _parse_standalone_case_result_payload(
+    return _parse_torch_npu_profiler_case_result_payload(
         result,
         case_id=case_id,
         fallback_kernel_source="metadata",
     )
 
 
-def _stage_remote_standalone_case_workspace(
+def _stage_remote_torch_npu_profiler_case_workspace(
     spec: RemoteSpec,
     bench_file: Path,
     operator_file: Path,
@@ -1406,7 +1434,7 @@ def _stage_remote_standalone_case_workspace(
     )
 
 
-def _run_remote_standalone_case(
+def _run_remote_torch_npu_profiler_case(
     spec: RemoteSpec,
     case_workspace: str,
     bench_file: Path,
@@ -1426,7 +1454,7 @@ def _run_remote_standalone_case(
         [
             "python3",
             "-c",
-            _build_standalone_run_one_case_script(verbose=verbose),
+            _build_torch_npu_profiler_run_one_case_script(verbose=verbose),
             _case_workspace_command_path(bench_file, source_root=source_root),
             _case_workspace_command_path(operator_file, source_root=source_root),
             case_id,
@@ -1437,14 +1465,14 @@ def _run_remote_standalone_case(
         extra_env=extra_env,
         stall_timeout_seconds=_bench_timeout(),
     )
-    return _parse_standalone_case_result_payload(
+    return _parse_torch_npu_profiler_case_result_payload(
         result,
         case_id=case_id,
         fallback_kernel_source="metadata",
     )
 
 
-def _parse_standalone_case_result_payload(
+def _parse_torch_npu_profiler_case_result_payload(
     result: ResultPayload,
     *,
     case_id: str,
@@ -1455,7 +1483,7 @@ def _parse_standalone_case_result_payload(
             case_label=case_id,
             kernel_names=[],
             kernel_source=fallback_kernel_source,
-            error_message=_format_standalone_command_failure(result),
+            error_message=_format_torch_npu_profiler_command_failure(result),
             case_wall_clock_seconds=None,
         )
     stdout_text = str(result["stdout"]).strip()
@@ -1464,7 +1492,7 @@ def _parse_standalone_case_result_payload(
             case_label=case_id,
             kernel_names=[],
             kernel_source=fallback_kernel_source,
-            error_message="standalone worker produced no JSON payload",
+            error_message="torch-npu-profiler worker produced no JSON payload",
             case_wall_clock_seconds=None,
         )
     try:
@@ -1475,7 +1503,7 @@ def _parse_standalone_case_result_payload(
             case_label=case_id,
             kernel_names=[],
             kernel_source=fallback_kernel_source,
-            error_message=f"failed to parse standalone worker payload: {exc}",
+            error_message=f"failed to parse torch-npu-profiler worker payload: {exc}",
             case_wall_clock_seconds=None,
         )
     metrics_payload = parsed["metrics"]
@@ -1491,13 +1519,13 @@ def _parse_standalone_case_result_payload(
     )
 
 
-def _format_standalone_command_failure(result: ResultPayload) -> str:
+def _format_torch_npu_profiler_command_failure(result: ResultPayload) -> str:
     details = str(result["stderr"]).strip() or str(result["stdout"]).strip()
-    prefix = f"standalone command failed with return code {int(result['return_code'])}"
+    prefix = f"torch-npu-profiler command failed with return code {int(result['return_code'])}"
     return f"{prefix}: {details}" if details else prefix
 
 
-def _write_standalone_perf(
+def _write_torch_npu_profiler_perf(
     operator_file: Path,
     case_records: list[PerfCaseRecord],
     output: str | None = None,
@@ -1517,7 +1545,7 @@ def _resolve_perf_output_path(operator_file: Path, *, output: str | None = None)
     return perf_output_path(operator_file)
 
 
-def _build_standalone_result(case_records: list[PerfCaseRecord]) -> ResultPayload:
+def _build_torch_npu_profiler_result(case_records: list[PerfCaseRecord]) -> ResultPayload:
     errors = [
         f"{record.case_label}: {record.error_message}"
         for record in case_records

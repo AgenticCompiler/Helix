@@ -203,7 +203,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             operator = root / "kernel.py"
             bench_file = root / "bench_kernel.py"
             operator.write_text("print('x')\n", encoding="utf-8")
-            bench_file.write_text("# bench-mode: standalone\nprint('bench')\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')\n", encoding="utf-8")
 
             observed: list[object] = []
 
@@ -245,7 +245,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                     module,
                     "_load_bench_functions",
                     return_value=(
-                        lambda _path: {"bench-mode": "standalone"},
+                        lambda _path: {"bench-mode": "torch-npu-profiler"},
                         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("local runner should not be used")),
                         fake_run_remote_bench,
                     ),
@@ -266,7 +266,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             [
                 bench_file.resolve(),
                 operator.resolve(),
-                "standalone",
+                "torch-npu-profiler",
                 "alice@example.com",
                 "/tmp/triton-agent",
                 None,
@@ -1676,7 +1676,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                         "test_file": "differential_test_kernel.py",
                         "test_mode": "differential",
                         "bench_file": "bench_kernel.py",
-                        "bench_mode": "standalone",
+                        "bench_mode": "torch-npu-profiler",
                         "perf_artifact": "baseline/perf.txt",
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
@@ -1768,7 +1768,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                         "test_file": "differential_test_kernel.py",
                         "test_mode": "differential",
                         "bench_file": "bench_kernel.py",
-                        "bench_mode": "standalone",
+                        "bench_mode": "torch-npu-profiler",
                         "perf_artifact": "baseline/perf.txt",
                         "correctness_status": "passed",
                         "benchmark_status": "passed",

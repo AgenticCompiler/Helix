@@ -80,7 +80,7 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
             root = Path(tmp)
             bench_file = root / "bench_matmul.py"
             operator_file = root / "matmul.py"
-            bench_file.write_text("# bench-mode: standalone\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n", encoding="utf-8")
             operator_file.write_text("def matmul():\n    pass\n", encoding="utf-8")
 
             command = module.build_execution_command(
@@ -157,7 +157,7 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
             root = Path(tmp)
             bench_file = root / "bench_matmul.py"
             operator_file = root / "matmul.py"
-            bench_file.write_text("# bench-mode: standalone\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n", encoding="utf-8")
             operator_file.write_text("def matmul():\n    pass\n", encoding="utf-8")
 
             command = module.build_execution_command(

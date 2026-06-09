@@ -1,6 +1,6 @@
-## Msprof benchmark file specification for Triton operators
+## Unified benchmark file specification for Triton operators
 
-This document describes msprof-oriented benchmark files for Triton Ascend operators. The goal is to produce an import-only benchmark module that declares deterministic NPU benchmark cases while the runner owns case selection, `msprof` invocation, perf parsing, and output formatting.
+This document describes the shared benchmark-file contract for Triton Ascend operators. Generated `torch-npu-profiler` and `msprof` benchmark files now use the same import-only module structure; the only required mode marker in the generated file is `# bench-mode: <torch-npu-profiler|msprof>`. External execution tooling owns case selection, profiling, perf parsing, and output formatting.
 
 The benchmark must call the resolved public entrypoint to run the operator. Raw `@triton.jit` kernels are not valid direct harness APIs.
 
@@ -14,11 +14,16 @@ The benchmark must call the resolved public entrypoint to run the operator. Raw 
 The benchmark file must include this metadata header near the top of the file:
 
 ```python
-# bench-mode: msprof
+# bench-mode: <torch-npu-profiler|msprof>
 # api-name: <resolved_entrypoint>
 # api-kind: <resolved_api_kind>
 # kernels: <resolved_kernel_names>
 ```
+
+`# bench-mode:` is required and must be set to the generated benchmark's default execution mode:
+
+- `torch-npu-profiler`: the benchmark defaults to runner-owned `torch_npu.profiler` behavior.
+- `msprof`: the benchmark defaults to `msprof` runner-owned profiling behavior.
 
 `<resolved_api_kind>` must be replaced with exactly one supported enum value:
 
@@ -37,7 +42,7 @@ The module must export:
 - `build_bench_cases()`
 - `build_bench_case_fn(operator_api, case)`
 
-External execution tooling owns module loading, case selection, profiling wrapping, and metric extraction.
+External execution tooling owns module loading, case selection, profiling wrapping, perf artifact generation, and latency rendering.
 
 ### 3. Operator API loading
 
@@ -45,7 +50,7 @@ External execution tooling owns module loading, case selection, profiling wrappi
 - External execution tooling provides the imported operator module object to `build_operator_api(operator_module)`.
 - `build_operator_api(operator_module)` must return the final callable object that external execution tooling should invoke.
 - If the named API does not exist in the runtime operator module, fail explicitly instead of guessing.
-- Msprof mode still requires stable `# kernels: <resolved_kernel_names>` metadata so profiler rows can be resolved after execution.
+- Stable `# kernels: <resolved_kernel_names>` metadata remains required so runtime tooling can resolve the benchmark's target kernels after execution.
 - For `torch-module`, this hook owns any safe constructor arguments or method binding needed to produce the final callable. If constructor arguments cannot be determined safely, fail explicitly instead of guessing.
 
 #### 3.1 `triton-wrapper`
@@ -106,22 +111,25 @@ If the generator cannot determine safe constructor arguments, fail explicitly wi
   - closure creation
 - Randomized input generation is allowed, but the hook must explicitly fix the seed so repeated runs of the same harness produce identical inputs.
 - Build setup outside the returned callable whenever practical so the measured callable contains only the benchmarked operator body.
+- Do not turn the returned callable into a custom benchmark loop or profiler driver. If warmup or repeat behavior needs to be expressed, declare it through case metadata such as `warmup` and `repeats` instead of hard-coding separate mode-specific control flow.
 
-### 6. Msprof execution rules
+### 6. Execution rules
 
 - **Execution device:** The harness **must** exercise the operator on **Ascend NPU only**. Do **not** generate benchmarks intended to run primarily on CUDA, CPU, or other accelerators, or that branch to a non-NPU device for the code under test.
 - All tensors must be created on device **`"npu"`**.
 - Do **not** perform correctness checks in this file.
 - Do **not** call `torch.npu.synchronize()` (or any device synchronize) in the benchmark file.
-- External execution tooling resolves the selected case, executes the zero-argument callable through profiling, and maps profiler output back to the declared case id.
-- Generated msprof cases should usually declare:
-  - **Warmup:** run the selected benchmark case **5 times**
-  - **Repeat:** after warmup, run the selected benchmark case **50 times**
+- The benchmark file must not print latency lines directly.
+
+Mode notes:
+
+- In `torch-npu-profiler` mode, external execution tooling profiles each declared case with centralized `torch_npu.profiler` logic.
+- In `msprof` mode, external execution tooling resolves case execution through the shared benchmark runtime helper and wraps it in `msprof`.
 
 ### 7. Example
 
 ```python
-# bench-mode: msprof
+# bench-mode: torch-npu-profiler
 # api-name: <resolved_entrypoint>
 # api-kind: <resolved_api_kind>
 # kernels: <resolved_kernel_names>
@@ -129,8 +137,6 @@ If the generator cannot determine safe constructor arguments, fail explicitly wi
 import torch
 
 API_NAME = "<resolved_entrypoint>"
-DEFAULT_WARMUP = 5
-DEFAULT_REPEATS = 50
 
 
 def build_operator_api(operator_module):
@@ -139,14 +145,8 @@ def build_operator_api(operator_module):
 
 def build_bench_cases():
     return [
-        {
-            "id": "fp16_1024",
-            "shape": (1024,),
-            "dtype": torch.float16,
-            "seed": 0,
-            "warmup": DEFAULT_WARMUP,
-            "repeats": DEFAULT_REPEATS,
-        }
+        {"id": "fp16_1024", "shape": (1024,), "dtype": torch.float16, "seed": 0},
+        {"id": "fp16_4096", "shape": (4096,), "dtype": torch.float16, "seed": 1},
     ]
 
 
@@ -155,10 +155,9 @@ def build_bench_case_fn(operator_api, case):
     x = torch.rand(case["shape"], device="npu", dtype=case["dtype"])
 
     def _run():
-        for _ in range(case.get("warmup", DEFAULT_WARMUP)):
-            operator_api(x)
-        for _ in range(case.get("repeats", DEFAULT_REPEATS)):
-            operator_api(x)
+        return operator_api(x)
 
     return _run
 ```
+
+In an actual generated file, replace `# bench-mode: torch-npu-profiler` with `# bench-mode: msprof` when the requested default mode is `msprof`.

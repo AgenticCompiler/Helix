@@ -69,7 +69,7 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.GEN_EVAL_BATCH)
         self.assertEqual(args.concurrency, 1)
         self.assertEqual(args.test_mode, "differential")
-        self.assertEqual(args.bench_mode, "standalone")
+        self.assertEqual(args.bench_mode, "torch-npu-profiler")
         self.assertEqual(args.agent, "codex")
         self.assertFalse(hasattr(args, "interact"))
         self.assertFalse(hasattr(args, "output"))
@@ -118,7 +118,7 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.command, "gen-eval")
         self.assertEqual(args.command_kind, CommandKind.GEN_EVAL)
         self.assertEqual(args.test_mode, "differential")
-        self.assertEqual(args.bench_mode, "standalone")
+        self.assertEqual(args.bench_mode, "torch-npu-profiler")
         self.assertEqual(args.agent, "codex")
         self.assertFalse(args.interact)
 
@@ -1003,7 +1003,9 @@ class CliMCPServerCommandTests(unittest.TestCase):
     def test_bench_mode_option_is_available_for_bench_commands(self) -> None:
         parser = build_parser()
         eval_args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--bench-mode", "msprof"])
-        gen_args = parser.parse_args(["gen-bench", "-i", "kernel.py", "--bench-mode", "standalone"])
+        gen_args = parser.parse_args(
+            ["gen-bench", "-i", "kernel.py", "--bench-mode", "torch-npu-profiler"]
+        )
         run_args = parser.parse_args(
             [
                 "run-bench",
@@ -1016,27 +1018,27 @@ class CliMCPServerCommandTests(unittest.TestCase):
             ]
         )
         self.assertEqual(eval_args.bench_mode, "msprof")
-        self.assertEqual(gen_args.bench_mode, "standalone")
+        self.assertEqual(gen_args.bench_mode, "torch-npu-profiler")
         self.assertEqual(run_args.bench_mode, "msprof")
 
-    def test_bench_commands_default_to_standalone_mode(self) -> None:
+    def test_bench_commands_default_to_torch_npu_profiler_mode(self) -> None:
         parser = build_parser()
         gen_args = parser.parse_args(["gen-bench", "-i", "kernel.py"])
         run_args = parser.parse_args(
             ["run-bench", "--bench-file", "bench_kernel.py", "--operator-file", "kernel.py"]
         )
-        self.assertEqual(gen_args.bench_mode, "standalone")
+        self.assertEqual(gen_args.bench_mode, "torch-npu-profiler")
         self.assertIsNone(run_args.bench_mode)
 
-    def test_gen_eval_defaults_to_standalone_bench_mode(self) -> None:
+    def test_gen_eval_defaults_to_torch_npu_profiler_bench_mode(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["gen-eval", "-i", "kernel.py"])
-        self.assertEqual(args.bench_mode, "standalone")
+        self.assertEqual(args.bench_mode, "torch-npu-profiler")
 
-    def test_gen_eval_batch_defaults_to_standalone_bench_mode(self) -> None:
+    def test_gen_eval_batch_defaults_to_torch_npu_profiler_bench_mode(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["gen-eval-batch", "-i", "kernels"])
-        self.assertEqual(args.bench_mode, "standalone")
+        self.assertEqual(args.bench_mode, "torch-npu-profiler")
 
     def test_gen_eval_batch_accepts_options(self) -> None:
         parser = build_parser()
@@ -1626,7 +1628,7 @@ class PathResolutionTests(unittest.TestCase):
             test_harness = workspace / "test_kernel.py"
             test_harness.write_text("# test-mode: standalone\n", encoding="utf-8")
             bench_harness = workspace / "bench_kernel.py"
-            bench_harness.write_text("# bench-mode: standalone\n", encoding="utf-8")
+            bench_harness.write_text("# bench-mode: torch-npu-profiler\n", encoding="utf-8")
             generated_operator = workspace / "triton_kernel.py"
             generated_operator.write_text("print('gen')\n", encoding="utf-8")
             extra_info = workspace / "extra-info.json"
@@ -2263,7 +2265,7 @@ class PathResolutionTests(unittest.TestCase):
                         '  "test_file": "differential_test_kernel.py",',
                         '  "test_mode": "differential",',
                         '  "bench_file": "bench_kernel.py",',
-                        '  "bench_mode": "standalone",',
+                        '  "bench_mode": "torch-npu-profiler",',
                         '  "perf_artifact": "baseline/perf.txt",',
                         '  "correctness_status": "passed",',
                         '  "benchmark_status": "passed",',
@@ -2280,7 +2282,7 @@ class PathResolutionTests(unittest.TestCase):
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
             )
             (resumable / "bench_kernel.py").write_text(
-                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n", encoding="utf-8"
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n", encoding="utf-8"
             )
 
             captured_modes: dict[str, Optional[str]] = {}
@@ -2303,7 +2305,7 @@ class PathResolutionTests(unittest.TestCase):
                 )
 
             self.assertEqual(exit_code, 0)
-            self.assertEqual(captured_modes["resume_ws"], "standalone")
+            self.assertEqual(captured_modes["resume_ws"], "torch-npu-profiler")
             self.assertEqual(captured_modes["fresh_ws"], "msprof")
 
     def test_main_optimize_batch_rejects_invalid_concurrency(self) -> None:
@@ -2811,7 +2813,7 @@ class PathResolutionTests(unittest.TestCase):
                             "--resume",
                             "continue",
                             "--bench-mode",
-                            "standalone",
+                            "torch-npu-profiler",
                         ]
                     )
 
@@ -2930,7 +2932,7 @@ class PathResolutionTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (root / "bench_kernel.py").write_text(
-                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n",
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
                 encoding="utf-8",
             )
 
@@ -2953,7 +2955,7 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             request = mocked.call_args.args[2]
             self.assertEqual(request.test_mode, "differential")
-            self.assertEqual(request.bench_mode, "standalone")
+            self.assertEqual(request.bench_mode, "torch-npu-profiler")
             self.assertFalse(request.continue_optimize)
             self.assertEqual(request.prompt, "")
 
@@ -2974,7 +2976,7 @@ class PathResolutionTests(unittest.TestCase):
                         '  "test_file": "differential_test_kernel.py",',
                         '  "test_mode": "differential",',
                         '  "bench_file": "bench_kernel.py",',
-                        '  "bench_mode": "standalone",',
+                        '  "bench_mode": "torch-npu-profiler",',
                         '  "perf_artifact": "baseline/perf.txt",',
                         '  "correctness_status": "passed",',
                         '  "benchmark_status": "passed",',
@@ -3007,7 +3009,7 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             request = mocked.call_args.args[2]
             self.assertEqual(request.test_mode, "differential")
-            self.assertEqual(request.bench_mode, "standalone")
+            self.assertEqual(request.bench_mode, "torch-npu-profiler")
             self.assertFalse(request.continue_optimize)
             self.assertEqual(request.prompt, "")
 
@@ -3048,7 +3050,7 @@ class PathResolutionTests(unittest.TestCase):
                         '  "test_file": "differential_test_kernel.py",',
                         '  "test_mode": "differential",',
                         '  "bench_file": "bench_kernel.py",',
-                        '  "bench_mode": "standalone",',
+                        '  "bench_mode": "torch-npu-profiler",',
                         '  "perf_artifact": "baseline/perf.txt",',
                         '  "correctness_status": "passed",',
                         '  "benchmark_status": "passed",',
@@ -3068,7 +3070,7 @@ class PathResolutionTests(unittest.TestCase):
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
             )
             (root / "bench_kernel.py").write_text(
-                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n", encoding="utf-8"
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n", encoding="utf-8"
             )
 
             stderr = StringIO()
@@ -3090,7 +3092,7 @@ class PathResolutionTests(unittest.TestCase):
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
             )
             (root / "bench_kernel.py").write_text(
-                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n", encoding="utf-8"
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n", encoding="utf-8"
             )
 
             stderr = StringIO()
@@ -3143,7 +3145,7 @@ class PathResolutionTests(unittest.TestCase):
             )
             bench_harness = root / "bench_kernel.py"
             bench_harness.write_text(
-                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n",
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
                 encoding="utf-8",
             )
 
@@ -3304,7 +3306,7 @@ class PathResolutionTests(unittest.TestCase):
                                     "--resume",
                                     "auto",
                                     "--bench-mode",
-                                    "standalone",
+                                    "torch-npu-profiler",
                                 ]
                             )
 
@@ -3359,7 +3361,7 @@ class PathResolutionTests(unittest.TestCase):
                         '  "test_file": "differential_test_kernel.py",',
                         '  "test_mode": "differential",',
                         '  "bench_file": "bench_kernel.py",',
-                        '  "bench_mode": "standalone",',
+                        '  "bench_mode": "torch-npu-profiler",',
                         '  "perf_artifact": "baseline/perf.txt",',
                         '  "correctness_status": "passed",',
                         '  "benchmark_status": "passed",',
@@ -3376,7 +3378,7 @@ class PathResolutionTests(unittest.TestCase):
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
             )
             (root / "bench_kernel.py").write_text(
-                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n", encoding="utf-8"
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n", encoding="utf-8"
             )
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
@@ -3401,7 +3403,7 @@ class PathResolutionTests(unittest.TestCase):
             request = mocked.call_args.args[2]
             self.assertTrue(request.continue_optimize)
             self.assertEqual(request.test_mode, "differential")
-            self.assertEqual(request.bench_mode, "standalone")
+            self.assertEqual(request.bench_mode, "torch-npu-profiler")
             self.assertEqual(request.prompt, "")
 
     def test_main_optimize_accepts_workspace_directory_input(self) -> None:
@@ -3824,7 +3826,7 @@ class PathResolutionTests(unittest.TestCase):
             bench_file = root / "bench_kernel.py"
             perf_file = root / "kernel_perf.txt"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             stdout = StringIO()
             stderr = StringIO()
@@ -3846,7 +3848,7 @@ class PathResolutionTests(unittest.TestCase):
             mocked.assert_called_once_with(
                 bench_file.resolve(),
                 operator.resolve(),
-                "standalone",
+                "torch-npu-profiler",
                 None,
                 verbose=False,
                 output=None,
@@ -3929,11 +3931,11 @@ class PathResolutionTests(unittest.TestCase):
             operator = root / "kernel.py"
             bench_file = root / "bench_kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             runtime = SimpleNamespace(
-                parse_bench_metadata=lambda _path: {"bench-mode": "standalone"},
+                parse_bench_metadata=lambda _path: {"bench-mode": "torch-npu-profiler"},
                 run_local_bench=lambda *_args, **_kwargs: (fake_result, None),
             )
 
@@ -3957,7 +3959,7 @@ class PathResolutionTests(unittest.TestCase):
             operator = root / "kernel.py"
             bench_file = root / "bench_kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch(
@@ -3980,7 +3982,7 @@ class PathResolutionTests(unittest.TestCase):
             mocked.assert_called_once_with(
                 bench_file.resolve(),
                 operator.resolve(),
-                "standalone",
+                "torch-npu-profiler",
                 "alice@example.com",
                 None,
                 None,
@@ -3996,7 +3998,7 @@ class PathResolutionTests(unittest.TestCase):
             operator = root / "kernel.py"
             bench_file = root / "bench_kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch(
@@ -4021,7 +4023,7 @@ class PathResolutionTests(unittest.TestCase):
             mocked.assert_called_once_with(
                 bench_file.resolve(),
                 operator.resolve(),
-                "standalone",
+                "torch-npu-profiler",
                 "alice@example.com",
                 None,
                 "4-5",
@@ -4037,7 +4039,7 @@ class PathResolutionTests(unittest.TestCase):
             operator = root / "kernel.py"
             bench_file = root / "bench_kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             stdout = StringIO()
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
@@ -4068,7 +4070,7 @@ class PathResolutionTests(unittest.TestCase):
             operator = root / "kernel.py"
             bench_file = root / "bench_kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             stderr = StringIO()
             with patch("triton_agent.commands.execution.run_local_bench", side_effect=FileNotFoundError("missing perf")):
@@ -4404,7 +4406,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             target_chip="A5",
             optimize_target="operator",
             compiler_source_path=Path("/tmp/AscendNPU-IR"),
@@ -4418,7 +4420,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Operator input: /tmp/op.py", prompt)
         self.assertIn("Requested output: /tmp/opt_op.py", prompt)
         self.assertIn("Requested test mode: differential", prompt)
-        self.assertIn("Requested bench mode: standalone", prompt)
+        self.assertIn("Requested bench mode: torch-npu-profiler", prompt)
         self.assertIn("Remote execution target: alice@example.com:2200", prompt)
         self.assertIn("Remote execution root: /tmp/remote", prompt)
         self.assertIn("Target optimization scope for this optimize session: operator.", prompt)
@@ -4437,7 +4439,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
         )
         self.assertIn("triton-npu-gen-eval-suite", prompt)
@@ -4482,7 +4484,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             None,
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=True,
         )
         self.assertIn("Overwrite any existing generated test, benchmark, or archived execution output files", prompt)
@@ -4534,10 +4536,10 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/bench_op.py"),
             test_mode=None,
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
         )
-        self.assertIn("Requested bench mode: standalone", prompt)
+        self.assertIn("Requested bench mode: torch-npu-profiler", prompt)
 
     def test_gen_test_prompt_requires_execute_and_autofix(self) -> None:
         prompt = build_prompt(
@@ -4560,7 +4562,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/bench_op.py"),
             test_mode=None,
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
         )
         self.assertIn("After generating the artifact, execute the generated benchmark case", prompt)
@@ -4591,7 +4593,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
             remote="alice@example.com:2200",
             remote_workdir="/tmp/triton-agent",
@@ -4654,7 +4656,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
             round_mode="checked",
         )
@@ -4662,7 +4664,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Execute those rounds strictly one at a time.", prompt)
         self.assertIn("Do not pre-plan the full batch before acting.", prompt)
         self.assertIn("Requested test mode: differential", prompt)
-        self.assertIn("Requested bench mode: standalone", prompt)
+        self.assertIn("Requested bench mode: torch-npu-profiler", prompt)
         self.assertIn("Reuse existing correctness tests and benchmark cases when they already exist", prompt)
         self.assertIn("State the optimization hypothesis and why it may help", prompt)
         self.assertIn("Explain what evidence supports the change", prompt)
@@ -4675,7 +4677,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
         )
         self.assertIn("This invocation owns rounds 1 through 5.", prompt)
@@ -4688,7 +4690,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
             min_rounds=4,
             round_mode="checked",
@@ -4703,7 +4705,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
             round_mode="supervised",
         )
@@ -4716,7 +4718,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             round_mode="checked",
             current_round=2,
             final_round=4,
@@ -4731,7 +4733,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             round_mode="checked",
             baseline_ready=False,
             current_round=1,
@@ -4749,7 +4751,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
             resume_existing_session=True,
             round_mode="checked",
@@ -4764,7 +4766,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
             round_mode="checked",
         )
@@ -4807,7 +4809,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
         )
         self.assertIn("This invocation owns rounds 1 through 5.", prompt)

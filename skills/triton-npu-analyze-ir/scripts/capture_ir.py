@@ -523,7 +523,7 @@ def _stage_required_files(
         verbose=verbose,
         stderr=stderr,
     )
-    if _resolve_bench_mode(bench_file) in {"standalone", "msprof"}:
+    if _resolve_bench_mode(bench_file) in {"torch-npu-profiler", "msprof"}:
         for helper_path in _bench_runtime_support_paths():
             copy_file_to_remote(
                 spec,
@@ -543,8 +543,11 @@ def _resolve_bench_mode(bench_file: Path) -> str:
             break
         body = stripped[1:].strip()
         if body.startswith("bench-mode:"):
-            return body.split(":", 1)[1].strip()
-    return "standalone"
+            mode = body.split(":", 1)[1].strip()
+            if mode == "standalone":
+                return "torch-npu-profiler"
+            return mode
+    return "torch-npu-profiler"
 
 
 def _bench_runtime_script_path() -> Path:

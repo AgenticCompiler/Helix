@@ -2,12 +2,12 @@
 
 ## Summary
 
-Unify generated `standalone` and `msprof` benchmark files so they share the same import-only Python module structure and differ only in runner-owned profiling behavior. Keep `# bench-mode:` metadata as the default execution-strategy hint, but stop using it to select between two different generated file shapes. Remove the old `msprof` self-executing benchmark CLI contract, switch case selection to stable `case_id` values, and clean up stale standalone-only runtime naming and helper paths that are no longer justified once both modes consume the same benchmark contract.
+Unify generated `torch-npu-profiler` and `msprof` benchmark files so they share the same import-only Python module structure and differ only in runner-owned profiling behavior. Keep `# bench-mode:` metadata as the default execution-strategy hint, but stop using it to select between two different generated file shapes. Remove the old `msprof` self-executing benchmark CLI contract, switch case selection to stable `case_id` values, and clean up stale standalone-only runtime naming and helper paths that are no longer justified once both modes consume the same benchmark contract.
 
 ## Goals
 
-- Make generated `standalone` and `msprof` benchmark files structurally identical.
-- Keep `# bench-mode: standalone|msprof` as the benchmark's default execution-mode hint.
+- Make generated `torch-npu-profiler` and `msprof` benchmark files structurally identical.
+- Keep `# bench-mode: torch-npu-profiler|msprof` as the benchmark's default execution-mode hint.
 - Move benchmark case selection to stable string `case_id` values across `run-bench`, `profile-bench`, and IR capture.
 - Make both profiling modes consume the same runtime helper and the same benchmark case declarations.
 - Remove obsolete code paths, naming, docs, and tests that only exist to support the old `msprof` benchmark mini-CLI.
@@ -27,7 +27,7 @@ Unify generated `standalone` and `msprof` benchmark files so they share the same
 - Generated benchmark files remain named `bench_<op>.py` and live beside the operator file.
 - Generated benchmark files remain import-only Python modules.
 - Generated benchmark files must keep this metadata header near the top of the file:
-  - `# bench-mode: standalone|msprof`
+  - `# bench-mode: torch-npu-profiler|msprof`
   - `# api-name: <resolved_entrypoint>`
   - `# api-kind: <triton-wrapper|torch-function|torch-module>`
   - `# kernels: <resolved_kernel_names>`
@@ -88,7 +88,7 @@ Generated benchmark files must export exactly these three hooks:
 
 ### Unified `bench-mode` semantics
 
-- `standalone` and `msprof` now mean "which profiling strategy the runner should apply to the same benchmark contract."
+- `torch-npu-profiler` and `msprof` now mean "which profiling strategy the runner should apply to the same benchmark contract."
 - They no longer mean "which benchmark-file structure the generator should emit."
 - `run-bench`, `profile-bench`, and IR capture continue to read `# bench-mode:` by default when the user does not pass an explicit mode override.
 - Explicit CLI mode overrides remain supported.
@@ -134,7 +134,7 @@ The benchmark file itself must not define its own CLI entrypoint.
 - `run-bench` no longer executes `python bench_<op>.py --num-bench`.
 - `run-bench` no longer executes `python bench_<op>.py --bench <N>`.
 - For both benchmark modes, `run-bench` first resolves the case list through the shared runtime helper.
-- For `standalone`, the runner profiles each selected case with centralized `torch_npu.profiler` logic, as it already does conceptually today.
+- For `torch-npu-profiler`, the runner profiles each selected case with centralized `torch_npu.profiler` logic, as it already does conceptually today.
 - For `msprof`, the runner wraps the shared runtime helper case execution:
   - `msprof python3 bench_runtime.py run-one --bench-file ... --operator-file ... --case-id ...`
 - Local, remote, serial, and parallel `run-bench` flows all consume the same case ids and the same benchmark case declarations.
@@ -145,9 +145,9 @@ The benchmark file itself must not define its own CLI entrypoint.
 - `profile-bench` keeps optional `--bench-mode` override support.
 - `profile-bench` removes `--bench`.
 - `profile-bench` keeps `--case-id`.
-- `profile-bench` uses `--case-id` for both `standalone` and `msprof`.
+- `profile-bench` uses `--case-id` for both `torch-npu-profiler` and `msprof`.
 - The runtime helper resolves the case id before profiling begins.
-- For `standalone`, the helper profiles exactly one selected case with `torch_npu.profiler`.
+- For `torch-npu-profiler`, the helper profiles exactly one selected case with `torch_npu.profiler`.
 - For `msprof`, the helper profiles exactly one selected case by wrapping the shared runtime helper `run-one` path in `msprof`.
 
 ### IR capture

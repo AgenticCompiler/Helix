@@ -27,7 +27,7 @@ class VerifyTests(unittest.TestCase):
             encoding="utf-8",
         )
         (workspace / "bench_kernel.py").write_text(
-            "# bench-mode: standalone\nprint('bench')\n",
+            "# bench-mode: torch-npu-profiler\nprint('bench')\n",
             encoding="utf-8",
         )
         (baseline_dir / "state.json").write_text(
@@ -39,7 +39,7 @@ class VerifyTests(unittest.TestCase):
                     "test_file": "differential_test_kernel.py",
                     "test_mode": "differential",
                     "bench_file": "bench_kernel.py",
-                    "bench_mode": "standalone",
+                    "bench_mode": "torch-npu-profiler",
                     "perf_artifact": "baseline/perf.txt",
                     "correctness_status": "passed",
                     "benchmark_status": "passed",
@@ -108,7 +108,7 @@ class VerifyTests(unittest.TestCase):
             self.assertEqual(target.source_baseline_operator, workspace / "baseline" / "kernel.py")
             self.assertEqual(target.baseline_operator, target.verify_dir / "baseline_kernel.py")
             self.assertEqual(target.test_mode, "differential")
-            self.assertEqual(target.bench_mode, "standalone")
+            self.assertEqual(target.bench_mode, "torch-npu-profiler")
             self.assertEqual(target.baseline_perf, workspace / "baseline" / "perf.txt")
 
     def test_prepare_target_uses_unique_verify_directory_without_overwriting(self) -> None:
@@ -278,7 +278,7 @@ class VerifyTests(unittest.TestCase):
                     "bench_harness": {
                         "source": "bench_kernel.py",
                         "copied": "opt-verify/verify-20260420-153012/bench_kernel.py",
-                        "mode": "standalone",
+                        "mode": "torch-npu-profiler",
                     },
                     "baseline_perf": "baseline/perf.txt",
                 },

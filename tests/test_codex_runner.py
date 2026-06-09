@@ -129,7 +129,7 @@ class CodexRunnerTests(unittest.TestCase):
                 operator_path=workspace / "op.py",
                 output_path=None,
                 test_mode=None,
-                bench_mode="standalone",
+                bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
                 show_output=False,
