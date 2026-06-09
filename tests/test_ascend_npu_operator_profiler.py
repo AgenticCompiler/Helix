@@ -26,6 +26,23 @@ def _load_reporter_module():
 
 
 class AscendNpuOperatorProfilerTests(unittest.TestCase):
+    def test_detect_profile_mode_returns_torch_npu_profiler_for_profiler_artifacts(self) -> None:
+        module = _load_reporter_module()
+        fixture = FIXTURES_ROOT / "standalone_real_output"
+
+        mode, artifacts_dir = module.detect_profile_mode(fixture)
+
+        self.assertEqual(mode, "torch-npu-profiler")
+        self.assertTrue(artifacts_dir.name in {"ASCEND_PROFILER_OUTPUT", "mindstudio_profiler_output"})
+
+    def test_load_profile_records_torch_npu_profiler_bench_mode(self) -> None:
+        module = _load_reporter_module()
+        fixture = FIXTURES_ROOT / "standalone_real_output"
+
+        profile = module.ProfileReporter().load_profile(fixture, target_op="matmul_kernel")
+
+        self.assertEqual(profile.bench_mode, "torch-npu-profiler")
+
     def test_build_report_handles_realistic_parent_layout_fixture(self) -> None:
         module = _load_reporter_module()
 
