@@ -295,7 +295,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("Do not", eval_gen)
         self.assertIn("opt-round", eval_gen)
 
-    def test_convert_skill_and_readme_document_differential_only_conversion(self) -> None:
+    def test_convert_skill_and_readme_document_convert_test_mode_support(self) -> None:
         convert_skill = _read("skills/triton-npu-convert-pytorch-operator/SKILL.md")
         readme = _read("README.md")
 
@@ -305,7 +305,8 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("trailing input-helper block", convert_skill)
         self.assertIn("Do not execute the original input operator file", convert_skill)
         self.assertIn("correctness oracle", convert_skill)
-        self.assertIn("differential test", convert_skill)
+        self.assertIn("standalone or differential test mode", convert_skill)
+        self.assertIn("standalone or differential test file", convert_skill)
         self.assertIn("triton_<origin-name>.py", convert_skill)
         self.assertIn("## Converted Example", convert_skill)
         self.assertIn("@triton.jit", convert_skill)
@@ -328,7 +329,8 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("`convert-batch`", readme)
         self.assertNotIn("`gen-convert`", readme)
         self.assertIn("Triton NPU-backed PyTorch operator", readme)
-        self.assertIn("differential correctness validation", readme)
+        self.assertIn("standalone or differential correctness validation", readme)
+        self.assertIn("`--test-mode standalone|differential`", readme)
         self.assertNotIn("preparing `baseline/`", readme)
 
     def test_optimize_baseline_preparation_uses_dedicated_skill(self) -> None:

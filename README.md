@@ -10,7 +10,7 @@ This README is organized by task so you can quickly find the right command for t
 - `run-test`: run an existing generated test.
 - `gen-eval`: generate both test and benchmark assets for one operator.
 - `gen-eval-batch`: generate evaluation assets for many operator workspaces.
-- `convert`: convert one PyTorch operator into a Triton NPU-backed PyTorch operator and validate it with differential testing.
+- `convert`: convert one PyTorch operator into a Triton NPU-backed PyTorch operator and validate it with standalone or differential testing.
 - `convert-batch`: convert many operator workspaces.
 - `gen-bench`: generate a benchmark for one operator.
 - `run-bench`: run an existing generated benchmark.
@@ -267,13 +267,13 @@ What it is for:
 
 - converting one source PyTorch operator into a Triton NPU-backed PyTorch operator
 - preserving the input file's trailing input-helper block in the converted output
-- validating the converted operator through differential correctness validation against the original operator
+- validating the converted operator through standalone or differential correctness validation
 
 Common options:
 
 - `--output triton_a.py`: write to a specific converted-operator path.
 - `--agent codex|opencode|pi|claude|openhands|traecli`
-- `--test-mode differential`
+- `--test-mode standalone|differential`: default is `differential`
 - `--interact`
 - `--show-output`
 - `--force-overwrite`
@@ -282,10 +282,10 @@ Common options:
 
 Behavior:
 
-- The original input operator file is treated as source material and differential correctness oracle and must not be executed by this workflow.
+- The original input operator file is treated as source material, and differential mode uses it as the comparison oracle during verification.
 - The converted output defaults to `triton_<origin-name>.py`.
 - The input file's trailing input-helper block should remain available in the converted output.
-- The workflow generates and executes a differential test for the converted output before finishing.
+- The workflow generates and executes a standalone or differential test for the converted output before finishing.
 - When `--input` is a workspace directory, staged skills and agent cwd are rooted at that workspace.
 
 Example:
@@ -526,7 +526,7 @@ uv run triton-agent convert-batch --input operators_root
 Common options:
 
 - `--agent codex|opencode|pi|claude|openhands|traecli`
-- `--test-mode differential`
+- `--test-mode standalone|differential`: default is `differential`
 - `--concurrency <N|max>`: defaults to `1`
 - `--show-output`
 - `--remote user@host[:port]`

@@ -280,13 +280,12 @@ class CliParserTests(unittest.TestCase):
                 args = parser.parse_args([command, "-i", "workspace", "--log-tool"])
                 self.assertTrue(args.log_tools)
 
-    def test_convert_rejects_non_differential_test_mode(self) -> None:
+    def test_convert_commands_accept_standalone_test_mode(self) -> None:
         parser = build_parser()
-        stderr = StringIO()
-        with self.assertRaises(SystemExit) as exc, redirect_stderr(stderr):
-            parser.parse_args(["convert", "-i", "kernel.py", "--test-mode", "standalone"])
-        self.assertEqual(exc.exception.code, 2)
-        self.assertIn("differential", stderr.getvalue())
+        for command, input_value in (("convert", "kernel.py"), ("convert-batch", "kernels")):
+            with self.subTest(command=command):
+                args = parser.parse_args([command, "-i", input_value, "--test-mode", "standalone"])
+                self.assertEqual(args.test_mode, "standalone")
 
     def test_gen_convert_is_no_longer_a_valid_command(self) -> None:
         parser = build_parser()
@@ -4622,6 +4621,24 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Only generate a new test when no suitable reusable test exists", prompt)
         self.assertNotIn("triton-npu-prepare-optimize-baseline", prompt)
         self.assertIn("Requested output: /tmp/triton_op.py", prompt)
+
+    def test_convert_prompt_mentions_standalone_validation_when_requested(self) -> None:
+        prompt = build_prompt(
+            CommandKind.CONVERT,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/triton_op.py"),
+            test_mode="standalone",
+            bench_mode=None,
+            force_overwrite=False,
+        )
+        self.assertIn("Requested test mode: standalone", prompt)
+        self.assertIn("Generate a standalone test for the converted output and execute it.", prompt)
+        self.assertIn(
+            "Validate the converted output by executing the standalone test against the converted operator.",
+            prompt,
+        )
+        self.assertNotIn("Generate a differential test for the converted output and execute it.", prompt)
 
     def test_optimize_prompt_mentions_requested_modes(self) -> None:
         prompt = build_prompt(

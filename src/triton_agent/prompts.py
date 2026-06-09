@@ -25,7 +25,7 @@ __all__ = [
 
 PROMPT_INTROS = {
     CommandKind.GEN_EVAL: "Repair the operator when needed, then generate correctness tests and a benchmark.",
-    CommandKind.CONVERT: "Convert the PyTorch operator into a Triton NPU-backed PyTorch operator and validate it with differential correctness testing.",
+    CommandKind.CONVERT: "Convert the PyTorch operator into a Triton NPU-backed PyTorch operator and validate it with the requested correctness test mode.",
     CommandKind.GEN_TEST: "Generate correctness tests for the operator file.",
     CommandKind.RUN_TEST: "Run the generated correctness tests for the operator file.",
     CommandKind.GEN_BENCH: "Generate a benchmark for the operator file.",
@@ -181,11 +181,11 @@ def build_prompt(
             ]
         )
     if command_kind == CommandKind.CONVERT:
+        requested_convert_test_mode = "standalone" if test_mode == "standalone" else "differential"
         lines.extend(
             [
                 "Treat the input operator file as source material only.",
                 "Do not execute the original input operator file.",
-                "Treat the input operator file as source material and the differential correctness oracle.",
                 "Write the converted operator to the requested output path and keep the original input file unchanged.",
                 "Preserve the trailing input-helper block from the input file in the converted output so later harnesses can reuse it.",
                 "When generating or validating harnesses, you may add broader coverage and do not need to limit yourself to only the preserved trailing helpers.",
@@ -200,10 +200,23 @@ def build_prompt(
                 "Do not inline correctness or benchmark harness code into the converted operator file.",
                 "Do not benchmark this workflow.",
                 "Do not create `baseline/`.",
-                "Generate a differential test for the converted output and execute it.",
-                "Validate the converted output by comparing it against the original operator behavior.",
             ]
         )
+        if requested_convert_test_mode == "standalone":
+            lines.extend(
+                [
+                    "Generate a standalone test for the converted output and execute it.",
+                    "Validate the converted output by executing the standalone test against the converted operator.",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    "Treat the input operator file as source material and the differential correctness oracle.",
+                    "Generate a differential test for the converted output and execute it.",
+                    "Validate the converted output by comparing it against the original operator behavior.",
+                ]
+            )
 
     if command_kind == CommandKind.OPTIMIZE:
         lines.extend(
