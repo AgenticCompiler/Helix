@@ -1,4 +1,8 @@
 import importlib.util
+import shutil
+import subprocess
+import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from io import StringIO
@@ -575,6 +579,8 @@ class GenerationContractTests(unittest.TestCase):
 
     def test_optimize_artifacts_reference_documents_state_declared_paths(self) -> None:
         artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
+        self.assertIn("<!-- BEGIN GENERATED BASELINE STATE CONTRACT -->", artifacts)
+        self.assertIn("<!-- END GENERATED ROUND STATE CONTRACT -->", artifacts)
         self.assertIn("Treat these state fields as the authoritative artifact references for baseline validation:", artifacts)
         self.assertIn("`baseline_operator`", artifacts)
         self.assertIn("`perf_artifact`", artifacts)
@@ -583,6 +589,40 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("`perf_analysis_path` when present", artifacts)
         self.assertIn("`profile_dir` when present", artifacts)
         self.assertIn("`ir_dir` when present", artifacts)
+        self.assertIn("relative to the directory that contains `baseline/state.json`", artifacts)
+        self.assertIn("relative to the directory that contains `round-state.json`", artifacts)
+
+    def test_optimize_artifacts_reference_matches_generator_script(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for relative_path in (
+                "skills/triton-npu-optimize-submit-baseline/references/contract.json",
+                "skills/triton-npu-optimize-submit-round/references/contract.json",
+                "skills/triton-npu-optimize/references/artifacts.md",
+                "skills/triton-npu-optimize/script/update-artifacts.py",
+            ):
+                source = REPO_ROOT / relative_path
+                target = root / relative_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
+
+            script_path = root / "skills" / "triton-npu-optimize" / "script" / "update-artifacts.py"
+            completed = subprocess.run(
+                [sys.executable, str(script_path)],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=root,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            generated = (
+                root / "skills" / "triton-npu-optimize" / "references" / "artifacts.md"
+            ).read_text(encoding="utf-8")
+            self.assertEqual(
+                generated,
+                _read("skills/triton-npu-optimize/references/artifacts.md"),
+            )
 
     def test_optimize_skill_documents_round_local_ir_commands(self) -> None:
         optimize = _read("skills/triton-npu-optimize/SKILL.md")

@@ -34,12 +34,13 @@ python3 scripts/optimize_submit_round.py check-round --round-dir opt-round-2 --c
 
 ## Round-State Path Convention
 
-In `round-state.json`, all path fields must be **round-relative bare filenames** — do NOT prefix them with the round directory name:
+In `round-state.json`, every path field must be written relative to the directory that contains `round-state.json`:
 
-- `perf_artifact`: `"opt_kernel_perf.txt"` — not `"opt-round-1/opt_kernel_perf.txt"`
-- `summary_path`: `"summary.md"` — not `"opt-round-1/summary.md"`
+- `perf_artifact`: `"opt_kernel_perf.txt"` or `"reports/opt_kernel_perf.txt"` — not `"opt-round-1/opt_kernel_perf.txt"`
+- `comparison_target`: `"../baseline/perf.txt"` or `"../baseline/kernel_perf.txt"`
+- `summary_path`: `"summary.md"` or another round-local relative path such as `"reports/summary.md"` — not `"opt-round-1/summary.md"`
 - `perf_analysis_path` (when present): `"perf-analysis.md"`
 - `profile_dir` (when present): `"profile"`
 - `ir_dir` (when present): `"ir"`
 
-The checker resolves all paths relative to the round directory. If you include a directory prefix, the checker may report a false "missing" error even when the file exists.
+The checker resolves these paths relative to `round-state.json` first. If a declared path is missing there, it retries the same value relative to the operator workspace root for compatibility with older or hallucinated outputs.

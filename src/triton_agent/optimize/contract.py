@@ -26,6 +26,10 @@ BASELINE_STATE_FIELDS = {
 }
 BASELINE_STATE_REQUIRED_FIELDS = tuple(BASELINE_STATE_FIELDS)
 ROUND_STATE_REQUIRED_FIELDS = tuple(_ROUND_CONTRACT_DATA["round_state_required_fields"])
+ROUND_STATE_OPTIONAL_FIELDS = {
+    str(field_name): str(description)
+    for field_name, description in _ROUND_CONTRACT_DATA["round_state_optional_fields"].items()
+}
 
 
 def baseline_state_contract_lines() -> tuple[str, ...]:

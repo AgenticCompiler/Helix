@@ -27,3 +27,15 @@ python3 scripts/optimize_submit_baseline.py check-baseline --baseline-dir baseli
 - Do not use this skill to generate missing harnesses, repair operator logic, or invent missing baseline evidence.
 - Baseline preparation belongs to `triton-npu-prepare-optimize-baseline`.
 - Open-ended optimization work belongs to `triton-npu-optimize`.
+
+## Baseline-State Path Convention
+
+In `baseline/state.json`, every path field must be written relative to the directory that contains `baseline/state.json`:
+
+- `source_operator`: `"../kernel.py"` — not `"kernel.py"` when the source operator lives at the workspace root
+- `baseline_operator`: `"kernel.py"` — not `"baseline/kernel.py"`
+- `test_file`: `"../differential_test_kernel.py"` or `"../test_kernel.py"`
+- `bench_file`: `"../bench_kernel.py"`
+- `perf_artifact`: `"kernel_perf.txt"` or `"perf.txt"` — not `"baseline/kernel_perf.txt"`
+
+The checker resolves these paths relative to `baseline/state.json` first. If a declared path is missing there, it retries the same value relative to the operator workspace root for compatibility with older or hallucinated outputs.

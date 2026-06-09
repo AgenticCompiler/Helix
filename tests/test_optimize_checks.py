@@ -538,6 +538,66 @@ class OptimizeCheckTests(unittest.TestCase):
                 any("invalid" in issue and "LOCAL_OPTIMUM" in issue for issue in result.issues),
             )
 
+    def test_check_round_accepts_state_relative_baseline_and_comparison_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            baseline_dir = workdir / "baseline"
+            baseline_dir.mkdir()
+            round_dir = workdir / "opt-round-1"
+            round_dir.mkdir()
+            (workdir / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workdir / "differential_test_kernel.py").write_text("print('test')\n", encoding="utf-8")
+            (workdir / "bench_kernel.py").write_text("print('bench')\n", encoding="utf-8")
+            (workdir / "opt-note.md").write_text("## Round\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "../kernel.py",
+                        "baseline_operator": "kernel.py",
+                        "test_file": "../differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "../bench_kernel.py",
+                        "bench_mode": "standalone",
+                        "perf_artifact": "perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (round_dir / "opt_kernel.py").write_text(TRITON_ROUND_OPERATOR, encoding="utf-8")
+            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-1",
+                        "parent_round": "round-0",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "opt_kernel_perf.txt",
+                        "comparison_target": "../baseline/perf.txt",
+                        "effective_metric_source": "kernel",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                        "round_disposition": "continue",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = optimize_checks.check_round(round_dir)
+
+            self.assertEqual(result.status, "pass")
+            self.assertEqual(result.kind, "round")
+
     def _write_baseline_with_perf_text(self, workdir: Path, *, perf_text: str) -> None:
         baseline_dir = workdir / "baseline"
         baseline_dir.mkdir(exist_ok=True)

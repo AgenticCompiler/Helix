@@ -35,22 +35,30 @@ Required baseline artifacts:
 - `baseline/<operator>_perf.txt`
 - `baseline/state.json`
 
+<!-- BEGIN GENERATED BASELINE STATE CONTRACT -->
+`baseline/state.json` required fields:
 
-`baseline/state.json` must contain these fields:
+```json
+{
+  "baseline_kind": "record whether the canonical baseline is the original operator or a minimally repaired prepared baseline.",
+  "source_operator": "record the path from the directory that contains `baseline/state.json` to the operator file that baseline preparation started from, normally `../<operator>.py`.",
+  "baseline_operator": "record the path from the directory that contains `baseline/state.json` to the operator snapshot saved under `baseline/`, normally `<operator>.py` or another baseline-local path.",
+  "test_file": "record the path from the directory that contains `baseline/state.json` to the correctness harness used for the baseline, normally `../test_<operator>.py` or `../differential_test_<operator>.py`.",
+  "test_mode": "record the resolved correctness mode used for the baseline run.",
+  "bench_file": "record the path from the directory that contains `baseline/state.json` to the benchmark harness used for the baseline, normally `../bench_<operator>.py`.",
+  "bench_mode": "record the resolved benchmark mode used for the baseline run.",
+  "perf_artifact": "record the path from the directory that contains `baseline/state.json` to the canonical baseline perf artifact, normally `<operator>_perf.txt` or `perf.txt`.",
+  "correctness_status": "record the final baseline correctness result; use `passed` only after correctness succeeds.",
+  "benchmark_status": "record the final baseline benchmark result; use `passed` only after the benchmark succeeds.",
+  "baseline_established": "set this to `true` only after `correctness_status` is `passed`, `benchmark_status` is `passed`, and the canonical baseline artifacts are written."
+}
+```
 
-- `baseline_kind`
-- `source_operator`
-- `baseline_operator`
-- `test_file`
-- `test_mode`
-- `bench_file`
-- `bench_mode`
-- `perf_artifact`
-- `correctness_status`
-- `benchmark_status`
-- `baseline_established`
+Path-bearing fields in `baseline/state.json` must be written relative to the directory that contains `baseline/state.json`.
+The checker first resolves declared paths there. If a declared path is missing, it retries the same value relative to the operator workspace root for compatibility with older or hallucinated outputs.
 
 Set `baseline_established` to `true` only after correctness passed, benchmark passed, and the canonical baseline artifacts are in place.
+<!-- END GENERATED BASELINE STATE CONTRACT -->
 
 Treat these state fields as the authoritative artifact references for baseline validation:
 
@@ -88,33 +96,42 @@ Keep the layout simple. Do not create unnecessary nested documentation.
 
 Each completed round must also include `round-state.json`.
 
-`round-state.json` must contain these fields:
+<!-- BEGIN GENERATED ROUND STATE CONTRACT -->
+`round-state.json` required fields:
 
-- `round`
-- `parent_round`
-- `hypothesis`
-- `evidence_sources`
-- `correctness_status`
-- `benchmark_status`
-- `perf_artifact`
-- `comparison_target`
-- `effective_metric_source`
-- `summary_path`
-- `opt_note_updated`
-- `round_disposition`: `"continue"` when the round produced a meaningful improvement and the optimization session should continue, or `"stop"` when no further optimization direction is justified by current evidence. Do not use this field to write forward-looking optimization plans or predict what to try next—that must be determined by fresh profiling or benchmark evidence after the code changes.
+```json
+{
+  "round": "record the completed round directory name, for example `opt-round-1`.",
+  "parent_round": "record the baseline or prior round that directly seeded this round, for example `round-0` or `opt-round-2`.",
+  "hypothesis": "record the concrete optimization idea that this round tested.",
+  "evidence_sources": "record the ordered list of evidence sources that justified the round conclusion, such as `benchmark`, `profile`, `ir`, or `compiler-source`.",
+  "correctness_status": "record the final correctness result for this round; use `passed` only after the round operator passes the chosen correctness check.",
+  "benchmark_status": "record the final benchmark result for this round; use `passed` only after the round benchmark succeeds and the round perf artifact is written.",
+  "perf_artifact": "record the path from the directory that contains `round-state.json` to the canonical round perf artifact, normally `opt_<operator>_perf.txt`.",
+  "comparison_target": "record the path from the directory that contains `round-state.json` to the canonical baseline perf artifact used for comparison, normally `../baseline/<operator>_perf.txt` or `../baseline/perf.txt`.",
+  "effective_metric_source": "record the resolved `compare-perf` basis that decided the round outcome: `kernel`, `total-op`, or `mixed`.",
+  "summary_path": "record the path from the directory that contains `round-state.json` to the final round summary markdown, normally `summary.md`.",
+  "opt_note_updated": "set this to `true` only after the top-level `opt-note.md` entry for this round has been updated.",
+  "round_disposition": "record whether the validated round result says the optimize session should `continue` or `stop`; do not use this field to predict future code changes."
+}
+```
 
-Path fields in `round-state.json` must be **round-relative bare filenames** (no directory prefix):
+`round-state.json` optional fields when present:
 
-- `perf_artifact`: use `"opt_<operator>_perf.txt"` (e.g. `"opt_kernel_perf.txt"`), NOT `"opt-round-1/opt_kernel_perf.txt"`
-- `summary_path`: use `"summary.md"`, NOT `"opt-round-1/summary.md"`
+```json
+{
+  "analysis_skipped_reason": "when deeper analysis was intentionally skipped, record the evidence-backed reason here.",
+  "profile_dir": "when profiler artifacts are part of the round record, record the path from the directory that contains `round-state.json` to that round-local profiler directory, normally `profile`.",
+  "ir_dir": "when IR artifacts are part of the round record, record the path from the directory that contains `round-state.json` to that round-local IR directory, normally `ir`.",
+  "perf_analysis_path": "when a standalone performance-analysis note exists, record the path from the directory that contains `round-state.json` to that markdown file, normally `perf-analysis.md`.",
+  "analysis_comparison_sources": "when deeper analysis compares against saved evidence, record the ordered list of paths from the directory that contains `round-state.json` to those supporting artifacts.",
+  "validated_candidate": "when candidate tracking is enabled, record whether this round was validated as the current best candidate."
+}
+```
 
-`effective_metric_source` records the resolved `compare-perf` basis used for the round conclusion:
-
-- `kernel`: kernel latency was the comparison basis
-- `total-op`: total-op aggregation was the comparison basis
-- `mixed`: kernel latency and total-op fallback were mixed across cases
-
-Record exactly one value. Do not add a second policy field for intended comparison mode.
+Path-bearing fields in `round-state.json` must be written relative to the directory that contains `round-state.json`.
+The checker first resolves declared paths there. If a declared path is missing, it retries the same value relative to the operator workspace root for compatibility with older or hallucinated outputs.
+<!-- END GENERATED ROUND STATE CONTRACT -->
 
 Treat these round-state fields as the authoritative artifact references for round validation:
 
