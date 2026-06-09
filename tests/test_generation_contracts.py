@@ -989,10 +989,10 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("total-op", artifacts)
         self.assertIn("mixed", artifacts)
 
-    def test_profiler_skill_documents_standalone_case_id_contract(self) -> None:
+    def test_profiler_skill_documents_torch_npu_profiler_case_id_contract(self) -> None:
         profiler = _read("skills/triton-npu-profile-operator/SKILL.md")
         self.assertIn("../triton-npu-run-eval/scripts/run-command.py profile-bench", profiler)
-        self.assertIn("standalone", profiler)
+        self.assertIn("torch-npu-profiler", profiler)
         self.assertIn("msprof", profiler)
         self.assertIn("--case-id <id>", profiler)
         self.assertIn("profile one selected `--case-id <id>` case", profiler)

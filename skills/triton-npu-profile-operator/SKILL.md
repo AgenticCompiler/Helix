@@ -114,7 +114,7 @@ This is useful when you want to:
 - `scripts/msprof_parser.py`
   Parses `PROF_*/mindstudio_profiler_output/` artifacts: `op_statistic`, `op_summary`, `task_time`, `api_statistic`, `msprof` JSON.
 
-- `scripts/standalone_parser.py`
+- `scripts/torch_npu_profiler_parser.py`
   Parses `ASCEND_PROFILER_OUTPUT/` artifacts: `op_statistic`, `kernel_details`, `operator_details`, `step_trace_time`, `api_statistic`, `trace_view`.
 
 - `scripts/parse_bin.py`
