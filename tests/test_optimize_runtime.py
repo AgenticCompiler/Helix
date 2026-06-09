@@ -1532,6 +1532,60 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertIn("This invocation owns rounds 3 through 3.", runner.requests[1].prompt)
             self.assertNotIn("CLI batch follow-up from the previous worker batch:", runner.requests[1].prompt)
 
+    def test_multi_invocation_controller_failed_worker_run_cleans_pt_files_when_env_var_enabled(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            self._write_baseline(workdir)
+            guidance_state = self._build_checked_guidance_state(workdir)
+            stray_result = workdir / "TEST_RESULT.pt"
+
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=operator,
+                operator_path=operator,
+                output_path=workdir / "opt_kernel.py",
+                test_mode="differential",
+                bench_mode="standalone",
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-optimize",
+                prompt="Optimize this operator",
+                workdir=workdir,
+                min_rounds=1,
+                round_mode="checked",
+            )
+
+            class FakeRunner:
+                def run(
+                    self,
+                    request: AgentRequest,
+                    stdout: Optional[object] = None,
+                    stderr: Optional[object] = None,
+                ) -> AgentResult:
+                    del request, stdout, stderr
+                    stray_result.write_text("payload\n", encoding="utf-8")
+                    return AgentResult(return_code=1, stdout="", stderr="worker failed")
+
+            controller = execution_module.MultiInvocationOptimizeController(
+                cast(Any, FakeRunner()),
+                execution_module.OptimizeSessionArtifactsManager(),
+                guidance_state,
+                verbose_stream=StringIO(),
+            )
+
+            with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "1"}, clear=False):
+                result = controller.run_round_loop(request)
+
+            self.assertEqual(result.return_code, 1)
+            self.assertFalse(stray_result.exists())
+
     def test_multi_invocation_controller_checked_batch_carries_failures_to_next_batch(
         self,
     ) -> None:
@@ -2412,18 +2466,30 @@ class OptimizeRuntimeTests(unittest.TestCase):
     def test_cleanup_workspace_pt_files_deletes_pt_files_when_env_var_enabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
+            baseline_dir = workdir / "baseline"
             round_dir = workdir / "opt-round-1"
+            baseline_dir.mkdir()
             round_dir.mkdir()
             root_pt = workdir / "kernel_result.pt"
+            baseline_pt = baseline_dir / "TEST_RESULT.pt"
             round_pt = round_dir / "test_result.pt"
             root_pt.write_text("root\n", encoding="utf-8")
+            baseline_pt.write_text("baseline\n", encoding="utf-8")
             round_pt.write_text("round\n", encoding="utf-8")
 
             with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_DELETE_PT_FILES": "1"}, clear=False):
                 cleaned = cleanup_workspace_pt_files(workdir)
 
-            self.assertEqual(cleaned, ["kernel_result.pt", "opt-round-1/test_result.pt"])
+            self.assertEqual(
+                cleaned,
+                [
+                    "kernel_result.pt",
+                    "baseline/TEST_RESULT.pt",
+                    "opt-round-1/test_result.pt",
+                ],
+            )
             self.assertFalse(root_pt.exists())
+            self.assertFalse(baseline_pt.exists())
             self.assertFalse(round_pt.exists())
 
     def test_reset_optimize_workspace_deletes_result_pt_files_regardless_of_env_var(self) -> None:

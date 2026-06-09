@@ -496,10 +496,22 @@ class MultiInvocationOptimizeController:
             no_agent_session=True,
             supervisor_report_path=self._artifacts_state.supervisor_report_path,
         )
-        if self._stdout is None and self._stderr is None:
-            result = cast(Any, self._runner).run(request)
-        else:
-            result = cast(Any, self._runner).run(request, stdout=self._stdout, stderr=self._stderr)
+        try:
+            if self._stdout is None and self._stderr is None:
+                result = cast(Any, self._runner).run(request)
+            else:
+                result = cast(Any, self._runner).run(request, stdout=self._stdout, stderr=self._stderr)
+        finally:
+            try:
+                cleaned_pt = cleanup_workspace_pt_files(request.workdir)
+                if request.verbose and cleaned_pt:
+                    emit_verbose(
+                        self._verbose_stream,
+                        "agents",
+                        f"cleaned up {len(cleaned_pt)} unused pt file(s): {', '.join(cleaned_pt)}",
+                    )
+            except Exception:
+                pass
         self._artifacts_manager.record_agent_session(
             self._artifacts_state,
             session_id=result.session_id,
