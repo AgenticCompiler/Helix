@@ -10,14 +10,174 @@ from typing import Optional
 from unittest.mock import patch
 
 from tests.run_skill_test_utils import (
-    load_standalone_bench_runtime_module,
+    load_bench_runtime_module,
     make_skill_result,
 )
 
 
 class StandaloneBenchRuntimeTests(unittest.TestCase):
-    def test_load_standalone_bench_cases_builds_hooked_cases(self) -> None:
-        module = load_standalone_bench_runtime_module()
+    def test_load_bench_cases_builds_callables_without_eager_execution(self) -> None:
+        module = load_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            trace_file = root / "trace.txt"
+            bench_file.write_text(
+                f"""# bench-mode: standalone
+# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA, KernelB
+
+TRACE_PATH = r"{trace_file}"
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_bench_cases():
+    with open(TRACE_PATH, "a", encoding="utf-8") as handle:
+        handle.write("declare\\n")
+    return [{{"id": "case-a", "shape": (16,), "warmup": 3, "repeats": 7}}]
+
+def build_bench_case_fn(operator_api, case):
+    with open(TRACE_PATH, "a", encoding="utf-8") as handle:
+        handle.write(f"build:{{case['id']}}\\n")
+    def _run():
+        with open(TRACE_PATH, "a", encoding="utf-8") as handle:
+            handle.write(f"run:{{case['id']}}\\n")
+        operator_api(case["id"], case["shape"])
+    return _run
+""",
+                encoding="utf-8",
+            )
+            operator_file.write_text(
+                """def build_api():
+    def operator_api(case_id, shape):
+        return case_id, shape
+    return operator_api
+""",
+                encoding="utf-8",
+            )
+
+            cases, resolution = module.load_bench_cases(bench_file, operator_file)
+
+            self.assertEqual([case.case_id for case in cases], ["case-a"])
+            self.assertEqual(cases[0].warmup, 3)
+            self.assertEqual(cases[0].repeats, 7)
+            self.assertEqual(cases[0].case_data["id"], "case-a")
+            self.assertEqual(resolution.kernel_names, ["KernelA", "KernelB"])
+            self.assertEqual(trace_file.read_text(encoding="utf-8"), "declare\nbuild:case-a\n")
+
+            cases[0].fn()
+
+            self.assertEqual(
+                trace_file.read_text(encoding="utf-8"),
+                "declare\nbuild:case-a\nrun:case-a\n",
+            )
+
+    def test_load_bench_cases_rejects_missing_hooks_duplicate_ids_and_empty_case_lists(self) -> None:
+        module = load_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            operator_file.write_text("def build_api():\n    return lambda *_args, **_kwargs: None\n", encoding="utf-8")
+
+            bench_file.write_text("def build_bench_cases():\n    return []\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "missing required hook 'build_operator_api'"):
+                module.load_bench_cases(bench_file, operator_file)
+
+            bench_file.write_text(
+                """def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_bench_cases():
+    return []
+
+def build_bench_case_fn(operator_api, case):
+    return lambda: operator_api(case["id"])
+""",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "build_bench_cases' returned no cases"):
+                module.load_bench_cases(bench_file, operator_file)
+
+            bench_file.write_text(
+                """def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_bench_cases():
+    return [{"id": "case-a"}, {"id": "case-a"}]
+
+def build_bench_case_fn(operator_api, case):
+    return lambda: operator_api(case["id"])
+""",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "Duplicate benchmark case id: case-a"):
+                module.load_bench_cases(bench_file, operator_file)
+
+    def test_load_bench_cases_rejects_non_callable_case_builders_and_invalid_case_selection(self) -> None:
+        module = load_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            operator_file.write_text("def build_api():\n    return lambda *_args, **_kwargs: None\n", encoding="utf-8")
+
+            bench_file.write_text(
+                """# bench-mode: standalone
+# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_bench_cases():
+    return [{"id": "case-a"}]
+
+def build_bench_case_fn(operator_api, case):
+    return object()
+""",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "must return a callable"):
+                module.load_bench_cases(bench_file, operator_file)
+
+            bench_file.write_text(
+                """# bench-mode: standalone
+# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_bench_cases():
+    return [{"id": "case-a"}, {"id": "case-b"}]
+
+def build_bench_case_fn(operator_api, case):
+    return lambda: operator_api(case["id"])
+""",
+                encoding="utf-8",
+            )
+            cases, _resolution = module.load_bench_cases(bench_file, operator_file)
+
+            selected = module.select_bench_case(cases, "case-b")
+            self.assertEqual(selected.case_id, "case-b")
+
+            with self.assertRaisesRegex(ValueError, "Available case ids: case-a, case-b"):
+                module.select_bench_case(cases, "case-missing")
+
+            with self.assertRaisesRegex(ValueError, "requires --case-id when multiple cases exist"):
+                module.select_bench_case(cases, None)
+
+            single_case = [cases[0]]
+            self.assertEqual(module.select_bench_case(single_case, None).case_id, "case-a")
+
+    def test_load_bench_cases_rejects_legacy_standalone_hook_contract(self) -> None:
+        module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_case.py"
@@ -48,41 +208,11 @@ def build_standalone_bench_cases(operator_api):
                 encoding="utf-8",
             )
 
-            cases, resolution = module.load_standalone_bench_cases(bench_file, operator_file)
+            with self.assertRaisesRegex(ValueError, "missing required hook 'build_bench_cases'"):
+                module.load_bench_cases(bench_file, operator_file)
 
-        self.assertEqual([case.case_id for case in cases], ["case-a"])
-        self.assertEqual(cases[0].warmup, 3)
-        self.assertEqual(cases[0].repeats, 7)
-        self.assertEqual(resolution.kernel_names, ["KernelA", "KernelB"])
-
-    def test_load_standalone_bench_cases_rejects_missing_hooks_and_duplicate_ids(self) -> None:
-        module = load_standalone_bench_runtime_module()
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            bench_file = root / "bench_case.py"
-            operator_file = root / "operator_case.py"
-            operator_file.write_text("def build_api():\n    return lambda *_args, **_kwargs: None\n", encoding="utf-8")
-
-            bench_file.write_text("def build_standalone_bench_cases(operator_api):\n    return []\n", encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "missing required hook 'build_operator_api'"):
-                module.load_standalone_bench_cases(bench_file, operator_file)
-
-            bench_file.write_text(
-                """def build_operator_api(operator_module):
-    return operator_module.build_api()
-
-def build_standalone_bench_cases(operator_api):
-    def run_case():
-        operator_api()
-    return [{"id": "case-a", "fn": run_case}, {"id": "case-a", "fn": run_case}]
-""",
-                encoding="utf-8",
-            )
-            with self.assertRaisesRegex(ValueError, "Duplicate standalone benchmark case id: case-a"):
-                module.load_standalone_bench_cases(bench_file, operator_file)
-
-    def test_run_local_standalone_bench_writes_msprof_shaped_perf_lines(self) -> None:
-        module = load_standalone_bench_runtime_module()
+    def test_run_local_bench_writes_msprof_shaped_perf_lines(self) -> None:
+        module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_case.py"
@@ -96,10 +226,13 @@ def build_standalone_bench_cases(operator_api):
 def build_operator_api(operator_module):
     return operator_module.build_api()
 
-def build_standalone_bench_cases(operator_api):
+def build_bench_cases():
+    return [{"id": "case-a"}]
+
+def build_bench_case_fn(operator_api, case):
     def run_case():
-        operator_api("case-a")
-    return [{"id": "case-a", "fn": run_case}]
+        operator_api(case["id"])
+    return run_case
 """,
                 encoding="utf-8",
             )
@@ -124,12 +257,10 @@ def build_standalone_bench_cases(operator_api):
                     None,
                 ),
             ), patch.object(module.time, "monotonic", side_effect=[0.0, 1.5]):
-                result, perf_path = module.run_local_standalone_bench(bench_file, operator_file)
+                result, perf_path = module.run_local_bench(bench_file, operator_file)
                 perf_text = perf_path.read_text(encoding="utf-8")
 
         self.assertEqual(result, make_skill_result(0, "", ""))
-        if perf_path is None:
-            self.fail("expected standalone perf path")
         self.assertEqual(
             perf_text,
             (
@@ -137,8 +268,8 @@ def build_standalone_bench_cases(operator_api):
             ),
         )
 
-    def test_run_local_standalone_bench_case_wall_clock_seconds_on_failure(self) -> None:
-        module = load_standalone_bench_runtime_module()
+    def test_run_local_bench_case_wall_clock_seconds_on_failure(self) -> None:
+        module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_case.py"
@@ -152,10 +283,13 @@ def build_standalone_bench_cases(operator_api):
 def build_operator_api(operator_module):
     return operator_module.build_api()
 
-def build_standalone_bench_cases(operator_api):
+def build_bench_cases():
+    return [{"id": "case-a"}]
+
+def build_bench_case_fn(operator_api, case):
     def run_case():
-        operator_api("case-a")
-    return [{"id": "case-a", "fn": run_case}]
+        operator_api(case["id"])
+    return run_case
 """,
                 encoding="utf-8",
             )
@@ -171,12 +305,10 @@ def build_standalone_bench_cases(operator_api):
                 "_profile_case_with_profiler",
                 return_value=(None, "profiling failed"),
             ), patch.object(module.time, "monotonic", side_effect=[0.0, 2.5]):
-                result, perf_path = module.run_local_standalone_bench(bench_file, operator_file)
+                result, perf_path = module.run_local_bench(bench_file, operator_file)
                 perf_text = perf_path.read_text(encoding="utf-8")
 
         self.assertEqual(result, make_skill_result(1, "", "case-a: profiling failed"))
-        if perf_path is None:
-            self.fail("expected standalone perf path")
         self.assertIn('"kernel_avg_time_us":null', perf_text)
         self.assertIn('"case_wall_clock_seconds":2.5', perf_text)
         self.assertIn('"error_message":"profiling failed"', perf_text)
@@ -184,8 +316,8 @@ def build_standalone_bench_cases(operator_api):
         self.assertIn('"kernel_names":["KernelA"]', perf_text)
         self.assertIn('"kernel_source":"metadata"', perf_text)
 
-    def test_run_local_standalone_bench_keeps_profiler_artifacts_under_configured_output_root(self) -> None:
-        module = load_standalone_bench_runtime_module()
+    def test_run_local_bench_keeps_profiler_artifacts_under_configured_output_root(self) -> None:
+        module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_case.py"
@@ -200,12 +332,13 @@ def build_standalone_bench_cases(operator_api):
 def build_operator_api(operator_module):
     return operator_module.build_api()
 
-def build_standalone_bench_cases(operator_api):
-    def run_case_a():
-        operator_api("case-a")
-    def run_case_b():
-        operator_api("case-b")
-    return [{"id": "case-a", "fn": run_case_a}, {"id": "case-b", "fn": run_case_b}]
+def build_bench_cases():
+    return [{"id": "case-a"}, {"id": "case-b"}]
+
+def build_bench_case_fn(operator_api, case):
+    def run_case():
+        operator_api(case["id"])
+    return run_case
 """,
                 encoding="utf-8",
             )
@@ -240,7 +373,7 @@ def build_standalone_bench_cases(operator_api):
                 "_profile_case_with_profiler",
                 side_effect=_fake_profile_case,
             ):
-                result, perf_path = module.run_local_standalone_bench(bench_file, operator_file)
+                result, perf_path = module.run_local_bench(bench_file, operator_file)
             self.assertEqual(result, make_skill_result(0, "", ""))
             self.assertEqual(perf_path, root / "operator_case_perf.txt")
             self.assertTrue(keep_root.exists())
@@ -251,8 +384,8 @@ def build_standalone_bench_cases(operator_api):
             self.assertTrue((created_output_dirs[1] / "case-b.txt").exists())
             self.assertEqual(sorted(path.name for path in created_output_dirs), ["case-case-a", "case-case-b"])
 
-    def test_run_local_standalone_bench_resolves_relative_profile_output_root_to_absolute_path(self) -> None:
-        module = load_standalone_bench_runtime_module()
+    def test_run_local_bench_resolves_relative_profile_output_root_to_absolute_path(self) -> None:
+        module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_case.py"
@@ -267,10 +400,13 @@ def build_standalone_bench_cases(operator_api):
 def build_operator_api(operator_module):
     return operator_module.build_api()
 
-def build_standalone_bench_cases(operator_api):
-    def run_case_a():
-        operator_api("case-a")
-    return [{"id": "case-a", "fn": run_case_a}]
+def build_bench_cases():
+    return [{"id": "case-a"}]
+
+def build_bench_case_fn(operator_api, case):
+    def run_case():
+        operator_api(case["id"])
+    return run_case
 """,
                 encoding="utf-8",
             )
@@ -307,7 +443,7 @@ def build_standalone_bench_cases(operator_api):
                     "_profile_case_with_profiler",
                     side_effect=_fake_profile_case,
                 ):
-                    result, perf_path = module.run_local_standalone_bench(bench_file, operator_file)
+                    result, perf_path = module.run_local_bench(bench_file, operator_file)
             finally:
                 os.chdir(original_cwd)
 
@@ -318,8 +454,8 @@ def build_standalone_bench_cases(operator_api):
             self.assertTrue(created_output_dirs[0].is_absolute())
             self.assertTrue(keep_root.resolve() in created_output_dirs[0].resolve().parents)
 
-    def test_run_local_standalone_bench_cleans_extra_info_after_each_case(self) -> None:
-        module = load_standalone_bench_runtime_module()
+    def test_run_local_bench_cleans_extra_info_after_each_case(self) -> None:
+        module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_case.py"
@@ -335,12 +471,13 @@ def build_standalone_bench_cases(operator_api):
 def build_operator_api(operator_module):
     return operator_module.build_api()
 
-def build_standalone_bench_cases(operator_api):
-    def run_case_a():
-        operator_api("case-a")
-    def run_case_b():
-        operator_api("case-b")
-    return [{"id": "case-a", "fn": run_case_a}, {"id": "case-b", "fn": run_case_b}]
+def build_bench_cases():
+    return [{"id": "case-a"}, {"id": "case-b"}]
+
+def build_bench_case_fn(operator_api, case):
+    def run_case():
+        operator_api(case["id"])
+    return run_case
 """,
                 encoding="utf-8",
             )
@@ -372,15 +509,15 @@ def build_standalone_bench_cases(operator_api):
                 "_profile_case_with_profiler",
                 side_effect=_fake_profile_case,
             ):
-                result, perf_path = module.run_local_standalone_bench(bench_file, operator_file)
+                result, perf_path = module.run_local_bench(bench_file, operator_file)
 
             self.assertEqual(result, make_skill_result(0, "", ""))
             self.assertEqual(perf_path, root / "operator_case_perf.txt")
             self.assertEqual(seen_after_cleanup, [True, False])
             self.assertFalse(extra_info.exists())
 
-    def test_run_local_standalone_bench_reuses_single_case_helper(self) -> None:
-        module = load_standalone_bench_runtime_module()
+    def test_run_local_bench_reuses_single_case_helper(self) -> None:
+        module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_case.py"
@@ -394,12 +531,13 @@ def build_standalone_bench_cases(operator_api):
 def build_operator_api(operator_module):
     return operator_module.build_api()
 
-def build_standalone_bench_cases(operator_api):
-    def run_case_a():
-        operator_api("case-a")
-    def run_case_b():
-        operator_api("case-b")
-    return [{"id": "case-a", "fn": run_case_a}, {"id": "case-b", "fn": run_case_b}]
+def build_bench_cases():
+    return [{"id": "case-a"}, {"id": "case-b"}]
+
+def build_bench_case_fn(operator_api, case):
+    def run_case():
+        operator_api(case["id"])
+    return run_case
 """,
                 encoding="utf-8",
             )
@@ -426,15 +564,15 @@ def build_standalone_bench_cases(operator_api):
                     case_wall_clock_seconds=1.0,
                 )
 
-            with patch.object(module, "_run_standalone_case", side_effect=_fake_run_case):
-                result, perf_path = module.run_local_standalone_bench(bench_file, operator_file)
+            with patch.object(module, "_run_bench_case", side_effect=_fake_run_case):
+                result, perf_path = module.run_local_bench(bench_file, operator_file)
 
             self.assertEqual(result, make_skill_result(0, "", ""))
             self.assertEqual(observed_case_ids, ["case-a", "case-b"])
             self.assertEqual(perf_path, root / "operator_case_perf.txt")
 
-    def test_run_one_standalone_case_record_returns_selected_case_record(self) -> None:
-        module = load_standalone_bench_runtime_module()
+    def test_run_one_bench_case_record_returns_selected_case_record(self) -> None:
+        module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_case.py"
@@ -448,12 +586,13 @@ def build_standalone_bench_cases(operator_api):
 def build_operator_api(operator_module):
     return operator_module.build_api()
 
-def build_standalone_bench_cases(operator_api):
-    def run_case_a():
-        operator_api("case-a")
-    def run_case_b():
-        operator_api("case-b")
-    return [{"id": "case-a", "fn": run_case_a}, {"id": "case-b", "fn": run_case_b}]
+def build_bench_cases():
+    return [{"id": "case-a"}, {"id": "case-b"}]
+
+def build_bench_case_fn(operator_api, case):
+    def run_case():
+        operator_api(case["id"])
+    return run_case
 """,
                 encoding="utf-8",
             )
@@ -477,14 +616,14 @@ def build_standalone_bench_cases(operator_api):
                     case_wall_clock_seconds=2.0,
                 )
 
-            with patch.object(module, "_run_standalone_case", side_effect=_fake_run_case):
-                record = module.run_one_standalone_case_record(bench_file, operator_file, "case-b")
+            with patch.object(module, "_run_bench_case", side_effect=_fake_run_case):
+                record = module.run_one_bench_case_record(bench_file, operator_file, "case-b")
 
             self.assertEqual(record.case_label, "case-b")
             self.assertEqual(record.metrics["kernel_avg_time_us"], 3.5)
 
     def test_read_profiler_metrics_filters_zero_duration_non_kernel_rows(self) -> None:
-        module = load_standalone_bench_runtime_module()
+        module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             profile_root = Path(tmp)
             (profile_root / "operator_details.csv").write_text(
@@ -517,7 +656,7 @@ def build_standalone_bench_cases(operator_api):
         self.assertEqual(metrics["kernel_avg_time_us"], 6.0)
 
     def test_read_profiler_metrics_preserves_zero_duration_resolved_kernel_rows(self) -> None:
-        module = load_standalone_bench_runtime_module()
+        module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             profile_root = Path(tmp)
             (profile_root / "operator_details.csv").write_text(
@@ -547,7 +686,7 @@ def build_standalone_bench_cases(operator_api):
         self.assertEqual(metrics["kernel_avg_time_us"], 0.0)
 
     def test_read_profiler_metrics_falls_back_to_op_statistic_when_operator_details_is_missing(self) -> None:
-        module = load_standalone_bench_runtime_module()
+        module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             profile_root = Path(tmp)
             (profile_root / "op_statistic.csv").write_text(
@@ -578,7 +717,7 @@ def build_standalone_bench_cases(operator_api):
         self.assertEqual(metrics["kernel_avg_time_us"], 1.0)
 
     def test_read_profiler_metrics_falls_back_to_kernel_details_when_operator_details_is_missing(self) -> None:
-        module = load_standalone_bench_runtime_module()
+        module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             profile_root = Path(tmp)
             (profile_root / "kernel_details.csv").write_text(
@@ -610,7 +749,7 @@ def build_standalone_bench_cases(operator_api):
         self.assertEqual(metrics["kernel_avg_time_us"], 5.0)
 
     def test_read_profiler_metrics_falls_back_to_kernel_details_when_operator_details_total_is_zero(self) -> None:
-        module = load_standalone_bench_runtime_module()
+        module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             profile_root = Path(tmp)
             (profile_root / "operator_details.csv").write_text(
@@ -660,7 +799,7 @@ def build_standalone_bench_cases(operator_api):
         self.assertEqual(metrics["kernel_avg_time_us"], 5.0)
 
     def test_profile_case_with_profiler_suppresses_profiler_output(self) -> None:
-        module = load_standalone_bench_runtime_module()
+        module = load_bench_runtime_module()
 
         class _FakeProfilerContext:
             def __init__(self, profile_root: Path, on_trace_ready):
@@ -732,11 +871,12 @@ def build_standalone_bench_cases(operator_api):
 
         fake_torch = SimpleNamespace(npu=SimpleNamespace(synchronize=lambda: None))
         fake_torch_npu = SimpleNamespace(profiler=_FakeProfilerApi())
-        case = module.StandaloneBenchCase(
+        case = module.BenchCase(
             case_id="case-a",
             fn=lambda: (print("case stdout"), print("case stderr", file=sys.stderr)),
             warmup=0,
             repeats=1,
+            case_data={"id": "case-a"},
         )
         resolution = module.KernelResolution(kernel_names=["KernelA"], kernel_source="metadata")
 
@@ -759,7 +899,7 @@ def build_standalone_bench_cases(operator_api):
         self.assertEqual(stderr.getvalue(), "")
 
     def test_profile_case_with_profiler_suppresses_fd_level_output(self) -> None:
-        module = load_standalone_bench_runtime_module()
+        module = load_bench_runtime_module()
 
         class _FakeProfilerContext:
             def __init__(self, profile_root: Path):
@@ -827,7 +967,7 @@ def build_standalone_bench_cases(operator_api):
 
         fake_torch = SimpleNamespace(npu=SimpleNamespace(synchronize=lambda: None))
         fake_torch_npu = SimpleNamespace(profiler=_FakeProfilerApi())
-        case = module.StandaloneBenchCase(
+        case = module.BenchCase(
             case_id="case-a",
             fn=lambda: (
                 os.write(1, b"case fd stdout\n"),
@@ -835,6 +975,7 @@ def build_standalone_bench_cases(operator_api):
             ),
             warmup=0,
             repeats=1,
+            case_data={"id": "case-a"},
         )
         resolution = module.KernelResolution(kernel_names=["KernelA"], kernel_source="metadata")
 

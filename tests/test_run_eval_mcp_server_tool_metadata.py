@@ -79,6 +79,7 @@ class RunEvalMCPServerToolMetadataTests(unittest.TestCase):
             tools["profile-bench"].parameters["properties"]["bench_mode"]["description"],
             "Optional benchmark mode override. Supported values: standalone, msprof.",
         )
+        self.assertNotIn("bench", tools["profile-bench"].parameters["properties"])
 
         self.assertEqual(
             tools["profile-report"].description,

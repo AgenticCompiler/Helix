@@ -12,7 +12,7 @@ Rules:
 
 Mode notes:
 
-- In `standalone` mode, the benchmark file is import-only. `run-bench` imports the module, calls `build_operator_api(operator_module)`, then calls `build_standalone_bench_cases(operator_api)`.
+- In both modes, the benchmark file is import-only. `run-bench` imports the module, calls `build_operator_api(operator_module)`, reads declared cases from `build_bench_cases()`, and constructs each executable case via `build_bench_case_fn(operator_api, case)`.
 - In `standalone` mode, the runner profiles each declared case with `torch_npu.profiler` and writes `latency-<case-id>` perf entries.
 - In `msprof` mode, `run-bench` aggregates the stable-order union of benchmark metadata kernels and `@triton.jit` kernels discovered from the runtime `operator_file`.
 - In `msprof` mode, a failed benchmark case does not stop later cases from running; the generated perf file keeps successful cases and records `# latency-error-case-*` comments for failed ones.

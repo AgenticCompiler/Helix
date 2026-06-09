@@ -28,9 +28,8 @@ def load_profile_runner_module():
 def load_compare_result_module():
     return load_operator_eval_script_module("compare_result")
 
-
-def load_standalone_bench_runtime_module():
-    return load_operator_eval_script_module("standalone_bench_runtime")
+def load_bench_runtime_module():
+    return load_operator_eval_script_module("bench_runtime")
 
 
 def load_profile_csv_parser_module():

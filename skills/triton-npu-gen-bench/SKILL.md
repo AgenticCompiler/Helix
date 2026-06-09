@@ -40,7 +40,7 @@ Use this skill when the user needs a performance benchmark file for standalone t
 - For `msprof` mode, the generated file must follow [bench-msprof-spec.md](references/bench-msprof-spec.md).
 - Treat those spec files as mandatory output contracts.
 
-## Generated File Metadata and CLI Contract
+## Generated File Metadata and Contract
 
 The generated benchmark file must include a short metadata header near the top of the file:
 
@@ -49,14 +49,17 @@ The generated benchmark file must include a short metadata header near the top o
 - `# api-kind: <triton-wrapper|torch-function|torch-module>`
 - `# kernels: <resolved_kernel_names>`
 
-For `standalone` mode, the generated file must be an **import-only** module that exports:
+Across benchmark modes, the generated file must be an **import-only** module that exports:
 
 - `build_operator_api(operator_module)`
-- `build_standalone_bench_cases(operator_api)`
+- `build_bench_cases()`
+- `build_bench_case_fn(operator_api, case)`
 
-For `standalone` mode, do **not** generate `main()`, `argparse`, or direct runtime CLI handling in the benchmark file.
+Across benchmark modes, keep the generated benchmark focused on the benchmark contract itself:
 
-For `msprof` mode, keep the executable benchmark CLI shape with `--operator-file`, optional `--bench <N>`, and `--num-bench`.
+- do not turn the benchmark file into a self-executing command-line program
+- do not add extra runtime interfaces beyond the required metadata and hooks
+- let external execution tooling handle loading, selection, and profiling
 
 Across benchmark modes, keep case data reproducible: if the generated harness uses randomized inputs, explicitly fix the seed during case construction so repeated runs of the same harness produce identical inputs.
 
@@ -65,13 +68,9 @@ Across benchmark modes, keep case data reproducible: if the generated harness us
 Use the triton-npu-run-eval skill to execute generated benchmark cases.
 Use `run-bench` as the standard execution command for generated benchmarks.
 
-- Standalone example on the original operator:
-  - `python3 ../triton-npu-run-eval/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench-mode standalone`
-- Standalone example on an optimized operator:
-  - `python3 ../triton-npu-run-eval/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode standalone`
-- Msprof example:
-  - `python3 ../triton-npu-run-eval/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof`
-If the outer task is marked for remote execution, carry the same remote flags into these commands.
+- For command details and required inputs, read only the focused `run-bench` guide from that skill.
+- Validate the original-operator or optimized-operator path that matches the outer task.
+- If the outer task is marked for remote execution, carry the same remote settings into the `run-bench` path.
 
 ## Workflow
 
@@ -81,8 +80,8 @@ If the outer task is marked for remote execution, carry the same remote flags in
 3. Select the requested benchmark mode and read the corresponding spec before generating code.
 4. Generate a benchmark harness that follows the selected spec, keeps setup separate from measurement when practical, and writes the required metadata header.
    - If the harness uses randomized input generation, fix the seed inside case construction so repeated runs of the same harness produce identical inputs.
-   - For `standalone`, implement `build_operator_api(operator_module)` and `build_standalone_bench_cases(operator_api)` instead of a directly executable timing script.
-5. If auto-fix is active, validate the generated benchmark with `run-bench` using one of the command patterns above instead of doing a separate syntax-only check.
+   - For both modes, implement `build_operator_api(operator_module)`, `build_bench_cases()`, and `build_bench_case_fn(operator_api, case)` instead of a directly executable timing script.
+5. If auto-fix is active, validate the generated benchmark with `run-bench` through the focused run-eval guide instead of doing a separate syntax-only check.
 6. If validation fails, repair only the benchmark file according to the self-repair rules below, retry, and then return a runnable script plus a short assumptions summary.
    - For Triton Ascend compile, JIT, launch, or kernel-side failures, consult the `triton-npu-repair-guide` skill as a diagnostic reference before deciding on the smallest safe benchmark-side change.
    - This workflow still owns only the generated benchmark file. Do not treat `triton-npu-repair-guide` as permission to edit the operator file here.
@@ -95,7 +94,7 @@ If the outer task is marked for remote execution, carry the same remote flags in
 - Keep generated code easy to edit by hand.
 - Randomized input generation is allowed only when the generated harness explicitly fixes the seed so repeated runs of the same harness produce identical inputs.
 - In `standalone` mode, do not embed timing or profiler logic in the benchmark file. The runner owns `torch_npu.profiler` execution and perf artifact generation.
-- Do not violate CLI, naming, warmup, artifact, or output rules from the selected spec.
+- Do not violate interface, naming, warmup, artifact, or output rules from the selected spec.
 - Do not spend a separate step on syntax-only checking; rely on `run-bench` as the validation path.
 - When auto-fix mode is active, only repair the generated benchmark file; do not modify the operator file.
 - Do not treat raw `@triton.jit` kernel functions as direct harness APIs.
@@ -115,6 +114,6 @@ For Triton Ascend compile, JIT, launch, or kernel-side failures, you may consult
 | **General error** (CLI, shape mismatch, runtime, etc.) | Apply a minimal targeted fix — preserve the overall benchmark structure |
 | **ModuleNotFoundError** or environment issue | Report that the benchmark cannot be fixed from inside the benchmark file alone |
 
-After any repair, always preserve the metadata header. For `standalone`, preserve the hook export pattern. For `msprof`, preserve the runtime `--operator-file` interface and `main()` entry point pattern.
+After any repair, always preserve the metadata header and the shared import-only hook export pattern.
 
 Always enforce the mode-specific spec file first.

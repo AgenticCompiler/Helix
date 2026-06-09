@@ -1,63 +1,60 @@
-## Benchmark file specification for Triton kernels
+## Msprof benchmark file specification for Triton operators
 
-This document describes the specification for benchmark files (e.g. `bench_abs.py`) for Triton operators. The goal of the benchmark is **benchmarking and profiling only**—no correctness checking.
-
-An operator may contain:
-- kernel functions
-- a public entrypoint implemented as a Triton wrapper function
-- a public entrypoint implemented as a PyTorch function
-- a public entrypoint implemented as a `torch.nn.Module` class
+This document describes msprof-oriented benchmark files for Triton Ascend operators. The goal is to produce an import-only benchmark module that declares deterministic NPU benchmark cases while the runner owns case selection, `msprof` invocation, perf parsing, and output formatting.
 
 The benchmark must call the resolved public entrypoint to run the operator. Raw `@triton.jit` kernels are not valid direct harness APIs.
 
 ### 1. File naming and location
 
-- For an operator implemented in `<op>.py` (e.g. `abs.py`), the benchmark file **must** be named **`bench_<op>.py`** in the **same directory** as `<op>.py`.
-- Example: `dataset/Flaggems/abs/abs.py` → `dataset/Flaggems/abs/bench_abs.py`.
+- For an operator implemented in `<op>.py` (for example `abs.py`), the benchmark file **must** be named **`bench_<op>.py`** in the **same directory** as `<op>.py`.
+- Example: `dataset/Flaggems/abs/abs.py` -> `dataset/Flaggems/abs/bench_abs.py`.
 
-### 2. Command-line interface and main flow
-
-The benchmark module must support two usages when run as `python -m bench_<op>` (from the directory containing `bench_<op>.py`):
+### 2. Module contract and metadata
 
 The benchmark file must include this metadata header near the top of the file:
 
 ```python
 # bench-mode: msprof
-# api-name: <name>
-# api-kind: <triton-wrapper|torch-function|torch-module>
-# kernels: <name>
+# api-name: <resolved_entrypoint>
+# api-kind: <resolved_api_kind>
+# kernels: <resolved_kernel_names>
 ```
 
-| Command | Behavior |
-|--------|----------|
-| `python -m bench_<op> --operator-file <operator-file> --bench <N>` | Load the resolved public entrypoint from the `<operator-file>` in the same directory (e.g. an optimized variant like `opt_abs_method1.py`) using the generated harness's `# api-name:` and `# api-kind:` contract. Then run the **N-th** benchmark case (1-based). |
-| `python -m bench_<op> --num-bench` | Print the **total number** of benchmark cases for this op and exit. |
+`<resolved_api_kind>` must be replaced with exactly one supported enum value:
 
-- When `--num-bench` is provided, **all other arguments MUST be optional**. The script
-  **must NOT** require `--operator-file` in this mode; the following
-  command must work without error:
-  - `python bench_<op>.py --num-bench`
-- If `--bench N` is provided, then `--operator-file` is required.
-- The benchmark file must define a `main()` function that parses `--operator-file`, `--bench`, and `--num-bench`, then either prints the case count or runs the selected benchmark case.
+- `triton-wrapper`
+- `torch-function`
+- `torch-module`
+
+The file must be **import-only**:
+
+- Do not make the benchmark file a self-executing command-line program.
+- Do not execute the benchmark when the module is imported.
+
+The module must export:
+
+- `build_operator_api(operator_module)`
+- `build_bench_cases()`
+- `build_bench_case_fn(operator_api, case)`
+
+External execution tooling owns module loading, case selection, profiling wrapping, and metric extraction.
 
 ### 3. Operator API loading
 
-- The benchmark file **must not** rely on package imports that depend on run context, instead it must **load the operator module by file path** specified by `--operator-file`.
-- If `--operator-file` is set: load `<operator-file>` from that directory, and then from the loaded module, use the generated harness's `# api-name:` and `# api-kind:` contract to obtain the operator API.
-- Use `importlib.util.spec_from_file_location` and `exec_module` to load the module.
-- If that named API does not exist in the runtime operator file, fail explicitly instead of guessing.
-- If the public entrypoint is valid but the Triton kernel names cannot be resolved safely, fail explicitly because msprof mode still requires stable `# kernels:` metadata.
+- The benchmark file **must not** hard-code an import of the operator module.
+- External execution tooling provides the imported operator module object to `build_operator_api(operator_module)`.
+- `build_operator_api(operator_module)` must return the final callable object that external execution tooling should invoke.
+- If the named API does not exist in the runtime operator module, fail explicitly instead of guessing.
+- Msprof mode still requires stable `# kernels: <resolved_kernel_names>` metadata so profiler rows can be resolved after execution.
+- For `torch-module`, this hook owns any safe constructor arguments or method binding needed to produce the final callable. If constructor arguments cannot be determined safely, fail explicitly instead of guessing.
 
 #### 3.1 `triton-wrapper`
 
 Use this kind when the public API is a Python wrapper function around Triton kernels.
 
 ```python
-def load_operator_api(operator_file: str, api_name: str):
-    spec = importlib.util.spec_from_file_location("operator_module", operator_file)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return getattr(module, api_name)
+def build_operator_api(operator_module):
+    return getattr(operator_module, API_NAME)
 ```
 
 #### 3.2 `torch-function`
@@ -65,67 +62,61 @@ def load_operator_api(operator_file: str, api_name: str):
 Use this kind when the public API is a plain PyTorch-facing function or operator entrypoint that may internally call Triton kernels.
 
 ```python
-def load_operator_api(operator_file: str, api_name: str):
-    spec = importlib.util.spec_from_file_location("operator_module", operator_file)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return getattr(module, api_name)
+def build_operator_api(operator_module):
+    return getattr(operator_module, API_NAME)
 ```
 
 #### 3.3 `torch-module`
 
-Use this kind when the public API is a `torch.nn.Module` class that can be instantiated without constructor arguments.
+Use this kind when the public API is a `torch.nn.Module` class or module method.
 
 ```python
-def load_operator_api(operator_file: str, api_name: str):
-    spec = importlib.util.spec_from_file_location("operator_module", operator_file)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    entrypoint_cls = getattr(module, api_name)
-    try:
-        return entrypoint_cls()
-    except TypeError as exc:
-        raise RuntimeError(
-            "torch-module entrypoints must support no-argument construction; "
-            "constructor arguments are not supported in generated harnesses"
-        ) from exc
+def build_operator_api(operator_module):
+    entrypoint_cls = getattr(operator_module, API_NAME)
+    model = entrypoint_cls(*MODEL_INIT_ARGS)
+    model = model.npu().eval()
+    return model
 ```
 
-If a `torch-module` entrypoint requires constructor arguments, fail explicitly with an actionable error about unsupported constructor arguments.
+If the generator cannot determine safe constructor arguments, fail explicitly with an actionable error about unsupported constructor arguments.
 
-### 4. Benchmark case data (no external input)
+### 4. Benchmark case declaration
 
-- The benchmark file **must not** read from external files (e.g. CSV or Excel). Instead, it **must** write all benchmark case data in `bench_<op>.py` as a constant list (or similar in-file structure).
-- Each case is defined by the dimensions/dtypes needed for that op (e.g. for a unary op: one dtype and one shape; for a binary op: dtype and one or more shapes, as appropriate).
-- You may use multiple dtypes, but the total number of benchmark cases (shapes × dtypes)
-  must be **<= 20**. For example:
-  - If you use 2 dtypes, test at most 10 shapes in total.
-  - If you use 3 dtypes, choose shapes so that `len(shapes) * len(dtypes) <= 20`.
+- `build_bench_cases()` must return the full benchmark case list in stable execution order.
+- Each case must be a mapping with:
+  - `id`: required, non-empty string, unique within the file
+  - optional execution hints such as `warmup`, `repeats`, and `seed`
+  - additional operator-specific shape, dtype, layout, and attribute fields as needed
+- `build_bench_cases()` must be a cheap declaration step:
+  - do not allocate NPU tensors
+  - do not execute the operator
+  - do not depend on single-use side effects
+- The total number of benchmark cases must be **<= 20**.
 - When the operator's shape space is broad enough, prefer **8-20 representative cases** instead of tiny suites.
-- The generated case list should cover small, medium, and large representative shapes unless the operator's valid inputs are genuinely narrow.
-- Example for a unary op: a list of `(dtype, shape)` tuples, where `shape` is a tuple of integers (e.g. `(1073741824,)` or `(64, 64)`).
-- Name the list clearly (e.g. `ABS_BENCH_CASES` for abs). The number of elements is the number of benchmarks; `--num-bench` prints `len(<this_list>)`.
+- The declared case list should cover small, medium, and large representative shapes unless the operator's valid inputs are genuinely narrow.
+- Case declarations should be deterministic and repeatable across local, remote, parallel, and IR-capture workflows.
 
-### 5. Parameterized benchmark dispatch
+### 5. Benchmark callable construction
 
-- The benchmark file **must** have a **single core function** (e.g. `run_bench(operator_api, dtype, shape)`) that takes the resolved operator callable and the case parameters (dtype, shape(s)).
-- **Do not** define one function per case (e.g. no `bench_1` ... `bench_K`). In `main()`, use the `--bench N` argument (1-based) to select the N-th case from the embedded list and call `run_bench(kernel_fn, *CASES[N - 1])` directly.
-- Each embedded case should carry a stable case id so normalized benchmark output can be compared by id rather than only by positional order.
+- `build_bench_case_fn(operator_api, case)` must return a zero-argument callable for one benchmark case.
+- This hook is where benchmark-specific input construction belongs:
+  - tensor allocation
+  - deterministic random seeding
+  - attribute binding
+  - closure creation
+- Randomized input generation is allowed, but the hook must explicitly fix the seed so repeated runs of the same harness produce identical inputs.
+- Build setup outside the returned callable whenever practical so the measured callable contains only the benchmarked operator body.
 
-### 6. Core benchmark logic (e.g. `run_bench`)
+### 6. Msprof execution rules
 
 - **Execution device:** The harness **must** exercise the operator on **Ascend NPU only**. Do **not** generate benchmarks intended to run primarily on CUDA, CPU, or other accelerators, or that branch to a non-NPU device for the code under test.
-- Create the required tensor(s) for the kernel with the case’s dtype and shape(s).
-- **All tensors must be created on device `"npu"`** (not `"cuda"`).
-- Randomized input generation is allowed, but the harness must explicitly fix the seed during case construction so repeated runs of the same harness produce identical inputs.
-- Do not depend on ambient global RNG state or prior random draws to keep cases stable.
-- Declare fixed execution counts near the top of the file:
-  - `MSPROF_WARMUP_ITERS = 5`
-  - `MSPROF_REPEAT_ITERS = 50`
-- **Warmup:** run the kernel **5 times** before measured repetition begins.
-- **Repeat:** after warmup, run the kernel **50 times** so the profiler observes a more stable sample.
-- **Do not** perform any correctness check (no comparison to reference implementation).
-- **Do not** call `torch.npu.synchronize()` (or any device synchronize) in the benchmark code.
+- All tensors must be created on device **`"npu"`**.
+- Do **not** perform correctness checks in this file.
+- Do **not** call `torch.npu.synchronize()` (or any device synchronize) in the benchmark file.
+- External execution tooling resolves the selected case, executes the zero-argument callable through profiling, and maps profiler output back to the declared case id.
+- Generated msprof cases should usually declare:
+  - **Warmup:** run the selected benchmark case **5 times**
+  - **Repeat:** after warmup, run the selected benchmark case **50 times**
 
 ### 7. Example
 
@@ -135,46 +126,39 @@ If a `torch-module` entrypoint requires constructor arguments, fail explicitly w
 # api-kind: <resolved_api_kind>
 # kernels: <resolved_kernel_names>
 
-import argparse
-import importlib.util
 import torch
 
 API_NAME = "<resolved_entrypoint>"
-MSPROF_WARMUP_ITERS = 5
-MSPROF_REPEAT_ITERS = 50
-CASES = [...]
+DEFAULT_WARMUP = 5
+DEFAULT_REPEATS = 50
 
-def make_inputs(case):
+
+def build_operator_api(operator_module):
+    return getattr(operator_module, API_NAME)
+
+
+def build_bench_cases():
+    return [
+        {
+            "id": "fp16_1024",
+            "shape": (1024,),
+            "dtype": torch.float16,
+            "seed": 0,
+            "warmup": DEFAULT_WARMUP,
+            "repeats": DEFAULT_REPEATS,
+        }
+    ]
+
+
+def build_bench_case_fn(operator_api, case):
     torch.manual_seed(case["seed"])
-    ...
+    x = torch.rand(case["shape"], device="npu", dtype=case["dtype"])
 
-def run_bench(operator_api, case):
-    inputs = make_inputs(case)
-    for _ in range(MSPROF_WARMUP_ITERS):
-        operator_api(*inputs)
-    for _ in range(MSPROF_REPEAT_ITERS):
-        operator_api(*inputs)
+    def _run():
+        for _ in range(case.get("warmup", DEFAULT_WARMUP)):
+            operator_api(x)
+        for _ in range(case.get("repeats", DEFAULT_REPEATS)):
+            operator_api(x)
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--operator-file")
-    parser.add_argument("--bench", type=int)
-    parser.add_argument("--num-bench", action="store_true")
-    args = parser.parse_args()
-
-    if args.num_bench:
-        print(len(CASES))
-        return
-
-    if args.operator_file is None or args.bench is None:
-        raise SystemExit("--operator-file and --bench are required unless --num-bench is used")
-    if args.bench < 1 or args.bench > len(CASES):
-        raise SystemExit(f"--bench must be between 1 and {len(CASES)}")
-
-    operator_api = load_operator_api(args.operator_file, API_NAME)
-    run_bench(operator_api, CASES[args.bench - 1])
-
-
-if __name__ == "__main__":
-    main()
+    return _run
 ```
