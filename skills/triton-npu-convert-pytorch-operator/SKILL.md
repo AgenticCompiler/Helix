@@ -38,11 +38,14 @@ Use this skill when the user wants a new converted operator artifact instead of 
 11. Do not introduce unnecessary wrappers, compatibility branches, helper layers, or scaffolding that do not materially serve the converted Triton NPU path.
 12. Target Ascend NPU only for this conversion flow; do not add CUDA, CPU, MPS, or generic multi-backend fallback logic unless the source file already requires shared import structure around the public API.
 13. Do not add differential test code directly into the converted operator file.
-14. Use `triton-npu-gen-test` to generate a differential test for the converted output.
-15. Use the original input operator as the differential reference implementation and the converted output as the system under test.
-16. Use `triton-npu-run-eval` to execute the differential test against the converted output.
-17. If the converted output hits Triton compile, JIT, launch, or kernel-structure errors, use `triton-npu-repair-guide` for operator-side repair heuristics.
-18. Finish only after the differential test passes or a clear environment blocker prevents further progress.
+14. If a suitable test already exists in the operator workspace, reuse it.
+15. This includes existing standalone and differential test cases when they already cover the operator workspace.
+16. Do not create a new test when an existing suitable test can be reused unless the user explicitly asks to regenerate it.
+17. When no suitable reusable test exists, use `triton-npu-gen-test` to generate a test for the converted output.
+18. Use the original input operator as the reference implementation and the converted output as the system under test.
+19. Use `triton-npu-run-eval` to execute the test against the converted output to ensure its correctness.
+20. If the converted output hits Triton compile, JIT, launch, or kernel-structure errors, use `triton-npu-repair-guide` for operator-side repair heuristics.
+21. Finish only after the test passes or a clear environment blocker prevents further progress.
 
 ## Converted Example
 
