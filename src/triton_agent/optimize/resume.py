@@ -143,7 +143,7 @@ def resolve_optimize_resume(
             workspace_state="no-session",
             resume_existing_session=False,
             test_mode=requested_test_mode or "differential",
-            bench_mode=requested_bench_mode or "standalone",
+            bench_mode=requested_bench_mode or "torch-npu-profiler",
         )
 
     if resume_mode == "continue":
@@ -158,7 +158,7 @@ def resolve_optimize_resume(
             workspace_state="no-session",
             resume_existing_session=False,
             test_mode=requested_test_mode or "differential",
-            bench_mode=requested_bench_mode or "standalone",
+            bench_mode=requested_bench_mode or "torch-npu-profiler",
         )
     if inspection.state == "partial-session":
         raise ValueError(f"resume auto found partial optimize state: {inspection.detail}")
@@ -297,7 +297,9 @@ def _parse_test_mode(test_file: Path) -> str | None:
 def _parse_bench_mode(bench_file: Path) -> str | None:
     metadata = parse_bench_metadata(bench_file)
     mode = metadata.get("bench-mode")
-    if mode not in {"standalone", "msprof"}:
+    if mode == "standalone":
+        return "torch-npu-profiler"
+    if mode not in {"torch-npu-profiler", "msprof"}:
         return None
     return str(mode)
 

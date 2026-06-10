@@ -47,9 +47,9 @@ This is useful when you want to:
 ## Working rules
 
 - Prefer `python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench ...` for benchmark profiling, especially when the workflow is remote-aware.
-- If the benchmark metadata says `# bench-mode: standalone`, profile one selected `--case-id <id>` case and do not pass `--bench`; standalone mode must not receive `--bench` or `--num-bench`.
-- If the benchmark metadata says `# bench-mode: msprof`, first query `--num-bench`, then profile the requested `--bench <N>` case; this mode requires resolvable `# kernels:` metadata in the benchmark header.
-- Pass `--kernel-name <name>` when the benchmark metadata declares more than one kernel. If the metadata resolves to exactly one kernel, `profile-bench` may choose it automatically.
+- profile one selected `--case-id <id>` case for both `torch-npu-profiler` and `msprof`; benchmark profiling must not receive `--bench` or `--num-bench`.
+- If the benchmark file declares exactly one case, the helper may auto-select it; otherwise provide `--case-id`.
+- If the benchmark metadata says `# bench-mode: msprof`, the selected case still requires resolvable `# kernels:` metadata in the benchmark header.
 - When the outer task is remote-aware, pass the same `--remote` and `--remote-workdir` settings through `profile-bench` so profiling runs on the remote machine while the resulting `PROF_*` directory is copied back locally.
 - Keep direct `msprof <command>` only as a local fallback when there is no generated benchmark harness or when the user explicitly wants a manual invocation.
 - Treat `op_summary_*.csv` as potentially large. Do not dump it into the conversation or read it naively line-by-line into memory if a streaming pass is enough.
@@ -61,14 +61,14 @@ This is useful when you want to:
 
 ## Bench mode contract
 
-- `standalone`
+- `torch-npu-profiler`
   - Use:
     ```bash
     python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py --case-id <id>
     ```
   - Runtime command shape inside the helper:
     ```bash
-    python3 standalone_bench_runtime.py profile-one --bench-file bench_<operator>.py --operator-file <operator>.py --case-id <id>
+    python3 bench_runtime.py profile-one --bench-file bench_<operator>.py --operator-file <operator>.py --case-id <id>
     ```
   - Do not pass `--bench` or `--num-bench`.
   - The helper profiles one selected `--case-id <id>` case with `torch_npu.profiler`.
@@ -76,12 +76,14 @@ This is useful when you want to:
 - `msprof`
   - Use:
     ```bash
-    python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench 1 --kernel-name <kernel>
+    python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py --case-id <id>
     ```
-  - The helper will first query `python3 bench_<operator>.py --num-bench`.
-  - The helper then profiles the requested `--bench <N>` case and defaults to case `1` when `--bench` is omitted.
+  - Runtime command shape inside the helper:
+    ```bash
+    msprof python3 bench_runtime.py run-one --bench-file bench_<operator>.py --operator-file <operator>.py --case-id <id>
+    ```
+  - The helper profiles the requested `--case-id <id>` case and may auto-select only when the benchmark declares exactly one case.
   - This mode requires benchmark metadata with `# kernels: <resolved_kernel_names>`.
-  - When the benchmark metadata declares more than one kernel, pass `--kernel-name <name>` explicitly.
 
 ## Validation checks
 
@@ -112,7 +114,7 @@ This is useful when you want to:
 - `scripts/msprof_parser.py`
   Parses `PROF_*/mindstudio_profiler_output/` artifacts: `op_statistic`, `op_summary`, `task_time`, `api_statistic`, `msprof` JSON.
 
-- `scripts/standalone_parser.py`
+- `scripts/torch_npu_profiler_parser.py`
   Parses `ASCEND_PROFILER_OUTPUT/` artifacts: `op_statistic`, `kernel_details`, `operator_details`, `step_trace_time`, `api_statistic`, `trace_view`.
 
 - `scripts/parse_bin.py`
@@ -142,14 +144,14 @@ python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file
 Profile one `msprof` benchmark case on a remote machine and keep the remote workspace:
 
 ```bash
-python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file opt_matmul.py --bench 2 --remote user@host:2222 --remote-workdir /tmp/triton-agent --keep-remote-workdir
+python3 ../triton-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file opt_matmul.py --case-id fp16_2048 --remote user@host:2222 --remote-workdir /tmp/triton-agent --keep-remote-workdir
 ```
 
-Fallback manual profiling when no benchmark harness exists:
+Fallback manual profiling when you intentionally bypass the helper:
 
 ```bash
-msprof python3 bench_matmul.py --operator-file matmul.py
-python3 ../triton-npu-run-eval/scripts/run-command.py profile-report --profile-dir . --target-op MatMul
+msprof python3 bench_runtime.py run-one --bench-file bench_matmul.py --operator-file matmul.py --case-id fp16_1024
+python3 ../triton-npu-run-eval/scripts/run-command.py profile-report --profile-dir PROF_000001_.../ --target-op MatMul
 ```
 
 Inspect a raw profiler binary block:

@@ -186,7 +186,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             bench_file = root / "bench_kernel.py"
             perf_file = root / "kernel_perf.txt"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             args = parser.parse_args(
                 [
@@ -223,7 +223,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             operator = root / "kernel.py"
             bench_file = root / "bench_kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             args = parser.parse_args(
                 [
@@ -256,7 +256,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             operator = root / "kernel.py"
             bench_file = root / "bench_kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             args = parser.parse_args(
                 [
@@ -287,7 +287,7 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             mocked.assert_called_once_with(
                 bench_file.resolve(),
                 operator.resolve(),
-                "standalone",
+                "torch-npu-profiler",
                 "alice@example.com",
                 "/tmp/triton-agent",
                 None,

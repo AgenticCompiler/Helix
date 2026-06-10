@@ -15,12 +15,12 @@ class ProfileRunnerTests(unittest.TestCase):
             bench_file = root / "bench_kernel.py"
             operator_file = root / "kernel.py"
             profile_dir = root / "PROF_demo"
-            bench_file.write_text("# bench-mode: standalone\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n", encoding="utf-8")
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
 
             with patch.object(
                 module,
-                "profile_local_standalone_case",
+                "profile_local_torch_npu_profiler_case",
                 create=True,
                 return_value=make_skill_result(0, "profile stdout\n", ""),
             ) as helper, patch.object(
@@ -49,12 +49,27 @@ class ProfileRunnerTests(unittest.TestCase):
             output_dir = profile_dir / "mindstudio_profiler_output"
             output_dir.mkdir(parents=True)
             (output_dir / "op_statistic_1.csv").write_text("header\n", encoding="utf-8")
-            bench_file.write_text("# bench-mode: msprof\n# kernel: kernel_name\n", encoding="utf-8")
+            bench_file.write_text(
+                """# bench-mode: msprof
+# api-name: kernel
+# api-kind: torch-function
+# kernels: kernel_name
+
+def build_operator_api(operator_module):
+    return operator_module.kernel
+
+def build_bench_cases():
+    return [{"id": "case-a"}, {"id": "case-b"}]
+
+def build_bench_case_fn(operator_api, case):
+    return lambda: operator_api()
+""",
+                encoding="utf-8",
+            )
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
 
-            count_result = make_skill_result(0, "3\n", "")
             profile_result = make_skill_result(0, "profile stdout\n", "")
-            with patch.object(module, "run_buffered_process", return_value=count_result) as buffered, patch.object(
+            with patch.object(
                 module,
                 "run_streaming_process",
                 return_value=profile_result,
@@ -63,47 +78,63 @@ class ProfileRunnerTests(unittest.TestCase):
                     bench_file,
                     operator_file,
                     "msprof",
-                    bench_case=2,
+                    case_id="case-b",
                 )
 
         self.assertEqual(result["return_code"], 0)
         self.assertEqual(resolved_profile_dir, profile_dir)
         self.assertEqual(
-            buffered.call_args.args[0],
-            [sys.executable, "bench_kernel.py", "--num-bench"],
-        )
-        self.assertEqual(
             mocked.call_args.args[0],
             [
                 "msprof",
                 sys.executable,
+                "bench_runtime.py",
+                "run-one",
+                "--bench-file",
                 "bench_kernel.py",
                 "--operator-file",
                 "kernel.py",
-                "--bench",
-                "2",
+                "--case-id",
+                "case-b",
             ],
         )
 
-    def test_run_local_profile_bench_msprof_rejects_out_of_range_case(self) -> None:
+    def test_run_local_profile_bench_msprof_requires_case_id_when_multiple_cases_exist(self) -> None:
         module = load_profile_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_kernel.py"
             operator_file = root / "kernel.py"
-            bench_file.write_text("# bench-mode: msprof\n# kernel: kernel_name\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\n# kernels: kernel_name\n", encoding="utf-8")
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
 
-            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")):
-                with self.assertRaises(ValueError):
+            with patch.object(
+                module,
+                "_load_bench_runtime_module",
+            ) as load_runtime:
+                load_runtime.return_value = type(
+                    "_FakeRuntime",
+                    (),
+                    {
+                        "load_bench_cases": staticmethod(
+                            lambda *_args, **_kwargs: (
+                                [
+                                    type("_Case", (), {"case_id": "case-a"})(),
+                                    type("_Case", (), {"case_id": "case-b"})(),
+                                ],
+                                None,
+                            )
+                        ),
+                    },
+                )()
+                with self.assertRaisesRegex(ValueError, "requires --case-id when multiple cases exist"):
                     module.run_local_profile_bench(
                         bench_file,
                         operator_file,
                         "msprof",
-                        bench_case=2,
                     )
 
-    def test_run_local_profile_bench_msprof_defaults_to_first_case_without_kernel_filter(self) -> None:
+    def test_run_local_profile_bench_msprof_defaults_to_single_case(self) -> None:
         module = load_profile_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -116,13 +147,27 @@ class ProfileRunnerTests(unittest.TestCase):
             bench_file.write_text("# bench-mode: msprof\n# kernels: kernel_name\n", encoding="utf-8")
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
 
-            count_result = make_skill_result(0, "1\n", "")
             profile_result = make_skill_result(0, "profile stdout\n", "")
-            with patch.object(module, "run_buffered_process", return_value=count_result), patch.object(
+            with patch.object(
                 module,
                 "run_streaming_process",
                 return_value=profile_result,
-            ) as mocked:
+            ) as mocked, patch.object(
+                module,
+                "_load_bench_runtime_module",
+            ) as load_runtime:
+                load_runtime.return_value = type(
+                    "_FakeRuntime",
+                    (),
+                    {
+                        "load_bench_cases": staticmethod(
+                            lambda *_args, **_kwargs: (
+                                [type("_Case", (), {"case_id": "only-case"})()],
+                                None,
+                            )
+                        ),
+                    },
+                )()
                 result, resolved_profile_dir = module.run_local_profile_bench(
                     bench_file,
                     operator_file,
@@ -136,11 +181,14 @@ class ProfileRunnerTests(unittest.TestCase):
             [
                 "msprof",
                 sys.executable,
+                "bench_runtime.py",
+                "run-one",
+                "--bench-file",
                 "bench_kernel.py",
                 "--operator-file",
                 "kernel.py",
-                "--bench",
-                "1",
+                "--case-id",
+                "only-case",
             ],
         )
 
@@ -155,14 +203,26 @@ class ProfileRunnerTests(unittest.TestCase):
             output_dir.mkdir(parents=True)
             (output_dir / "op_statistic_1.csv").write_text("header\n", encoding="utf-8")
             bench_file.write_text(
-                "# bench-mode: msprof\n# kernels: kernel_a, kernel_b\n",
+                """# bench-mode: msprof
+# api-name: kernel
+# api-kind: torch-function
+# kernels: kernel_a, kernel_b
+
+def build_operator_api(operator_module):
+    return operator_module.kernel
+
+def build_bench_cases():
+    return [{"id": "case-a"}, {"id": "case-b"}]
+
+def build_bench_case_fn(operator_api, case):
+    return lambda: operator_api()
+""",
                 encoding="utf-8",
             )
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
 
-            count_result = make_skill_result(0, "2\n", "")
             profile_result = make_skill_result(0, "profile stdout\n", "")
-            with patch.object(module, "run_buffered_process", return_value=count_result), patch.object(
+            with patch.object(
                 module,
                 "run_streaming_process",
                 return_value=profile_result,
@@ -171,7 +231,7 @@ class ProfileRunnerTests(unittest.TestCase):
                     bench_file,
                     operator_file,
                     "msprof",
-                    bench_case=2,
+                    case_id="case-b",
                     kernel_name="kernel_b",
                 )
 
@@ -182,31 +242,16 @@ class ProfileRunnerTests(unittest.TestCase):
             [
                 "msprof",
                 sys.executable,
+                "bench_runtime.py",
+                "run-one",
+                "--bench-file",
                 "bench_kernel.py",
                 "--operator-file",
                 "kernel.py",
-                "--bench",
-                "2",
+                "--case-id",
+                "case-b",
             ],
         )
-
-    def test_run_local_profile_bench_msprof_rejects_case_id(self) -> None:
-        module = load_profile_runner_module()
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            bench_file = root / "bench_kernel.py"
-            operator_file = root / "kernel.py"
-            bench_file.write_text("# bench-mode: msprof\n# kernel: kernel_name\n", encoding="utf-8")
-            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
-
-            with self.assertRaisesRegex(ValueError, "--case-id is only valid for standalone benchmark profiling"):
-                module.run_local_profile_bench(
-                    bench_file,
-                    operator_file,
-                    "msprof",
-                    bench_case=1,
-                    case_id="case-a",
-                )
 
     def test_run_local_profile_bench_msprof_allows_multi_kernel_metadata_without_kernel_name(self) -> None:
         module = load_profile_runner_module()
@@ -224,13 +269,27 @@ class ProfileRunnerTests(unittest.TestCase):
             )
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
 
-            count_result = make_skill_result(0, "1\n", "")
             profile_result = make_skill_result(0, "profile stdout\n", "")
-            with patch.object(module, "run_buffered_process", return_value=count_result), patch.object(
+            with patch.object(
                 module,
                 "run_streaming_process",
                 return_value=profile_result,
-            ) as mocked:
+            ) as mocked, patch.object(
+                module,
+                "_load_bench_runtime_module",
+            ) as load_runtime:
+                load_runtime.return_value = type(
+                    "_FakeRuntime",
+                    (),
+                    {
+                        "load_bench_cases": staticmethod(
+                            lambda *_args, **_kwargs: (
+                                [type("_Case", (), {"case_id": "only-case"})()],
+                                None,
+                            )
+                        ),
+                    },
+                )()
                 result, resolved_profile_dir = module.run_local_profile_bench(
                     bench_file,
                     operator_file,
@@ -244,11 +303,14 @@ class ProfileRunnerTests(unittest.TestCase):
             [
                 "msprof",
                 sys.executable,
+                "bench_runtime.py",
+                "run-one",
+                "--bench-file",
                 "bench_kernel.py",
                 "--operator-file",
                 "kernel.py",
-                "--bench",
-                "1",
+                "--case-id",
+                "only-case",
             ],
         )
 
@@ -281,23 +343,41 @@ class ProfileRunnerTests(unittest.TestCase):
                 return_value=make_skill_result(0, "profile stdout\n", ""),
             ) as remote_run, patch.object(
                 module,
+                "_load_bench_runtime_module",
+            ) as load_runtime, patch.object(
+                module,
                 "run_remote_command_buffered",
-                side_effect=[
-                    make_skill_result(0, "3\n", ""),
-                    make_skill_result(0, "PROF_remote\n", ""),
-                ],
+                return_value=make_skill_result(0, "PROF_remote\n", ""),
             ), patch.object(
                 module,
                 "copy_directory_from_remote",
                 side_effect=_fake_copy,
             ), patch.object(module, "cleanup_remote_workspace") as cleanup:
+                load_runtime.return_value = type(
+                    "_FakeRuntime",
+                    (),
+                    {
+                        "load_bench_cases": staticmethod(
+                            lambda *_args, **_kwargs: (
+                                [
+                                    type("_Case", (), {"case_id": "case-a"})(),
+                                    type("_Case", (), {"case_id": "case-b"})(),
+                                ],
+                                None,
+                            )
+                        ),
+                        "runtime_support_paths": staticmethod(
+                            lambda: [root / "bench_runtime.py", root / "result_payload.py"]
+                        ),
+                    },
+                )()
                 result, resolved_profile_dir, remote_workspace = module.run_remote_profile_bench(
                     bench_file,
                     operator_file,
                     "msprof",
                     "alice@example.com",
                     None,
-                    bench_case=2,
+                    case_id="case-b",
                     kernel_name="kernel_b",
                     keep_remote_workdir=True,
                 )
@@ -309,13 +389,15 @@ class ProfileRunnerTests(unittest.TestCase):
             remote_run.call_args.args[2],
             [
                 "msprof",
-                "op",
                 "python3",
+                "bench_runtime.py",
+                "run-one",
+                "--bench-file",
                 "bench_kernel.py",
                 "--operator-file",
                 "kernel.py",
-                "--bench",
-                "2",
+                "--case-id",
+                "case-b",
             ],
         )
         cleanup.assert_not_called()
@@ -326,7 +408,7 @@ class ProfileRunnerTests(unittest.TestCase):
             root = Path(tmp)
             bench_file = root / "bench_kernel.py"
             operator_file = root / "kernel.py"
-            bench_file.write_text("# bench-mode: standalone\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n", encoding="utf-8")
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
 
             copied_profile_dir = root / "PROF_remote"
@@ -366,13 +448,10 @@ class ProfileRunnerTests(unittest.TestCase):
         self.assertEqual(resolved_profile_dir, copied_profile_dir)
         self.assertEqual(remote_workspace, "/tmp/remote-profile")
         copy_targets = [call.args[2].rsplit("/", 1)[-1] for call in copy_to_remote.call_args_list]
-        self.assertIn("standalone_bench_runtime.py", copy_targets)
-        self.assertIn("bench_contract.py", copy_targets)
-        self.assertIn("perf_artifacts.py", copy_targets)
-        self.assertIn("profile_csv_parser.py", copy_targets)
+        self.assertIn("bench_runtime.py", copy_targets)
         remote_command = remote_run.call_args.args[2]
         self.assertEqual(remote_command[0:2], ["python3", "-c"])
-        self.assertIn("profile_local_standalone_case", remote_command[2])
+        self.assertIn("profile_local_bench_case", remote_command[2])
         self.assertEqual(remote_command[3:], ["bench_kernel.py", "kernel.py", "case-b"])
         copy_back.assert_called_once_with(
             "spec",
