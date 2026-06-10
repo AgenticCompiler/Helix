@@ -144,11 +144,12 @@ Bootstrap (once per command, before simulate iterations):
 2. If no active workspaces, CLI launches the **same prepare agent** as
    `pattern-validation-loop` (scaffold + verify). Use `--skip-prepare` only when the batch
    is already scaffolded.
-3. CLI syncs deps and runs `pattern-validation-verify` (`--skip-verify` to skip).
+3. CLI syncs deps and runs `pattern-validation-verify` (`--skip-verify` to skip). This runs **once**
+   at bootstrap, not again before the first simulate iteration.
 
 Each simulate iteration:
 
-1. Sync deps.
+1. Sync deps (from iteration 2 onward only; iteration 1 reuses bootstrap sync).
 2. **Simulate agents** (one per workspace): same staged optimize skills as a real worker plus the
    operator `.py` and `test_*.py.txt` only. Ground truth (`expected_patterns`, etc.) lives in
    `pattern-validation-batch/batch-evaluation.json`, not inside workspace directories. They

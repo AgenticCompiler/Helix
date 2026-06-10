@@ -449,6 +449,17 @@ def prepare_simulate_batch(
                 file=sys.stderr,
             )
             return verify_code
+        print(
+            "[pattern-validation-simulate] bootstrap complete: deps synced, scaffold verified",
+            file=out,
+            flush=True,
+        )
+    elif run_verify:
+        print(
+            "[pattern-validation-simulate] bootstrap complete: deps synced (--skip-verify)",
+            file=out,
+            flush=True,
+        )
     return 0
 
 

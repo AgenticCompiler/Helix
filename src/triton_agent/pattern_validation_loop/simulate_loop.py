@@ -91,7 +91,16 @@ def run_pattern_validation_simulate_loop(config: SimulatePlanConfig) -> tuple[in
                 flush=True,
             )
 
-        prep_code = prepare_simulate_batch(config)
+        prep_code = 0
+        if iteration > 1:
+            prep_code = prepare_simulate_batch(config)
+        elif config.verbose:
+            print(
+                "[pattern-validation-simulate] skipping redundant deps sync "
+                "(bootstrap already synced and verified)",
+                file=sys.stderr,
+                flush=True,
+            )
         if prep_code != 0:
             _record_simulate_phase(ctx, phase="failed", note=f"sync failed: exit {prep_code}")
             return prep_code, config.batch_path / BATCH_SIMULATE_REPORT_FILENAME
