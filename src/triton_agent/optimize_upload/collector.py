@@ -45,9 +45,9 @@ def _has_excluded_extension(path: Path) -> bool:
 def _resolve_baseline_artifacts(workspace: Path) -> list[Path]:
     """Resolve baseline operator and perf files from baseline/state.json.
 
-    The optimize contract stores baseline_operator and perf_artifact as
-    workspace-relative paths (e.g. ``baseline/kernel.py``).  Read state.json
-    directly so that partially-valid baselines still contribute their files.
+    The optimize contract stores path fields relative to the directory that
+    contains baseline/state.json. Fall back to workspace-relative lookup for
+    compatibility with older outputs.
     """
     baseline_dir = workspace / "baseline"
     if not baseline_dir.is_dir():
@@ -67,11 +67,18 @@ def _resolve_baseline_artifacts(workspace: Path) -> list[Path]:
         for key in ("baseline_operator", "perf_artifact"):
             val = state_dict.get(key)
             if val and isinstance(val, str):
-                # The value is workspace-relative (e.g. "baseline/kernel.py").
-                p = (workspace / val).resolve()
+                p = _resolve_state_path(baseline_dir, workspace, val)
                 if p.exists():
                     files.append(p)
     return files
+
+
+def _resolve_state_path(state_dir: Path, workspace: Path, relative_path: str) -> Path:
+    declared = Path(relative_path)
+    state_relative = (state_dir / declared).resolve()
+    if state_relative.exists():
+        return state_relative
+    return (workspace / declared).resolve()
 
 
 def _resolve_round_artifacts(workspace: Path, round_dir: Path) -> list[Path]:
