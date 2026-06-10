@@ -42,5 +42,3 @@ In `round-state.json`, every path field must be written relative to the director
 - `perf_analysis_path` (when present): `"perf-analysis.md"`
 - `profile_dir` (when present): `"profile"`
 - `ir_dir` (when present): `"ir"`
-
-The checker resolves these paths relative to `round-state.json` first. If a declared path is missing there, it retries the same value relative to the operator workspace root for compatibility with older or hallucinated outputs.

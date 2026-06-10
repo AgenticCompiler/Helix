@@ -55,7 +55,6 @@ Required baseline artifacts:
 ```
 
 Path-bearing fields in `baseline/state.json` must be written relative to the directory that contains `baseline/state.json`.
-The checker first resolves declared paths there. If a declared path is missing, it retries the same value relative to the operator workspace root for compatibility with older or hallucinated outputs.
 
 Set `baseline_established` to `true` only after correctness passed, benchmark passed, and the canonical baseline artifacts are in place.
 <!-- END GENERATED BASELINE STATE CONTRACT -->
@@ -123,14 +122,11 @@ Each completed round must also include `round-state.json`.
   "analysis_skipped_reason": "when deeper analysis was intentionally skipped, record the evidence-backed reason here.",
   "profile_dir": "when profiler artifacts are part of the round record, record the path from the directory that contains `round-state.json` to that round-local profiler directory, normally `profile`.",
   "ir_dir": "when IR artifacts are part of the round record, record the path from the directory that contains `round-state.json` to that round-local IR directory, normally `ir`.",
-  "perf_analysis_path": "when a standalone performance-analysis note exists, record the path from the directory that contains `round-state.json` to that markdown file, normally `perf-analysis.md`.",
-  "analysis_comparison_sources": "when deeper analysis compares against saved evidence, record the ordered list of paths from the directory that contains `round-state.json` to those supporting artifacts.",
-  "validated_candidate": "when candidate tracking is enabled, record whether this round was validated as the current best candidate."
+  "perf_analysis_path": "when a standalone performance-analysis note exists, record the path from the directory that contains `round-state.json` to that markdown file, normally `perf-analysis.md`."
 }
 ```
 
 Path-bearing fields in `round-state.json` must be written relative to the directory that contains `round-state.json`.
-The checker first resolves declared paths there. If a declared path is missing, it retries the same value relative to the operator workspace root for compatibility with older or hallucinated outputs.
 <!-- END GENERATED ROUND STATE CONTRACT -->
 
 Treat these round-state fields as the authoritative artifact references for round validation:

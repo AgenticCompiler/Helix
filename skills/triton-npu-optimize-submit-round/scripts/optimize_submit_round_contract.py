@@ -116,8 +116,6 @@ class RoundState:
     profile_dir: str | None = None
     ir_dir: str | None = None
     perf_analysis_path: str | None = None
-    analysis_comparison_sources: tuple[str, ...] = ()
-    validated_candidate: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -244,7 +242,6 @@ def load_round_state(round_dir: Path) -> RoundState:
         if not isinstance(item, str):
             raise ValueError("round-state evidence_sources must be a list of strings")
         evidence_sources.append(item)
-    comparison_sources = _optional_str_tuple(data.get("analysis_comparison_sources"))
 
     return RoundState(
         round_name=str(data["round"]),
@@ -263,8 +260,6 @@ def load_round_state(round_dir: Path) -> RoundState:
         profile_dir=_optional_str(data.get("profile_dir")),
         ir_dir=_optional_str(data.get("ir_dir")),
         perf_analysis_path=_optional_str(data.get("perf_analysis_path")),
-        analysis_comparison_sources=comparison_sources,
-        validated_candidate=_optional_bool(data.get("validated_candidate")),
     )
 
 
@@ -570,26 +565,6 @@ def _optional_str(value: object) -> str | None:
     if value is None:
         return None
     return str(value)
-
-
-def _optional_bool(value: object) -> bool | None:
-    if value is None:
-        return None
-    return bool(value)
-
-
-def _optional_str_tuple(value: object) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    if not isinstance(value, list):
-        raise ValueError("round-state analysis_comparison_sources must be a list of strings")
-    raw_items = cast(list[Any], value)
-    items: list[str] = []
-    for item in raw_items:
-        if not isinstance(item, str):
-            raise ValueError("round-state analysis_comparison_sources must be a list of strings")
-        items.append(item)
-    return tuple(items)
 
 
 def _declared_state_file(state_dir: Path, workspace: Path, relative_path: str | None) -> Path | None:

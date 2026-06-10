@@ -43,7 +43,6 @@ def _render_baseline_section(contract: dict[str, object]) -> str:
         _render_json_block(field_map),
         "",
         "Path-bearing fields in `baseline/state.json` must be written relative to the directory that contains `baseline/state.json`.",
-        "The checker first resolves declared paths there. If a declared path is missing, it retries the same value relative to the operator workspace root for compatibility with older or hallucinated outputs.",
         "",
         "Set `baseline_established` to `true` only after correctness passed, benchmark passed, and the canonical baseline artifacts are in place.",
         BASELINE_END,
@@ -71,7 +70,6 @@ def _render_round_section(contract: dict[str, object]) -> str:
         _render_json_block(optional_map),
         "",
         "Path-bearing fields in `round-state.json` must be written relative to the directory that contains `round-state.json`.",
-        "The checker first resolves declared paths there. If a declared path is missing, it retries the same value relative to the operator workspace root for compatibility with older or hallucinated outputs.",
         ROUND_END,
     ]
     return "\n".join(lines)

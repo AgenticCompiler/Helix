@@ -62,6 +62,8 @@ class OptimizeContractTests(unittest.TestCase):
         self.assertEqual(tuple(data["round_state_required_fields"].keys()), ROUND_STATE_REQUIRED_FIELDS)
         self.assertIn("comparison_target", data["round_state_required_fields"])
         self.assertIn("perf_analysis_path", data["round_state_optional_fields"])
+        self.assertNotIn("analysis_comparison_sources", data["round_state_optional_fields"])
+        self.assertNotIn("validated_candidate", data["round_state_optional_fields"])
 
 
 if __name__ == "__main__":

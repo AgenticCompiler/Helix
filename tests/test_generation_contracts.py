@@ -591,6 +591,26 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("`ir_dir` when present", artifacts)
         self.assertIn("relative to the directory that contains `baseline/state.json`", artifacts)
         self.assertIn("relative to the directory that contains `round-state.json`", artifacts)
+        self.assertNotIn(
+            "The checker first resolves declared paths there. If a declared path is missing, it retries the same value relative to the operator workspace root",
+            artifacts,
+        )
+        self.assertNotIn("analysis_comparison_sources", artifacts)
+        self.assertNotIn("validated_candidate", artifacts)
+
+    def test_submit_optimize_skills_keep_path_rules_out_of_user_facing_skill_text(self) -> None:
+        baseline_submit = _read("skills/triton-npu-optimize-submit-baseline/SKILL.md")
+        round_submit = _read("skills/triton-npu-optimize-submit-round/SKILL.md")
+
+        self.assertNotIn("## Baseline-State Path Convention", baseline_submit)
+        self.assertNotIn(
+            "If a declared path is missing there, it retries the same value relative to the operator workspace root",
+            baseline_submit,
+        )
+        self.assertNotIn(
+            "If a declared path is missing there, it retries the same value relative to the operator workspace root",
+            round_submit,
+        )
 
     def test_optimize_artifacts_reference_matches_generator_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
