@@ -603,6 +603,7 @@ class GenerationContractTests(unittest.TestCase):
         round_submit = _read("skills/triton-npu-optimize-submit-round/SKILL.md")
 
         self.assertNotIn("## Baseline-State Path Convention", baseline_submit)
+        self.assertNotIn("## Round-State Path Convention", round_submit)
         self.assertNotIn(
             "If a declared path is missing there, it retries the same value relative to the operator workspace root",
             baseline_submit,
