@@ -39,6 +39,21 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("uv run pyright", wrapper)
         self.assertIn('typeCheckingMode = "strict"', wrapper)
 
+    def test_optimize_contract_updates_require_regenerating_artifacts_reference(self) -> None:
+        agents = _read("AGENTS.md")
+        self.assertIn(
+            "skills/triton-npu-optimize-submit-baseline/references/contract.json",
+            agents,
+        )
+        self.assertIn(
+            "skills/triton-npu-optimize-submit-round/references/contract.json",
+            agents,
+        )
+        self.assertIn(
+            "python3 skills/triton-npu-optimize/script/update-artifacts.py",
+            agents,
+        )
+
     def test_gitcode_pr_skill_uses_official_api_script(self) -> None:
         skill = _read(".codex/skills/managing-gitcode-prs/SKILL.md")
         reference = _read(".codex/skills/managing-gitcode-prs/references/pr-command-reference.md")
