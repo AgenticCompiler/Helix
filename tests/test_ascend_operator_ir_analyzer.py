@@ -39,7 +39,7 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
         self.assertEqual(args.bench_file, "bench.py")
         self.assertEqual(args.operator_file, "kernel.py")
 
-    def test_build_parser_accepts_explicit_msprof_bench_case(self) -> None:
+    def test_build_parser_accepts_case_id(self) -> None:
         module = _load_capture_ir_module()
 
         args = module.build_parser().parse_args(
@@ -50,12 +50,12 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                 "bench.py",
                 "--operator-file",
                 "kernel.py",
-                "--bench",
-                "5",
+                "--case-id",
+                "case-5",
             ]
         )
 
-        self.assertEqual(args.bench, 5)
+        self.assertEqual(args.case_id, "case-5")
 
     def test_build_parser_rejects_bench_abbreviation(self) -> None:
         module = _load_capture_ir_module()
@@ -69,8 +69,8 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                     "bench.py",
                     "--operator-file",
                     "kernel.py",
-                    "--ben",
-                    "5",
+                    "--case",
+                    "case-5",
                 ]
             )
 
@@ -80,7 +80,7 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
             root = Path(tmp)
             bench_file = root / "bench_matmul.py"
             operator_file = root / "matmul.py"
-            bench_file.write_text("# bench-mode: standalone\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n", encoding="utf-8")
             operator_file.write_text("def matmul():\n    pass\n", encoding="utf-8")
 
             command = module.build_execution_command(
@@ -97,7 +97,7 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                     / "skills"
                     / "triton-npu-run-eval"
                     / "scripts"
-                    / "standalone_bench_runtime.py"
+                    / "bench_runtime.py"
                 ),
                 "run-one",
                 "--bench-file",
@@ -110,12 +110,12 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
     def test_standalone_runtime_support_paths_include_profile_csv_parser(self) -> None:
         module = _load_capture_ir_module()
 
-        support_names = {path.name for path in module._standalone_runtime_support_paths()}
+        support_names = {path.name for path in module._bench_runtime_support_paths()}
 
-        self.assertIn("standalone_bench_runtime.py", support_names)
+        self.assertIn("bench_runtime.py", support_names)
         self.assertIn("profile_csv_parser.py", support_names)
 
-    def test_build_execution_command_forwards_bench_case_for_msprof_benches(self) -> None:
+    def test_build_execution_command_forwards_case_id_for_msprof_benches(self) -> None:
         module = _load_capture_ir_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -127,36 +127,65 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
             command = module.build_execution_command(
                 bench_file=bench_file,
                 operator_file=operator_file,
-                bench_case=5,
+                case_id="case-5",
             )
 
         self.assertEqual(
             command,
             [
                 sys.executable,
+                str(
+                    REPO_ROOT
+                    / "skills"
+                    / "triton-npu-run-eval"
+                    / "scripts"
+                    / "bench_runtime.py"
+                ),
+                "run-one",
+                "--bench-file",
                 "bench_matmul.py",
                 "--operator-file",
                 "matmul.py",
-                "--bench",
-                "5",
+                "--case-id",
+                "case-5",
             ],
         )
 
-    def test_build_execution_command_rejects_bench_case_for_standalone_benches(self) -> None:
+    def test_build_execution_command_forwards_case_id_for_standalone_benches(self) -> None:
         module = _load_capture_ir_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_matmul.py"
             operator_file = root / "matmul.py"
-            bench_file.write_text("# bench-mode: standalone\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n", encoding="utf-8")
             operator_file.write_text("def matmul():\n    pass\n", encoding="utf-8")
 
-            with self.assertRaisesRegex(ValueError, "--bench is only valid for msprof benchmark capture"):
-                module.build_execution_command(
-                    bench_file=bench_file,
-                    operator_file=operator_file,
-                    bench_case=5,
-                )
+            command = module.build_execution_command(
+                bench_file=bench_file,
+                operator_file=operator_file,
+                case_id="case-5",
+            )
+
+        self.assertEqual(
+            command,
+            [
+                sys.executable,
+                str(
+                    REPO_ROOT
+                    / "skills"
+                    / "triton-npu-run-eval"
+                    / "scripts"
+                    / "bench_runtime.py"
+                ),
+                "run-one",
+                "--bench-file",
+                "bench_matmul.py",
+                "--operator-file",
+                "matmul.py",
+                "--case-id",
+                "case-5",
+            ],
+        )
 
     def test_extract_capture_details_reads_dump_path_and_compile_command(self) -> None:
         module = _load_capture_ir_module()
@@ -398,19 +427,19 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                 "bench.py",
                 "kernel.py",
                 "result_payload.py",
-                "standalone_bench_runtime.py",
+                "bench_runtime.py",
                 "bench_contract.py",
                 "perf_artifacts.py",
                 "profile_csv_parser.py",
             ],
         )
         self.assertIn(
-            "python3 standalone_bench_runtime.py run-one --bench-file bench.py --operator-file kernel.py",
+            "python3 bench_runtime.py run-one --bench-file bench.py --operator-file kernel.py",
             remote_run.call_args_list[1].args[2],
         )
         cleanup.assert_not_called()
 
-    def test_capture_remote_archive_forwards_bench_case_for_msprof_bench(self) -> None:
+    def test_capture_remote_archive_forwards_case_id_for_msprof_bench(self) -> None:
         module = _load_capture_ir_module()
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -462,13 +491,24 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                     remote="alice@example.com",
                     remote_workdir=None,
                     keep_remote_workdir=False,
-                    bench_case=5,
+                    case_id="case-5",
                 )
 
         copied_names = [call.args[2].rsplit("/", 1)[-1] for call in copy_file.call_args_list]
-        self.assertEqual(copied_names, ["bench.py", "kernel.py"])
+        self.assertEqual(
+            copied_names,
+            [
+                "bench.py",
+                "kernel.py",
+                "result_payload.py",
+                "bench_runtime.py",
+                "bench_contract.py",
+                "perf_artifacts.py",
+                "profile_csv_parser.py",
+            ],
+        )
         self.assertIn(
-            "python3 bench.py --operator-file kernel.py --bench 5",
+            "python3 bench_runtime.py run-one --bench-file bench.py --operator-file kernel.py --case-id case-5",
             remote_run.call_args_list[1].args[2],
         )
 

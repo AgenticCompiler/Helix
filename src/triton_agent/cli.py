@@ -38,7 +38,7 @@ _AGENT_CHOICES = ("codex", "opencode", "pi", "claude", "openhands", "traecli")
 _COMPARE_LEVEL_CHOICES = ("strict", "balanced", "relaxed")
 _FORMAT_CHOICES = ("text", "markdown")
 _TEST_MODE_CHOICES = ("standalone", "differential")
-_BENCH_MODE_CHOICES = ("standalone", "msprof")
+_BENCH_MODE_CHOICES = ("torch-npu-profiler", "msprof")
 _RESUME_CHOICES = ("auto", "continue", "fresh")
 _ROUND_MODE_CHOICES = ("checked", "supervised")
 _TARGET_CHIP_CHOICES = ("A3", "A5")
@@ -207,7 +207,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_test_mode=True,
         test_mode_default="differential",
         has_bench_mode=True,
-        bench_mode_default="standalone",
+        bench_mode_default="torch-npu-profiler",
         has_prompt=True,
         has_force_overwrite=True,
         has_log_tools=True,
@@ -224,7 +224,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_test_mode=True,
         test_mode_default="differential",
         has_bench_mode=True,
-        bench_mode_default="standalone",
+        bench_mode_default="torch-npu-profiler",
         has_prompt=True,
         concurrency_default=1,
         concurrency_accepts_max=True,
@@ -296,7 +296,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_interact=True,
         has_show_output=True,
         has_bench_mode=True,
-        bench_mode_default="standalone",
+        bench_mode_default="torch-npu-profiler",
         has_prompt=True,
         has_force_overwrite=True,
         has_log_tools=True,
@@ -571,7 +571,7 @@ def build_parser() -> argparse.ArgumentParser:
                 choices=_ROUND_MODE_CHOICES,
             )
             subparser.add_argument("--no-upload", action="store_true")
-            subparser.add_argument("--no-report", action="store_true", default=False)
+            subparser.add_argument("--enable-report", action="store_true", default=False)
         if spec.has_prompt:
             subparser.add_argument("--prompt")
         if command_kind in {CommandKind.LOG_CHECK, CommandKind.LOG_CHECK_BATCH}:

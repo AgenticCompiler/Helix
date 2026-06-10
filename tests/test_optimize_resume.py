@@ -17,7 +17,7 @@ class OptimizeResumeTests(unittest.TestCase):
         source_operator: str,
         test_file: str,
         bench_file: str,
-        bench_mode: str = "standalone",
+        bench_mode: str = "torch-npu-profiler",
     ) -> None:
         baseline_dir = workspace / "baseline"
         baseline_dir.mkdir()
@@ -89,7 +89,7 @@ class OptimizeResumeTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (workspace / "bench_triton_7_Sum.py").write_text(
-                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n",
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
                 encoding="utf-8",
             )
 

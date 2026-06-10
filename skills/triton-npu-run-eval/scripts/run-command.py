@@ -110,7 +110,6 @@ class RunLocalProfileBenchFn(Protocol):
         bench_file: Path,
         operator_file: Path,
         bench_mode: str,
-        bench_case: int | None = None,
         case_id: str | None = None,
         kernel_name: str | None = None,
     ) -> tuple[ResultPayload, Path | None]: ...
@@ -124,7 +123,6 @@ class RunRemoteProfileBenchFn(Protocol):
         bench_mode: str,
         remote: str,
         remote_workdir: str | None,
-        bench_case: int | None = None,
         case_id: str | None = None,
         kernel_name: str | None = None,
         keep_remote_workdir: bool = False,
@@ -163,15 +161,14 @@ def build_parser() -> argparse.ArgumentParser:
     run_bench.add_argument("--remote-workdir")
     run_bench.add_argument("--keep-remote-workdir", action="store_true")
     run_bench.add_argument("--verbose", action="store_true")
-    run_bench.add_argument("--bench-mode", choices=["standalone", "msprof"])
+    run_bench.add_argument("--bench-mode", choices=["torch-npu-profiler", "msprof"])
     run_bench.add_argument("--npu-devices")
 
     profile_bench = subparsers.add_parser("profile-bench")
     profile_bench.add_argument("--bench-file", required=True)
     profile_bench.add_argument("--operator-file", required=True)
-    profile_bench.add_argument("--bench-mode", choices=["standalone", "msprof"])
+    profile_bench.add_argument("--bench-mode", choices=["torch-npu-profiler", "msprof"])
     profile_bench.add_argument("--case-id")
-    profile_bench.add_argument("--bench", type=int)
     profile_bench.add_argument("--kernel-name", help=argparse.SUPPRESS)
     profile_bench.add_argument("--target-op")
     profile_bench.add_argument("--remote")
@@ -341,7 +338,6 @@ def main(argv: list[str] | None = None) -> int:
                     resolved_bench_mode,
                     remote,
                     remote_workdir,
-                    bench_case=args.bench,
                     case_id=args.case_id,
                     kernel_name=args.kernel_name,
                     keep_remote_workdir=args.keep_remote_workdir,
@@ -353,7 +349,6 @@ def main(argv: list[str] | None = None) -> int:
                     bench_file,
                     operator_file,
                     resolved_bench_mode,
-                    bench_case=args.bench,
                     case_id=args.case_id,
                     kernel_name=args.kernel_name,
                 )
@@ -593,9 +588,11 @@ def _resolve_bench_mode_from_metadata(bench_file: Path) -> str:
     parse_bench_metadata = _load_bench_functions()[0]
     metadata = parse_bench_metadata(bench_file)
     mode = metadata.get("bench-mode")
-    if mode not in {"standalone", "msprof"}:
+    if mode == "standalone":
+        return "torch-npu-profiler"
+    if mode not in {"torch-npu-profiler", "msprof"}:
         raise ValueError(f"Benchmark metadata is missing required 'bench-mode' entry: {bench_file}")
-    return mode
+    return str(mode)
 
 
 def _render_result(result: ResultPayload, show_output: bool) -> None:

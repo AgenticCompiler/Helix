@@ -6,7 +6,7 @@ from typing import Literal
 
 from models import HostApiCall, OperatorStats
 
-# Columns in op_statistic CSV (identical in both msprof and standalone modes)
+# Columns in op_statistic CSV (identical in both msprof and torch-npu-profiler modes)
 _STATISTIC_REQUIRED_COLUMNS = (
     "OP Type",
     "Core Type",
@@ -27,24 +27,24 @@ def parse_float_value(value: str) -> float:
     return float(value.strip())
 
 
-def detect_profile_mode(profile_path: Path) -> tuple[Literal["msprof", "standalone"], Path]:
+def detect_profile_mode(profile_path: Path) -> tuple[Literal["msprof", "torch-npu-profiler"], Path]:
     """Auto-detect profile mode from directory structure.
 
     Returns (mode, artifacts_dir).
     """
     candidate = profile_path.expanduser().resolve()
 
-    # standalone: check ASCEND_PROFILER_OUTPUT first
+    # torch-npu-profiler: check ASCEND_PROFILER_OUTPUT first
     # (torch_npu.profiler also emits a PROF_*/mindstudio_profiler_output as a side effect,
     #  but ASCEND_PROFILER_OUTPUT has kernel_details.csv with richer pipeline data)
-    standalone_dir = _find_artifacts_dir(candidate, "ASCEND_PROFILER_OUTPUT")
+    torch_npu_profiler_dir = _find_artifacts_dir(candidate, "ASCEND_PROFILER_OUTPUT")
     msprof_dir = _find_artifacts_dir(candidate, "mindstudio_profiler_output")
 
     # Fallback: rglob within candidate
-    if standalone_dir is None:
+    if torch_npu_profiler_dir is None:
         for match in candidate.rglob("ASCEND_PROFILER_OUTPUT"):
             if match.is_dir():
-                standalone_dir = match
+                torch_npu_profiler_dir = match
                 break
     if msprof_dir is None:
         for match in candidate.rglob("mindstudio_profiler_output"):
@@ -52,9 +52,9 @@ def detect_profile_mode(profile_path: Path) -> tuple[Literal["msprof", "standalo
                 msprof_dir = match
                 break
 
-    # Prefer standalone when both exist (richer data)
-    if standalone_dir is not None:
-        return "standalone", standalone_dir
+    # Prefer torch-npu-profiler when both exist (richer data)
+    if torch_npu_profiler_dir is not None:
+        return "torch-npu-profiler", torch_npu_profiler_dir
     if msprof_dir is not None:
         return "msprof", msprof_dir
 
