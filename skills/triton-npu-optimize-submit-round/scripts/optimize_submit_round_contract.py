@@ -37,14 +37,19 @@ def cleanup_dir_pt_files(directory: Path) -> list[str]:
             pass
     return cleaned
 
+_SKILLS_ROOT = Path(__file__).resolve().parents[2]
+_BASELINE_CONTRACT_PATH = (
+    _SKILLS_ROOT / "triton-npu-optimize-submit-baseline" / "references" / "contract.json"
+)
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "references" / "contract.json"
+_BASELINE_CONTRACT_DATA = json.loads(_BASELINE_CONTRACT_PATH.read_text(encoding="utf-8"))
 CONTRACT_DATA = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
-BASELINE_STATE_FIELDS = {
-    str(field_name): str(description)
-    for field_name, description in CONTRACT_DATA["baseline_state_fields"].items()
-}
-BASELINE_STATE_REQUIRED_FIELDS = tuple(BASELINE_STATE_FIELDS)
+BASELINE_STATE_REQUIRED_FIELDS = tuple(_BASELINE_CONTRACT_DATA["baseline_state_fields"])
 ROUND_STATE_REQUIRED_FIELDS = tuple(CONTRACT_DATA["round_state_required_fields"])
+ROUND_STATE_OPTIONAL_FIELDS = {
+    str(field_name): str(description)
+    for field_name, description in CONTRACT_DATA["round_state_optional_fields"].items()
+}
 
 _BASELINE_METADATA_FILENAMES = {
     "state.json",
@@ -111,8 +116,6 @@ class RoundState:
     profile_dir: str | None = None
     ir_dir: str | None = None
     perf_analysis_path: str | None = None
-    analysis_comparison_sources: tuple[str, ...] = ()
-    validated_candidate: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -173,8 +176,8 @@ def inspect_baseline_artifacts(workspace: Path) -> BaselineArtifactsInspection:
         perf_path = None
         operator_path = None
     else:
-        perf_path = _declared_workspace_file(workspace, declared_perf)
-        operator_path = _declared_workspace_file(workspace, declared_operator)
+        perf_path = _declared_state_file(root, workspace, declared_perf)
+        operator_path = _declared_state_file(root, workspace, declared_operator)
 
     if state is None and perf_path is None:
         perf_path = _existing_file(root / "perf.txt")
@@ -239,7 +242,6 @@ def load_round_state(round_dir: Path) -> RoundState:
         if not isinstance(item, str):
             raise ValueError("round-state evidence_sources must be a list of strings")
         evidence_sources.append(item)
-    comparison_sources = _optional_str_tuple(data.get("analysis_comparison_sources"))
 
     return RoundState(
         round_name=str(data["round"]),
@@ -258,8 +260,6 @@ def load_round_state(round_dir: Path) -> RoundState:
         profile_dir=_optional_str(data.get("profile_dir")),
         ir_dir=_optional_str(data.get("ir_dir")),
         perf_analysis_path=_optional_str(data.get("perf_analysis_path")),
-        analysis_comparison_sources=comparison_sources,
-        validated_candidate=_optional_bool(data.get("validated_candidate")),
     )
 
 
@@ -283,9 +283,9 @@ def inspect_round_artifacts(round_dir: Path) -> RoundArtifactsInspection:
         perf_path = None
         perf_analysis_path = None
     else:
-        summary_path = _declared_round_file(round_dir, declared_summary)
-        perf_path = _declared_round_file(round_dir, declared_perf)
-        perf_analysis_path = _declared_round_file(round_dir, declared_analysis)
+        summary_path = _declared_state_file(round_dir, workspace, declared_summary)
+        perf_path = _declared_state_file(round_dir, workspace, declared_perf)
+        perf_analysis_path = _declared_state_file(round_dir, workspace, declared_analysis)
 
     if summary_path is None:
         summary_path = _existing_file(round_dir / "summary.md")
@@ -424,12 +424,34 @@ def check_round(
     baseline_perf_path: Path | None = None
     try:
         baseline = load_baseline_state(round_dir.parent)
-        if round_state.comparison_target != baseline.perf_artifact:
+        baseline_perf_path = _declared_state_file(
+            baseline_dir(round_dir.parent),
+            round_dir.parent,
+            baseline.perf_artifact,
+        )
+        comparison_target_path = _declared_state_file(
+            round_dir,
+            round_dir.parent,
+            round_state.comparison_target,
+        )
+        expected_comparison_target = None
+        if baseline_perf_path is not None:
+            expected_comparison_target = os.path.relpath(baseline_perf_path.resolve(), round_dir)
+        if comparison_target_path is None:
+            semantic_issues.append(
+                _missing_issue(
+                    round_state.comparison_target,
+                    default_path=expected_comparison_target or round_state.comparison_target,
+                )
+            )
+        elif (
+            baseline_perf_path is not None
+            and comparison_target_path.resolve() != baseline_perf_path.resolve()
+        ):
             semantic_issues.append(
                 f"comparison_target={round_state.comparison_target} "
-                f"(expected {baseline.perf_artifact})"
+                f"(expected {expected_comparison_target or baseline.perf_artifact})"
             )
-        baseline_perf_path = _declared_workspace_file(round_dir.parent, baseline.perf_artifact)
     except ValueError:
         semantic_issues.append("cannot validate comparison_target: baseline state is invalid")
     if round_state.effective_metric_source not in {"kernel", "total-op", "mixed"}:
@@ -545,36 +567,14 @@ def _optional_str(value: object) -> str | None:
     return str(value)
 
 
-def _optional_bool(value: object) -> bool | None:
-    if value is None:
-        return None
-    return bool(value)
-
-
-def _optional_str_tuple(value: object) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    if not isinstance(value, list):
-        raise ValueError("round-state analysis_comparison_sources must be a list of strings")
-    raw_items = cast(list[Any], value)
-    items: list[str] = []
-    for item in raw_items:
-        if not isinstance(item, str):
-            raise ValueError("round-state analysis_comparison_sources must be a list of strings")
-        items.append(item)
-    return tuple(items)
-
-
-def _declared_workspace_file(workspace: Path, relative_path: str | None) -> Path | None:
+def _declared_state_file(state_dir: Path, workspace: Path, relative_path: str | None) -> Path | None:
     if relative_path is None:
         return None
-    return _existing_file(workspace / Path(relative_path))
-
-
-def _declared_round_file(round_dir: Path, relative_path: str | None) -> Path | None:
-    if relative_path is None:
-        return None
-    return _existing_file(round_dir / Path(relative_path))
+    declared_path = Path(relative_path)
+    state_relative = _existing_file(state_dir / declared_path)
+    if state_relative is not None:
+        return state_relative
+    return _existing_file(workspace / declared_path)
 
 
 def _find_baseline_operator_snapshot(root: Path) -> Path | None:

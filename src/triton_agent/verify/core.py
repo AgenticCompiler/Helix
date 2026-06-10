@@ -104,14 +104,27 @@ def prepare_verify_target(
         raise ValueError(f"Best round directory does not exist: {round_dir}")
 
     baseline_state = load_baseline_state(workspace)
-    source_baseline_operator = _resolve_workspace_file(
+    baseline_state_dir = workspace / "baseline"
+    source_baseline_operator = _resolve_state_file(
+        baseline_state_dir,
         workspace,
         baseline_state.baseline_operator,
         label="baseline_operator",
     )
-    source_test_file = _resolve_workspace_file(workspace, baseline_state.test_file, label="test_file")
-    source_bench_file = _resolve_workspace_file(workspace, baseline_state.bench_file, label="bench_file")
-    baseline_perf = _resolve_workspace_file(
+    source_test_file = _resolve_state_file(
+        baseline_state_dir,
+        workspace,
+        baseline_state.test_file,
+        label="test_file",
+    )
+    source_bench_file = _resolve_state_file(
+        baseline_state_dir,
+        workspace,
+        baseline_state.bench_file,
+        label="bench_file",
+    )
+    baseline_perf = _resolve_state_file(
+        baseline_state_dir,
         workspace,
         baseline_state.perf_artifact,
         label="perf_artifact",
@@ -262,8 +275,12 @@ def run_verify(
     )
 
 
-def _resolve_workspace_file(workspace: Path, relative_path: str, *, label: str) -> Path:
-    path = workspace / Path(relative_path)
+def _resolve_state_file(state_dir: Path, workspace: Path, relative_path: str, *, label: str) -> Path:
+    declared = Path(relative_path)
+    path = state_dir / declared
+    if path.is_file():
+        return path
+    path = workspace / declared
     if not path.is_file():
         raise ValueError(f"Missing {label} path from baseline/state.json: {relative_path}")
     return path
