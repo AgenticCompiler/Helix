@@ -362,7 +362,7 @@ def build_optimize_round_prompt(
     lines.extend(
         _shared_optimize_prompt_lines(
             target_chip=target_chip,
-            optimize_check_line="The CLI will run the staged `triton-npu-optimize-submit-round` skill after each completed round in this batch. Produce the round artifacts only; do not submit the rounds yourself.",
+            optimize_check_line="You must run the staged `triton-npu-optimize-submit-round` skill after each completed round.",
             optimize_target=optimize_target,
             enable_subagent=enable_subagent,
         )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Optional
@@ -31,6 +32,7 @@ from triton_agent.remote_execution_env import (
     remote_target_env_name,
     remote_workdir_env_name,
 )
+from triton_agent.remote_ssh_preflight import ensure_remote_ssh_ready
 
 
 _Handler = Callable[[argparse.ArgumentParser, argparse.Namespace], int]
@@ -640,9 +642,21 @@ def _build_environment_variables_section() -> list[str]:
 def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(_normalize_command_aliases(argv))
+    try:
+        _ensure_explicit_remote_ssh_ready_from_args(args)
+    except (RuntimeError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     _apply_remote_execution_env_from_args(args)
     command_kind = args.command_kind
     return _COMMAND_SPECS[command_kind].handler(parser, args)
+
+
+def _ensure_explicit_remote_ssh_ready_from_args(args: argparse.Namespace) -> None:
+    remote = getattr(args, "remote", None) if hasattr(args, "remote") else None
+    if not remote:
+        return
+    ensure_remote_ssh_ready(remote)
 
 
 def _apply_remote_execution_env_from_args(args: argparse.Namespace) -> None:
