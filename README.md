@@ -332,6 +332,7 @@ uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
 Common options:
 
 - `--bench-mode torch-npu-profiler|msprof`: override the mode recorded in the benchmark file.
+- `--output <path>`: write the perf artifact to an explicit path instead of the default path beside the operator file.
 - `--npu-devices 0,1,4-7`: run benchmark cases concurrently across the listed Ascend devices. Supports inclusive numeric ranges and preserves current serial behavior when omitted.
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -342,6 +343,7 @@ Example:
 
 ```bash
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py
+uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py --output ./artifacts/a_perf.txt
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py --bench-mode msprof --npu-devices 0,1,2,3
 ```
 

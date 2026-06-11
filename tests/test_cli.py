@@ -3952,6 +3952,39 @@ class PathResolutionTests(unittest.TestCase):
             self.assertNotIn("latency-a", stdout.getvalue())
             self.assertEqual(stderr.getvalue(), "")
 
+    def test_main_run_bench_threads_output_to_local_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            perf_file = root / "custom_perf.txt"
+            operator.write_text("print('x')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch("triton_agent.commands.execution.run_local_bench", return_value=(fake_result, perf_file)) as mocked:
+                exit_code = main(
+                    [
+                        "run-bench",
+                        "--bench-file",
+                        str(bench_file),
+                        "--operator-file",
+                        str(operator),
+                        "--output",
+                        str(perf_file),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                bench_file.resolve(),
+                operator.resolve(),
+                "torch-npu-profiler",
+                None,
+                verbose=False,
+                output=str(perf_file),
+            )
+
     def test_main_run_bench_reads_mode_from_metadata_when_flag_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -4704,7 +4737,7 @@ class PromptTests(unittest.TestCase):
             bench_mode=None,
             force_overwrite=False,
         )
-        self.assertIn("Do not execute the original input operator file.", prompt)
+        self.assertIn("Do not modify the original input operator file.", prompt)
         self.assertIn("Preserve the trailing input-helper block", prompt)
         self.assertIn("Treat the input operator file as source material and the differential correctness oracle.", prompt)
         self.assertIn("Generate a differential test for the converted output and execute it.", prompt)
@@ -4714,11 +4747,11 @@ class PromptTests(unittest.TestCase):
         self.assertIn("PyTorch-facing wrapper or module API may remain", prompt)
         self.assertIn("A pure PyTorch rewrite does not satisfy this convert task", prompt)
         self.assertIn("Target Ascend NPU only for this conversion flow", prompt)
-        self.assertIn("Do not benchmark this workflow.", prompt)
-        self.assertIn("Do not create `baseline/`.", prompt)
         self.assertIn("If a suitable test already exists in the workspace, reuse it", prompt)
         self.assertIn("This includes existing standalone or differential test cases when they already cover the operator workspace", prompt)
         self.assertIn("Only generate a new test when no suitable reusable test exists", prompt)
+        self.assertIn("Do not modify the original input operator file.", prompt)
+        self.assertIn("Read the original input operator file, but treat it as immutable source material and a correctness oracle only.", prompt)
         self.assertNotIn("triton-npu-prepare-optimize-baseline", prompt)
         self.assertIn("Requested output: /tmp/triton_op.py", prompt)
 

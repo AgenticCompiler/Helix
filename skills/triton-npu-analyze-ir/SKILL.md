@@ -26,6 +26,7 @@ Capture complete Triton Ascend compiler IR into a stable archive directory, then
    - `bishengir_stages/`: full Bisheng MLIR stage tree
    - `all-ir.txt`: compiler stderr from the replayed Bisheng command
    - `capture-manifest.json`: original command, extracted dump path, original compile command, and replay command
+   - Start with `python3 ./scripts/inspect_ir.py list-stages --ir-dir <ir-dir>`. If that is not enough, inspect `bishengir_stages/`, `triton_dump/`, `all-ir.txt`, and `capture-manifest.json` directly.
 
 3. Inspect the IR directory with the bundled helper.
    - `list-stages`

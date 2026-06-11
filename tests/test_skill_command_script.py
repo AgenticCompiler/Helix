@@ -184,6 +184,76 @@ class SkillCommandScriptTests(unittest.TestCase):
         )
         self.assertEqual(stderr.getvalue(), "")
 
+    def test_script_run_bench_threads_output_to_local_runner(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_output", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            perf_file = root / "custom_perf.txt"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\nprint('bench')\n", encoding="utf-8")
+
+            observed: list[object] = []
+
+            def fake_run_local_bench(
+                bench_path: Path,
+                operator_path: Path,
+                bench_mode: str,
+                npu_devices: Optional[str] = None,
+                **kwargs: object,
+            ) -> tuple[dict[str, object], Path]:
+                observed.extend([bench_path, operator_path, bench_mode, npu_devices, kwargs.get("output")])
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    perf_file,
+                )
+
+            with patch.object(
+                module,
+                "_load_bench_functions",
+                return_value=(
+                    lambda _path: {"bench-mode": "msprof"},
+                    fake_run_local_bench,
+                    lambda *_args, **_kwargs: None,
+                ),
+            ):
+                exit_code = module.main(
+                    [
+                        "run-bench",
+                        "--bench-file",
+                        str(bench_file),
+                        "--operator-file",
+                        str(operator),
+                        "--output",
+                        str(perf_file),
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            observed,
+            [bench_file.resolve(), operator.resolve(), "msprof", None, str(perf_file)],
+        )
+
     def test_script_run_bench_uses_remote_env_when_flag_missing(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
@@ -1561,6 +1631,97 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertNotIn("--kernel-name", completed.stdout)
         self.assertIn("--target-op", completed.stdout)
         self.assertIn("--keep-remote-workdir", completed.stdout)
+
+    def test_script_profile_bench_prints_profile_report_hint(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_profile_hint", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            profile_dir = root / "PROF_000001"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')\n", encoding="utf-8")
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_profile_functions",
+                    return_value=(
+                        lambda *_args, **_kwargs: (
+                            {
+                                "return_code": 0,
+                                "stdout": "",
+                                "stderr": "",
+                                "stalled": False,
+                                "session_id": None,
+                            },
+                            profile_dir,
+                        ),
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("remote runner should not be used")),
+                    ),
+                ), patch.object(module, "_build_profile_report", return_value="profile summary"):
+                    exit_code = module.main(
+                        [
+                            "profile-bench",
+                            "--bench-file",
+                            str(bench_file),
+                            "--operator-file",
+                            str(operator),
+                        ]
+                    )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            stdout.getvalue(),
+            (
+                "Return code: 0\n"
+                f"Profile directory: {profile_dir}\n"
+                "profile summary\n"
+                f"Hint: rerun the bundled `profile-report` helper for this `--profile-dir {profile_dir}` "
+                "if you need the summary again; if that is not enough, inspect the raw files in this profile directory directly.\n"
+            ),
+        )
+        self.assertEqual(stderr.getvalue(), "")
+
+    def test_script_exposes_run_bench_help(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        completed = subprocess.run(
+            [sys.executable, str(script), "run-bench", "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0)
+        self.assertIn("--bench-file", completed.stdout)
+        self.assertIn("--operator-file", completed.stdout)
+        self.assertIn("--output", completed.stdout)
 
     def test_load_compare_perf_function_reuses_perf_artifacts_implementation(self) -> None:
         script = (

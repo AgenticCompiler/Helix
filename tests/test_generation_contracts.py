@@ -332,8 +332,15 @@ class GenerationContractTests(unittest.TestCase):
         self.assertTrue(
             (REPO_ROOT / "skills" / "triton-npu-convert-pytorch-operator" / "SKILL.md").exists()
         )
+        self.assertIn("## Core Constraints", convert_skill)
+        self.assertIn("## Required Workflow", convert_skill)
+        self.assertIn("## Validation Flow", convert_skill)
         self.assertIn("trailing input-helper block", convert_skill)
-        self.assertIn("Do not execute the original input operator file", convert_skill)
+        self.assertIn("immutable source material", convert_skill)
+        self.assertIn(
+            "Do not modify, or overwrite the original input operator file",
+            convert_skill,
+        )
         self.assertIn("correctness oracle", convert_skill)
         self.assertIn("standalone or differential test mode", convert_skill)
         self.assertIn("standalone or differential test file", convert_skill)
@@ -348,10 +355,10 @@ class GenerationContractTests(unittest.TestCase):
         self.assertNotIn("call `model(*get_inputs())`", convert_skill)
         self.assertIn("Do not introduce unnecessary code.", convert_skill)
         self.assertIn("real Triton Ascend NPU kernel path", convert_skill)
-        self.assertIn("PyTorch-facing wrapper or `torch.nn.Module` public API may remain", convert_skill)
+        self.assertIn("Keep the public API PyTorch-facing when needed", convert_skill)
         self.assertIn("A pure PyTorch rewrite does not satisfy this convert task", convert_skill)
         self.assertIn("Target Ascend NPU only", convert_skill)
-        self.assertIn("Do not add CUDA-only, CPU-only, MPS, or generic multi-backend dispatch branches", convert_skill)
+        self.assertIn("generic multi-backend fallback logic", convert_skill)
         self.assertNotIn("triton-npu-prepare-optimize-baseline", convert_skill)
         self.assertNotIn("reusable baseline", convert_skill.lower())
         self.assertNotIn("benchmark", convert_skill.lower())
