@@ -47,10 +47,9 @@ class SimulatorRunnerTests(unittest.TestCase):
                 "op",
                 "simulator",
                 "--soc-version=Ascend950PR_9599",
-                "--kernel-name",
-                "KernelA",
+                "--kernel-name=KernelA",
                 sys.executable,
-                "bench_runtime.py",
+                str(module._bench_runtime_script_path()),
                 "run-one",
                 "--bench-file",
                 "bench_kernel.py",
@@ -100,7 +99,7 @@ class SimulatorRunnerTests(unittest.TestCase):
                 "op",
                 "simulator",
                 "--soc-version=Ascend910B_TEST",
-                "--kernel-name",
+                "--kernel-name=KernelA",
             ],
         )
 

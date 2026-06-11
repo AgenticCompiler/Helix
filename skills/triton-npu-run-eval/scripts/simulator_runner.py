@@ -18,8 +18,12 @@ def _simulator_soc_version() -> str:
     return os.environ.get("TRITON_AGENT_SIMULATOR_SOC_VERSION", "Ascend950PR_9599")
 
 
+def _bench_runtime_script_path() -> Path:
+    return Path(__file__).resolve().with_name("bench_runtime.py")
+
+
 def _load_bench_runtime_module():
-    script_path = Path(__file__).resolve().with_name("bench_runtime.py")
+    script_path = _bench_runtime_script_path()
     module_name = f"triton_agent_simulator_runtime_{script_path.stem}"
     spec = importlib.util.spec_from_file_location(module_name, script_path)
     if spec is None or spec.loader is None:
@@ -87,10 +91,9 @@ def run_local_simulator(
         "op",
         "simulator",
         f"--soc-version={_simulator_soc_version()}",
-        "--kernel-name",
-        selected_kernel,
+        f"--kernel-name={selected_kernel}",
         local_python_executable(),
-        "bench_runtime.py",
+        str(_bench_runtime_script_path()),
         "run-one",
         "--bench-file",
         bench_file.name,
