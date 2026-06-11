@@ -14,6 +14,15 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 _RUN_BENCH_HINT = "Hint: use `compare-perf` to inspect this perf artifact instead of reading it directly."
 _RUN_TEST_HINT = "Hint: use `compare-result` to inspect this archived result instead of reading it directly."
 
+
+def _profile_bench_hint(profile_dir: Path) -> str:
+    return (
+        "Hint: rerun the bundled `profile-report` helper for this "
+        f"`--profile-dir {profile_dir}` if you need the summary again; "
+        "if that is not enough, inspect the raw files in this profile directory directly."
+    )
+
+
 class ParseMetadataFn(Protocol):
     def __call__(self, path: Path) -> dict[str, str]: ...
 
@@ -58,6 +67,7 @@ class RunLocalBenchFn(Protocol):
         operator_file: Path,
         bench_mode: str,
         npu_devices: str | None = None,
+        output: str | None = None,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -73,6 +83,7 @@ class RunRemoteBenchFn(Protocol):
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: object | None = None,
+        output: str | None = None,
     ) -> tuple[ResultPayload, Path | None, str]: ...
 
 
@@ -157,6 +168,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_bench = subparsers.add_parser("run-bench")
     run_bench.add_argument("--bench-file", required=True)
     run_bench.add_argument("--operator-file", required=True)
+    run_bench.add_argument("--output")
     run_bench.add_argument("--remote")
     run_bench.add_argument("--remote-workdir")
     run_bench.add_argument("--keep-remote-workdir", action="store_true")
@@ -360,6 +372,7 @@ def main(argv: list[str] | None = None) -> int:
         if profile_dir is not None:
             print(f"Profile directory: {profile_dir}")
             print(_build_profile_report(profile_dir, args.target_op))
+            print(_profile_bench_hint(profile_dir))
         if remote is not None and args.keep_remote_workdir:
             print(f"Remote workspace: {remote_workspace}")
         return int(result["return_code"])
@@ -391,6 +404,7 @@ def main(argv: list[str] | None = None) -> int:
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
+                output=args.output,
             )
         else:
             result, perf_path = run_local_bench(
@@ -398,6 +412,7 @@ def main(argv: list[str] | None = None) -> int:
                 operator_file,
                 resolved_bench_mode,
                 args.npu_devices,
+                output=args.output,
             )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)

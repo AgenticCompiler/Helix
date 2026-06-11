@@ -137,6 +137,15 @@ def write_manifest(
     return manifest_path
 
 
+def _capture_ir_hint(archive_dir: Path) -> str:
+    return (
+        "Hint: use the bundled `inspect_ir.py` helper with "
+        f"`--ir-dir {archive_dir}` to inspect this archive first; "
+        "if that is not enough, inspect bishengir_stages/, triton_dump/, "
+        "all-ir.txt, and capture-manifest.json directly."
+    )
+
+
 def capture_local_archive(
     *,
     bench_file: Path,
@@ -333,6 +342,7 @@ def main(argv: list[str] | None = None) -> int:
                 stderr=sys.stderr,
             )
             print(f"Capture manifest: {manifest_path}")
+            print(_capture_ir_hint(archive_dir))
             if args.keep_remote_workdir:
                 print(f"Remote workspace: {remote_workspace}")
             return 0
@@ -344,6 +354,7 @@ def main(argv: list[str] | None = None) -> int:
             case_id=args.case_id,
         )
         print(f"Capture manifest: {manifest_path}")
+        print(_capture_ir_hint(archive_dir))
         return 0
     except (FileExistsError, FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)

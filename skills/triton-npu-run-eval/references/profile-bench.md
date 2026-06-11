@@ -32,3 +32,5 @@ Use `profile-report` to re-summarize an existing `PROF_*` directory without re-r
 python3 ./scripts/run-command.py profile-report --profile-dir PROF_000001_.../ --target-op MatMul
 python3 ./scripts/run-command.py profile-report --profile-dir PROF_000001_.../ --target-op MatMul --format json
 ```
+
+If the inline `profile-bench` summary is not enough, rerun `profile-report` on the copied-back directory or inspect the raw files inside that `PROF_*` directory directly.
