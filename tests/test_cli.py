@@ -2602,7 +2602,7 @@ class PathResolutionTests(unittest.TestCase):
                 seen_env["remote_workdir"] = os.environ.get(remote_workdir_env_name())
                 return AgentResult(return_code=0, stdout="", stderr=""), None, "/tmp/triton-agent-123"
 
-            with patch(
+            with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
                 "triton_agent.commands.execution.run_remote_test",
                 side_effect=fake_run_remote_test,
             ):
@@ -2645,7 +2645,7 @@ class PathResolutionTests(unittest.TestCase):
                 {remote_workdir_env_name(): "/tmp/stale-workdir"},
                 clear=False,
             ):
-                with patch(
+                with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
                     "triton_agent.commands.execution.run_remote_test",
                     side_effect=fake_run_remote_test,
                 ):
@@ -2683,6 +2683,95 @@ class PathResolutionTests(unittest.TestCase):
             self.assertNotIn(remote_target_env_name(), os.environ)
             self.assertNotIn(remote_workdir_env_name(), os.environ)
             self.assertIn("No operator workspaces found", stderr.getvalue())
+
+    def test_main_explicit_remote_runs_ssh_preflight_before_dispatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch.object(cli_module, "ensure_remote_ssh_ready") as preflight, patch(
+                "triton_agent.commands.execution.run_remote_test",
+                return_value=(fake_result, None, "/tmp/triton-agent-abc"),
+            ) as mocked:
+                exit_code = main(
+                    [
+                        "run-test",
+                        "--test-file",
+                        str(test_file),
+                        "--operator-file",
+                        str(operator),
+                        "--remote",
+                        "alice@example.com:2200",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        preflight.assert_called_once_with("alice@example.com:2200")
+        mocked.assert_called_once()
+
+    def test_main_explicit_remote_preflight_failure_returns_1_and_skips_handler(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+
+            stderr = StringIO()
+            with patch.object(
+                cli_module,
+                "ensure_remote_ssh_ready",
+                side_effect=RuntimeError(
+                    "Run `ssh-copy-id alice@example.com` and enter the remote login password."
+                ),
+            ), patch("triton_agent.commands.execution.run_remote_test") as mocked:
+                with redirect_stderr(stderr):
+                    exit_code = main(
+                        [
+                            "run-test",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                            "--remote",
+                            "alice@example.com",
+                        ]
+                    )
+
+        self.assertEqual(exit_code, 1)
+        mocked.assert_not_called()
+        self.assertIn("ssh-copy-id alice@example.com", stderr.getvalue())
+
+    def test_main_local_run_test_skips_ssh_preflight(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch.object(cli_module, "ensure_remote_ssh_ready") as preflight, patch(
+                "triton_agent.commands.execution.run_local_test",
+                return_value=(fake_result, None),
+            ) as mocked:
+                exit_code = main(
+                    [
+                        "run-test",
+                        "--test-file",
+                        str(test_file),
+                        "--operator-file",
+                        str(operator),
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        preflight.assert_not_called()
+        mocked.assert_called_once()
 
     def test_run_test_wrapper_calls_loaded_skill_module(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3758,7 +3847,7 @@ class PathResolutionTests(unittest.TestCase):
             test_file.write_text("# test-mode: standalone\nprint('test')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch(
+            with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
                 "triton_agent.commands.execution.run_remote_test",
                 return_value=(fake_result, None, "/tmp/triton-agent-abc"),
             ) as mocked:
@@ -3798,7 +3887,7 @@ class PathResolutionTests(unittest.TestCase):
 
             stdout = StringIO()
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch(
+            with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
                 "triton_agent.commands.execution.run_remote_test",
                 return_value=(fake_result, None, "/tmp/triton-agent-keep"),
             ):
@@ -3962,7 +4051,7 @@ class PathResolutionTests(unittest.TestCase):
             bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch(
+            with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
                 "triton_agent.commands.execution.run_remote_bench",
                 return_value=(fake_result, None, "/tmp/triton-agent-bench"),
             ) as mocked:
@@ -4001,7 +4090,7 @@ class PathResolutionTests(unittest.TestCase):
             bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch(
+            with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
                 "triton_agent.commands.execution.run_remote_bench",
                 return_value=(fake_result, None, "/tmp/triton-agent-bench"),
             ) as mocked:
@@ -4043,7 +4132,7 @@ class PathResolutionTests(unittest.TestCase):
 
             stdout = StringIO()
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch(
+            with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
                 "triton_agent.commands.execution.run_remote_bench",
                 return_value=(fake_result, None, "/tmp/triton-agent-keep-bench"),
             ):
@@ -4120,7 +4209,9 @@ class PathResolutionTests(unittest.TestCase):
             oracle.write_text("oracle", encoding="utf-8")
             new.write_text("new", encoding="utf-8")
 
-            with patch("triton_agent.commands.comparison.compare_remote_result_files", return_value=0) as mocked:
+            with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
+                "triton_agent.commands.comparison.compare_remote_result_files", return_value=0
+            ) as mocked:
                 exit_code = main(
                     [
                         "compare-result",

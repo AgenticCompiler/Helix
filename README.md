@@ -737,7 +737,7 @@ These options appear on multiple commands:
 - `--interact`: attach to a live agent session instead of a non-interactive run.
 - `--show-output`: stream readable non-interactive agent output in the current terminal, and append the same output to `triton-agent-logs/<command>.show-output.log` under the workspace workdir for later debugging.
 - `--verbose`: print additional diagnostics.
-- `--remote`: run execution and comparison commands through SSH, and pass remote context to generation and optimize workflows.
+- `--remote`: run execution and comparison commands through SSH, and pass remote context to generation and optimize workflows. When passed explicitly, the CLI first checks non-interactive key-based SSH access and suggests `ssh-copy-id` if the target still needs password-based setup.
 - `--remote-workdir`: choose the remote working root.
 - `--keep-remote-workdir`: keep the remote workspace after `run-test` or `run-bench`.
 - `--force-overwrite`: allow generation commands to replace existing generated files.
