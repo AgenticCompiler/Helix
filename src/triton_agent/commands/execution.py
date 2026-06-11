@@ -9,6 +9,7 @@ from triton_agent.execution import (
     resolve_bench_mode_from_metadata,
     resolve_test_mode_from_metadata,
     run_local_bench,
+    run_local_simulator,
     run_local_test,
     run_remote_bench,
     run_remote_test,
@@ -122,6 +123,21 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
     if perf_path is not None:
         print(f"Perf file: {perf_path}")
         print(_RUN_BENCH_HINT)
+    return result.return_code
+
+
+def handle_run_simulator(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    bench_file, operator_file = resolve_run_bench_paths(parser, args)
+    try:
+        result = run_local_simulator(
+            bench_file,
+            operator_file,
+            case_id=getattr(args, "case_id", None),
+            kernel_name=getattr(args, "kernel_name", None),
+        )
+    except (FileNotFoundError, ValueError, RuntimeError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     return result.return_code
 
 

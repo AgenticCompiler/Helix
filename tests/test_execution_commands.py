@@ -9,12 +9,80 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.cli import build_parser
-from triton_agent.commands.execution import handle_run_bench, handle_run_test
+from triton_agent.commands.execution import handle_run_bench, handle_run_simulator, handle_run_test
 from triton_agent.models import AgentResult
 from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
 
 
 class ExecutionCommandHandlerTests(unittest.TestCase):
+    def test_handle_run_simulator_returns_child_exit_code(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\nprint('bench')", encoding="utf-8")
+
+            args = parser.parse_args(
+                [
+                    "run-simulator",
+                    "--bench-file",
+                    str(bench_file),
+                    "--operator-file",
+                    str(operator),
+                    "--case-id",
+                    "case-a",
+                    "--kernel-name",
+                    "KernelA",
+                ]
+            )
+            fake_result = AgentResult(return_code=7, stdout="sim out\n", stderr="")
+
+            with patch(
+                "triton_agent.commands.execution.run_local_simulator",
+                return_value=fake_result,
+            ) as mocked:
+                exit_code = handle_run_simulator(parser, args)
+
+            self.assertEqual(exit_code, 7)
+            mocked.assert_called_once_with(
+                bench_file.resolve(),
+                operator.resolve(),
+                case_id="case-a",
+                kernel_name="KernelA",
+            )
+
+    def test_handle_run_simulator_prints_runtime_error(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\nprint('bench')", encoding="utf-8")
+
+            args = parser.parse_args(
+                [
+                    "run-simulator",
+                    "--bench-file",
+                    str(bench_file),
+                    "--operator-file",
+                    str(operator),
+                ]
+            )
+            stderr = StringIO()
+
+            with patch(
+                "triton_agent.commands.execution.run_local_simulator",
+                side_effect=ValueError("case selection failed"),
+            ):
+                with redirect_stderr(stderr):
+                    exit_code = handle_run_simulator(parser, args)
+
+            self.assertEqual(exit_code, 1)
+            self.assertIn("case selection failed", stderr.getvalue())
+
     def test_handle_run_test_reads_mode_from_metadata_when_flag_missing(self) -> None:
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
