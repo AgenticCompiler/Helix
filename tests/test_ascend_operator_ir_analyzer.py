@@ -3,6 +3,7 @@ import json
 import sys
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -73,6 +74,51 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                     "case-5",
                 ]
             )
+
+    def test_main_prints_inspect_ir_hint_after_local_success(self) -> None:
+        module = _load_capture_ir_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive_dir = root / "ir"
+            bench_file = root / "bench.py"
+            operator_file = root / "kernel.py"
+            manifest_path = archive_dir / "capture-manifest.json"
+            bench_file.write_text("print('bench')\n", encoding="utf-8")
+            operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(module, "capture_local_archive", return_value=manifest_path):
+                    exit_code = module.main(
+                        [
+                            "--ir-dir",
+                            str(archive_dir),
+                            "--bench-file",
+                            str(bench_file),
+                            "--operator-file",
+                            str(operator_file),
+                        ]
+                    )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            stdout.getvalue(),
+            (
+                f"Capture manifest: {manifest_path}\n"
+                f"Hint: use the bundled `inspect_ir.py` helper with `--ir-dir {archive_dir.resolve()}` to inspect this archive first; "
+                "if that is not enough, inspect bishengir_stages/, triton_dump/, all-ir.txt, and capture-manifest.json directly.\n"
+            ),
+        )
+        self.assertEqual(stderr.getvalue(), "")
 
     def test_build_execution_command_uses_runtime_helper_for_standalone_benches(self) -> None:
         module = _load_capture_ir_module()

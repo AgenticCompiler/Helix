@@ -5,6 +5,7 @@ Run a generated benchmark with:
 ```bash
 python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py
 python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py
+python3 ./scripts/run-command.py run-bench --bench-file bench_a.py --operator-file a.py --output ./artifacts/a_perf.txt
 ```
 
 Rules:
@@ -12,6 +13,7 @@ Rules:
 - Always pass both `--bench-file` and `--operator-file`.
 - If `--bench-mode` is omitted, the command reads `# bench-mode: ...` from the benchmark file.
 - Use `--bench-mode torch-npu-profiler` or `--bench-mode msprof` only when you need to override the embedded metadata.
+- Use `--output <path>` when you need the perf artifact at a specific location.
 - On success, `run-bench` prints `Perf file: <path>` and a short hint to use `compare-perf` instead of reading perf files directly.
 - On failure, `run-bench` prints the captured benchmark output so the error remains diagnosable.
 

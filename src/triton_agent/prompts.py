@@ -184,8 +184,8 @@ def build_prompt(
         requested_convert_test_mode = "standalone" if test_mode == "standalone" else "differential"
         lines.extend(
             [
-                "Treat the input operator file as source material only.",
-                "Do not execute the original input operator file.",
+                "Read the original input operator file, but treat it as immutable source material and a correctness oracle only.",
+                "Do not modify the original input operator file.",
                 "Write the converted operator to the requested output path and keep the original input file unchanged.",
                 "Preserve the trailing input-helper block from the input file in the converted output so later harnesses can reuse it.",
                 "When generating or validating harnesses, you may add broader coverage and do not need to limit yourself to only the preserved trailing helpers.",
@@ -198,8 +198,6 @@ def build_prompt(
                 "A pure PyTorch rewrite does not satisfy this convert task, even if differential validation passes.",
                 "Target Ascend NPU only for this conversion flow and do not add CUDA, CPU, MPS, or generic multi-backend fallback logic unless the source file already requires shared import structure around the public API.",
                 "Do not inline correctness or benchmark harness code into the converted operator file.",
-                "Do not benchmark this workflow.",
-                "Do not create `baseline/`.",
             ]
         )
         if requested_convert_test_mode == "standalone":
