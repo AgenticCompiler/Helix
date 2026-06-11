@@ -34,6 +34,10 @@ from profile_csv_parser import (
 from result_payload import ResultPayload, make_result
 
 
+# ---------------------------------------------------------------------------
+# Constants & data model
+# ---------------------------------------------------------------------------
+
 WARMUP_DEFAULT = 5
 REPEATS_DEFAULT = 50
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched profiler operator details"
@@ -49,159 +53,9 @@ class BenchCase:
     case_data: Mapping[str, object]
 
 
-def load_bench_cases(
-    bench_file: Path,
-    operator_file: Path,
-) -> tuple[list[BenchCase], KernelResolution]:
-    bench_path = bench_file.resolve()
-    operator_path = operator_file.resolve()
-    bench_module = _load_module(bench_path, f"bench_runtime_bench_{bench_path.stem}")
-    operator_module = _load_module(operator_path, f"bench_runtime_operator_{operator_path.stem}")
-    build_operator_api = _require_callable(bench_module, "build_operator_api", bench_path)
-    build_cases = _require_callable(bench_module, "build_bench_cases", bench_path)
-    build_case_fn = _require_callable(bench_module, "build_bench_case_fn", bench_path)
-    operator_api = build_operator_api(operator_module)
-    raw_cases = build_cases()
-    return _normalize_cases(raw_cases, operator_api, build_case_fn), resolve_bench_kernel_resolution(
-        bench_path,
-        operator_path,
-    )
-
-
-def select_bench_case(cases: list[BenchCase], case_id: str | None) -> BenchCase:
-    if case_id is None:
-        if len(cases) == 1:
-            return cases[0]
-        available = ", ".join(case.case_id for case in cases)
-        raise ValueError(
-            "Benchmark profiling requires --case-id when multiple cases exist. "
-            f"Available case ids: {available}"
-        )
-    for case in cases:
-        if case.case_id == case_id:
-            return case
-    available = ", ".join(case.case_id for case in cases)
-    raise ValueError(f"Unknown benchmark case id '{case_id}'. Available case ids: {available}")
-
-
-def run_local_bench(
-    bench_file: Path,
-    operator_file: Path,
-    *,
-    verbose: bool = False,
-    output: str | None = None,
-) -> tuple[ResultPayload, Path]:
-    prev = os.environ.get("TRITON_ALWAYS_COMPILE")
-    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
-    try:
-        cases, resolution = load_bench_cases(bench_file, operator_file)
-        case_records: list[PerfCaseRecord] = []
-        had_failures = False
-        stderr_chunks: list[str] = []
-        preserved_run_dir = _create_local_preserved_profile_run_dir(prefix="triton-agent-bench-")
-
-        for case in cases:
-            record = run_one_bench_case_record(
-                bench_file,
-                operator_file,
-                case.case_id,
-                preserved_run_dir=preserved_run_dir,
-                verbose=verbose,
-                preloaded=(cases, resolution),
-            )
-            if record.error_message is not None:
-                had_failures = True
-                stderr_chunks.append(f"{case.case_id}: {record.error_message}")
-            case_records.append(record)
-
-        perf_path = _resolve_output_path(operator_file, output=output)
-        write_perf_lines(
-            perf_path,
-            render_perf_case_records_jsonl(
-                case_records,
-                missing_kernel_match_error=_MISSING_KERNEL_MATCH_ERROR,
-            ),
-        )
-        return (
-            make_result(
-                return_code=1 if had_failures else 0,
-                stdout="",
-                stderr="\n".join(stderr_chunks),
-            ),
-            perf_path,
-        )
-    finally:
-        if prev is None:
-            del os.environ["TRITON_ALWAYS_COMPILE"]
-        else:
-            os.environ["TRITON_ALWAYS_COMPILE"] = prev
-
-
-def profile_local_bench_case(
-    bench_file: Path,
-    operator_file: Path,
-    case_id: str | None,
-) -> ResultPayload:
-    cases, resolution = load_bench_cases(bench_file, operator_file)
-    case = select_bench_case(cases, case_id)
-    profile_root = _profile_output_root(bench_file.parent, case.case_id)
-    _metrics, error_message = _profile_case_with_profiler(case, resolution, profile_root)
-    if error_message is not None:
-        return make_result(return_code=1, stdout="", stderr=error_message)
-    return make_result(return_code=0, stdout="", stderr="")
-
-
-def run_one_bench_case(
-    bench_file: Path,
-    operator_file: Path,
-    case_id: str | None = None,
-) -> ResultPayload:
-    cases, _resolution = load_bench_cases(bench_file, operator_file)
-    case = select_bench_case(cases, case_id)
-    case.fn()
-    return make_result(return_code=0, stdout="", stderr="")
-
-
-def run_one_bench_case_record(
-    bench_file: Path,
-    operator_file: Path,
-    case_id: str | None,
-    *,
-    preserved_run_dir: Path | None = None,
-    verbose: bool = False,
-    preloaded: tuple[list[BenchCase], KernelResolution] | None = None,
-) -> PerfCaseRecord:
-    cases, resolution = preloaded or load_bench_cases(bench_file, operator_file)
-    case = select_bench_case(cases, case_id)
-    return _run_bench_case(
-        case,
-        resolution,
-        preserved_run_dir,
-        bench_file.parent,
-        verbose=verbose,
-    )
-
-
-def runtime_support_paths() -> list[Path]:
-    script_dir = Path(__file__).resolve().parent
-    return [
-        script_dir / "result_payload.py",
-        script_dir / "bench_runtime.py",
-        script_dir / "bench_contract.py",
-        script_dir / "perf_artifacts.py",
-        script_dir / "profile_csv_parser.py",
-    ]
-
-
-def create_local_preserved_profile_run_dir(prefix: str) -> Path | None:
-    return _create_local_preserved_profile_run_dir(prefix)
-
-
-def _resolve_output_path(operator_file: Path, *, output: str | None = None) -> Path:
-    if output is not None:
-        return Path(output).expanduser().resolve()
-    return perf_output_path(operator_file)
-
+# ---------------------------------------------------------------------------
+# Module loading & case construction
+# ---------------------------------------------------------------------------
 
 def _load_module(module_path: Path, module_name: str):
     spec = importlib.util.spec_from_file_location(f"{module_name}_{time.time_ns()}", module_path)
@@ -284,6 +138,148 @@ def _normalize_positive_int(value: object, field_name: str, case_id: str) -> int
     if value <= 0:
         raise ValueError(f"Benchmark case '{case_id}' field '{field_name}' must be > 0")
     return value
+
+
+def load_bench_cases(
+    bench_file: Path,
+    operator_file: Path,
+) -> tuple[list[BenchCase], KernelResolution]:
+    bench_path = bench_file.resolve()
+    operator_path = operator_file.resolve()
+    bench_module = _load_module(bench_path, f"bench_runtime_bench_{bench_path.stem}")
+    operator_module = _load_module(operator_path, f"bench_runtime_operator_{operator_path.stem}")
+    build_operator_api = _require_callable(bench_module, "build_operator_api", bench_path)
+    build_cases = _require_callable(bench_module, "build_bench_cases", bench_path)
+    build_case_fn = _require_callable(bench_module, "build_bench_case_fn", bench_path)
+    operator_api = build_operator_api(operator_module)
+    raw_cases = build_cases()
+    return _normalize_cases(raw_cases, operator_api, build_case_fn), resolve_bench_kernel_resolution(
+        bench_path,
+        operator_path,
+    )
+
+
+def select_bench_case(cases: list[BenchCase], case_id: str | None) -> BenchCase:
+    if case_id is None:
+        if len(cases) == 1:
+            return cases[0]
+        available = ", ".join(case.case_id for case in cases)
+        raise ValueError(
+            "Benchmark profiling requires --case-id when multiple cases exist. "
+            f"Available case ids: {available}"
+        )
+    for case in cases:
+        if case.case_id == case_id:
+            return case
+    available = ", ".join(case.case_id for case in cases)
+    raise ValueError(f"Unknown benchmark case id '{case_id}'. Available case ids: {available}")
+
+
+# ---------------------------------------------------------------------------
+# Bench execution (public API)
+# ---------------------------------------------------------------------------
+
+def execute_bench_case(
+    bench_file: Path,
+    operator_file: Path,
+    case_id: str | None = None,
+) -> ResultPayload:
+    cases, _resolution = load_bench_cases(bench_file, operator_file)
+    case = select_bench_case(cases, case_id)
+    case.fn()
+    return make_result(return_code=0, stdout="", stderr="")
+
+
+def profile_bench_case(
+    bench_file: Path,
+    operator_file: Path,
+    case_id: str | None,
+    *,
+    preserved_run_dir: Path | None = None,
+    verbose: bool = False,
+    preloaded: tuple[list[BenchCase], KernelResolution] | None = None,
+) -> PerfCaseRecord:
+    cases, resolution = preloaded or load_bench_cases(bench_file, operator_file)
+    case = select_bench_case(cases, case_id)
+    return _run_bench_case(
+        case,
+        resolution,
+        preserved_run_dir,
+        bench_file.parent,
+        verbose=verbose,
+    )
+
+
+def profile_bench_case_quick(
+    bench_file: Path,
+    operator_file: Path,
+    case_id: str | None,
+) -> ResultPayload:
+    cases, resolution = load_bench_cases(bench_file, operator_file)
+    case = select_bench_case(cases, case_id)
+    profile_root = _profile_output_root(bench_file.parent, case.case_id)
+    _metrics, error_message = _profile_case_with_profiler(case, resolution, profile_root)
+    if error_message is not None:
+        return make_result(return_code=1, stdout="", stderr=error_message)
+    return make_result(return_code=0, stdout="", stderr="")
+
+
+def profile_all_bench_cases(
+    bench_file: Path,
+    operator_file: Path,
+    *,
+    verbose: bool = False,
+    output: str | None = None,
+) -> tuple[ResultPayload, Path]:
+    prev = os.environ.get("TRITON_ALWAYS_COMPILE")
+    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+    try:
+        cases, resolution = load_bench_cases(bench_file, operator_file)
+        case_records: list[PerfCaseRecord] = []
+        had_failures = False
+        stderr_chunks: list[str] = []
+        preserved_run_dir = _create_local_preserved_profile_run_dir(prefix="triton-agent-bench-")
+
+        for case in cases:
+            record = profile_bench_case(
+                bench_file,
+                operator_file,
+                case.case_id,
+                preserved_run_dir=preserved_run_dir,
+                verbose=verbose,
+                preloaded=(cases, resolution),
+            )
+            if record.error_message is not None:
+                had_failures = True
+                stderr_chunks.append(f"{case.case_id}: {record.error_message}")
+            case_records.append(record)
+
+        perf_path = _resolve_output_path(operator_file, output=output)
+        write_perf_lines(
+            perf_path,
+            render_perf_case_records_jsonl(
+                case_records,
+                missing_kernel_match_error=_MISSING_KERNEL_MATCH_ERROR,
+            ),
+        )
+        return (
+            make_result(
+                return_code=1 if had_failures else 0,
+                stdout="",
+                stderr="\n".join(stderr_chunks),
+            ),
+            perf_path,
+        )
+    finally:
+        if prev is None:
+            del os.environ["TRITON_ALWAYS_COMPILE"]
+        else:
+            os.environ["TRITON_ALWAYS_COMPILE"] = prev
+
+
+# ---------------------------------------------------------------------------
+# Profiling internals
+# ---------------------------------------------------------------------------
 
 def _profile_case_with_profiler(
     case: BenchCase,
@@ -393,32 +389,6 @@ def _run_bench_case(
     )
 
 
-@contextmanager
-def _suppress_output_streams() -> Iterator[None]:
-    with open(os.devnull, "w", encoding="utf-8") as quiet_output:
-        stdout_fd = os.dup(1)
-        stderr_fd = os.dup(2)
-        try:
-            sys.stdout.flush()
-            sys.stderr.flush()
-            with redirect_stdout(quiet_output), redirect_stderr(quiet_output):
-                os.dup2(quiet_output.fileno(), 1)
-                os.dup2(quiet_output.fileno(), 2)
-                yield
-        finally:
-            sys.stdout.flush()
-            sys.stderr.flush()
-            os.dup2(stdout_fd, 1)
-            os.dup2(stderr_fd, 2)
-            os.close(stdout_fd)
-            os.close(stderr_fd)
-
-
-def _synchronize(torch_module: Any) -> None:
-    if hasattr(torch_module, "npu"):
-        torch_module.npu.synchronize()
-
-
 def _read_profiler_metrics(
     profile_root: Path,
     active_count: int,
@@ -490,6 +460,42 @@ def _read_profiler_metrics(
     )
 
 
+@contextmanager
+def _suppress_output_streams() -> Iterator[None]:
+    with open(os.devnull, "w", encoding="utf-8") as quiet_output:
+        stdout_fd = os.dup(1)
+        stderr_fd = os.dup(2)
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+            with redirect_stdout(quiet_output), redirect_stderr(quiet_output):
+                os.dup2(quiet_output.fileno(), 1)
+                os.dup2(quiet_output.fileno(), 2)
+                yield
+        finally:
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os.dup2(stdout_fd, 1)
+            os.dup2(stderr_fd, 2)
+            os.close(stdout_fd)
+            os.close(stderr_fd)
+
+
+def _synchronize(torch_module: Any) -> None:
+    if hasattr(torch_module, "npu"):
+        torch_module.npu.synchronize()
+
+
+# ---------------------------------------------------------------------------
+# Directory & path management
+# ---------------------------------------------------------------------------
+
+def _resolve_output_path(operator_file: Path, *, output: str | None = None) -> Path:
+    if output is not None:
+        return Path(output).expanduser().resolve()
+    return perf_output_path(operator_file)
+
+
 def _profile_output_root(parent: Path, case_id: str) -> Path:
     return parent / f"PROF_{_sanitize_case_id(case_id)}_{int(time.time() * 1000)}"
 
@@ -514,6 +520,10 @@ def _create_local_preserved_profile_run_dir(prefix: str) -> Path | None:
     run_dir = Path(tempfile.mkdtemp(prefix=prefix, dir=str(root)))
     _set_directory_owner_only(run_dir)
     return run_dir
+
+
+def create_local_preserved_profile_run_dir(prefix: str) -> Path | None:
+    return _create_local_preserved_profile_run_dir(prefix)
 
 
 def _create_local_bench_profile_dir(
@@ -543,6 +553,21 @@ def _cleanup_local_bench_extra_info(workdir: Path) -> None:
     if not extra_info_dir.is_dir():
         return
     shutil.rmtree(extra_info_dir)
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def runtime_support_paths() -> list[Path]:
+    script_dir = Path(__file__).resolve().parent
+    return [
+        script_dir / "result_payload.py",
+        script_dir / "bench_runtime.py",
+        script_dir / "bench_contract.py",
+        script_dir / "perf_artifacts.py",
+        script_dir / "profile_csv_parser.py",
+    ]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -602,7 +627,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "run-one":
-            result = run_one_bench_case(
+            result = execute_bench_case(
                 bench_file,
                 operator_file,
                 args.case_id,
@@ -611,7 +636,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "profile-one":
             if bool(args.emit_record):
-                record = run_one_bench_case_record(
+                record = profile_bench_case(
                     bench_file,
                     operator_file,
                     args.case_id,
@@ -619,7 +644,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 print(_render_case_record_json(record))
                 return 1 if record.error_message is not None else 0
-            result = profile_local_bench_case(
+            result = profile_bench_case_quick(
                 bench_file,
                 operator_file,
                 args.case_id,
@@ -627,7 +652,7 @@ def main(argv: list[str] | None = None) -> int:
             return _emit_result(result)
 
         if args.command == "run-all":
-            result, perf_path = run_local_bench(
+            result, perf_path = profile_all_bench_cases(
                 bench_file,
                 operator_file,
                 verbose=bool(args.verbose),

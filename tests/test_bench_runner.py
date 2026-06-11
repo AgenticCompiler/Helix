@@ -9,11 +9,12 @@ from io import StringIO
 from pathlib import Path
 from types import ModuleType
 from typing import Optional, Union
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from tests.run_skill_test_utils import (
     load_bench_runner_module,
     load_bench_runtime_module,
+    load_perf_artifacts_module,
     make_skill_result,
 )
 
@@ -214,12 +215,10 @@ class LocalBenchRunnerTests(unittest.TestCase):
             fake_result = make_skill_result(0, "bench stdout\n", "")
             perf_file = root / "abs_perf.txt"
             perf_file.write_text("latency-case-a: 1.0\n", encoding="utf-8")
-            with patch.object(
-                module,
-                "run_local_torch_npu_profiler_bench",
-                create=True,
-                return_value=(fake_result, perf_file),
-            ) as helper, patch.object(module, "run_streaming_process") as streaming:
+            fake_runtime = MagicMock()
+            fake_runtime.profile_all_bench_cases.return_value = (fake_result, perf_file)
+            with patch.object(module, "_load_bench_runtime_module", return_value=fake_runtime), \
+                 patch.object(module, "run_streaming_process") as streaming:
                 result, resolved_perf = module.run_local_bench(
                     bench_file,
                     operator_file,
@@ -228,8 +227,9 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             self.assertEqual(result["return_code"], 0)
             self.assertEqual(resolved_perf, perf_file)
-            helper.assert_called_once_with(bench_file, operator_file, verbose=False,
-                                             output=None)
+            fake_runtime.profile_all_bench_cases.assert_called_once_with(
+                bench_file, operator_file, verbose=False, output=None
+            )
             streaming.assert_not_called()
 
     def test_run_local_bench_prints_visible_devices_when_debug_enabled(self) -> None:
@@ -244,6 +244,8 @@ class LocalBenchRunnerTests(unittest.TestCase):
             fake_result = make_skill_result(0, "", "")
             perf_file = root / "abs_perf.txt"
             stdout = StringIO()
+            fake_runtime = MagicMock()
+            fake_runtime.profile_all_bench_cases.return_value = (fake_result, perf_file)
             with patch.dict(
                 module.os.environ,
                 {
@@ -254,9 +256,8 @@ class LocalBenchRunnerTests(unittest.TestCase):
             ):
                 with patch.object(
                     module,
-                    "run_local_torch_npu_profiler_bench",
-                    create=True,
-                    return_value=(fake_result, perf_file),
+                    "_load_bench_runtime_module",
+                    return_value=fake_runtime,
                 ):
                     with redirect_stdout(stdout):
                         result, resolved_perf = module.run_local_bench(
@@ -280,11 +281,12 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             fake_result = make_skill_result(0, "bench stdout\n", "")
             perf_file = root / "opt_abs_perf.txt"
+            fake_runtime = MagicMock()
+            fake_runtime.profile_all_bench_cases.return_value = (fake_result, perf_file)
             with patch.object(
                 module,
-                "run_local_torch_npu_profiler_bench",
-                create=True,
-                return_value=(fake_result, perf_file),
+                "_load_bench_runtime_module",
+                return_value=fake_runtime,
             ):
                 _, perf_path = module.run_local_bench(
                     bench_file,
@@ -311,22 +313,18 @@ class LocalBenchRunnerTests(unittest.TestCase):
             fake_result = make_skill_result(0, "", "")
             perf_file = root / "abs_perf.txt"
 
-            def _fake_helper(
-                passed_bench: Path,
-                passed_operator: Path,
-                *,
-                verbose: bool = False,
-                output: Optional[str] = None,
-            ):
-                del passed_bench, passed_operator, verbose, output
+            def _capture_cwd(*args, **kwargs):
+                del args, kwargs
                 observed_cwds.append(Path.cwd())
                 return fake_result, perf_file
 
+            fake_runtime = MagicMock()
+            fake_runtime.profile_all_bench_cases.side_effect = _capture_cwd
+
             with patch.object(
                 module,
-                "run_local_torch_npu_profiler_bench",
-                create=True,
-                side_effect=_fake_helper,
+                "_load_bench_runtime_module",
+                return_value=fake_runtime,
             ):
                 result, resolved_perf = module.run_local_bench(
                     bench_file,
@@ -481,7 +479,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             runtime_script = root / "bench_runtime.py"
             bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
-            runtime_script.write_text("def run_one_bench_case_record(*_args, **_kwargs):\n    return None\n", encoding="utf-8")
+            runtime_script.write_text("def profile_bench_case(*_args, **_kwargs):\n    return None\n", encoding="utf-8")
 
             observed: list[tuple[Path, Optional[str], Optional[str], str, list[str]]] = []
             kept_profile_root = root / "kept-profile"
@@ -508,7 +506,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                     )
                 )
                 self.assertEqual(command[0:2], [module.local_python_executable(), "-c"])
-                self.assertIn("run_one_bench_case_record", command[2])
+                self.assertIn("profile_bench_case", command[2])
                 self.assertEqual(
                     command[3:],
                     [
@@ -601,7 +599,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             relative_run_dir = Path("./kept-profile/run-123")
             bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
-            runtime_script.write_text("def run_one_bench_case_record(*_args, **_kwargs):\n    return None\n", encoding="utf-8")
+            runtime_script.write_text("def profile_bench_case(*_args, **_kwargs):\n    return None\n", encoding="utf-8")
 
             observed_preserved_run_dirs: list[Path] = []
 
@@ -746,7 +744,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             runtime_script.write_text(
                 """from types import SimpleNamespace
 
-def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_dir=None, verbose=False):
+def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=None, verbose=False):
     del bench_file, operator_file, preserved_run_dir, verbose
     return SimpleNamespace(
         case_label=case_id,
@@ -835,7 +833,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
         self.assertIn("profile_csv_parser.py", copy_targets)
         remote_command = remote_run.call_args.args[2]
         self.assertEqual(remote_command[0:2], ["python3", "-c"])
-        self.assertIn("run_local_bench", remote_command[2])
+        self.assertIn("profile_all_bench_cases", remote_command[2])
         self.assertEqual(remote_command[3:], ["bench_abs.py", "abs.py", "abs_perf.txt"])
         copy_back.assert_called_once_with(
             "spec",
@@ -1824,7 +1822,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
                 module.resolve_bench_kernel_names(bench_file, operator_file)
 
     def test_compare_perf_files_reports_per_case_deltas(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -1852,7 +1850,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             self.assertIn("Metric source: kernel", output)
 
     def test_compare_perf_files_fails_by_default_on_case_execution_error_marker(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -1884,7 +1882,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             self.assertNotIn("Perf comparison:", output)
 
     def test_compare_perf_files_skips_case_execution_error_when_requested(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -1924,7 +1922,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             self.assertIn("latency-error-case-1", output)
 
     def test_compare_perf_files_fails_on_non_positive_latency_without_skip(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -1948,7 +1946,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             self.assertNotIn("Avg improvement: unknown", output)
 
     def test_compare_perf_files_skips_non_positive_latency_when_requested(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -1979,7 +1977,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             self.assertIn("must be > 0", output)
 
     def test_compare_perf_files_fails_when_case_ids_do_not_match(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -2003,7 +2001,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             self.assertIn("missing required latency ids", output)
 
     def test_compare_perf_files_ignores_extra_compare_fields(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -2030,7 +2028,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             self.assertIn("latency-b", output)
 
     def test_compare_perf_files_ignores_comment_lines_in_both_inputs(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -2059,7 +2057,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             self.assertIn("delta=-20.00%", output)
 
     def test_compare_perf_files_falls_back_to_total_op_when_baseline_latency_is_na(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -2096,7 +2094,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             self.assertIn("Metric source: total-op", output)
 
     def test_compare_perf_files_kernel_mode_fails_when_kernel_is_missing(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -2132,7 +2130,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             self.assertIn("requires kernel latency", output)
 
     def test_compare_perf_files_total_op_mode_uses_raw_totals_even_when_kernel_exists(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -2170,7 +2168,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             self.assertIn("Metric source: total-op", output)
 
     def test_compare_perf_files_total_op_mode_fails_when_raw_totals_are_missing(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -2194,7 +2192,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             self.assertIn("requires '# raw-op-statistic-case-1: ...'", output)
 
     def test_compare_perf_files_reports_mixed_metric_source_when_cases_mix_kernel_and_total_op(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -2230,7 +2228,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             self.assertIn("Metric source: mixed (kernel + total-op fallback)", output)
 
     def test_compare_perf_files_all_mode_prints_kernel_and_total_op_sections(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -2269,7 +2267,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             self.assertIn("Metric source: total-op", output)
 
     def test_compare_perf_files_preserves_original_display_precision(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -2301,7 +2299,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
             runtime_script.write_text(
-                "def run_one_bench_case_record(bench_file, operator_file, case_id, "
+                "def profile_bench_case(bench_file, operator_file, case_id, "
                 "preserved_run_dir=None, verbose=False):\n"
                 "    from perf_artifacts import PerfCaseRecord, PerfMetrics\n"
                 "    return PerfCaseRecord(\n"
@@ -2417,7 +2415,7 @@ def run_one_bench_case_record(bench_file, operator_file, case_id, preserved_run_
             bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
             runtime_script.write_text(
-                "def run_one_bench_case_record(bench_file, operator_file, case_id, "
+                "def profile_bench_case(bench_file, operator_file, case_id, "
                 "preserved_run_dir=None, verbose=False):\n"
                 "    from perf_artifacts import PerfCaseRecord, PerfMetrics\n"
                 "    return PerfCaseRecord(\n"
