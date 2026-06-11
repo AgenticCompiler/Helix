@@ -1030,6 +1030,54 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(gen_args.bench_mode, "torch-npu-profiler")
         self.assertIsNone(run_args.bench_mode)
 
+    def test_run_simulator_accepts_case_and_kernel_arguments(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run-simulator",
+                "--bench-file",
+                "bench_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--case-id",
+                "case-a",
+                "--kernel-name",
+                "KernelA",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.RUN_SIMULATOR)
+        self.assertEqual(args.bench_file, "bench_kernel.py")
+        self.assertEqual(args.operator_file, "kernel.py")
+        self.assertEqual(args.case_id, "case-a")
+        self.assertEqual(args.kernel_name, "KernelA")
+
+    def test_run_simulator_rejects_bench_mode_and_remote_options(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(
+                [
+                    "run-simulator",
+                    "--bench-file",
+                    "bench_kernel.py",
+                    "--operator-file",
+                    "kernel.py",
+                    "--bench-mode",
+                    "msprof",
+                ]
+            )
+        with self.assertRaises(SystemExit):
+            parser.parse_args(
+                [
+                    "run-simulator",
+                    "--bench-file",
+                    "bench_kernel.py",
+                    "--operator-file",
+                    "kernel.py",
+                    "--remote",
+                    "alice@example.com",
+                ]
+            )
+
     def test_gen_eval_defaults_to_torch_npu_profiler_bench_mode(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["gen-eval", "-i", "kernel.py"])

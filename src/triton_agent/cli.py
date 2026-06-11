@@ -10,7 +10,7 @@ from typing import Optional
 from triton_agent.commands.convert import handle_convert, handle_convert_batch
 from triton_agent.commands.clean import handle_clean
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
-from triton_agent.commands.execution import handle_run_bench, handle_run_test
+from triton_agent.commands.execution import handle_run_bench, handle_run_simulator, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
 from triton_agent.commands.generation import handle_gen_eval
 from triton_agent.commands.generation import handle_gen_eval_batch
@@ -313,6 +313,15 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         keep_remote_workdir=True,
         has_bench_mode=True,
         has_npu_devices=True,
+    ),
+    CommandKind.RUN_SIMULATOR: _CommandSpec(
+        handler=handle_run_simulator,
+        help_group="Execution",
+        help_summary="Run one benchmark case under msprof op simulator.",
+        description="Run one generated benchmark case under msprof op simulator against one operator file.",
+        input_mode="run-simulator",
+        has_output=False,
+        has_verbose=False,
     ),
     CommandKind.COMPARE_RESULT: _CommandSpec(
         handler=handle_compare_result,
@@ -695,6 +704,12 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--bench-file", required=True)
         subparser.add_argument("--operator-file", required=True)
         return
+    if spec.input_mode == "run-simulator":
+        subparser.add_argument("--bench-file", required=True)
+        subparser.add_argument("--operator-file", required=True)
+        subparser.add_argument("--case-id")
+        subparser.add_argument("--kernel-name")
+        return
     if spec.input_mode == "compare-result":
         subparser.add_argument("--oracle-result", required=True)
         subparser.add_argument("--new-result", required=True)
@@ -730,6 +745,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "run_test": "run-test",
         "gen_bench": "gen-bench",
         "run_bench": "run-bench",
+        "run_simulator": "run-simulator",
         "run_eval_mcp_server": "run-eval-mcp-server",
         "compare_result": "compare-result",
         "compare_perf": "compare-perf",
