@@ -16,25 +16,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO, TypeVar, cast
 
-from bench_contract import (
+from bench_contract import (  # noqa: F401
     KernelResolution,
-    parse_bench_metadata as _parse_bench_metadata,
-    resolve_bench_kernel_names as _resolve_bench_kernel_names,
-    resolve_bench_kernel_resolution as _resolve_bench_kernel_resolution,
+    parse_bench_metadata,
+    resolve_bench_kernel_names,
+    resolve_bench_kernel_resolution,
 )
 from npu_affinity import NpuDevicePool, affinity_env_for_device, parse_npu_devices
 from debug_device import maybe_print_visible_devices
 from perf_artifacts import (
-    MetricSource,
     PerfCaseRecord,
     PerfMetrics,
     PerfOpRow,
-    RequiredLatencyIds,
-    compare_perf_files as _compare_perf_files,
-    parse_perf_file as _parse_perf_file,
-    parse_perf_file_for_metric_source as _parse_perf_file_for_metric_source,
-    parse_required_perf_file as _parse_required_perf_file,
-    parse_required_perf_file_for_metric_source as _parse_required_perf_file_for_metric_source,
     perf_output_path,
     render_perf_case_records_jsonl,
     write_perf_lines,
@@ -85,68 +78,6 @@ def _bench_timeout() -> int:
 
 def _normalize_bench_mode(bench_mode: str) -> str:
     return "torch-npu-profiler" if bench_mode == "standalone" else bench_mode
-
-
-def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
-    return _parse_bench_metadata(bench_file)
-
-
-def resolve_bench_kernel_names(
-    bench_file: Path,
-    operator_file: Path | None = None,
-) -> list[str]:
-    return _resolve_bench_kernel_names(bench_file, operator_file)
-
-
-def resolve_bench_kernel_resolution(
-    bench_file: Path,
-    operator_file: Path | None = None,
-) -> KernelResolution:
-    return _resolve_bench_kernel_resolution(bench_file, operator_file)
-
-
-def compare_perf_files(
-    baseline_perf: Path,
-    compare_perf: Path,
-    *,
-    skip_latency_errors: bool = False,
-    metric_source: MetricSource = "auto",
-) -> int:
-    return _compare_perf_files(
-        baseline_perf,
-        compare_perf,
-        skip_latency_errors=skip_latency_errors,
-        metric_source=metric_source,
-    )
-
-
-def parse_perf_file(path: Path) -> dict[str, float]:
-    return _parse_perf_file(path)
-
-
-def parse_required_perf_file(path: Path, required_latency_ids: RequiredLatencyIds) -> dict[str, float]:
-    return _parse_required_perf_file(path, required_latency_ids)
-
-
-def parse_perf_file_for_metric_source(
-    path: Path,
-    *,
-    metric_source: MetricSource = "auto",
-) -> dict[str, float]:
-    return _parse_perf_file_for_metric_source(path, metric_source=metric_source)
-
-
-def parse_required_perf_file_for_metric_source(
-    path: Path,
-    required_latency_ids: RequiredLatencyIds,
-    *,
-    metric_source: MetricSource = "auto",
-) -> dict[str, float]:
-    return _parse_required_perf_file_for_metric_source(
-        path,
-        required_latency_ids,
-        metric_source=metric_source,
-    )
 
 
 def run_local_bench(
@@ -305,7 +236,8 @@ def _run_local_bench_torch_npu_profiler(
     verbose: bool = False,
     output: str | None = None,
 ) -> tuple[ResultPayload, Path | None]:
-    return run_local_torch_npu_profiler_bench(
+    runtime = _load_bench_runtime_module()
+    return runtime.profile_all_bench_cases(
         bench_file,
         operator_file,
         verbose=verbose,
@@ -405,22 +337,6 @@ def _run_remote_bench_torch_npu_profiler(
         if result_succeeded(result):
             raise
     return result, copied_perf_path, remote_workspace
-
-
-def run_local_torch_npu_profiler_bench(
-    bench_file: Path,
-    operator_file: Path,
-    *,
-    verbose: bool = False,
-    output: str | None = None,
-) -> tuple[ResultPayload, Path]:
-    runtime = _load_bench_runtime_module()
-    return runtime.run_local_bench(
-        bench_file,
-        operator_file,
-        verbose=verbose,
-        output=output,
-    )
 
 
 def _run_local_bench_torch_npu_profiler_parallel(
@@ -1019,25 +935,6 @@ def _case_workspace_command_path(path: Path, *, source_root: Path) -> str:
     return _case_workspace_root_relative_path(path, source_root=source_root).as_posix()
 
 
-def _local_case_workspace_path(
-    workspace_root: Path,
-    source_path: Path,
-    *,
-    source_root: Path,
-) -> Path:
-    return workspace_root / _case_workspace_root_relative_path(source_path, source_root=source_root)
-
-
-def _remote_case_workspace_path(
-    workspace_root: str,
-    source_path: Path,
-    *,
-    source_root: Path,
-) -> str:
-    relative_path = _case_workspace_root_relative_path(source_path, source_root=source_root)
-    return f"{workspace_root}/{relative_path.as_posix()}"
-
-
 def _emit_case_workspace_verbose(message: str, *, stderr: TextIO | None = None) -> None:
     emit_verbose(stderr or sys.stderr, "files", message)
 
@@ -1332,7 +1229,7 @@ def _build_remote_torch_npu_profiler_run_all_script(*, verbose: bool = False) ->
         "bench_file = pathlib.Path(sys.argv[1]); "
         "operator_file = pathlib.Path(sys.argv[2]); "
         "target_path = pathlib.Path(sys.argv[3]); "
-        f"result, perf_path = runtime.run_local_bench(bench_file, operator_file, verbose={verbose}); "
+        f"result, perf_path = runtime.profile_all_bench_cases(bench_file, operator_file, verbose={verbose}); "
         "target_path.parent.mkdir(parents=True, exist_ok=True); "
         "shutil.copyfile(perf_path, target_path) if perf_path != target_path else None; "
         "raise SystemExit(int(result['return_code']))"
@@ -1348,7 +1245,7 @@ def _build_torch_npu_profiler_run_one_case_script(*, verbose: bool = False) -> s
         "case_id = sys.argv[3]; "
         "preserved_run_dir_arg = sys.argv[4]; "
         f"preserved_run_dir = None if preserved_run_dir_arg == {_PRESERVED_RUN_DIR_NONE_SENTINEL!r} else pathlib.Path(preserved_run_dir_arg); "
-        "record = runtime.run_one_bench_case_record("
+        "record = runtime.profile_bench_case("
         "bench_file, operator_file, case_id, preserved_run_dir=preserved_run_dir, "
         f"verbose={verbose}"
         "); "

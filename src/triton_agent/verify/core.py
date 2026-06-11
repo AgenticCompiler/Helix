@@ -585,7 +585,7 @@ def _metric_delta(actual: object, expected: float | None) -> float | None:
 
 
 def _load_bench_perf_parser() -> BenchPerfParserModule:
-    return cast(BenchPerfParserModule, load_operator_eval_script_module("bench_runner"))
+    return cast(BenchPerfParserModule, load_operator_eval_script_module("perf_artifacts"))
 
 
 def _mean_value(values: Iterable[float]) -> float:

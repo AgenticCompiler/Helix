@@ -309,7 +309,7 @@ def profile_local_torch_npu_profiler_case(
     case_id: str,
 ) -> ResultPayload:
     runtime = _load_bench_runtime_module()
-    return runtime.profile_local_bench_case(bench_file, operator_file, case_id)
+    return runtime.profile_bench_case_quick(bench_file, operator_file, case_id)
 
 
 def _bench_runtime_script_path() -> Path:
@@ -368,6 +368,6 @@ def _build_remote_torch_npu_profiler_profile_script() -> str:
         "bench_file = pathlib.Path(sys.argv[1]); "
         "operator_file = pathlib.Path(sys.argv[2]); "
         "case_id = sys.argv[3]; "
-        "result = runtime.profile_local_bench_case(bench_file, operator_file, case_id); "
+        "result = runtime.profile_bench_case_quick(bench_file, operator_file, case_id); "
         "raise SystemExit(int(result['return_code']))"
     )

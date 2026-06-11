@@ -211,7 +211,7 @@ def build_standalone_bench_cases(operator_api):
             with self.assertRaisesRegex(ValueError, "missing required hook 'build_bench_cases'"):
                 module.load_bench_cases(bench_file, operator_file)
 
-    def test_run_local_bench_writes_msprof_shaped_perf_lines(self) -> None:
+    def test_profile_all_bench_cases_writes_msprof_shaped_perf_lines(self) -> None:
         module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -257,7 +257,7 @@ def build_bench_case_fn(operator_api, case):
                     None,
                 ),
             ), patch.object(module.time, "monotonic", side_effect=[0.0, 1.5]):
-                result, perf_path = module.run_local_bench(bench_file, operator_file)
+                result, perf_path = module.profile_all_bench_cases(bench_file, operator_file)
                 perf_text = perf_path.read_text(encoding="utf-8")
 
         self.assertEqual(result, make_skill_result(0, "", ""))
@@ -268,7 +268,7 @@ def build_bench_case_fn(operator_api, case):
             ),
         )
 
-    def test_run_local_bench_case_wall_clock_seconds_on_failure(self) -> None:
+    def test_profile_all_bench_cases_case_wall_clock_seconds_on_failure(self) -> None:
         module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -305,7 +305,7 @@ def build_bench_case_fn(operator_api, case):
                 "_profile_case_with_profiler",
                 return_value=(None, "profiling failed"),
             ), patch.object(module.time, "monotonic", side_effect=[0.0, 2.5]):
-                result, perf_path = module.run_local_bench(bench_file, operator_file)
+                result, perf_path = module.profile_all_bench_cases(bench_file, operator_file)
                 perf_text = perf_path.read_text(encoding="utf-8")
 
         self.assertEqual(result, make_skill_result(1, "", "case-a: profiling failed"))
@@ -316,7 +316,7 @@ def build_bench_case_fn(operator_api, case):
         self.assertIn('"kernel_names":["KernelA"]', perf_text)
         self.assertIn('"kernel_source":"metadata"', perf_text)
 
-    def test_run_local_bench_keeps_profiler_artifacts_under_configured_output_root(self) -> None:
+    def test_profile_all_bench_cases_keeps_profiler_artifacts_under_configured_output_root(self) -> None:
         module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -373,7 +373,7 @@ def build_bench_case_fn(operator_api, case):
                 "_profile_case_with_profiler",
                 side_effect=_fake_profile_case,
             ):
-                result, perf_path = module.run_local_bench(bench_file, operator_file)
+                result, perf_path = module.profile_all_bench_cases(bench_file, operator_file)
             self.assertEqual(result, make_skill_result(0, "", ""))
             self.assertEqual(perf_path, root / "operator_case_perf.txt")
             self.assertTrue(keep_root.exists())
@@ -384,7 +384,7 @@ def build_bench_case_fn(operator_api, case):
             self.assertTrue((created_output_dirs[1] / "case-b.txt").exists())
             self.assertEqual(sorted(path.name for path in created_output_dirs), ["case-case-a", "case-case-b"])
 
-    def test_run_local_bench_resolves_relative_profile_output_root_to_absolute_path(self) -> None:
+    def test_profile_all_bench_cases_resolves_relative_profile_output_root_to_absolute_path(self) -> None:
         module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -443,7 +443,7 @@ def build_bench_case_fn(operator_api, case):
                     "_profile_case_with_profiler",
                     side_effect=_fake_profile_case,
                 ):
-                    result, perf_path = module.run_local_bench(bench_file, operator_file)
+                    result, perf_path = module.profile_all_bench_cases(bench_file, operator_file)
             finally:
                 os.chdir(original_cwd)
 
@@ -454,7 +454,7 @@ def build_bench_case_fn(operator_api, case):
             self.assertTrue(created_output_dirs[0].is_absolute())
             self.assertTrue(keep_root.resolve() in created_output_dirs[0].resolve().parents)
 
-    def test_run_local_bench_cleans_extra_info_after_each_case(self) -> None:
+    def test_profile_all_bench_cases_cleans_extra_info_after_each_case(self) -> None:
         module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -509,14 +509,14 @@ def build_bench_case_fn(operator_api, case):
                 "_profile_case_with_profiler",
                 side_effect=_fake_profile_case,
             ):
-                result, perf_path = module.run_local_bench(bench_file, operator_file)
+                result, perf_path = module.profile_all_bench_cases(bench_file, operator_file)
 
             self.assertEqual(result, make_skill_result(0, "", ""))
             self.assertEqual(perf_path, root / "operator_case_perf.txt")
             self.assertEqual(seen_after_cleanup, [True, False])
             self.assertFalse(extra_info.exists())
 
-    def test_run_local_bench_reuses_single_case_helper(self) -> None:
+    def test_profile_all_bench_cases_reuses_single_case_helper(self) -> None:
         module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -565,13 +565,13 @@ def build_bench_case_fn(operator_api, case):
                 )
 
             with patch.object(module, "_run_bench_case", side_effect=_fake_run_case):
-                result, perf_path = module.run_local_bench(bench_file, operator_file)
+                result, perf_path = module.profile_all_bench_cases(bench_file, operator_file)
 
             self.assertEqual(result, make_skill_result(0, "", ""))
             self.assertEqual(observed_case_ids, ["case-a", "case-b"])
             self.assertEqual(perf_path, root / "operator_case_perf.txt")
 
-    def test_run_one_bench_case_record_returns_selected_case_record(self) -> None:
+    def test_profile_bench_case_returns_selected_case_record(self) -> None:
         module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -617,7 +617,7 @@ def build_bench_case_fn(operator_api, case):
                 )
 
             with patch.object(module, "_run_bench_case", side_effect=_fake_run_case):
-                record = module.run_one_bench_case_record(bench_file, operator_file, "case-b")
+                record = module.profile_bench_case(bench_file, operator_file, "case-b")
 
             self.assertEqual(record.case_label, "case-b")
             self.assertEqual(record.metrics["kernel_avg_time_us"], 3.5)

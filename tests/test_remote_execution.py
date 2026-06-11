@@ -516,7 +516,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                 "kernel_perf.txt",
             ],
         )
-        self.assertIn("run_local_bench", remote_run.call_args.args[2][2])
+        self.assertIn("profile_all_bench_cases", remote_run.call_args.args[2][2])
         copy_back.assert_called_once_with(
             "spec",
             "/tmp/remote-clean/kernel_perf.txt",
@@ -1401,7 +1401,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                 "kernel op_perf.txt",
             ],
         )
-        self.assertIn("run_local_bench", remote_run.call_args.args[2][2])
+        self.assertIn("profile_all_bench_cases", remote_run.call_args.args[2][2])
 
     def test_run_remote_bench_msprof_case_wall_clock_seconds_in_perf_output_success(self) -> None:
         module = load_bench_runner_module()

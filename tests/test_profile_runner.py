@@ -451,7 +451,7 @@ def build_bench_case_fn(operator_api, case):
         self.assertIn("bench_runtime.py", copy_targets)
         remote_command = remote_run.call_args.args[2]
         self.assertEqual(remote_command[0:2], ["python3", "-c"])
-        self.assertIn("profile_local_bench_case", remote_command[2])
+        self.assertIn("profile_bench_case_quick", remote_command[2])
         self.assertEqual(remote_command[3:], ["bench_kernel.py", "kernel.py", "case-b"])
         copy_back.assert_called_once_with(
             "spec",
