@@ -13,7 +13,7 @@ The current correctness flow mixes two incompatible models:
 
 That split is no longer sufficient for the new NPU operator comparison process because the new authority depends on:
 
-- non-compute classification
+- `--non-compute`
 - inferred input tensor dtype family
 - output dtype
 - pre-check ordering for shape, NaN, and Inf handling
@@ -49,24 +49,24 @@ No other threshold source remains valid:
 - `compare-result` must not accept `strict|balanced|relaxed`
 - `run-test` and `convert` differential validation must not expose `--compare-level`
 
-### `# compute-kind:` metadata
+### `# compute:` metadata
 
 Generated test files must support a new header field:
 
 ```python
-# compute-kind: compute
+# compute: true
 ```
 
 Rules:
 
-- accepted values are `compute` or `non-compute`, case-insensitive after trimming
-- missing metadata defaults to `compute`
+- accepted values are `true` or `false`, case-insensitive after trimming
+- missing metadata defaults to `true`
 - this metadata is file-level and applies to all cases in that test file
 
-The shared comparison implementation uses this flag to choose the compute vs non-compute comparison path:
+The shared comparison implementation uses this flag as the source of `--non-compute` semantics:
 
-- `compute-kind: non-compute` means non-compute path
-- `compute-kind: compute` means compute path
+- `compute: false` means non-compute path
+- `compute: true` means compute path
 
 ### Standalone test contract
 
@@ -74,8 +74,8 @@ Generated standalone tests remain importable Python modules, but they are no lon
 
 The standalone spec must require:
 
-- a file-level metadata header including `# compute-kind: ...`
-- a `def main(operator_api):` entrypoint
+- a file-level metadata header including `# compute: ...`
+- a `def main():` entrypoint
 - no `if __name__ == "__main__": ...` block
 - no direct `python test_xxx.py` execution contract
 - use of the shared comparison helper instead of inline `assert_close`
@@ -83,6 +83,7 @@ The standalone spec must require:
 The standalone test module continues to own:
 
 - parsing metadata/constants embedded in the file
+- loading the runtime operator module from the target operator path
 - constructing deterministic NPU test inputs
 - computing the PyTorch golden output
 - calling the shared comparison helper on each case
@@ -91,10 +92,8 @@ The runner owns:
 
 - importing the test module
 - preparing import paths/environment so the shared comparison helper can be imported
-- loading the runtime operator module and resolving the operator API
-- calling `main(operator_api)`
-
-`operator_api` should be the loaded callable/module instance resolved from the runtime operator file according to the existing `api-name` and `api-kind` metadata.
+- preparing `sys.argv` so the existing `--operator-file` parsing contract still works when `main()` is called programmatically
+- calling `main()`
 
 ### Differential test contract
 
@@ -110,18 +109,6 @@ The returned cases must be upgraded so the runner can archive comparison context
 - case id
 - case inputs
 - operator output
-
-The declarative case builder contract should return mappings shaped like:
-
-```python
-{
-    "id": "...",
-    "inputs": (...,),
-    "fn": lambda: operator_api(*inputs),
-}
-```
-
-`inputs` should be a tuple or list of the exact runtime arguments that the operator will receive, so the runner can archive them directly.
 
 The compare flow must then use the archived inputs plus golden output to apply the same rule set as standalone mode.
 
@@ -191,14 +178,6 @@ This inference must then classify input type as:
 
 The bool-input and bool-output special handling must follow the provided authority exactly.
 
-Bool inputs are classified as `int` for decision-matrix routing.
-
-The input tensor dtype priority order is:
-
-`complex128 > complex64 > float64 > float32 > float16 > bfloat16 > float8_e4m3 > float8_e5m2 > int64 > int32 > int16 > int8 > uint8 > bool`
-
-Complex tensors are treated as floating-point for input-type classification and rank ahead of real floating-point dtypes by precision.
-
 ### Decision matrix implementation
 
 The runtime must implement the five-path decision matrix exactly:
@@ -211,17 +190,6 @@ The runtime must implement the five-path decision matrix exactly:
 
 The implementation should normalize decision selection into an explicit enum/string so diagnostics can report the chosen path directly.
 
-Decision-path rules:
-
-- `bool` output uses strict `torch.equal` semantics and never enters numeric tolerance comparison.
-- integer compute requires exact equality on all finite elements.
-- quantized float-to-int applies when the input type is `float` and the output dtype is integer.
-- quantized float-to-int requires exact tolerance `|actual - golden| <= 1` on all compared elements.
-- `int` input with integer output, and `no_tensor` with integer output, use the integer-compute path.
-- floating-point compute uses the three-clause AND contract described below.
-
-The non-compute path bypasses the above numeric branches and uses binary equality on raw bit patterns, including NaN payloads.
-
 ### Ordered pre-checks
 
 Before numeric comparison, the runtime must perform the pre-checks in the documented order:
@@ -231,7 +199,7 @@ Before numeric comparison, the runtime must perform the pre-checks in the docume
 3. Inf mask/sign equality
 4. bool equality shortcut
 
-Only finite-finite pairs enter numeric comparison.
+Only finite finite pairs enter numeric comparison.
 
 When tensor dtypes differ for finite comparison, the implementation side is cast to the golden dtype before numeric checks.
 
@@ -242,25 +210,6 @@ Floating-point comparison must implement all three required clauses and require 
 - max error cap
 - matched ratio
 - MERE
-
-Definitions:
-
-- `diff = actual - golden`
-- `finite_mask = isfinite(actual) & isfinite(golden)`
-- `matched[i]` is computed on finite elements only
-- `matched_ratio = sum(matched) / total_finite`
-- `MERE = mean(abs(diff) / (abs(golden) + 1e-7))` over finite elements
-- `matched_ratio` requires `>= 0.9`
-- if `total_finite == 0`, the MERE clause passes automatically
-
-Matched-element rules:
-
-- small-value bucket: `abs(golden[i]) < small_value_threshold` and `abs(diff[i]) <= small_value_error`
-- normal bucket: `abs(golden[i]) >= small_value_threshold` and `abs(diff[i]) / (abs(golden[i]) + 1e-7) <= rel_threshold`
-
-All floating-point thresholds are authoritative and must be implemented exactly as below.
-
-`max error cap` requires 100% of finite elements to satisfy the elementwise bound.
 
 Threshold resolution must be driven by output dtype, including explicit handling for:
 
@@ -274,27 +223,6 @@ Threshold resolution must be driven by output dtype, including explicit handling
 
 The implementation should centralize these threshold tables in one place and make the selected threshold row available in diagnostics output.
 
-Threshold tables:
-
-| dtype | small_value_threshold | small_value_error | rel_threshold |
-|---|---:|---:|---:|
-| `float16` | `2**-11` | `2**-16` | `2**-10` |
-| `bfloat16` | `2**-8` | `2**-16` | `2**-7` |
-| `float32` | `2**-14` | `2**-30` | `2**-13` |
-| `hifloat32` | `2**-12` | `2**-28` | `2**-11` |
-| `float8_e4m3` | `2**-4` | `2**-6` | `2**-3` |
-| `float8_e5m2` | `2**-3` | `2**-5` | `2**-2` |
-| fallback | `2**-14` | `2**-30` | `2**-13` |
-
-| dtype | atol | rtol |
-|---|---:|---:|
-| `float16` | `9e-2` | `2**-10` |
-| `bfloat16` | `1e-1` | `2**-7` |
-| `float32` | `1e-3` | `2**-13` |
-| fallback | `1e-3` | `2**-13` |
-
-If the local runtime does not expose `hifloat32` as a native dtype object, the implementation should still resolve it by name for threshold selection and diagnostics.
-
 ### Standalone runner refactor
 
 `run-test` local and remote standalone execution must stop shelling out with:
@@ -307,8 +235,8 @@ Instead, the runner should:
 
 1. import the test module by path
 2. prepare environment/import paths needed by the shared comparison helper
-3. load the runtime operator module and resolve the operator API
-4. call `main(operator_api)`
+3. temporarily set `sys.argv` to the equivalent of `test_xxx.py --operator-file <path>`
+4. call `main()`
 
 This import-and-call contract is the mechanism that prevents accidental direct script execution by downstream agents.
 
@@ -349,16 +277,14 @@ The compare implementation should treat the oracle payload as the golden source 
 
 The candidate payload supplies candidate results for the same case ids/order.
 
-If an old payload only contains `{"results": [...]}`, compare should fail with a migration error instead of silently falling back to the legacy numeric layer.
-
 ### Metadata handling
 
-`parse_test_metadata()` should be the canonical parser in `skills/triton-npu-run-eval/scripts/test_runner.py`, and `src/triton_agent/execution.py` should delegate to it through the existing wrapper.
+`parse_test_metadata()` should be extended so `compute` is available anywhere run-test orchestration or compare code needs it.
 
-Comparison callers should resolve compute-kind semantics as:
+Comparison callers should resolve compute semantics as:
 
 - explicit parsed metadata when present
-- default `compute` when absent
+- default `true` when absent
 
 The comparison runtime should receive a normalized boolean rather than re-parsing raw strings in multiple places.
 
@@ -379,25 +305,6 @@ After this change:
 - `convert` differential verification always uses the shared NPU comparison rule set
 
 No compatibility alias should remain for `strict|balanced|relaxed`.
-
-### Differential orchestration
-
-`run-test` differential mode remains a two-step workflow:
-
-1. run the differential test to archive payload data
-2. compare the archived payload with the new shared NPU compare helper
-
-`run-test` should perform the comparison automatically when it already has both payloads available, and it should print detailed diagnostics on failure.
-
-`compare-result` remains the standalone comparison entrypoint for archived payloads. It does not run tests; it only compares archives.
-
-The differential case contract must change so the runner can see inputs explicitly. The case builder should return mappings with:
-
-- `id`
-- `inputs`
-- `fn`
-
-`fn` should be a zero-argument callable that uses the captured `inputs` to invoke the operator.
 
 ## Failure Reporting Contract
 
@@ -435,24 +342,19 @@ Recommended diagnostics fields include:
 
 The CLI should print a concise summary plus enough case detail to guide repair. The full structured details should remain available to callers or future JSON/reporting extensions.
 
-### `hifloat32`
-
-`hifloat32` is treated as an Ascend/NPU-specific comparison dtype for this contract. The implementation should treat it as supported in the threshold table even if the local PyTorch build does not expose it directly.
-
 ## Files Likely To Change
 
 | File | Change |
 |------|--------|
 | `docs/specs/2026-06-12-npu-operator-accuracy-comparison-design.md` | Record the new comparison authority and runner contracts |
-| `skills/triton-npu-run-eval/scripts/npu_compare.py` | New shared NPU comparison implementation and structured diagnostics |
-| `skills/triton-npu-run-eval/scripts/compare_result.py` | Thin archive-comparison wrapper around the shared NPU compare module |
+| `skills/triton-npu-run-eval/scripts/compare_result.py` | Replace old tolerance-level logic with shared NPU comparison over archived payloads |
 | `skills/triton-npu-run-eval/scripts/test_runner.py` | Import-and-call standalone tests, upgrade differential archiving, and route both modes through shared compare helpers |
 | `skills/triton-npu-run-eval/scripts/run-command.py` | Remove `--compare-level` from helper CLI surfaces |
 | `src/triton_agent/commands/comparison.py` | Remove compare-level plumbing |
 | `src/triton_agent/commands/execution.py` | Remove compare-level plumbing and keep automatic differential compare on the shared rule set |
 | `src/triton_agent/commands/convert.py` | Remove compare-level plumbing and keep convert verification on the shared rule set |
-| `skills/triton-npu-gen-test/references/test-standalone-spec.md` | Require import-only standalone structure, `# compute-kind:`, shared compare helper, and `main(operator_api)` |
-| `skills/triton-npu-gen-test/references/test-differential-spec.md` | Require `# compute-kind:` and declarative case contract that supports archiving inputs plus results |
+| `skills/triton-npu-gen-test/references/test-standalone-spec.md` | Require import-only standalone structure, `# compute:`, shared compare helper, and non-self-executing `main()` |
+| `skills/triton-npu-gen-test/references/test-differential-spec.md` | Require `# compute:` and declarative case contract that supports archiving inputs plus results |
 | `skills/triton-npu-run-eval/references/run-test.md` | Remove compare-level wording and document shared compare behavior |
 | `skills/triton-npu-run-eval/references/compare-result.md` | Remove compare-level wording and describe new comparison semantics |
 | `README.md` | Remove compare-level flags and update run-test/compare-result docs |
