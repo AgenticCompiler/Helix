@@ -51,9 +51,9 @@ class OptimizeResumeTests(unittest.TestCase):
             (workspace / "opt-round-1").mkdir()
             self._write_baseline_state(
                 workspace,
-                source_operator="triton_7_Sum.py",
-                test_file="differential_test_7_Sum.py",
-                bench_file="bench_triton_7_Sum.py",
+                source_operator="../triton_7_Sum.py",
+                test_file="../differential_test_7_Sum.py",
+                bench_file="../bench_triton_7_Sum.py",
                 bench_mode="msprof",
             )
             (workspace / "differential_test_7_Sum.py").write_text(
@@ -80,9 +80,9 @@ class OptimizeResumeTests(unittest.TestCase):
             (workspace / "opt-round-1").mkdir()
             self._write_baseline_state(
                 workspace,
-                source_operator="7_Sum.py",
-                test_file="differential_test_7_Sum.py",
-                bench_file="bench_triton_7_Sum.py",
+                source_operator="../7_Sum.py",
+                test_file="../differential_test_7_Sum.py",
+                bench_file="../bench_triton_7_Sum.py",
             )
             (workspace / "differential_test_7_Sum.py").write_text(
                 "# test-mode: differential\nprint('test')\n",
