@@ -1299,27 +1299,35 @@ def _run_local_torch_npu_profiler_case_in_subprocess(
     if configured_profile_root:
         extra_env[_LOCAL_BENCH_OUTPUT_DIR_ENV] = str(Path(configured_profile_root).expanduser().resolve())
     extra_env["TRITON_ALWAYS_COMPILE"] = "1"
-    result = run_buffered_process(
-        [
-            local_python_executable(),
-            "-c",
-            _build_torch_npu_profiler_run_one_case_script(verbose=verbose),
-            _case_workspace_command_path(bench_file, source_root=source_root),
-            _case_workspace_command_path(operator_file, source_root=source_root),
-            case_id,
-            (
-                _PRESERVED_RUN_DIR_NONE_SENTINEL
-                if preserved_run_dir is None
-                else preserved_run_dir.resolve().as_posix()
-            ),
-        ],
-        str(workspace_root),
-        stall_timeout_seconds=_bench_timeout(),
-        extra_env=extra_env,
-    )
-    if verbose and result["stderr"]:
-        for line in str(result["stderr"]).strip().splitlines():
-            print(f"[profiler] {case_id}: {line}", file=sys.stderr)
+    command = [
+        local_python_executable(),
+        "-c",
+        _build_torch_npu_profiler_run_one_case_script(verbose=verbose),
+        _case_workspace_command_path(bench_file, source_root=source_root),
+        _case_workspace_command_path(operator_file, source_root=source_root),
+        case_id,
+        (
+            _PRESERVED_RUN_DIR_NONE_SENTINEL
+            if preserved_run_dir is None
+            else preserved_run_dir.resolve().as_posix()
+        ),
+    ]
+    if verbose:
+        with _stream_target_for_verbosity(True) as stream_target:
+            result = run_streaming_process(
+                command,
+                str(workspace_root),
+                stall_timeout_seconds=_bench_timeout(),
+                stdout=stream_target,
+                extra_env=extra_env,
+            )
+    else:
+        result = run_buffered_process(
+            command,
+            str(workspace_root),
+            stall_timeout_seconds=_bench_timeout(),
+            extra_env=extra_env,
+        )
     return _parse_torch_npu_profiler_case_result_payload(
         result,
         case_id=case_id,
