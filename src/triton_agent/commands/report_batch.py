@@ -87,5 +87,3 @@ def _discover_workspaces(root: Path) -> list[Path]:
         if p.is_dir() and not p.name.startswith(".")
     )
 
-
-__all__ = ["handle_report_batch"]

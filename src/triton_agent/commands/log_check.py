@@ -43,5 +43,3 @@ def handle_log_check_batch(parser: argparse.ArgumentParser, args: argparse.Names
         max_concurrency=concurrency,
     )
 
-
-__all__ = ["handle_log_check", "handle_log_check_batch"]

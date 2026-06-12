@@ -13,7 +13,7 @@ The current correctness flow mixes two incompatible models:
 
 That split is no longer sufficient for the new NPU operator comparison process because the new authority depends on:
 
-- `--non-compute`
+- non-compute classification
 - inferred input tensor dtype family
 - output dtype
 - pre-check ordering for shape, NaN, and Inf handling
@@ -63,7 +63,7 @@ Rules:
 - missing metadata defaults to `compute`
 - this metadata is file-level and applies to all cases in that test file
 
-The shared comparison implementation uses this flag as the source of `--non-compute` semantics:
+The shared comparison implementation uses this flag to choose the compute vs non-compute comparison path:
 
 - `compute-kind: non-compute` means non-compute path
 - `compute-kind: compute` means compute path
@@ -220,7 +220,7 @@ Decision-path rules:
 - `int` input with integer output, and `no_tensor` with integer output, use the integer-compute path.
 - floating-point compute uses the three-clause AND contract described below.
 
-`--non-compute` bypasses the above numeric branches and uses binary equality on raw bit patterns, including NaN payloads.
+The non-compute path bypasses the above numeric branches and uses binary equality on raw bit patterns, including NaN payloads.
 
 ### Ordered pre-checks
 

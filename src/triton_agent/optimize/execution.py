@@ -498,9 +498,9 @@ class MultiInvocationOptimizeController:
         )
         try:
             if self._stdout is None and self._stderr is None:
-                result = cast(Any, self._runner).run(request)
+                result = self._runner.run(request)
             else:
-                result = cast(Any, self._runner).run(request, stdout=self._stdout, stderr=self._stderr)
+                result = self._runner.run(request, stdout=self._stdout, stderr=self._stderr)
         finally:
             try:
                 cleaned_pt = cleanup_workspace_pt_files(request.workdir)

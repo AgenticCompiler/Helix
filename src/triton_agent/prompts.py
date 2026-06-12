@@ -5,24 +5,9 @@ from typing import Literal
 
 from triton_agent.models import COMMAND_TO_SKILL, CommandKind
 from triton_agent.optimize.prompts import (
-    build_optimize_baseline_prompt,
-    build_optimize_resume_prompt,
     build_optimize_round_prompt,
-    build_optimize_supervisor_prompt,
 )
 from triton_agent.paths import default_generated_output_path
-
-__all__ = [
-    "PROMPT_INTROS",
-    "append_additional_user_instructions",
-    "build_optimize_baseline_prompt",
-    "build_optimize_resume_prompt",
-    "build_optimize_round_prompt",
-    "build_optimize_supervisor_prompt",
-    "build_prompt",
-]
-
-
 PROMPT_INTROS = {
     CommandKind.GEN_EVAL: "Repair the operator when needed, then generate correctness tests and a benchmark.",
     CommandKind.CONVERT: "Convert the PyTorch operator into a Triton NPU-backed PyTorch operator and validate it with the requested correctness test mode.",
