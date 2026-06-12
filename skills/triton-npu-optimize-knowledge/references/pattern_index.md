@@ -23,6 +23,11 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Summary: Flatten logical work items onto physical cores and batch small row-wise memory transfers into wider UB stores to reduce launch overhead and improve per-core work density.
 - Source: [grid-flatten-and-ub-buffering.md](patterns/grid-flatten-and-ub-buffering.md)
 
+### `pooling-a5-simt-tuning`
+
+- Summary: Methodology for **sliding-window spatial pooling** (any reduction: mean, max, etc.) on **A5 with `force_simt_only=True`**. Teaches **how to derive** dispatch, inner paths, and launch params from **shape / kernel / semantic features** — not fixed operator-specific constants. Each optimization point lists **source (why it applies), evidence (how to verify), and failure signature (when to revert)**.
+- Source: [pooling-a5-simt-tuning.md](patterns/pooling-a5-simt-tuning.md)
+
 ## Generated Pattern Summaries
 
 ### `a5-force-simt-only-discrete-access`
@@ -220,24 +225,35 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Two independent vector-side computations happen in sequence and can be split across vector cores.
   - The bottleneck is not primarily memory movement, so exposing more vector-core concurrency is more promising than reworking loads.
 
+### `pooling-a5-simt-tuning`
+
+- Summary: Methodology for **sliding-window spatial pooling** (any reduction: mean, max, etc.) on **A5 with `force_simt_only=True`**. Teaches **how to derive** dispatch, inner paths, and launch params from **shape / kernel / semantic features** — not fixed operator-specific constants. Each optimization point lists **source (why it applies), evidence (how to verify), and failure signature (when to revert)**.
+- Source: [pooling-a5-simt-tuning.md](patterns/pooling-a5-simt-tuning.md)
+- Use When:
+  - Window reduction over NCDHW/NCHW layout with discrete per-output loads.
+  - A5 confirmed; kernel is scalar/index-heavy (see `a5-force-simt-only-discrete-access`).
+  - You need a **repeatable tuning order**: architecture → dispatch → inner path → block/warps.
+  - Harness has **many shapes**; accept/reject by **geomean**, not one case.
+
 ### `pooling-clip-window-closed-divisor`
 
 - Summary: On **SIMT execution paths**, repair sliding-window pooling kernels by aligning the inner loop nest and divisor logic with the PyTorch/CUDA reference: compute each output window's **clipped input bounds once**, use a **closed-form window volume** for the average divisor, and iterate **input coordinates inside the clipped range** instead of scanning the full `KERNEL_D×KERNEL_H×KERNEL_W` cube with per-tap validity masks and runtime counting.
 - Source: [pooling-clip-window-closed-divisor.md](patterns/pooling-clip-window-closed-divisor.md)
 - Use When:
   - **SIMT is already in use** per the evidence rules above (`force_simt_only=True`, an active SIMT-only optimize round, or explicit user confirmation).
-  - The operator is **AvgPool / MaxPool** or another **fixed-kernel window reduction** over an affine layout (NCDHW, NCHW, or collapsed batch×channel rows).
+  - The operator is a **fixed-kernel window reduction** (mean, max, etc.) over an affine layout (NCDHW, NCHW, or collapsed batch×channel rows).
+  - Semantics require **closed divisor**: **`count_include_pad=False`** (divisor = clipped window volume), not CIP padded-volume divisor.
+  - Padding, `ceil_mode`, or edge outputs make many lanes use **partial windows**, but the mapping from output coordinates to input bounds is still **static and affine**.
   - The hot path uses **`for kd/kh/kw in range(KERNEL_*)`** with per-tap **`valid_*` / `safe_*` / `window_mask`** and/or **`count += tl.where(...)`** to derive the average divisor.
-  - Padding, `count_include_pad`, `ceil_mode`, or edge outputs make many lanes use **partial windows**, but the mapping from output coordinates to input bounds is still **static and affine**.
-  - Correctness can be checked against PyTorch `avg_pool{2,3}d` / `max_pool{2,3}d` across padding, `count_include_pad=False`, and boundary shapes.
+  - Correctness can be checked against the framework reference across padding, **`count_include_pad=False`**, and boundary shapes.
   - Profiling on the SIMT launch still shows mask-heavy inner loops or scalar dominance after outer tiling and SIMT-only mode are settled.
 
 ### `pooling-inner-w-slab-gather`
 
-- Summary: For **sliding-window spatial pooling** in **NCHW-style** layouts where **W** is the **innermost contiguous** dimension, load one **W slab** of length **`W_SLAB_LEN = STRIDE_W * (BLOCK_OW - 1) + KERNEL_W`** at **`w_abs_min = ow_pid * BLOCK_OW * STRIDE_W - PAD_W`**, then **`tl.gather(slab, STRIDE_W * arange(BLOCK_OW) + kw)`** per **`kw`** instead of many **`start_w + kw`** masked loads. **2D/3D+** differ only in outer **`kh`/`kd`** loops. **Adoption gate:** not applied unless the hot path shows **`W_SLAB_LEN` load + gather**; **interior/boundary splits** may **combine** but **do not replace** gather. Operator-agnostic—validate on your harness.
+- Summary: For **sliding-window spatial pooling** in **NCHW-style** layouts where **W** is the **innermost contiguous** dimension, load one **W slab** of length **`W_SLAB_LEN = STRIDE_W * (BLOCK_OW - 1) + KERNEL_W`** at **`w_abs_min = ow_pid * BLOCK_OW * STRIDE_W - PAD_W`**, then **`tl.gather(slab, STRIDE_W * arange(BLOCK_OW) + kw)`** per **`kw`** instead of many **`start_w + kw`** masked loads. **2D/3D+** differ only in outer **`kh`/`kd`** loops. **Adoption gate:** hot path must show **`W_SLAB_LEN` load + gather**. On **A5 SIMT pooling**, prefer **`pooling-a5-simt-tuning`** first — W-slab measured slower than flat/rowcol discrete loads. Operator-agnostic; validate on your harness.
 - Source: [pooling-inner-w-slab-gather.md](patterns/pooling-inner-w-slab-gather.md)
 - Use When:
-  - The kernel is **AvgPool / MaxPool** (**values only**), or any **fixed `KERNEL_W`** reduction along **W** on a **contiguous** NCHW (or 5D) tensor, with **`kw`** in a **`tl.constexpr`** loop and **`BLOCK_OW`** output columns per program.
+  - The kernel is a **fixed `KERNEL_W` window reduction** (mean, max, etc., **values only**) along **W** on a **contiguous** NCHW (or 5D) tensor, with **`kw`** in a **`tl.constexpr`** loop and **`BLOCK_OW`** output columns per program.
   - Profiling or IR shows **repeated narrow or predicate-heavy global loads** on **W** inside **`kw`**, while **`stride_w`** maps output columns to **regularly strided** input columns.
   - **`out_w`** is large enough that **vectorizing along `ow`** matters, and **`triton.cmotion.cdiv(out_w, BLOCK_OW)`** (launch count along W) stays below a measured knee on the target NPU.
   - You can prove **semantic equivalence** for the branches you enable (**padding**, **ceil**, **divisor** / **count_include_pad** for average, **`-inf` / dtype** rules for max).

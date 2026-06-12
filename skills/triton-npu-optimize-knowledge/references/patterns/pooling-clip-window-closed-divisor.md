@@ -9,7 +9,9 @@ priority: normal
 
 On **SIMT execution paths**, repair sliding-window pooling kernels by aligning the inner loop nest and divisor logic with the PyTorch/CUDA reference: compute each output window's **clipped input bounds once**, use a **closed-form window volume** for the average divisor, and iterate **input coordinates inside the clipped range** instead of scanning the full `KERNEL_D×KERNEL_H×KERNEL_W` cube with per-tap validity masks and runtime counting.
 
-This is an **inner-loop structural repair** for avg/max-like window reductions over affine NCDHW/NCHW layouts when discrete access already runs under SIMT. It complements outer launch tiling (`flat-index-decode-tiling`) and follows enabling A5 SIMT-only launch mode; it is not for HIVM W-slab paths.
+This is an **inner-loop structural repair** for mean/max-like window reductions over affine NCDHW/NCHW layouts when discrete access already runs under SIMT. It complements outer launch tiling (`flat-index-decode-tiling`) and follows enabling A5 SIMT-only launch mode; it is not for HIVM W-slab paths.
+
+**Relationship to `pooling-a5-simt-tuning`:** that playbook owns **outer dispatch**, **USE_FULL_WINDOW**, and **inner-path selection**. Apply **this pattern** when semantics are **closed divisor (`count_include_pad=False`)** — divisor = product of clipped `d_len/h_len/w_len`. For **CIP=True**, the playbook often prefers **full kernel nest + coordinate masks + one-shot CIP divisor** (not clip-window); A/B on your harness before assuming clip is faster. For **max-like reductions with half padding**, coordinate masks often beat clip-window on SIMT stack depth — derive via §4 P2 in the playbook.
 
 ## SIMT Precondition
 
@@ -29,18 +31,20 @@ Apply in this order for discrete pooling kernels on A5 SIMT paths:
 
 1. **Outer structure**: if the kernel walks flat `numel(out)` with hot-path `//` / `%` coordinate decode, repair with `flat-index-decode-tiling` first (row-column or rank-aware tiles).
 2. **Launch mode**: if the kernel is scalar/index dominated on A5 and not already SIMT-only, enable SIMT via `a5-force-simt-only-discrete-access` and confirm compile/correctness before inner-window repair.
-3. **Inner structure (this pattern)**: only after SIMT is active, replace kernel-index loops + per-tap divisor counting with clip-window bounds + closed-form divisor.
-4. **W-slab gather**: evaluate `pooling-inner-w-slab-gather` only on non-SIMT HIVM paths when profiling shows slab+gather wins; do not stack W-slab with an active SIMT-only experiment.
+3. **Dispatch and inner routing**: follow **`pooling-a5-simt-tuning`** — single launch, flat/rowcol, USE_FULL_WINDOW, then pick mask vs clip by semantic flags and stack_pressure.
+4. **Inner structure (this pattern)**: when **`count_include_pad=False`** (or equivalent closed divisor), replace kernel-index loops + per-tap divisor counting with clip-window bounds + closed-form divisor.
+5. **W-slab gather**: evaluate `pooling-inner-w-slab-gather` only on **non-SIMT** paths when profiling shows slab+gather wins; do not stack W-slab with an active A5 SIMT-only pooling experiment.
 
 Closed-form divisor is **related to but not the same as** generic loop-invariant hoisting (`loop-invariant-hoisting`): hoisting moves unchanged expressions out of a loop, while this pattern **replaces an O(window_volume) accumulation** (`valid_count += 1`) with an **O(1) algebraic formula** derived from the same clip bounds used for loads.
 
 ## Use When
 
 - **SIMT is already in use** per the evidence rules above (`force_simt_only=True`, an active SIMT-only optimize round, or explicit user confirmation).
-- The operator is **AvgPool / MaxPool** or another **fixed-kernel window reduction** over an affine layout (NCDHW, NCHW, or collapsed batch×channel rows).
+- The operator is a **fixed-kernel window reduction** (mean, max, etc.) over an affine layout (NCDHW, NCHW, or collapsed batch×channel rows).
+- Semantics require **closed divisor**: **`count_include_pad=False`** (divisor = clipped window volume), not CIP padded-volume divisor.
+- Padding, `ceil_mode`, or edge outputs make many lanes use **partial windows**, but the mapping from output coordinates to input bounds is still **static and affine**.
 - The hot path uses **`for kd/kh/kw in range(KERNEL_*)`** with per-tap **`valid_*` / `safe_*` / `window_mask`** and/or **`count += tl.where(...)`** to derive the average divisor.
-- Padding, `count_include_pad`, `ceil_mode`, or edge outputs make many lanes use **partial windows**, but the mapping from output coordinates to input bounds is still **static and affine**.
-- Correctness can be checked against PyTorch `avg_pool{2,3}d` / `max_pool{2,3}d` across padding, `count_include_pad=False`, and boundary shapes.
+- Correctness can be checked against the framework reference across padding, **`count_include_pad=False`**, and boundary shapes.
 - Profiling on the SIMT launch still shows mask-heavy inner loops or scalar dominance after outer tiling and SIMT-only mode are settled.
 
 ## Avoid When
@@ -49,7 +53,7 @@ Closed-form divisor is **related to but not the same as** generic loop-invariant
 - The kernel is on an **HIVM W-slab** or other non-SIMT compile path where `force_simt_only` is off or incompatible.
 - Indices are value-dependent or the window is not a fixed affine span (true gather/scatter with irregular offsets).
 - The kernel is already dominated by Cube/matmul work; scalar window bookkeeping is not the bottleneck.
-- You cannot prove equivalence between padded-window divisor semantics and clipped-window load semantics (`count_include_pad=True` uses **pre-clip padded volume** for divisor but **post-clip input coordinates** for loads — same as PyTorch/CUDA).
+- **`count_include_pad=True`** is the primary path — route to **`pooling-a5-simt-tuning`** §4 (coordinate mask + one-shot CIP divisor) unless harness A/B shows clip-window wins.
 - Applying clip-window would require dynamic loop trip counts per lane that the backend cannot lower safely, and the fallback kernel-index path is already fast enough on the current SIMT launch.
 - You are about to abandon or have not finished validating the SIMT-only launch (compile `507035` repair, correctness) — stabilize SIMT first.
 
@@ -165,7 +169,7 @@ Notes for Triton/Ascend:
 | Constant divisor | `padding=0`, window fully inside input, `count_include_pad=True`, no override | `divisor = KERNEL_D*KERNEL_H*KERNEL_W` |
 | No length masks | same as above | drop `d_ok/h_ok/w_ok`; inner loops become unmasked loads |
 | `KERNEL_W` specialization | `kernel_w in 1..7` | separate `@triton.jit` instances; helps unrolling on CUDA-like backends |
-| Interior / boundary split | mixed tiles | run clip-window on interior; keep generic masked path only on boundary bands |
+| Interior / boundary split | mixed tiles | **Avoid global multi-launch on A5 SIMT pooling** — see `pooling-a5-simt-tuning` §8; use single-kernel `constexpr` branches. Scoped split only if proven on non-SIMT paths. |
 
 ### Step 5 — Combine with outer tiling on an established SIMT launch
 
@@ -209,8 +213,9 @@ for kd in range(KERNEL_D):
 
 ## Failure Modes And Anti-signals
 
-- Using **post-clip lengths** for divisor when **`count_include_pad=True`** — changes semantics vs PyTorch.
-- Using **pre-clip coordinates** for loads — reads out of bounds or wrong padding behavior.
+- Using **post-clip lengths** for divisor when **`count_include_pad=True`** — wrong semantics; use CIP one-shot divisor from padded extent (playbook §4).
+- Using **pre-clip coordinates** for loads — reads OOB or wrong padding behavior.
+- Applying clip-window for **CIP=True** or **max + half pad** without geomean proof — often regresses vs coordinate mask on A5 SIMT.
 - Applying only closed-form divisor but leaving kernel-index + `valid_*` loops — partial gain only.
 - Assuming clip-window removes all masks on **border outputs**; edge lanes still need `kd < d_len` guards.
 - Applying this pattern on a **non-SIMT** launch or replacing the SIMT path with W-slab without measurement — may regress or conflict on compile path (HIVM slab vs SIMT-only).
@@ -235,8 +240,9 @@ for kd in range(KERNEL_D):
 
 - `flat-index-decode-tiling` — outer output traversal / row-column tile before SIMT inner-window repair
 - `loop-invariant-hoisting` — hoist `x_base`, masks, and bounds; closed-form divisor is algebraic LICM plus counting elimination
-- `a5-force-simt-only-discrete-access` — **required predecessor** on A5: enable and validate SIMT-only launch before this pattern
-- `pooling-inner-w-slab-gather` — alternative inner-W memory strategy; compare on device, do not assume dominance
+- `a5-force-simt-only-discrete-access` — **required predecessor** on A5: enable and validate SIMT-only launch before inner-window repair
+- `pooling-a5-simt-tuning` — dispatch, USE_FULL_WINDOW, CIP mask vs clip routing, stack-aware launch params
+- `pooling-inner-w-slab-gather` — alternative inner-W memory strategy on **non-SIMT** paths; compare on device
 - `exact-tile-no-boundary-fast-path` — drop `d_ok/h_ok/w_ok` when tile is fully interior
 - `scalar-latency-traps` — remove redundant `safe_*`, narrow masks, and unsupported APIs
 - `algebraic-optimization` — closed-form divisor is an algebraic replacement for incremental counting
