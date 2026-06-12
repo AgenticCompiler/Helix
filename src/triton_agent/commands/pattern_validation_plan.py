@@ -44,6 +44,7 @@ def handle_pattern_validation_plan(
             output_path=output_path,
             base_revision=str(getattr(args, "base", "")),
             skip_launch_functions=list(getattr(args, "skip_launch", []) or []),
+            pull_request_ids=list(getattr(args, "pull_request", []) or []),
         )
     except RuntimeError as exc:
         print(f"[pattern-validation-plan] {exc}", file=sys.stderr)

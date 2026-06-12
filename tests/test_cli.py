@@ -103,6 +103,44 @@ class CliParserTests(unittest.TestCase):
         self.assertTrue(args.verbose)
         self.assertTrue(args.show_output)
 
+    def test_analyze_commit_perf_accepts_commit_analysis_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "analyze-commit-perf",
+                "-i",
+                ".",
+                "--base",
+                "main",
+                "--target-chip",
+                "A3",
+                "--include-ir",
+                "--force",
+                "-o",
+                "perf.md",
+                "--pull-request",
+                "99",
+                "--pull-request",
+                "107",
+                "--agent",
+                "opencode",
+                "--show-output",
+                "--prompt",
+                "Focus on memory effects.",
+            ]
+        )
+        self.assertEqual(args.command, "analyze-commit-perf")
+        self.assertEqual(args.command_kind, CommandKind.ANALYZE_COMMIT_PERF)
+        self.assertEqual(args.base, "main")
+        self.assertEqual(args.target_chip, "A3")
+        self.assertTrue(args.include_ir)
+        self.assertTrue(args.force)
+        self.assertEqual(args.output, "perf.md")
+        self.assertEqual(args.pull_request, ["99", "107"])
+        self.assertEqual(args.agent, "opencode")
+        self.assertTrue(args.show_output)
+        self.assertEqual(args.prompt, "Focus on memory effects.")
+
     def test_pattern_validation_loop_accepts_loop_options(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
@@ -367,6 +405,7 @@ class CliParserTests(unittest.TestCase):
             ("pattern_validation_verify", CommandKind.PATTERN_VALIDATION_VERIFY),
             ("pattern_validation_plan", CommandKind.PATTERN_VALIDATION_PLAN),
             ("pattern_validation_simulate", CommandKind.PATTERN_VALIDATION_SIMULATE),
+            ("analyze_commit_perf", CommandKind.ANALYZE_COMMIT_PERF),
         ]
 
         for alias, expected_kind in cases:

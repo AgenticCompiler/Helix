@@ -11,6 +11,14 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from knowledge_pull_requests import (
+    build_commit_pull_request_map,
+    extract_pull_request_ids_from_knowledge,
+    filter_commit_shas_by_pull_requests,
+    parse_pull_request_ids,
+    resolve_pull_request_filter,
+)
+
 _FILE_SECTION_RE = re.compile(r"^###\s+(\S+)\s*$", re.MULTILINE)
 _COMMIT_BLOCK_RE = re.compile(r"^#####\s+([0-9a-f]{7,40})\s+(.+)$", re.MULTILINE)
 _TRITON_KERNEL_RE = re.compile(r"@triton\.jit[^\n]*\n(?:@[^\n]+\n)*def\s+(\w+)\s*\(", re.MULTILINE)
@@ -43,6 +51,18 @@ def main(argv: list[str] | None = None) -> int:
             "comma-separated names (for example --skip-launch chunk_bwd_dqkwg)."
         ),
     )
+    parser.add_argument(
+        "--pull-request",
+        action="append",
+        default=[],
+        metavar="N",
+        help=(
+            "Limit planning to perf lessons from these merge-request IIDs (!N in Git history). "
+            "Repeat or pass comma-separated ids (for example --pull-request 99 --pull-request 107). "
+            "When omitted, use the Analyzed pull requests row or ## Analyzed Pull Requests "
+            "section in the knowledge base when present."
+        ),
+    )
     args = parser.parse_args(argv)
 
     knowledge_path = Path(args.knowledge).expanduser().resolve()
@@ -57,6 +77,16 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     knowledge_text = knowledge_path.read_text(encoding="utf-8")
+    try:
+        explicit_pull_requests = parse_pull_request_ids(args.pull_request)
+    except ValueError as exc:
+        print(f"plan_workspaces_from_knowledge: {exc}", file=sys.stderr)
+        return 2
+    pull_request_filter, pull_request_filter_source = resolve_pull_request_filter(
+        explicit_pull_requests,
+        knowledge_text,
+    )
+    knowledge_pull_requests = sorted(extract_pull_request_ids_from_knowledge(knowledge_text))
     file_sections = _parse_knowledge_file_sections(knowledge_text)
     workspaces: list[dict[str, Any]] = []
     skipped_entries: list[dict[str, str]] = []
@@ -64,9 +94,38 @@ def main(argv: list[str] | None = None) -> int:
     base_rev = str(args.base).strip() or None
     skip_launch = parse_skip_launch_names(args.skip_launch)
     discovered_launch_names: set[str] = set()
+    commit_to_pr: dict[str, int] = {}
+    if pull_request_filter is not None:
+        if not base_rev:
+            print(
+                "plan_workspaces_from_knowledge: --pull-request requires --base to map "
+                "knowledge-base commits to merge requests via git history.",
+                file=sys.stderr,
+            )
+            return 2
+        commit_to_pr = build_commit_pull_request_map(
+            repo_root,
+            base_rev,
+            head_revision="HEAD",
+        )
+        if not commit_to_pr:
+            warnings.append(
+                "pull-request filter enabled but git history contained no !N merge commits; "
+                "lessons may be empty"
+            )
+        else:
+            warnings.append(
+                "pull-request filter active: "
+                + ", ".join(f"!{item}" for item in sorted(pull_request_filter))
+                + f" (source={pull_request_filter_source})"
+            )
 
     for source_path, section in file_sections.items():
-        kernel_lessons = _kernel_lessons_from_section(section)
+        kernel_lessons = _kernel_lessons_from_section(
+            section,
+            pull_request_filter=pull_request_filter,
+            commit_to_pr=commit_to_pr,
+        )
         
         source_text = None
         if base_rev:
@@ -102,6 +161,16 @@ def main(argv: list[str] | None = None) -> int:
                     for sha in kernel_lessons.get(kernel, [])
                 },
             )
+            if pull_request_filter is not None and not lesson_shas:
+                skipped_entries.append(
+                    {
+                        "launch_function": launch_fn,
+                        "source_path": source_path,
+                        "kernels_in_operator": ", ".join(kernels_launched),
+                        "reason": "no knowledge lessons matched pull-request filter",
+                    },
+                )
+                continue
             workspaces.append(
                 {
                     "workspace": launch_fn,
@@ -154,6 +223,9 @@ def main(argv: list[str] | None = None) -> int:
         "repo": repo_root.as_posix(),
         "base_revision": str(args.base).strip() or None,
         "skip_launch_functions": sorted(skip_launch),
+        "pull_request_filter": sorted(pull_request_filter) if pull_request_filter else [],
+        "pull_request_filter_source": pull_request_filter_source,
+        "knowledge_pull_requests": knowledge_pull_requests,
         "skipped_workspaces": skipped_entries,
         "workspace_count": len(deduped),
         "warnings": warnings,
@@ -180,11 +252,24 @@ def _parse_knowledge_file_sections(text: str) -> dict[str, str]:
     return sections
 
 
-def _kernel_lessons_from_section(section_text: str) -> dict[str, list[str]]:
+def _kernel_lessons_from_section(
+    section_text: str,
+    *,
+    pull_request_filter: set[int] | None = None,
+    commit_to_pr: dict[str, int] | None = None,
+) -> dict[str, list[str]]:
     lessons: dict[str, list[str]] = defaultdict(list)
     commit_starts = list(_COMMIT_BLOCK_RE.finditer(section_text))
     for index, match in enumerate(commit_starts):
         sha = match.group(1)
+        if pull_request_filter is not None:
+            kept = filter_commit_shas_by_pull_requests(
+                [sha],
+                pull_request_filter=pull_request_filter,
+                commit_to_pr=commit_to_pr or {},
+            )
+            if not kept:
+                continue
         start = match.end()
         end = commit_starts[index + 1].start() if index + 1 < len(commit_starts) else len(section_text)
         block = section_text[start:end]

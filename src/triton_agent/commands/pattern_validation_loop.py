@@ -34,6 +34,7 @@ def handle_pattern_validation_loop(parser: argparse.ArgumentParser, args: argpar
         show_output=bool(getattr(args, "show_output", True)),
         user_prompt=getattr(args, "prompt", None),
         skip_launch_functions=list(getattr(args, "skip_launch", []) or []),
+        pull_request_ids=list(getattr(args, "pull_request", []) or []),
     )
 
 

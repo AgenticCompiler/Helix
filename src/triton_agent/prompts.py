@@ -32,6 +32,7 @@ PROMPT_INTROS = {
     CommandKind.RUN_TEST: "Run the generated correctness tests for the operator file.",
     CommandKind.GEN_BENCH: "Generate a benchmark for the operator file.",
     CommandKind.RUN_BENCH: "Run the generated benchmark for the operator file.",
+    CommandKind.ANALYZE_COMMIT_PERF: "Analyze Git commits for performance knowledge.",
     CommandKind.OPTIMIZE: "Optimize the operator implementation.",
     CommandKind.REPORT: "Read the optimize workspace and generate a Chinese optimization report.",
 }

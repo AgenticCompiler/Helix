@@ -29,6 +29,7 @@ def generate_workspace_plan(
     output_path: Path,
     base_revision: str = "",
     skip_launch_functions: list[str] | None = None,
+    pull_request_ids: list[str] | None = None,
 ) -> tuple[dict[str, Any] | None, list[str]]:
     """Build workspace-plan.json from PERF_KNOWLEDGE_BASE.md. Returns payload and warnings."""
     knowledge_path = knowledge_path.expanduser().resolve()
@@ -53,6 +54,10 @@ def generate_workspace_plan(
         text = str(launch_name).strip()
         if text:
             argv.extend(["--skip-launch", text])
+    for pr_id in pull_request_ids or []:
+        text = str(pr_id).strip()
+        if text:
+            argv.extend(["--pull-request", text])
 
     exit_code = int(module.main(argv))
     if exit_code != 0:
@@ -73,6 +78,7 @@ def generate_workspace_plan_if_present(
     knowledge_output: str = DEFAULT_KNOWLEDGE_FILE,
     base_revision: str = "",
     skip_launch_functions: list[str] | None = None,
+    pull_request_ids: list[str] | None = None,
     output_path: Path | None = None,
     stream: Any = None,
     log_tag: str = "pattern-validation-loop",
@@ -95,6 +101,7 @@ def generate_workspace_plan_if_present(
         output_path=plan_path,
         base_revision=base_revision,
         skip_launch_functions=skip_launch_functions,
+        pull_request_ids=pull_request_ids,
     )
     if payload is not None:
         count = int(payload.get("workspace_count", 0))

@@ -55,6 +55,12 @@ STAGE_RULES: dict[CommandKind, StageRule] = {
             "+triton-npu-optimize-check",
         ),
     ),
+    CommandKind.ANALYZE_COMMIT_PERF: StageRule(
+        directives=(
+            "+triton-npu-analyze-commit-perf",
+            "+triton-npu-optimize-knowledge",
+        ),
+    ),
     CommandKind.PATTERN_VALIDATION_LOOP: StageRule(
         directives=(
             "+triton-npu-pattern-validation-loop",
@@ -103,6 +109,8 @@ def resolve_staged_skills(
         staged_skill_names = staged_skill_names + ("torch-npu-optimize-knowledge",)
     if command_kind == CommandKind.OPTIMIZE and staged_skill_names is not None and enable_cann_ext_api:
         staged_skill_names = staged_skill_names + ("triton-npu-cann-ext-api-patterns",)
+    if command_kind == CommandKind.ANALYZE_COMMIT_PERF and staged_skill_names is not None and include_ir:
+        staged_skill_names = staged_skill_names + ("triton-npu-analyze-ir",)
 
     staged_skill_sources = _resolve_skill_sources(
         command_kind,

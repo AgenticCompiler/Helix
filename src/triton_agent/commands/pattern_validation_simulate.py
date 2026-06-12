@@ -38,6 +38,7 @@ def handle_pattern_validation_simulate(
             knowledge_base=str(getattr(args, "knowledge_base", "PERF_KNOWLEDGE_BASE.md")),
             base_revision=str(getattr(args, "base", "origin/main")),
             skip_launch_functions=list(getattr(args, "skip_launch", []) or []),
+            pull_request_ids=list(getattr(args, "pull_request", []) or []),
         )
     except ValueError as exc:
         print(f"[pattern-validation-simulate] {exc}", file=sys.stderr)

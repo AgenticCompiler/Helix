@@ -60,6 +60,43 @@ triton-agent pattern-validation-plan -i "$REPO" \
 `workspace-plan.json` records `skip_launch_functions` and `skipped_workspaces` for audit.
 `pattern-validation-loop` accepts the same `--skip-launch` flags when it auto-generates the plan.
 
+### Limit planning to selected merge requests
+
+When `analyze-commit-perf` analyzed only a subset of PRs, record them in the knowledge base
+(with `--pull-request` on the CLI or in Run Summary):
+
+```markdown
+| Analyzed pull requests | 99, 107, 100 |
+```
+
+or:
+
+```markdown
+## Analyzed Pull Requests
+
+99, 107, 100
+```
+
+Then either pass explicit PR IIDs on the CLI:
+
+```bash
+triton-agent pattern-validation-plan -i "$REPO" \
+  --knowledge PERF_KNOWLEDGE_BASE.md \
+  --batch-dir pattern-validation-batch \
+  --base "$BASE" \
+  --pull-request 99 \
+  --pull-request 107
+```
+
+or omit `--pull-request` and let the planner read the knowledge-base list automatically.
+
+PR filtering requires `--base` so the planner can map knowledge-base commit SHAs to `!N` merge
+requests in git history. Workspaces whose lessons do not match the filter are omitted and listed
+under `skipped_workspaces` with `reason=no knowledge lessons matched pull-request filter`.
+
+`pattern-validation-loop` and `pattern-validation-simulate` accept the same `--pull-request`
+flags when they auto-generate `workspace-plan.json`.
+
 `pattern-validation-loop` runs this automatically when `PERF_KNOWLEDGE_BASE.md` exists.
 The prepare agent may re-run the same command if the plan is missing or stale.
 

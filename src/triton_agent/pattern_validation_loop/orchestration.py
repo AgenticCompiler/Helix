@@ -77,6 +77,7 @@ class PatternValidationLoopConfig:
     show_output: bool
     user_prompt: str | None
     skip_launch_functions: tuple[str, ...] = ()
+    pull_request_ids: tuple[str, ...] = ()
 
 
 def run_pattern_validation_loop_orchestrated(
@@ -98,6 +99,7 @@ def run_pattern_validation_loop_orchestrated(
     show_output: bool = True,
     user_prompt: str | None = None,
     skip_launch_functions: list[str] | None = None,
+    pull_request_ids: list[str] | None = None,
 ) -> int:
     try:
         config = _build_loop_config(
@@ -118,6 +120,7 @@ def run_pattern_validation_loop_orchestrated(
             show_output=show_output,
             user_prompt=user_prompt,
             skip_launch_functions=skip_launch_functions,
+            pull_request_ids=pull_request_ids,
         )
     except ValueError as exc:
         print(f"[pattern-validation-loop] {exc}", file=sys.stderr, flush=True)
@@ -136,6 +139,7 @@ def run_pattern_validation_loop_orchestrated(
         knowledge_output=_relative_to_repo(config.repo_root, config.knowledge_path),
         base_revision=config.base_revision,
         skip_launch_functions=list(config.skip_launch_functions),
+        pull_request_ids=list(config.pull_request_ids),
         stream=sys.stderr,
     )
     for warning in plan_warnings:
@@ -269,6 +273,7 @@ def _build_loop_config(
     show_output: bool,
     user_prompt: str | None,
     skip_launch_functions: list[str] | None = None,
+    pull_request_ids: list[str] | None = None,
 ) -> PatternValidationLoopConfig:
     repo_root = resolve_git_worktree(target_path)
     synthesis_path = resolve_repo_path(repo_root, synthesis_output)
@@ -303,6 +308,11 @@ def _build_loop_config(
         skip_launch_functions=tuple(
             str(item).strip()
             for item in (skip_launch_functions or [])
+            if str(item).strip()
+        ),
+        pull_request_ids=tuple(
+            str(item).strip()
+            for item in (pull_request_ids or [])
             if str(item).strip()
         ),
     )

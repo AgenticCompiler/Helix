@@ -22,6 +22,7 @@ class CommandKind(str, Enum):
     STATUS = "status"
     LOG_CHECK = "log-check"
     LOG_CHECK_BATCH = "log-check-batch"
+    ANALYZE_COMMIT_PERF = "analyze-commit-perf"
     TRACE_ANALYZE = "trace-analyze"
     PATTERN_VALIDATION_LOOP = "pattern-validation-loop"
     PATTERN_VALIDATION_VERIFY = "pattern-validation-verify"
@@ -51,6 +52,7 @@ COMMAND_TO_SKILL = {
     CommandKind.STATUS: "",
     CommandKind.LOG_CHECK: "",
     CommandKind.LOG_CHECK_BATCH: "",
+    CommandKind.ANALYZE_COMMIT_PERF: "triton-npu-analyze-commit-perf",
     CommandKind.TRACE_ANALYZE: "",
     CommandKind.PATTERN_VALIDATION_LOOP: "triton-npu-pattern-validation-loop",
     CommandKind.PATTERN_VALIDATION_VERIFY: "",

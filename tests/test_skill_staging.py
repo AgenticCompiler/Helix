@@ -103,6 +103,24 @@ class SkillStagingTests(unittest.TestCase):
 
         self.assertIn("torch-npu-optimize-knowledge", names or ())
 
+    def test_resolve_staged_skills_for_commit_perf_analysis(self) -> None:
+        names, sources = resolve_staged_skills(CommandKind.ANALYZE_COMMIT_PERF)
+
+        self.assertEqual(
+            names,
+            (
+                "triton-npu-analyze-commit-perf",
+                "triton-npu-optimize-knowledge",
+            ),
+        )
+        self.assertIsNone(sources)
+
+    def test_resolve_staged_skills_for_commit_perf_analysis_can_include_ir(self) -> None:
+        names, sources = resolve_staged_skills(CommandKind.ANALYZE_COMMIT_PERF, include_ir=True)
+
+        self.assertIn("triton-npu-analyze-ir", names or ())
+        self.assertIsNone(sources)
+
     def test_resolve_staged_skills_for_pattern_validation_loop(self) -> None:
         names, sources = resolve_staged_skills(CommandKind.PATTERN_VALIDATION_LOOP)
 

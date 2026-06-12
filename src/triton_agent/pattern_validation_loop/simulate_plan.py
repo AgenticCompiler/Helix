@@ -80,6 +80,7 @@ class SimulatePlanConfig:
     knowledge_path: Path
     base_revision: str = "origin/main"
     skip_launch_functions: tuple[str, ...] = ()
+    pull_request_ids: tuple[str, ...] = ()
     max_iterations: int = 5
 
 
@@ -112,6 +113,7 @@ def build_simulate_plan_config(
     knowledge_base: str = DEFAULT_KNOWLEDGE_FILE,
     base_revision: str = "origin/main",
     skip_launch_functions: list[str] | None = None,
+    pull_request_ids: list[str] | None = None,
 ) -> SimulatePlanConfig:
     repo_root = resolve_git_worktree(target_path)
     batch_path = resolve_repo_path(repo_root, batch_dir)
@@ -130,6 +132,12 @@ def build_simulate_plan_config(
     skip_launch = tuple(
         name
         for raw in (skip_launch_functions or [])
+        for name in raw.replace(",", " ").split()
+        if name.strip()
+    )
+    pull_requests = tuple(
+        name
+        for raw in (pull_request_ids or [])
         for name in raw.replace(",", " ").split()
         if name.strip()
     )
@@ -154,6 +162,7 @@ def build_simulate_plan_config(
         knowledge_path=knowledge_path,
         base_revision=base_revision.strip() or "origin/main",
         skip_launch_functions=skip_launch,
+        pull_request_ids=pull_requests,
     )
 
 
@@ -489,6 +498,11 @@ def write_batch_simulate_report(
     batch_path: Path,
     results: list[WorkspaceSimulateResult],
 ) -> Path:
+    try:
+        batch_eval_mod = load_skill_script_module("triton-npu-pattern-validation-loop", "batch_evaluation")
+    except Exception:
+        batch_eval_mod = None
+
     workspace_reports: list[dict[str, Any]] = []
     for item in results:
         entry: dict[str, Any] = {
@@ -497,6 +511,15 @@ def write_batch_simulate_report(
             "message": item.message,
             "report_path": item.report_path.as_posix() if item.report_path else None,
         }
+        expected_patterns: list[str] = []
+        if batch_eval_mod is not None:
+            try:
+                meta = batch_eval_mod.resolve_workspace_meta(item.workspace, batch_root=batch_path)
+                expected_patterns = [str(p) for p in meta.get("expected_patterns", [])]
+            except Exception:
+                pass
+
+        simulate_pattern_hits: list[str] = []
         if item.report_path is not None and item.report_path.is_file():
             try:
                 payload = json.loads(item.report_path.read_text(encoding="utf-8"))
@@ -505,9 +528,35 @@ def write_batch_simulate_report(
                     validation_errors = validate_simulate_report(payload)
                     if validation_errors:
                         entry["validation_errors"] = validation_errors
+
+                    ranked = payload.get("ranked_patterns", [])
+                    if isinstance(ranked, list):
+                        for pat in ranked:
+                            if isinstance(pat, dict) and pat.get("hit") is True:
+                                pat_id = pat.get("pattern_id")
+                                if pat_id:
+                                    simulate_pattern_hits.append(str(pat_id))
             except json.JSONDecodeError:
                 entry["simulate_report_error"] = "invalid JSON in workspace report"
+
+        matched = [p for p in expected_patterns if p in simulate_pattern_hits]
+        missing = [p for p in expected_patterns if p not in matched]
+
+        heuristic_suggested_pass = False
+        if expected_patterns:
+            heuristic_suggested_pass = (not missing) and item.status == "ok" and not entry.get("validation_errors")
+        else:
+            heuristic_suggested_pass = item.status == "ok" and not entry.get("validation_errors")
+
+        entry["expected_patterns"] = expected_patterns
+        entry["heuristic_pattern_hits"] = matched
+        entry["heuristic_missing_patterns"] = missing
+        entry["heuristic_suggested_pass"] = heuristic_suggested_pass
         workspace_reports.append(entry)
+
+    active_remaining = [
+        entry["workspace"] for entry in workspace_reports if not entry.get("heuristic_suggested_pass")
+    ]
 
     payload = {
         "schema_version": 1,
@@ -516,6 +565,9 @@ def write_batch_simulate_report(
         "ok_count": sum(1 for item in results if item.status == "ok"),
         "failed_count": sum(1 for item in results if item.status != "ok"),
         "workspaces": workspace_reports,
+        "reports": workspace_reports,  # Alias for consistency with audit-report.json
+        "active_remaining": active_remaining,
+        "completed_total": len(results) - len(active_remaining),
         "next_step_manual_optimize": build_manual_optimize_command_hint(batch_path),
     }
     report_path = batch_path / BATCH_SIMULATE_REPORT_FILENAME

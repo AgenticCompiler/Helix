@@ -56,6 +56,7 @@ def run_pattern_validation_simulate_loop(config: SimulatePlanConfig) -> tuple[in
         knowledge_output=_knowledge_rel,
         base_revision=config.base_revision,
         skip_launch_functions=list(config.skip_launch_functions),
+        pull_request_ids=list(config.pull_request_ids),
         stream=sys.stderr,
         log_tag="pattern-validation-simulate",
     )
@@ -120,14 +121,14 @@ def run_pattern_validation_simulate_loop(config: SimulatePlanConfig) -> tuple[in
 
         if config.verbose:
             print(
-                "[pattern-validation-simulate] running skill-audit "
-                "(independent review of simulate reports and pattern cards)",
+                "[pattern-validation-simulate] running simulate-analyze & skill-audit "
+                "(independent review of simulate reports, expected patterns, and pattern cards)",
                 file=sys.stderr,
                 flush=True,
             )
         audit_code = _run_skill_audit_agent(ctx, report_path=report_path, iteration=iteration)
         if audit_code != 0:
-            _record_simulate_phase(ctx, phase="failed", note=f"skill-audit agent exit {audit_code}")
+            _record_simulate_phase(ctx, phase="failed", note=f"simulate-analyze & skill-audit agent exit {audit_code}")
             return audit_code, report_path
 
         state = _load_simulate_state(ctx.state_path)
@@ -135,7 +136,7 @@ def run_pattern_validation_simulate_loop(config: SimulatePlanConfig) -> tuple[in
             _record_simulate_phase(
                 ctx,
                 phase="complete",
-                note="skill-audit confirmed simulate loop complete",
+                note="simulate-analyze confirmed simulate loop complete",
             )
             return _finish_simulate_loop(ctx, report_path)
 

@@ -172,7 +172,7 @@ def build_simulate_skill_audit_prompt(
     record_script: Path,
 ) -> str:
     return f"""\
-Review simulate-plan reports (pattern skills **and** proposed code changes) before another simulate iteration.
+Analyze pattern-validation simulate evidence and decide whether the simulate loop can complete.
 
 Read:
 
@@ -200,37 +200,40 @@ Simulate loop state:
 
 Current iteration: {iteration} / {max_iterations}
 
+The simulate evidence report `{simulate_report_path.as_posix()}` aggregates per-workspace simulate reports, expected patterns, and heuristic hit results.
+`heuristic_suggested_pass` is a **hint only** (whether all expected patterns are hit and simulate status is ok). You must judge whether simulate plans actually applied synthesis-backed mechanisms.
+
+Forbidden (ground truth outside workspaces — do not open):
+
+  {batch_dir.as_posix()}/batch-evaluation.json
+  {batch_dir.as_posix()}/workspace-plan.json
+  PERF_PATTERN_SYNTHESIS.md / PERF_KNOWLEDGE_BASE.md under the repo root
+
 Required steps:
 
-1. Read `{simulate_report_path.as_posix()}` and per-workspace `simulate-plan/report.json` files only. \
-Do **not** read PERF markdown, `batch-evaluation.json`, or `validation-meta.json`.
-2. For each workspace report, review **code**, not only patterns — do **not** trust simulate \
-self-assessment fields without reading the diff and excerpts:
+1. Read `{simulate_report_path.as_posix()}` and per-workspace `simulate-plan/report.json` files only. Do **not** read PERF markdown or `batch-evaluation.json`.
+2. For each workspace report, judge simulate pass/fail based on whether the simulate agent's proposed code changes actually implement the target `expected_patterns` and whether the plan is concrete and correct.
+   - Do **not** trust simulate self-assessment fields without reading the diff and excerpts.
    - `proposed_code_changes.unified_diff` must be present and implementation-specific when `code_plan_quality` is `concrete`.
    - Every `ranked_patterns[]` entry with `hit: true` should appear in `edits_by_pattern` with matching `before_excerpt`/`after_excerpt`.
    - If the plan is pattern-only prose with no real diff, set `skills_alignment` to `partial` or `mismatch` in your notes and fix cards so the next simulate pass produces code-level guidance.
-3. Update pattern cards under `{knowledge_root.as_posix()}/references/patterns/` when simulate plans show \
-`partial`/`mismatch` on skills or when cards would not lead to the proposed code edits.
-4. Regenerate the pattern index:
+3. If some workspaces have missing patterns (`heuristic_missing_patterns` not empty) or the code plan is vague/incorrect, update pattern cards under `{knowledge_root.as_posix()}/references/patterns/` to better guide the agent, and regenerate the pattern index:
 
    python3 {knowledge_root.as_posix()}/scripts/build_pattern_index.py \\
      --patterns-dir {knowledge_root.as_posix()}/references/patterns \\
      --output {knowledge_root.as_posix()}/references/pattern_index.md
 
-5. Record this skill-audit pass:
+4. Record this simulate analyze and skill-audit pass:
 
    python3 {record_script.as_posix()} \\
      --state {state_path.as_posix()} --phase skill-audit \\
      --note "updated pattern cards from simulate-plan-report"
 
-6. If **every** workspace simulate report passes your independent review (structural code plan,
-   pattern-card quality, and `skills_alignment: aligned` with `code_plan_quality: concrete`), \
-and simulate agents succeeded, \
-mark the simulate loop complete:
+5. If **every** workspace simulate report passes your independent review (all target `expected_patterns` are hit, structural code plan is concrete and correct, and `skills_alignment: aligned`), mark the simulate loop complete:
 
    python3 {record_script.as_posix()} \\
      --state {state_path.as_posix()} --phase complete \\
-     --note "all workspaces aligned after skill audit"
+     --note "all workspaces aligned and matched targets after simulate analyze"
 
    Otherwise stop without `--phase complete` so the CLI runs another simulate iteration with updated skills.
 

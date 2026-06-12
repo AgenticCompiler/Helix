@@ -27,6 +27,7 @@ from triton_agent.commands.pattern_validation_loop import handle_pattern_validat
 from triton_agent.commands.pattern_validation_plan import handle_pattern_validation_plan
 from triton_agent.commands.pattern_validation_simulate import handle_pattern_validation_simulate
 from triton_agent.commands.pattern_validation_verify import handle_pattern_validation_verify
+from triton_agent.commands.commit_perf_analysis import handle_analyze_commit_perf
 from triton_agent.models import CommandKind
 
 
@@ -53,6 +54,7 @@ _TOP_LEVEL_EXAMPLES = (
     "triton-agent status -i .",
     "triton-agent log-check -i .",
     "triton-agent log-check-batch -i kernels",
+    "triton-agent analyze-commit-perf -i . --base origin/main",
     "triton-agent pattern-validation-loop -i . --show-output --agent opencode",
     "triton-agent optimize -i kernel.py --agent codex",
     "triton-agent report-batch -i kernels",
@@ -180,6 +182,7 @@ class _CommandSpec:
     has_pattern_validation_loop_options: bool = False
     has_pattern_validation_plan_options: bool = False
     has_pattern_validation_simulate_options: bool = False
+    has_commit_perf_options: bool = False
 
 
 _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
@@ -395,6 +398,16 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_prompt=True,
         has_log_tools=True,
     ),
+    CommandKind.ANALYZE_COMMIT_PERF: _CommandSpec(
+        handler=handle_analyze_commit_perf,
+        help_group="Optimization",
+        help_summary="Analyze Git commits for reusable performance knowledge.",
+        description="Analyze current-branch Git commits and write a performance knowledge report.",
+        has_agent=True,
+        has_show_output=True,
+        has_prompt=True,
+        has_commit_perf_options=True,
+    ),
     CommandKind.PATTERN_VALIDATION_LOOP: _CommandSpec(
         handler=handle_pattern_validation_loop,
         help_group="Optimization",
@@ -596,6 +609,39 @@ def build_parser() -> argparse.ArgumentParser:
             )
         if spec.has_prompt:
             subparser.add_argument("--prompt")
+        if spec.has_commit_perf_options:
+            subparser.add_argument(
+                "--base",
+                default="origin/main",
+                help="Base revision for commit analysis (default: origin/main).",
+            )
+            subparser.add_argument("--target-chip", default="A5", choices=_TARGET_CHIP_CHOICES)
+            subparser.add_argument(
+                "--include-ir",
+                action="store_true",
+                help="Stage IR analysis support and ask the agent to include IR evidence when available.",
+            )
+            subparser.add_argument(
+                "--synthesis-output",
+                default="PERF_PATTERN_SYNTHESIS.md",
+                help="Final consolidated pattern synthesis report path (default: PERF_PATTERN_SYNTHESIS.md).",
+            )
+            subparser.add_argument(
+                "--force",
+                action="store_true",
+                help="Overwrite existing incremental and synthesis reports if they already exist.",
+            )
+            subparser.add_argument(
+                "--pull-request",
+                "--pr",
+                action="append",
+                default=[],
+                metavar="N",
+                help=(
+                    "Limit analysis to commits from merge-request IIDs (!N). "
+                    "Repeat or use comma-separated ids. Requires --base for git mapping."
+                ),
+            )
         if spec.has_pattern_validation_loop_options:
             subparser.add_argument(
                 "--synthesis",
@@ -636,6 +682,17 @@ def build_parser() -> argparse.ArgumentParser:
                 help=(
                     "Host launch function(s) to omit when generating workspace-plan.json. "
                     "Repeat or use comma-separated names."
+                ),
+            )
+            subparser.add_argument(
+                "--pull-request",
+                action="append",
+                default=[],
+                metavar="N",
+                help=(
+                    "Limit workspace planning to perf lessons from merge-request IIDs (!N). "
+                    "Repeat or use comma-separated ids. When omitted, use Analyzed pull requests "
+                    "from PERF_KNOWLEDGE_BASE.md when present."
                 ),
             )
             subparser.add_argument("--min-rounds", type=int, default=10)
@@ -721,6 +778,17 @@ def build_parser() -> argparse.ArgumentParser:
                 help=(
                     "Host launch function(s) to omit when generating workspace-plan.json. "
                     "Repeat or use comma-separated names."
+                ),
+            )
+            subparser.add_argument(
+                "--pull-request",
+                action="append",
+                default=[],
+                metavar="N",
+                help=(
+                    "Limit workspace planning to perf lessons from merge-request IIDs (!N). "
+                    "Repeat or use comma-separated ids. When omitted, use Analyzed pull requests "
+                    "from PERF_KNOWLEDGE_BASE.md when present."
                 ),
             )
             subparser.add_argument(
@@ -815,6 +883,17 @@ def build_parser() -> argparse.ArgumentParser:
                 help=(
                     "Host launch function(s) to omit from workspace-plan.json. "
                     "Repeat or use comma-separated names."
+                ),
+            )
+            subparser.add_argument(
+                "--pull-request",
+                action="append",
+                default=[],
+                metavar="N",
+                help=(
+                    "Limit planning to perf lessons from merge-request IIDs (!N). "
+                    "Requires --base for git mapping. When omitted, use Analyzed pull requests "
+                    "from the knowledge base when present."
                 ),
             )
 
@@ -936,6 +1015,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "pattern_validation_verify": "pattern-validation-verify",
         "pattern_validation_plan": "pattern-validation-plan",
         "pattern_validation_simulate": "pattern-validation-simulate",
+        "analyze_commit_perf": "analyze-commit-perf",
     }
     normalized = list(argv)
     normalized[0] = aliases.get(normalized[0], normalized[0])
