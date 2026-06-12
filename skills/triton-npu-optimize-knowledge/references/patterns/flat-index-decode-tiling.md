@@ -131,4 +131,5 @@ This lets a smaller physical grid cover a large logical tensor.
 - `scalar-latency-traps`
 - `gather-load`
 - `discrete_memory_access`
-- `pooling-clip-window-closed-divisor` — inner window loop and divisor repair for pooling after outer tiling
+- `a5-simt-sliding-window-tuning` — outer dispatch and inner-path routing on A5 SIMT fixed-window reduces
+- `simt-clip-window-closed-reduction` — closed normalizer inner window loop after outer tiling
