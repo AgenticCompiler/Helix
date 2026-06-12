@@ -246,8 +246,3 @@ def render_report_batch_file(
     target.write_text(md, encoding="utf-8")
     return target
 
-
-__all__ = [
-    "render_report_batch",
-    "render_report_batch_file",
-]

@@ -117,5 +117,3 @@ def handle_report(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         print(f"[report] failed: {detail}", file=sys.stderr, flush=True)
     return result.return_code
 
-
-__all__ = ["handle_report"]

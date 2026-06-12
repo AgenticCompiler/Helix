@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from triton_agent.clean import (
+from triton_agent.clean.core import (
     clean_batch_root_artifacts,
     clean_workspace,
     discover_clean_workspaces,
@@ -32,5 +32,3 @@ def handle_clean(parser: argparse.ArgumentParser, args: argparse.Namespace) -> i
         clean_batch_root_artifacts(root)
     return 0
 
-
-__all__ = ["handle_clean"]

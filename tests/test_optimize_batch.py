@@ -6,8 +6,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.models import AgentResult
-from triton_agent.optimize.batch import (
+from triton_agent.optimize.naming import (
     is_batch_optimize_operator_candidate,
+)
+from triton_agent.optimize.batch import (
     resolve_batch_optimize_operator_file,
     summarize_batch_optimize_failure,
 )
