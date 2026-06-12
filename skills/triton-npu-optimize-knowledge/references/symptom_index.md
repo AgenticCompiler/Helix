@@ -40,7 +40,7 @@ Read this generated index first. Then read only the one or two most relevant det
   - `algebraic-optimization`
   - `discrete_memory_access`
   - `gather-load`
-  - `pooling-inner-w-slab-gather`
+  - `sliding-window-inner-w-slab-gather`
   - `slice-coalesce`
   - `slice-intermediate`
 - Common Non-Matches:
