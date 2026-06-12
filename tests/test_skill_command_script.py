@@ -605,6 +605,91 @@ class SkillCommandScriptTests(unittest.TestCase):
         )
         self.assertEqual(stderr.getvalue(), "")
 
+    def test_script_run_test_forces_blocks_parallel_to_zero_and_restores_env(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+
+            observed_env_values: list[Optional[str]] = []
+
+            def fake_run_local_test(
+                test_path: Path,
+                operator_path: Path,
+                test_mode: str,
+                verbose: bool = False,
+                **_kwargs: object,
+            ) -> tuple[dict[str, object], None]:
+                self.assertEqual(test_path, test_file.resolve())
+                self.assertEqual(operator_path, operator.resolve())
+                self.assertEqual(test_mode, "standalone")
+                self.assertFalse(verbose)
+                observed_env_values.append(os.environ.get("TRITON_ALL_BLOCKS_PARALLEL"))
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    None,
+                )
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.dict(
+                    os.environ,
+                    {"TRITON_ALL_BLOCKS_PARALLEL": "1"},
+                    clear=False,
+                ):
+                    with patch.object(
+                        module,
+                        "_load_test_functions",
+                        return_value=(
+                            lambda _path: {"test-mode": "standalone"},
+                            fake_run_local_test,
+                            lambda *_args, **_kwargs: None,
+                        ),
+                    ):
+                        exit_code = module.main(
+                            [
+                                "run-test",
+                                "--test-file",
+                                str(test_file),
+                                "--operator-file",
+                                str(operator),
+                            ]
+                        )
+                    restored_value = os.environ.get("TRITON_ALL_BLOCKS_PARALLEL")
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(observed_env_values, ["0"])
+        self.assertEqual(restored_value, "1")
+
     def test_script_run_test_rejects_removed_oracle_result_flag(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
