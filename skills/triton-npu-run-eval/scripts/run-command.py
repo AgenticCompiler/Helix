@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import importlib
 import importlib.util
+import os
 import sys
 from pathlib import Path
 from typing import Iterator, Protocol, cast
@@ -13,6 +14,9 @@ from result_payload import ResultPayload
 SCRIPT_DIR = Path(__file__).resolve().parent
 _RUN_BENCH_HINT = "Hint: use `compare-perf` to inspect this perf artifact instead of reading it directly."
 _RUN_TEST_HINT = "Hint: use `compare-result` to inspect this archived result instead of reading it directly."
+_BLOCKS_PARALLEL_ENV = "TRITON_ALL_BLOCKS_PARALLEL"
+_BLOCKS_PARALLEL_UNSAFE_VALUE = "1"
+_BLOCKS_PARALLEL_SAFE_VALUE = "0"
 
 
 def _profile_bench_hint(profile_dir: Path) -> str:
@@ -21,6 +25,28 @@ def _profile_bench_hint(profile_dir: Path) -> str:
         f"`--profile-dir {profile_dir}` if you need the summary again; "
         "if that is not enough, inspect the raw files in this profile directory directly."
     )
+
+
+@contextlib.contextmanager
+def _guard_operator_execution_env(command: str) -> Iterator[None]:
+    if command not in {
+        "run-test",
+        "run-test-baseline",
+        "run-test-optimize",
+        "run-bench",
+        "profile-bench",
+    }:
+        yield
+        return
+    previous = os.environ.get(_BLOCKS_PARALLEL_ENV)
+    if previous != _BLOCKS_PARALLEL_UNSAFE_VALUE:
+        yield
+        return
+    os.environ[_BLOCKS_PARALLEL_ENV] = _BLOCKS_PARALLEL_SAFE_VALUE
+    try:
+        yield
+    finally:
+        os.environ[_BLOCKS_PARALLEL_ENV] = previous
 
 
 class ParseMetadataFn(Protocol):
@@ -236,6 +262,11 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser()
     args = parser.parse_args(argv)
+    with _guard_operator_execution_env(args.command):
+        return _dispatch_command(parser, args)
+
+
+def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     remote, remote_workdir = _resolve_remote_execution(args)
 
     if args.command == "compare-result":

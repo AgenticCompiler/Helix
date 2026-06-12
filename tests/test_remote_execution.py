@@ -344,6 +344,22 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
         command = mocked.call_args.args[0]
         self.assertIn("ASCEND_RT_VISIBLE_DEVICES=4", command[-1])
 
+    def test_run_remote_command_streaming_forces_blocks_parallel_zero_from_guarded_env(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        with (
+            patch.dict(environ, {"TRITON_ALL_BLOCKS_PARALLEL": "0"}, clear=False),
+            patch.object(module, "run_streaming_process", return_value=make_skill_result(0, "", "")) as mocked,
+        ):
+            module.run_remote_command_streaming(
+                module.parse_remote_spec("alice@example.com"),
+                "/tmp/workspace",
+                ["python3", "bench.py"],
+            )
+
+        command = mocked.call_args.args[0]
+        self.assertIn("TRITON_ALL_BLOCKS_PARALLEL=0", command[-1])
+
     def test_run_remote_test_keeps_workspace_when_requested(self) -> None:
         module = load_test_runner_module()
 
