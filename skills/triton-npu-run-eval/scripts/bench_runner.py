@@ -55,6 +55,7 @@ from run_runtime import (
 )
 
 _LOCAL_BENCH_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_OUTPUT_DIR"
+_BENCH_COPY_FILES_ENV = "TRITON_AGENT_BENCH_COPY_FILES"
 _bench_runtime_module_cache = None
 _bench_runtime_module_lock = threading.Lock()
 _T = TypeVar("_T")
@@ -74,6 +75,23 @@ class _MsprofCaseOutcome:
 
 def _bench_timeout() -> int:
     return env_int("TRITON_AGENT_BENCH_TIMEOUT_SECONDS", 900)
+
+
+def _collect_env_copy_files(search_dir: Path) -> list[Path]:
+    patterns_str = os.environ.get(_BENCH_COPY_FILES_ENV, "")
+    if not patterns_str.strip():
+        return []
+    patterns = [p.strip() for p in patterns_str.split(",") if p.strip()]
+    paths: list[Path] = []
+    seen: set[Path] = set()
+    for pattern in patterns:
+        for matched in sorted(search_dir.glob(pattern)):
+            if matched.is_file():
+                resolved = matched.resolve()
+                if resolved not in seen:
+                    seen.add(resolved)
+                    paths.append(matched)
+    return paths
 
 
 def _normalize_bench_mode(bench_mode: str) -> str:
@@ -463,6 +481,10 @@ def _bench_runtime_script_path() -> Path:
 def _bench_runtime_support_paths() -> list[Path]:
     runtime = _load_bench_runtime_module()
     return cast(list[Path], runtime.runtime_support_paths())
+
+
+def _bench_flat_input_paths(bench_file: Path) -> list[Path]:
+    return _bench_runtime_support_paths() + _collect_env_copy_files(bench_file.parent)
 
 
 def _load_bench_runtime_module():
@@ -984,7 +1006,7 @@ def _create_local_msprof_case_workspace(
             operator_file,
             json_search_root=json_search_root,
         ),
-        flat_input_paths=_bench_runtime_support_paths(),
+        flat_input_paths=_bench_flat_input_paths(bench_file),
         source_root=source_root,
         verbose=verbose,
     )
@@ -1076,7 +1098,7 @@ def _stage_remote_msprof_case_workspace(
             json_search_root=json_search_root,
         ),
         source_root=source_root,
-        flat_input_paths=_bench_runtime_support_paths(),
+        flat_input_paths=_bench_flat_input_paths(bench_file),
         verbose=verbose,
         stderr=stderr,
     )
@@ -1216,7 +1238,7 @@ def _create_local_torch_npu_profiler_case_workspace(
             operator_file,
             json_search_root=json_search_root,
         ),
-        flat_input_paths=_bench_runtime_support_paths(),
+        flat_input_paths=_bench_flat_input_paths(bench_file),
         source_root=source_root,
         verbose=verbose,
     )
@@ -1325,7 +1347,7 @@ def _stage_remote_torch_npu_profiler_case_workspace(
             json_search_root=json_search_root,
         ),
         source_root=source_root,
-        flat_input_paths=_bench_runtime_support_paths(),
+        flat_input_paths=_bench_flat_input_paths(bench_file),
         verbose=verbose,
         stderr=stderr,
     )
