@@ -31,5 +31,3 @@ def handle_status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
     results = scan_optimize_status_workspaces(root, verbose=bool(getattr(args, "verbose", False)))
     return render_optimize_status_results(results, output_format=str(getattr(args, "format", "text")))
 
-
-__all__ = ["handle_status"]

@@ -32,11 +32,13 @@ from triton_agent.paths import (
 )
 from triton_agent.prompts import (
     append_additional_user_instructions,
-    build_optimize_baseline_prompt,
     build_optimize_round_prompt,
+    build_prompt,
+)
+from triton_agent.optimize.prompts import (
+    build_optimize_baseline_prompt,
     build_optimize_resume_prompt,
     build_optimize_supervisor_prompt,
-    build_prompt,
 )
 from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
 from triton_agent.execution import _normalize_agent_result as normalize_agent_result

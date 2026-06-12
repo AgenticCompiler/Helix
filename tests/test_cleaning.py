@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from triton_agent.clean import clean_workspace, discover_clean_workspaces, is_cleanable_workspace
+from triton_agent.clean.core import clean_workspace, discover_clean_workspaces, is_cleanable_workspace
 
 
 class WorkspaceCleaningTests(unittest.TestCase):

@@ -18,7 +18,6 @@ from triton_agent.batch_utils import (
 from triton_agent.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
 from triton_agent.models import AgentResult, CommandKind
 from triton_agent.optimize.naming import (
-    is_batch_optimize_operator_candidate,
     resolve_batch_optimize_operator_file,
 )
 from triton_agent.npu_affinity import (
@@ -37,17 +36,6 @@ from triton_agent.skill_staging import resolve_staged_skills
 
 _BATCH_STATUS_FILENAME = "optimize-batch-status.json"
 _BATCH_STATUS_VERSION = 1
-
-__all__ = [
-    "is_batch_optimize_operator_candidate",
-    "resolve_batch_optimize_operator_file",
-    "run_optimize_batch",
-    "summarize_batch_optimize_failure",
-    "optimize_batch_status_file",
-    "load_optimize_batch_status",
-    "update_optimize_batch_workspace_status",
-    "clear_optimize_batch_status_file",
-]
 
 
 def run_optimize_batch(
