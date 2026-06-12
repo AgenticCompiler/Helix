@@ -218,6 +218,9 @@ Decision-path rules:
 - quantized float-to-int applies when the input type is `float` and the output dtype is integer.
 - quantized float-to-int requires exact tolerance `|actual - golden| <= 1` on all compared elements.
 - `int` input with integer output, and `no_tensor` with integer output, use the integer-compute path.
+- any input type, including `no_tensor`, with floating-point output uses the floating-point-compute path.
+- any input type, including `no_tensor`, with bool output uses the bool-output path.
+- if the compared output is not bool, integer, or floating-point, fail explicitly with an unsupported-output-type error instead of guessing a comparison path.
 - floating-point compute uses the three-clause AND contract described below.
 
 The non-compute path bypasses the above numeric branches and uses binary equality on raw bit patterns, including NaN payloads.
@@ -250,7 +253,9 @@ Definitions:
 - `matched[i]` is computed on finite elements only
 - `matched_ratio = sum(matched) / total_finite`
 - `MERE = mean(abs(diff) / (abs(golden) + 1e-7))` over finite elements
+- `max error cap` requires `abs(diff[i]) <= atol + rtol * abs(golden[i])` for every finite element
 - `matched_ratio` requires `>= 0.9`
+- `MERE` requires `< rel_threshold`
 - if `total_finite == 0`, the MERE clause passes automatically
 
 Matched-element rules:
@@ -274,9 +279,9 @@ Threshold resolution must be driven by output dtype, including explicit handling
 
 The implementation should centralize these threshold tables in one place and make the selected threshold row available in diagnostics output.
 
-Threshold tables:
+The first threshold table is used by the matched-element rules and by the MERE upper bound.
 
-| dtype | small_value_threshold | small_value_error | rel_threshold |
+| dtype | small_value_threshold | small_value_error | rel_threshold (= MERE upper bound) |
 |---|---:|---:|---:|
 | `float16` | `2**-11` | `2**-16` | `2**-10` |
 | `bfloat16` | `2**-8` | `2**-16` | `2**-7` |
@@ -285,6 +290,8 @@ Threshold tables:
 | `float8_e4m3` | `2**-4` | `2**-6` | `2**-3` |
 | `float8_e5m2` | `2**-3` | `2**-5` | `2**-2` |
 | fallback | `2**-14` | `2**-30` | `2**-13` |
+
+The second threshold table is used only by the `max error cap` clause.
 
 | dtype | atol | rtol |
 |---|---:|---:|
