@@ -8,9 +8,30 @@
 
 ---
 
-## 推荐：一键全链路（CLI 编排）
+## 推荐：从提取到嵌入 skills（simulate 一键）
 
-前提：目标仓库已有 `PERF_PATTERN_SYNTHESIS.md`（通常来自 `analyze-commit-perf`）。
+`pattern-validation-simulate` 会在 PERF 报告缺失时自动运行 commit 提取，再进入 simulate → skill-audit 循环：
+
+```bash
+cd /path/to/target-repo
+
+uv run triton-agent pattern-validation-simulate \
+  -i . \
+  --base origin/main \
+  --batch-dir pattern-validation-batch \
+  --skills-dir pattern-validation-skills \
+  --max-iterations 5 \
+  --show-output \
+  --agent opencode
+```
+
+若已有 `PERF_PATTERN_SYNTHESIS.md` 与 `PERF_KNOWLEDGE_BASE.md`，加 `--skip-extract`。需要重跑提取时加 `--force`。
+
+---
+
+## 推荐：一键全链路 optimize 验证（CLI 编排）
+
+前提：目标仓库已有 `PERF_PATTERN_SYNTHESIS.md`（通常来自 `pattern-validation-simulate` 或 `analyze-commit-perf`）。
 
 ```bash
 cd /path/to/target-repo

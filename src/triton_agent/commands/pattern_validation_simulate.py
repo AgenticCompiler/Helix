@@ -39,6 +39,10 @@ def handle_pattern_validation_simulate(
             base_revision=str(getattr(args, "base", "origin/main")),
             skip_launch_functions=list(getattr(args, "skip_launch", []) or []),
             pull_request_ids=list(getattr(args, "pull_request", []) or []),
+            skip_extract=bool(getattr(args, "skip_extract", False)),
+            include_ir=bool(getattr(args, "include_ir", False)),
+            force_extract=bool(getattr(args, "force", False)),
+            concurrency=int(getattr(args, "concurrency", 1)),
         )
     except ValueError as exc:
         print(f"[pattern-validation-simulate] {exc}", file=sys.stderr)

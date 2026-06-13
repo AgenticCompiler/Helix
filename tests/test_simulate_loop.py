@@ -1,9 +1,15 @@
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
+from triton_agent.pattern_validation_loop.simulate_loop import run_commit_perf_extraction_if_needed
 from triton_agent.pattern_validation_loop.simulate_plan import (
     batch_report_skills_aligned,
+    build_simulate_plan_config,
     validate_simulate_report,
 )
+
+WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 
 
 class SimulateLoopTests(unittest.TestCase):
@@ -72,6 +78,41 @@ class SimulateLoopTests(unittest.TestCase):
             ],
         }
         self.assertFalse(batch_report_skills_aligned(payload))
+
+    def test_run_commit_perf_extraction_skips_when_reports_exist(self) -> None:
+        synth = WORKSPACE_ROOT / "tests/_simulate_extract_synth.md"
+        knowledge = WORKSPACE_ROOT / "tests/_simulate_extract_knowledge.md"
+        synth.write_text("# synth\n", encoding="utf-8")
+        knowledge.write_text("# knowledge\n", encoding="utf-8")
+        try:
+            config = build_simulate_plan_config(
+                target_path=WORKSPACE_ROOT,
+                synthesis_output="tests/_simulate_extract_synth.md",
+                knowledge_base="tests/_simulate_extract_knowledge.md",
+            )
+            with patch(
+                "triton_agent.commit_perf_analysis.launcher.run_commit_perf_analysis",
+            ) as extract_mock:
+                code = run_commit_perf_extraction_if_needed(config)
+            extract_mock.assert_not_called()
+        finally:
+            synth.unlink(missing_ok=True)
+            knowledge.unlink(missing_ok=True)
+        self.assertEqual(code, 0)
+
+    def test_run_commit_perf_extraction_runs_when_synthesis_missing(self) -> None:
+        config = build_simulate_plan_config(
+            target_path=WORKSPACE_ROOT,
+            synthesis_output="tests/_simulate_extract_missing_synth.md",
+            knowledge_base="tests/_simulate_extract_missing_knowledge.md",
+        )
+        with patch(
+            "triton_agent.commit_perf_analysis.launcher.run_commit_perf_analysis",
+            return_value=0,
+        ) as extract_mock:
+            code = run_commit_perf_extraction_if_needed(config)
+        extract_mock.assert_called_once()
+        self.assertEqual(code, 0)
 
 
 if __name__ == "__main__":

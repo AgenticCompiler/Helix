@@ -12,6 +12,7 @@ from triton_agent.models import AgentRequest, CommandKind
 from triton_agent.pattern_validation_loop.simulate_plan import (
     SimulatePlanConfig,
     bootstrap_simulate_batch,
+    ensure_simulate_synthesis_ready,
     prepare_simulate_batch,
     run_simulate_workspace_agents,
     write_batch_simulate_report,
@@ -48,6 +49,22 @@ def run_pattern_validation_simulate_loop(config: SimulatePlanConfig) -> tuple[in
         state_path=config.repo_root / _DEFAULT_STATE_FILE,
     )
     _ensure_simulate_state(ctx)
+
+    extract_code = run_commit_perf_extraction_if_needed(config)
+    if extract_code != 0:
+        _record_simulate_phase(
+            ctx,
+            phase="failed",
+            note=f"commit extraction failed: exit {extract_code}",
+        )
+        return extract_code, config.batch_path / BATCH_SIMULATE_REPORT_FILENAME
+
+    try:
+        ensure_simulate_synthesis_ready(config)
+    except ValueError as exc:
+        print(f"[pattern-validation-simulate] {exc}", file=sys.stderr, flush=True)
+        _record_simulate_phase(ctx, phase="failed", note=str(exc))
+        return 2, config.batch_path / BATCH_SIMULATE_REPORT_FILENAME
 
     _knowledge_rel = _relative_to_repo(config.repo_root, config.knowledge_path)
     workspace_plan_path, plan_warnings = generate_workspace_plan_if_present(
@@ -288,3 +305,54 @@ def _run_agent_request(config: SimulatePlanConfig, request: AgentRequest) -> int
         for warning in manager.cleanup(links):
             print(f"[pattern-validation-simulate] cleanup warning: {warning}", file=sys.stderr)
     return result.return_code
+
+
+def run_commit_perf_extraction_if_needed(config: SimulatePlanConfig) -> int:
+    """Run analyze-commit-perf when PERF reports are missing or --force is set."""
+    if config.skip_extract:
+        if config.verbose:
+            print(
+                "[pattern-validation-simulate] skipping commit extraction (--skip-extract)",
+                file=sys.stderr,
+                flush=True,
+            )
+        return 0
+
+    synthesis_exists = config.synthesis_path.is_file()
+    knowledge_exists = config.knowledge_path.is_file()
+    if synthesis_exists and knowledge_exists and not config.force_extract:
+        if config.verbose:
+            print(
+                "[pattern-validation-simulate] reusing existing PERF reports "
+                f"(synthesis={_relative_to_repo(config.repo_root, config.synthesis_path)}, "
+                f"knowledge={_relative_to_repo(config.repo_root, config.knowledge_path)}); "
+                "pass --force to re-extract",
+                file=sys.stderr,
+                flush=True,
+            )
+        return 0
+
+    from triton_agent.commit_perf_analysis.launcher import run_commit_perf_analysis
+
+    print(
+        "[pattern-validation-simulate] running commit performance extraction "
+        "before simulate loop",
+        file=sys.stderr,
+        flush=True,
+    )
+    knowledge_output = _relative_to_repo(config.repo_root, config.knowledge_path)
+    synthesis_output = _relative_to_repo(config.repo_root, config.synthesis_path)
+    return run_commit_perf_analysis(
+        target_path=config.repo_root,
+        output=knowledge_output,
+        synthesis_output=synthesis_output,
+        base_revision=config.base_revision,
+        target_chip=config.target_chip,
+        include_ir=config.include_ir,
+        force=config.force_extract,
+        pull_requests=list(config.pull_request_ids),
+        agent_name=config.agent_name,
+        verbose=config.verbose,
+        show_output=config.show_output,
+        user_prompt=config.user_prompt,
+    )

@@ -122,25 +122,32 @@ again before optimize as a hard gate.
 
 ## Simulate optimize plan loop (integrated prepare + simulate)
 
-Use `pattern-validation-simulate` for an **end-to-end** dry-run loop: workspace plan,
+Use `pattern-validation-simulate` for an **end-to-end** loop from Git commit extraction through
+pattern embedding: commit perf analysis (when PERF reports are missing), workspace plan,
 prepare agent (when the batch is empty), verify, simulate agents, skill-audit on
 `pattern-validation-skills`, then repeat until aligned. It does **not** run real
 `optimize-batch` unless you pass `--run-optimize`.
 
 ```bash
 uv run triton-agent pattern-validation-simulate -i "$REPO" \
-  --synthesis PERF_PATTERN_SYNTHESIS.md \
-  --knowledge-base PERF_KNOWLEDGE_BASE.md \
+  --base origin/main \
   --batch-dir pattern-validation-batch \
   --skills-dir pattern-validation-skills \
+  --concurrency 2 \
   --max-iterations 5 \
   --show-output \
   --agent opencode
 ```
 
+Pass `--concurrency` to run multiple workspace simulate agents in parallel (default: 1).
+
+Pass `--skip-extract` when `PERF_PATTERN_SYNTHESIS.md` and `PERF_KNOWLEDGE_BASE.md` already
+exist. Pass `--force` to re-run commit extraction and overwrite existing PERF reports.
+
 Bootstrap (once per command, before simulate iterations):
 
-1. CLI generates `workspace-plan.json` when `PERF_KNOWLEDGE_BASE.md` exists.
+1. CLI runs commit performance extraction when PERF reports are missing (or when `--force`).
+2. CLI generates `workspace-plan.json` when `PERF_KNOWLEDGE_BASE.md` exists.
 2. If no active workspaces, CLI launches the **same prepare agent** as
    `pattern-validation-loop` (scaffold + verify). Use `--skip-prepare` only when the batch
    is already scaffolded.
@@ -150,12 +157,13 @@ Bootstrap (once per command, before simulate iterations):
 Each simulate iteration:
 
 1. Sync deps (from iteration 2 onward only; iteration 1 reuses bootstrap sync).
-2. **Simulate agents** (one per workspace): same staged optimize skills as a real worker plus the
-   operator `.py` and `test_*.py.txt` only. Ground truth (`expected_patterns`, etc.) lives in
-   `pattern-validation-batch/batch-evaluation.json`, not inside workspace directories. They
-   must **not** read PERF markdown. Write `simulate-plan/report.json` with `ranked_patterns`,
-   `proposed_code_changes` (required `unified_diff` and per-hit `edits_by_pattern`),
-   `code_plan_quality`, and `skills_alignment`.
+2. **Simulate agents** (one per workspace): skip workspaces that already have
+   `simulate-plan/report.json` (resume after interruption); otherwise launch the agent with the
+   same staged optimize skills as a real worker plus the operator `.py` and `test_*.py.txt` only.
+   Ground truth (`expected_patterns`, etc.) lives in `pattern-validation-batch/batch-evaluation.json`,
+   not inside workspace directories. They must **not** read PERF markdown. Write
+   `simulate-plan/report.json` with `ranked_patterns`, `proposed_code_changes` (required
+   `unified_diff` and per-hit `edits_by_pattern`), `code_plan_quality`, and `skills_alignment`.
 3. If all workspaces pass **CLI structural validation** and the **skill-audit agent** confirms
    `skills_alignment: aligned` with `code_plan_quality: concrete`, the loop completes. The CLI
    never finishes on simulate self-assessment alone.
@@ -224,5 +232,5 @@ directory (dry-run artifacts are already summarized in `audit-report.json` and b
 
 ## Related Skills
 
-- `triton-npu-analyze-commit-perf` — produces synthesis input
+- `triton-npu-analyze-commit-perf` — commit extraction (also invoked by `pattern-validation-simulate`)
 - `triton-npu-optimize` / `optimize-batch` — optimization execution (CLI-driven in this loop)

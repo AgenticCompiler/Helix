@@ -4,6 +4,7 @@ import json
 import shutil
 import sys
 import threading
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal, TextIO
@@ -14,7 +15,7 @@ from triton_agent.batch_utils import (
     PrefixedTextStream,
     discover_batch_workspaces,
 )
-from triton_agent.models import AgentRequest, CommandKind
+from triton_agent.models import AgentRequest
 from triton_agent.optimize.models import OptimizeRunOptions
 from triton_agent.optimize.naming import resolve_batch_optimize_operator_file
 from triton_agent.optimize.orchestration import build_optimize_request
@@ -54,7 +55,7 @@ from triton_agent.prompts import append_additional_user_instructions
 from triton_agent.resources import skills_root
 from triton_agent.skills import SkillLinkManager
 from triton_agent.skills_source_dir import build_skills_source_overrides
-from triton_agent.verbose import emit_verbose_lines
+from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 _DEFAULT_BATCH_DIR = "pattern-validation-batch"
 
@@ -82,6 +83,10 @@ class SimulatePlanConfig:
     skip_launch_functions: tuple[str, ...] = ()
     pull_request_ids: tuple[str, ...] = ()
     max_iterations: int = 5
+    skip_extract: bool = False
+    include_ir: bool = False
+    force_extract: bool = False
+    concurrency: int = 1
 
 
 @dataclass(frozen=True)
@@ -114,15 +119,14 @@ def build_simulate_plan_config(
     base_revision: str = "origin/main",
     skip_launch_functions: list[str] | None = None,
     pull_request_ids: list[str] | None = None,
+    skip_extract: bool = False,
+    include_ir: bool = False,
+    force_extract: bool = False,
+    concurrency: int = 1,
 ) -> SimulatePlanConfig:
     repo_root = resolve_git_worktree(target_path)
     batch_path = resolve_repo_path(repo_root, batch_dir)
     synthesis_path = resolve_repo_path(repo_root, synthesis_output)
-    if not synthesis_path.is_file():
-        raise ValueError(
-            f"Synthesis report not found: {synthesis_path}. "
-            f"Pass --synthesis or create {DEFAULT_SYNTHESIS_FILE} in the repo.",
-        )
     knowledge_path = resolve_knowledge_base_path(repo_root, knowledge_base)
     skills_workdir = seed_pattern_validation_skills_dir(
         repo_root,
@@ -163,6 +167,27 @@ def build_simulate_plan_config(
         base_revision=base_revision.strip() or "origin/main",
         skip_launch_functions=skip_launch,
         pull_request_ids=pull_requests,
+        skip_extract=skip_extract,
+        include_ir=include_ir,
+        force_extract=force_extract,
+        concurrency=max(1, concurrency),
+    )
+
+
+def ensure_simulate_synthesis_ready(config: SimulatePlanConfig) -> None:
+    if config.synthesis_path.is_file():
+        return
+    hint = (
+        "Run without --skip-extract to generate reports from Git commits, "
+        "or create the synthesis file manually."
+    )
+    if config.skip_extract:
+        hint = (
+            "Pass --skip-extract only when PERF reports already exist. "
+            "Omit it to run commit extraction first."
+        )
+    raise ValueError(
+        f"Synthesis report not found: {config.synthesis_path}. {hint}",
     )
 
 
@@ -286,6 +311,82 @@ def run_simulate_plan_request(
     return 1
 
 
+def _simulate_report_path(workspace: Path) -> Path:
+    return workspace / SIMULATE_PLAN_DIR / SIMULATE_REPORT_FILENAME
+
+
+def _evaluate_simulate_workspace_result(workspace: Path, code: int) -> WorkspaceSimulateResult:
+    report_path = _simulate_report_path(workspace)
+    if code == 0 and report_path.is_file():
+        _payload, validation_errors = _load_simulate_report_payload(report_path)
+        if validation_errors:
+            return WorkspaceSimulateResult(
+                workspace=workspace,
+                status="failed",
+                message="simulate report failed CLI validation: " + "; ".join(validation_errors),
+                report_path=report_path,
+            )
+        return WorkspaceSimulateResult(
+            workspace=workspace,
+            status="ok",
+            message="simulate plan report passed CLI validation",
+            report_path=report_path,
+        )
+    if code == 0:
+        return WorkspaceSimulateResult(
+            workspace=workspace,
+            status="failed",
+            message=f"agent exited 0 but missing {report_path.as_posix()}",
+        )
+    return WorkspaceSimulateResult(
+        workspace=workspace,
+        status="failed",
+        message=f"simulate agent exit code {code}",
+        report_path=report_path if report_path.is_file() else None,
+    )
+
+
+def _reuse_existing_simulate_workspace_result(
+    workspace: Path,
+    *,
+    stream: TextIO,
+) -> WorkspaceSimulateResult | None:
+    report_path = _simulate_report_path(workspace)
+    if not report_path.is_file():
+        return None
+    print(
+        f"[pattern-validation-simulate] {workspace.name} "
+        f"(reusing existing {SIMULATE_PLAN_DIR}/{SIMULATE_REPORT_FILENAME})",
+        file=stream,
+        flush=True,
+    )
+    result = _evaluate_simulate_workspace_result(workspace, code=0)
+    if result.status != "ok":
+        return result
+    return replace(
+        result,
+        message=f"reused existing {SIMULATE_PLAN_DIR}/{SIMULATE_REPORT_FILENAME}",
+    )
+
+
+def _run_single_simulate_workspace(
+    *,
+    workspace: Path,
+    operator_file: Path,
+    config: SimulatePlanConfig,
+    output_lock: threading.Lock,
+    stream: TextIO,
+) -> WorkspaceSimulateResult:
+    print(f"[pattern-validation-simulate] {workspace.name}", file=stream, flush=True)
+    request = build_simulate_plan_request(operator_file, workspace, config)
+    prefix = f"[{workspace.name}] "
+    stdout = PrefixedTextStream(sys.stdout, prefix, output_lock) if config.show_output else None
+    stderr = PrefixedTextStream(sys.stderr, prefix, output_lock) if config.show_output else None
+    with isolate_workspace_for_simulate(workspace):
+        code = run_simulate_plan_request(request, stdout=stdout, stderr=stderr)
+    return _evaluate_simulate_workspace_result(workspace, code)
+
+
 def run_simulate_workspace_agents(
     config: SimulatePlanConfig,
     *,
@@ -303,59 +404,62 @@ def run_simulate_workspace_agents(
             WorkspaceSimulateResult(workspace=workspace, status="failed", message=message),
         )
 
-    output_lock = threading.Lock()
+    if not discovered:
+        failed = [item for item in results if item.status != "ok"]
+        return results, 1 if failed else 0
+
+    pending: list[tuple[Path, Path]] = []
     for workspace, operator_file in discovered:
-        print(f"[pattern-validation-simulate] {workspace.name}", file=out, flush=True)
-        request = build_simulate_plan_request(operator_file, workspace, config)
-        prefix = f"[{workspace.name}] "
-        stdout = (
-            PrefixedTextStream(sys.stdout, prefix, output_lock) if config.show_output else None
+        reused = _reuse_existing_simulate_workspace_result(workspace, stream=out)
+        if reused is not None:
+            results.append(reused)
+            continue
+        pending.append((workspace, operator_file))
+
+    if not pending:
+        results.sort(key=lambda item: item.workspace.name)
+        failed = [item for item in results if item.status != "ok"]
+        return results, 1 if failed else 0
+
+    skipped_count = len(discovered) - len(pending)
+    if config.concurrency > 1 or skipped_count:
+        print(
+            f"[pattern-validation-simulate] running {len(pending)} simulate agent(s)"
+            + (f" with concurrency={config.concurrency}" if config.concurrency > 1 else "")
+            + (f" ({skipped_count} workspace(s) reused existing reports)" if skipped_count else ""),
+            file=out,
+            flush=True,
         )
-        stderr = (
-            PrefixedTextStream(sys.stderr, prefix, output_lock) if config.show_output else None
-        )
-        with isolate_workspace_for_simulate(workspace):
-            code = run_simulate_plan_request(request, stdout=stdout, stderr=stderr)
-        report_path = workspace / SIMULATE_PLAN_DIR / SIMULATE_REPORT_FILENAME
-        if code == 0 and report_path.is_file():
-            _payload, validation_errors = _load_simulate_report_payload(report_path)
-            if validation_errors:
+
+    output_lock = threading.Lock()
+    max_workers = min(config.concurrency, len(pending))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures: dict[Future[WorkspaceSimulateResult], Path] = {}
+        for workspace, operator_file in pending:
+            future = executor.submit(
+                _run_single_simulate_workspace,
+                workspace=workspace,
+                operator_file=operator_file,
+                config=config,
+                output_lock=output_lock,
+                stream=out,
+            )
+            futures[future] = workspace
+
+        for future in as_completed(futures):
+            workspace = futures[future]
+            try:
+                results.append(future.result())
+            except Exception as exc:  # pragma: no cover - defensive boundary
                 results.append(
                     WorkspaceSimulateResult(
                         workspace=workspace,
                         status="failed",
-                        message="simulate report failed CLI validation: "
-                        + "; ".join(validation_errors),
-                        report_path=report_path,
+                        message=f"unexpected simulate failure: {exc}",
                     ),
                 )
-            else:
-                results.append(
-                    WorkspaceSimulateResult(
-                        workspace=workspace,
-                        status="ok",
-                        message="simulate plan report passed CLI validation",
-                        report_path=report_path,
-                    ),
-                )
-        elif code == 0:
-            results.append(
-                WorkspaceSimulateResult(
-                    workspace=workspace,
-                    status="failed",
-                    message=f"agent exited 0 but missing {report_path.as_posix()}",
-                ),
-            )
-        else:
-            results.append(
-                WorkspaceSimulateResult(
-                    workspace=workspace,
-                    status="failed",
-                    message=f"simulate agent exit code {code}",
-                    report_path=report_path if report_path.is_file() else None,
-                ),
-            )
 
+    results.sort(key=lambda item: item.workspace.name)
     failed = [item for item in results if item.status != "ok"]
     return results, 1 if failed else 0
 
@@ -470,28 +574,6 @@ def prepare_simulate_batch(
             flush=True,
         )
     return 0
-
-
-def run_simulate_plan_batch(
-    config: SimulatePlanConfig,
-    *,
-    stream: TextIO | None = None,
-    run_prepare: bool = True,
-) -> tuple[int, Path]:
-    out = stream or sys.stderr
-    batch_report_path = config.batch_path / BATCH_SIMULATE_REPORT_FILENAME
-    if run_prepare:
-        prep_code = prepare_simulate_batch(config, stream=out)
-        if prep_code != 0:
-            return prep_code, batch_report_path
-
-    results, agent_code = run_simulate_workspace_agents(config, stream=out)
-    batch_report_path = write_batch_simulate_report(config.batch_path, results)
-    failed = [item for item in results if item.status != "ok"]
-    print_batch_summary(config, batch_report_path, failed_count=len(failed), stream=out)
-
-    exit_code = 1 if agent_code != 0 else 0
-    return exit_code, batch_report_path
 
 
 def write_batch_simulate_report(
