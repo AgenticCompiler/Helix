@@ -497,23 +497,35 @@ def run_local_bench(
     verbose: bool = False,
     output: str | None = None,
     extract_dest_dir: Path | None = None,
+    simulator_case_idx: int = 1,
 ) -> tuple[ResultPayload, Path | None]:
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
     maybe_print_visible_devices()
     with _local_bench_workdir(bench_file.parent):
         if bench_mode == "msprof-simulator":
+            resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
             with ThreadPoolExecutor(max_workers=2) as executor:
+                msprof_future = executor.submit(
+                    _run_local_bench_msprof,
+                    bench_file,
+                    operator_file,
+                    verbose=verbose,
+                )
+                kernel_name = _run_local_msprof_single_case_for_kernel(
+                    bench_file,
+                    operator_file,
+                    resolution.kernel_names,
+                    bench_case=simulator_case_idx,
+                    verbose=verbose,
+                )
                 simulator_future = executor.submit(
                     _run_local_bench_msprof_simulator,
                     bench_file,
                     operator_file,
                     extract_dest_dir=extract_dest_dir,
-                )
-                msprof_future = executor.submit(
-                    _run_local_bench_msprof,
-                    bench_file,
-                    operator_file,
+                    kernel_name=kernel_name,
+                    simulator_case_idx=simulator_case_idx,
                     verbose=verbose,
                 )
                 simulator_future.result()
@@ -551,19 +563,28 @@ def run_local_bench(
                 verbose=verbose,
                 output=output,
             )
+        resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
         with ThreadPoolExecutor(max_workers=2) as executor:
-            simulator_future = executor.submit(
-                _run_local_bench_msprof_simulator_standalone,
-                bench_file,
-                operator_file,
-                extract_dest_dir=extract_dest_dir,
-            )
             standalone_future = executor.submit(
                 _run_local_bench_standalone,
                 bench_file,
                 operator_file,
                 verbose=verbose,
                 output=output,
+            )
+            kernel_name = _run_local_msprof_single_case_for_kernel(
+                bench_file,
+                operator_file,
+                resolution.kernel_names,
+                verbose=verbose,
+            )
+            simulator_future = executor.submit(
+                _run_local_bench_msprof_simulator_standalone,
+                bench_file,
+                operator_file,
+                extract_dest_dir=extract_dest_dir,
+                kernel_name=kernel_name,
+                verbose=verbose,
             )
             simulator_future.result()
             return standalone_future.result()
@@ -1248,10 +1269,67 @@ def _run_extract_and_copy(output_dir: Path, bench_file: Path, isTimeOut: bool = 
         shutil.copytree(extracted_dir, tmp_dir)
 
 
+def _run_local_msprof_single_case_for_kernel(
+    bench_file: Path,
+    operator_file: Path,
+    kernel_names: list[str],
+    *,
+    bench_case: int = 1,
+    verbose: bool = False,
+) -> str | None:
+    output_dir, temp_dir = _create_local_msprof_output_dir(0, None)
+    try:
+        operator_arg = os.path.relpath(operator_file, bench_file.parent)
+        command = [
+            "msprof",
+            f"--output={output_dir}",
+            local_python_executable(),
+            bench_file.name,
+            "--operator-file",
+            operator_arg,
+            "--bench", str(bench_case),
+        ]
+        with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
+            result = run_streaming_process(
+                command,
+                str(bench_file.parent),
+                stall_timeout_seconds=_bench_timeout(),
+                stdout=quiet_stdout,
+                extra_env={"TRITON_ALWAYS_COMPILE": "1"},
+            )
+        if not result_succeeded(result):
+            return None
+        try:
+            metrics = _msprof._read_local_msprof_metrics(output_dir, kernel_names)
+        except (FileNotFoundError, ValueError):
+            return None
+        if not metrics or not metrics.get("ops"):
+            return None
+        kernel_name_set = set(kernel_names)
+        hottest_name: str | None = None
+        hottest_time = -1.0
+        for op in metrics["ops"]:
+            op_type = op.get("op_type", "")
+            avg_time = float(op.get("avg_time_us", 0))
+            if op_type in kernel_name_set and avg_time > hottest_time:
+                hottest_time = avg_time
+                hottest_name = op_type
+        if verbose and hottest_name:
+            emit_verbose(sys.stderr, "msprof-simulator", f"resolved hottest kernel: {hottest_name} ({hottest_time}us)")
+        return hottest_name
+    finally:
+        if temp_dir is not None:
+            temp_dir.cleanup()
+        _cleanup_local_bench_extra_info(bench_file.parent)
+
+
 def _run_local_bench_msprof_simulator(
     bench_file: Path,
     operator_file: Path,
     extract_dest_dir: Path | None = None,
+    kernel_name: str | None = None,
+    simulator_case_idx: int = 1,
+    verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
     stdout_chunks: list[str] = []
@@ -1272,8 +1350,12 @@ def _run_local_bench_msprof_simulator(
             str(bench_file),
             "--operator-file",
             str(operator_file),
-            "--bench", "1",
+            "--bench", str(simulator_case_idx),
         ]
+        if kernel_name:
+            command.insert(4, f"--kernel-name={kernel_name}")
+        if verbose:
+            emit_verbose(sys.stderr, "msprof-simulator", f"kernel-name={kernel_name}, cmd: {' '.join(command)}")
         t0 = time.monotonic()
         with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
             result = run_streaming_process(
@@ -1349,6 +1431,8 @@ def _run_local_bench_msprof_simulator_standalone(
     bench_file: Path,
     operator_file: Path,
     extract_dest_dir: Path | None = None,
+    kernel_name: str | None = None,
+    verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
     runtime = _load_standalone_runtime_module()
@@ -1382,7 +1466,10 @@ def _run_local_bench_msprof_simulator_standalone(
             str(operator_file),
             selected_case.case_id,
         ]
-        print(f"[standalone-msprof-simulator] cmd: {' '.join(command)}", flush=True)
+        if kernel_name:
+            command.insert(4, f"--kernel-name={kernel_name}")
+        if verbose:
+            emit_verbose(sys.stderr, "standalone-msprof-simulator", f"kernel-name={kernel_name}, cmd: {' '.join(command)}")
         t0 = time.monotonic()
         with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
             result = run_streaming_process(
