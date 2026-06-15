@@ -381,10 +381,10 @@ Common options:
 - `--output opt_a.py`: write the optimized operator to a specific path.
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--prompt "..."`: append extra worker instructions without replacing the built-in optimize contract.
-- `--test-mode standalone|differential`: default is `differential`
-- `--bench-mode torch-npu-profiler|msprof`: default is `torch-npu-profiler`. Sets the benchmark mode for fresh runs. With `--resume auto`, resumable workspaces keep the benchmark mode recorded in their existing benchmark harness.
+- `--test-mode standalone|differential`: default is `differential`. For fresh runs, sets the test mode. For resumed sessions, the value is validated against existing harness metadata: matching values succeed, conflicting values fail.
+- `--bench-mode torch-npu-profiler|msprof`: default is `torch-npu-profiler`. For fresh runs, sets the benchmark mode. For resumed sessions, the value is validated against existing harness metadata: matching values succeed, conflicting values fail.
 - `--optimize-target kernel|operator`: default is `kernel`. `kernel` keeps the session focused on optimizing the Triton Ascend NPU kernel path itself. `operator` broadens the target to end-to-end operator latency and allows coordinated wrapper/data-movement/scheduling/pre/post-processing/kernel changes while still requiring a real Triton Ascend NPU computation path.
-- `--resume auto|continue|fresh`: default is `auto`
+- `--resume auto|continue|fresh`: default is `auto`. `auto` resumes when a complete session exists, starts fresh otherwise. `continue` requires an existing resumable session. `fresh` requires a clean workspace. Both `auto` and `continue` validate explicit `--test-mode` and `--bench-mode` against existing harness metadata.
 - `--reset-optimize`: only valid with `--resume fresh`; remove known optimize-session artifacts before starting a new run while keeping reusable test and benchmark harnesses.
 - `--optimize-knowledge v1|v2|v3`: default is `v1`. Select which optimize knowledge library is staged before the agent starts (`v3` uses `skills/triton-npu-optimize-knowledge-v3/`).
 - `--enable-compiler-source-analysis`: allow the optimize agent to use compiler source as an escalation after benchmark, profiler, and IR evidence.
@@ -635,8 +635,8 @@ Common options:
 
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--prompt "..."`: append the same extra worker instructions to every workspace optimize run.
-- `--test-mode standalone|differential`
-- `--bench-mode torch-npu-profiler|msprof`: sets the benchmark mode for fresh workspaces. With `--resume auto`, resumable workspaces keep the benchmark mode recorded in their existing benchmark harness.
+- `--test-mode standalone|differential`: validated against existing harness metadata per workspace on resumed sessions.
+- `--bench-mode torch-npu-profiler|msprof`: validated against existing harness metadata per workspace on resumed sessions.
 - `--resume auto|continue|fresh`
 - `--reset-optimize`: when used with `--resume fresh`, clear known optimize artifacts for each workspace and reset the batch status file before rerunning
 - `--optimize-knowledge v1|v2|v3`

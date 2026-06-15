@@ -147,11 +147,11 @@ def resolve_optimize_resume(
         )
 
     if resume_mode == "continue":
-        if requested_test_mode is not None:
-            raise ValueError("--resume continue cannot be combined with --test-mode")
-        if requested_bench_mode is not None:
-            raise ValueError("--resume continue cannot be combined with --bench-mode")
-        return _require_resumable_session(input_path, workdir, inspection)
+        return _require_resumable_session(
+            input_path, workdir, inspection,
+            requested_test_mode=requested_test_mode,
+            requested_bench_mode=requested_bench_mode,
+        )
 
     if inspection.state == "no-session":
         return ResumeResolution(
@@ -162,8 +162,7 @@ def resolve_optimize_resume(
         )
     if inspection.state == "partial-session":
         raise ValueError(f"resume auto found partial optimize state: {inspection.detail}")
-    if requested_test_mode is not None:
-        raise ValueError("--resume auto cannot be combined with --test-mode when reusing an existing session")
+    _validate_explicit_mode_assertions(inspection, requested_test_mode, requested_bench_mode)
     return ResumeResolution(
         workspace_state="resumable-session",
         resume_existing_session=True,
@@ -172,10 +171,30 @@ def resolve_optimize_resume(
     )
 
 
+def _validate_explicit_mode_assertions(
+    inspection: WorkspaceInspection,
+    requested_test_mode: str | None,
+    requested_bench_mode: str | None,
+) -> None:
+    if requested_test_mode is not None and requested_test_mode != inspection.test_mode:
+        raise ValueError(
+            f"--test-mode {requested_test_mode} conflicts with existing harness "
+            f"test-mode {inspection.test_mode}"
+        )
+    if requested_bench_mode is not None and requested_bench_mode != inspection.bench_mode:
+        raise ValueError(
+            f"--bench-mode {requested_bench_mode} conflicts with existing harness "
+            f"bench-mode {inspection.bench_mode}"
+        )
+
+
 def _require_resumable_session(
     input_path: Path,
     workdir: Path,
     inspection: WorkspaceInspection,
+    *,
+    requested_test_mode: str | None = None,
+    requested_bench_mode: str | None = None,
 ) -> ResumeResolution:
     opt_note_path = workdir / "opt-note.md"
     if not opt_note_path.exists():
@@ -211,6 +230,8 @@ def _require_resumable_session(
         raise ValueError(
             f"resume continue requires readable 'bench-mode' metadata: {bench_harness}"
         )
+
+    _validate_explicit_mode_assertions(inspection, requested_test_mode, requested_bench_mode)
 
     return ResumeResolution(
         workspace_state="resumable-session",
