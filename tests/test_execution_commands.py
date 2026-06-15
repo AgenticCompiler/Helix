@@ -162,7 +162,6 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
             compare_mock.assert_called_once_with(
                 baseline_result.resolve(),
                 archive,
-                "balanced",
             )
 
     def test_handle_run_test_threads_verbose_to_local_runner(self) -> None:

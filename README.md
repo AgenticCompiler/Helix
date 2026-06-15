@@ -189,7 +189,6 @@ Common options:
 - `--test-mode standalone|differential`: override the mode recorded in the test file.
 - `--baseline-result <path>`: in `differential` mode, automatically compare the new archived result against an existing baseline payload.
 - `--baseline-operator-file <path>`: in `differential` mode, derive the baseline payload path from the baseline operator and auto-run the baseline test first if the payload does not exist yet.
-- `--compare-level strict|balanced|relaxed`: comparison tolerance to use with `--baseline-result` or `--baseline-operator-file`. Default is `balanced`.
 - `--remote user@host[:port]`: run through SSH on a remote machine.
 - `--remote-workdir <path>`: set the remote working root.
 - `--keep-remote-workdir`: keep the remote workspace for debugging.
@@ -679,10 +678,11 @@ uv run triton-agent compare-result \
 
 Common options:
 
-- `--compare-level strict|balanced|relaxed`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
 - `--verbose`
+
+Correctness result comparison always uses the shared NPU accuracy comparison contract and reports detailed diagnostics for failing cases.
 
 ### Compare Performance Results
 

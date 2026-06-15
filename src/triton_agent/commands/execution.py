@@ -28,7 +28,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
         getattr(args, "remote", None),
         getattr(args, "remote_workdir", None),
     )
-    compare_level, baseline_result = resolve_run_test_comparison_inputs(
+    baseline_result = resolve_run_test_comparison_inputs(
         parser,
         args,
         resolved_test_mode,
@@ -67,7 +67,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
     if archived_result is not None:
         print(f"Archived result: {archived_result}")
         if baseline_result is not None:
-            final_code = compare_result_files(baseline_result, archived_result, compare_level)
+            final_code = compare_result_files(baseline_result, archived_result)
         else:
             print(_RUN_TEST_HINT)
     elif baseline_result is not None:
@@ -178,21 +178,18 @@ def resolve_run_test_comparison_inputs(
     *,
     remote: str | None,
     remote_workdir: str | None,
-) -> tuple[str, Path | None]:
+) -> Path | None:
     if baseline_result is not None and baseline_operator_file is not None:
         parser.error("run-test differential mode accepts at most one of --baseline-result or --baseline-operator-file")
-    if args.compare_level is not None and baseline_result is None and baseline_operator_file is None:
-        parser.error("--compare-level requires --baseline-result or --baseline-operator-file")
     if baseline_result is not None and resolved_test_mode != "differential":
         parser.error("--baseline-result is supported only with --test-mode differential")
     if baseline_operator_file is not None and resolved_test_mode != "differential":
         parser.error("--baseline-operator-file is supported only with --test-mode differential")
-    compare_level = args.compare_level or "balanced"
     if baseline_operator_file is None:
-        return compare_level, baseline_result
+        return baseline_result
     derived_baseline_result = _derived_result_path(baseline_operator_file)
     if derived_baseline_result.exists():
-        return compare_level, derived_baseline_result
+        return derived_baseline_result
 
     try:
         if remote is not None:
@@ -229,7 +226,7 @@ def resolve_run_test_comparison_inputs(
 
     if baseline_run_result.return_code != 0 or archived_result is None:
         raise SystemExit(1)
-    return compare_level, derived_baseline_result
+    return derived_baseline_result
 
 
 def resolve_run_bench_paths(

@@ -37,7 +37,6 @@ from triton_agent.remote_ssh_preflight import ensure_remote_ssh_ready
 
 _Handler = Callable[[argparse.ArgumentParser, argparse.Namespace], int]
 _AGENT_CHOICES = ("codex", "opencode", "pi", "claude", "openhands", "traecli")
-_COMPARE_LEVEL_CHOICES = ("strict", "balanced", "relaxed")
 _FORMAT_CHOICES = ("text", "markdown")
 _TEST_MODE_CHOICES = ("standalone", "differential")
 _BENCH_MODE_CHOICES = ("torch-npu-profiler", "msprof")
@@ -698,7 +697,6 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--operator-file", required=True)
         subparser.add_argument("--baseline-result")
         subparser.add_argument("--baseline-operator-file")
-        subparser.add_argument("--compare-level", choices=_COMPARE_LEVEL_CHOICES)
         return
     if spec.input_mode == "run-bench":
         subparser.add_argument("--bench-file", required=True)
@@ -711,9 +709,8 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--kernel-name")
         return
     if spec.input_mode == "compare-result":
-        subparser.add_argument("--oracle-result", required=True)
+        subparser.add_argument("--ref-result", "--oracle-result", dest="ref_result", required=True)
         subparser.add_argument("--new-result", required=True)
-        subparser.add_argument("--compare-level", default="balanced", choices=_COMPARE_LEVEL_CHOICES)
         return
     if spec.input_mode == "compare-perf":
         subparser.add_argument("--baseline", required=True)

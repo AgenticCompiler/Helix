@@ -3,18 +3,17 @@
 Use this command when you already have both archived payloads and want to rerun or inspect the comparison separately from `run-test-optimize`:
 
 ```bash
-python3 ./scripts/run-command.py compare-result --oracle-result <oracle_result.pt> --new-result <new_result.pt>
-python3 ./scripts/run-command.py compare-result --oracle-result <oracle_result.pt> --new-result <new_result.pt> --compare-level balanced
+python3 ./scripts/run-command.py compare-result --ref-result <ref_result.pt> --new-result <new_result.pt>
 ```
 
 Rules:
 
 - Use this flow only after you already have the archived oracle and candidate result payloads.
 - Prefer `run-test-optimize --baseline-operator-file ...` when you want the agent to execute the differential run and the result comparison in one command.
-- `--compare-level balanced` is an optional stricter comparison setting when you do not want the default level.
+- This command always uses the shared NPU accuracy comparison contract and prints detailed diagnostics for the failing case/path/check when a comparison fails.
 
 Remote example:
 
 ```bash
-python3 ./scripts/run-command.py compare-result --oracle-result <oracle_result.pt> --new-result <new_result.pt> --remote user@host:2222 --remote-workdir /tmp/triton-agent
+python3 ./scripts/run-command.py compare-result --ref-result <ref_result.pt> --new-result <new_result.pt> --remote user@host:2222 --remote-workdir /tmp/triton-agent
 ```

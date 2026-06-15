@@ -691,8 +691,8 @@ class CliMCPServerCommandTests(unittest.TestCase):
         compare_args = parser.parse_args(
             [
                 "compare-result",
-                "--oracle-result",
-                "oracle_result.pt",
+                "--ref-result",
+                "ref_result.pt",
                 "--new-result",
                 "new_result.pt",
                 "--remote",
@@ -839,6 +839,21 @@ class CliMCPServerCommandTests(unittest.TestCase):
         args = parser.parse_args(
             [
                 "compare-result",
+                "--ref-result",
+                "ref_result.pt",
+                "--new-result",
+                "new_result.pt",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.COMPARE_RESULT)
+        self.assertEqual(args.ref_result, "ref_result.pt")
+        self.assertEqual(args.new_result, "new_result.pt")
+
+    def test_compare_result_accepts_legacy_oracle_result_alias(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "compare-result",
                 "--oracle-result",
                 "oracle_result.pt",
                 "--new-result",
@@ -846,7 +861,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
             ]
         )
         self.assertEqual(args.command_kind, CommandKind.COMPARE_RESULT)
-        self.assertEqual(args.oracle_result, "oracle_result.pt")
+        self.assertEqual(args.ref_result, "oracle_result.pt")
         self.assertEqual(args.new_result, "new_result.pt")
 
     def test_compare_perf_requires_baseline_and_compare_paths(self) -> None:
@@ -957,7 +972,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(gen_args.test_mode, "standalone")
         self.assertIsNone(run_args.test_mode)
 
-    def test_run_test_accepts_baseline_result_and_compare_level(self) -> None:
+    def test_run_test_accepts_baseline_result(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
             [
@@ -968,13 +983,10 @@ class CliMCPServerCommandTests(unittest.TestCase):
                 "kernel.py",
                 "--baseline-result",
                 "baseline_result.pt",
-                "--compare-level",
-                "strict",
             ]
         )
         self.assertEqual(args.baseline_result, "baseline_result.pt")
         self.assertIsNone(args.baseline_operator_file)
-        self.assertEqual(args.compare_level, "strict")
 
     def test_run_test_accepts_baseline_operator_file(self) -> None:
         parser = build_parser()
@@ -3883,7 +3895,6 @@ class PathResolutionTests(unittest.TestCase):
             compare_mock.assert_called_once_with(
                 baseline_result.resolve(),
                 archive,
-                "balanced",
             )
             self.assertIn(f"Archived result: {archive}\n", stdout.getvalue())
             self.assertNotIn("Hint: use `compare-result`", stdout.getvalue())
@@ -4282,7 +4293,7 @@ class PathResolutionTests(unittest.TestCase):
                 )
 
             self.assertEqual(exit_code, 0)
-            mocked.assert_called_once_with(oracle.resolve(), new.resolve(), "balanced")
+            mocked.assert_called_once_with(oracle.resolve(), new.resolve())
 
     def test_main_compare_result_uses_remote_comparison_when_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -4311,7 +4322,6 @@ class PathResolutionTests(unittest.TestCase):
             mocked.assert_called_once_with(
                 oracle.resolve(),
                 new.resolve(),
-                "balanced",
                 "alice@example.com:2200",
                 None,
                 verbose=False,

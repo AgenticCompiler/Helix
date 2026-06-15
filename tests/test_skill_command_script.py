@@ -8,7 +8,7 @@ import importlib.util
 import json
 from io import StringIO
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TextIO, get_type_hints
 from unittest.mock import patch
 
 _TRITON_ROUND_OPERATOR = """\
@@ -806,11 +806,10 @@ class SkillCommandScriptTests(unittest.TestCase):
                         module,
                         "_load_compare_result_functions",
                         return_value=(
-                            lambda baseline_path, new_path, compare_level: (
+                            lambda baseline_path, new_path: (
                                 0
                                 if baseline_path == baseline_result.resolve()
                                 and new_path == archive
-                                and compare_level == "balanced"
                                 else 2
                             ),
                             lambda *_args, **_kwargs: 0,
@@ -904,11 +903,10 @@ class SkillCommandScriptTests(unittest.TestCase):
                         module,
                         "_load_compare_result_functions",
                         return_value=(
-                            lambda baseline_path, new_path, compare_level: (
+                            lambda baseline_path, new_path: (
                                 0
                                 if baseline_path == derived_baseline_result.resolve()
                                 and new_path == archive
-                                and compare_level == "balanced"
                                 else 2
                             ),
                             lambda *_args, **_kwargs: 0,
@@ -1013,11 +1011,10 @@ class SkillCommandScriptTests(unittest.TestCase):
                         module,
                         "_load_compare_result_functions",
                         return_value=(
-                            lambda baseline_path, new_path, compare_level: (
+                            lambda baseline_path, new_path: (
                                 0
                                 if baseline_path == baseline_archive.resolve()
                                 and new_path == archive
-                                and compare_level == "balanced"
                                 else 2
                             ),
                             lambda *_args, **_kwargs: 0,
@@ -1279,11 +1276,10 @@ class SkillCommandScriptTests(unittest.TestCase):
                     module,
                     "_load_compare_result_functions",
                     return_value=(
-                            lambda baseline_path, new_path, compare_level: (
+                            lambda baseline_path, new_path: (
                                 0
                                 if baseline_path == baseline_result.resolve()
                                 and new_path == archive
-                                and compare_level == "balanced"
                                 else 2
                             ),
                             lambda *_args, **_kwargs: 0,
@@ -1377,11 +1373,10 @@ class SkillCommandScriptTests(unittest.TestCase):
                         module,
                         "_load_compare_result_functions",
                         return_value=(
-                            lambda baseline_path, new_path, compare_level: (
+                            lambda baseline_path, new_path: (
                                 0
                                 if baseline_path == derived_baseline_result.resolve()
                                 and new_path == archive
-                                and compare_level == "balanced"
                                 else 2
                             ),
                             lambda *_args, **_kwargs: 0,
@@ -1486,11 +1481,10 @@ class SkillCommandScriptTests(unittest.TestCase):
                         module,
                         "_load_compare_result_functions",
                         return_value=(
-                            lambda baseline_path, new_path, compare_level: (
+                            lambda baseline_path, new_path: (
                                 0
                                 if baseline_path == baseline_archive.resolve()
                                 and new_path == optimize_archive
-                                and compare_level == "balanced"
                                 else 2
                             ),
                             lambda *_args, **_kwargs: 0,
@@ -1847,6 +1841,24 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(compare_result.__module__, "compare_result")
         self.assertEqual(compare_remote_result.__name__, "compare_remote_result_files")
         self.assertEqual(compare_remote_result.__module__, "compare_result")
+
+    def test_compare_remote_result_protocol_uses_textio_stderr(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_compare_result_protocol_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        hints = get_type_hints(module.CompareRemoteResultFn.__call__)
+
+        self.assertEqual(hints["stderr"], Optional[TextIO])
 
     def test_optimize_submit_baseline_script_help_runs_without_installed_entrypoint(self) -> None:
         script = (

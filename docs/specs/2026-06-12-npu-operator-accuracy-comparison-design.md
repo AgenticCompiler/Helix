@@ -179,8 +179,8 @@ The comparison runtime must infer input type from actual runtime objects only, n
 
 Rules:
 
-1. If any `torch.Tensor` exists in the input tree, choose the highest-priority dtype among all tensors.
-2. Otherwise, if a list/tuple of tensors exists, use the first tensor-list element dtype.
+1. If any direct runtime argument or keyword value is a `torch.Tensor`, choose the highest-priority dtype among those direct tensor inputs.
+2. Otherwise, if any direct runtime argument or keyword value is a list/tuple whose elements are tensors, use the dtype of the first element from the first such tensor-list input.
 3. Otherwise treat the case as `no_tensor`.
 
 This inference must then classify input type as:
@@ -211,6 +211,15 @@ The runtime must implement the five-path decision matrix exactly:
 
 The implementation should normalize decision selection into an explicit enum/string so diagnostics can report the chosen path directly.
 
+Decision-path selection priority is explicit and must be implemented in this order:
+
+1. `compute-kind: non-compute` always selects the non-compute path and bypasses all numeric compute branches.
+2. Otherwise, any `bool` output selects the bool-output path.
+3. Otherwise, `float` input with integer output selects the quantized-fp-to-int path.
+4. Otherwise, `int` input with integer output, and `no_tensor` input with integer output, select the integer-compute path.
+5. Otherwise, any input type with floating-point output selects the floating-point-compute path.
+6. Any output that cannot be classified as `bool`, integer, or floating-point must fail explicitly with an unsupported-output-type error.
+
 Decision-path rules:
 
 - `bool` output uses strict `torch.equal` semantics and never enters numeric tolerance comparison.
@@ -218,7 +227,9 @@ Decision-path rules:
 - quantized float-to-int applies when the input type is `float` and the output dtype is integer.
 - quantized float-to-int requires exact tolerance `|actual - golden| <= 1` on all compared elements.
 - `int` input with integer output, and `no_tensor` with integer output, use the integer-compute path.
+- any input type with floating-point output, including `no_tensor` input with floating-point output, uses the floating-point-compute path.
 - floating-point compute uses the three-clause AND contract described below.
+- any input type with `bool` output, including `no_tensor` input with `bool` output, uses the bool-output path.
 
 The non-compute path bypasses the above numeric branches and uses binary equality on raw bit patterns, including NaN payloads.
 
@@ -234,6 +245,11 @@ Before numeric comparison, the runtime must perform the pre-checks in the docume
 Only finite-finite pairs enter numeric comparison.
 
 When tensor dtypes differ for finite comparison, the implementation side is cast to the golden dtype before numeric checks.
+
+Step 4 means:
+
+- if the effective output dtype is `bool`, the comparison short-circuits to whole-output `torch.equal` semantics after the earlier shape/NaN/Inf checks and does not enter any numeric finite-element logic
+- if the effective output dtype is not `bool`, step 4 is skipped and the selected numeric path continues normally
 
 ### Floating-point comparison details
 
@@ -251,7 +267,9 @@ Definitions:
 - `matched_ratio = sum(matched) / total_finite`
 - `MERE = mean(abs(diff) / (abs(golden) + 1e-7))` over finite elements
 - `matched_ratio` requires `>= 0.9`
-- if `total_finite == 0`, the MERE clause passes automatically
+- `MERE` requires `< rel_threshold`
+- `max error cap` requires `abs(diff[i]) <= atol + rtol * abs(golden[i])` for every finite element `i`
+- if `total_finite == 0`, both the matched-ratio clause and the MERE clause pass automatically
 
 Matched-element rules:
 
@@ -259,8 +277,6 @@ Matched-element rules:
 - normal bucket: `abs(golden[i]) >= small_value_threshold` and `abs(diff[i]) / (abs(golden[i]) + 1e-7) <= rel_threshold`
 
 All floating-point thresholds are authoritative and must be implemented exactly as below.
-
-`max error cap` requires 100% of finite elements to satisfy the elementwise bound.
 
 Threshold resolution must be driven by output dtype, including explicit handling for:
 
@@ -276,6 +292,8 @@ The implementation should centralize these threshold tables in one place and mak
 
 Threshold tables:
 
+The first threshold table is used by the matched-element rule and by the `MERE < rel_threshold` clause.
+
 | dtype | small_value_threshold | small_value_error | rel_threshold |
 |---|---:|---:|---:|
 | `float16` | `2**-11` | `2**-16` | `2**-10` |
@@ -286,11 +304,18 @@ Threshold tables:
 | `float8_e5m2` | `2**-3` | `2**-5` | `2**-2` |
 | fallback | `2**-14` | `2**-30` | `2**-13` |
 
+The second threshold table is used only by the max-error-cap clause:
+
+`abs(diff[i]) <= atol + rtol * abs(golden[i])`
+
 | dtype | atol | rtol |
 |---|---:|---:|
 | `float16` | `9e-2` | `2**-10` |
 | `bfloat16` | `1e-1` | `2**-7` |
 | `float32` | `1e-3` | `2**-13` |
+| `hifloat32` | `1e-3` | `2**-13` |
+| `float8_e4m3` | `1e-3` | `2**-13` |
+| `float8_e5m2` | `1e-3` | `2**-13` |
 | fallback | `1e-3` | `2**-13` |
 
 If the local runtime does not expose `hifloat32` as a native dtype object, the implementation should still resolve it by name for threshold selection and diagnostics.
@@ -451,6 +476,7 @@ The CLI should print a concise summary plus enough case detail to guide repair. 
 | `src/triton_agent/commands/comparison.py` | Remove compare-level plumbing |
 | `src/triton_agent/commands/execution.py` | Remove compare-level plumbing and keep automatic differential compare on the shared rule set |
 | `src/triton_agent/commands/convert.py` | Remove compare-level plumbing and keep convert verification on the shared rule set |
+| `skills/triton-npu-gen-test/SKILL.md` | Update generation instructions so the skill emits the new compute-kind metadata and runtime hook contract |
 | `skills/triton-npu-gen-test/references/test-standalone-spec.md` | Require import-only standalone structure, `# compute-kind:`, shared compare helper, and `main(operator_api)` |
 | `skills/triton-npu-gen-test/references/test-differential-spec.md` | Require `# compute-kind:` and declarative case contract that supports archiving inputs plus results |
 | `skills/triton-npu-run-eval/references/run-test.md` | Remove compare-level wording and document shared compare behavior |

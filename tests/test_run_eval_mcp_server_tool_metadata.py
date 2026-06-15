@@ -45,10 +45,7 @@ class RunEvalMCPServerToolMetadataTests(unittest.TestCase):
             tools["run-test-optimize"].parameters["properties"]["baseline_operator_file"]["description"],
             "Absolute path to the baseline operator file used to produce comparison output.",
         )
-        self.assertEqual(
-            tools["run-test-optimize"].parameters["properties"]["compare_level"]["description"],
-            "Optional differential comparison strictness. Supported values: strict, balanced, relaxed.",
-        )
+        self.assertNotIn("compare_level", tools["run-test-optimize"].parameters["properties"])
 
         self.assertEqual(
             tools["run-bench"].description,

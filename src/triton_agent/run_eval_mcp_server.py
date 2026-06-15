@@ -99,7 +99,6 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
             test_file=test_file,
             operator_file=operator_file,
             test_mode=test_mode,
-            compare_level=None,
             baseline_result=None,
             baseline_operator_file=None,
             remote=remote,
@@ -134,10 +133,6 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
             str | None,
             Field(description="Optional test mode override. Supported values: standalone, differential."),
         ] = None,
-        compare_level: Annotated[
-            str | None,
-            Field(description="Optional differential comparison strictness. Supported values: strict, balanced, relaxed."),
-        ] = None,
         remote: Annotated[str | None, Field(description="Optional remote execution target.")] = None,
         remote_workdir: Annotated[str | None, Field(description="Optional remote workspace root override.")] = None,
     ) -> dict[str, object]:
@@ -146,7 +141,6 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
             test_file=test_file,
             operator_file=operator_file,
             test_mode=test_mode,
-            compare_level=compare_level,
             baseline_result=baseline_result,
             baseline_operator_file=baseline_operator_file,
             remote=remote,
@@ -330,7 +324,6 @@ def _build_run_test_arguments(
     test_file: str,
     operator_file: str,
     test_mode: str | None,
-    compare_level: str | None,
     baseline_result: str | None,
     baseline_operator_file: str | None,
     remote: str | None,
@@ -346,8 +339,6 @@ def _build_run_test_arguments(
     ]
     if test_mode is not None:
         arguments.extend(["--test-mode", test_mode])
-    if compare_level is not None:
-        arguments.extend(["--compare-level", compare_level])
     if baseline_result is not None:
         arguments.extend(["--baseline-result", baseline_result])
     if baseline_operator_file is not None:
