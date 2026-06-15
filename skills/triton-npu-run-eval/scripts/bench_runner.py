@@ -1321,8 +1321,8 @@ def _run_local_msprof_single_case_for_kernel(
             if op_type in kernel_name_set and avg_time > hottest_time:
                 hottest_time = avg_time
                 hottest_name = op_type
-        if verbose and hottest_name:
-            emit_verbose(sys.stderr, "msprof-simulator", f"resolved hottest kernel: {hottest_name} ({hottest_time}us)")
+        if hottest_name:
+            print(f"[msprof-simulator] resolved hottest kernel: {hottest_name} ({hottest_time}us)", flush=True)
         return hottest_name
     finally:
         if temp_dir is not None:
@@ -1360,8 +1360,7 @@ def _run_local_bench_msprof_simulator(
             str(operator_file),
             "--bench", str(simulator_case_idx),
         ]
-        if verbose:
-            emit_verbose(sys.stderr, "msprof-simulator", f"kernel-name={kernel_name}, cmd: {' '.join(command)}")
+        print(f"[msprof-simulator] kernel-name={kernel_name}, cmd: {' '.join(command)})", flush=True)
         t0 = time.monotonic()
         with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
             result = run_streaming_process(
