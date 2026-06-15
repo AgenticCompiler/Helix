@@ -691,8 +691,8 @@ class CliMCPServerCommandTests(unittest.TestCase):
         compare_args = parser.parse_args(
             [
                 "compare-result",
-                "--oracle-result",
-                "oracle_result.pt",
+                "--ref-result",
+                "ref_result.pt",
                 "--new-result",
                 "new_result.pt",
                 "--remote",
@@ -839,6 +839,21 @@ class CliMCPServerCommandTests(unittest.TestCase):
         args = parser.parse_args(
             [
                 "compare-result",
+                "--ref-result",
+                "ref_result.pt",
+                "--new-result",
+                "new_result.pt",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.COMPARE_RESULT)
+        self.assertEqual(args.ref_result, "ref_result.pt")
+        self.assertEqual(args.new_result, "new_result.pt")
+
+    def test_compare_result_accepts_legacy_oracle_result_alias(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "compare-result",
                 "--oracle-result",
                 "oracle_result.pt",
                 "--new-result",
@@ -846,7 +861,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
             ]
         )
         self.assertEqual(args.command_kind, CommandKind.COMPARE_RESULT)
-        self.assertEqual(args.oracle_result, "oracle_result.pt")
+        self.assertEqual(args.ref_result, "oracle_result.pt")
         self.assertEqual(args.new_result, "new_result.pt")
 
     def test_compare_perf_requires_baseline_and_compare_paths(self) -> None:
@@ -957,7 +972,23 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(gen_args.test_mode, "standalone")
         self.assertIsNone(run_args.test_mode)
 
-    def test_run_test_accepts_baseline_result_and_compare_level(self) -> None:
+    def test_run_test_accepts_ref_result(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run-test",
+                "--test-file",
+                "differential_test_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--ref-result",
+                "ref_result.pt",
+            ]
+        )
+        self.assertEqual(args.ref_result, "ref_result.pt")
+        self.assertIsNone(args.ref_operator_file)
+
+    def test_run_test_accepts_legacy_baseline_result_alias(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
             [
@@ -968,15 +999,28 @@ class CliMCPServerCommandTests(unittest.TestCase):
                 "kernel.py",
                 "--baseline-result",
                 "baseline_result.pt",
-                "--compare-level",
-                "strict",
             ]
         )
-        self.assertEqual(args.baseline_result, "baseline_result.pt")
-        self.assertIsNone(args.baseline_operator_file)
-        self.assertEqual(args.compare_level, "strict")
+        self.assertEqual(args.ref_result, "baseline_result.pt")
+        self.assertIsNone(args.ref_operator_file)
 
-    def test_run_test_accepts_baseline_operator_file(self) -> None:
+    def test_run_test_accepts_ref_operator_file(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run-test",
+                "--test-file",
+                "differential_test_kernel.py",
+                "--operator-file",
+                "opt_kernel.py",
+                "--ref-operator-file",
+                "kernel.py",
+            ]
+        )
+        self.assertIsNone(args.ref_result)
+        self.assertEqual(args.ref_operator_file, "kernel.py")
+
+    def test_run_test_accepts_legacy_baseline_operator_file_alias(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
             [
@@ -989,8 +1033,8 @@ class CliMCPServerCommandTests(unittest.TestCase):
                 "kernel.py",
             ]
         )
-        self.assertIsNone(args.baseline_result)
-        self.assertEqual(args.baseline_operator_file, "kernel.py")
+        self.assertIsNone(args.ref_result)
+        self.assertEqual(args.ref_operator_file, "kernel.py")
 
     def test_gen_eval_defaults_to_differential_test_mode(self) -> None:
         parser = build_parser()
@@ -3848,7 +3892,7 @@ class PathResolutionTests(unittest.TestCase):
                 ),
             )
 
-    def test_main_run_test_auto_compares_differential_result_when_baseline_result_provided(self) -> None:
+    def test_main_run_test_auto_compares_differential_result_when_ref_result_provided(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
@@ -3874,7 +3918,7 @@ class PathResolutionTests(unittest.TestCase):
                             str(operator),
                             "--test-mode",
                             "differential",
-                            "--baseline-result",
+                            "--ref-result",
                             str(baseline_result),
                         ]
                     )
@@ -3883,7 +3927,6 @@ class PathResolutionTests(unittest.TestCase):
             compare_mock.assert_called_once_with(
                 baseline_result.resolve(),
                 archive,
-                "balanced",
             )
             self.assertIn(f"Archived result: {archive}\n", stdout.getvalue())
             self.assertNotIn("Hint: use `compare-result`", stdout.getvalue())
@@ -4282,7 +4325,7 @@ class PathResolutionTests(unittest.TestCase):
                 )
 
             self.assertEqual(exit_code, 0)
-            mocked.assert_called_once_with(oracle.resolve(), new.resolve(), "balanced")
+            mocked.assert_called_once_with(oracle.resolve(), new.resolve())
 
     def test_main_compare_result_uses_remote_comparison_when_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -4311,7 +4354,6 @@ class PathResolutionTests(unittest.TestCase):
             mocked.assert_called_once_with(
                 oracle.resolve(),
                 new.resolve(),
-                "balanced",
                 "alice@example.com:2200",
                 None,
                 verbose=False,
