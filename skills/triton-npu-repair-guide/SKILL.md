@@ -1,21 +1,25 @@
 ---
 name: triton-npu-repair-guide
 description: >-
-  Heuristic fixes for Ascend Triton compile/JIT/kernel errors when editing the operator.
+  Heuristic fixes for Ascend Triton compile/JIT/kernel errors and numerical precision mismatches when editing or converting the operator.
   Does not replace triton-npu-gen-test, triton-npu-gen-bench, or harness specs.
 ---
 
 # Triton repair experience (Ascend)
 
-Use this skill when **repairing the operator** after Triton/Ascend **compilation**, **JIT**, or **kernel-side** failures—especially during `triton-npu-gen-eval-suite`, `optimize`, or any flow that exercises the real Triton path.
+Use this skill when **repairing the operator** after Triton/Ascend **compilation**,
+**JIT**, **kernel-side** failures, or **numerical mismatches** vs the torch baseline
+— especially during `triton-npu-gen-eval-suite`, `convert`, `optimize`, or any flow
+that exercises the real Triton path.
 
-Patterns and code hints live in [references/repair-experience.md](references/repair-experience.md). Match the error or symptom, apply a **minimal** change, then re-run validation.
+Patterns and code hints live in [references/repair-experience.md](references/repair-experience.md).
+Match the error or symptom, apply a **minimal** change, then re-run validation.
 
 ## Relationship to other skills
 
 - Does **not** replace `triton-npu-gen-test`, `triton-npu-gen-bench`, or normative harness specs.
 - Complements `triton-npu-run-eval` (re-validate after applying a heuristic).
-- When a generation-only workflow such as `triton-npu-gen-test` or `triton-npu-gen-bench` stages this skill, use it as a diagnostic reference for compile, JIT, launch, or kernel-side symptoms only. Those workflows may still forbid editing the operator file directly.
+- When a generation-only workflow such as `triton-npu-gen-test` or `triton-npu-gen-bench` stages this skill, use it as a diagnostic reference for compile, JIT, launch, kernel-side, or numerical symptoms.
 
 ## How to apply
 

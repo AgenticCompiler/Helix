@@ -45,8 +45,40 @@ Use this skill when the user wants a new converted operator artifact instead of 
 2. Do not create a new test when an existing suitable test can be reused unless the user explicitly asks to regenerate it.
 3. When no suitable reusable test exists, use `triton-npu-gen-test` to generate a test for the converted output.
 4. Use the original input operator as the reference implementation when the requested mode is differential, and use the converted output as the system under test in all cases.
-5. Use `triton-npu-run-eval` to execute the requested standalone or differential test against the converted output.
+5. Use `triton-npu-run-eval` to execute validation — run the appropriate validation command (`run-test-optimize` for differential mode, `run-test-baseline` for standalone mode) as prescribed by the skill. The command output must contain `PASS:` for validation to be considered successful. See "Validation Enforcement Rules" below for the complete set of mandatory validation constraints.
 6. If the converted output hits Triton compile, JIT, launch, or kernel-structure errors, use `triton-npu-repair-guide` for operator-side repair heuristics and then re-run validation.
+
+## Validation Enforcement Rules
+
+Correctness validation is **not advisory** — it is the final gate before conversion is considered complete. The following rules are mandatory and non-negotiable.
+
+### Mandatory Validation Commands
+
+You MUST use the validation commands prescribed by the `triton-npu-run-eval` skill:
+
+- **Differential mode**: `run-command.py run-test-optimize` with `--baseline-operator-file <original>`
+- **Standalone mode**: `run-command.py run-test-baseline`
+
+These commands handle result archiving, `TRITON_ALWAYS_COMPILE`, NPU synchronization, and comparison — all of which you cannot replicate reliably with ad-hoc scripting.
+
+### Forbidden Validation Practices
+
+The following self-validation patterns are **strictly forbidden**. Violating any of these means the conversion is incomplete, regardless of what other checks you believe have passed.
+
+| Forbidden | Example | Why |
+|-----------|---------|-----|
+| Ad-hoc `python3 -c "import torch; ..."` comparison scripts | `python3 -c "import torch; ref=torch.load(...); torch.allclose(...)"` | Bypasses the standard `compare_result.py` and its audited tolerance levels |
+| Using `torch.allclose` / `torch.testing.assert_close` with custom tolerances | `torch.allclose(a, b, rtol=1e-5, atol=1e-8)` | Tolerances different from the NPU accuracy contract thresholds may mask real errors or produce false positives |
+| Running a differential test file directly with `python3` instead of through `run-command.py` | `python3 differential_test_xxx.py --operator-file xxx` | Bypasses result archiving, `TRITON_ALWAYS_COMPILE`, synchronization, and comparison logic |
+| Generating and comparing custom `.pt` files on your own | `torch.save(ref, "REFERENCE_RESULT.pt")` then manual compare | Creates files that may interfere with the CLI validation loop and use inconsistent formats |
+| Self-declaring "PASS" based on your own comparison logic | "PASS: Minor 1-ULP differences only (expected for cross-implementation)" | Only `run-test-optimize` / `run-test-baseline` output determines pass/fail |
+
+### What "PASS" Means
+
+- The literal output `PASS: all N case(s) matched the NPU accuracy contract.` (or per-case `PASS case '...' matched ...`) — differential mode conversion is definitively validated
+- The literal output `All tests passed!` or matching `All tests passed!` in the command output — standalone mode has passed
+- ANY other output (including `FAIL:`, Python exceptions, or empty output) — conversion has NOT passed
+- If the command does not print `PASS:` or `All tests passed!`, do NOT declare success. Instead, use the failure output to diagnose and fix the kernel, then re-run the same validation command.
 
 ## Converted Example
 
@@ -204,3 +236,8 @@ class ModelNew(nn.Module):
 - Do not replace the converted Triton kernel path with pure PyTorch just to get validation green.
 - Do not create input-validation helpers (e.g., `_validate_index`, `_check_bounds`, `_assert_indices`, or similarly-named functions) that scan tensor data. Specifically, never call `.min().item()`, `.max().item()`, `.sum().item()`, or any reduction followed by `.item()` on GPU/NPU tensors before launching a kernel. These force a full-tensor GPU→CPU synchronization on every forward call. The converted operator inherits the same input contract as the original PyTorch operator — if the caller passes out-of-bounds indices, that is a caller bug, not something the conversion must guard against.
 - Do not submit a pure PyTorch rewrite as the converted result, even when the wrapper signature or standalone or differential outputs still look correct.
+- Do not write your own comparison script (e.g., `python3 -c "import torch; ..."`) to compare result `.pt` files or operator outputs.
+- Do not use `torch.allclose`, `torch.testing.assert_close`, `torch.equal`, or any other numerical comparison function with custom tolerances to validate conversion correctness — always use `run-test-optimize` or `run-test-baseline` from the `triton-npu-run-eval` skill.
+- Do not self-declare the conversion as "PASS" based on your own tolerance analysis — only the printed output of `run-test-optimize` or `run-test-baseline` determines success.
+- Do not run differential test files directly with `python3` — always use `run-command.py run-test-optimize` or `run-command.py run-test-baseline`.
+- Do not save custom `.pt` files (e.g., `REFERENCE_RESULT.pt`, `COMPARE_RESULT.pt`) for manual comparison — this may interfere with the CLI validation loop's result caching.
