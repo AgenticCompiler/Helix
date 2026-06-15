@@ -26,8 +26,3 @@ def validate_optimize_options(
         raise ValueError("--reset-optimize requires --resume fresh")
     if enable_cann_ext_api and target_chip != "A5":
         raise ValueError("--enable-cann-ext-api requires --target-chip A5")
-    if resume_mode == "continue":
-        if test_mode is not None:
-            raise ValueError("--resume continue cannot be combined with --test-mode")
-        if bench_mode is not None:
-            raise ValueError("--resume continue cannot be combined with --bench-mode")

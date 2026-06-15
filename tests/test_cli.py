@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import sys
 import tempfile
@@ -2359,7 +2360,7 @@ class PathResolutionTests(unittest.TestCase):
                         '  "test_file": "differential_test_kernel.py",',
                         '  "test_mode": "differential",',
                         '  "bench_file": "bench_kernel.py",',
-                        '  "bench_mode": "torch-npu-profiler",',
+                        '  "bench_mode": "msprof",',
                         '  "perf_artifact": "baseline/perf.txt",',
                         '  "correctness_status": "passed",',
                         '  "benchmark_status": "passed",',
@@ -2376,7 +2377,7 @@ class PathResolutionTests(unittest.TestCase):
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
             )
             (resumable / "bench_kernel.py").write_text(
-                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n", encoding="utf-8"
+                "# bench-mode: msprof\n# kernel: k\nprint('bench')\n", encoding="utf-8"
             )
 
             captured_modes: dict[str, Optional[str]] = {}
@@ -2399,8 +2400,84 @@ class PathResolutionTests(unittest.TestCase):
                 )
 
             self.assertEqual(exit_code, 0)
-            self.assertEqual(captured_modes["resume_ws"], "torch-npu-profiler")
+            self.assertEqual(captured_modes["resume_ws"], "msprof")
             self.assertEqual(captured_modes["fresh_ws"], "msprof")
+
+    def test_main_optimize_batch_auto_resumable_mismatch_fails_per_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            resumable = root / "resume_ws"
+            fresh = root / "fresh_ws"
+            resumable.mkdir()
+            fresh.mkdir()
+            resumable_operator = resumable / "kernel.py"
+            fresh_operator = fresh / "kernel.py"
+            resumable_operator.write_text("print('resume')\n", encoding="utf-8")
+            fresh_operator.write_text("print('fresh')\n", encoding="utf-8")
+
+            (resumable / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (resumable / "opt-round-1").mkdir()
+            baseline_dir = resumable / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                "\n".join(
+                    [
+                        "{",
+                        '  "baseline_kind": "original",',
+                        '  "source_operator": "kernel.py",',
+                        '  "baseline_operator": "baseline/kernel.py",',
+                        '  "test_file": "differential_test_kernel.py",',
+                        '  "test_mode": "differential",',
+                        '  "bench_file": "bench_kernel.py",',
+                        '  "bench_mode": "msprof",',
+                        '  "perf_artifact": "baseline/perf.txt",',
+                        '  "correctness_status": "passed",',
+                        '  "benchmark_status": "passed",',
+                        '  "baseline_established": true',
+                        "}",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (resumable / "differential_test_kernel.py").write_text(
+                "# test-mode: differential\nprint('test')\n", encoding="utf-8"
+            )
+            (resumable / "bench_kernel.py").write_text(
+                "# bench-mode: msprof\n# kernel: k\nprint('bench')\n", encoding="utf-8"
+            )
+
+            captured_modes: dict[str, Optional[str]] = {}
+
+            def _fake_run(request):
+                captured_modes[request.workdir.name] = request.bench_mode
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            stdout = StringIO()
+            with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
+                with redirect_stdout(stdout):
+                    exit_code = main(
+                        [
+                            "optimize-batch",
+                            "-i",
+                            str(root),
+                            "--resume",
+                            "auto",
+                            "--bench-mode",
+                            "torch-npu-profiler",
+                        ]
+                    )
+
+            rendered = stdout.getvalue()
+            self.assertEqual(exit_code, 1)
+            self.assertIn("[FAIL] resume_ws", rendered)
+            self.assertIn("conflicts with existing harness bench-mode msprof", rendered)
+            self.assertIn("[OK] fresh_ws", rendered)
+            self.assertEqual(captured_modes.get("fresh_ws"), "torch-npu-profiler")
+            self.assertNotIn("resume_ws", captured_modes)
+            self.assertIn("Summary: 1 succeeded, 1 failed", rendered)
 
     def test_main_optimize_batch_rejects_invalid_concurrency(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2952,11 +3029,42 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(captured["output_path"], expected_output)
             self.assertEqual(captured["request_output"], expected_output)
 
-    def test_main_optimize_resume_continue_rejects_explicit_test_mode(self) -> None:
+    def test_main_optimize_resume_continue_rejects_test_mode_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
+            (root / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (root / "opt-round-1").mkdir()
+            baseline_dir = root / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "original",
+                        "source_operator": "../kernel.py",
+                        "baseline_operator": "baseline/opt_kernel.py",
+                        "test_file": "../differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "../bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (root / "differential_test_kernel.py").write_text(
+                "# test-mode: differential\nprint('test')\n", encoding="utf-8"
+            )
+            (root / "bench_kernel.py").write_text(
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
+                encoding="utf-8",
+            )
 
             stderr = StringIO()
             with redirect_stderr(stderr):
@@ -2969,21 +3077,52 @@ class PathResolutionTests(unittest.TestCase):
                             "--resume",
                             "continue",
                             "--test-mode",
-                            "differential",
+                            "standalone",
                         ]
                     )
 
             self.assertEqual(exc.exception.code, 2)
             self.assertIn(
-                "--resume continue cannot be combined with --test-mode",
+                "--test-mode standalone conflicts with existing harness test-mode differential",
                 stderr.getvalue(),
             )
 
-    def test_main_optimize_resume_continue_rejects_explicit_bench_mode(self) -> None:
+    def test_main_optimize_resume_continue_rejects_bench_mode_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
+            (root / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (root / "opt-round-1").mkdir()
+            baseline_dir = root / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "original",
+                        "source_operator": "../kernel.py",
+                        "baseline_operator": "baseline/opt_kernel.py",
+                        "test_file": "../differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "../bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (root / "differential_test_kernel.py").write_text(
+                "# test-mode: differential\nprint('test')\n", encoding="utf-8"
+            )
+            (root / "bench_kernel.py").write_text(
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
+                encoding="utf-8",
+            )
 
             stderr = StringIO()
             with redirect_stderr(stderr):
@@ -2996,15 +3135,387 @@ class PathResolutionTests(unittest.TestCase):
                             "--resume",
                             "continue",
                             "--bench-mode",
-                            "torch-npu-profiler",
+                            "msprof",
                         ]
                     )
 
             self.assertEqual(exc.exception.code, 2)
             self.assertIn(
-                "--resume continue cannot be combined with --bench-mode",
+                "--bench-mode msprof conflicts with existing harness bench-mode torch-npu-profiler",
                 stderr.getvalue(),
             )
+
+    def test_main_optimize_resume_continue_allows_matching_test_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            (root / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (root / "opt-round-1").mkdir()
+            baseline_dir = root / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "original",
+                        "source_operator": "../kernel.py",
+                        "baseline_operator": "baseline/opt_kernel.py",
+                        "test_file": "../differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "../bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (root / "differential_test_kernel.py").write_text(
+                "# test-mode: differential\nprint('test')\n", encoding="utf-8"
+            )
+            (root / "bench_kernel.py").write_text(
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
+                encoding="utf-8",
+            )
+
+            captured_modes: dict[str, Optional[str]] = {}
+
+            def _fake_run(request):
+                captured_modes["test_mode"] = request.test_mode
+                captured_modes["bench_mode"] = request.bench_mode
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch(
+                "triton_agent.commands.optimize.run_optimize_request",
+                side_effect=_fake_run,
+            ):
+                exit_code = main(
+                    [
+                        "optimize",
+                        "-i",
+                        str(operator),
+                        "--resume",
+                        "continue",
+                        "--test-mode",
+                        "differential",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured_modes["test_mode"], "differential")
+            self.assertEqual(captured_modes["bench_mode"], "torch-npu-profiler")
+
+    def test_main_optimize_resume_continue_allows_matching_bench_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            (root / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (root / "opt-round-1").mkdir()
+            baseline_dir = root / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "original",
+                        "source_operator": "../kernel.py",
+                        "baseline_operator": "baseline/opt_kernel.py",
+                        "test_file": "../differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "../bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (root / "differential_test_kernel.py").write_text(
+                "# test-mode: differential\nprint('test')\n", encoding="utf-8"
+            )
+            (root / "bench_kernel.py").write_text(
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
+                encoding="utf-8",
+            )
+
+            captured_modes: dict[str, Optional[str]] = {}
+
+            def _fake_run(request):
+                captured_modes["test_mode"] = request.test_mode
+                captured_modes["bench_mode"] = request.bench_mode
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch(
+                "triton_agent.commands.optimize.run_optimize_request",
+                side_effect=_fake_run,
+            ):
+                exit_code = main(
+                    [
+                        "optimize",
+                        "-i",
+                        str(operator),
+                        "--resume",
+                        "continue",
+                        "--bench-mode",
+                        "torch-npu-profiler",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured_modes["test_mode"], "differential")
+            self.assertEqual(captured_modes["bench_mode"], "torch-npu-profiler")
+
+    def test_main_optimize_resume_auto_resumable_rejects_test_mode_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            (root / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (root / "opt-round-1").mkdir()
+            baseline_dir = root / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "original",
+                        "source_operator": "../kernel.py",
+                        "baseline_operator": "baseline/opt_kernel.py",
+                        "test_file": "../differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "../bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (root / "differential_test_kernel.py").write_text(
+                "# test-mode: differential\nprint('test')\n", encoding="utf-8"
+            )
+            (root / "bench_kernel.py").write_text(
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
+                encoding="utf-8",
+            )
+
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(
+                        [
+                            "optimize",
+                            "-i",
+                            str(operator),
+                            "--resume",
+                            "auto",
+                            "--test-mode",
+                            "standalone",
+                        ]
+                    )
+
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn(
+                "--test-mode standalone conflicts with existing harness test-mode differential",
+                stderr.getvalue(),
+            )
+
+    def test_main_optimize_resume_auto_resumable_allows_matching_test_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            (root / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (root / "opt-round-1").mkdir()
+            baseline_dir = root / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "original",
+                        "source_operator": "../kernel.py",
+                        "baseline_operator": "baseline/opt_kernel.py",
+                        "test_file": "../differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "../bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (root / "differential_test_kernel.py").write_text(
+                "# test-mode: differential\nprint('test')\n", encoding="utf-8"
+            )
+            (root / "bench_kernel.py").write_text(
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
+                encoding="utf-8",
+            )
+
+            captured_modes: dict[str, Optional[str]] = {}
+
+            def _fake_run(request):
+                captured_modes["test_mode"] = request.test_mode
+                captured_modes["bench_mode"] = request.bench_mode
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch(
+                "triton_agent.commands.optimize.run_optimize_request",
+                side_effect=_fake_run,
+            ):
+                exit_code = main(
+                    [
+                        "optimize",
+                        "-i",
+                        str(operator),
+                        "--resume",
+                        "auto",
+                        "--test-mode",
+                        "differential",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured_modes["test_mode"], "differential")
+            self.assertEqual(captured_modes["bench_mode"], "torch-npu-profiler")
+
+    def test_main_optimize_resume_auto_resumable_rejects_bench_mode_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            (root / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (root / "opt-round-1").mkdir()
+            baseline_dir = root / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "original",
+                        "source_operator": "../kernel.py",
+                        "baseline_operator": "baseline/opt_kernel.py",
+                        "test_file": "../differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "../bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (root / "differential_test_kernel.py").write_text(
+                "# test-mode: differential\nprint('test')\n", encoding="utf-8"
+            )
+            (root / "bench_kernel.py").write_text(
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
+                encoding="utf-8",
+            )
+
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as exc:
+                    main(
+                        [
+                            "optimize",
+                            "-i",
+                            str(operator),
+                            "--resume",
+                            "auto",
+                            "--bench-mode",
+                            "msprof",
+                        ]
+                    )
+
+            self.assertEqual(exc.exception.code, 2)
+            self.assertIn(
+                "--bench-mode msprof conflicts with existing harness bench-mode torch-npu-profiler",
+                stderr.getvalue(),
+            )
+
+    def test_main_optimize_resume_auto_resumable_allows_matching_bench_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            (root / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (root / "opt-round-1").mkdir()
+            baseline_dir = root / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "original",
+                        "source_operator": "../kernel.py",
+                        "baseline_operator": "baseline/opt_kernel.py",
+                        "test_file": "../differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "../bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (root / "differential_test_kernel.py").write_text(
+                "# test-mode: differential\nprint('test')\n", encoding="utf-8"
+            )
+            (root / "bench_kernel.py").write_text(
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
+                encoding="utf-8",
+            )
+
+            captured_modes: dict[str, Optional[str]] = {}
+
+            def _fake_run(request):
+                captured_modes["test_mode"] = request.test_mode
+                captured_modes["bench_mode"] = request.bench_mode
+                return AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch(
+                "triton_agent.commands.optimize.run_optimize_request",
+                side_effect=_fake_run,
+            ):
+                exit_code = main(
+                    [
+                        "optimize",
+                        "-i",
+                        str(operator),
+                        "--resume",
+                        "auto",
+                        "--bench-mode",
+                        "torch-npu-profiler",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured_modes["test_mode"], "differential")
+            self.assertEqual(captured_modes["bench_mode"], "torch-npu-profiler")
 
     def test_main_optimize_resume_continue_requires_opt_note(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3489,7 +4000,7 @@ class PathResolutionTests(unittest.TestCase):
                                     "--resume",
                                     "auto",
                                     "--bench-mode",
-                                    "torch-npu-profiler",
+                                    "msprof",
                                 ]
                             )
 
