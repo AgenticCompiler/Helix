@@ -10,6 +10,7 @@ import sys
 import tempfile
 import threading
 import time
+import bench_runner_msprof as _msprof
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -29,6 +30,7 @@ from perf_artifacts import (
     PerfMetrics,
     PerfOpRow,
     perf_output_path,
+    render_perf_case_records,
     render_perf_case_records_jsonl,
     write_perf_lines,
 )
@@ -107,6 +109,7 @@ def run_local_bench(
     verbose: bool = False,
     output: str | None = None,
     extract_dest_dir: Path | None = None,
+    simulator_case_idx: int = 1,
 ) -> tuple[ResultPayload, Path | None]:
     bench_mode = _normalize_bench_mode(bench_mode)
     invocation_root = Path.cwd().resolve()
@@ -114,17 +117,28 @@ def run_local_bench(
     maybe_print_visible_devices()
     with _local_bench_workdir(bench_file.parent):
         if bench_mode == "msprof-simulator":
+            resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
             with ThreadPoolExecutor(max_workers=2) as executor:
+                msprof_future = executor.submit(
+                    _run_local_bench_msprof,
+                    bench_file,
+                    operator_file,
+                    verbose=verbose,
+                )
+                kernel_name = _run_local_msprof_single_case_for_kernel(
+                    bench_file,
+                    operator_file,
+                    resolution.kernel_names,
+                    bench_case=simulator_case_idx,
+                    verbose=verbose,
+                )
                 simulator_future = executor.submit(
                     _run_local_bench_msprof_simulator,
                     bench_file,
                     operator_file,
                     extract_dest_dir=extract_dest_dir,
-                )
-                msprof_future = executor.submit(
-                    _run_local_bench_msprof,
-                    bench_file,
-                    operator_file,
+                    kernel_name=kernel_name,
+                    simulator_case_idx=simulator_case_idx,
                     verbose=verbose,
                 )
                 simulator_future.result()
@@ -162,19 +176,28 @@ def run_local_bench(
                 verbose=verbose,
                 output=output,
             )
+        resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
         with ThreadPoolExecutor(max_workers=2) as executor:
+            standalone_future = executor.submit(
+                _run_local_bench_torch_npu_profiler,
+                bench_file,
+                operator_file,
+                verbose=verbose,
+                output=output,
+            )
+            kernel_name = _run_local_msprof_single_case_for_kernel(
+                bench_file,
+                operator_file,
+                resolution.kernel_names,
+                verbose=verbose,
+            )
             simulator_future = executor.submit(
                 _run_local_bench_msprof_simulator_standalone,
                 bench_file,
                 operator_file,
                 extract_dest_dir=extract_dest_dir,
-            )
-            standalone_future = executor.submit(
-                _run_local_bench_standalone,
-                bench_file,
-                operator_file,
+                kernel_name=kernel_name,
                 verbose=verbose,
-                output=output,
             )
             simulator_future.result()
             return standalone_future.result()
@@ -1162,21 +1185,74 @@ def _set_directory_owner_only(path: Path) -> None:
 
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched op_statistic csv"
 _TIMEOUT_MESSAGE = "[INFO]  The timeout has reached and the application will be forcibly killed."
+_LAUNCH_COUNT = 5  # msprof op simulator: per-kernel max launches; last sample (idx=N-1) is post-warmup
 
 
-def _find_latest_visualize_data_bin(output_dir: Path) -> Path | None:
-    matches = sorted(
-        path for path in output_dir.rglob("visualize_data.bin") if path.is_file()
-    )
+def _iter_kernel_launch_bins(output_dir: Path, kernel_dir_name: str) -> list[Path]:
+    kernel_root = output_dir / kernel_dir_name
+    if not kernel_root.is_dir():
+        return []
+    bins: list[Path] = []
+    for entry in kernel_root.iterdir():
+        if entry.is_dir() and entry.name.isdigit():
+            bin_path = entry / "simulator" / "visualize_data.bin"
+            if bin_path.is_file():
+                bins.append(bin_path)
+    return bins
+
+
+def _bin_sort_key(bin_path: Path) -> tuple[int, int]:
+    # bin_path: .../<idx>/simulator/visualize_data.bin
+    idx_dir = bin_path.parent.parent if bin_path.parent.name == "simulator" else None
+    idx = int(idx_dir.name) if idx_dir is not None and idx_dir.name.isdigit() else -1
+    return (idx, bin_path.stat().st_size)
+
+
+def _resolve_target_visualize_data_bin(
+    output_dir: Path,
+    kernel_name: str | None,
+    candidate_kernel_names: Sequence[str] | None,
+) -> Path | None:
+    if kernel_name:
+        bins = _iter_kernel_launch_bins(output_dir, kernel_name)
+        if bins:
+            return max(bins, key=_bin_sort_key)
+    if candidate_kernel_names:
+        for kname in candidate_kernel_names:
+            if kname == kernel_name:
+                continue
+            bins = _iter_kernel_launch_bins(output_dir, kname)
+            if bins:
+                return max(bins, key=_bin_sort_key)
+    fallback_bins: list[Path] = []
+    for entry in output_dir.iterdir():
+        if entry.is_dir():
+            fallback_bins.extend(_iter_kernel_launch_bins(output_dir, entry.name))
+    if fallback_bins:
+        return max(fallback_bins, key=_bin_sort_key)
+    flat = output_dir / "simulator" / "visualize_data.bin"
+    if flat.is_file():
+        return flat
+    matches = sorted(p for p in output_dir.rglob("visualize_data.bin") if p.is_file())
     if not matches:
         return None
     return max(matches, key=lambda path: path.stat().st_mtime_ns)
 
 
-def _run_extract_and_copy(output_dir: Path, bench_file: Path, isTimeOut: bool = False, dest_dir: Path | None = None) -> None:
-    bin_file = _find_latest_visualize_data_bin(output_dir)
+def _run_extract_and_copy(
+    output_dir: Path,
+    bench_file: Path,
+    *,
+    isTimeOut: bool = False,
+    dest_dir: Path | None = None,
+    kernel_name: str | None = None,
+    candidate_kernel_names: Sequence[str] | None = None,
+) -> None:
+    bin_file = _resolve_target_visualize_data_bin(output_dir, kernel_name, candidate_kernel_names)
     if bin_file is None:
+        print("[msprof-simulator] no visualize_data.bin found, skipping extraction", flush=True)
         return
+    print(f"[msprof-simulator] selected bin: {bin_file}", flush=True)
 
     extract_script = Path(__file__).resolve().parent / "extract_profile_bin_data.py"
     cmd = [sys.executable, str(extract_script), str(bin_file)]
@@ -1192,10 +1268,67 @@ def _run_extract_and_copy(output_dir: Path, bench_file: Path, isTimeOut: bool = 
         shutil.copytree(extracted_dir, tmp_dir)
 
 
+def _run_local_msprof_single_case_for_kernel(
+    bench_file: Path,
+    operator_file: Path,
+    kernel_names: list[str],
+    *,
+    bench_case: int = 1,
+    verbose: bool = False,
+) -> str | None:
+    output_dir, temp_dir = _create_local_msprof_output_dir('0', None)
+    try:
+        operator_arg = os.path.relpath(operator_file, bench_file.parent)
+        command = [
+            "msprof",
+            f"--output={output_dir}",
+            local_python_executable(),
+            bench_file.name,
+            "--operator-file",
+            operator_arg,
+            "--bench", str(bench_case),
+        ]
+        with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
+            result = run_streaming_process(
+                command,
+                str(bench_file.parent),
+                stall_timeout_seconds=_bench_timeout(),
+                stdout=quiet_stdout,
+                extra_env={"TRITON_ALWAYS_COMPILE": "1"},
+            )
+        if not result_succeeded(result):
+            return None
+        try:
+            metrics = _msprof._read_local_msprof_metrics(output_dir, kernel_names)
+        except (FileNotFoundError, ValueError):
+            return None
+        if not metrics or not metrics.get("ops"):
+            return None
+        kernel_name_set = set(kernel_names)
+        hottest_name: str | None = None
+        hottest_time = -1.0
+        for op in metrics["ops"]:
+            op_type = op.get("op_type", "")
+            avg_time = float(op.get("avg_time_us", 0))
+            if op_type in kernel_name_set and avg_time > hottest_time:
+                hottest_time = avg_time
+                hottest_name = op_type
+        if verbose and hottest_name:
+            emit_verbose(sys.stderr, "msprof-simulator", f"resolved hottest kernel: {hottest_name} ({hottest_time}us)")
+        return hottest_name
+    finally:
+        if temp_dir is not None:
+            temp_dir.cleanup()
+        _cleanup_local_bench_extra_info(bench_file.parent)
+
+
 def _run_local_bench_msprof_simulator(
     bench_file: Path,
     operator_file: Path,
     extract_dest_dir: Path | None = None,
+    kernel_name: str | None = None,
+    simulator_case_idx: int = 1,
+    verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
     stdout_chunks: list[str] = []
@@ -1204,20 +1337,25 @@ def _run_local_bench_msprof_simulator(
     had_stalls = False
     session_id: str | None = None
 
-    output_dir, temp_dir = _create_local_msprof_output_dir(0, preserved_run_dir)
+    output_dir, temp_dir = _create_local_msprof_output_dir('0', preserved_run_dir)
     try:
         command = [
             "msprof",
             "op",
             "simulator",
             "--timeout=5",
+            f"--launch-count={_LAUNCH_COUNT}",
             f"--output={output_dir}",
             local_python_executable(),
             str(bench_file),
             "--operator-file",
             str(operator_file),
-            "--bench", "1",
+            "--bench", str(simulator_case_idx),
         ]
+        if kernel_name:
+            command.insert(5, f"--kernel-name={kernel_name}")
+        if verbose:
+            emit_verbose(sys.stderr, "msprof-simulator", f"kernel-name={kernel_name}, cmd: {' '.join(command)}")
         t0 = time.monotonic()
         with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
             result = run_streaming_process(
@@ -1270,7 +1408,14 @@ def _run_local_bench_msprof_simulator(
                 perf_path,
             )
 
-        _run_extract_and_copy(output_dir, bench_file, isTimeOut, dest_dir=extract_dest_dir)
+        _run_extract_and_copy(
+            output_dir,
+            bench_file,
+            isTimeOut=isTimeOut,
+            dest_dir=extract_dest_dir,
+            kernel_name=kernel_name,
+            candidate_kernel_names=resolution.kernel_names,
+        )
 
         return (
             make_result(
@@ -1293,9 +1438,11 @@ def _run_local_bench_msprof_simulator_standalone(
     bench_file: Path,
     operator_file: Path,
     extract_dest_dir: Path | None = None,
+    kernel_name: str | None = None,
+    verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
-    runtime = _load_standalone_runtime_module()
+    runtime = _load_bench_runtime_module()
     cases, _ = runtime.load_standalone_bench_cases(bench_file, operator_file)
     if not cases:
         raise ValueError("No standalone bench cases found")
@@ -1312,13 +1459,14 @@ def _run_local_bench_msprof_simulator_standalone(
     except Exception:
         pass
 
-    output_dir, temp_dir = _create_local_msprof_output_dir(0, preserved_run_dir)
+    output_dir, temp_dir = _create_local_msprof_output_dir('0', preserved_run_dir)
     try:
         command = [
             "msprof",
             "op",
             "simulator",
             "--timeout=3",
+            f"--launch-count={_LAUNCH_COUNT}",
             f"--output={output_dir}",
             local_python_executable(),
             str(wrapper_script_path),
@@ -1326,7 +1474,10 @@ def _run_local_bench_msprof_simulator_standalone(
             str(operator_file),
             selected_case.case_id,
         ]
-        print(f"[standalone-msprof-simulator] cmd: {' '.join(command)}", flush=True)
+        if kernel_name:
+            command.insert(5, f"--kernel-name={kernel_name}")
+        if verbose:
+            emit_verbose(sys.stderr, "standalone-msprof-simulator", f"kernel-name={kernel_name}, cmd: {' '.join(command)}")
         t0 = time.monotonic()
         with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
             result = run_streaming_process(
@@ -1382,7 +1533,14 @@ def _run_local_bench_msprof_simulator_standalone(
             )
 
         print(f"[standalone-msprof-simulator] OK, output_dir={output_dir}", flush=True)
-        _run_extract_and_copy(output_dir, bench_file, isTimeOut, dest_dir=extract_dest_dir)
+        _run_extract_and_copy(
+            output_dir,
+            bench_file,
+            isTimeOut=isTimeOut,
+            dest_dir=extract_dest_dir,
+            kernel_name=kernel_name,
+            candidate_kernel_names=resolution.kernel_names,
+        )
 
         return (
             make_result(
@@ -2072,19 +2230,3 @@ def _resolve_msprof_metrics(
 def _read_local_msprof_metrics(output_dir: Path, kernel_names: list[str]) -> PerfMetrics:
     return _resolve_msprof_metrics(_load_msprof_avg_rows(output_dir), kernel_names)
 
-
-def _create_local_msprof_preserved_run_dir() -> Path | None:
-    configured_root, configured_env = _resolve_local_bench_profile_output_root()
-    if not configured_root:
-        return None
-    root = Path(configured_root).expanduser()
-    if root.exists() and not root.is_dir():
-        raise ValueError(
-            f"{configured_env} must point to a directory: {root}"
-        )
-    if not root.exists():
-        root.mkdir(parents=True, exist_ok=True)
-        _set_directory_owner_only(root)
-    run_dir = Path(tempfile.mkdtemp(prefix="triton-agent-msprof-", dir=str(root)))
-    _set_directory_owner_only(run_dir)
-    return run_dir
