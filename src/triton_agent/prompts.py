@@ -5,27 +5,12 @@ from typing import Literal
 
 from triton_agent.models import COMMAND_TO_SKILL, CommandKind
 from triton_agent.optimize.prompts import (
-    build_optimize_baseline_prompt,
-    build_optimize_resume_prompt,
     build_optimize_round_prompt,
-    build_optimize_supervisor_prompt,
 )
 from triton_agent.paths import default_generated_output_path
-
-__all__ = [
-    "PROMPT_INTROS",
-    "append_additional_user_instructions",
-    "build_optimize_baseline_prompt",
-    "build_optimize_resume_prompt",
-    "build_optimize_round_prompt",
-    "build_optimize_supervisor_prompt",
-    "build_prompt",
-]
-
-
 PROMPT_INTROS = {
     CommandKind.GEN_EVAL: "Repair the operator when needed, then generate correctness tests and a benchmark.",
-    CommandKind.CONVERT: "Convert the PyTorch operator into a Triton NPU-backed PyTorch operator and validate it with differential correctness testing.",
+    CommandKind.CONVERT: "Convert the PyTorch operator into a Triton NPU-backed PyTorch operator and validate it with the requested correctness test mode.",
     CommandKind.GEN_TEST: "Generate correctness tests for the operator file.",
     CommandKind.RUN_TEST: "Run the generated correctness tests for the operator file.",
     CommandKind.GEN_BENCH: "Generate a benchmark for the operator file.",
@@ -73,6 +58,7 @@ def build_prompt(
     current_round: int = 1,
     final_round: int | None = None,
     round_batch_size: int = 10,
+    optimize_baseline_ready: bool = True,
 ) -> str:
     should_resume_existing_session = (
         continue_optimize if resume_existing_session is None else resume_existing_session
@@ -180,11 +166,11 @@ def build_prompt(
             ]
         )
     if command_kind == CommandKind.CONVERT:
+        requested_convert_test_mode = "standalone" if test_mode == "standalone" else "differential"
         lines.extend(
             [
-                "Treat the input operator file as source material only.",
-                "Do not execute the original input operator file.",
-                "Treat the input operator file as source material and the differential correctness oracle.",
+                "Read the original input operator file, but treat it as immutable source material and a correctness oracle only.",
+                "Do not modify the original input operator file.",
                 "Write the converted operator to the requested output path and keep the original input file unchanged.",
                 "Preserve the trailing input-helper block from the input file in the converted output so later harnesses can reuse it.",
                 "When generating or validating harnesses, you may add broader coverage and do not need to limit yourself to only the preserved trailing helpers.",
@@ -197,12 +183,23 @@ def build_prompt(
                 "A pure PyTorch rewrite does not satisfy this convert task, even if differential validation passes.",
                 "Target Ascend NPU only for this conversion flow and do not add CUDA, CPU, MPS, or generic multi-backend fallback logic unless the source file already requires shared import structure around the public API.",
                 "Do not inline correctness or benchmark harness code into the converted operator file.",
-                "Do not benchmark this workflow.",
-                "Do not create `baseline/`.",
-                "Generate a differential test for the converted output and execute it.",
-                "Validate the converted output by comparing it against the original operator behavior.",
             ]
         )
+        if requested_convert_test_mode == "standalone":
+            lines.extend(
+                [
+                    "Generate a standalone test for the converted output and execute it.",
+                    "Validate the converted output by executing the standalone test against the converted operator.",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    "Treat the input operator file as source material and the differential correctness oracle.",
+                    "Generate a differential test for the converted output and execute it.",
+                    "Validate the converted output by comparing it against the original operator behavior.",
+                ]
+            )
 
     if command_kind == CommandKind.OPTIMIZE:
         lines.extend(
@@ -219,7 +216,7 @@ def build_prompt(
                 enable_cann_ext_api=enable_cann_ext_api,
                 enable_subagent=enable_subagent,
                 round_mode=round_mode,
-                baseline_ready=True,
+                baseline_ready=optimize_baseline_ready,
                 current_round=current_round,
                 final_round=resolved_final_round,
                 round_batch_size=round_batch_size,

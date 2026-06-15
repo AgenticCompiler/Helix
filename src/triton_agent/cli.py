@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Optional
@@ -9,7 +10,7 @@ from typing import Optional
 from triton_agent.commands.convert import handle_convert, handle_convert_batch
 from triton_agent.commands.clean import handle_clean
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
-from triton_agent.commands.execution import handle_run_bench, handle_run_test
+from triton_agent.commands.execution import handle_run_bench, handle_run_simulator, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
 from triton_agent.commands.generation import handle_gen_eval
 from triton_agent.commands.generation import handle_gen_eval_batch
@@ -31,6 +32,7 @@ from triton_agent.remote_execution_env import (
     remote_target_env_name,
     remote_workdir_env_name,
 )
+from triton_agent.remote_ssh_preflight import ensure_remote_ssh_ready
 
 
 _Handler = Callable[[argparse.ArgumentParser, argparse.Namespace], int]
@@ -38,7 +40,7 @@ _AGENT_CHOICES = ("codex", "opencode", "pi", "claude", "openhands", "traecli")
 _COMPARE_LEVEL_CHOICES = ("strict", "balanced", "relaxed")
 _FORMAT_CHOICES = ("text", "markdown")
 _TEST_MODE_CHOICES = ("standalone", "differential")
-_BENCH_MODE_CHOICES = ("standalone", "msprof", "msprof-simulator")
+_BENCH_MODE_CHOICES = ("torch-npu-profiler", "msprof")
 _RESUME_CHOICES = ("auto", "continue", "fresh")
 _ROUND_MODE_CHOICES = ("checked", "supervised")
 _TARGET_CHIP_CHOICES = ("A3", "A5")
@@ -207,7 +209,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_test_mode=True,
         test_mode_default="differential",
         has_bench_mode=True,
-        bench_mode_default="standalone",
+        bench_mode_default="torch-npu-profiler",
         has_prompt=True,
         has_force_overwrite=True,
         has_log_tools=True,
@@ -224,7 +226,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_test_mode=True,
         test_mode_default="differential",
         has_bench_mode=True,
-        bench_mode_default="standalone",
+        bench_mode_default="torch-npu-profiler",
         has_prompt=True,
         concurrency_default=1,
         concurrency_accepts_max=True,
@@ -241,7 +243,6 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_show_output=True,
         has_test_mode=True,
         test_mode_default="differential",
-        test_mode_choices=("differential",),
         has_prompt=True,
         has_force_overwrite=True,
         has_log_tools=True,
@@ -257,7 +258,6 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_show_output=True,
         has_test_mode=True,
         test_mode_default="differential",
-        test_mode_choices=("differential",),
         has_prompt=True,
         concurrency_default=1,
         concurrency_accepts_max=True,
@@ -298,7 +298,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_interact=True,
         has_show_output=True,
         has_bench_mode=True,
-        bench_mode_default="standalone",
+        bench_mode_default="torch-npu-profiler",
         has_prompt=True,
         has_force_overwrite=True,
         has_log_tools=True,
@@ -313,6 +313,15 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         keep_remote_workdir=True,
         has_bench_mode=True,
         has_npu_devices=True,
+    ),
+    CommandKind.RUN_SIMULATOR: _CommandSpec(
+        handler=handle_run_simulator,
+        help_group="Execution",
+        help_summary="Run one benchmark case under msprof op simulator.",
+        description="Run one generated benchmark case under msprof op simulator against one operator file.",
+        input_mode="run-simulator",
+        has_output=False,
+        has_verbose=False,
     ),
     CommandKind.COMPARE_RESULT: _CommandSpec(
         handler=handle_compare_result,
@@ -573,7 +582,7 @@ def build_parser() -> argparse.ArgumentParser:
                 choices=_ROUND_MODE_CHOICES,
             )
             subparser.add_argument("--no-upload", action="store_true")
-            subparser.add_argument("--no-report", action="store_true", default=False)
+            subparser.add_argument("--enable-report", action="store_true", default=False)
         if spec.has_prompt:
             subparser.add_argument("--prompt")
         if command_kind in {CommandKind.LOG_CHECK, CommandKind.LOG_CHECK_BATCH}:
@@ -642,9 +651,21 @@ def _build_environment_variables_section() -> list[str]:
 def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(_normalize_command_aliases(argv))
+    try:
+        _ensure_explicit_remote_ssh_ready_from_args(args)
+    except (RuntimeError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     _apply_remote_execution_env_from_args(args)
     command_kind = args.command_kind
     return _COMMAND_SPECS[command_kind].handler(parser, args)
+
+
+def _ensure_explicit_remote_ssh_ready_from_args(args: argparse.Namespace) -> None:
+    remote = getattr(args, "remote", None) if hasattr(args, "remote") else None
+    if not remote:
+        return
+    ensure_remote_ssh_ready(remote)
 
 
 def _apply_remote_execution_env_from_args(args: argparse.Namespace) -> None:
@@ -683,6 +704,12 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--bench-file", required=True)
         subparser.add_argument("--operator-file", required=True)
         return
+    if spec.input_mode == "run-simulator":
+        subparser.add_argument("--bench-file", required=True)
+        subparser.add_argument("--operator-file", required=True)
+        subparser.add_argument("--case-id")
+        subparser.add_argument("--kernel-name")
+        return
     if spec.input_mode == "compare-result":
         subparser.add_argument("--oracle-result", required=True)
         subparser.add_argument("--new-result", required=True)
@@ -718,6 +745,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "run_test": "run-test",
         "gen_bench": "gen-bench",
         "run_bench": "run-bench",
+        "run_simulator": "run-simulator",
         "run_eval_mcp_server": "run-eval-mcp-server",
         "compare_result": "compare-result",
         "compare_perf": "compare-perf",

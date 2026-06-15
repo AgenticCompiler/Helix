@@ -119,5 +119,3 @@ def _query_driver_version() -> str:
                     return value
     return "unknown"
 
-
-__all__ = ["capture_hardware_info"]

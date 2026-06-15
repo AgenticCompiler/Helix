@@ -17,7 +17,7 @@ class OptimizeResumeTests(unittest.TestCase):
         source_operator: str,
         test_file: str,
         bench_file: str,
-        bench_mode: str = "standalone",
+        bench_mode: str = "torch-npu-profiler",
     ) -> None:
         baseline_dir = workspace / "baseline"
         baseline_dir.mkdir()
@@ -51,9 +51,9 @@ class OptimizeResumeTests(unittest.TestCase):
             (workspace / "opt-round-1").mkdir()
             self._write_baseline_state(
                 workspace,
-                source_operator="triton_7_Sum.py",
-                test_file="differential_test_7_Sum.py",
-                bench_file="bench_triton_7_Sum.py",
+                source_operator="../triton_7_Sum.py",
+                test_file="../differential_test_7_Sum.py",
+                bench_file="../bench_triton_7_Sum.py",
                 bench_mode="msprof",
             )
             (workspace / "differential_test_7_Sum.py").write_text(
@@ -80,16 +80,16 @@ class OptimizeResumeTests(unittest.TestCase):
             (workspace / "opt-round-1").mkdir()
             self._write_baseline_state(
                 workspace,
-                source_operator="7_Sum.py",
-                test_file="differential_test_7_Sum.py",
-                bench_file="bench_triton_7_Sum.py",
+                source_operator="../7_Sum.py",
+                test_file="../differential_test_7_Sum.py",
+                bench_file="../bench_triton_7_Sum.py",
             )
             (workspace / "differential_test_7_Sum.py").write_text(
                 "# test-mode: differential\nprint('test')\n",
                 encoding="utf-8",
             )
             (workspace / "bench_triton_7_Sum.py").write_text(
-                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n",
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
                 encoding="utf-8",
             )
 
@@ -100,6 +100,34 @@ class OptimizeResumeTests(unittest.TestCase):
                 inspection.detail,
                 "missing generated test harness for triton_7_Sum.py",
             )
+
+    def test_classify_workspace_resumes_with_non_convention_test_bench_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "a.py"
+            operator.write_text("print('source')\n", encoding="utf-8")
+            (workspace / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (workspace / "opt-round-1").mkdir()
+            self._write_baseline_state(
+                workspace,
+                source_operator="../a.py",
+                test_file="../test_b.py",
+                bench_file="../bench_b.py",
+            )
+            (workspace / "test_b.py").write_text(
+                "# test-mode: differential\nprint('test')\n",
+                encoding="utf-8",
+            )
+            (workspace / "bench_b.py").write_text(
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
+                encoding="utf-8",
+            )
+
+            inspection = classify_optimize_workspace(operator, workspace)
+
+            self.assertEqual(inspection.state, "resumable-session")
+            self.assertEqual(inspection.test_mode, "differential")
+            self.assertEqual(inspection.bench_mode, "torch-npu-profiler")
 
 
 if __name__ == "__main__":

@@ -124,8 +124,3 @@ def render_pattern_analysis_markdown(data: dict[str, Any]) -> str:
 
     return "\n".join(lines).rstrip() + "\n"
 
-
-__all__ = [
-    "render_log_check_markdown",
-    "render_pattern_analysis_markdown",
-]

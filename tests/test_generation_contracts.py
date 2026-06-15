@@ -1,4 +1,8 @@
 import importlib.util
+import shutil
+import subprocess
+import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from io import StringIO
@@ -34,6 +38,21 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("UV_CACHE_DIR", wrapper)
         self.assertIn("uv run pyright", wrapper)
         self.assertIn('typeCheckingMode = "strict"', wrapper)
+
+    def test_optimize_contract_updates_require_regenerating_artifacts_reference(self) -> None:
+        agents = _read("AGENTS.md")
+        self.assertIn(
+            "skills/triton-npu-optimize-submit-baseline/references/contract.json",
+            agents,
+        )
+        self.assertIn(
+            "skills/triton-npu-optimize-submit-round/references/contract.json",
+            agents,
+        )
+        self.assertIn(
+            "python3 skills/triton-npu-optimize/script/update-artifacts.py",
+            agents,
+        )
 
     def test_gitcode_pr_skill_uses_official_api_script(self) -> None:
         skill = _read(".codex/skills/managing-gitcode-prs/SKILL.md")
@@ -147,11 +166,17 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("# api-kind:", content)
         self.assertIn("# kernels:", content)
         self.assertIn("build_operator_api(operator_module)", content)
-        self.assertIn("build_standalone_bench_cases(operator_api)", content)
+        self.assertIn("build_bench_cases()", content)
+        self.assertIn("build_bench_case_fn(operator_api, case)", content)
+        self.assertNotIn("build_standalone_bench_cases(operator_api)", content)
         self.assertIn("import-only", content)
         self.assertIn("repeated runs of the same harness produce identical inputs", content)
         self.assertNotIn("accept only `--operator-file` at runtime for standalone mode", content)
         self.assertNotIn("must accept `--operator-file` and `--api-name`", content)
+        self.assertNotIn("argparse", content)
+        self.assertNotIn("main()", content)
+        self.assertNotIn("--operator-file", content)
+        self.assertNotIn("--bench-file", content)
 
     def test_generation_skills_support_entrypoint_kinds(self) -> None:
         for relative_path in ("skills/triton-npu-gen-test/SKILL.md", "skills/triton-npu-gen-bench/SKILL.md"):
@@ -187,19 +212,22 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("Do not create a new test when an existing suitable test can be reused", convert_skill)
         self.assertIn("unless the user explicitly asks to regenerate", convert_skill)
 
-    def test_generation_skills_include_explicit_run_command_examples(self) -> None:
+    def test_generation_skills_route_validation_to_run_eval_guides(self) -> None:
         test_gen = _read("skills/triton-npu-gen-test/SKILL.md")
         self.assertIn("## Validation Commands", test_gen)
         self.assertIn("Use the `triton-npu-run-eval` skill to validate generated tests.", test_gen)
         self.assertIn("run `run-test-baseline`", test_gen)
         self.assertIn("run `run-test-optimize`", test_gen)
-        self.assertIn("run `run-test-optimize` with `--baseline-operator-file <baseline_operator.py>`", test_gen)
         self.assertIn("keep `compare-result` for reruns", test_gen)
+        self.assertIn("focused run-eval guide", test_gen)
+        self.assertNotIn("--baseline-operator-file", test_gen)
 
         bench_gen = _read("skills/triton-npu-gen-bench/SKILL.md")
         self.assertIn("## Validation Commands", bench_gen)
         self.assertIn("Use the triton-npu-run-eval skill to execute generated benchmark cases.", bench_gen)
-        self.assertIn("python3 ../triton-npu-run-eval/scripts/run-command.py run-bench --bench-file", bench_gen)
+        self.assertIn("focused `run-bench` guide", bench_gen)
+        self.assertNotIn("--bench-file", bench_gen)
+        self.assertNotIn("--operator-file", bench_gen)
 
     def test_run_eval_skill_routes_to_focused_command_docs(self) -> None:
         skill = _read("skills/triton-npu-run-eval/SKILL.md")
@@ -238,7 +266,9 @@ class GenerationContractTests(unittest.TestCase):
 
         self.assertIn("Always pass both `--bench-file` and `--operator-file`.", run_bench)
         self.assertIn("build_operator_api(operator_module)", run_bench)
-        self.assertIn("build_standalone_bench_cases(operator_api)", run_bench)
+        self.assertIn("build_bench_cases()", run_bench)
+        self.assertIn("build_bench_case_fn(operator_api, case)", run_bench)
+        self.assertNotIn("build_standalone_bench_cases(operator_api)", run_bench)
         self.assertIn("--bench-mode msprof", run_bench)
 
         self.assertIn("--case-id <id>", profile_bench)
@@ -295,17 +325,25 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("Do not", eval_gen)
         self.assertIn("opt-round", eval_gen)
 
-    def test_convert_skill_and_readme_document_differential_only_conversion(self) -> None:
+    def test_convert_skill_and_readme_document_convert_test_mode_support(self) -> None:
         convert_skill = _read("skills/triton-npu-convert-pytorch-operator/SKILL.md")
         readme = _read("README.md")
 
         self.assertTrue(
             (REPO_ROOT / "skills" / "triton-npu-convert-pytorch-operator" / "SKILL.md").exists()
         )
+        self.assertIn("## Core Constraints", convert_skill)
+        self.assertIn("## Required Workflow", convert_skill)
+        self.assertIn("## Validation Flow", convert_skill)
         self.assertIn("trailing input-helper block", convert_skill)
-        self.assertIn("Do not execute the original input operator file", convert_skill)
+        self.assertIn("immutable source material", convert_skill)
+        self.assertIn(
+            "Do not modify, or overwrite the original input operator file",
+            convert_skill,
+        )
         self.assertIn("correctness oracle", convert_skill)
-        self.assertIn("differential test", convert_skill)
+        self.assertIn("standalone or differential test mode", convert_skill)
+        self.assertIn("standalone or differential test file", convert_skill)
         self.assertIn("triton_<origin-name>.py", convert_skill)
         self.assertIn("## Converted Example", convert_skill)
         self.assertIn("@triton.jit", convert_skill)
@@ -317,10 +355,10 @@ class GenerationContractTests(unittest.TestCase):
         self.assertNotIn("call `model(*get_inputs())`", convert_skill)
         self.assertIn("Do not introduce unnecessary code.", convert_skill)
         self.assertIn("real Triton Ascend NPU kernel path", convert_skill)
-        self.assertIn("PyTorch-facing wrapper or `torch.nn.Module` public API may remain", convert_skill)
+        self.assertIn("Keep the public API PyTorch-facing when needed", convert_skill)
         self.assertIn("A pure PyTorch rewrite does not satisfy this convert task", convert_skill)
         self.assertIn("Target Ascend NPU only", convert_skill)
-        self.assertIn("Do not add CUDA-only, CPU-only, MPS, or generic multi-backend dispatch branches", convert_skill)
+        self.assertIn("generic multi-backend fallback logic", convert_skill)
         self.assertNotIn("triton-npu-prepare-optimize-baseline", convert_skill)
         self.assertNotIn("reusable baseline", convert_skill.lower())
         self.assertNotIn("benchmark", convert_skill.lower())
@@ -328,7 +366,8 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("`convert-batch`", readme)
         self.assertNotIn("`gen-convert`", readme)
         self.assertIn("Triton NPU-backed PyTorch operator", readme)
-        self.assertIn("differential correctness validation", readme)
+        self.assertIn("standalone or differential correctness validation", readme)
+        self.assertIn("`--test-mode standalone|differential`", readme)
         self.assertNotIn("preparing `baseline/`", readme)
 
     def test_optimize_baseline_preparation_uses_dedicated_skill(self) -> None:
@@ -573,6 +612,8 @@ class GenerationContractTests(unittest.TestCase):
 
     def test_optimize_artifacts_reference_documents_state_declared_paths(self) -> None:
         artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
+        self.assertIn("<!-- BEGIN GENERATED BASELINE STATE CONTRACT -->", artifacts)
+        self.assertIn("<!-- END GENERATED ROUND STATE CONTRACT -->", artifacts)
         self.assertIn("Treat these state fields as the authoritative artifact references for baseline validation:", artifacts)
         self.assertIn("`baseline_operator`", artifacts)
         self.assertIn("`perf_artifact`", artifacts)
@@ -581,6 +622,61 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("`perf_analysis_path` when present", artifacts)
         self.assertIn("`profile_dir` when present", artifacts)
         self.assertIn("`ir_dir` when present", artifacts)
+        self.assertIn("relative to the directory that contains `baseline/state.json`", artifacts)
+        self.assertIn("relative to the directory that contains `round-state.json`", artifacts)
+        self.assertNotIn(
+            "The checker first resolves declared paths there. If a declared path is missing, it retries the same value relative to the operator workspace root",
+            artifacts,
+        )
+        self.assertNotIn("analysis_comparison_sources", artifacts)
+        self.assertNotIn("validated_candidate", artifacts)
+
+    def test_submit_optimize_skills_keep_path_rules_out_of_user_facing_skill_text(self) -> None:
+        baseline_submit = _read("skills/triton-npu-optimize-submit-baseline/SKILL.md")
+        round_submit = _read("skills/triton-npu-optimize-submit-round/SKILL.md")
+
+        self.assertNotIn("## Baseline-State Path Convention", baseline_submit)
+        self.assertNotIn("## Round-State Path Convention", round_submit)
+        self.assertNotIn(
+            "If a declared path is missing there, it retries the same value relative to the operator workspace root",
+            baseline_submit,
+        )
+        self.assertNotIn(
+            "If a declared path is missing there, it retries the same value relative to the operator workspace root",
+            round_submit,
+        )
+
+    def test_optimize_artifacts_reference_matches_generator_script(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for relative_path in (
+                "skills/triton-npu-optimize-submit-baseline/references/contract.json",
+                "skills/triton-npu-optimize-submit-round/references/contract.json",
+                "skills/triton-npu-optimize/references/artifacts.md",
+                "skills/triton-npu-optimize/script/update-artifacts.py",
+            ):
+                source = REPO_ROOT / relative_path
+                target = root / relative_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
+
+            script_path = root / "skills" / "triton-npu-optimize" / "script" / "update-artifacts.py"
+            completed = subprocess.run(
+                [sys.executable, str(script_path)],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=root,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            generated = (
+                root / "skills" / "triton-npu-optimize" / "references" / "artifacts.md"
+            ).read_text(encoding="utf-8")
+            self.assertEqual(
+                generated,
+                _read("skills/triton-npu-optimize/references/artifacts.md"),
+            )
 
     def test_optimize_skill_documents_round_local_ir_commands(self) -> None:
         optimize = _read("skills/triton-npu-optimize/SKILL.md")
@@ -976,15 +1072,15 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("total-op", artifacts)
         self.assertIn("mixed", artifacts)
 
-    def test_profiler_skill_documents_standalone_case_id_contract(self) -> None:
+    def test_profiler_skill_documents_torch_npu_profiler_case_id_contract(self) -> None:
         profiler = _read("skills/triton-npu-profile-operator/SKILL.md")
         self.assertIn("../triton-npu-run-eval/scripts/run-command.py profile-bench", profiler)
-        self.assertIn("standalone", profiler)
+        self.assertIn("torch-npu-profiler", profiler)
         self.assertIn("msprof", profiler)
         self.assertIn("--case-id <id>", profiler)
         self.assertIn("profile one selected `--case-id <id>` case", profiler)
         self.assertIn("must not receive `--bench` or `--num-bench`", profiler)
-        self.assertIn("first query `--num-bench`", profiler)
+        self.assertNotIn("first query `--num-bench`", profiler)
         self.assertNotIn("profile one selected `--bench <N>` case", profiler)
         self.assertNotIn("msprof python3 bench_<op>.py --operator-file <operator-file>", profiler)
 
@@ -1011,55 +1107,55 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("import-only", differential)
         self.assertIn("build_operator_api(operator_module)", differential)
         self.assertIn("build_differential_test_cases(operator_api)", differential)
-        self.assertIn("The runner loads the operator module by file path", differential)
+        self.assertIn("External execution tooling provides the imported operator module object", differential)
         self.assertIn("<operator>_result.pt", differential)
         self.assertNotIn("TEST_RESULT.pt", differential)
         self.assertNotIn("Parses `--operator-file`", differential)
         self.assertNotIn('parser.add_argument("--operator-file"', differential)
         self.assertNotIn("def main()", differential)
+        self.assertNotIn("--operator-file", differential)
+        self.assertNotIn("argparse", differential)
         self.assertNotIn("Running the file directly should execute the differential test", differential)
 
-    def test_benchmark_generation_specs_use_hooked_standalone_contract(self) -> None:
-        standalone = _read("skills/triton-npu-gen-bench/references/bench-standalone-spec.md")
-        msprof = _read("skills/triton-npu-gen-bench/references/bench-msprof-spec.md")
+    def test_benchmark_generation_spec_uses_unified_import_only_contract(self) -> None:
+        bench_spec = _read("skills/triton-npu-gen-bench/references/bench-spec.md")
 
-        self.assertIn("# bench-mode: standalone", standalone)
-        self.assertIn("# api-name: <resolved_entrypoint>", standalone)
-        self.assertIn("# api-kind: <resolved_api_kind>", standalone)
-        self.assertIn("# kernels: <resolved_kernel_names>", standalone)
-        self.assertIn("repeated runs of the same harness produce identical inputs", standalone)
-        self.assertNotIn("| `--api-name <name>` | yes |", standalone)
-        self.assertIn("build_operator_api(operator_module)", standalone)
-        self.assertIn("build_standalone_bench_cases(operator_api)", standalone)
-        self.assertIn("import-only", standalone)
-        self.assertNotIn('parser.add_argument("--operator-file"', standalone)
-        self.assertNotIn("def run_bench(operator_api):", standalone)
-        self.assertNotIn('print(f"latency-{case_id}: {latency}")', standalone)
-        self.assertIn("must be **<= 20**", standalone)
-        self.assertIn("prefer **8-20 representative cases**", standalone)
-        self.assertIn("cover small, medium, and large representative shapes", standalone)
-        self.assertIn("torch-module", standalone)
-        self.assertIn("constructor arguments", standalone)
+        self.assertFalse((REPO_ROOT / "skills" / "triton-npu-gen-bench" / "references" / "bench-standalone-spec.md").exists())
+        self.assertFalse((REPO_ROOT / "skills" / "triton-npu-gen-bench" / "references" / "bench-msprof-spec.md").exists())
 
-        self.assertIn("# bench-mode: msprof", msprof)
-        self.assertIn("# api-name: <resolved_entrypoint>", msprof)
-        self.assertIn("# api-kind: <resolved_api_kind>", msprof)
-        self.assertIn("# kernels: <resolved_kernel_names>", msprof)
-        self.assertIn("repeated runs of the same harness produce identical inputs", msprof)
-        self.assertNotIn("--api-name <api-name>", msprof)
-        self.assertIn("If `--bench N` is provided, then `--operator-file` is required.", msprof)
-        self.assertIn("torch-function", msprof)
-        self.assertIn("must be **<= 20**", msprof)
-        self.assertIn("prefer **8-20 representative cases**", msprof)
-        self.assertIn("cover small, medium, and large representative shapes", msprof)
-        self.assertIn("**Warmup:** run the kernel **5 times**", msprof)
-        self.assertIn("**Repeat:** after warmup, run the kernel **50 times**", msprof)
-        self.assertIn("MSPROF_REPEAT_ITERS = 50", msprof)
-        self.assertIn("for _ in range(MSPROF_REPEAT_ITERS):", msprof)
+        self.assertIn("# bench-mode: <torch-npu-profiler|msprof>", bench_spec)
+        self.assertIn("`# bench-mode:` is required", bench_spec)
+        self.assertIn("`torch-npu-profiler`", bench_spec)
+        self.assertIn("`msprof`", bench_spec)
+        self.assertIn("# api-name: <resolved_entrypoint>", bench_spec)
+        self.assertIn("# api-kind: <resolved_api_kind>", bench_spec)
+        self.assertIn("# kernels: <resolved_kernel_names>", bench_spec)
+        self.assertIn("repeated runs of the same harness produce identical inputs", bench_spec)
+        self.assertNotIn("| `--api-name <name>` | yes |", bench_spec)
+        self.assertNotIn("--api-name <api-name>", bench_spec)
+        self.assertIn("build_operator_api(operator_module)", bench_spec)
+        self.assertIn("build_bench_cases()", bench_spec)
+        self.assertIn("build_bench_case_fn(operator_api, case)", bench_spec)
+        self.assertNotIn("build_standalone_bench_cases(operator_api)", bench_spec)
+        self.assertIn("import-only", bench_spec)
+        self.assertNotIn('parser.add_argument("--operator-file"', bench_spec)
+        self.assertNotIn("--num-bench", bench_spec)
+        self.assertNotIn("--operator-file", bench_spec)
+        self.assertNotIn("argparse", bench_spec)
+        self.assertNotIn("def run_bench(operator_api):", bench_spec)
+        self.assertNotIn('print(f"latency-{case_id}: {latency}")', bench_spec)
+        self.assertIn("must be **<= 20**", bench_spec)
+        self.assertIn("prefer **8-20 representative cases**", bench_spec)
+        self.assertIn("cover small, medium, and large representative shapes", bench_spec)
+        self.assertIn("torch-function", bench_spec)
+        self.assertIn("torch-module", bench_spec)
+        self.assertIn("constructor arguments", bench_spec)
+        self.assertIn("Do **not** call `torch.npu.synchronize()`", bench_spec)
+        self.assertIn("instead of hard-coding separate mode-specific control flow", bench_spec)
 
     def test_contracts_do_not_depend_on_workspace_placeholder_examples(self) -> None:
         test_spec = _read("skills/triton-npu-gen-test/references/test-standalone-spec.md")
-        bench_spec = _read("skills/triton-npu-gen-bench/references/bench-standalone-spec.md")
+        bench_spec = _read("skills/triton-npu-gen-bench/references/bench-spec.md")
 
         self.assertIn("# test-mode:", test_spec)
         self.assertIn("# api-name:", test_spec)
@@ -1075,7 +1171,9 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("# kernels:", bench_spec)
         self.assertIn("repeated runs of the same harness produce identical inputs", bench_spec)
         self.assertIn("build_operator_api(operator_module)", bench_spec)
-        self.assertIn("build_standalone_bench_cases(operator_api)", bench_spec)
+        self.assertIn("build_bench_cases()", bench_spec)
+        self.assertIn("build_bench_case_fn(operator_api, case)", bench_spec)
+        self.assertNotIn("build_standalone_bench_cases(operator_api)", bench_spec)
         self.assertNotIn('parser.add_argument("--operator-file"', bench_spec)
         self.assertNotIn('parser.add_argument("--api-name"', bench_spec)
         self.assertNotIn('print(f"latency-', bench_spec)

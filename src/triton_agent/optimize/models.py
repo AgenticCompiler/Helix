@@ -47,7 +47,7 @@ class OptimizeRunOptions:
     enable_subagent: bool = False
     enable_agent_hooks: bool = False
     upload_enabled: bool = True
-    report: bool = True
+    report: bool = False
     log_tools: bool = False
     enable_mcp: bool = False
 

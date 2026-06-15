@@ -169,7 +169,9 @@ def run_buffered_process(
 
     try:
         while True:
-            if process.poll() is not None and not any(reader.is_alive() for reader in readers):
+            if process.poll() is not None:
+                for reader in readers:
+                    reader.join(timeout=1.0)
                 break
             if stall_timeout_seconds > 0 and time.monotonic() - start_ref[0] > stall_timeout_seconds:
                 process.terminate()
@@ -210,14 +212,16 @@ def run_buffered_process(
         )
 
     session_id = _flush_session_id_buffer(session_id_extractor, session_id, session_buffer)
-    if output_filter is not None:
-        trailing = output_filter.feed("", flush=True)
+    trailing = output_filter.feed("", flush=True) if output_filter is not None else ""
+    with lock:
         if trailing:
             stdout_chunks.append(trailing)
+        captured_stdout = "".join(stdout_chunks)
+        captured_stderr = "".join(stderr_chunks)
     return AgentResult(
         return_code=_resolved_returncode(process.returncode),
-        stdout="".join(stdout_chunks),
-        stderr="".join(stderr_chunks),
+        stdout=captured_stdout,
+        stderr=captured_stderr,
         stalled=False,
         session_id=session_id,
     )
@@ -322,7 +326,7 @@ def _run_streaming_process_windows(
     try:
         while True:
             reader_thread.join(timeout=0.1)
-            if not reader_thread.is_alive() and process.poll() is not None:
+            if process.poll() is not None:
                 break
             with lock:
                 elapsed = time.monotonic() - start_ref[0]
@@ -352,19 +356,24 @@ def _run_streaming_process_windows(
             retryable_failure=retryable_failure_ref[0],
         )
 
-    reader_thread.join()
-    if output_filter is not None:
-        trailing = output_filter.feed("", flush=True)
+    # Give the reader thread a short grace period to finish reading
+    # any remaining buffered output after the child process exits.
+    # Use a timeout to avoid hanging if the child's stdout pipe is
+    # held open by grandchildren (e.g. sub-agents).
+    reader_thread.join(timeout=1.0)
+    trailing = output_filter.feed("", flush=True) if output_filter is not None else ""
+    with lock:
         if trailing:
             if collect_stdout:
                 output_chunks.append(trailing)
             print(trailing, file=stdout or sys.stdout, end="")
             if rendered_chunk_sink is not None:
                 rendered_chunk_sink(trailing)
+        captured_stdout = "".join(output_chunks) if collect_stdout else ""
     rc = process.wait() if not stalled_ref[0] else 1
     return AgentResult(
         return_code=rc,
-        stdout="".join(output_chunks) if collect_stdout else "",
+        stdout=captured_stdout,
         stderr="",
         stalled=stalled_ref[0],
         session_id=session_id_ref[0],

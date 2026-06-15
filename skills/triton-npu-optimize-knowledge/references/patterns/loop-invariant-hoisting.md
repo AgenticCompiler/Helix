@@ -155,7 +155,7 @@ for kd in range(KERNEL_D):
         acc += load(x_base + ti * stride_d + ...)
 ```
 
-This is not mere hoisting: the counting loop is **eliminated**, not moved. See `pooling-clip-window-closed-divisor` for padding semantics and Triton/Ascend details.
+This is not mere hoisting: the counting loop is **eliminated**, not moved. See `simt-clip-window-closed-reduction` for padding semantics and Triton/Ascend details.
 
 ## Performance impact expectations
 
@@ -187,4 +187,4 @@ This is not mere hoisting: the counting loop is **eliminated**, not moved. See `
 - Complements **`compile-hint`**: after LICM, add alignment/contiguity hints.
 - Complements **`software-pipeline`**: LICM simplifies loop bodies; pipeline overlaps remaining transfer/compute.
 - Complements **`remove-implicit-transpose`**: layout fixes reduce transform work; LICM reduces residual loop control cost.
-- `pooling-clip-window-closed-divisor` — algebraic divisor replacement plus clip-window loads for pooling kernels
+- `simt-clip-window-closed-reduction` — algebraic normalizer replacement plus clip-window loads for fixed-window reduces

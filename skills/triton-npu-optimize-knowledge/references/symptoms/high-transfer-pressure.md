@@ -19,7 +19,7 @@ The round looks dominated by data movement, staging cost, or transfer-heavy exec
 - `algebraic-optimization`
 - `discrete_memory_access`
 - `gather-load`
-- `pooling-inner-w-slab-gather`
+- `sliding-window-inner-w-slab-gather`
 - `slice-coalesce`
 - `slice-intermediate`
 

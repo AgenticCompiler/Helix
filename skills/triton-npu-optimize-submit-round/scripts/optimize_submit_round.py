@@ -53,7 +53,6 @@ __all__ = [
     "resolve_round_perf_file",
 ]
 
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=Path(__file__).name)
     subparsers = parser.add_subparsers(dest="command", required=True)

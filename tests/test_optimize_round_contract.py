@@ -235,7 +235,6 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "opt_note_updated": True,
                         "round_disposition": "continue",
                         "perf_analysis_path": "perf-analysis.md",
-                        "analysis_comparison_sources": ["baseline/profile", "baseline/ir"],
                     }
                 ),
                 encoding="utf-8",
@@ -244,10 +243,8 @@ class OptimizeRoundContractTests(unittest.TestCase):
             state = load_round_state(round_dir)
 
             self.assertEqual(state.perf_analysis_path, "perf-analysis.md")
-            self.assertEqual(
-                state.analysis_comparison_sources,
-                ("baseline/profile", "baseline/ir"),
-            )
+            self.assertFalse(hasattr(state, "analysis_comparison_sources"))
+            self.assertFalse(hasattr(state, "validated_candidate"))
 
     def test_load_round_state_accepts_effective_metric_source_total_op(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

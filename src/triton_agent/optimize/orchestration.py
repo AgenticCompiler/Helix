@@ -26,10 +26,16 @@ def count_completed_round_directories(workdir: Path) -> int:
     return optimize_execution.count_round_directories(workdir)
 
 
-def _initial_batch_bounds(workdir: Path, *, min_rounds: int, round_batch_size: int) -> tuple[int, int]:
+def _initial_batch_bounds(
+    workdir: Path,
+    *,
+    min_rounds: int,
+    round_batch_size: int,
+    interact: bool = False,
+) -> tuple[int, int]:
     completed_rounds = count_completed_round_directories(workdir)
     batch_start = completed_rounds + 1
-    batch_end = min(completed_rounds + round_batch_size, min_rounds)
+    batch_end = min_rounds if interact else min(completed_rounds + round_batch_size, min_rounds)
     return batch_start, batch_end
 
 
@@ -49,7 +55,7 @@ def build_optimize_request(
         requested_bench_mode=options.bench_mode,
     )
     test_mode = resolution.test_mode or "differential"
-    bench_mode = resolution.bench_mode or "standalone"
+    bench_mode = resolution.bench_mode or "torch-npu-profiler"
 
     output_path = (
         Path(options.output).expanduser().resolve()
@@ -60,6 +66,7 @@ def build_optimize_request(
         workdir,
         min_rounds=options.min_rounds,
         round_batch_size=options.round_batch_size,
+        interact=options.interact,
     )
     compiler_source = None
     if options.compiler_source_analysis != "off":

@@ -26,6 +26,7 @@ Capture complete Triton Ascend compiler IR into a stable archive directory, then
    - `bishengir_stages/`: full Bisheng MLIR stage tree
    - `all-ir.txt`: compiler stderr from the replayed Bisheng command
    - `capture-manifest.json`: original command, extracted dump path, original compile command, and replay command
+   - Start with `python3 ./scripts/inspect_ir.py list-stages --ir-dir <ir-dir>`. If that is not enough, inspect `bishengir_stages/`, `triton_dump/`, `all-ir.txt`, and `capture-manifest.json` directly.
 
 3. Inspect the IR directory with the bundled helper.
    - `list-stages`
@@ -88,7 +89,7 @@ Capture complete Triton Ascend compiler IR into a stable archive directory, then
 - Prefer `performance-signals` before manual stage browsing when the immediate question is whether IR hints at vectorization loss, transfer-heavy lowering, or weak overlap.
 - Treat `inspect_ir.py` as the first-pass navigator, not a replacement for direct text inspection. After it identifies the relevant stages, feel free to use `rg`, `sed`, `diff`, or similar terminal tools on the archived `.mlir` files.
 - For remote capture, the helper stages the benchmark harness and operator file into the remote workspace before running the benchmark command there.
-- For standalone benchmark harnesses, IR capture runs through `standalone_bench_runtime.py run-one` instead of executing `bench_<op>.py` directly, so the benchmark file may stay import-only.
+- Import-only benchmark harnesses are supported for IR capture; the benchmark file does not need its own executable CLI path.
 - Keep the IR directory immutable once captured unless the user explicitly asks to replace it.
 - Present analysis in terms of concrete artifacts and passes, not only intuition. Call out the relevant archive paths and stage names you inspected.
 - Do not invent a fixed Ascend IR tuning methodology yet. Analyze the archived IR directly and be explicit when a conclusion is a hypothesis rather than a proven bottleneck.

@@ -6,8 +6,8 @@ Add explicit benchmark-mode selection for `gen-bench` and `run-bench`.
 
 ## User-Visible Behavior
 
-- `gen-bench` accepts `--bench-mode standalone|msprof`.
-- `run-bench` accepts `--bench-mode standalone|msprof`.
+- `gen-bench` accepts `--bench-mode torch-npu-profiler|msprof`.
+- `run-bench` accepts `--bench-mode torch-npu-profiler|msprof`.
 - The selected mode is passed through to the code agent so it can generate or run the requested style of benchmark.
 - Commands outside the benchmark workflow should not expose this option.
 
