@@ -972,7 +972,23 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(gen_args.test_mode, "standalone")
         self.assertIsNone(run_args.test_mode)
 
-    def test_run_test_accepts_baseline_result(self) -> None:
+    def test_run_test_accepts_ref_result(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run-test",
+                "--test-file",
+                "differential_test_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--ref-result",
+                "ref_result.pt",
+            ]
+        )
+        self.assertEqual(args.ref_result, "ref_result.pt")
+        self.assertIsNone(args.ref_operator_file)
+
+    def test_run_test_accepts_legacy_baseline_result_alias(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
             [
@@ -985,10 +1001,26 @@ class CliMCPServerCommandTests(unittest.TestCase):
                 "baseline_result.pt",
             ]
         )
-        self.assertEqual(args.baseline_result, "baseline_result.pt")
-        self.assertIsNone(args.baseline_operator_file)
+        self.assertEqual(args.ref_result, "baseline_result.pt")
+        self.assertIsNone(args.ref_operator_file)
 
-    def test_run_test_accepts_baseline_operator_file(self) -> None:
+    def test_run_test_accepts_ref_operator_file(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run-test",
+                "--test-file",
+                "differential_test_kernel.py",
+                "--operator-file",
+                "opt_kernel.py",
+                "--ref-operator-file",
+                "kernel.py",
+            ]
+        )
+        self.assertIsNone(args.ref_result)
+        self.assertEqual(args.ref_operator_file, "kernel.py")
+
+    def test_run_test_accepts_legacy_baseline_operator_file_alias(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
             [
@@ -1001,8 +1033,8 @@ class CliMCPServerCommandTests(unittest.TestCase):
                 "kernel.py",
             ]
         )
-        self.assertIsNone(args.baseline_result)
-        self.assertEqual(args.baseline_operator_file, "kernel.py")
+        self.assertIsNone(args.ref_result)
+        self.assertEqual(args.ref_operator_file, "kernel.py")
 
     def test_gen_eval_defaults_to_differential_test_mode(self) -> None:
         parser = build_parser()
@@ -3860,7 +3892,7 @@ class PathResolutionTests(unittest.TestCase):
                 ),
             )
 
-    def test_main_run_test_auto_compares_differential_result_when_baseline_result_provided(self) -> None:
+    def test_main_run_test_auto_compares_differential_result_when_ref_result_provided(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
@@ -3886,7 +3918,7 @@ class PathResolutionTests(unittest.TestCase):
                             str(operator),
                             "--test-mode",
                             "differential",
-                            "--baseline-result",
+                            "--ref-result",
                             str(baseline_result),
                         ]
                     )

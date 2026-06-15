@@ -221,7 +221,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("run `run-test-optimize`", test_gen)
         self.assertIn("keep `compare-result` for reruns", test_gen)
         self.assertIn("focused run-eval guide", test_gen)
-        self.assertNotIn("--baseline-operator-file", test_gen)
+        self.assertNotIn("--ref-operator-file", test_gen)
 
         bench_gen = _read("skills/triton-npu-gen-bench/SKILL.md")
         self.assertIn("## Validation Commands", bench_gen)
@@ -261,8 +261,8 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("run-test-optimize", run_test)
         self.assertIn("Always pass both `--test-file` and `--operator-file`.", run_test)
         self.assertNotIn("--oracle-result", run_test)
-        self.assertIn("--baseline-operator-file", run_test)
-        self.assertIn("run-test-optimize` requires `--baseline-operator-file`", run_test)
+        self.assertIn("--ref-operator-file", run_test)
+        self.assertIn("run-test-optimize` requires `--ref-operator-file`", run_test)
         self.assertIn("--remote user@host:2222", run_test)
 
         self.assertIn("Always pass both `--bench-file` and `--operator-file`.", run_bench)
@@ -277,7 +277,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("--keep-remote-workdir", profile_bench)
 
         self.assertIn("rerun or inspect the comparison separately from `run-test-optimize`", compare_result)
-        self.assertIn("Prefer `run-test-optimize --baseline-operator-file ...`", compare_result)
+        self.assertIn("Prefer `run-test-optimize --ref-operator-file ...`", compare_result)
         self.assertIn("shared NPU accuracy comparison contract", compare_result)
         self.assertIn("prints detailed diagnostics", compare_result)
         self.assertNotIn("--compare-level", compare_result)

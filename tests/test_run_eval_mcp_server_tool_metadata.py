@@ -35,15 +35,15 @@ class RunEvalMCPServerToolMetadataTests(unittest.TestCase):
             "Optional test mode override. Supported values: standalone, differential.",
         )
         self.assertNotIn("compare_level", tools["run-test-baseline"].parameters["properties"])
-        self.assertNotIn("baseline_result", tools["run-test-baseline"].parameters["properties"])
+        self.assertNotIn("ref_result", tools["run-test-baseline"].parameters["properties"])
 
         self.assertEqual(
             tools["run-test-optimize"].description,
-            "Run the optimized operator against a test case and compare it with baseline evidence.",
+            "Run the optimized operator against a test case and compare it with reference evidence.",
         )
         self.assertEqual(
-            tools["run-test-optimize"].parameters["properties"]["baseline_operator_file"]["description"],
-            "Absolute path to the baseline operator file used to produce comparison output.",
+            tools["run-test-optimize"].parameters["properties"]["ref_operator_file"]["description"],
+            "Absolute path to the reference operator file used to produce comparison output.",
         )
         self.assertNotIn("compare_level", tools["run-test-optimize"].parameters["properties"])
 

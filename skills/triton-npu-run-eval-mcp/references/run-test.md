@@ -9,7 +9,7 @@ Rules:
 - Use `test_mode="standalone"` or `test_mode="differential"` only when you need to override the embedded metadata.
 - `run-test-baseline` must be used to validate the correctness of a baseline operator.
 - `run-test-optimize` must be used to validate the correctness of an optimized operator.
-- In optimize differential mode, `run-test-optimize` requires `baseline_operator_file`.
+- In optimize differential mode, `run-test-optimize` requires `ref_operator_file`.
 - Differential result comparison always uses the shared NPU accuracy comparison contract. There is no compare-level option.
 - Remote execution uses `remote`, `remote_workdir`, and `keep_remote_workdir` when needed.
 
@@ -17,5 +17,5 @@ Argument examples:
 
 - `run-test-baseline(test_file="test_<operator>.py", operator_file="<operator>.py", test_mode="standalone")`
 - `run-test-baseline(test_file="differential_test_<operator>.py", operator_file="<operator>.py", test_mode="differential")`
-- `run-test-optimize(test_file="differential_test_<operator>.py", operator_file="opt_<operator>.py", test_mode="differential", baseline_operator_file="<operator>.py")`
-- `run-test-optimize(test_file="differential_test_<operator>.py", operator_file="opt_<operator>.py", baseline_operator_file="<operator>.py", remote="user@host:2222", remote_workdir="/tmp/triton-agent")`
+- `run-test-optimize(test_file="differential_test_<operator>.py", operator_file="opt_<operator>.py", test_mode="differential", ref_operator_file="<operator>.py")`
+- `run-test-optimize(test_file="differential_test_<operator>.py", operator_file="opt_<operator>.py", ref_operator_file="<operator>.py", remote="user@host:2222", remote_workdir="/tmp/triton-agent")`

@@ -4,7 +4,7 @@ Use `run-test-baseline` for baseline or generation validation, and use `run-test
 
 ```bash
 python3 ./scripts/run-command.py run-test-baseline --test-file test_<operator>.py --operator-file <operator>.py
-python3 ./scripts/run-command.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --baseline-operator-file <operator>.py
+python3 ./scripts/run-command.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --ref-operator-file <operator>.py
 ```
 
 Rules:
@@ -15,7 +15,7 @@ Rules:
 
 - `run-test-baseline` must be used to validate the correctness of a baseline operator.
 - `run-test-optimize` must be used to validate the correctness of an optimized operator.
-- In optimize differential mode, `run-test-optimize` requires `--baseline-operator-file`.
+- In optimize differential mode, `run-test-optimize` requires `--ref-operator-file`.
 - Differential result comparison always uses the shared NPU accuracy comparison contract. There is no compare-level option.
 
 Examples:
@@ -23,12 +23,12 @@ Examples:
 ```bash
 python3 ./scripts/run-command.py run-test-baseline --test-file test_<operator>.py --operator-file <operator>.py --test-mode standalone
 python3 ./scripts/run-command.py run-test-baseline --test-file differential_test_<operator>.py --operator-file <operator>.py --test-mode differential
-python3 ./scripts/run-command.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode differential --baseline-operator-file <operator>.py
+python3 ./scripts/run-command.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode differential --ref-operator-file <operator>.py
 ```
 
 Remote examples:
 
 ```bash
 python3 ./scripts/run-command.py run-test-baseline --test-file test_<operator>.py --operator-file <operator>.py --remote user@host:2222
-python3 ./scripts/run-command.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --baseline-operator-file <operator>.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
+python3 ./scripts/run-command.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --ref-operator-file <operator>.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
 ```

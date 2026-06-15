@@ -695,8 +695,8 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
     if spec.input_mode == "run-test":
         subparser.add_argument("--test-file", required=True)
         subparser.add_argument("--operator-file", required=True)
-        subparser.add_argument("--baseline-result")
-        subparser.add_argument("--baseline-operator-file")
+        subparser.add_argument("--ref-result", "--baseline-result", dest="ref_result")
+        subparser.add_argument("--ref-operator-file", "--baseline-operator-file", dest="ref_operator_file")
         return
     if spec.input_mode == "run-bench":
         subparser.add_argument("--bench-file", required=True)
