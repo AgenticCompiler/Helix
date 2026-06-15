@@ -18,7 +18,6 @@ from triton_agent.output import render_result
 from triton_agent.paths import default_generated_output_path
 from triton_agent.verbose import emit_verbose_lines
 
-_CONVERT_COMPARE_LEVEL = "balanced"
 _MAX_CONVERT_AGENT_ATTEMPTS = 2
 
 
@@ -262,7 +261,7 @@ def _verify_converted_output(
             baseline_result=baseline_result,
         )
 
-    compare_code = compare_result_files(baseline_result, candidate_archive, _CONVERT_COMPARE_LEVEL)
+    compare_code = compare_result_files(baseline_result, candidate_archive)
     if compare_code != 0:
         return _ConvertVerificationResult(
             return_code=compare_code,
@@ -273,7 +272,7 @@ def _verify_converted_output(
                 f"Converted operator: {converted_output}\n"
                 f"Baseline result: {baseline_result}\n"
                 f"Candidate result: {candidate_archive}\n"
-                f"Comparison result: compare-result failed at level {_CONVERT_COMPARE_LEVEL}."
+                "Comparison result: compare-result failed."
             ),
             baseline_result=baseline_result,
         )

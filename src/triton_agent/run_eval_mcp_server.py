@@ -99,9 +99,8 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
             test_file=test_file,
             operator_file=operator_file,
             test_mode=test_mode,
-            compare_level=None,
-            baseline_result=None,
-            baseline_operator_file=None,
+            ref_result=None,
+            ref_operator_file=None,
             remote=remote,
             remote_workdir=remote_workdir,
             keep_remote_workdir=False,
@@ -117,26 +116,22 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
 
     @server.tool(
         name="run-test-optimize",
-        description="Run the optimized operator against a test case and compare it with baseline evidence.",
+        description="Run the optimized operator against a test case and compare it with reference evidence.",
     )
     def run_test_optimize(
         test_file: Annotated[str, Field(description="Absolute path to the test entry file.")],
         operator_file: Annotated[str, Field(description="Absolute path to the optimized operator implementation file.")],
-        baseline_operator_file: Annotated[
+        ref_operator_file: Annotated[
             str | None,
-            Field(description="Absolute path to the baseline operator file used to produce comparison output."),
+            Field(description="Absolute path to the reference operator file used to produce comparison output."),
         ] = None,
-        baseline_result: Annotated[
+        ref_result: Annotated[
             str | None,
-            Field(description="Absolute path to an archived baseline result used for differential comparison."),
+            Field(description="Absolute path to an archived reference result used for differential comparison."),
         ] = None,
         test_mode: Annotated[
             str | None,
             Field(description="Optional test mode override. Supported values: standalone, differential."),
-        ] = None,
-        compare_level: Annotated[
-            str | None,
-            Field(description="Optional differential comparison strictness. Supported values: strict, balanced, relaxed."),
         ] = None,
         remote: Annotated[str | None, Field(description="Optional remote execution target.")] = None,
         remote_workdir: Annotated[str | None, Field(description="Optional remote workspace root override.")] = None,
@@ -146,9 +141,8 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
             test_file=test_file,
             operator_file=operator_file,
             test_mode=test_mode,
-            compare_level=compare_level,
-            baseline_result=baseline_result,
-            baseline_operator_file=baseline_operator_file,
+            ref_result=ref_result,
+            ref_operator_file=ref_operator_file,
             remote=remote,
             remote_workdir=remote_workdir,
             keep_remote_workdir=False,
@@ -330,9 +324,8 @@ def _build_run_test_arguments(
     test_file: str,
     operator_file: str,
     test_mode: str | None,
-    compare_level: str | None,
-    baseline_result: str | None,
-    baseline_operator_file: str | None,
+    ref_result: str | None,
+    ref_operator_file: str | None,
     remote: str | None,
     remote_workdir: str | None,
     keep_remote_workdir: bool,
@@ -346,12 +339,10 @@ def _build_run_test_arguments(
     ]
     if test_mode is not None:
         arguments.extend(["--test-mode", test_mode])
-    if compare_level is not None:
-        arguments.extend(["--compare-level", compare_level])
-    if baseline_result is not None:
-        arguments.extend(["--baseline-result", baseline_result])
-    if baseline_operator_file is not None:
-        arguments.extend(["--baseline-operator-file", baseline_operator_file])
+    if ref_result is not None:
+        arguments.extend(["--ref-result", ref_result])
+    if ref_operator_file is not None:
+        arguments.extend(["--ref-operator-file", ref_operator_file])
     _append_common_remote_arguments(
         arguments,
         remote=remote,

@@ -48,11 +48,13 @@ Use this skill when the user wants a new correctness test file, wants a specific
 The generated test file must include a short metadata header near the top of the file:
 
 - `# test-mode: <mode>`
+- `# compute-kind: <compute|non-compute>`
 - `# api-name: <resolved-entrypoint>`
 - `# api-kind: <triton-wrapper|torch-function|torch-module>`
 - `# kernels: <resolved_kernel_names>`
 
 - Always follow the selected spec file exactly. The spec is authoritative for the mode-specific runtime shape, hook surface, artifact layout, and validation behavior.
+- Use `compute-kind: compute` for operators that perform numeric computation. Use `compute-kind: non-compute` only for pure data movement, layout, view, copy, or similar operators that require binary equality.
 - Keep the shared contract consistent across modes: use the metadata header, resolve the public entrypoint explicitly, generate deterministic NPU coverage, require explicit seed control whenever randomness is used so repeated runs of the same harness produce identical inputs, and avoid inventing extra runtime behavior that the spec does not require.
 
 ## Validation Commands

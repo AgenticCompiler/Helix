@@ -353,7 +353,6 @@ class ConvertRuntimeTests(unittest.TestCase):
             compare_mock.assert_called_once_with(
                 archived_oracle,
                 archived_candidate,
-                "balanced",
             )
 
     def test_resolve_convert_test_file_falls_back_to_unique_standalone_test(self) -> None:
@@ -643,7 +642,6 @@ class ConvertRuntimeTests(unittest.TestCase):
         compare_mock.assert_called_once_with(
             baseline_result.resolve(),
             candidate_result,
-            "balanced",
         )
 
     def test_handle_convert_repairs_once_after_cli_verification_failure(self) -> None:
@@ -692,7 +690,7 @@ class ConvertRuntimeTests(unittest.TestCase):
             self.assertIn("Follow-up convert verification failed.", prompts[1])
             self.assertIn("Differential test file:", prompts[1])
             self.assertIn("Converted operator:", prompts[1])
-            self.assertIn("Comparison result: compare-result failed at level balanced.", prompts[1])
+            self.assertIn("Comparison result: compare-result failed.", prompts[1])
             self.assertEqual(
                 observed_test_calls,
                 [
