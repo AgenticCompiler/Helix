@@ -9,6 +9,7 @@ import shutil
 import sys
 import tempfile
 import time
+import bench_runner_msprof as _msprof
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -1157,7 +1158,7 @@ def _run_local_bench_msprof_simulator(
     had_stalls = False
     session_id: str | None = None
 
-    output_dir, temp_dir = _create_local_msprof_output_dir(0, preserved_run_dir)
+    output_dir, temp_dir = _create_local_msprof_output_dir('0', preserved_run_dir)
     try:
         command = [
             "msprof",
@@ -1248,8 +1249,8 @@ def _run_local_bench_msprof_simulator_standalone(
     extract_dest_dir: Path | None = None,
 ) -> tuple[ResultPayload, Path | None]:
     resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
-    runtime = _load_standalone_runtime_module()
-    cases, _ = runtime.load_standalone_bench_cases(bench_file, operator_file)
+    runtime = _load_bench_runtime_module()
+    cases, _ = runtime.load_bench_cases(bench_file, operator_file)
     if not cases:
         raise ValueError("No standalone bench cases found")
     selected_case = cases[len(cases) // 2]
@@ -1265,7 +1266,7 @@ def _run_local_bench_msprof_simulator_standalone(
     except Exception:
         pass
 
-    output_dir, temp_dir = _create_local_msprof_output_dir(0, preserved_run_dir)
+    output_dir, temp_dir = _create_local_msprof_output_dir('0', preserved_run_dir)
     try:
         command = [
             "msprof",
