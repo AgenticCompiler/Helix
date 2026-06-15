@@ -171,7 +171,7 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
         operator_file: Annotated[str, Field(description="Absolute path to the operator implementation file.")],
         bench_mode: Annotated[
             str | None,
-            Field(description="Optional benchmark mode override. Supported values: standalone, msprof."),
+            Field(description="Optional benchmark mode override. Supported values: torch-npu-profiler, msprof."),
         ] = None,
         remote: Annotated[str | None, Field(description="Optional remote execution target.")] = None,
         remote_workdir: Annotated[str | None, Field(description="Optional remote workspace root override.")] = None,
@@ -209,10 +209,9 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
         operator_file: Annotated[str, Field(description="Absolute path to the operator implementation file.")],
         bench_mode: Annotated[
             str | None,
-            Field(description="Optional benchmark mode override. Supported values: standalone, msprof."),
+            Field(description="Optional benchmark mode override. Supported values: torch-npu-profiler, msprof."),
         ] = None,
         case_id: Annotated[str | None, Field(description="Optional benchmark case id to profile.")] = None,
-        bench: Annotated[int | None, Field(description="Optional numeric benchmark case index to profile.")] = None,
         kernel_name: Annotated[str | None, Field(description="Optional kernel name filter for profiling.")] = None,
         target_op: Annotated[
             str | None,
@@ -232,8 +231,6 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
             arguments.extend(["--bench-mode", bench_mode])
         if case_id is not None:
             arguments.extend(["--case-id", case_id])
-        if bench is not None:
-            arguments.extend(["--bench", str(bench)])
         if kernel_name is not None:
             arguments.extend(["--kernel-name", kernel_name])
         if target_op is not None:

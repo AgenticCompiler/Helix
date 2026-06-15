@@ -28,7 +28,7 @@ def parse_kernel_details(csv_path: Path) -> list[KernelInvocation]:
         reader = csv.DictReader(handle)
         fieldnames = reader.fieldnames or []
 
-        # standalone uses: Name, Type, Accelerator Core, Duration(us), Wait Time(us), Block Dim
+        # torch-npu-profiler uses: Name, Type, Accelerator Core, Duration(us), Wait Time(us), Block Dim
         name_col = "Name" if "Name" in fieldnames else None
         duration_col = "Duration(us)" if "Duration(us)" in fieldnames else None
         wait_col = "Wait Time(us)" if "Wait Time(us)" in fieldnames else None
@@ -165,7 +165,7 @@ def parse_trace_view(json_path: Path) -> list[dict[str, Any]]:
     return []
 
 
-class StandaloneParser:
+class TorchNpuProfilerParser:
     """Parser for torch_npu.profiler ASCEND_PROFILER_OUTPUT/ artifacts."""
 
     def parse(

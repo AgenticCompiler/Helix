@@ -122,7 +122,7 @@ class GenerationHelpersTests(unittest.TestCase):
                 continue_optimize=False,
                 output=None,
                 test_mode="differential",
-                bench_mode="standalone",
+                bench_mode="torch-npu-profiler",
                 prompt=None,
             ),
         )
@@ -251,7 +251,7 @@ class GenerationHelpersTests(unittest.TestCase):
                 continue_optimize=False,
                 output=None,
                 test_mode="differential",
-                bench_mode="standalone",
+                bench_mode="torch-npu-profiler",
                 prompt=None,
             ),
         )
@@ -276,7 +276,7 @@ class GenerationHelpersTests(unittest.TestCase):
                 continue_optimize=False,
                 output=None,
                 test_mode="differential",
-                bench_mode="standalone",
+                bench_mode="torch-npu-profiler",
                 prompt="Avoid broad operator rewrites.",
             ),
         )
@@ -546,7 +546,7 @@ class GenerationCommandHandlerTests(unittest.TestCase):
                 ),
             )
             self.assertEqual(captured["test_mode"], "differential")
-            self.assertEqual(captured["bench_mode"], "standalone")
+            self.assertEqual(captured["bench_mode"], "torch-npu-profiler")
 
     def test_handle_gen_eval_directory_input_uses_workspace_as_workdir(self) -> None:
         parser = build_parser()

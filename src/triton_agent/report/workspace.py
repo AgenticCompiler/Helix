@@ -156,5 +156,3 @@ def generate_workspace_report(
         return True, "report.md written"
     return False, "agent completed but report.md was not created"
 
-
-__all__ = ["generate_workspace_report"]

@@ -420,6 +420,39 @@ class ConvertRuntimeTests(unittest.TestCase):
 
         self.assertEqual(resolved, differential_test.resolve())
 
+    def test_resolve_convert_test_file_prefers_requested_standalone_over_differential(self) -> None:
+        from triton_agent.commands.convert import _resolve_convert_test_file
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            differential_test = workspace / "differential_test_kernel.py"
+            standalone_test = workspace / "test_kernel.py"
+            operator.write_text("print('src')\n", encoding="utf-8")
+            differential_test.write_text("# test-mode: differential\n", encoding="utf-8")
+            standalone_test.write_text("# test-mode: standalone\n", encoding="utf-8")
+
+            request = AgentRequest(
+                command_kind=CommandKind.CONVERT,
+                input_path=operator.resolve(),
+                operator_path=operator.resolve(),
+                output_path=(workspace / "triton_kernel.py").resolve(),
+                test_mode="standalone",
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-convert-pytorch-operator",
+                prompt="convert",
+                workdir=workspace.resolve(),
+            )
+
+            resolved = _resolve_convert_test_file(request)
+
+        self.assertEqual(resolved, standalone_test.resolve())
+
     def test_verify_converted_output_uses_standalone_mode_without_result_comparison(self) -> None:
         from triton_agent.commands.convert import _verify_converted_output
 
@@ -465,6 +498,55 @@ class ConvertRuntimeTests(unittest.TestCase):
         self.assertEqual(verification.return_code, 0)
         self.assertEqual(observed_modes, ["standalone"])
         self.assertEqual(observed_targets, [converted.resolve()])
+        compare_mock.assert_not_called()
+
+    def test_verify_converted_output_prefers_requested_standalone_test_when_both_exist(self) -> None:
+        from triton_agent.commands.convert import _verify_converted_output
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            converted = workspace / "triton_kernel.py"
+            differential_test = workspace / "differential_test_kernel.py"
+            standalone_test = workspace / "test_kernel.py"
+            operator.write_text("print('src')\n", encoding="utf-8")
+            converted.write_text("print('dst')\n", encoding="utf-8")
+            differential_test.write_text("# test-mode: differential\n", encoding="utf-8")
+            standalone_test.write_text("# test-mode: standalone\n", encoding="utf-8")
+
+            request = AgentRequest(
+                command_kind=CommandKind.CONVERT,
+                input_path=operator.resolve(),
+                operator_path=operator.resolve(),
+                output_path=converted.resolve(),
+                test_mode="standalone",
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                show_output=False,
+                force_overwrite=False,
+                agent_name="codex",
+                skill_name="triton-npu-convert-pytorch-operator",
+                prompt="convert",
+                workdir=workspace.resolve(),
+            )
+
+            observed_test_calls: list[tuple[Path, Path, str]] = []
+
+            def _fake_run_local_test(test_path, operator_path, test_mode, *, verbose=False):
+                del verbose
+                observed_test_calls.append((test_path, operator_path, test_mode))
+                return AgentResult(return_code=0, stdout="ok\n", stderr=""), None
+
+            with patch("triton_agent.commands.convert.run_local_test", side_effect=_fake_run_local_test):
+                with patch("triton_agent.commands.convert.compare_result_files") as compare_mock:
+                    verification = _verify_converted_output(request)
+
+        self.assertEqual(verification.return_code, 0)
+        self.assertEqual(
+            observed_test_calls,
+            [(standalone_test.resolve(), converted.resolve(), "standalone")],
+        )
         compare_mock.assert_not_called()
 
     def test_verify_converted_output_reports_standalone_failure_context(self) -> None:

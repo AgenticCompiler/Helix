@@ -15,6 +15,10 @@ def cleanup_workspace_pt_files(workdir: Path) -> list[str]:
         return []
     cleaned: list[str] = []
     cleaned.extend(cleanup_dir_pt_files(workdir))
+    baseline_dir = workdir / "baseline"
+    if baseline_dir.is_dir():
+        for name in cleanup_dir_pt_files(baseline_dir):
+            cleaned.append(f"{baseline_dir.name}/{name}")
     for round_dir in sorted(workdir.glob("opt-round-*")):
         if not round_dir.is_dir():
             continue

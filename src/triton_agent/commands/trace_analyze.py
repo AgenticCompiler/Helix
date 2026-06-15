@@ -21,5 +21,3 @@ def handle_trace_analyze(parser: argparse.ArgumentParser, args: argparse.Namespa
         print(f"Wrote {output_dir / 'summary.json'}")
     return 0 if not warnings else 1
 
-
-__all__ = ["handle_trace_analyze"]

@@ -184,7 +184,7 @@ def _verify_converted_output(
             baseline_result=cached_baseline_result,
         )
 
-    test_mode = _resolve_convert_validation_mode(test_file)
+    test_mode = _resolve_convert_validation_mode(test_file, request.test_mode)
     if test_mode == "standalone":
         candidate_result, _candidate_archive, candidate_summary = _run_convert_validation_test(
             request,
@@ -302,62 +302,97 @@ def _resolve_convert_baseline_result(request: AgentRequest, test_file: Path) -> 
 
 
 def _resolve_convert_test_file(request: AgentRequest) -> Path:
-    default_test = default_generated_output_path(
+    preferred_mode = _normalize_convert_test_mode(request.test_mode)
+    fallback_mode = "standalone" if preferred_mode == "differential" else "differential"
+    preferred_default = default_generated_output_path(
         CommandKind.GEN_TEST,
         request.input_path,
-        test_mode="differential",
+        test_mode=preferred_mode,
     ).resolve()
-    if default_test.exists():
-        return default_test
+    if preferred_default.exists():
+        return preferred_default
 
-    standalone_default = default_generated_output_path(
+    fallback_default = default_generated_output_path(
         CommandKind.GEN_TEST,
         request.input_path,
-        test_mode="standalone",
+        test_mode=fallback_mode,
     ).resolve()
-    if standalone_default.exists():
-        return standalone_default
+    if fallback_default.exists():
+        return fallback_default
 
-    differential_candidates = sorted(
+    preferred_candidates = _collect_convert_test_candidates(request.workdir, preferred_mode)
+    if len(preferred_candidates) == 1:
+        return preferred_candidates[0]
+    if len(preferred_candidates) > 1:
+        raise ValueError(
+            _multiple_convert_test_candidates_message(
+                request.workdir,
+                preferred_mode,
+                preferred_default,
+            )
+        )
+
+    fallback_candidates = _collect_convert_test_candidates(request.workdir, fallback_mode)
+    if len(fallback_candidates) == 1:
+        return fallback_candidates[0]
+    if len(fallback_candidates) > 1:
+        raise ValueError(
+            _multiple_convert_test_candidates_message(
+                request.workdir,
+                fallback_mode,
+                fallback_default,
+            )
+        )
+
+    raise FileNotFoundError(
+        "convert verification could not find a reusable test file. "
+        f"Expected {preferred_default}, {fallback_default}, exactly one differential_test_*.py file, "
+        f"or exactly one test_*.py file in {request.workdir}."
+    )
+
+
+def _normalize_convert_test_mode(mode: str | None) -> str:
+    return "standalone" if mode == "standalone" else "differential"
+
+
+def _collect_convert_test_candidates(workdir: Path, test_mode: str) -> list[Path]:
+    if test_mode == "standalone":
+        return sorted(
+            path.resolve()
+            for path in workdir.iterdir()
+            if path.is_file()
+            and path.suffix == ".py"
+            and path.name.startswith("test_")
+            and not path.name.startswith("differential_test_")
+        )
+    return sorted(
         path.resolve()
-        for path in request.workdir.iterdir()
+        for path in workdir.iterdir()
         if path.is_file() and path.suffix == ".py" and path.name.startswith("differential_test_")
     )
-    if len(differential_candidates) == 1:
-        return differential_candidates[0]
-    if len(differential_candidates) > 1:
-        raise ValueError(
-            "convert verification found multiple reusable differential test files. "
-            f"Expected {default_test} or exactly one differential_test_*.py file in {request.workdir}."
-        )
 
-    standalone_candidates = sorted(
-        path.resolve()
-        for path in request.workdir.iterdir()
-        if path.is_file()
-        and path.suffix == ".py"
-        and path.name.startswith("test_")
-        and not path.name.startswith("differential_test_")
-    )
-    if len(standalone_candidates) == 1:
-        return standalone_candidates[0]
-    if not standalone_candidates:
-        raise FileNotFoundError(
-            "convert verification could not find a reusable test file. "
-            f"Expected {default_test}, {standalone_default}, exactly one differential_test_*.py file, "
-            f"or exactly one test_*.py file in {request.workdir}."
+
+def _multiple_convert_test_candidates_message(
+    workdir: Path,
+    test_mode: str,
+    expected_default: Path,
+) -> str:
+    if test_mode == "standalone":
+        return (
+            "convert verification found multiple reusable standalone test files. "
+            f"Expected {expected_default} or exactly one test_*.py file in {workdir}."
         )
-    raise ValueError(
-        "convert verification found multiple reusable standalone test files. "
-        f"Expected {standalone_default} or exactly one test_*.py file in {request.workdir}."
+    return (
+        "convert verification found multiple reusable differential test files. "
+        f"Expected {expected_default} or exactly one differential_test_*.py file in {workdir}."
     )
 
 
-def _resolve_convert_validation_mode(test_file: Path) -> str:
+def _resolve_convert_validation_mode(test_file: Path, requested_mode: str | None = None) -> str:
     metadata = parse_test_metadata(test_file)
     mode = metadata.get("test-mode")
     if mode not in {"standalone", "differential"}:
-        return "differential"
+        return _normalize_convert_test_mode(requested_mode)
     return str(mode)
 
 

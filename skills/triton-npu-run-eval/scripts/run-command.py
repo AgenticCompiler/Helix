@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import importlib
 import importlib.util
+import os
 import sys
 from pathlib import Path
 from typing import Iterator, Protocol, cast
@@ -13,6 +14,40 @@ from result_payload import ResultPayload
 SCRIPT_DIR = Path(__file__).resolve().parent
 _RUN_BENCH_HINT = "Hint: use `compare-perf` to inspect this perf artifact instead of reading it directly."
 _RUN_TEST_HINT = "Hint: use `compare-result` to inspect this archived result instead of reading it directly."
+_BLOCKS_PARALLEL_ENV = "TRITON_ALL_BLOCKS_PARALLEL"
+_BLOCKS_PARALLEL_UNSAFE_VALUE = "1"
+_BLOCKS_PARALLEL_SAFE_VALUE = "0"
+
+
+def _profile_bench_hint(profile_dir: Path) -> str:
+    return (
+        "Hint: rerun the bundled `profile-report` helper for this "
+        f"`--profile-dir {profile_dir}` if you need the summary again; "
+        "if that is not enough, inspect the raw files in this profile directory directly."
+    )
+
+
+@contextlib.contextmanager
+def _guard_operator_execution_env(command: str) -> Iterator[None]:
+    if command not in {
+        "run-test",
+        "run-test-baseline",
+        "run-test-optimize",
+        "run-bench",
+        "profile-bench",
+    }:
+        yield
+        return
+    previous = os.environ.get(_BLOCKS_PARALLEL_ENV)
+    if previous != _BLOCKS_PARALLEL_UNSAFE_VALUE:
+        yield
+        return
+    os.environ[_BLOCKS_PARALLEL_ENV] = _BLOCKS_PARALLEL_SAFE_VALUE
+    try:
+        yield
+    finally:
+        os.environ[_BLOCKS_PARALLEL_ENV] = previous
+
 
 class ParseMetadataFn(Protocol):
     def __call__(self, path: Path) -> dict[str, str]: ...
@@ -59,6 +94,7 @@ class RunLocalBenchFn(Protocol):
         bench_mode: str,
         npu_devices: str | None = None,
         extract_dest_dir: Path | None = None,
+        output: str | None = None,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -74,6 +110,7 @@ class RunRemoteBenchFn(Protocol):
         keep_remote_workdir: bool = False,
         verbose: bool = False,
         stderr: object | None = None,
+        output: str | None = None,
     ) -> tuple[ResultPayload, Path | None, str]: ...
 
 
@@ -111,7 +148,6 @@ class RunLocalProfileBenchFn(Protocol):
         bench_file: Path,
         operator_file: Path,
         bench_mode: str,
-        bench_case: int | None = None,
         case_id: str | None = None,
         kernel_name: str | None = None,
     ) -> tuple[ResultPayload, Path | None]: ...
@@ -125,7 +161,6 @@ class RunRemoteProfileBenchFn(Protocol):
         bench_mode: str,
         remote: str,
         remote_workdir: str | None,
-        bench_case: int | None = None,
         case_id: str | None = None,
         kernel_name: str | None = None,
         keep_remote_workdir: bool = False,
@@ -160,20 +195,20 @@ def build_parser() -> argparse.ArgumentParser:
     run_bench = subparsers.add_parser("run-bench")
     run_bench.add_argument("--bench-file", required=True)
     run_bench.add_argument("--operator-file", required=True)
+    run_bench.add_argument("--output")
     run_bench.add_argument("--remote")
     run_bench.add_argument("--remote-workdir")
     run_bench.add_argument("--keep-remote-workdir", action="store_true")
     run_bench.add_argument("--verbose", action="store_true")
-    run_bench.add_argument("--bench-mode", choices=["standalone", "msprof", "msprof-simulator"])
+    run_bench.add_argument("--bench-mode", choices=["torch-npu-profiler", "msprof"])
     run_bench.add_argument("--npu-devices")
     run_bench.add_argument("--extract-dest-dir")
 
     profile_bench = subparsers.add_parser("profile-bench")
     profile_bench.add_argument("--bench-file", required=True)
     profile_bench.add_argument("--operator-file", required=True)
-    profile_bench.add_argument("--bench-mode", choices=["standalone", "msprof"])
+    profile_bench.add_argument("--bench-mode", choices=["torch-npu-profiler", "msprof"])
     profile_bench.add_argument("--case-id")
-    profile_bench.add_argument("--bench", type=int)
     profile_bench.add_argument("--kernel-name", help=argparse.SUPPRESS)
     profile_bench.add_argument("--target-op")
     profile_bench.add_argument("--remote")
@@ -229,6 +264,11 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser()
     args = parser.parse_args(argv)
+    with _guard_operator_execution_env(args.command):
+        return _dispatch_command(parser, args)
+
+
+def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     remote, remote_workdir = _resolve_remote_execution(args)
 
     if args.command == "compare-result":
@@ -343,7 +383,6 @@ def main(argv: list[str] | None = None) -> int:
                     resolved_bench_mode,
                     remote,
                     remote_workdir,
-                    bench_case=args.bench,
                     case_id=args.case_id,
                     kernel_name=args.kernel_name,
                     keep_remote_workdir=args.keep_remote_workdir,
@@ -355,7 +394,6 @@ def main(argv: list[str] | None = None) -> int:
                     bench_file,
                     operator_file,
                     resolved_bench_mode,
-                    bench_case=args.bench,
                     case_id=args.case_id,
                     kernel_name=args.kernel_name,
                 )
@@ -367,6 +405,7 @@ def main(argv: list[str] | None = None) -> int:
         if profile_dir is not None:
             print(f"Profile directory: {profile_dir}")
             print(_build_profile_report(profile_dir, args.target_op))
+            print(_profile_bench_hint(profile_dir))
         if remote is not None and args.keep_remote_workdir:
             print(f"Remote workspace: {remote_workspace}")
         return int(result["return_code"])
@@ -398,6 +437,7 @@ def main(argv: list[str] | None = None) -> int:
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
+                output=args.output,
             )
         else:
             extract_dest_dir = Path(args.extract_dest_dir).resolve() if getattr(args, "extract_dest_dir", None) else None
@@ -407,6 +447,7 @@ def main(argv: list[str] | None = None) -> int:
                 resolved_bench_mode,
                 args.npu_devices,
                 extract_dest_dir=extract_dest_dir
+                output=args.output,
             )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
@@ -597,9 +638,11 @@ def _resolve_bench_mode_from_metadata(bench_file: Path) -> str:
     parse_bench_metadata = _load_bench_functions()[0]
     metadata = parse_bench_metadata(bench_file)
     mode = metadata.get("bench-mode")
-    if mode not in {"standalone", "msprof", "msprof-simulator"}:
+    if mode == "standalone":
+        return "torch-npu-profiler"
+    if mode not in {"torch-npu-profiler", "msprof"}:
         raise ValueError(f"Benchmark metadata is missing required 'bench-mode' entry: {bench_file}")
-    return mode
+    return str(mode)
 
 
 def _render_result(result: ResultPayload, show_output: bool) -> None:

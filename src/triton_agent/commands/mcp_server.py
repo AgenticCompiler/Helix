@@ -9,5 +9,3 @@ def handle_run_eval_mcp_server(parser: argparse.ArgumentParser, args: argparse.N
     del parser
     return serve_http_server_forever(port=int(args.port))
 
-
-__all__ = ["handle_run_eval_mcp_server"]

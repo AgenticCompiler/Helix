@@ -1,12 +1,21 @@
-# Spatial pooling — innermost W slab plus gather (2D / 3D and beyond)
+---
+id: sliding-window-inner-w-slab-gather
+priority: normal
+---
+
+# Sliding-Window Inner-Dim Slab Plus Gather
 
 ## Summary
 
-For **sliding-window spatial pooling** in **NCHW-style** layouts where **W** is the **innermost contiguous** dimension, load one **W slab** of length **`W_SLAB_LEN = STRIDE_W * (BLOCK_OW - 1) + KERNEL_W`** at **`w_abs_min = ow_pid * BLOCK_OW * STRIDE_W - PAD_W`**, then **`tl.gather(slab, STRIDE_W * arange(BLOCK_OW) + kw)`** per **`kw`** instead of many **`start_w + kw`** masked loads. **2D/3D+** differ only in outer **`kh`/`kd`** loops. **Adoption gate:** not applied unless the hot path shows **`W_SLAB_LEN` load + gather**; **interior/boundary splits** may **combine** but **do not replace** gather. Operator-agnostic—validate on your harness.
+For **fixed-window reductions** along the **innermost contiguous spatial dimension** (NCHW-style: often **W**), load one **slab** of length **`W_SLAB_LEN = STRIDE_W * (BLOCK_OW - 1) + KERNEL_W`** at **`w_abs_min = ow_pid * BLOCK_OW * STRIDE_W - PAD_W`**, then **`tl.gather(slab, STRIDE_W * arange(BLOCK_OW) + kw)`** per **`kw`** instead of many **`start_w + kw`** masked loads. Higher rank differs only in outer loops over remaining spatial axes. **Adoption gate:** hot path must show **`W_SLAB_LEN` load + gather**.
+
+**A5 SIMT (`force_simt_only=True`):** measured regression vs discrete SIMT flat/row×col on window-reduction harnesses — see **`a5-simt-sliding-window-tuning`** §8. Do not apply on A5 SIMT unless re-proven on your harness.
+
+**Not op-specific** — any affine sliding-window reduce with overlapping taps along the innermost dim; pool ops are the canonical example.
 
 ## Use When
 
-- The kernel is **AvgPool / MaxPool** (**values only**), or any **fixed `KERNEL_W`** reduction along **W** on a **contiguous** NCHW (or 5D) tensor, with **`kw`** in a **`tl.constexpr`** loop and **`BLOCK_OW`** output columns per program.
+- The kernel is a **fixed `KERNEL_W` window reduction** (mean, max, etc., **values only**) along **W** on a **contiguous** NCHW (or 5D) tensor, with **`kw`** in a **`tl.constexpr`** loop and **`BLOCK_OW`** output columns per program.
 - Profiling or IR shows **repeated narrow or predicate-heavy global loads** on **W** inside **`kw`**, while **`stride_w`** maps output columns to **regularly strided** input columns.
 - **`out_w`** is large enough that **vectorizing along `ow`** matters, and **`triton.cmotion.cdiv(out_w, BLOCK_OW)`** (launch count along W) stays below a measured knee on the target NPU.
 - You can prove **semantic equivalence** for the branches you enable (**padding**, **ceil**, **divisor** / **count_include_pad** for average, **`-inf` / dtype** rules for max).
@@ -76,12 +85,13 @@ The overlapping columns (**`2`**, **`4`**, **`6`**) are loaded once from global 
 
 ## Avoid When
 
+- **A5 SIMT fixed-window reduce (`force_simt_only=True`)** — see **`a5-simt-sliding-window-tuning`** §8; W-slab regressed vs SIMT flat/row×col + coordinate-mask paths on multi-shape harnesses.
 - **`W_SLAB_LEN`** exceeds **UB / compiler** or **gather** limits—**reduce `BLOCK_OW`** or use **`USE_W_MASKED_SLAB`** / non-slab branches for that shape.
 - **Host predicates** for **`USE_W_SLAB_LOAD`** are wrong (windows not fully inside input, pad misclassified)—always **diff against the framework reference**.
 - **Tail tiles:** **`out_w % BLOCK_OW != 0`** requires **`ow_mask`** on **store** and usually **disables full-tile slab branches** unless tail handling is explicit.
-- **MaxPool** with **`return_indices`**, **dilation**, or **validity state** (`seen_valid`, etc.)—W-slab may still help **loads**, but **combine / store** need a separate design.
+- **Max-like reductions** with **`return_indices`**, **dilation**, or extra validity state — W-slab may help **loads** only; compare/index update needs a separate design and full geomean proof.
 - **Layout** is not **W-contiguous** per row (fix with **`contiguous()`** or a different pattern).
-- **SIMT-only discrete gather** on A5 already beats slab on measured shapes — prefer `pooling-clip-window-closed-divisor` + SIMT before forcing HIVM slab.
+- **A5 SIMT discrete window reduce** — follow **`a5-simt-sliding-window-tuning`** (single launch, feature-derived dispatch/inner path) before W-slab; use **`simt-clip-window-closed-reduction`** only when normalizer uses **clipped volume only**, not as default for all pad cases.
 - **One failed gather attempt** on device—treat as **implementation bug**, not “pattern invalid”; see **Failure playbook** below before abandoning gather.
 
 ## Signals
@@ -135,7 +145,7 @@ Pick **`BLOCK_OW`** from **`out_w`** with a **small candidate list** (e.g. 128�
 
 ### 4. Orthogonal optimizations (combine, do not replace)
 
-- **Interior / boundary output splitting** (separate launches for full-window vs edge tiles) reduces **scalar masks** and **dynamic divisors**—it is **compatible** with this pattern: run **slab+gather on interior regions**, **generic masked loads on boundary regions**.
+- **Interior / boundary output splitting** (separate launches for full-window vs edge tiles) can combine with slab on **non-SIMT** paths. On **A5 SIMT**, global region multi-launch is an anti-pattern — see **`a5-simt-sliding-window-tuning`** §8; prefer single-kernel `constexpr` branches instead of stacking splits + slab.
 - **`program-multiple-rows`**: amortize setup when batching **multiple flat spatial rows** per program—profile launch vs reuse.
 - **Do not** mark this pattern “done” if the final kernel has **zero `tl.gather`** on the hot path.
 
@@ -253,7 +263,8 @@ kernel[grid](..., BLOCK_OW=block_ow, W_SLAB_LEN=w_slab_len,
 - `constexpr-tile-discrete-access`
 - `program-multiple-rows`
 - `scalar-latency-traps` (supporting lens for boundary math—not a substitute for W staging)
-- `pooling-clip-window-closed-divisor` (portable inner-loop repair before or instead of slab on SIMT paths)
+- `a5-simt-sliding-window-tuning` — A5 SIMT fixed-window tuning (use before W-slab on `force_simt_only` paths)
+- `simt-clip-window-closed-reduction` — closed normalizer inner loop; not the default include-pad path on A5 SIMT
 
 ## What To Verify After Applying
 
