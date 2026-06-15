@@ -104,3 +104,36 @@ Many historical **general `while`** / IR **`scf.while`** failures are addressed 
 **Direction:** Change **load layout / pointer indexing** so the tile used in **`tl.dot`** already has the desired orientation—e.g. build **`[T, C]`** strides instead of **`[C, T]`** + **`tl.trans`**, and use **`tl.dot(x_tile, w_tile)`** without transposing one operand. Adjust **masks** to match the new row/column layout. Semantics should stay equivalent; this avoids some bad instruction sequences on NPU.
 
 ---
+
+## 11. Numerical mismatch (1 ULP) between Triton and torch on Ascend
+
+**Symptom:** differential test shows non-zero diffs, typically 1 ULP in fp32 scale or
+±1 in int8 output, affecting a small percentage (<5%) of rows/elements. Reduction
+ops (`tl.max`, `tl.sum`) are already confirmed bit-exact.
+
+**Root cause on Ascend:** Triton keeps `x / CONST` as hardware **divide**
+(`__hmf_div`), while torch CANN optimizes it to **multiply** by precomputed
+reciprocal (`__hmf_mul`). Ascend's divider and multiplier have **different
+rounding** → results differ by 1 ULP for 1-5% of values.
+
+**How to confirm:**
+1. Build a kernel with only the reduction (no division): compare `triton_max` vs `torch.abs().max()`. Should be bit-exact.
+2. Build kernels for Triton DIV vs Triton MUL vs Torch DIV vs Torch MUL. If Triton MUL == Torch DIV == Torch MUL but Triton DIV differs, the diagnosis is confirmed.
+3. Print hex of diff values — should be exactly 1 ULP.
+
+**Fix:**
+
+```python
+# Before (differs from Torch):
+scale = tl.maximum(row_max_abs / 127.0, 1e-10)
+
+# After (matches Torch bit-exact):
+INV_127: tl.constexpr = 1.0 / 127.0
+scale = tl.maximum(row_max_abs * INV_127, 1e-10)
+```
+
+**Why:** Explicit `*(1.0/CONST)` uses Ascend's **multiplier** (same as Torch CANN),
+producing bit-identical results. Also typically faster than division.
+
+**Verify:** re-run differential test — should be 0 diffs.
+
