@@ -65,10 +65,14 @@ def _optimize_target_guidance_lines(*, optimize_target: str) -> list[str]:
 
 _OPTIMIZE_GUIDANCE_RULES_BLOCK = dedent(
     """\
+    IMPORTANT:
+        - Use `triton-npu-optimize-submit-baseline` skill to submit the initial baseline.
+        - Use `triton-npu-optimize-start-round` skill to start a new optimization round.
+        - Use `triton-npu-optimize-submit-round` skill to submit each complete optimization round.
+
     - Read files cautiously. Do not read unrelated files speculatively or just in case.
     - Prefer the smallest source that can unblock the next decision.
     - Follow the user's instructions strictly.
-    - Treat user priorities, constraints, and workflow guidance as binding unless they conflict with a safety or correctness requirement.
     """
 )
 
@@ -92,7 +96,13 @@ _SHARED_GUIDANCE_TEMPLATE = (
         Use `.triton-agent/supervisor-report.md` as the supervisor audit report file when supervised mode is active.
         Treat `baseline/` as the canonical optimize baseline.
         Use `compare-perf` as the authoritative source for round performance summaries.
-        {analysis_block}{high_priority_pattern_block}{compiler_source_block}{cann_ext_api_block}"""
+        {analysis_block}
+
+        {high_priority_pattern_block}
+
+        {compiler_source_block}
+
+        {cann_ext_api_block}"""
     )
 )
 
@@ -116,7 +126,14 @@ _ROUND_GATED_GUIDANCE_TEMPLATE = (
         The CLI will inject previous round validation results directly into the next worker prompt when another round is needed.
         Treat `baseline/` as the canonical optimize baseline.
         Use `compare-perf` as the authoritative source for round performance summaries.
-        {analysis_block}{high_priority_pattern_block}{compiler_source_block}{cann_ext_api_block}"""
+
+        {analysis_block}
+
+        {high_priority_pattern_block}
+
+        {compiler_source_block}
+
+        {cann_ext_api_block}"""
     )
 )
 

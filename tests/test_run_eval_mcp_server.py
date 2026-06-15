@@ -112,7 +112,7 @@ class RunEvalMCPServerTests(unittest.TestCase):
                     {
                         "bench_file": "/tmp/bench_kernel.py",
                         "operator_file": "/tmp/kernel.py",
-                        "bench_mode": "standalone",
+                        "bench_mode": "torch-npu-profiler",
                     },
                 )
 

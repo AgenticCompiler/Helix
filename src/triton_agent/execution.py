@@ -84,12 +84,27 @@ class BenchRunnerModule(Protocol):
     def parse_bench_metadata(self, bench_file: Path) -> dict[str, str]: ...
 
 
+class SimulatorRunnerModule(Protocol):
+    def run_local_simulator(
+        self,
+        bench_file: Path,
+        operator_file: Path,
+        *,
+        case_id: str | None = None,
+        kernel_name: str | None = None,
+    ) -> _RunSkillPayload: ...
+
+
 def _load_test_runner() -> TestRunnerModule:
     return cast(TestRunnerModule, load_operator_eval_script_module("test_runner"))
 
 
 def _load_bench_runner() -> BenchRunnerModule:
     return cast(BenchRunnerModule, load_operator_eval_script_module("bench_runner"))
+
+
+def _load_simulator_runner() -> SimulatorRunnerModule:
+    return cast(SimulatorRunnerModule, load_operator_eval_script_module("simulator_runner"))
 
 
 def run_local_test(
@@ -187,6 +202,22 @@ def run_remote_bench(
     return _normalize_agent_result(result), perf_path, remote_workspace
 
 
+def run_local_simulator(
+    bench_file: Path,
+    operator_file: Path,
+    *,
+    case_id: str | None = None,
+    kernel_name: str | None = None,
+) -> AgentResult:
+    result = _load_simulator_runner().run_local_simulator(
+        bench_file,
+        operator_file,
+        case_id=case_id,
+        kernel_name=kernel_name,
+    )
+    return _normalize_agent_result(result)
+
+
 def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
     return _load_bench_runner().parse_bench_metadata(bench_file)
 
@@ -194,6 +225,8 @@ def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
 def resolve_bench_mode_from_metadata(bench_file: Path) -> str:
     metadata = parse_bench_metadata(bench_file)
     mode = metadata.get("bench-mode")
-    if mode not in {"standalone", "msprof", "msprof-simulator"}:
+    if mode == "standalone":
+        return "torch-npu-profiler"
+    if mode not in {"torch-npu-profiler", "msprof"}:
         raise ValueError(f"Benchmark metadata is missing required 'bench-mode' entry: {bench_file}")
     return str(mode)

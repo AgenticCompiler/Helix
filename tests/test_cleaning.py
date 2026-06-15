@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from triton_agent.clean import clean_workspace, discover_clean_workspaces, is_cleanable_workspace
+from triton_agent.clean.core import clean_workspace, discover_clean_workspaces, is_cleanable_workspace
 
 
 class WorkspaceCleaningTests(unittest.TestCase):
@@ -16,7 +16,7 @@ class WorkspaceCleaningTests(unittest.TestCase):
             test_harness = workspace / "test_kernel.py"
             test_harness.write_text("# test-mode: standalone\n", encoding="utf-8")
             bench_harness = workspace / "bench_kernel.py"
-            bench_harness.write_text("# bench-mode: standalone\n", encoding="utf-8")
+            bench_harness.write_text("# bench-mode: torch-npu-profiler\n", encoding="utf-8")
             generated = workspace / "opt_kernel.py"
             generated.write_text("print('opt')\n", encoding="utf-8")
 

@@ -32,11 +32,13 @@ from triton_agent.paths import (
 )
 from triton_agent.prompts import (
     append_additional_user_instructions,
-    build_optimize_baseline_prompt,
     build_optimize_round_prompt,
+    build_prompt,
+)
+from triton_agent.optimize.prompts import (
+    build_optimize_baseline_prompt,
     build_optimize_resume_prompt,
     build_optimize_supervisor_prompt,
-    build_prompt,
 )
 from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
 from triton_agent.execution import _normalize_agent_result as normalize_agent_result
@@ -69,7 +71,7 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.GEN_EVAL_BATCH)
         self.assertEqual(args.concurrency, 1)
         self.assertEqual(args.test_mode, "differential")
-        self.assertEqual(args.bench_mode, "standalone")
+        self.assertEqual(args.bench_mode, "torch-npu-profiler")
         self.assertEqual(args.agent, "codex")
         self.assertFalse(hasattr(args, "interact"))
         self.assertFalse(hasattr(args, "output"))
@@ -118,7 +120,7 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.command, "gen-eval")
         self.assertEqual(args.command_kind, CommandKind.GEN_EVAL)
         self.assertEqual(args.test_mode, "differential")
-        self.assertEqual(args.bench_mode, "standalone")
+        self.assertEqual(args.bench_mode, "torch-npu-profiler")
         self.assertEqual(args.agent, "codex")
         self.assertFalse(args.interact)
 
@@ -162,6 +164,18 @@ class CliParserTests(unittest.TestCase):
             with self.subTest(command=command):
                 args = parser.parse_args([command, "-i", input_value, "--enable-mcp"])
                 self.assertTrue(args.enable_mcp)
+
+    def test_optimize_commands_accept_enable_report_option(self) -> None:
+        parser = build_parser()
+        cases = (
+            ("optimize", "kernel.py"),
+            ("optimize-batch", "kernels"),
+        )
+
+        for command, input_value in cases:
+            with self.subTest(command=command):
+                args = parser.parse_args([command, "-i", input_value, "--enable-report"])
+                self.assertTrue(args.enable_report)
 
     def test_enable_mcp_is_not_available_on_direct_execution_commands(self) -> None:
         parser = build_parser()
@@ -280,13 +294,12 @@ class CliParserTests(unittest.TestCase):
                 args = parser.parse_args([command, "-i", "workspace", "--log-tool"])
                 self.assertTrue(args.log_tools)
 
-    def test_convert_rejects_non_differential_test_mode(self) -> None:
+    def test_convert_commands_accept_standalone_test_mode(self) -> None:
         parser = build_parser()
-        stderr = StringIO()
-        with self.assertRaises(SystemExit) as exc, redirect_stderr(stderr):
-            parser.parse_args(["convert", "-i", "kernel.py", "--test-mode", "standalone"])
-        self.assertEqual(exc.exception.code, 2)
-        self.assertIn("differential", stderr.getvalue())
+        for command, input_value in (("convert", "kernel.py"), ("convert-batch", "kernels")):
+            with self.subTest(command=command):
+                args = parser.parse_args([command, "-i", input_value, "--test-mode", "standalone"])
+                self.assertEqual(args.test_mode, "standalone")
 
     def test_gen_convert_is_no_longer_a_valid_command(self) -> None:
         parser = build_parser()
@@ -992,7 +1005,9 @@ class CliMCPServerCommandTests(unittest.TestCase):
     def test_bench_mode_option_is_available_for_bench_commands(self) -> None:
         parser = build_parser()
         eval_args = parser.parse_args(["gen-eval", "-i", "kernel.py", "--bench-mode", "msprof"])
-        gen_args = parser.parse_args(["gen-bench", "-i", "kernel.py", "--bench-mode", "standalone"])
+        gen_args = parser.parse_args(
+            ["gen-bench", "-i", "kernel.py", "--bench-mode", "torch-npu-profiler"]
+        )
         run_args = parser.parse_args(
             [
                 "run-bench",
@@ -1005,27 +1020,75 @@ class CliMCPServerCommandTests(unittest.TestCase):
             ]
         )
         self.assertEqual(eval_args.bench_mode, "msprof")
-        self.assertEqual(gen_args.bench_mode, "standalone")
+        self.assertEqual(gen_args.bench_mode, "torch-npu-profiler")
         self.assertEqual(run_args.bench_mode, "msprof")
 
-    def test_bench_commands_default_to_standalone_mode(self) -> None:
+    def test_bench_commands_default_to_torch_npu_profiler_mode(self) -> None:
         parser = build_parser()
         gen_args = parser.parse_args(["gen-bench", "-i", "kernel.py"])
         run_args = parser.parse_args(
             ["run-bench", "--bench-file", "bench_kernel.py", "--operator-file", "kernel.py"]
         )
-        self.assertEqual(gen_args.bench_mode, "standalone")
+        self.assertEqual(gen_args.bench_mode, "torch-npu-profiler")
         self.assertIsNone(run_args.bench_mode)
 
-    def test_gen_eval_defaults_to_standalone_bench_mode(self) -> None:
+    def test_run_simulator_accepts_case_and_kernel_arguments(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run-simulator",
+                "--bench-file",
+                "bench_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--case-id",
+                "case-a",
+                "--kernel-name",
+                "KernelA",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.RUN_SIMULATOR)
+        self.assertEqual(args.bench_file, "bench_kernel.py")
+        self.assertEqual(args.operator_file, "kernel.py")
+        self.assertEqual(args.case_id, "case-a")
+        self.assertEqual(args.kernel_name, "KernelA")
+
+    def test_run_simulator_rejects_bench_mode_and_remote_options(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(
+                [
+                    "run-simulator",
+                    "--bench-file",
+                    "bench_kernel.py",
+                    "--operator-file",
+                    "kernel.py",
+                    "--bench-mode",
+                    "msprof",
+                ]
+            )
+        with self.assertRaises(SystemExit):
+            parser.parse_args(
+                [
+                    "run-simulator",
+                    "--bench-file",
+                    "bench_kernel.py",
+                    "--operator-file",
+                    "kernel.py",
+                    "--remote",
+                    "alice@example.com",
+                ]
+            )
+
+    def test_gen_eval_defaults_to_torch_npu_profiler_bench_mode(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["gen-eval", "-i", "kernel.py"])
-        self.assertEqual(args.bench_mode, "standalone")
+        self.assertEqual(args.bench_mode, "torch-npu-profiler")
 
-    def test_gen_eval_batch_defaults_to_standalone_bench_mode(self) -> None:
+    def test_gen_eval_batch_defaults_to_torch_npu_profiler_bench_mode(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["gen-eval-batch", "-i", "kernels"])
-        self.assertEqual(args.bench_mode, "standalone")
+        self.assertEqual(args.bench_mode, "torch-npu-profiler")
 
     def test_gen_eval_batch_accepts_options(self) -> None:
         parser = build_parser()
@@ -1615,7 +1678,7 @@ class PathResolutionTests(unittest.TestCase):
             test_harness = workspace / "test_kernel.py"
             test_harness.write_text("# test-mode: standalone\n", encoding="utf-8")
             bench_harness = workspace / "bench_kernel.py"
-            bench_harness.write_text("# bench-mode: standalone\n", encoding="utf-8")
+            bench_harness.write_text("# bench-mode: torch-npu-profiler\n", encoding="utf-8")
             generated_operator = workspace / "triton_kernel.py"
             generated_operator.write_text("print('gen')\n", encoding="utf-8")
             extra_info = workspace / "extra-info.json"
@@ -2004,7 +2067,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
-                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh", "--no-report"])
+                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(
@@ -2027,7 +2090,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
-                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh", "--no-report"])
+                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(seen_inputs, [(root / "operator.py").resolve()])
@@ -2046,7 +2109,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
-                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh", "--no-report"])
+                exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(seen_inputs, [(root / "operator.py").resolve()])
@@ -2071,7 +2134,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
-                    exit_code = main(["optimize-batch", "-i", str(root), "--no-report"])
+                    exit_code = main(["optimize-batch", "-i", str(root)])
 
             self.assertEqual(exit_code, 1)
             self.assertEqual(seen_inputs, [(good / "kernel.py").resolve()])
@@ -2098,7 +2161,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
-                    exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh", "--no-report"])
+                    exit_code = main(["optimize-batch", "-i", str(root), "--resume", "fresh"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(seen_inputs, [(good / "kernel.py").resolve()])
@@ -2128,7 +2191,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
-                    exit_code = main(["optimize-batch", "-i", str(root), "--no-report"])
+                    exit_code = main(["optimize-batch", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual([path.parent.name for path in seen_inputs], ["beta"])
@@ -2165,7 +2228,7 @@ class PathResolutionTests(unittest.TestCase):
                 return AgentResult(return_code=0, stdout="", stderr="")
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
-                exit_code = main(["optimize-batch", "-i", str(root), "--concurrency", "2", "--no-report"])
+                exit_code = main(["optimize-batch", "-i", str(root), "--concurrency", "2"])
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(max_active, 2)
@@ -2193,7 +2256,7 @@ class PathResolutionTests(unittest.TestCase):
                     side_effect=_fake_run_optimize_batch,
                 ):
                     exit_code = main(
-                        ["optimize-batch", "-i", str(root), "--concurrency", "max", "--no-report"]
+                        ["optimize-batch", "-i", str(root), "--concurrency", "max"]
                     )
 
             self.assertEqual(exit_code, 0)
@@ -2218,7 +2281,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
-                    exit_code = main(["optimize-batch", "-i", str(root), "--show-output", "--no-report"])
+                    exit_code = main(["optimize-batch", "-i", str(root), "--show-output"])
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()
@@ -2252,7 +2315,7 @@ class PathResolutionTests(unittest.TestCase):
                         '  "test_file": "differential_test_kernel.py",',
                         '  "test_mode": "differential",',
                         '  "bench_file": "bench_kernel.py",',
-                        '  "bench_mode": "standalone",',
+                        '  "bench_mode": "torch-npu-profiler",',
                         '  "perf_artifact": "baseline/perf.txt",',
                         '  "correctness_status": "passed",',
                         '  "benchmark_status": "passed",',
@@ -2269,7 +2332,7 @@ class PathResolutionTests(unittest.TestCase):
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
             )
             (resumable / "bench_kernel.py").write_text(
-                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n", encoding="utf-8"
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n", encoding="utf-8"
             )
 
             captured_modes: dict[str, Optional[str]] = {}
@@ -2288,12 +2351,11 @@ class PathResolutionTests(unittest.TestCase):
                         "auto",
                         "--bench-mode",
                         "msprof",
-                        "--no-report",
                     ]
                 )
 
             self.assertEqual(exit_code, 0)
-            self.assertEqual(captured_modes["resume_ws"], "standalone")
+            self.assertEqual(captured_modes["resume_ws"], "torch-npu-profiler")
             self.assertEqual(captured_modes["fresh_ws"], "msprof")
 
     def test_main_optimize_batch_rejects_invalid_concurrency(self) -> None:
@@ -2303,7 +2365,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with redirect_stderr(stderr):
                 with self.assertRaises(SystemExit) as exc:
-                    main(["optimize-batch", "-i", str(root), "--concurrency", "0", "--no-report"])
+                    main(["optimize-batch", "-i", str(root), "--concurrency", "0"])
 
             self.assertEqual(exc.exception.code, 2)
             self.assertIn("--concurrency must be at least 1", stderr.getvalue())
@@ -2590,7 +2652,7 @@ class PathResolutionTests(unittest.TestCase):
                 seen_env["remote_workdir"] = os.environ.get(remote_workdir_env_name())
                 return AgentResult(return_code=0, stdout="", stderr=""), None, "/tmp/triton-agent-123"
 
-            with patch(
+            with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
                 "triton_agent.commands.execution.run_remote_test",
                 side_effect=fake_run_remote_test,
             ):
@@ -2633,7 +2695,7 @@ class PathResolutionTests(unittest.TestCase):
                 {remote_workdir_env_name(): "/tmp/stale-workdir"},
                 clear=False,
             ):
-                with patch(
+                with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
                     "triton_agent.commands.execution.run_remote_test",
                     side_effect=fake_run_remote_test,
                 ):
@@ -2671,6 +2733,95 @@ class PathResolutionTests(unittest.TestCase):
             self.assertNotIn(remote_target_env_name(), os.environ)
             self.assertNotIn(remote_workdir_env_name(), os.environ)
             self.assertIn("No operator workspaces found", stderr.getvalue())
+
+    def test_main_explicit_remote_runs_ssh_preflight_before_dispatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch.object(cli_module, "ensure_remote_ssh_ready") as preflight, patch(
+                "triton_agent.commands.execution.run_remote_test",
+                return_value=(fake_result, None, "/tmp/triton-agent-abc"),
+            ) as mocked:
+                exit_code = main(
+                    [
+                        "run-test",
+                        "--test-file",
+                        str(test_file),
+                        "--operator-file",
+                        str(operator),
+                        "--remote",
+                        "alice@example.com:2200",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        preflight.assert_called_once_with("alice@example.com:2200")
+        mocked.assert_called_once()
+
+    def test_main_explicit_remote_preflight_failure_returns_1_and_skips_handler(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+
+            stderr = StringIO()
+            with patch.object(
+                cli_module,
+                "ensure_remote_ssh_ready",
+                side_effect=RuntimeError(
+                    "Run `ssh-copy-id alice@example.com` and enter the remote login password."
+                ),
+            ), patch("triton_agent.commands.execution.run_remote_test") as mocked:
+                with redirect_stderr(stderr):
+                    exit_code = main(
+                        [
+                            "run-test",
+                            "--test-file",
+                            str(test_file),
+                            "--operator-file",
+                            str(operator),
+                            "--remote",
+                            "alice@example.com",
+                        ]
+                    )
+
+        self.assertEqual(exit_code, 1)
+        mocked.assert_not_called()
+        self.assertIn("ssh-copy-id alice@example.com", stderr.getvalue())
+
+    def test_main_local_run_test_skips_ssh_preflight(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "test_kernel.py"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: standalone\nprint('test')\n", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch.object(cli_module, "ensure_remote_ssh_ready") as preflight, patch(
+                "triton_agent.commands.execution.run_local_test",
+                return_value=(fake_result, None),
+            ) as mocked:
+                exit_code = main(
+                    [
+                        "run-test",
+                        "--test-file",
+                        str(test_file),
+                        "--operator-file",
+                        str(operator),
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        preflight.assert_not_called()
+        mocked.assert_called_once()
 
     def test_run_test_wrapper_calls_loaded_skill_module(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2801,7 +2952,7 @@ class PathResolutionTests(unittest.TestCase):
                             "--resume",
                             "continue",
                             "--bench-mode",
-                            "standalone",
+                            "torch-npu-profiler",
                         ]
                     )
 
@@ -2896,7 +3047,6 @@ class PathResolutionTests(unittest.TestCase):
                                     "standalone",
                                     "--bench-mode",
                                     "msprof",
-                                    "--no-report",
                                 ]
                             )
 
@@ -2921,7 +3071,7 @@ class PathResolutionTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (root / "bench_kernel.py").write_text(
-                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n",
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
                 encoding="utf-8",
             )
 
@@ -2939,12 +3089,12 @@ class PathResolutionTests(unittest.TestCase):
                             "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
-                            exit_code = main(["optimize", "-i", str(operator), "--resume", "auto", "--no-report"])
+                            exit_code = main(["optimize", "-i", str(operator), "--resume", "auto"])
 
             self.assertEqual(exit_code, 0)
             request = mocked.call_args.args[2]
             self.assertEqual(request.test_mode, "differential")
-            self.assertEqual(request.bench_mode, "standalone")
+            self.assertEqual(request.bench_mode, "torch-npu-profiler")
             self.assertFalse(request.continue_optimize)
             self.assertEqual(request.prompt, "")
 
@@ -2965,7 +3115,7 @@ class PathResolutionTests(unittest.TestCase):
                         '  "test_file": "differential_test_kernel.py",',
                         '  "test_mode": "differential",',
                         '  "bench_file": "bench_kernel.py",',
-                        '  "bench_mode": "standalone",',
+                        '  "bench_mode": "torch-npu-profiler",',
                         '  "perf_artifact": "baseline/perf.txt",',
                         '  "correctness_status": "passed",',
                         '  "benchmark_status": "passed",',
@@ -2993,12 +3143,12 @@ class PathResolutionTests(unittest.TestCase):
                             "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
-                            exit_code = main(["optimize", "-i", str(operator), "--resume", "auto", "--no-report"])
+                            exit_code = main(["optimize", "-i", str(operator), "--resume", "auto"])
 
             self.assertEqual(exit_code, 0)
             request = mocked.call_args.args[2]
             self.assertEqual(request.test_mode, "differential")
-            self.assertEqual(request.bench_mode, "standalone")
+            self.assertEqual(request.bench_mode, "torch-npu-profiler")
             self.assertFalse(request.continue_optimize)
             self.assertEqual(request.prompt, "")
 
@@ -3039,7 +3189,7 @@ class PathResolutionTests(unittest.TestCase):
                         '  "test_file": "differential_test_kernel.py",',
                         '  "test_mode": "differential",',
                         '  "bench_file": "bench_kernel.py",',
-                        '  "bench_mode": "standalone",',
+                        '  "bench_mode": "torch-npu-profiler",',
                         '  "perf_artifact": "baseline/perf.txt",',
                         '  "correctness_status": "passed",',
                         '  "benchmark_status": "passed",',
@@ -3059,7 +3209,7 @@ class PathResolutionTests(unittest.TestCase):
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
             )
             (root / "bench_kernel.py").write_text(
-                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n", encoding="utf-8"
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n", encoding="utf-8"
             )
 
             stderr = StringIO()
@@ -3081,7 +3231,7 @@ class PathResolutionTests(unittest.TestCase):
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
             )
             (root / "bench_kernel.py").write_text(
-                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n", encoding="utf-8"
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n", encoding="utf-8"
             )
 
             stderr = StringIO()
@@ -3134,7 +3284,7 @@ class PathResolutionTests(unittest.TestCase):
             )
             bench_harness = root / "bench_kernel.py"
             bench_harness.write_text(
-                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n",
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
                 encoding="utf-8",
             )
 
@@ -3157,7 +3307,6 @@ class PathResolutionTests(unittest.TestCase):
                                     "--resume",
                                     "fresh",
                                     "--reset-optimize",
-                                    "--no-report",
                                 ]
                             )
 
@@ -3225,7 +3374,7 @@ class PathResolutionTests(unittest.TestCase):
                             return_value=[],
                         ):
                             exit_code = main(
-                                ["optimize", "-i", str(operator), "--resume", "auto", "--no-report"]
+                                ["optimize", "-i", str(operator), "--resume", "auto"]
                             )
 
             self.assertEqual(exit_code, 0)
@@ -3296,8 +3445,7 @@ class PathResolutionTests(unittest.TestCase):
                                     "--resume",
                                     "auto",
                                     "--bench-mode",
-                                    "standalone",
-                                    "--no-report",
+                                    "torch-npu-profiler",
                                 ]
                             )
 
@@ -3352,7 +3500,7 @@ class PathResolutionTests(unittest.TestCase):
                         '  "test_file": "differential_test_kernel.py",',
                         '  "test_mode": "differential",',
                         '  "bench_file": "bench_kernel.py",',
-                        '  "bench_mode": "standalone",',
+                        '  "bench_mode": "torch-npu-profiler",',
                         '  "perf_artifact": "baseline/perf.txt",',
                         '  "correctness_status": "passed",',
                         '  "benchmark_status": "passed",',
@@ -3369,7 +3517,7 @@ class PathResolutionTests(unittest.TestCase):
                 "# test-mode: differential\nprint('test')\n", encoding="utf-8"
             )
             (root / "bench_kernel.py").write_text(
-                "# bench-mode: standalone\n# kernel: k\nprint('bench')\n", encoding="utf-8"
+                "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n", encoding="utf-8"
             )
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
@@ -3387,14 +3535,14 @@ class PathResolutionTests(unittest.TestCase):
                             return_value=[],
                         ):
                             exit_code = main(
-                                ["optimize", "-i", str(operator), "--resume", "auto", "--no-report"]
+                                ["optimize", "-i", str(operator), "--resume", "auto"]
                             )
 
             self.assertEqual(exit_code, 0)
             request = mocked.call_args.args[2]
             self.assertTrue(request.continue_optimize)
             self.assertEqual(request.test_mode, "differential")
-            self.assertEqual(request.bench_mode, "standalone")
+            self.assertEqual(request.bench_mode, "torch-npu-profiler")
             self.assertEqual(request.prompt, "")
 
     def test_main_optimize_accepts_workspace_directory_input(self) -> None:
@@ -3417,7 +3565,7 @@ class PathResolutionTests(unittest.TestCase):
                             "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                             return_value=[],
                         ):
-                            exit_code = main(["optimize", "-i", str(root), "--no-report"])
+                            exit_code = main(["optimize", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
             request = mocked.call_args.args[2]
@@ -3448,7 +3596,7 @@ class PathResolutionTests(unittest.TestCase):
                                 "triton_agent.optimize.orchestration.SkillLinkManager.cleanup",
                                 return_value=[],
                             ):
-                                exit_code = main(["optimize", "-i", ".", "--no-report"])
+                                exit_code = main(["optimize", "-i", "."])
             finally:
                 os.chdir(original_cwd)
 
@@ -3507,7 +3655,7 @@ class PathResolutionTests(unittest.TestCase):
                             return_value=[],
                         ):
                             exit_code = main(
-                                ["optimize", "-i", str(operator), "--round-mode", "checked", "--no-report"]
+                                ["optimize", "-i", str(operator), "--round-mode", "checked"]
                             )
 
             self.assertEqual(exit_code, 0)
@@ -3538,7 +3686,7 @@ class PathResolutionTests(unittest.TestCase):
                             return_value=[],
                         ):
                             exit_code = main(
-                                ["optimize", "-i", str(operator), "--target-chip", "A3", "--no-report"]
+                                ["optimize", "-i", str(operator), "--target-chip", "A3"]
                             )
 
             self.assertEqual(exit_code, 0)
@@ -3567,7 +3715,7 @@ class PathResolutionTests(unittest.TestCase):
                             return_value=[],
                         ):
                             exit_code = main(
-                                ["optimize", "-i", str(operator), "--no-agent-session", "--no-report"]
+                                ["optimize", "-i", str(operator), "--no-agent-session"]
                             )
 
             self.assertEqual(exit_code, 0)
@@ -3601,7 +3749,6 @@ class PathResolutionTests(unittest.TestCase):
                                     str(operator),
                                     "--prompt",
                                     "Focus on memory coalescing.",
-                                    "--no-report",
                                 ]
                             )
 
@@ -3750,7 +3897,7 @@ class PathResolutionTests(unittest.TestCase):
             test_file.write_text("# test-mode: standalone\nprint('test')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch(
+            with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
                 "triton_agent.commands.execution.run_remote_test",
                 return_value=(fake_result, None, "/tmp/triton-agent-abc"),
             ) as mocked:
@@ -3790,7 +3937,7 @@ class PathResolutionTests(unittest.TestCase):
 
             stdout = StringIO()
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch(
+            with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
                 "triton_agent.commands.execution.run_remote_test",
                 return_value=(fake_result, None, "/tmp/triton-agent-keep"),
             ):
@@ -3818,7 +3965,7 @@ class PathResolutionTests(unittest.TestCase):
             bench_file = root / "bench_kernel.py"
             perf_file = root / "kernel_perf.txt"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             stdout = StringIO()
             stderr = StringIO()
@@ -3840,7 +3987,7 @@ class PathResolutionTests(unittest.TestCase):
             mocked.assert_called_once_with(
                 bench_file.resolve(),
                 operator.resolve(),
-                "standalone",
+                "torch-npu-profiler",
                 None,
                 verbose=False,
                 output=None,
@@ -3854,6 +4001,39 @@ class PathResolutionTests(unittest.TestCase):
             )
             self.assertNotIn("latency-a", stdout.getvalue())
             self.assertEqual(stderr.getvalue(), "")
+
+    def test_main_run_bench_threads_output_to_local_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            bench_file = root / "bench_kernel.py"
+            perf_file = root / "custom_perf.txt"
+            operator.write_text("print('x')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
+
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            with patch("triton_agent.commands.execution.run_local_bench", return_value=(fake_result, perf_file)) as mocked:
+                exit_code = main(
+                    [
+                        "run-bench",
+                        "--bench-file",
+                        str(bench_file),
+                        "--operator-file",
+                        str(operator),
+                        "--output",
+                        str(perf_file),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            mocked.assert_called_once_with(
+                bench_file.resolve(),
+                operator.resolve(),
+                "torch-npu-profiler",
+                None,
+                verbose=False,
+                output=str(perf_file),
+            )
 
     def test_main_run_bench_reads_mode_from_metadata_when_flag_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3923,11 +4103,11 @@ class PathResolutionTests(unittest.TestCase):
             operator = root / "kernel.py"
             bench_file = root / "bench_kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             runtime = SimpleNamespace(
-                parse_bench_metadata=lambda _path: {"bench-mode": "standalone"},
+                parse_bench_metadata=lambda _path: {"bench-mode": "torch-npu-profiler"},
                 run_local_bench=lambda *_args, **_kwargs: (fake_result, None),
             )
 
@@ -3951,10 +4131,10 @@ class PathResolutionTests(unittest.TestCase):
             operator = root / "kernel.py"
             bench_file = root / "bench_kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch(
+            with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
                 "triton_agent.commands.execution.run_remote_bench",
                 return_value=(fake_result, None, "/tmp/triton-agent-bench"),
             ) as mocked:
@@ -3974,7 +4154,7 @@ class PathResolutionTests(unittest.TestCase):
             mocked.assert_called_once_with(
                 bench_file.resolve(),
                 operator.resolve(),
-                "standalone",
+                "torch-npu-profiler",
                 "alice@example.com",
                 None,
                 None,
@@ -3990,10 +4170,10 @@ class PathResolutionTests(unittest.TestCase):
             operator = root / "kernel.py"
             bench_file = root / "bench_kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch(
+            with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
                 "triton_agent.commands.execution.run_remote_bench",
                 return_value=(fake_result, None, "/tmp/triton-agent-bench"),
             ) as mocked:
@@ -4015,7 +4195,7 @@ class PathResolutionTests(unittest.TestCase):
             mocked.assert_called_once_with(
                 bench_file.resolve(),
                 operator.resolve(),
-                "standalone",
+                "torch-npu-profiler",
                 "alice@example.com",
                 None,
                 "4-5",
@@ -4031,11 +4211,11 @@ class PathResolutionTests(unittest.TestCase):
             operator = root / "kernel.py"
             bench_file = root / "bench_kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             stdout = StringIO()
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
-            with patch(
+            with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
                 "triton_agent.commands.execution.run_remote_bench",
                 return_value=(fake_result, None, "/tmp/triton-agent-keep-bench"),
             ):
@@ -4062,7 +4242,7 @@ class PathResolutionTests(unittest.TestCase):
             operator = root / "kernel.py"
             bench_file = root / "bench_kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("# bench-mode: standalone\nprint('bench')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
 
             stderr = StringIO()
             with patch("triton_agent.commands.execution.run_local_bench", side_effect=FileNotFoundError("missing perf")):
@@ -4112,7 +4292,9 @@ class PathResolutionTests(unittest.TestCase):
             oracle.write_text("oracle", encoding="utf-8")
             new.write_text("new", encoding="utf-8")
 
-            with patch("triton_agent.commands.comparison.compare_remote_result_files", return_value=0) as mocked:
+            with patch.object(cli_module, "ensure_remote_ssh_ready", return_value=None), patch(
+                "triton_agent.commands.comparison.compare_remote_result_files", return_value=0
+            ) as mocked:
                 exit_code = main(
                     [
                         "compare-result",
@@ -4398,7 +4580,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             target_chip="A5",
             optimize_target="operator",
             compiler_source_path=Path("/tmp/AscendNPU-IR"),
@@ -4412,7 +4594,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Operator input: /tmp/op.py", prompt)
         self.assertIn("Requested output: /tmp/opt_op.py", prompt)
         self.assertIn("Requested test mode: differential", prompt)
-        self.assertIn("Requested bench mode: standalone", prompt)
+        self.assertIn("Requested bench mode: torch-npu-profiler", prompt)
         self.assertIn("Remote execution target: alice@example.com:2200", prompt)
         self.assertIn("Remote execution root: /tmp/remote", prompt)
         self.assertIn("Target optimization scope for this optimize session: operator.", prompt)
@@ -4431,7 +4613,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
         )
         self.assertIn("triton-npu-gen-eval-suite", prompt)
@@ -4476,7 +4658,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             None,
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=True,
         )
         self.assertIn("Overwrite any existing generated test, benchmark, or archived execution output files", prompt)
@@ -4528,10 +4710,10 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/bench_op.py"),
             test_mode=None,
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
         )
-        self.assertIn("Requested bench mode: standalone", prompt)
+        self.assertIn("Requested bench mode: torch-npu-profiler", prompt)
 
     def test_gen_test_prompt_requires_execute_and_autofix(self) -> None:
         prompt = build_prompt(
@@ -4554,7 +4736,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/bench_op.py"),
             test_mode=None,
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
         )
         self.assertIn("After generating the artifact, execute the generated benchmark case", prompt)
@@ -4585,7 +4767,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
             remote="alice@example.com:2200",
             remote_workdir="/tmp/triton-agent",
@@ -4605,7 +4787,7 @@ class PromptTests(unittest.TestCase):
             bench_mode=None,
             force_overwrite=False,
         )
-        self.assertIn("Do not execute the original input operator file.", prompt)
+        self.assertIn("Do not modify the original input operator file.", prompt)
         self.assertIn("Preserve the trailing input-helper block", prompt)
         self.assertIn("Treat the input operator file as source material and the differential correctness oracle.", prompt)
         self.assertIn("Generate a differential test for the converted output and execute it.", prompt)
@@ -4615,13 +4797,31 @@ class PromptTests(unittest.TestCase):
         self.assertIn("PyTorch-facing wrapper or module API may remain", prompt)
         self.assertIn("A pure PyTorch rewrite does not satisfy this convert task", prompt)
         self.assertIn("Target Ascend NPU only for this conversion flow", prompt)
-        self.assertIn("Do not benchmark this workflow.", prompt)
-        self.assertIn("Do not create `baseline/`.", prompt)
         self.assertIn("If a suitable test already exists in the workspace, reuse it", prompt)
         self.assertIn("This includes existing standalone or differential test cases when they already cover the operator workspace", prompt)
         self.assertIn("Only generate a new test when no suitable reusable test exists", prompt)
+        self.assertIn("Do not modify the original input operator file.", prompt)
+        self.assertIn("Read the original input operator file, but treat it as immutable source material and a correctness oracle only.", prompt)
         self.assertNotIn("triton-npu-prepare-optimize-baseline", prompt)
         self.assertIn("Requested output: /tmp/triton_op.py", prompt)
+
+    def test_convert_prompt_mentions_standalone_validation_when_requested(self) -> None:
+        prompt = build_prompt(
+            CommandKind.CONVERT,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/triton_op.py"),
+            test_mode="standalone",
+            bench_mode=None,
+            force_overwrite=False,
+        )
+        self.assertIn("Requested test mode: standalone", prompt)
+        self.assertIn("Generate a standalone test for the converted output and execute it.", prompt)
+        self.assertIn(
+            "Validate the converted output by executing the standalone test against the converted operator.",
+            prompt,
+        )
+        self.assertNotIn("Generate a differential test for the converted output and execute it.", prompt)
 
     def test_optimize_prompt_mentions_requested_modes(self) -> None:
         prompt = build_prompt(
@@ -4630,7 +4830,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
             round_mode="checked",
         )
@@ -4638,7 +4838,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Execute those rounds strictly one at a time.", prompt)
         self.assertIn("Do not pre-plan the full batch before acting.", prompt)
         self.assertIn("Requested test mode: differential", prompt)
-        self.assertIn("Requested bench mode: standalone", prompt)
+        self.assertIn("Requested bench mode: torch-npu-profiler", prompt)
         self.assertIn("Reuse existing correctness tests and benchmark cases when they already exist", prompt)
         self.assertIn("State the optimization hypothesis and why it may help", prompt)
         self.assertIn("Explain what evidence supports the change", prompt)
@@ -4651,7 +4851,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
         )
         self.assertIn("This invocation owns rounds 1 through 5.", prompt)
@@ -4664,7 +4864,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
             min_rounds=4,
             round_mode="checked",
@@ -4679,7 +4879,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
             round_mode="supervised",
         )
@@ -4692,7 +4892,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             round_mode="checked",
             current_round=2,
             final_round=4,
@@ -4702,6 +4902,22 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Execute those rounds strictly one at a time.", prompt)
         self.assertIn("Do not pre-plan the full batch before acting.", prompt)
 
+    def test_build_optimize_round_prompt_interactive_baseline_guidance(self) -> None:
+        prompt = build_optimize_round_prompt(
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="torch-npu-profiler",
+            round_mode="checked",
+            baseline_ready=False,
+            current_round=1,
+            final_round=30,
+            round_batch_size=99,
+        )
+        self.assertIn("repair or establish `baseline/` before `opt-round-1`", prompt)
+        self.assertIn("Do not rely on a separate baseline-preflight invocation", prompt)
+        self.assertNotIn("The baseline has already been validated before this worker batch.", prompt)
+
     def test_optimize_prompt_mentions_continue_mode_for_resolved_resume(self) -> None:
         prompt = build_prompt(
             CommandKind.OPTIMIZE,
@@ -4709,7 +4925,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
             resume_existing_session=True,
             round_mode="checked",
@@ -4724,7 +4940,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
             round_mode="checked",
         )
@@ -4767,7 +4983,7 @@ class PromptTests(unittest.TestCase):
             Path("/tmp/op.py"),
             Path("/tmp/opt_op.py"),
             test_mode="differential",
-            bench_mode="standalone",
+            bench_mode="torch-npu-profiler",
             force_overwrite=False,
         )
         self.assertIn("This invocation owns rounds 1 through 5.", prompt)

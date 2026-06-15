@@ -14,6 +14,9 @@ from typing import Any, Optional, TextIO, TypedDict, cast
 from result_payload import ResultPayload, make_result
 
 _IS_WINDOWS = sys.platform == "win32"
+_BLOCKS_PARALLEL_ENV = "TRITON_ALL_BLOCKS_PARALLEL"
+_BLOCKS_PARALLEL_UNSAFE_VALUE = "1"
+_BLOCKS_PARALLEL_SAFE_VALUE = "0"
 
 if not _IS_WINDOWS:
     import pty
@@ -450,15 +453,27 @@ def _resolved_returncode(returncode: int | None) -> int:
     return returncode if returncode is not None else 1
 
 
+def _normalized_execution_extra_env(extra_env: dict[str, str] | None) -> dict[str, str]:
+    normalized = {} if extra_env is None else dict(extra_env)
+    blocks_parallel = normalized.get(_BLOCKS_PARALLEL_ENV)
+    if blocks_parallel == _BLOCKS_PARALLEL_UNSAFE_VALUE:
+        normalized[_BLOCKS_PARALLEL_ENV] = _BLOCKS_PARALLEL_SAFE_VALUE
+    elif blocks_parallel is None and os.environ.get(_BLOCKS_PARALLEL_ENV) == _BLOCKS_PARALLEL_SAFE_VALUE:
+        normalized[_BLOCKS_PARALLEL_ENV] = _BLOCKS_PARALLEL_SAFE_VALUE
+    return normalized
+
+
 def _merged_env(extra_env: dict[str, str] | None) -> dict[str, str] | None:
-    if extra_env is None:
+    normalized = _normalized_execution_extra_env(extra_env)
+    if extra_env is None and not normalized:
         return None
     merged = dict(os.environ)
-    merged.update(extra_env)
+    merged.update(normalized)
     return merged
 
 
 def _shell_env_prefix(extra_env: dict[str, str] | None) -> str:
-    if not extra_env:
+    normalized = _normalized_execution_extra_env(extra_env)
+    if not normalized:
         return ""
-    return " ".join(f"{key}={shlex.quote(value)}" for key, value in sorted(extra_env.items()))
+    return " ".join(f"{key}={shlex.quote(value)}" for key, value in sorted(normalized.items()))

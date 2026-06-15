@@ -65,7 +65,7 @@ This ordering keeps SIMT-only as an architecture-specific launch-mode experiment
 1. Confirm the profile row and kernel-name match from `op_summary_*.csv`.
 2. Confirm A5 using the evidence rules above.
 3. Inspect the kernel for flat `numel` traversal plus `//` / `%` coordinate recovery. If present and the mapping is affine, route to the flat-index-decode tiling repair first.
-4. For fixed-kernel pooling (AvgPool/MaxPool), enable and validate SIMT-only launch first; if inner loops still scan `KERNEL_D×H×W` with per-tap validity masks and runtime divisor counting, route to `pooling-clip-window-closed-divisor` **after** SIMT is active.
+4. For **fixed-kernel window reductions** on A5 SIMT: enable SIMT-only launch, then follow **`a5-simt-sliding-window-tuning`** (feature-derived dispatch, inner path, launch geometry). Route to **`simt-clip-window-closed-reduction`** only when normalizer uses **clipped volume only** and the hot path still uses per-tap counting — not as the default for all padded mean-style ops.
 5. Confirm the remaining kernel is discrete-memory-access dominated by reading the Triton kernel body.
 6. Add `force_simt_only=True` to the Triton kernel launch:
 
@@ -145,4 +145,5 @@ Treat this as an environment-level repair. Record the original error, the `acl_d
 ## Related Patterns
 
 - `flat-index-decode-tiling`
-- `pooling-clip-window-closed-divisor`
+- `a5-simt-sliding-window-tuning` — A5 SIMT fixed-window reduction tuning (after SIMT is enabled)
+- `simt-clip-window-closed-reduction` — closed normalizer inner loop when clipped volume only

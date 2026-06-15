@@ -9,13 +9,47 @@ from io import StringIO
 from pathlib import Path
 from types import ModuleType
 from typing import Optional, Union
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from tests.run_skill_test_utils import (
     load_bench_runner_module,
-    load_standalone_bench_runtime_module,
+    load_bench_runtime_module,
+    load_perf_artifacts_module,
     make_skill_result,
 )
+
+
+def _write_hooked_bench_file(
+    path: Path,
+    *,
+    mode: str,
+    api_name: str,
+    kernel_names: tuple[str, ...],
+    case_ids: tuple[str, ...] = ("case-1",),
+) -> None:
+    kernel_header = (
+        f"# kernel: {kernel_names[0]}"
+        if len(kernel_names) == 1
+        else "# kernels: " + ", ".join(kernel_names)
+    )
+    cases_literal = ", ".join(f'{{"id": "{case_id}"}}' for case_id in case_ids)
+    path.write_text(
+        f"""# bench-mode: {mode}
+# api-name: {api_name}
+# api-kind: torch-function
+{kernel_header}
+
+def build_operator_api(operator_module):
+    return getattr(operator_module, "{api_name}")
+
+def build_bench_cases():
+    return [{cases_literal}]
+
+def build_bench_case_fn(operator_api, case):
+    return lambda: operator_api(case["id"])
+""",
+        encoding="utf-8",
+    )
 
 
 class LocalBenchRunnerTests(unittest.TestCase):
@@ -80,12 +114,12 @@ class LocalBenchRunnerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "range"):
             module.parse_npu_devices("1-3-5")
 
-    def test_load_standalone_runtime_module_concurrent_calls_share_one_initialized_module(self) -> None:
+    def test_load_bench_runtime_module_concurrent_calls_share_one_initialized_module(self) -> None:
         module = load_bench_runner_module()
-        module_name = "triton_agent_standalone_bench_runtime_fake_runtime"
-        cached_runtime = getattr(module, "_standalone_runtime_module_cache", None)
-        if hasattr(module, "_standalone_runtime_module_cache"):
-            setattr(module, "_standalone_runtime_module_cache", None)
+        module_name = "triton_agent_bench_runtime_fake_runtime"
+        cached_runtime = getattr(module, "_bench_runtime_module_cache", None)
+        if hasattr(module, "_bench_runtime_module_cache"):
+            setattr(module, "_bench_runtime_module_cache", None)
 
         load_count = 0
         load_count_lock = threading.Lock()
@@ -116,14 +150,14 @@ class LocalBenchRunnerTests(unittest.TestCase):
         def _worker() -> None:
             try:
                 start_barrier.wait(timeout=1.0)
-                results.append(module._load_standalone_runtime_module())
+                results.append(module._load_bench_runtime_module())
             except BaseException as exc:  # pragma: no cover - assertion below surfaces details.
                 errors.append(exc)
 
         try:
             with patch.object(
                 module,
-                "_standalone_runtime_script_path",
+                "_bench_runtime_script_path",
                 return_value=Path("/tmp/fake_runtime.py"),
             ), patch.object(
                 module.importlib.util,
@@ -140,8 +174,8 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 for thread in threads:
                     thread.join()
         finally:
-            if hasattr(module, "_standalone_runtime_module_cache"):
-                setattr(module, "_standalone_runtime_module_cache", cached_runtime)
+            if hasattr(module, "_bench_runtime_module_cache"):
+                setattr(module, "_bench_runtime_module_cache", cached_runtime)
             sys.modules.pop(module_name, None)
 
         self.assertEqual(errors, [])
@@ -149,32 +183,42 @@ class LocalBenchRunnerTests(unittest.TestCase):
         self.assertEqual(len(results), 8)
         self.assertTrue(all(result is results[0] for result in results))
 
-    def test_standalone_runtime_support_paths_include_profile_csv_parser(self) -> None:
+    def test_bench_runtime_support_paths_include_profile_csv_parser(self) -> None:
         module = load_bench_runner_module()
 
-        support_names = {path.name for path in module._standalone_runtime_support_paths()}
+        support_names = {path.name for path in module._bench_runtime_support_paths()}
 
-        self.assertIn("standalone_bench_runtime.py", support_names)
+        self.assertIn("bench_runtime.py", support_names)
         self.assertIn("profile_csv_parser.py", support_names)
 
-    def test_run_local_bench_standalone_delegates_to_hook_runtime(self) -> None:
+    def test_bench_runner_source_no_longer_uses_dependency_adapter_or_mode_forwarders(self) -> None:
+        module = load_bench_runner_module()
+        module_file = module.__file__
+        assert module_file is not None
+        source = Path(module_file).read_text(encoding="utf-8")
+
+        self.assertNotIn("from bench_runner_deps import BenchRunnerDeps", source)
+        self.assertNotIn("import bench_runner_msprof as _msprof", source)
+        self.assertNotIn("import bench_runner_standalone as _standalone", source)
+        self.assertNotIn("class _BenchRunnerDeps", source)
+        self.assertNotIn("_DEPS =", source)
+
+    def test_run_local_bench_torch_npu_profiler_delegates_to_hook_runtime(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: abs_kernel\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: abs_kernel\n", encoding="utf-8")
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
             fake_result = make_skill_result(0, "bench stdout\n", "")
             perf_file = root / "abs_perf.txt"
             perf_file.write_text("latency-case-a: 1.0\n", encoding="utf-8")
-            with patch.object(
-                module,
-                "run_local_standalone_bench",
-                create=True,
-                return_value=(fake_result, perf_file),
-            ) as helper, patch.object(module, "run_streaming_process") as streaming:
+            fake_runtime = MagicMock()
+            fake_runtime.profile_all_bench_cases.return_value = (fake_result, perf_file)
+            with patch.object(module, "_load_bench_runtime_module", return_value=fake_runtime), \
+                 patch.object(module, "run_streaming_process") as streaming:
                 result, resolved_perf = module.run_local_bench(
                     bench_file,
                     operator_file,
@@ -183,8 +227,9 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             self.assertEqual(result["return_code"], 0)
             self.assertEqual(resolved_perf, perf_file)
-            helper.assert_called_once_with(bench_file, operator_file, verbose=False,
-                                             output=None)
+            fake_runtime.profile_all_bench_cases.assert_called_once_with(
+                bench_file, operator_file, verbose=False, output=None
+            )
             streaming.assert_not_called()
 
     def test_run_local_bench_prints_visible_devices_when_debug_enabled(self) -> None:
@@ -193,12 +238,14 @@ class LocalBenchRunnerTests(unittest.TestCase):
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: abs_kernel\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: abs_kernel\n", encoding="utf-8")
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
             fake_result = make_skill_result(0, "", "")
             perf_file = root / "abs_perf.txt"
             stdout = StringIO()
+            fake_runtime = MagicMock()
+            fake_runtime.profile_all_bench_cases.return_value = (fake_result, perf_file)
             with patch.dict(
                 module.os.environ,
                 {
@@ -209,9 +256,8 @@ class LocalBenchRunnerTests(unittest.TestCase):
             ):
                 with patch.object(
                     module,
-                    "run_local_standalone_bench",
-                    create=True,
-                    return_value=(fake_result, perf_file),
+                    "_load_bench_runtime_module",
+                    return_value=fake_runtime,
                 ):
                     with redirect_stdout(stdout):
                         result, resolved_perf = module.run_local_bench(
@@ -224,22 +270,23 @@ class LocalBenchRunnerTests(unittest.TestCase):
         self.assertEqual(resolved_perf, perf_file)
         self.assertIn("[TRITON_AGENT_DEBUG] ASCEND_RT_VISIBLE_DEVICES=5", stdout.getvalue())
 
-    def test_run_local_bench_standalone_preserves_helper_perf_path(self) -> None:
+    def test_run_local_bench_torch_npu_profiler_preserves_helper_perf_path(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "opt_abs.py"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: abs_kernel\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: abs_kernel\n", encoding="utf-8")
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
             fake_result = make_skill_result(0, "bench stdout\n", "")
             perf_file = root / "opt_abs_perf.txt"
+            fake_runtime = MagicMock()
+            fake_runtime.profile_all_bench_cases.return_value = (fake_result, perf_file)
             with patch.object(
                 module,
-                "run_local_standalone_bench",
-                create=True,
-                return_value=(fake_result, perf_file),
+                "_load_bench_runtime_module",
+                return_value=fake_runtime,
             ):
                 _, perf_path = module.run_local_bench(
                     bench_file,
@@ -249,7 +296,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             self.assertEqual(perf_path, root / "opt_abs_perf.txt")
 
-    def test_run_local_bench_standalone_runs_in_bench_workdir_and_cleans_extra_info(self) -> None:
+    def test_run_local_bench_torch_npu_profiler_runs_in_bench_workdir_and_cleans_extra_info(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -259,29 +306,25 @@ class LocalBenchRunnerTests(unittest.TestCase):
             operator_file = root / "abs.py"
             extra_info = bench_dir / "extra-info"
             extra_info.mkdir()
-            bench_file.write_text("# bench-mode: standalone\n# kernel: abs_kernel\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: abs_kernel\n", encoding="utf-8")
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
             observed_cwds: list[Path] = []
             fake_result = make_skill_result(0, "", "")
             perf_file = root / "abs_perf.txt"
 
-            def _fake_helper(
-                passed_bench: Path,
-                passed_operator: Path,
-                *,
-                verbose: bool = False,
-                output: Optional[str] = None,
-            ):
-                del passed_bench, passed_operator, verbose, output
+            def _capture_cwd(*args, **kwargs):
+                del args, kwargs
                 observed_cwds.append(Path.cwd())
                 return fake_result, perf_file
 
+            fake_runtime = MagicMock()
+            fake_runtime.profile_all_bench_cases.side_effect = _capture_cwd
+
             with patch.object(
                 module,
-                "run_local_standalone_bench",
-                create=True,
-                side_effect=_fake_helper,
+                "_load_bench_runtime_module",
+                return_value=fake_runtime,
             ):
                 result, resolved_perf = module.run_local_bench(
                     bench_file,
@@ -305,7 +348,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             json_file = source_root / "5_MoeInitRouting.json"
             support_dir = source_root / ".opencode" / "skills" / "triton-npu-run-eval" / "scripts"
             support_dir.mkdir(parents=True)
-            support_file = support_dir / "standalone_bench_runtime.py"
+            support_file = support_dir / "bench_runtime.py"
             bench_file.write_text("print('bench')\n", encoding="utf-8")
             operator_file.write_text("print('operator')\n", encoding="utf-8")
             json_file.write_text('{"cases":[1]}\n', encoding="utf-8")
@@ -324,7 +367,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                 self.assertTrue((workspace_root / "bench_case.py").exists())
                 self.assertTrue((workspace_root / "5_MoeInitRouting.json").exists())
                 self.assertTrue((workspace_root / "opt-round-13" / "operator_case.py").exists())
-                self.assertTrue((workspace_root / "standalone_bench_runtime.py").exists())
+                self.assertTrue((workspace_root / "bench_runtime.py").exists())
                 self.assertFalse((workspace_root / ".opencode").exists())
             finally:
                 cleanup()
@@ -332,7 +375,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             log_text = stderr.getvalue()
             self.assertIn("created local case workspace", log_text)
             self.assertIn(str(support_file), log_text)
-            self.assertIn(str(workspace_root / "standalone_bench_runtime.py"), log_text)
+            self.assertIn(str(workspace_root / "bench_runtime.py"), log_text)
 
     def test_stage_remote_case_workspace_flattens_support_files_and_logs_when_verbose(self) -> None:
         module = load_bench_runner_module()
@@ -346,7 +389,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             json_file = source_root / "5_MoeInitRouting.json"
             support_dir = source_root / ".opencode" / "skills" / "triton-npu-run-eval" / "scripts"
             support_dir.mkdir(parents=True)
-            support_file = support_dir / "standalone_bench_runtime.py"
+            support_file = support_dir / "bench_runtime.py"
             bench_file.write_text("print('bench')\n", encoding="utf-8")
             operator_file.write_text("print('operator')\n", encoding="utf-8")
             json_file.write_text('{"cases":[1]}\n', encoding="utf-8")
@@ -385,7 +428,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertIn(f"{workspace_root}/bench_case.py", copied_targets)
             self.assertIn(f"{workspace_root}/5_MoeInitRouting.json", copied_targets)
             self.assertIn(f"{workspace_root}/opt-round-13/operator_case.py", copied_targets)
-            self.assertIn(f"{workspace_root}/standalone_bench_runtime.py", copied_targets)
+            self.assertIn(f"{workspace_root}/bench_runtime.py", copied_targets)
             self.assertFalse(any(".opencode/skills" in target for target in copied_targets))
             self.assertFalse(
                 any(
@@ -397,7 +440,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             log_text = stderr.getvalue()
             self.assertIn("created remote case workspace", log_text)
             self.assertIn(str(support_file), log_text)
-            self.assertIn(f"{workspace_root}/standalone_bench_runtime.py", log_text)
+            self.assertIn(f"{workspace_root}/bench_runtime.py", log_text)
 
     def test_run_local_bench_msprof_delegates_via_facade_helper(self) -> None:
         module = load_bench_runner_module()
@@ -427,16 +470,16 @@ class LocalBenchRunnerTests(unittest.TestCase):
             helper.assert_called_once_with(bench_file, operator_file, verbose=False,
                                              output=None)
 
-    def test_run_local_bench_standalone_parallel_uses_isolated_case_workdirs_and_device_envs(self) -> None:
+    def test_run_local_bench_torch_npu_profiler_parallel_uses_isolated_case_workdirs_and_device_envs(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
-            runtime_script = root / "standalone_bench_runtime.py"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
+            runtime_script = root / "bench_runtime.py"
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
-            runtime_script.write_text("def run_one_standalone_case_record(*_args, **_kwargs):\n    return None\n", encoding="utf-8")
+            runtime_script.write_text("def profile_bench_case(*_args, **_kwargs):\n    return None\n", encoding="utf-8")
 
             observed: list[tuple[Path, Optional[str], Optional[str], str, list[str]]] = []
             kept_profile_root = root / "kept-profile"
@@ -463,7 +506,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                     )
                 )
                 self.assertEqual(command[0:2], [module.local_python_executable(), "-c"])
-                self.assertIn("run_one_standalone_case_record", command[2])
+                self.assertIn("profile_bench_case", command[2])
                 self.assertEqual(
                     command[3:],
                     [
@@ -493,13 +536,13 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             with patch.object(
                 module,
-                "_load_standalone_runtime_module",
+                "_load_bench_runtime_module",
             ) as load_runtime:
                 load_runtime.return_value = type(
                     "_FakeRuntime",
                     (),
                     {
-                        "load_standalone_bench_cases": staticmethod(
+                        "load_bench_cases": staticmethod(
                             lambda *_args, **_kwargs: (
                                 [
                                     type("_Case", (), {"case_id": "case-a"})(),
@@ -545,18 +588,18 @@ class LocalBenchRunnerTests(unittest.TestCase):
             perf_text = perf_path.read_text(encoding="utf-8")
             self.assertLess(perf_text.index('"case_label":"case-a"'), perf_text.index('"case_label":"case-b"'))
 
-    def test_run_local_bench_standalone_parallel_normalizes_relative_preserved_run_dir(self) -> None:
+    def test_run_local_bench_torch_npu_profiler_parallel_normalizes_relative_preserved_run_dir(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
             keep_root = root / "kept-profile"
-            runtime_script = root / "standalone_bench_runtime.py"
+            runtime_script = root / "bench_runtime.py"
             relative_run_dir = Path("./kept-profile/run-123")
-            bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
-            runtime_script.write_text("def run_one_standalone_case_record(*_args, **_kwargs):\n    return None\n", encoding="utf-8")
+            runtime_script.write_text("def profile_bench_case(*_args, **_kwargs):\n    return None\n", encoding="utf-8")
 
             observed_preserved_run_dirs: list[Path] = []
 
@@ -576,7 +619,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
 
             with patch.object(
                 module,
-                "_load_standalone_runtime_module",
+                "_load_bench_runtime_module",
             ) as load_runtime, patch.object(
                 module,
                 "run_buffered_process",
@@ -586,7 +629,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                     "_FakeRuntime",
                     (),
                     {
-                        "load_standalone_bench_cases": staticmethod(
+                        "load_bench_cases": staticmethod(
                             lambda *_args, **_kwargs: (
                                 [type("_Case", (), {"case_id": "case-a"})()],
                                 type("_Resolution", (), {"kernel_names": ["KernelA"], "kernel_source": "metadata"})(),
@@ -617,29 +660,20 @@ class LocalBenchRunnerTests(unittest.TestCase):
             self.assertTrue(observed_preserved_run_dirs[0].is_absolute())
             self.assertTrue(keep_root.resolve() in observed_preserved_run_dirs[0].parents)
 
-    def test_run_local_bench_standalone_parallel_uses_absolute_preserved_run_dir_for_relative_output_root(self) -> None:
+    def test_run_local_bench_torch_npu_profiler_parallel_uses_absolute_preserved_run_dir_for_relative_output_root(self) -> None:
         module = load_bench_runner_module()
-        runtime = load_standalone_bench_runtime_module()
+        runtime = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
             keep_root = root / "kept-profile"
-            bench_file.write_text(
-                """# bench-mode: standalone
-# api-name: build_api
-# api-kind: torch-function
-# kernels: KernelA
-
-def build_operator_api(operator_module):
-    return operator_module.build_api()
-
-def build_standalone_bench_cases(operator_api):
-    def run_case_a():
-        operator_api("case-a")
-    return [{"id": "case-a", "fn": run_case_a}]
-""",
-                encoding="utf-8",
+            _write_hooked_bench_file(
+                bench_file,
+                mode="standalone",
+                api_name="build_api",
+                kernel_names=("KernelA",),
+                case_ids=("case-a",),
             )
             operator_file.write_text(
                 """def build_api():
@@ -666,7 +700,7 @@ def build_standalone_bench_cases(operator_api):
 
             with patch.object(
                 module,
-                "_load_standalone_runtime_module",
+                "_load_bench_runtime_module",
                 return_value=runtime,
             ), patch.object(
                 module,
@@ -696,21 +730,21 @@ def build_standalone_bench_cases(operator_api):
             self.assertTrue(observed_preserved_run_dirs[0].is_absolute())
             self.assertTrue(keep_root.resolve() in observed_preserved_run_dirs[0].parents)
 
-    def test_run_local_bench_standalone_parallel_imports_nested_runtime_support_script(self) -> None:
+    def test_run_local_bench_torch_npu_profiler_parallel_imports_nested_runtime_support_script(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
             runtime_dir = root / ".opencode" / "skills" / "triton-npu-run-eval" / "scripts"
-            runtime_script = runtime_dir / "standalone_bench_runtime.py"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
+            runtime_script = runtime_dir / "bench_runtime.py"
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
             runtime_dir.mkdir(parents=True)
             runtime_script.write_text(
                 """from types import SimpleNamespace
 
-def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved_run_dir=None, verbose=False):
+def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=None, verbose=False):
     del bench_file, operator_file, preserved_run_dir, verbose
     return SimpleNamespace(
         case_label=case_id,
@@ -726,13 +760,13 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
 
             with patch.object(
                 module,
-                "_load_standalone_runtime_module",
+                "_load_bench_runtime_module",
             ) as load_runtime:
                 load_runtime.return_value = type(
                     "_FakeRuntime",
                     (),
                     {
-                        "load_standalone_bench_cases": staticmethod(
+                        "load_bench_cases": staticmethod(
                             lambda *_args, **_kwargs: (
                                 [type("_Case", (), {"case_id": "case-a"})()],
                                 type("_Resolution", (), {"kernel_names": ["KernelA"], "kernel_source": "metadata"})(),
@@ -756,14 +790,14 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIn('"case_label":"case-a"', perf_text)
             self.assertIn('"kernel_avg_time_us":1.0', perf_text)
 
-    def test_run_remote_bench_standalone_uses_module_helper_files(self) -> None:
+    def test_run_remote_bench_torch_npu_profiler_uses_module_helper_files(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
             perf_file = root / "abs_perf.txt"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: abs_kernel\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: abs_kernel\n", encoding="utf-8")
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
             with patch.object(
@@ -793,13 +827,13 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
         copy_targets = [call.args[2].rsplit("/", 1)[-1] for call in copy_to_remote.call_args_list]
         self.assertIn("bench_abs.py", copy_targets)
         self.assertIn("abs.py", copy_targets)
-        self.assertIn("standalone_bench_runtime.py", copy_targets)
+        self.assertIn("bench_runtime.py", copy_targets)
         self.assertIn("bench_contract.py", copy_targets)
         self.assertIn("perf_artifacts.py", copy_targets)
         self.assertIn("profile_csv_parser.py", copy_targets)
         remote_command = remote_run.call_args.args[2]
         self.assertEqual(remote_command[0:2], ["python3", "-c"])
-        self.assertIn("run_local_standalone_bench", remote_command[2])
+        self.assertIn("profile_all_bench_cases", remote_command[2])
         self.assertEqual(remote_command[3:], ["bench_abs.py", "abs.py", "abs_perf.txt"])
         copy_back.assert_called_once_with(
             "spec",
@@ -816,9 +850,12 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
-            bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: abs_\n# kernel: OpB\n",
-                encoding="utf-8",
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="abs_",
+                kernel_names=("OpB",),
+                case_ids=("case-1", "case-2"),
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
@@ -831,7 +868,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                 self.assertTrue(command[1].startswith("--output="))
                 output_dir = Path(command[1].split("=", 1)[1])
                 created_output_dirs.append(output_dir)
-                case_idx = int(command[-1])
+                case_idx = int(str(command[-1]).removeprefix("case-"))
                 csv_path = output_dir / f"op_statistic_20260424{case_idx}.csv"
                 csv_path.write_text(
                     "\n".join(
@@ -846,7 +883,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                 )
                 return make_skill_result(0, f"profile {case_idx}\n", "")
 
-            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "2\n", "")), patch.object(
+            with patch.object(
                 module,
                 "run_streaming_process",
                 side_effect=_fake_streaming,
@@ -872,8 +909,18 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             case_command = mocked.call_args_list[1].args[0]
             self.assertEqual(case_command[0], "msprof")
             self.assertTrue(case_command[1].startswith("--output="))
-            self.assertEqual(case_command[2:4], [sys.executable, "bench_abs.py"])
-            self.assertIn("--bench", case_command)
+            self.assertEqual(case_command[2:5], [sys.executable, str(module._bench_runtime_script_path()), "run-one"])
+            self.assertEqual(
+                case_command[5:11],
+                [
+                    "--bench-file",
+                    "bench_abs.py",
+                    "--operator-file",
+                    "abs.py",
+                    "--case-id",
+                    "case-2",
+                ],
+            )
             self.assertTrue(created_output_dirs)
             self.assertTrue(all(not path.exists() for path in created_output_dirs))
 
@@ -883,9 +930,12 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
-            bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: abs_\n# kernel: OpB\n",
-                encoding="utf-8",
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="abs_",
+                kernel_names=("OpB",),
+                case_ids=("case-1", "case-2"),
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
@@ -902,7 +952,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                 self.assertTrue((workdir_path / "bench_abs.py").exists())
                 self.assertTrue((workdir_path / "abs.py").exists())
                 output_dir = Path(command[1].split("=", 1)[1])
-                case_idx = int(command[-1])
+                case_idx = int(str(command[-1]).removeprefix("case-"))
                 if case_idx == 1:
                     __import__("time").sleep(0.05)
                 (output_dir / f"op_statistic_{case_idx}.csv").write_text(
@@ -917,7 +967,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                 )
                 return make_skill_result(0, f"profile {case_idx}\n", "")
 
-            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "2\n", "")), patch.object(
+            with patch.object(
                 module,
                 "run_streaming_process",
                 side_effect=_fake_streaming,
@@ -949,9 +999,11 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             operator_file = root / "abs.py"
             keep_root = root / "kept-msprof"
             relative_run_dir = Path("./kept-msprof/run-123")
-            bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: abs_\n# kernel: OpB\n",
-                encoding="utf-8",
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="abs_",
+                kernel_names=("OpB",),
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
@@ -974,13 +1026,9 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                 return make_skill_result(0, "profile 1\n", "")
 
             with patch.object(
-                module._msprof,
+                module,
                 "_create_local_msprof_preserved_run_dir",
                 return_value=relative_run_dir,
-            ), patch.object(
-                module,
-                "run_buffered_process",
-                return_value=make_skill_result(0, "1\n", ""),
             ), patch.object(
                 module,
                 "run_streaming_process",
@@ -1012,9 +1060,11 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             bench_file = root / "bench_all_cases.py"
             operator_file = root / "opt_kernel.py"
             discovered_json = root / "5_MoeInitRouting.json"
-            bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: kernel\n# kernel: KernelB\n",
-                encoding="utf-8",
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="kernel",
+                kernel_names=("KernelB",),
             )
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
             discovered_json.write_text('{"cases":[1]}\n', encoding="utf-8")
@@ -1042,7 +1092,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                 )
                 return make_skill_result(0, "profile 1\n", "")
 
-            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+            with patch.object(
                 module,
                 "run_streaming_process",
                 side_effect=_fake_streaming,
@@ -1070,9 +1120,11 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             operator_file = operator_dir / "opt_kernel.py"
             operator_json = operator_dir / "5_MoeInitRouting.json"
             discovered_json = root / "5_MoeInitRouting.json"
-            bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: kernel\n# kernel: KernelB\n",
-                encoding="utf-8",
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="kernel",
+                kernel_names=("KernelB",),
             )
             operator_file.write_text("def kernel():\n    pass\n", encoding="utf-8")
             operator_json.write_text('{"from":"operator-dir"}\n', encoding="utf-8")
@@ -1090,9 +1142,19 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                 self.assertTrue((workdir_path / "opt-round-13" / "opt_kernel.py").exists())
                 self.assertTrue((workdir_path / "opt-round-13" / "5_MoeInitRouting.json").exists())
                 self.assertEqual(
-                    command[3:6],
-                    ["bench_all_cases.py", "--operator-file", "opt-round-13/opt_kernel.py"],
+                    command[2:10],
+                    [
+                        sys.executable,
+                        "bench_runtime.py",
+                        "run-one",
+                        "--bench-file",
+                        "bench_all_cases.py",
+                        "--operator-file",
+                        "opt-round-13/opt_kernel.py",
+                        "--case-id",
+                    ],
                 )
+                self.assertEqual(command[10], "case-1")
                 output_dir = Path(command[1].split("=", 1)[1])
                 (output_dir / "op_statistic_1.csv").write_text(
                     "\n".join(
@@ -1106,7 +1168,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                 )
                 return make_skill_result(0, "profile 1\n", "")
 
-            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+            with patch.object(
                 module,
                 "run_streaming_process",
                 side_effect=_fake_streaming,
@@ -1131,9 +1193,11 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             operator_file = root / "abs.py"
             extra_info = root / "extra-info"
             extra_info.mkdir()
-            bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: abs_\n# kernel: OpB\n",
-                encoding="utf-8",
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="abs_",
+                kernel_names=("OpB",),
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
@@ -1156,7 +1220,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                     extra_info.mkdir()
                 return make_skill_result(0, "", "")
 
-            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+            with patch.object(
                 module,
                 "run_streaming_process",
                 side_effect=_fake_streaming,
@@ -1179,9 +1243,11 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             operator_file = root / "abs.py"
             extra_info = root / "extra-info"
             extra_info.write_text("keep me\n", encoding="utf-8")
-            bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: abs_\n# kernel: OpB\n",
-                encoding="utf-8",
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="abs_",
+                kernel_names=("OpB",),
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
@@ -1200,7 +1266,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                 )
                 return make_skill_result(0, "", "")
 
-            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+            with patch.object(
                 module,
                 "run_streaming_process",
                 side_effect=_fake_streaming,
@@ -1221,9 +1287,11 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
-            bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: abs_\n# kernel: OpB\n",
-                encoding="utf-8",
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="abs_",
+                kernel_names=("OpB",),
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
@@ -1244,7 +1312,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                 return make_skill_result(0, "profile stdout\n", "")
 
             stdout = StringIO()
-            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+            with patch.object(
                 module,
                 "run_streaming_process",
                 side_effect=_fake_streaming,
@@ -1265,9 +1333,11 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
-            bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: abs_\n# kernels: OpA, OpB\n",
-                encoding="utf-8",
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="abs_",
+                kernel_names=("OpA", "OpB"),
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
@@ -1290,7 +1360,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                 )
                 return make_skill_result(0, "profile 1\n", "")
 
-            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+            with patch.object(
                 module,
                 "run_streaming_process",
                 side_effect=_fake_streaming,
@@ -1317,9 +1387,11 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
-            bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: abs_\n# kernel: Zero\n",
-                encoding="utf-8",
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="abs_",
+                kernel_names=("Zero",),
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
@@ -1339,7 +1411,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                 )
                 return make_skill_result(0, "", "")
 
-            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+            with patch.object(
                 module,
                 "run_streaming_process",
                 side_effect=_fake_streaming,
@@ -1367,9 +1439,11 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
             keep_root = root / "kept-msprof"
-            bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: abs_\n# kernel: KeepMe\n",
-                encoding="utf-8",
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="abs_",
+                kernel_names=("KeepMe",),
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
@@ -1393,10 +1467,6 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                 return make_skill_result(0, "", "")
 
             with patch.dict(os.environ, {"TRITON_AGENT_BENCH_OUTPUT_DIR": str(keep_root)}, clear=False), patch.object(
-                module,
-                "run_buffered_process",
-                return_value=make_skill_result(0, "1\n", ""),
-            ), patch.object(
                 module,
                 "run_streaming_process",
                 side_effect=_fake_streaming,
@@ -1428,16 +1498,19 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
-            bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: abs_\n# kernel: KernelB\n",
-                encoding="utf-8",
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="abs_",
+                kernel_names=("KernelB",),
+                case_ids=("case-1", "case-2"),
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
             def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
                 self.assertEqual(workdir, str(root))
                 self.assertEqual(stall_timeout_seconds, 900)
-                case_idx = int(command[-1])
+                case_idx = int(str(command[-1]).removeprefix("case-"))
                 output_dir = Path(command[1].split("=", 1)[1])
                 if case_idx == 1:
                     return make_skill_result(1, "", "case one failed\n")
@@ -1453,7 +1526,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                 )
                 return make_skill_result(0, "profile 2\n", "")
 
-            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "2\n", "")), patch.object(
+            with patch.object(
                 module,
                 "run_streaming_process",
                 side_effect=_fake_streaming,
@@ -1482,9 +1555,11 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
             keep_root = root / "kept-msprof"
-            bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: abs_\n# kernel: KeepMe\n",
-                encoding="utf-8",
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="abs_",
+                kernel_names=("KeepMe",),
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
@@ -1508,10 +1583,6 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             original_umask = os.umask(0o002)
             try:
                 with patch.dict(os.environ, {"TRITON_AGENT_BENCH_OUTPUT_DIR": str(keep_root)}, clear=False), patch.object(
-                    module,
-                    "run_buffered_process",
-                    return_value=make_skill_result(0, "1\n", ""),
-                ), patch.object(
                     module,
                     "run_streaming_process",
                     side_effect=_fake_streaming,
@@ -1537,10 +1608,15 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
-            bench_file.write_text("# bench-mode: msprof\n# kernel: OpB\n", encoding="utf-8")
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="abs_",
+                kernel_names=("OpB",),
+            )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
-            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+            with patch.object(
                 module,
                 "run_streaming_process",
                 return_value=make_skill_result(0, "", ""),
@@ -1567,7 +1643,12 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
-            bench_file.write_text("# bench-mode: msprof\n# kernel: MissingKernel\n", encoding="utf-8")
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="abs_",
+                kernel_names=("MissingKernel",),
+            )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
             def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
@@ -1585,7 +1666,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                 )
                 return make_skill_result(0, "", "")
 
-            with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+            with patch.object(
                 module,
                 "run_streaming_process",
                 side_effect=_fake_streaming,
@@ -1612,9 +1693,11 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
-            bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: abs_\n# kernel: OpB\n",
-                encoding="utf-8",
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="abs_",
+                kernel_names=("OpB",),
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
@@ -1630,7 +1713,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
 
             self._monotonic_patcher.stop()
             try:
-                with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+                with patch.object(
                     module,
                     "run_streaming_process",
                     side_effect=_fake_streaming,
@@ -1657,15 +1740,17 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             root = Path(tmp)
             bench_file = root / "bench_abs.py"
             operator_file = root / "abs.py"
-            bench_file.write_text(
-                "# bench-mode: msprof\n# api-name: abs_\n# kernel: OpB\n",
-                encoding="utf-8",
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="abs_",
+                kernel_names=("OpB",),
             )
             operator_file.write_text("def abs_():\n    pass\n", encoding="utf-8")
 
             self._monotonic_patcher.stop()
             try:
-                with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "1\n", "")), patch.object(
+                with patch.object(
                     module,
                     "run_streaming_process",
                     return_value=make_skill_result(1, "", "command failed"),
@@ -1737,7 +1822,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
                 module.resolve_bench_kernel_names(bench_file, operator_file)
 
     def test_compare_perf_files_reports_per_case_deltas(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -1765,7 +1850,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIn("Metric source: kernel", output)
 
     def test_compare_perf_files_fails_by_default_on_case_execution_error_marker(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -1797,7 +1882,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertNotIn("Perf comparison:", output)
 
     def test_compare_perf_files_skips_case_execution_error_when_requested(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -1837,7 +1922,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIn("latency-error-case-1", output)
 
     def test_compare_perf_files_fails_on_non_positive_latency_without_skip(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -1861,7 +1946,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertNotIn("Avg improvement: unknown", output)
 
     def test_compare_perf_files_skips_non_positive_latency_when_requested(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -1892,7 +1977,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIn("must be > 0", output)
 
     def test_compare_perf_files_fails_when_case_ids_do_not_match(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -1916,7 +2001,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIn("missing required latency ids", output)
 
     def test_compare_perf_files_ignores_extra_compare_fields(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -1943,7 +2028,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIn("latency-b", output)
 
     def test_compare_perf_files_ignores_comment_lines_in_both_inputs(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -1972,7 +2057,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIn("delta=-20.00%", output)
 
     def test_compare_perf_files_falls_back_to_total_op_when_baseline_latency_is_na(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -2009,7 +2094,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIn("Metric source: total-op", output)
 
     def test_compare_perf_files_kernel_mode_fails_when_kernel_is_missing(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -2045,7 +2130,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIn("requires kernel latency", output)
 
     def test_compare_perf_files_total_op_mode_uses_raw_totals_even_when_kernel_exists(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -2083,7 +2168,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIn("Metric source: total-op", output)
 
     def test_compare_perf_files_total_op_mode_fails_when_raw_totals_are_missing(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -2107,7 +2192,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIn("requires '# raw-op-statistic-case-1: ...'", output)
 
     def test_compare_perf_files_reports_mixed_metric_source_when_cases_mix_kernel_and_total_op(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -2143,7 +2228,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIn("Metric source: mixed (kernel + total-op fallback)", output)
 
     def test_compare_perf_files_all_mode_prints_kernel_and_total_op_sections(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -2182,7 +2267,7 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             self.assertIn("Metric source: total-op", output)
 
     def test_compare_perf_files_preserves_original_display_precision(self) -> None:
-        module = load_bench_runner_module()
+        module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             baseline = root / "baseline_perf.txt"
@@ -2210,11 +2295,11 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             root = Path(tmp)
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
-            runtime_script = root / "standalone_bench_runtime.py"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
+            runtime_script = root / "bench_runtime.py"
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
             runtime_script.write_text(
-                "def run_one_standalone_case_record(bench_file, operator_file, case_id, "
+                "def profile_bench_case(bench_file, operator_file, case_id, "
                 "preserved_run_dir=None, verbose=False):\n"
                 "    from perf_artifacts import PerfCaseRecord, PerfMetrics\n"
                 "    return PerfCaseRecord(\n"
@@ -2248,14 +2333,14 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
 
             with patch.object(
                 module,
-                "_load_standalone_runtime_module",
+                "_load_bench_runtime_module",
                 create=True,
             ) as load_runtime:
                 load_runtime.return_value = type(
                     "_FakeRuntime",
                     (),
                     {
-                        "load_standalone_bench_cases": staticmethod(
+                        "load_bench_cases": staticmethod(
                             lambda *_args, **_kwargs: (
                                 [
                                     type("_Case", (), {"case_id": "case-a"})(),
@@ -2287,13 +2372,15 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             root = Path(tmp)
             bench_file = root / "bench_msprof.py"
             operator_file = root / "operator_msprof.py"
-            bench_file.write_text("# bench-mode: msprof\n# kernel: KernelA\n", encoding="utf-8")
+            _write_hooked_bench_file(
+                bench_file,
+                mode="msprof",
+                api_name="build_api",
+                kernel_names=("KernelA",),
+            )
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
 
             observed_streaming_env: list[Optional[dict[str, str]]] = []
-
-            def _fake_buffered(command, workdir, stall_timeout_seconds, extra_env=None):
-                return make_skill_result(0, "1\n", "")
 
             def _fake_streaming(command, workdir, stall_timeout_seconds,
                                 stdout=None, extra_env=None):
@@ -2303,10 +2390,9 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             def _fake_read_metrics(_output_dir, _kernel_names):
                 return {"kernel_avg_time_us": 1.0, "ops": [{"op_type": "KernelA", "avg_time_us": 1.0}]}  # type: ignore[return-value]
 
-            with patch.object(module, "run_buffered_process", side_effect=_fake_buffered), \
-                 patch.object(module, "run_streaming_process", side_effect=_fake_streaming), \
+            with patch.object(module, "run_streaming_process", side_effect=_fake_streaming), \
                  patch.object(
-                     module._msprof, "_read_local_msprof_metrics",
+                     module, "_read_local_msprof_metrics",
                      side_effect=_fake_read_metrics, create=True,
                  ):
                 result, _perf_path = module.run_local_bench(
@@ -2325,11 +2411,11 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
             root = Path(tmp)
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
-            runtime_script = root / "standalone_bench_runtime.py"
-            bench_file.write_text("# bench-mode: standalone\n# kernel: KernelA\n", encoding="utf-8")
+            runtime_script = root / "bench_runtime.py"
+            bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
             runtime_script.write_text(
-                "def run_one_standalone_case_record(bench_file, operator_file, case_id, "
+                "def profile_bench_case(bench_file, operator_file, case_id, "
                 "preserved_run_dir=None, verbose=False):\n"
                 "    from perf_artifacts import PerfCaseRecord, PerfMetrics\n"
                 "    return PerfCaseRecord(\n"
@@ -2360,14 +2446,14 @@ def run_one_standalone_case_record(bench_file, operator_file, case_id, preserved
 
             with patch.object(
                 module,
-                "_load_standalone_runtime_module",
+                "_load_bench_runtime_module",
                 create=True,
             ) as load_runtime:
                 load_runtime.return_value = type(
                     "_FakeRuntime",
                     (),
                     {
-                        "load_standalone_bench_cases": staticmethod(
+                        "load_bench_cases": staticmethod(
                             lambda *_args, **_kwargs: (
                                 [
                                     type("_Case", (), {"case_id": "case-a"})(),

@@ -34,7 +34,7 @@ class OptimizeBaselineTests(unittest.TestCase):
                         "test_file": "differential_test_kernel.py",
                         "test_mode": "differential",
                         "bench_file": "bench_kernel.py",
-                        "bench_mode": "standalone",
+                        "bench_mode": "torch-npu-profiler",
                         "perf_artifact": "baseline/perf.txt",
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
@@ -83,7 +83,7 @@ class OptimizeBaselineTests(unittest.TestCase):
                         "test_file": "differential_test_kernel.py",
                         "test_mode": "differential",
                         "bench_file": "bench_kernel.py",
-                        "bench_mode": "standalone",
+                        "bench_mode": "torch-npu-profiler",
                         "perf_artifact": "baseline/perf.txt",
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
@@ -132,7 +132,7 @@ class OptimizeBaselineTests(unittest.TestCase):
                         "test_file": "differential_test_kernel.py",
                         "test_mode": "differential",
                         "bench_file": "bench_kernel.py",
-                        "bench_mode": "standalone",
+                        "bench_mode": "torch-npu-profiler",
                         "perf_artifact": "baseline/metrics/perf.txt",
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
@@ -166,7 +166,7 @@ class OptimizeBaselineTests(unittest.TestCase):
                         "test_file": "differential_test_kernel.py",
                         "test_mode": "differential",
                         "bench_file": "bench_kernel.py",
-                        "bench_mode": "standalone",
+                        "bench_mode": "torch-npu-profiler",
                         "perf_artifact": "baseline/perf.txt",
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
@@ -196,7 +196,7 @@ class OptimizeBaselineTests(unittest.TestCase):
                         "test_file": "differential_test_kernel.py",
                         "test_mode": "differential",
                         "bench_file": "bench_kernel.py",
-                        "bench_mode": "standalone",
+                        "bench_mode": "torch-npu-profiler",
                         "perf_artifact": "baseline/metrics/perf.txt",
                         "correctness_status": "passed",
                         "benchmark_status": "passed",
@@ -212,6 +212,41 @@ class OptimizeBaselineTests(unittest.TestCase):
 
             self.assertIn("missing baseline/metrics/perf.txt", inspection.issues)
             self.assertIn("missing baseline/snapshots/chosen.py", inspection.issues)
+
+    def test_inspect_baseline_artifacts_resolves_paths_relative_to_state_file_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "differential_test_kernel.py").write_text("print('test')\n", encoding="utf-8")
+            (workspace / "bench_kernel.py").write_text("print('bench')\n", encoding="utf-8")
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "../kernel.py",
+                        "baseline_operator": "kernel.py",
+                        "test_file": "../differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "../bench_kernel.py",
+                        "bench_mode": "standalone",
+                        "perf_artifact": "perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-0: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+
+            inspection = inspect_baseline_artifacts(workspace)
+
+            self.assertEqual(inspection.perf_path, baseline_dir / "perf.txt")
+            self.assertEqual(inspection.operator_path, baseline_dir / "kernel.py")
+            self.assertEqual(inspection.issues, ())
 
 
 if __name__ == "__main__":
