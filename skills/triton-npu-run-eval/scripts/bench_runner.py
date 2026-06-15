@@ -1239,21 +1239,74 @@ def _set_directory_owner_only(path: Path) -> None:
 
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched op_statistic csv"
 _TIMEOUT_MESSAGE = "[INFO]  The timeout has reached and the application will be forcibly killed."
+_LAUNCH_COUNT = 5  # msprof op simulator: per-kernel max launches; last sample (idx=N-1) is post-warmup
 
 
-def _find_latest_visualize_data_bin(output_dir: Path) -> Path | None:
-    matches = sorted(
-        path for path in output_dir.rglob("visualize_data.bin") if path.is_file()
-    )
+def _iter_kernel_launch_bins(output_dir: Path, kernel_dir_name: str) -> list[Path]:
+    kernel_root = output_dir / kernel_dir_name
+    if not kernel_root.is_dir():
+        return []
+    bins: list[Path] = []
+    for entry in kernel_root.iterdir():
+        if entry.is_dir() and entry.name.isdigit():
+            bin_path = entry / "simulator" / "visualize_data.bin"
+            if bin_path.is_file():
+                bins.append(bin_path)
+    return bins
+
+
+def _bin_sort_key(bin_path: Path) -> tuple[int, int]:
+    # bin_path: .../<idx>/simulator/visualize_data.bin
+    idx_dir = bin_path.parent.parent if bin_path.parent.name == "simulator" else None
+    idx = int(idx_dir.name) if idx_dir is not None and idx_dir.name.isdigit() else -1
+    return (idx, bin_path.stat().st_size)
+
+
+def _resolve_target_visualize_data_bin(
+    output_dir: Path,
+    kernel_name: str | None,
+    candidate_kernel_names: Sequence[str] | None,
+) -> Path | None:
+    if kernel_name:
+        bins = _iter_kernel_launch_bins(output_dir, kernel_name)
+        if bins:
+            return max(bins, key=_bin_sort_key)
+    if candidate_kernel_names:
+        for kname in candidate_kernel_names:
+            if kname == kernel_name:
+                continue
+            bins = _iter_kernel_launch_bins(output_dir, kname)
+            if bins:
+                return max(bins, key=_bin_sort_key)
+    fallback_bins: list[Path] = []
+    for entry in output_dir.iterdir():
+        if entry.is_dir():
+            fallback_bins.extend(_iter_kernel_launch_bins(output_dir, entry.name))
+    if fallback_bins:
+        return max(fallback_bins, key=_bin_sort_key)
+    flat = output_dir / "simulator" / "visualize_data.bin"
+    if flat.is_file():
+        return flat
+    matches = sorted(p for p in output_dir.rglob("visualize_data.bin") if p.is_file())
     if not matches:
         return None
     return max(matches, key=lambda path: path.stat().st_mtime_ns)
 
 
-def _run_extract_and_copy(output_dir: Path, bench_file: Path, isTimeOut: bool = False, dest_dir: Path | None = None) -> None:
-    bin_file = _find_latest_visualize_data_bin(output_dir)
+def _run_extract_and_copy(
+    output_dir: Path,
+    bench_file: Path,
+    *,
+    isTimeOut: bool = False,
+    dest_dir: Path | None = None,
+    kernel_name: str | None = None,
+    candidate_kernel_names: Sequence[str] | None = None,
+) -> None:
+    bin_file = _resolve_target_visualize_data_bin(output_dir, kernel_name, candidate_kernel_names)
     if bin_file is None:
+        print("[msprof-simulator] no visualize_data.bin found, skipping extraction", flush=True)
         return
+    print(f"[msprof-simulator] selected bin: {bin_file}", flush=True)
 
     extract_script = Path(__file__).resolve().parent / "extract_profile_bin_data.py"
     cmd = [sys.executable, str(extract_script), str(bin_file)]
@@ -1345,6 +1398,7 @@ def _run_local_bench_msprof_simulator(
             "op",
             "simulator",
             "--timeout=5",
+            f"--launch-count={_LAUNCH_COUNT}",
             f"--output={output_dir}",
             local_python_executable(),
             str(bench_file),
@@ -1353,7 +1407,7 @@ def _run_local_bench_msprof_simulator(
             "--bench", str(simulator_case_idx),
         ]
         if kernel_name:
-            command.insert(4, f"--kernel-name={kernel_name}")
+            command.insert(5, f"--kernel-name={kernel_name}")
         if verbose:
             emit_verbose(sys.stderr, "msprof-simulator", f"kernel-name={kernel_name}, cmd: {' '.join(command)}")
         t0 = time.monotonic()
@@ -1408,7 +1462,14 @@ def _run_local_bench_msprof_simulator(
                 perf_path,
             )
 
-        _run_extract_and_copy(output_dir, bench_file, isTimeOut, dest_dir=extract_dest_dir)
+        _run_extract_and_copy(
+            output_dir,
+            bench_file,
+            isTimeOut=isTimeOut,
+            dest_dir=extract_dest_dir,
+            kernel_name=kernel_name,
+            candidate_kernel_names=resolution.kernel_names,
+        )
 
         return (
             make_result(
@@ -1459,6 +1520,7 @@ def _run_local_bench_msprof_simulator_standalone(
             "op",
             "simulator",
             "--timeout=3",
+            f"--launch-count={_LAUNCH_COUNT}",
             f"--output={output_dir}",
             local_python_executable(),
             str(wrapper_script_path),
@@ -1467,7 +1529,7 @@ def _run_local_bench_msprof_simulator_standalone(
             selected_case.case_id,
         ]
         if kernel_name:
-            command.insert(4, f"--kernel-name={kernel_name}")
+            command.insert(5, f"--kernel-name={kernel_name}")
         if verbose:
             emit_verbose(sys.stderr, "standalone-msprof-simulator", f"kernel-name={kernel_name}, cmd: {' '.join(command)}")
         t0 = time.monotonic()
@@ -1525,7 +1587,14 @@ def _run_local_bench_msprof_simulator_standalone(
             )
 
         print(f"[standalone-msprof-simulator] OK, output_dir={output_dir}", flush=True)
-        _run_extract_and_copy(output_dir, bench_file, isTimeOut, dest_dir=extract_dest_dir)
+        _run_extract_and_copy(
+            output_dir,
+            bench_file,
+            isTimeOut=isTimeOut,
+            dest_dir=extract_dest_dir,
+            kernel_name=kernel_name,
+            candidate_kernel_names=resolution.kernel_names,
+        )
 
         return (
             make_result(
