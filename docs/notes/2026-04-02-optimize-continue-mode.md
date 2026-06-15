@@ -24,7 +24,7 @@
 
 - Fresh optimize runs keep the existing behavior:
   - default test mode: `differential`
-  - default bench mode: `standalone`
+  - default bench mode: `torch-npu-profiler`
 - Continue-path optimize runs resolve modes from existing generated harness metadata:
   - test mode from the existing optimize test harness
   - bench mode from the existing optimize benchmark harness

@@ -246,9 +246,13 @@ def _normalize_metric_basis(value: object) -> str | None:
 
 def _resolve_round_perf_path(round_dir: Path, *, declared_perf_artifact: str | None) -> Path | None:
     if declared_perf_artifact is not None:
-        declared = round_dir / Path(declared_perf_artifact)
+        declared_path = Path(declared_perf_artifact)
+        declared = round_dir / declared_path
         if declared.is_file():
             return declared
+        workspace_relative = round_dir.parent / declared_path
+        if workspace_relative.is_file():
+            return workspace_relative
     workspace = round_dir.parent
     expected_perf_name = _expected_round_perf_name(workspace)
     if expected_perf_name is not None:

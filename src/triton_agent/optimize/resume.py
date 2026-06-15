@@ -143,7 +143,7 @@ def resolve_optimize_resume(
             workspace_state="no-session",
             resume_existing_session=False,
             test_mode=requested_test_mode or "differential",
-            bench_mode=requested_bench_mode or "standalone",
+            bench_mode=requested_bench_mode or "torch-npu-profiler",
         )
 
     if resume_mode == "continue":
@@ -158,7 +158,7 @@ def resolve_optimize_resume(
             workspace_state="no-session",
             resume_existing_session=False,
             test_mode=requested_test_mode or "differential",
-            bench_mode=requested_bench_mode or "standalone",
+            bench_mode=requested_bench_mode or "torch-npu-profiler",
         )
     if inspection.state == "partial-session":
         raise ValueError(f"resume auto found partial optimize state: {inspection.detail}")
@@ -241,11 +241,27 @@ def _existing_bench_harness(input_path: Path, workdir: Path) -> Path:
     return input_path.with_name(f"bench_{input_path.stem}.py")
 
 
+def _resolve_baseline_state_path(relative_path: str, workdir: Path) -> Path:
+    """Resolve a path from baseline/state.json relative to the baseline/ directory first.
+
+    The contract requires path-bearing fields in baseline/state.json to be written
+    relative to the directory that contains baseline/state.json (i.e. baseline/).
+    When a path uses the ``../`` prefix convention it must be resolved from baseline/,
+    not from the workspace root.
+    """
+    declared = Path(relative_path)
+    baseline_dir_path = baseline_dir(workdir)
+    if not declared.is_absolute():
+        path = baseline_dir_path / declared
+        return path
+    return declared
+
+
 def _declared_test_harness(input_path: Path, workdir: Path) -> Path | None:
     state = _matching_baseline_state(input_path, workdir)
     if state is None:
         return None
-    path = workdir / state.test_file
+    path = _resolve_baseline_state_path(state.test_file, workdir)
     if not path.exists():
         return None
     return path
@@ -255,7 +271,7 @@ def _declared_bench_harness(input_path: Path, workdir: Path) -> Path | None:
     state = _matching_baseline_state(input_path, workdir)
     if state is None:
         return None
-    path = workdir / state.bench_file
+    path = _resolve_baseline_state_path(state.bench_file, workdir)
     if not path.exists():
         return None
     return path
@@ -267,7 +283,7 @@ def _matching_baseline_state(input_path: Path, workdir: Path):
     except ValueError:
         return None
 
-    declared_source = (workdir / state.source_operator).resolve()
+    declared_source = _resolve_baseline_state_path(state.source_operator, workdir).resolve()
     if declared_source != input_path.resolve():
         return None
     return state
@@ -297,7 +313,9 @@ def _parse_test_mode(test_file: Path) -> str | None:
 def _parse_bench_mode(bench_file: Path) -> str | None:
     metadata = parse_bench_metadata(bench_file)
     mode = metadata.get("bench-mode")
-    if mode not in {"standalone", "msprof"}:
+    if mode == "standalone":
+        return "torch-npu-profiler"
+    if mode not in {"torch-npu-profiler", "msprof"}:
         return None
     return str(mode)
 

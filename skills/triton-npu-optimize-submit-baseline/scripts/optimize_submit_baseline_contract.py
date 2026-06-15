@@ -100,8 +100,8 @@ def inspect_baseline_artifacts(workspace: Path) -> BaselineArtifactsInspection:
         perf_path = None
         operator_path = None
     else:
-        perf_path = _declared_workspace_file(workspace, declared_perf)
-        operator_path = _declared_workspace_file(workspace, declared_operator)
+        perf_path = _declared_state_file(root, workspace, declared_perf)
+        operator_path = _declared_state_file(root, workspace, declared_operator)
 
     if state is None and perf_path is None:
         perf_path = _existing_file(root / "perf.txt")
@@ -181,10 +181,14 @@ def _optional_str(value: object) -> str | None:
     return str(value)
 
 
-def _declared_workspace_file(workspace: Path, relative_path: str | None) -> Path | None:
+def _declared_state_file(state_dir: Path, workspace: Path, relative_path: str | None) -> Path | None:
     if relative_path is None:
         return None
-    return _existing_file(workspace / Path(relative_path))
+    declared_path = Path(relative_path)
+    state_relative = _existing_file(state_dir / declared_path)
+    if state_relative is not None:
+        return state_relative
+    return _existing_file(workspace / declared_path)
 
 
 def _find_baseline_operator_snapshot(root: Path) -> Path | None:

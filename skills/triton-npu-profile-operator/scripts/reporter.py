@@ -17,7 +17,7 @@ from models import (
 )
 from parser_base import detect_profile_mode
 from msprof_parser import MsprofParser
-from standalone_parser import StandaloneParser
+from torch_npu_profiler_parser import TorchNpuProfilerParser
 
 _TRANSFER_HINTS = (
     "copy", "memcpy", "transdata", "dma", "load", "store", "move",
@@ -213,7 +213,7 @@ class ProfileReporter:
             torch_ops = None
             step_traces = None
         else:
-            parser = StandaloneParser()
+            parser = TorchNpuProfilerParser()
             operators, invocations, torch_ops, step_traces, host_api, _timeline, source_files = parser.parse(artifacts_dir)
             task_records = None
 

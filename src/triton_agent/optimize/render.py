@@ -25,5 +25,3 @@ def render_batch_optimize_results(
     print(f"Summary: {succeeded} succeeded, {failed} failed, {skipped} skipped", file=stream)
     return 0 if failed == 0 and ordered_results else 1
 
-
-__all__ = ["render_batch_optimize_results"]

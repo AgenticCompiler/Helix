@@ -15,6 +15,7 @@ class CommandKind(str, Enum):
     RUN_TEST = "run-test"
     GEN_BENCH = "gen-bench"
     RUN_BENCH = "run-bench"
+    RUN_SIMULATOR = "run-simulator"
     COMPARE_RESULT = "compare-result"
     COMPARE_PERF = "compare-perf"
     VERIFY = "verify"
@@ -41,6 +42,7 @@ COMMAND_TO_SKILL = {
     CommandKind.RUN_TEST: "",
     CommandKind.GEN_BENCH: "triton-npu-gen-bench",
     CommandKind.RUN_BENCH: "",
+    CommandKind.RUN_SIMULATOR: "",
     CommandKind.COMPARE_RESULT: "",
     CommandKind.COMPARE_PERF: "",
     CommandKind.VERIFY: "",

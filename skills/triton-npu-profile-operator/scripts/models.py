@@ -47,7 +47,7 @@ class PipelineStage:
 
 @dataclass
 class KernelInvocation:
-    """Per-invocation kernel data from op_summary (msprof) or kernel_details (standalone)."""
+    """Per-invocation kernel data from op_summary (msprof) or kernel_details (torch-npu-profiler)."""
     op_name: str
     duration_us: float
     wait_time_us: float
@@ -84,12 +84,12 @@ class HostApiCall:
 
 
 # ---------------------------------------------------------------------------
-# Standalone-only artifacts
+# Torch-NPU-profiler-only artifacts
 # ---------------------------------------------------------------------------
 
 @dataclass
 class TorchOpTiming:
-    """PyTorch-level operator timing (host + device view). standalone only."""
+    """PyTorch-level operator timing (host + device view). torch-npu-profiler only."""
     name: str
     host_self_us: float
     host_total_us: float
@@ -99,7 +99,7 @@ class TorchOpTiming:
 
 @dataclass
 class StepTrace:
-    """Per-step compute/communication breakdown. standalone only."""
+    """Per-step compute/communication breakdown. torch-npu-profiler only."""
     step: int
     computing_us: float
     communication_not_overlapped_us: float
@@ -155,7 +155,7 @@ class HostApiSummary:
 # The top-level profile result
 # ---------------------------------------------------------------------------
 
-BenchMode = Literal["msprof", "standalone"]
+BenchMode = Literal["msprof", "torch-npu-profiler"]
 
 
 @dataclass
@@ -181,7 +181,7 @@ class ParsedProfile:
     task_records: list[TaskRecord] | None = None
     """Task scheduler timeline (task_time)."""
 
-    # standalone only
+    # torch-npu-profiler only
     torch_op_timing: list[TorchOpTiming] | None = None
     """PyTorch operator view (operator_details)."""
     step_trace: list[StepTrace] | None = None
