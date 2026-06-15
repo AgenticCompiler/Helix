@@ -1479,8 +1479,7 @@ def _run_local_bench_msprof_simulator_standalone(
             str(operator_file),
             selected_case.case_id,
         ]
-        if verbose:
-            emit_verbose(sys.stderr, "standalone-msprof-simulator", f"kernel-name={kernel_name}, cmd: {' '.join(command)}")
+        print(f"[standalone-msprof-simulator] kernel-name={kernel_name}, cmd: {' '.join(command)}")
         t0 = time.monotonic()
         with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
             result = run_streaming_process(
