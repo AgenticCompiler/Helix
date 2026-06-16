@@ -176,7 +176,7 @@ class RunEvalMCPServerTests(unittest.TestCase):
                         "test_file": "/tmp/differential_test_kernel.py",
                         "operator_file": "/tmp/opt_kernel.py",
                         "test_mode": "differential",
-                        "baseline_operator_file": "/tmp/kernel.py",
+                        "ref_operator_file": "/tmp/kernel.py",
                     },
                 )
 

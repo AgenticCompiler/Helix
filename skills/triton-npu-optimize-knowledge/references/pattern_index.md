@@ -13,11 +13,6 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Summary: Launch discrete-memory-access Triton kernels on A5 with `force_simt_only=True`, then retune `num_warps` and grid decomposition. This profile-gated launch-mode experiment targets kernels whose hot path is primarily scalar/index-driven memory access.
 - Source: [a5-force-simt-only-discrete-access.md](patterns/a5-force-simt-only-discrete-access.md)
 
-### `a5-simt-sliding-window-tuning`
-
-- Summary: Tuning methodology for kernels that map **each output point** to a **fixed-size input window** over an **affine N-D layout** (e.g. NCDHW/NCHW), then **reduce** (sum, max, etc.) under **A5 `force_simt_only=True`**. Teaches how to **derive** dispatch, inner paths, and launch params from **structural features** — not from a specific op name. Pool-style ops are one common instance; the same signals apply to any op matching the pattern signature below.
-- Source: [a5-simt-sliding-window-tuning.md](patterns/a5-simt-sliding-window-tuning.md)
-
 ### `autotune`
 
 - Summary: Use Triton-Ascend autotune as the default way to search split sizes, tile sizes, and selected compile options when the kernel structure is already reasonable and the main open question is parameter choice.
@@ -48,6 +43,15 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - The kernel body is primarily discrete/index-driven memory access, gather/scatter-like movement, or scalar-heavy pointer/index computation.
   - Correctness validation and representative benchmark reruns are available after changing launch parameters.
   - Obvious flat-index decode structure has either been ruled out or repaired first.
+
+### `a5-simt-sliding-window-tuning`
+
+- Summary: Tuning methodology for kernels that map **each output point** to a **fixed-size input window** over an **affine N-D layout** (e.g. NCDHW/NCHW), then **reduce** (sum, max, etc.) under **A5 `force_simt_only=True`**. Teaches how to **derive** dispatch, inner paths, and launch params from **structural features** — not from a specific op name. Pool-style ops are one common instance; the same signals apply to any op matching the pattern signature below.
+- Source: [a5-simt-sliding-window-tuning.md](patterns/a5-simt-sliding-window-tuning.md)
+- Use When:
+  - Kernel matches the pattern signature above.
+  - A5 confirmed; hot path is scalar/index-heavy (`a5-force-simt-only-discrete-access`).
+  - Multi-shape harness available; accept/reject by **geomean**.
 
 ### `accumulator-layout-alignment`
 

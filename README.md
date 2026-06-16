@@ -187,9 +187,8 @@ uv run triton-agent run-test --test-file test_a.py --operator-file a.py
 Common options:
 
 - `--test-mode standalone|differential`: override the mode recorded in the test file.
-- `--baseline-result <path>`: in `differential` mode, automatically compare the new archived result against an existing baseline payload.
-- `--baseline-operator-file <path>`: in `differential` mode, derive the baseline payload path from the baseline operator and auto-run the baseline test first if the payload does not exist yet.
-- `--compare-level strict|balanced|relaxed`: comparison tolerance to use with `--baseline-result` or `--baseline-operator-file`. Default is `balanced`.
+- `--ref-result <path>`: in `differential` mode, automatically compare the new archived result against an existing reference payload.
+- `--ref-operator-file <path>`: in `differential` mode, derive the reference payload path from the reference operator and auto-run the reference test first if the payload does not exist yet.
 - `--remote user@host[:port]`: run through SSH on a remote machine.
 - `--remote-workdir <path>`: set the remote working root.
 - `--keep-remote-workdir`: keep the remote workspace for debugging.
@@ -208,7 +207,7 @@ uv run triton-agent run-test \
   --test-file differential_test_a.py \
   --operator-file opt_a.py \
   --test-mode differential \
-  --baseline-result a_result.pt
+  --ref-result a_result.pt
 ```
 
 If you prefer, you can point at the baseline operator instead and let `run-test` derive or auto-produce the baseline payload:
@@ -218,7 +217,7 @@ uv run triton-agent run-test \
   --test-file differential_test_a.py \
   --operator-file opt_a.py \
   --test-mode differential \
-  --baseline-operator-file a.py
+  --ref-operator-file a.py
 ```
 
 ## Generate Evaluation Assets
@@ -381,10 +380,10 @@ Common options:
 - `--output opt_a.py`: write the optimized operator to a specific path.
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--prompt "..."`: append extra worker instructions without replacing the built-in optimize contract.
-- `--test-mode standalone|differential`: default is `differential`
-- `--bench-mode torch-npu-profiler|msprof`: default is `torch-npu-profiler`. Sets the benchmark mode for fresh runs. With `--resume auto`, resumable workspaces keep the benchmark mode recorded in their existing benchmark harness.
+- `--test-mode standalone|differential`: default is `differential`. For fresh runs, sets the test mode. For resumed sessions, the value is validated against existing harness metadata: matching values succeed, conflicting values fail.
+- `--bench-mode torch-npu-profiler|msprof`: default is `torch-npu-profiler`. For fresh runs, sets the benchmark mode. For resumed sessions, the value is validated against existing harness metadata: matching values succeed, conflicting values fail.
 - `--optimize-target kernel|operator`: default is `kernel`. `kernel` keeps the session focused on optimizing the Triton Ascend NPU kernel path itself. `operator` broadens the target to end-to-end operator latency and allows coordinated wrapper/data-movement/scheduling/pre/post-processing/kernel changes while still requiring a real Triton Ascend NPU computation path.
-- `--resume auto|continue|fresh`: default is `auto`
+- `--resume auto|continue|fresh`: default is `auto`. `auto` resumes when a complete session exists, starts fresh otherwise. `continue` requires an existing resumable session. `fresh` requires a clean workspace. Both `auto` and `continue` validate explicit `--test-mode` and `--bench-mode` against existing harness metadata.
 - `--reset-optimize`: only valid with `--resume fresh`; remove known optimize-session artifacts before starting a new run while keeping reusable test and benchmark harnesses.
 - `--optimize-knowledge v1|v2|v3`: default is `v1`. Select which optimize knowledge library is staged before the agent starts (`v3` uses `skills/triton-npu-optimize-knowledge-v3/`).
 - `--enable-compiler-source-analysis`: allow the optimize agent to use compiler source as an escalation after benchmark, profiler, and IR evidence.
@@ -635,8 +634,8 @@ Common options:
 
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--prompt "..."`: append the same extra worker instructions to every workspace optimize run.
-- `--test-mode standalone|differential`
-- `--bench-mode torch-npu-profiler|msprof`: sets the benchmark mode for fresh workspaces. With `--resume auto`, resumable workspaces keep the benchmark mode recorded in their existing benchmark harness.
+- `--test-mode standalone|differential`: validated against existing harness metadata per workspace on resumed sessions.
+- `--bench-mode torch-npu-profiler|msprof`: validated against existing harness metadata per workspace on resumed sessions.
 - `--resume auto|continue|fresh`
 - `--reset-optimize`: when used with `--resume fresh`, clear known optimize artifacts for each workspace and reset the batch status file before rerunning
 - `--optimize-knowledge v1|v2|v3`
@@ -679,10 +678,11 @@ uv run triton-agent compare-result \
 
 Common options:
 
-- `--compare-level strict|balanced|relaxed`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
 - `--verbose`
+
+Correctness result comparison always uses the shared NPU accuracy comparison contract and reports detailed diagnostics for failing cases.
 
 ### Compare Performance Results
 

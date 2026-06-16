@@ -1,6 +1,6 @@
 ## Standalone test file specification for Triton operators
 
-This document describes standalone correctness test files for Triton Ascend operators. The goal is to produce a self-contained test script that creates deterministic NPU inputs, calls the resolved operator entrypoint, and verifies correctness against a PyTorch reference implementation.
+This document describes standalone correctness test files for Triton Ascend operators. The goal is to produce an importable test module that creates deterministic NPU inputs, calls the resolved operator entrypoint provided by the runner, and verifies correctness against a PyTorch reference implementation through the shared NPU comparison helper.
 
 The test must call the resolved public entrypoint directly. Raw `@triton.jit` kernels are not valid direct harness APIs.
 
@@ -9,90 +9,63 @@ The test must call the resolved public entrypoint directly. Raw `@triton.jit` ke
 - For an operator implemented in `<op>.py`, the test file **`test_<op>.py`** should be placed in the **same directory** as `<op>.py`.
 - Example: `dataset/Flaggems/abs/abs.py` → `dataset/Flaggems/abs/test_abs.py`.
 
-### 2. Command-line interface and main flow
+### 2. Module contract and main flow
 
 The test file must include this metadata header near the top of the file:
 
 ```python
 # test-mode: standalone
+# compute-kind: <compute|non-compute>
 # api-name: <name>
 # api-kind: <triton-wrapper|torch-function|torch-module>
 # kernels: <name>
 ```
 
-The test file must accept the following arguments when run as `python test_<op>.py`:
+`# compute-kind:` is optional for legacy files and defaults to `compute`, but generated files must always include it. Use `compute` for operators that perform numeric computation. Use `non-compute` only for pure data movement, layout, view, copy, or similar operators that must be checked with binary equality.
 
-| Argument | Required | Behavior |
-|----------|----------|----------|
-| `--operator-file <path>` | yes | Path to the operator source file to test (e.g. `abs.py` or `opt_abs.py`). |
+The test file must be importable and must define exactly this runtime entrypoint:
 
-Example invocations:
-
-```bash
-# Test the original operator
-python3 test_abs.py --operator-file abs.py
-
-# Test an optimized variant with the same test file
-python3 test_abs.py --operator-file opt_abs.py
+```python
+def main(operator_api):
+    ...
 ```
 
-The file must define a `main()` function that:
-1. Parses `--operator-file` with `argparse`
-2. Loads the operator API via `importlib`
-3. Calls the test function with the loaded operator API
-4. Prints `"All tests passed!"` on success
+Rules:
+
+- Do not parse command-line arguments in this file.
+- Do not load the operator module by file path in this file.
+- Do not include an `if __name__ == "__main__": ...` block.
+- Do not call `main(...)` from module top level.
+- The runner owns importing the test module, resolving `operator_api`, and calling `main(operator_api)`.
+- Print `"All tests passed!"` on success.
 
 ### 3. Operator API loading
 
-- The test file **must not** hard-code an import of the operator module. Instead it must **load the operator module by file path** specified by `--operator-file`.
-- Use `importlib.util.spec_from_file_location` and `exec_module` to load the module.
+- The test file **must not** hard-code an import of the operator module.
+- The test file **must not** use `importlib` to load the operator module.
+- External execution tooling resolves the operator API and passes it to `main(operator_api)`.
 - `# api-name:` identifies the symbol to load, and `# api-kind:` identifies which loading pattern this generated harness follows.
 - If that named API does not exist in the runtime operator file, fail explicitly instead of guessing.
 - Do not introduce pytest or unittest scaffolding.
-- The test file must remain directly executable with `python test_<op>.py --operator-file <path>`.
+- Direct `python test_<op>.py` execution is not part of this contract.
 
 #### 3.1 `triton-wrapper`
 
 Use this kind when the public API is a Python wrapper function around Triton kernels.
 
-```python
-def load_operator_api(operator_file: str, api_name: str):
-    spec = importlib.util.spec_from_file_location("operator_module", operator_file)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return getattr(mod, api_name)
-```
+No loader code is required in the generated standalone file.
 
 #### 3.2 `torch-function`
 
 Use this kind when the public API is a plain PyTorch-facing function or operator entrypoint that may internally call Triton kernels.
 
-```python
-def load_operator_api(operator_file: str, api_name: str):
-    spec = importlib.util.spec_from_file_location("operator_module", operator_file)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return getattr(mod, api_name)
-```
+No loader code is required in the generated standalone file.
 
 #### 3.3 `torch-module`
 
 Use this kind when the public API is a `torch.nn.Module` class that can be instantiated without constructor arguments.
 
-```python
-def load_operator_api(operator_file: str, api_name: str):
-    spec = importlib.util.spec_from_file_location("operator_module", operator_file)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    entrypoint_cls = getattr(mod, api_name)
-    try:
-        return entrypoint_cls()
-    except TypeError as exc:
-        raise RuntimeError(
-            "torch-module entrypoints must support no-argument construction; "
-            "constructor arguments are not supported in generated harnesses"
-        ) from exc
-```
+No loader code is required in the generated standalone file.
 
 If a `torch-module` entrypoint requires constructor arguments, fail explicitly with an actionable error about unsupported constructor arguments.
 
@@ -113,18 +86,21 @@ If a `torch-module` entrypoint requires constructor arguments, fail explicitly w
 
 - For each case, call the resolved operator entrypoint with the constructed inputs.
 - Compute a corresponding PyTorch reference result for the same inputs.
-- Compare operator output and reference output with assertions.
-- Use direct assertions in the generated test function; do not save outputs to disk.
+- Compare operator output and reference output by calling `compare_case_result(...)` from `npu_compare`.
+- Do not call `torch.testing.assert_close` or implement ad hoc tolerance checks.
+- Raise `AssertionError(result.message)` when `compare_case_result(...)` returns a failing result.
+- Do not save outputs to disk.
 - If the operator returns tensors or tuples/lists of tensors, validate the returned values appropriately.
 
 ### 6. Test function structure
 
-- Define a single standalone test entry function.
-- The function should:
+- `main(operator_api)` is the single required standalone entry function.
+- `main(operator_api)` should:
   - prepare the deterministic cases
   - run the operator on every case
   - compute the PyTorch reference result
-  - assert correctness for every case
+  - call the shared comparison helper for every case
+- Small helper functions such as input builders or reference implementations are allowed when they keep `main(...)` readable.
 - Keep the code concise and practical.
 - The full generated file should stay within roughly **140 lines**.
 
@@ -132,16 +108,17 @@ If a `torch-module` entrypoint requires constructor arguments, fail explicitly w
 
 ```python
 # test-mode: standalone
+# compute-kind: compute
 # api-name: <resolved_entrypoint>
 # api-kind: <resolved_api_kind>
 # kernels: <resolved_kernel_names>
 
-import argparse
-import importlib.util
-
 import torch
 
+from npu_compare import compare_case_result
+
 API_NAME = "<resolved_entrypoint>"
+COMPUTE = True
 CASES = [...]
 
 def make_inputs(case):
@@ -150,25 +127,21 @@ def make_inputs(case):
 def reference_impl(*inputs):
     ...
 
-def test_xxx(operator_api):
-    for case in CASES:
+def main(operator_api):
+    for index, case in enumerate(CASES):
         inputs = make_inputs(case)
         result = operator_api(*inputs)
         expected = reference_impl(*inputs)
-        torch.testing.assert_close(result, expected)
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--operator-file", required=True)
-    args = parser.parse_args()
-
-    operator_api = load_operator_api(args.operator_file, API_NAME)
-    test_xxx(operator_api)
+        comparison = compare_case_result(
+            case_id=f"case-{index}",
+            actual=result,
+            golden=expected,
+            inputs=inputs,
+            compute=COMPUTE,
+        )
+        if not comparison.passed:
+            raise AssertionError(comparison.message)
     print("All tests passed!")
-
-if __name__ == "__main__":
-    main()
 ```
 
-- The test function (e.g. `test_xxx`) must accept the operator API callable as its first argument.
-- Running the file directly should execute the standalone test and print `"All tests passed!"` only when every assertion succeeds.
+- Running the file directly must not execute the standalone test.

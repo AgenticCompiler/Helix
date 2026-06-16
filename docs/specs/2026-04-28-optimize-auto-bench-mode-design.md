@@ -13,62 +13,60 @@
 
 ## Non-Goals
 
-- Do not allow `--resume continue --bench-mode ...`.
-- Do not change `--test-mode` continuation validation.
 - Do not rewrite existing benchmark harness metadata or `baseline/state.json` during resume resolution.
 - Do not add a new CLI flag for force-overriding existing optimize-session benchmark mode.
 
 ## CLI Contract
 
-- `optimize --resume auto --bench-mode <mode>` is valid.
-- `optimize-batch --resume auto --bench-mode <mode>` is valid.
-- `optimize --resume continue --bench-mode <mode>` remains invalid.
-- `optimize-batch --resume continue --bench-mode <mode>` remains invalid.
+- `optimize --resume auto --bench-mode <mode>` is always valid; for resumable sessions the explicit mode must match existing harness metadata.
+- `optimize-batch --resume auto --bench-mode <mode>` is valid per workspace; resumable workspaces validate the match independently.
+- `optimize --resume continue --bench-mode <mode>` is valid when the explicit mode matches existing harness metadata; mismatches fail.
+- `optimize-batch --resume continue --bench-mode <mode>` same per-workspace assertion semantics.
 
 ## Mode Resolution
 
-### Fresh workspace under `--resume auto`
+### Fresh workspace
 
 - If the workspace resolves to `no-session`, keep current behavior:
   - use the requested `--bench-mode` when provided
-  - otherwise default to `standalone`
+  - otherwise default to `torch-npu-profiler`
 
-### Resumable workspace under `--resume auto`
+### Resumable workspace
 
 - If the workspace resolves to `resumable-session`, continue the existing session.
 - Reuse the benchmark mode recorded in the existing benchmark harness metadata.
-- Ignore the explicit `--bench-mode` value for that workspace instead of failing.
-- The resolved request and prompt should use the reused recorded benchmark mode, not the ignored CLI override.
+- If an explicit `--bench-mode` is provided, validate it against the recorded metadata:
+  - matching values succeed
+  - conflicting values fail with a mode-specific error
+- Applies equally to `--resume auto` and `--resume continue`.
 
-### Partial workspace under `--resume auto`
+### Partial workspace
 
 - Keep current failure behavior for partial optimize state.
-- Accepting `--bench-mode` must not weaken the existing partial-session safety checks.
+- Partial-session errors take precedence over mode-conflict errors.
 
 ## Batch Behavior
 
-- `optimize-batch` should continue resolving each workspace independently.
-- In one batch run:
-  - fresh workspaces may use the explicit `--bench-mode`
-  - resumable workspaces may ignore that explicit value and keep their recorded mode
-- A mixed batch must not fail only because a resumable workspace received `--bench-mode` under `--resume auto`.
-- `--resume continue` keeps the current strict per-workspace validation in batch mode.
+- `optimize-batch` resolves each workspace independently with the same assertion semantics.
+- If one workspace has a mode conflict, that workspace fails while unrelated workspaces continue using their own resolved modes.
+- The batch summary reports the workspace-level failure normally.
 
 ## Rationale
 
 - Existing optimize sessions already have a benchmark harness and baseline metadata that define the session's benchmark contract.
-- Fresh workspaces still benefit from an explicit batch-wide benchmark preference.
-- Ignoring the explicit override on resumed workspaces is safer than silently mutating existing session metadata, and more usable than rejecting the whole command.
+- Explicit resume-time modes are assertions about what the user believes the existing session contract already is.
+- Failing on conflict is honest: the user asked for one contract, the workspace records another.
 
 ## Documentation
 
 - Update `README.md` so `optimize-batch` and `optimize` documentation explains that:
-  - `--resume auto --bench-mode ...` is accepted
-  - resumed workspaces keep their existing benchmark mode
-  - only fresh workspaces adopt the explicit override
+  - `--resume auto --bench-mode ...` and `--resume continue --bench-mode ...` are accepted
+  - resumed workspaces validate explicit modes against existing harness metadata
+  - matching assertions succeed, conflicting assertions fail
 
 ## Testing
 
-- Add CLI coverage showing `optimize --resume auto --bench-mode msprof` still succeeds for a resumable session and uses the recorded benchmark mode.
-- Add batch coverage showing `optimize-batch --resume auto --bench-mode msprof` can process a mixed fresh/resumable root without resume-validation failure.
-- Keep existing tests proving `--resume continue --bench-mode ...` is rejected.
+- Add CLI coverage for `--resume auto` with resumable session: matching `--bench-mode` succeeds, conflicting fails.
+- Add CLI coverage for `--resume continue`: matching `--bench-mode` succeeds, conflicting fails.
+- Add batch coverage for mixed fresh/resumable roots with matching explicit modes.
+- Cover `--test-mode` with identical assertion semantics.
