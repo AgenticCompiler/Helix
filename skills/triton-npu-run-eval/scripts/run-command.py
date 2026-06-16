@@ -449,7 +449,7 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
                 resolved_bench_mode,
                 args.npu_devices,
                 simulator_case_idx=args.simulator_case_idx,
-                extract_dest_dir=extract_dest_dir
+                extract_dest_dir=extract_dest_dir,
                 output=args.output,
             )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
