@@ -728,10 +728,10 @@ def _build_standalone_msprof_wrapper_script() -> str:
         "    raise SystemExit(f'case_id {case_id!r} not found, available: "
         "        {[c.case_id for c in cases]!r}')\n"
         "case = matching[0]\n"
-        "print(f'[standalone-msprof] case={case.case_id} repeats={6}', "
+        "print(f'[standalone-msprof] case={case.case_id} repeats={4}', "
         "      flush=True)\n"
-        "for i in range(6):\n"
+        "for i in range(4):\n"
         "    case.fn()\n"
-        "    print(f'[standalone-msprof] repeat {i+1}/{6} done', flush=True)\n"
+        "    print(f'[standalone-msprof] repeat {i+1}/{4} done', flush=True)\n"
         "print('[standalone-msprof] done', flush=True)\n"
     )
