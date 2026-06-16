@@ -113,7 +113,7 @@ class GenerationHelpersTests(unittest.TestCase):
             GenerationOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote="alice@example.com",
@@ -149,7 +149,7 @@ class GenerationHelpersTests(unittest.TestCase):
             GenerationOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote=None,
@@ -183,7 +183,7 @@ class GenerationHelpersTests(unittest.TestCase):
             GenerationOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote=None,
@@ -217,7 +217,7 @@ class GenerationHelpersTests(unittest.TestCase):
                 GenerationOptions(
                     interact=False,
                     verbose=False,
-                    show_output=False,
+                    stream_output=False,
                     force_overwrite=False,
                     agent_name="codex",
                     remote=None,
@@ -242,7 +242,7 @@ class GenerationHelpersTests(unittest.TestCase):
             GenerationOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote=None,
@@ -267,7 +267,7 @@ class GenerationHelpersTests(unittest.TestCase):
             GenerationOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote=None,
@@ -293,7 +293,7 @@ class GenerationHelpersTests(unittest.TestCase):
             GenerationOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote=None,
@@ -321,7 +321,7 @@ class GenerationHelpersTests(unittest.TestCase):
             GenerationOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote=None,
@@ -349,7 +349,7 @@ class GenerationHelpersTests(unittest.TestCase):
                 GenerationOptions(
                     interact=False,
                     verbose=False,
-                    show_output=False,
+                    stream_output=False,
                     force_overwrite=False,
                     agent_name="codex",
                     remote=None,
@@ -381,7 +381,7 @@ class GenerationHelpersTests(unittest.TestCase):
             GenerationOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote="alice@example.com:2200",
@@ -624,7 +624,7 @@ class GenerationCommandHandlerTests(unittest.TestCase):
                 GenerationOptions(
                     interact=False,
                     verbose=False,
-                    show_output=False,
+                    stream_output=False,
                     force_overwrite=False,
                     agent_name="codex",
                     remote=None,
@@ -683,7 +683,7 @@ class GenerationCommandHandlerTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-gen-test",

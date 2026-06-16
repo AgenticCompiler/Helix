@@ -39,8 +39,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "comparison_target": "baseline/perf.txt",
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
-                        "opt_note_updated": True,
-                        "round_disposition": "continue",
+                        "opt_note_updated": True
                     }
                 ),
                 encoding="utf-8",
@@ -89,8 +88,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "comparison_target": "baseline/perf.txt",
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
-                        "opt_note_updated": True,
-                        "round_disposition": "continue",
+                        "opt_note_updated": True
                     }
                 ),
                 encoding="utf-8",
@@ -127,8 +125,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "comparison_target": "baseline/perf.txt",
                         "effective_metric_source": "kernel",
                         "summary_path": "reports/final.md",
-                        "opt_note_updated": True,
-                        "round_disposition": "continue",
+                        "opt_note_updated": True
                     }
                 ),
                 encoding="utf-8",
@@ -165,8 +162,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "perf_summary_source": "compare-perf",
                         "effective_metric_source": "kernel",
                         "summary_path": "reports/final.md",
-                        "opt_note_updated": True,
-                        "round_disposition": "continue",
+                        "opt_note_updated": True
                     }
                 ),
                 encoding="utf-8",
@@ -202,8 +198,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "perf_summary_source": "compare-perf",
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
-                        "opt_note_updated": True,
-                        "round_disposition": "continue",
+                        "opt_note_updated": True
                     }
                 ),
                 encoding="utf-8",
@@ -233,7 +228,6 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,
-                        "round_disposition": "continue",
                         "perf_analysis_path": "perf-analysis.md",
                     }
                 ),
@@ -265,8 +259,7 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "perf_summary_source": "compare-perf",
                         "effective_metric_source": "total-op",
                         "summary_path": "summary.md",
-                        "opt_note_updated": True,
-                        "round_disposition": "continue",
+                        "opt_note_updated": True
                     }
                 ),
                 encoding="utf-8",
@@ -301,7 +294,6 @@ class OptimizeRoundContractTests(unittest.TestCase):
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,
-                        "round_disposition": "continue",
                         "perf_analysis_path": "perf-analysis.md",
                     }
                 ),

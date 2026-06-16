@@ -94,7 +94,7 @@ def build_optimize_request(
         bench_mode=bench_mode,
         interact=options.interact,
         verbose=options.verbose,
-        show_output=options.show_output,
+        stream_output=options.stream_output,
         force_overwrite=False,
         agent_name=options.agent_name,
         skill_name=COMMAND_TO_SKILL[CommandKind.OPTIMIZE],

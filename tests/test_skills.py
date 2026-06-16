@@ -271,6 +271,25 @@ class SkillLinkManagerTests(unittest.TestCase):
 
             self.assertFalse((workspace / ".git").exists())
 
+    def test_prepare_skills_skips_temporary_git_repo_when_git_is_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            source = Path(tmp) / "skills-source"
+            workspace.mkdir()
+            source.mkdir()
+            (source / "triton-npu-gen-test").mkdir()
+            (source / "triton-npu-gen-test" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
+
+            manager = SkillLinkManager(source)
+            with mock.patch("triton_agent.skills.shutil.which", return_value=None):
+                links = manager.prepare_skills("codex", workspace, skill_names=("triton-npu-gen-test",))
+
+            self.assertIsNone(links.temporary_git_dir)
+            self.assertFalse((workspace / ".git").exists())
+            staged_skill = self._skills_target(workspace, "codex") / "triton-npu-gen-test" / "SKILL.md"
+            self.assertTrue(staged_skill.exists())
+            manager.cleanup(links)
+
     def test_copy_root_skills_directory_when_missing_for_supported_backends(self) -> None:
         for backend in _BACKEND_SKILL_DIRS:
             with self.subTest(backend=backend):

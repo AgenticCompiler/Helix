@@ -110,8 +110,7 @@ Each completed round must also include `round-state.json`.
   "comparison_target": "record the path from the directory that contains `round-state.json` to the canonical baseline perf artifact used for comparison, normally `../baseline/<operator>_perf.txt` or `../baseline/perf.txt`.",
   "effective_metric_source": "record the resolved `compare-perf` basis that decided the round outcome: `kernel`, `total-op`, or `mixed`.",
   "summary_path": "record the path from the directory that contains `round-state.json` to the final round summary markdown, normally `summary.md`.",
-  "opt_note_updated": "set this to `true` only after the top-level `opt-note.md` entry for this round has been updated.",
-  "round_disposition": "record whether the validated round result says the optimize session should `continue` or `stop`; do not use this field to predict future code changes."
+  "opt_note_updated": "set this to `true` only after the top-level `opt-note.md` entry for this round has been updated."
 }
 ```
 

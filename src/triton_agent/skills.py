@@ -109,6 +109,8 @@ class SkillLinkManager:
         git_path = workdir / ".git"
         if git_path.exists():
             return None
+        if shutil.which("git") is None:
+            return None
         try:
             subprocess.run(
                 ["git", "init", "-q"],

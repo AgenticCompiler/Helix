@@ -73,7 +73,7 @@ class AgentRequest:
     bench_mode: Optional[str]
     interact: bool
     verbose: bool
-    show_output: bool
+    stream_output: bool
     force_overwrite: bool
     agent_name: str
     skill_name: str
@@ -86,7 +86,7 @@ class AgentRequest:
     continue_optimize: bool = False
     no_agent_session: bool = False
     round_mode: Literal["checked", "supervised"] = "checked"
-    round_batch_size: int = 10
+    round_batch_size: int = 5
     current_round: int = 1
     final_round: int = 1
     user_prompt: Optional[str] = None

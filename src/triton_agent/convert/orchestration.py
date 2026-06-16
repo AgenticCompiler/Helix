@@ -66,7 +66,7 @@ def build_convert_request(
         bench_mode=None,
         interact=options.interact,
         verbose=options.verbose,
-        show_output=options.show_output,
+        stream_output=options.stream_output,
         force_overwrite=options.force_overwrite,
         agent_name=options.agent_name,
         skill_name=COMMAND_TO_SKILL[CommandKind.CONVERT],

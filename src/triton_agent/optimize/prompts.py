@@ -337,7 +337,7 @@ def build_optimize_round_prompt(
     baseline_ready: bool = True,
     current_round: int = 1,
     final_round: int = 1,
-    round_batch_size: int = 10,
+    round_batch_size: int = 5,
 ) -> str:
     del input_path, output_path, test_mode, bench_mode, round_batch_size, round_mode
     lines = [

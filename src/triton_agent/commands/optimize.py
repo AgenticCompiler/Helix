@@ -58,7 +58,7 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
             f"Agent executable not found: {exc}. "
             f"Make sure the '{options.agent_name}' CLI is installed and available in PATH."
         )
-    render_result(result, show_output=request.show_output)
+    render_result(result, show_output=request.stream_output)
 
     # Auto-upload after successful optimize
     if result.return_code == 0 and options.upload_enabled:
@@ -84,7 +84,7 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
             report_ok, report_msg = generate_workspace_report(
                 workspace=workdir,
                 agent_name=options.agent_name,
-                show_output=options.show_output,
+                show_output=options.stream_output,
             )
             if options.verbose:
                 if report_ok:
@@ -154,12 +154,12 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
     subagent_enabled = bool(getattr(args, "enable_subagent", False))
     upload_enabled = not bool(getattr(args, "no_upload", False))
     log_tools_enabled = bool(getattr(args, "log_tools", False))
-    round_batch_size = 99 if interact else getattr(args, "round_batch_size", 10)
+    round_batch_size = 99 if interact else getattr(args, "round_batch_size", 5)
     return OptimizeRunOptions(
         agent_name=args.agent,
         interact=interact,
         verbose=bool(getattr(args, "verbose", False)),
-        show_output=bool(getattr(args, "show_output", False)),
+        stream_output=bool(getattr(args, "stream_output", True)),
         remote=getattr(args, "remote", None),
         remote_workdir=getattr(args, "remote_workdir", None),
         min_rounds=getattr(args, "min_rounds", 5),

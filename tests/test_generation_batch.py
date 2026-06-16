@@ -89,7 +89,7 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                 GenerationOptions(
                     interact=False,
                     verbose=False,
-                    show_output=False,
+                    stream_output=False,
                     force_overwrite=False,
                     agent_name="codex",
                     remote=None,
@@ -132,7 +132,7 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                     GenerationOptions(
                         interact=False,
                         verbose=False,
-                        show_output=False,
+                        stream_output=False,
                         force_overwrite=False,
                         agent_name="codex",
                         remote=None,
@@ -176,7 +176,7 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                     GenerationOptions(
                         interact=False,
                         verbose=False,
-                        show_output=False,
+                        stream_output=False,
                         force_overwrite=False,
                         agent_name="codex",
                         remote=None,
@@ -217,7 +217,7 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                     GenerationOptions(
                         interact=False,
                         verbose=False,
-                        show_output=False,
+                        stream_output=False,
                         force_overwrite=False,
                         agent_name="codex",
                         remote=None,
@@ -250,7 +250,7 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                     GenerationOptions(
                         interact=False,
                         verbose=False,
-                        show_output=False,
+                        stream_output=False,
                         force_overwrite=False,
                         agent_name="codex",
                         remote=None,
@@ -287,7 +287,7 @@ class GenerationBatchHelpersTests(unittest.TestCase):
                     GenerationOptions(
                         interact=False,
                         verbose=False,
-                        show_output=False,
+                        stream_output=False,
                         force_overwrite=False,
                         agent_name="codex",
                         remote=None,

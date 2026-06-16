@@ -157,7 +157,7 @@ def run_optimize_batch(
                     status="incomplete",
                 )
                 continue
-            if options.show_output:
+            if options.stream_output:
                 prefix = f"[{item.workspace.name}] "
                 prefixed_stream = PrefixedTextStream(stream, prefix, output_lock)
                 forwarded_stream = cast(TextIO, prefixed_stream)
@@ -213,7 +213,7 @@ def run_optimize_batch(
                         report_ok, report_msg = generate_workspace_report(
                             workspace=item.workspace,
                             agent_name=options.agent_name,
-                            show_output=options.show_output,
+                            show_output=options.stream_output,
                         )
                         if options.verbose:
                             status = "completed" if report_ok else f"warning: {report_msg}"

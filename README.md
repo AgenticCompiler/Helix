@@ -165,7 +165,7 @@ Common options:
 - `--test-mode standalone|differential`: choose the generated test style. Default is `standalone`.
 - `--agent codex|opencode|pi|claude|openhands|traecli`: choose the backend.
 - `--interact`: open an interactive agent session.
-- `--show-output`: stream non-interactive agent output.
+- `--no-stream-output`: disable live streaming for non-interactive agent output.
 - `--force-overwrite`: replace an existing generated file.
 - `--remote user@host[:port]`: generate with remote execution context in mind.
 - `--remote-workdir <path>`: set the remote working root.
@@ -241,7 +241,7 @@ Common options:
 - `--test-mode standalone|differential`: default is `differential`
 - `--bench-mode torch-npu-profiler|msprof`: default is `torch-npu-profiler`
 - `--interact`
-- `--show-output`
+- `--no-stream-output`
 - `--force-overwrite`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -274,7 +274,7 @@ Common options:
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--test-mode standalone|differential`: default is `differential`
 - `--interact`
-- `--show-output`
+- `--no-stream-output`
 - `--force-overwrite`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -309,7 +309,7 @@ Common options:
 - `--bench-mode torch-npu-profiler|msprof`: default is `torch-npu-profiler`
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--interact`
-- `--show-output`
+- `--no-stream-output`
 - `--force-overwrite`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -394,10 +394,10 @@ Common options:
   - `checked`: the CLI launches a worker for a bounded batch of rounds, validates each newly created round in order, and decides whether to continue, stop, or fail.
   - `supervised`: same batched worker flow, plus one supervisor audit pass after each worker batch before the next worker launch.
   Optimize runs a baseline preflight before the round loop and repairs `baseline/` when needed.
-- `--round-batch-size <N>`: default is `10`. Each worker invocation owns at most `N` sequential rounds before the CLI validates the batch and relaunches the next worker when needed.
+- `--round-batch-size <N>`: default is `5`. Each worker invocation owns at most `N` sequential rounds before the CLI validates the batch and relaunches the next worker when needed.
 - `--no-agent-session`: disable persistent agent sessions when supported.
 - `--interact`: not supported for optimize batched round modes.
-- `--show-output`
+- `--no-stream-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
 
@@ -514,7 +514,7 @@ Common options:
 - `--test-mode standalone|differential`
 - `--bench-mode torch-npu-profiler|msprof`
 - `--concurrency <N|max>`: defaults to `1`
-- `--show-output`
+- `--no-stream-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
 
@@ -529,7 +529,7 @@ Common options:
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--test-mode standalone|differential`: default is `differential`
 - `--concurrency <N|max>`: defaults to `1`
-- `--show-output`
+- `--no-stream-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
 
@@ -644,7 +644,7 @@ Common options:
 - `--min-rounds <N>`
 - `--no-agent-session`
 - `--concurrency <N|max>`: defaults to `1`
-- `--show-output`
+- `--no-stream-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
 
@@ -728,7 +728,7 @@ Common options:
 - `--check-result-file <path>`: workspace-relative log check result file name (default: `log_check_result.md`).
 - `--summary-file <path>`: root-relative batch log check summary file name (default: `log_check_summary.md`, batch only).
 - `--agent codex|opencode|pi|claude|openhands|traecli`
-- `--show-output`: stream agent output live.
+- `--no-stream-output`: disable live agent-output streaming.
 - `--verbose`: print more execution detail.
 
 ## Shared Options
@@ -737,7 +737,7 @@ These options appear on multiple commands:
 
 - `--agent`: choose the agent backend for agent-backed generation and optimization commands.
 - `--interact`: attach to a live agent session instead of a non-interactive run.
-- `--show-output`: stream readable non-interactive agent output in the current terminal, and append the same output to `triton-agent-logs/<command>.show-output.log` under the workspace workdir for later debugging.
+- Non-interactive agent-backed commands stream readable output by default and append the same output to `triton-agent-logs/<command>.show-output.log` under the workspace workdir for later debugging. Pass `--no-stream-output` to disable the live terminal stream.
 - `--verbose`: print additional diagnostics.
 - `--remote`: run execution and comparison commands through SSH, and pass remote context to generation and optimize workflows. When passed explicitly, the CLI first checks non-interactive key-based SSH access and suggests `ssh-copy-id` if the target still needs password-based setup.
 - `--remote-workdir`: choose the remote working root.

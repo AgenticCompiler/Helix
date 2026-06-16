@@ -18,7 +18,7 @@ def handle_report_batch(parser: argparse.ArgumentParser, args: argparse.Namespac
         parser.error(f"Input path is not a directory: {root}")
 
     agent_name = getattr(args, "agent", "codex")
-    show_output = bool(getattr(args, "show_output", False))
+    stream_output = bool(getattr(args, "stream_output", True))
     report_workers = int(getattr(args, "report_workers", 4))
 
     print(
@@ -55,7 +55,7 @@ def handle_report_batch(parser: argparse.ArgumentParser, args: argparse.Namespac
                 generate_workspace_report,
                 ws_path,
                 agent_name,
-                show_output,
+                stream_output,
             ): ws_path
             for ws_path in workspaces
         }
@@ -86,4 +86,3 @@ def _discover_workspaces(root: Path) -> list[Path]:
         p for p in root.iterdir()
         if p.is_dir() and not p.name.startswith(".")
     )
-

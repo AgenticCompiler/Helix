@@ -120,7 +120,7 @@ def run_convert_batch(
     with scope, ThreadPoolExecutor(max_workers=max_concurrency) as executor:
         futures: dict[Future[AgentResult], BatchConvertWorkspace] = {}
         for item in runnable:
-            if options.show_output:
+            if options.stream_output:
                 prefix = f"[{item.workspace.name}] "
                 prefixed_stream = PrefixedTextStream(stream, prefix, output_lock)
                 forwarded_stream = cast(TextIO, prefixed_stream)
