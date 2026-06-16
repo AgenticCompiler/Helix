@@ -92,6 +92,7 @@ class DiffSkillsUpdateWorkflowTests(unittest.TestCase):
                 input_root=root,
                 skills_dir=skills_dir,
                 update_skills_dir=root / "update_skills",
+                mode="diff",
                 agent_name="codex",
                 max_iterations=2,
                 concurrency=1,

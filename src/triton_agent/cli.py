@@ -606,6 +606,12 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--prompt")
         if spec.has_diff_skills_update_options:
             subparser.add_argument(
+                "--mode",
+                choices=("diff", "opt"),
+                default="diff",
+                help="Input mode: diff uses opt_*.py pairs; opt uses optimize workspaces with learned_lessons.md.",
+            )
+            subparser.add_argument(
                 "--skills-dir",
                 help="Editable skills workspace. Defaults to <input>/skills.",
             )

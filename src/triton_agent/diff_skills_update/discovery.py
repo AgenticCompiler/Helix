@@ -5,12 +5,18 @@ import re
 from pathlib import Path
 from typing import TextIO
 
-from triton_agent.diff_skills_update.models import DiscoveryResult, OperatorPair, SkipRecord
+from triton_agent.diff_skills_update.models import (
+    DiffSkillsUpdateMode,
+    DiscoveryResult,
+    OperatorPair,
+    SkipRecord,
+)
 
 
 def discover_operator_pairs(
     root: Path,
     *,
+    mode: DiffSkillsUpdateMode = "diff",
     stream: TextIO | None = None,
     exclude_dirs: set[Path] | None = None,
 ) -> DiscoveryResult:
@@ -19,9 +25,20 @@ def discover_operator_pairs(
     if not root.is_dir():
         raise ValueError(f"Input path is not a directory: {root}")
 
+    excluded = {path.resolve() for path in exclude_dirs or set()}
+    if mode == "opt":
+        return _discover_optimize_process_pairs(root, excluded=excluded, stream=stream)
+    return _discover_diff_pairs(root, excluded=excluded, stream=stream)
+
+
+def _discover_optimize_process_pairs(
+    root: Path,
+    *,
+    excluded: set[Path],
+    stream: TextIO | None,
+) -> DiscoveryResult:
     pairs: list[OperatorPair] = []
     skips: list[SkipRecord] = []
-    excluded = {path.resolve() for path in exclude_dirs or set()}
     if (root / "learned_lessons.md").is_file():
         pair, skip = _discover_optimize_process_pair(root, stream=stream)
         if pair is not None:
@@ -29,15 +46,40 @@ def discover_operator_pairs(
         if skip is not None:
             skips.append(skip)
         return DiscoveryResult(pairs=tuple(pairs), skips=tuple(skips))
-    for operator_dir in sorted(path for path in root.iterdir() if path.is_dir()):
-        if operator_dir.resolve() in excluded:
-            continue
+    operator_dirs = sorted(
+        path for path in root.iterdir() if path.is_dir() and path.resolve() not in excluded
+    )
+    if not operator_dirs or _looks_like_optimize_workspace(root):
+        skips.append(_record_skip(root, "learned_lessons.md not found in opt mode", stream=stream))
+        return DiscoveryResult(pairs=tuple(pairs), skips=tuple(skips))
+    for operator_dir in operator_dirs:
         if (operator_dir / "learned_lessons.md").is_file():
             pair, skip = _discover_optimize_process_pair(operator_dir, stream=stream)
             if pair is not None:
                 pairs.append(pair)
             if skip is not None:
                 skips.append(skip)
+            continue
+        skips.append(_record_skip(operator_dir, "learned_lessons.md not found in opt mode", stream=stream))
+    return DiscoveryResult(pairs=tuple(pairs), skips=tuple(skips))
+
+
+def _looks_like_optimize_workspace(path: Path) -> bool:
+    if (path / "baseline").is_dir() or (path / "opt-note.md").is_file():
+        return True
+    return any(child.is_dir() for child in path.glob("opt-round-*"))
+
+
+def _discover_diff_pairs(
+    root: Path,
+    *,
+    excluded: set[Path],
+    stream: TextIO | None,
+) -> DiscoveryResult:
+    pairs: list[OperatorPair] = []
+    skips: list[SkipRecord] = []
+    for operator_dir in sorted(path for path in root.iterdir() if path.is_dir()):
+        if operator_dir.resolve() in excluded:
             continue
         opt_files = sorted(operator_dir.glob("opt_*.py"))
         if not opt_files:

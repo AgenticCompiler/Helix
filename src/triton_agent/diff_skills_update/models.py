@@ -8,6 +8,7 @@ from triton_agent.models import AgentResult
 
 
 Status = Literal["aligned", "not_aligned", "failed", "skipped"]
+DiffSkillsUpdateMode = Literal["diff", "opt"]
 
 
 @dataclass(frozen=True)
@@ -15,6 +16,7 @@ class DiffSkillsUpdateConfig:
     input_root: Path
     skills_dir: Path
     update_skills_dir: Path
+    mode: DiffSkillsUpdateMode
     agent_name: str
     max_iterations: int
     concurrency: int

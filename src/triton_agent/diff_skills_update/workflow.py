@@ -52,6 +52,7 @@ def run_diff_skills_update(
     output_stream = stream or sys.stderr
     discovery = discover_operator_pairs(
         config.input_root,
+        mode=config.mode,
         stream=output_stream,
         exclude_dirs={config.skills_dir, config.update_skills_dir},
     )

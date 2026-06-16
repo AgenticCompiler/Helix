@@ -22,6 +22,8 @@ class DiffSkillsUpdateCliTests(unittest.TestCase):
                 "opencode",
                 "--skills-dir",
                 "custom-skills",
+                "--mode",
+                "opt",
                 "--max-iterations",
                 "4",
                 "--concurrency",
@@ -38,6 +40,7 @@ class DiffSkillsUpdateCliTests(unittest.TestCase):
         self.assertEqual(args.input, "operators")
         self.assertEqual(args.agent, "opencode")
         self.assertEqual(args.skills_dir, "custom-skills")
+        self.assertEqual(args.mode, "opt")
         self.assertEqual(args.max_iterations, 4)
         self.assertEqual(args.concurrency, 2)
         self.assertTrue(args.force)
@@ -53,6 +56,7 @@ class DiffSkillsUpdateCliTests(unittest.TestCase):
 
         self.assertEqual(config.skills_dir, (Path("operators").resolve() / "skills"))
         self.assertEqual(config.update_skills_dir, (Path("operators").resolve() / "update_skills"))
+        self.assertEqual(config.mode, "diff")
 
 
 if __name__ == "__main__":
