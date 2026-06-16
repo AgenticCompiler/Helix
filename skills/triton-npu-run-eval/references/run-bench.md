@@ -31,6 +31,7 @@ python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --op
 python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof
 python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file baseline/<operator>.py --bench-mode msprof-simulator --extract-dest-dir baseline
 python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof-simulator --extract-dest-dir opt-round-N/
+python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof-simulator --simulator-case-idx 3 --extract-dest-dir opt-round-N/
 ```
 
 Remote examples:
