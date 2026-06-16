@@ -133,7 +133,7 @@ def _run_pair(
             agent_name=config.agent_name,
             workdir=pair.operator_dir,
             prompt=diff_prompt,
-            show_output=config.show_output,
+            stream_output=config.stream_output,
             verbose=config.verbose,
             output_label=f"[{pair.operator_dir.name}] [diff-skills]",
         )
@@ -177,7 +177,7 @@ def _run_pair(
             agent_name=config.agent_name,
             workdir=simulate_dir,
             prompt=simulate_prompt,
-            show_output=config.show_output,
+            stream_output=config.stream_output,
             verbose=config.verbose,
             skills_root=config.skills_dir,
             output_label=f"[{pair.operator_dir.name}] [simulate-iter-{iteration}/{config.max_iterations}]",
@@ -215,7 +215,7 @@ def _run_pair(
                 agent_name=config.agent_name,
                 workdir=pair.operator_dir,
                 prompt=analysis_prompt,
-                show_output=config.show_output,
+                stream_output=config.stream_output,
                 verbose=config.verbose,
                 output_label=f"[{pair.operator_dir.name}] [analyze-iter-{iteration}/{config.max_iterations}]",
             )

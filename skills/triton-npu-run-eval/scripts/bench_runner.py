@@ -406,7 +406,7 @@ def _run_remote_bench_perf_counter(
     )
     perf_path = _resolve_perf_output_path(operator_file, output=output)
     extra_env: dict[str, str] | None = {"TRITON_ALWAYS_COMPILE": "1"}
-    with _stream_target_for_verbosity(verbose) as stream_target:
+    with stream_target_for_verbosity(verbose) as stream_target:
         result = run_remote_command_streaming(
             spec,
             remote_workspace,
@@ -514,7 +514,7 @@ def _cleanup_local_bench_extra_info(workdir: Path) -> None:
 
 
 @contextlib.contextmanager
-def _stream_target_for_verbosity(verbose: bool) -> Iterator[TextIO]:
+def stream_target_for_verbosity(verbose: bool) -> Iterator[TextIO]:
     if verbose:
         yield sys.stdout
         return
@@ -556,7 +556,7 @@ def _run_remote_bench_torch_npu_profiler(
     )
     perf_path = _resolve_perf_output_path(operator_file, output=output)
     extra_env: dict[str, str] | None = {"TRITON_ALWAYS_COMPILE": "1"}
-    with _stream_target_for_verbosity(verbose) as stream_target:
+    with stream_target_for_verbosity(verbose) as stream_target:
         result = run_remote_command_streaming(
             spec,
             remote_workspace,
@@ -783,7 +783,7 @@ def _run_local_bench_msprof(
                 case.case_id,
             ]
             t0 = time.monotonic()
-            with _stream_target_for_verbosity(verbose) as stream_target:
+            with stream_target_for_verbosity(verbose) as stream_target:
                 result = run_streaming_process(
                     command,
                     str(bench_file.parent),
@@ -942,26 +942,28 @@ def _run_remote_bench_msprof(
         )
         try:
             t0 = time.monotonic()
-            result = run_remote_command_streaming(
-                spec,
-                remote_workspace,
-                [
-                    "msprof",
-                    f"--output={output_dir}",
-                    "python3",
-                    _bench_runtime_script_path().name,
-                    "run-one",
-                    "--bench-file",
-                    bench_file.name,
-                    "--operator-file",
-                    operator_file.name,
-                    "--case-id",
-                    case.case_id,
-                ],
-                verbose=verbose,
-                stderr=stderr,
-                stall_timeout_seconds=_bench_timeout(),
-            )
+            with stream_target_for_verbosity(verbose) as stream_target:
+                result = run_remote_command_streaming(
+                    spec,
+                    remote_workspace,
+                    [
+                        "msprof",
+                        f"--output={output_dir}",
+                        "python3",
+                        _bench_runtime_script_path().name,
+                        "run-one",
+                        "--bench-file",
+                        bench_file.name,
+                        "--operator-file",
+                        operator_file.name,
+                        "--case-id",
+                        case.case_id,
+                    ],
+                    stdout=stream_target,
+                    verbose=verbose,
+                    stderr=stderr,
+                    stall_timeout_seconds=_bench_timeout(),
+                )
             elapsed = time.monotonic() - t0
             stdout_chunks.append(str(result["stdout"]))
             stderr_chunks.append(str(result["stderr"]))
@@ -1592,7 +1594,7 @@ def _run_local_torch_npu_profiler_case_in_subprocess(
         ),
     ]
     if verbose:
-        with _stream_target_for_verbosity(True) as stream_target:
+        with stream_target_for_verbosity(True) as stream_target:
             result = run_streaming_process(
                 command,
                 str(workspace_root),
@@ -1635,7 +1637,7 @@ def _run_local_perf_counter_case_in_subprocess(
         case_id,
     ]
     if verbose:
-        with _stream_target_for_verbosity(True) as stream_target:
+        with stream_target_for_verbosity(True) as stream_target:
             result = run_streaming_process(
                 command,
                 str(workspace_root),
@@ -1911,7 +1913,7 @@ def _run_local_msprof_case_parallel(
                 case_id,
             ]
             t0 = time.monotonic()
-            with _stream_target_for_verbosity(verbose) as stream_target:
+            with stream_target_for_verbosity(verbose) as stream_target:
                 result = run_streaming_process(
                     command,
                     str(case_workspace),

@@ -489,7 +489,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                     "stalled": False,
                     "session_id": None,
                 },
-                show_output=False,
+                skip_stdout=False,
             )
         finally:
             sys.stdout = original_stdout

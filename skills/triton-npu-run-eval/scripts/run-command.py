@@ -336,7 +336,7 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
             return 1
-        _render_result(result, show_output=True)
+        _render_result(result, skip_stdout=remote is not None)
         print(f"Return code: {result['return_code']}")
         final_code = int(result["return_code"])
         if archived_result is not None:
@@ -384,7 +384,7 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
             return 1
-        _render_result(result, show_output=True)
+        _render_result(result, skip_stdout=remote is not None and args.verbose)
         print(f"Return code: {result['return_code']}")
         if profile_dir is not None:
             print(f"Profile directory: {profile_dir}")
@@ -435,7 +435,7 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
         print(str(exc), file=sys.stderr)
         return 1
     if result["return_code"] != 0:
-        _render_result(result, show_output=False)
+        _render_result(result, skip_stdout=remote is not None and args.verbose)
     if remote is not None and args.keep_remote_workdir and remote_workspace is not None:
         print(f"Remote workspace: {remote_workspace}")
     if perf_path is not None:
@@ -579,6 +579,7 @@ def _resolve_ref_operator_result(
             ref_run_result,
             archived_result,
             remote_workspace=remote_workspace if keep_remote_workdir else None,
+            skip_stdout=True,
         )
         _raise_if_ref_run_failed(ref_run_result, archived_result)
         return derived_ref_result
@@ -593,7 +594,7 @@ def _resolve_ref_operator_result(
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1) from exc
-    _render_ref_run_result(ref_run_result, archived_result, remote_workspace=None)
+    _render_ref_run_result(ref_run_result, archived_result, remote_workspace=None, skip_stdout=False)
     _raise_if_ref_run_failed(ref_run_result, archived_result)
     return derived_ref_result
 
@@ -603,8 +604,9 @@ def _render_ref_run_result(
     archived_result: Path | None,
     *,
     remote_workspace: str | None,
+    skip_stdout: bool = False,
 ) -> None:
-    _render_result(ref_run_result, show_output=True)
+    _render_result(ref_run_result, skip_stdout=skip_stdout)
     print(f"Return code: {ref_run_result['return_code']}")
     if archived_result is not None:
         print(f"Archived result: {archived_result}")
@@ -620,10 +622,10 @@ def _raise_if_ref_run_failed(
         raise SystemExit(1)
 
 
-def _render_result(result: ResultPayload, show_output: bool) -> None:
+def _render_result(result: ResultPayload, skip_stdout: bool) -> None:
     stdout = result["stdout"]
     stderr = result["stderr"]
-    if stdout and not show_output:
+    if stdout and not skip_stdout:
         print(stdout, end="" if stdout.endswith("\n") else "\n")
     if stderr:
         print(stderr, file=sys.stderr, end="" if stderr.endswith("\n") else "\n")

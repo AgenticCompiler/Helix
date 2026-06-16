@@ -44,7 +44,7 @@ def _config_from_args(args: argparse.Namespace) -> DiffSkillsUpdateConfig:
         agent_name=str(getattr(args, "agent", "codex")),
         max_iterations=max_iterations,
         concurrency=concurrency,
-        show_output=bool(getattr(args, "show_output", False)),
+        stream_output=bool(getattr(args, "stream_output", True)),
         verbose=bool(getattr(args, "verbose", False)),
         force=bool(getattr(args, "force", False)),
         skip_existing=bool(getattr(args, "skip_existing", False)),

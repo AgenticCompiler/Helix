@@ -84,7 +84,7 @@ def _handle_generation_command(
             f"Agent executable not found: {exc}. "
             f"Make sure the '{options.agent_name}' CLI is installed and available in PATH."
         )
-    render_result(result, show_output=request.stream_output)
+    render_result(result, skip_stdout=request.stream_output)
     return result.return_code
 
 

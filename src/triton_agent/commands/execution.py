@@ -61,7 +61,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    render_result(result, show_output=True)
+    render_result(result, skip_stdout=remote is not None)
     print(f"Return code: {result.return_code}")
     final_code = result.return_code
     if archived_result is not None:
@@ -117,7 +117,7 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
         print(str(exc), file=sys.stderr)
         return 1
     if args.verbose or result.return_code != 0:
-        render_result(result, show_output=False)
+        render_result(result, skip_stdout=remote is not None and args.verbose)
     if remote is not None and args.keep_remote_workdir and remote_workspace is not None:
         print(f"Remote workspace: {remote_workspace}")
     if perf_path is not None:
@@ -203,7 +203,7 @@ def resolve_run_test_comparison_inputs(
                 verbose=args.verbose,
                 stderr=sys.stderr,
             )
-            render_result(ref_run_result, show_output=True)
+            render_result(ref_run_result, skip_stdout=True)
             print(f"Return code: {ref_run_result.return_code}")
             if archived_result is not None:
                 print(f"Archived result: {archived_result}")
@@ -216,7 +216,7 @@ def resolve_run_test_comparison_inputs(
                 resolved_test_mode,
                 verbose=args.verbose,
             )
-            render_result(ref_run_result, show_output=True)
+            render_result(ref_run_result, skip_stdout=False)
             print(f"Return code: {ref_run_result.return_code}")
             if archived_result is not None:
                 print(f"Archived result: {archived_result}")

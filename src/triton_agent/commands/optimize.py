@@ -58,7 +58,7 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
             f"Agent executable not found: {exc}. "
             f"Make sure the '{options.agent_name}' CLI is installed and available in PATH."
         )
-    render_result(result, show_output=request.stream_output)
+    render_result(result, skip_stdout=request.stream_output)
 
     # Auto-upload after successful optimize
     if result.return_code == 0 and options.upload_enabled:

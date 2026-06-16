@@ -4373,7 +4373,7 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             mocked.assert_called_once()
             self.assertIn("Return code: 0", stdout.getvalue())
-            self.assertNotIn("test stdout", stdout.getvalue())
+            self.assertIn("test stdout", stdout.getvalue())
             self.assertNotIn("Hint: use `compare-result`", stdout.getvalue())
             self.assertIn("test stderr", stderr.getvalue())
 
@@ -5571,18 +5571,18 @@ class PromptTests(unittest.TestCase):
 
 
 class OutputRenderingTests(unittest.TestCase):
-    def test_render_result_skips_duplicate_stdout_when_show_output_enabled(self) -> None:
+    def test_render_result_skips_stdout_when_skip_enabled(self) -> None:
         stdout = StringIO()
         stderr = StringIO()
         result = AgentResult(return_code=0, stdout="streamed\n", stderr="")
-        render_result(result, show_output=True, stdout=stdout, stderr=stderr)
+        render_result(result, skip_stdout=True, stdout=stdout, stderr=stderr)
         self.assertEqual(stdout.getvalue(), "")
 
-    def test_render_result_prints_stdout_when_show_output_disabled(self) -> None:
+    def test_render_result_prints_stdout_when_skip_disabled(self) -> None:
         stdout = StringIO()
         stderr = StringIO()
         result = AgentResult(return_code=0, stdout="final\n", stderr="")
-        render_result(result, show_output=False, stdout=stdout, stderr=stderr)
+        render_result(result, skip_stdout=False, stdout=stdout, stderr=stderr)
         self.assertEqual(stdout.getvalue(), "final\n")
 
 
