@@ -1444,6 +1444,7 @@ def _run_local_bench_msprof_simulator_standalone(
     operator_file: Path,
     extract_dest_dir: Path | None = None,
     kernel_name: str | None = None,
+    simulator_case_idx: int | None = None,
     verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
@@ -1452,6 +1453,9 @@ def _run_local_bench_msprof_simulator_standalone(
     if not cases:
         raise ValueError("No standalone bench cases found")
     selected_case = cases[len(cases) // 2]
+    case_id = selected_case.case_id
+    if simulator_case_idx:
+        case_id = simulator_case_idx
     stdout_chunks: list[str] = []
     stderr_chunks: list[str] = []
     preserved_run_dir = _create_local_msprof_preserved_run_dir()
@@ -1477,7 +1481,7 @@ def _run_local_bench_msprof_simulator_standalone(
             str(wrapper_script_path),
             str(bench_file),
             str(operator_file),
-            selected_case.case_id,
+            case_id,
         ]
         print(f"[standalone-msprof-simulator] kernel-name={kernel_name}, cmd: {' '.join(command)}")
         t0 = time.monotonic()
