@@ -164,12 +164,14 @@ def run_local_bench(
                 output=output,
             )
         with ThreadPoolExecutor(max_workers=2) as executor:
+            print(f"[DEBUG] {time.strftime('%Y-%m-%d %H:%M:%S')} simulator start", flush=True)
             simulator_future = executor.submit(
                 _run_local_bench_msprof_simulator_standalone,
                 bench_file,
                 operator_file,
                 extract_dest_dir=extract_dest_dir,
             )
+            print(f"[DEBUG] {time.strftime('%Y-%m-%d %H:%M:%S')} profiler start", flush=True)
             standalone_future = executor.submit(
                 _run_local_bench_torch_npu_profiler,
                 bench_file,
@@ -177,8 +179,11 @@ def run_local_bench(
                 verbose=verbose,
                 output=output,
             )
-            simulator_future.result()
-            return standalone_future.result()
+            simulator_result, simulator_perf_path = simulator_future.result()
+            print(f"[DEBUG] {time.strftime('%Y-%m-%d %H:%M:%S')} simulator done", flush=True)
+            standalone_result, standalone_perf_path = standalone_future.result()
+            print(f"[DEBUG] {time.strftime('%Y-%m-%d %H:%M:%S')} profiler done", flush=True)
+            return standalone_result, standalone_perf_path
         return _run_local_bench_torch_npu_profiler(bench_file, operator_file, verbose=verbose,
                                            output=output)
 
