@@ -31,13 +31,16 @@ In skill references below, `<Language>` is `triton` or `tilelang` depending on t
 
 ## Outputs
 
-- A runnable Python benchmark file
-- A brief note describing benchmark assumptions and what the script measures
+- **Two** runnable Python benchmark files:
+  - `bench_<op>.py` — `torch-npu-profiler` benchmark following [bench-spec.md](references/bench-spec.md)
+  - `bench_<op>_msprof.py` — `msprof` benchmark following [bench-msprof-spec.md](references/bench-msprof-spec.md)
+- A brief note describing benchmark assumptions and what each script measures
 
 ## Required Spec Compliance
 
-- The generated file must follow [bench-spec.md](references/bench-spec.md).
-- Treat that spec file as the mandatory output contract for both benchmark modes.
+- The generated `bench_<op>.py` must follow [bench-spec.md](references/bench-spec.md).
+- The generated `bench_<op>_msprof.py` must follow [bench-msprof-spec.md](references/bench-msprof-spec.md).
+- Treat each spec file as the mandatory output contract for its respective benchmark file.
 
 ## Generated File Metadata and Contract
 
@@ -53,7 +56,7 @@ The generated file must be an **import-only** module that exports:
 - `build_bench_cases()`
 - `build_bench_case_fn(operator_api, case)`
 
-Across benchmark modes, keep the generated benchmark focused on the benchmark contract itself:
+Across both benchmark files, keep the generated benchmark focused on the benchmark contract itself:
 
 - do not turn the benchmark file into a self-executing command-line program
 - do not add extra runtime interfaces beyond the required metadata and hooks
@@ -114,6 +117,6 @@ For Ascend NPU compile, JIT, launch, or kernel-side failures, you may consult th
 | **General error** (CLI, shape mismatch, runtime, etc.) | Apply a minimal targeted fix — preserve the overall benchmark structure |
 | **ModuleNotFoundError** or environment issue | Report that the benchmark cannot be fixed from inside the benchmark file alone |
 
-After any repair, always preserve the metadata header and the shared import-only hook export pattern.
+After any repair, always preserve the metadata header and the shared import-only hook export pattern in both files.
 
-Always enforce the unified benchmark spec first.
+Always enforce the respective benchmark spec first.
