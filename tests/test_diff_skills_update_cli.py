@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.cli import build_parser
+from triton_agent.commands.diff_skills_update import _config_from_args
 from triton_agent.models import CommandKind
 
 
@@ -43,6 +44,15 @@ class DiffSkillsUpdateCliTests(unittest.TestCase):
         self.assertTrue(args.skip_existing)
         self.assertTrue(args.promote_converged_skills)
         self.assertFalse(args.stream_output)
+
+    def test_diff_skills_update_defaults_to_skills_and_update_skills_dirs(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["diff-skills-update", "-i", "operators"])
+
+        config = _config_from_args(args)
+
+        self.assertEqual(config.skills_dir, (Path("operators").resolve() / "skills"))
+        self.assertEqual(config.update_skills_dir, (Path("operators").resolve() / "update_skills"))
 
 
 if __name__ == "__main__":

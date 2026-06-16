@@ -1,4 +1,5 @@
 import sys
+import json
 import tempfile
 import unittest
 from io import StringIO
@@ -54,6 +55,52 @@ class DiffSkillsUpdateDiscoveryTests(unittest.TestCase):
             self.assertEqual(result.pairs[0].baseline_path.name, "foo.py")
             self.assertEqual(result.pairs[0].expected_path.name, "opt_foo.py")
             self.assertEqual(result.skips, ())
+
+    def test_discovers_direct_optimize_process_from_learned_lessons(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "learned_lessons.md").write_text("- use tiling\n", encoding="utf-8")
+            (root / "opt-note.md").write_text("## Overall Summary\nFinal best round: round-2\n", encoding="utf-8")
+            baseline_dir = root / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "kernel.py").write_text("x = 1\n", encoding="utf-8")
+            (baseline_dir / "state.json").write_text(
+                json.dumps({"baseline_operator": "kernel.py"}),
+                encoding="utf-8",
+            )
+            round_one = root / "opt-round-1"
+            round_one.mkdir()
+            (round_one / "summary.md").write_text("round one\n", encoding="utf-8")
+            round_two = root / "opt-round-2"
+            round_two.mkdir()
+            (round_two / "opt_kernel.py").write_text("x = 2\n", encoding="utf-8")
+            (round_two / "attempts.md").write_text("round two attempts\n", encoding="utf-8")
+
+            result = discover_operator_pairs(root)
+
+            self.assertEqual(len(result.pairs), 1)
+            pair = result.pairs[0]
+            self.assertEqual(pair.source_kind, "optimize-process")
+            self.assertEqual(pair.baseline_path, (baseline_dir / "kernel.py").resolve())
+            self.assertEqual(pair.expected_path, round_two / "opt_kernel.py")
+            self.assertEqual(pair.learned_lessons_path, root / "learned_lessons.md")
+            self.assertIn(root / "opt-note.md", pair.context_paths)
+            self.assertIn(round_one / "summary.md", pair.context_paths)
+            self.assertIn(round_two / "attempts.md", pair.context_paths)
+
+    def test_skips_optimize_process_without_final_operator(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "learned_lessons.md").write_text("- use tiling\n", encoding="utf-8")
+            baseline_dir = root / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "kernel.py").write_text("x = 1\n", encoding="utf-8")
+
+            result = discover_operator_pairs(root)
+
+            self.assertEqual(result.pairs, ())
+            self.assertEqual(len(result.skips), 1)
+            self.assertIn("final optimized operator", result.skips[0].reason)
 
 
 if __name__ == "__main__":

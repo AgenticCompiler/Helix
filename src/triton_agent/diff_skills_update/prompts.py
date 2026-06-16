@@ -14,19 +14,33 @@ def build_diff_to_skill_prompt(
     output_json: Path,
 ) -> str:
     diff_text = _unified_diff(pair.baseline_path, pair.expected_path)
+    process_context = _process_context_text(pair)
     return f"""You are updating Triton Ascend NPU optimization knowledge.
 
 Baseline file: {pair.baseline_path}
 Optimized answer file: {pair.expected_path}
 Editable skills directory: {skills_dir}
+Input kind: {pair.source_kind}
+{process_context}
 
-Analyze the unified diff below. Update relevant pattern cards or add a new
-generic pattern card when the mechanism is not covered under:
+Analyze the available optimization evidence. For `optimize-process` inputs,
+start from `learned_lessons.md`, then cross-check `opt-note.md`, round summaries,
+attempt logs, and the before/after code diff. Update relevant pattern cards or
+add a new generic pattern card when the mechanism is not covered under:
 {skills_dir}/triton-npu-optimize-knowledge/references/patterns
 
 Keep the skill content generic and reusable. Do not copy operator-specific names
 unless they are necessary inside a concise example. After editing or adding
 pattern cards, regenerate the pattern index if needed.
+
+Pattern card format is mandatory:
+- Every pattern card must begin with `# <Human Title>`.
+- The first section after the title must be `## Summary`.
+- The second section must be `## Use When`.
+- Do not put warning, checklist, mandatory, priority, or "check first" sections
+  before `## Summary` and `## Use When`.
+- Put detection rules under `## Use When` or `## Signals`.
+- Put verification rules under `## What To Verify After Applying`.
 
 Write JSON to {output_json} with this shape:
 {{
@@ -92,6 +106,15 @@ code changes. If it does not, update relevant generic skill pattern cards or add
 a new generic pattern card in the editable skills directory so the next simulate
 iteration has better guidance.
 
+Pattern card format is mandatory:
+- Every pattern card must begin with `# <Human Title>`.
+- The first section after the title must be `## Summary`.
+- The second section must be `## Use When`.
+- Do not put warning, checklist, mandatory, priority, or "check first" sections
+  before `## Summary` and `## Use When`.
+- Put detection rules under `## Use When` or `## Signals`.
+- Put verification rules under `## What To Verify After Applying`.
+
 Write JSON to {output_json} with this shape:
 {{
   "aligned": true,
@@ -113,3 +136,18 @@ def _unified_diff(before: Path, after: Path) -> str:
             tofile=str(after),
         )
     )
+
+
+def _process_context_text(pair: OperatorPair) -> str:
+    if pair.source_kind != "optimize-process":
+        return ""
+    lines = ["Optimization process evidence:"]
+    if pair.learned_lessons_path is not None:
+        lines.append(f"- learned_lessons: {pair.learned_lessons_path}")
+    if pair.opt_note_path is not None:
+        lines.append(f"- opt_note: {pair.opt_note_path}")
+    for path in pair.context_paths:
+        if path == pair.learned_lessons_path or path == pair.opt_note_path:
+            continue
+        lines.append(f"- round_context: {path}")
+    return "\n".join(lines)

@@ -609,6 +609,10 @@ def build_parser() -> argparse.ArgumentParser:
                 "--skills-dir",
                 help="Editable skills workspace. Defaults to <input>/skills.",
             )
+            subparser.add_argument(
+                "--update-skills-dir",
+                help="Export directory for updated pattern cards. Defaults to <input>/update_skills.",
+            )
             subparser.add_argument("--max-iterations", type=_parse_positive_int_value, default=3)
             subparser.add_argument("--force", action="store_true", help="Overwrite existing simulate artifacts.")
             subparser.add_argument(

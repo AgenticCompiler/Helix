@@ -7,6 +7,15 @@ directories under the input root. Each operator directory may contain one or mor
 `opt_*.py` files. For every `opt_xxx.py`, the command looks for a sibling
 `xxx.py`; pairs without either side are skipped with an explicit reason.
 
+The input may also be a completed optimize workspace. If the input directory
+itself, or one of its immediate children, contains `learned_lessons.md`, the
+command treats it as an optimize-process input instead of an `opt_*.py` pair. It
+uses `baseline/state.json` (with fallback scanning under `baseline/`) to find the
+pre-optimization operator, uses `opt-note.md`'s final best round or the latest
+`opt-round-N/` to find the optimized operator, and gives the skills-update agent
+`learned_lessons.md`, `opt-note.md`, and round `summary.md`/`attempts.md`
+context.
+
 Each valid pair uses `xxx.py` as the pre-optimization baseline and `opt_xxx.py`
 as the expected optimized answer. The command compares the pair, updates an
 editable skills workspace, then runs a simulate agent from a local `simulate/`
@@ -21,6 +30,10 @@ reached.
 
 - Input root: CLI `-i/--input`.
 - Skills workspace: `--skills-dir`, defaulting to `<operators-root>/skills`.
+- Updated-pattern export: `--update-skills-dir`, defaulting to
+  `<operators-root>/update_skills`. After the run completes, only pattern cards
+  that changed during this run are copied into the export directory; the initial
+  skills workspace remains the full editable copy used during iteration.
 - Per-pair simulate workspace: `<operator-dir>/simulate/`.
 - Per-pair report: `<operator-dir>/simulate/report.json`.
 - Generated candidate: `<operator-dir>/simulate/generated_<stem>.py`.

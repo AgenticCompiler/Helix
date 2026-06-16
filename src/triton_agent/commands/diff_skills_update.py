@@ -32,6 +32,11 @@ def _config_from_args(args: argparse.Namespace) -> DiffSkillsUpdateConfig:
         if getattr(args, "skills_dir", None)
         else input_root / "skills"
     )
+    update_skills_dir = (
+        Path(args.update_skills_dir).expanduser().resolve()
+        if getattr(args, "update_skills_dir", None)
+        else input_root / "update_skills"
+    )
     concurrency = int(getattr(args, "concurrency", 1))
     if concurrency < 1:
         raise ValueError("--concurrency must be positive")
@@ -41,6 +46,7 @@ def _config_from_args(args: argparse.Namespace) -> DiffSkillsUpdateConfig:
     return DiffSkillsUpdateConfig(
         input_root=input_root,
         skills_dir=skills_dir,
+        update_skills_dir=update_skills_dir,
         agent_name=str(getattr(args, "agent", "codex")),
         max_iterations=max_iterations,
         concurrency=concurrency,
