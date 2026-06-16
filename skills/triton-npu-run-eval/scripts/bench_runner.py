@@ -22,7 +22,6 @@ from bench_contract import (  # noqa: F401
     parse_bench_metadata,
     resolve_bench_kernel_names,
     resolve_bench_kernel_resolution,
-    resolve_msprof_bench_file,
 )
 from npu_affinity import NpuDevicePool, affinity_env_for_device, parse_npu_devices
 from debug_device import maybe_print_visible_devices
@@ -113,8 +112,6 @@ def run_local_bench(
     simulator_case_idx: int = 1,
 ) -> tuple[ResultPayload, Path | None]:
     bench_mode = _normalize_bench_mode(bench_mode)
-    if bench_mode in ("msprof", "msprof-simulator"):
-        bench_file = resolve_msprof_bench_file(bench_file)
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
     maybe_print_visible_devices()
@@ -225,8 +222,6 @@ def run_remote_bench(
     output: str | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
     bench_mode = _normalize_bench_mode(bench_mode)
-    if bench_mode in ("msprof", "msprof-simulator"):
-        bench_file = resolve_msprof_bench_file(bench_file)
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
     maybe_print_visible_devices()
@@ -1231,6 +1226,13 @@ def _bin_sort_key(bin_path: Path) -> tuple[int, int]:
     return (idx, bin_path.stat().st_size)
 
 
+def _select_representative_bin(bins: list[Path]) -> Path:
+    ordered = sorted(bins, key=_bin_sort_key)
+    if len(ordered) >= 2:
+        return ordered[-2]
+    return ordered[-1]
+
+
 def _resolve_target_visualize_data_bin(
     output_dir: Path,
     kernel_name: str | None,
@@ -1239,21 +1241,21 @@ def _resolve_target_visualize_data_bin(
     if kernel_name:
         bins = _iter_kernel_launch_bins(output_dir, kernel_name)
         if bins:
-            return max(bins, key=_bin_sort_key)
+            return _select_representative_bin(bins)
     if candidate_kernel_names:
         for kname in candidate_kernel_names:
             if kname == kernel_name:
                 continue
             bins = _iter_kernel_launch_bins(output_dir, kname)
             if bins:
-                return max(bins, key=_bin_sort_key)
+                return _select_representative_bin(bins)
     fallback_bins: list[Path] = []
     for root in _iter_msprof_opprof_roots(output_dir):
         for entry in root.iterdir():
             if entry.is_dir():
                 fallback_bins.extend(_iter_kernel_launch_bins(root, entry.name))
     if fallback_bins:
-        return max(fallback_bins, key=_bin_sort_key)
+        return _select_representative_bin(fallback_bins)
     flat = output_dir / "simulator" / "visualize_data.bin"
     if flat.is_file():
         return flat
