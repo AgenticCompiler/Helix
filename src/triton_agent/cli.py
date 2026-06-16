@@ -10,6 +10,7 @@ from typing import Optional
 from triton_agent.commands.convert import handle_convert, handle_convert_batch
 from triton_agent.commands.clean import handle_clean
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
+from triton_agent.commands.diff_skills_update import handle_diff_skills_update
 from triton_agent.commands.execution import handle_run_bench, handle_run_simulator, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
 from triton_agent.commands.generation import handle_gen_eval
@@ -58,6 +59,7 @@ _TOP_LEVEL_EXAMPLES = (
     "triton-agent log-check -i .",
     "triton-agent log-check-batch -i kernels",
     "triton-agent optimize -i kernel.py --agent codex",
+    "triton-agent diff-skills-update -i kernels --agent codex",
     "triton-agent report-batch -i kernels",
     "triton-agent clean -i .",
 )
@@ -193,6 +195,7 @@ class _CommandSpec:
     has_force_verify: bool = False
     has_log_tools: bool = False
     has_url: bool = False
+    has_diff_skills_update_options: bool = False
 
 
 _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
@@ -441,6 +444,17 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         concurrency_accepts_max=True,
         has_log_tools=True,
     ),
+    CommandKind.DIFF_SKILLS_UPDATE: _CommandSpec(
+        handler=handle_diff_skills_update,
+        help_group="Optimization",
+        help_summary="Update optimize skills from baseline/opt diffs and simulate regeneration.",
+        description="Scan operator directories, update optimize skills from opt diffs, and run a simulate loop.",
+        has_output=False,
+        has_agent=True,
+        has_show_output=True,
+        concurrency_default=1,
+        has_diff_skills_update_options=True,
+    ),
     CommandKind.UPLOAD_OPTIMIZE: _CommandSpec(
         handler=handle_upload_optimize,
         help_group="Optimization",
@@ -584,6 +598,23 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--enable-report", action="store_true", default=False)
         if spec.has_prompt:
             subparser.add_argument("--prompt")
+        if spec.has_diff_skills_update_options:
+            subparser.add_argument(
+                "--skills-dir",
+                help="Editable skills workspace. Defaults to <input>/skills.",
+            )
+            subparser.add_argument("--max-iterations", type=_parse_positive_int_value, default=3)
+            subparser.add_argument("--force", action="store_true", help="Overwrite existing simulate artifacts.")
+            subparser.add_argument(
+                "--skip-existing",
+                action="store_true",
+                help="Skip pairs whose existing simulate report is already aligned.",
+            )
+            subparser.add_argument(
+                "--promote-converged-skills",
+                action="store_true",
+                help="After a pair converges, overwrite the bundled optimize knowledge skill and rebuild its pattern index.",
+            )
         if command_kind in {CommandKind.LOG_CHECK, CommandKind.LOG_CHECK_BATCH}:
             subparser.add_argument(
                 "--check-result-file",
@@ -750,6 +781,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "optimize_batch": "optimize-batch",
         "log_check": "log-check",
         "log_check_batch": "log-check-batch",
+        "diff_skills_update": "diff-skills-update",
         "report_batch": "report-batch",
         "report": "report",
         "clean": "clean",

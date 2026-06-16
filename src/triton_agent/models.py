@@ -31,6 +31,7 @@ class CommandKind(str, Enum):
     REPORT = "report"
     REPORT_BATCH = "report-batch"
     CLEAN = "clean"
+    DIFF_SKILLS_UPDATE = "diff-skills-update"
 
 
 COMMAND_TO_SKILL = {
@@ -58,6 +59,7 @@ COMMAND_TO_SKILL = {
     CommandKind.REPORT: "",
     CommandKind.REPORT_BATCH: "",
     CommandKind.CLEAN: "",
+    CommandKind.DIFF_SKILLS_UPDATE: "",
 }
 
 
