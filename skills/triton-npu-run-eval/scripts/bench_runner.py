@@ -178,7 +178,7 @@ def run_local_bench(
                 output=output,
             )
             simulator_future.result()
-            return standalone_future.result()
+            return standalone_result, standalone_perf_path
         return _run_local_bench_torch_npu_profiler(bench_file, operator_file, verbose=verbose,
                                            output=output)
 
