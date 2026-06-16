@@ -312,7 +312,10 @@ def _write_skip_report(record: SkipRecord) -> None:
 
 
 def _regenerate_if_possible(knowledge_dir: Path) -> None:
-    regenerate_pattern_index(knowledge_dir)
+    try:
+        regenerate_pattern_index(knowledge_dir)
+    except Exception as exc:
+        print(f"Warning: pattern index regeneration failed: {exc}", file=sys.stderr)
 
 
 def _delete_unaligned_candidate(candidate_path: Path) -> None:
