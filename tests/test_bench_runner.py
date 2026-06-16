@@ -7,7 +7,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Optional, Union
 from unittest.mock import MagicMock, patch
 
@@ -529,7 +529,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                         + str(avg)
                         + ',"ops":[{"op_type":"KernelA","avg_time_us":'
                         + str(avg)
-                        + '}]},"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                        + '}]},"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
                     ),
                     "",
                 )
@@ -612,7 +612,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                         '{"case_label":"case-a","kernel_names":["KernelA"],'
                         '"kernel_source":"metadata","metrics":{"kernel_avg_time_us":1.0,'
                         '"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},'
-                        '"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                        '"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
                     ),
                     "",
                 )
@@ -693,7 +693,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
                         '{"case_label":"case-a","kernel_names":["KernelA"],'
                         '"kernel_source":"metadata","metrics":{"kernel_avg_time_us":1.0,'
                         '"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},'
-                        '"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                        '"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
                     ),
                     "",
                 )
@@ -753,6 +753,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
         metrics={"kernel_avg_time_us": 1.0, "ops": [{"op_type": "KernelA", "avg_time_us": 1.0}]},
         error_message=None,
         case_wall_clock_seconds=0.0,
+        bench_mode="torch-npu-profiler",
     )
 """,
                 encoding="utf-8",
@@ -901,8 +902,8 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"case-1","kernel_names":["OpB"],"kernel_source":"metadata","kernel_avg_time_us":2.5,"ops":[{"op_type":"OpA","avg_time_us":1.5},{"op_type":"OpB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
-                    '{"case_label":"case-2","kernel_names":["OpB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"ops":[{"op_type":"OpA","avg_time_us":3.0},{"op_type":"OpB","avg_time_us":5.0}],"total_op_avg_time_us":8.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"case-1","kernel_names":["OpB"],"kernel_source":"metadata","kernel_avg_time_us":2.5,"ops":[{"op_type":"OpA","avg_time_us":1.5},{"op_type":"OpB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
+                    '{"case_label":"case-2","kernel_names":["OpB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"ops":[{"op_type":"OpA","avg_time_us":3.0},{"op_type":"OpB","avg_time_us":5.0}],"total_op_avg_time_us":8.0,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
                 ),
             )
             self.assertEqual(mocked.call_count, 2)
@@ -1377,7 +1378,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"case-1","kernel_names":["OpA","OpB"],"kernel_source":"metadata","kernel_avg_time_us":4.0,"ops":[{"op_type":"OpA","avg_time_us":1.5},{"op_type":"OpB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"case-1","kernel_names":["OpA","OpB"],"kernel_source":"metadata","kernel_avg_time_us":4.0,"ops":[{"op_type":"OpA","avg_time_us":1.5},{"op_type":"OpB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
                 ),
             )
 
@@ -1428,7 +1429,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"case-1","kernel_names":["Zero"],"kernel_source":"metadata","kernel_avg_time_us":0.0,"ops":[{"op_type":"Zero","avg_time_us":0.0}],"total_op_avg_time_us":0.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"case-1","kernel_names":["Zero"],"kernel_source":"metadata","kernel_avg_time_us":0.0,"ops":[{"op_type":"Zero","avg_time_us":0.0}],"total_op_avg_time_us":0.0,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
                 ),
             )
 
@@ -1483,7 +1484,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"case-1","kernel_names":["KeepMe"],"kernel_source":"metadata","kernel_avg_time_us":4.5,"ops":[{"op_type":"KeepMe","avg_time_us":4.5}],"total_op_avg_time_us":4.5,"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"case-1","kernel_names":["KeepMe"],"kernel_source":"metadata","kernel_avg_time_us":4.5,"ops":[{"op_type":"KeepMe","avg_time_us":4.5}],"total_op_avg_time_us":4.5,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
                 ),
             )
             self.assertTrue(keep_root.exists())
@@ -1543,8 +1544,8 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"case-1","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":null,"total_op_avg_time_us":null,"error_message":"msprof command failed with return code 1","case_wall_clock_seconds":0.0}\n'
-                    '{"case_label":"case-2","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelB","avg_time_us":5.0}],"total_op_avg_time_us":5.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"case-1","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":null,"total_op_avg_time_us":null,"error_message":"msprof command failed with return code 1","case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
+                    '{"case_label":"case-2","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelB","avg_time_us":5.0}],"total_op_avg_time_us":5.0,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
                 ),
             )
 
@@ -1683,7 +1684,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"case-1","kernel_names":["MissingKernel"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":[{"op_type":"OpA","avg_time_us":1.5},{"op_type":"OpB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":"no resolved kernels matched op_statistic csv","case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"case-1","kernel_names":["MissingKernel"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":[{"op_type":"OpA","avg_time_us":1.5},{"op_type":"OpB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":"no resolved kernels matched op_statistic csv","case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
                 ),
             )
 
@@ -2326,7 +2327,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                         + case_id
                         + '","kernel_names":["KernelA"],"kernel_source":"metadata",'
                         + '"metrics":{"kernel_avg_time_us":1.0,"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},'
-                        + '"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                        + '"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"torch-npu-profiler"}\n'
                     ),
                     "",
                 )
@@ -2439,7 +2440,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                     (
                         '{"case_label":"case-a","kernel_names":["KernelA"],"kernel_source":"metadata",'
                         + '"metrics":{"kernel_avg_time_us":1.0,"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},'
-                        + '"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                        + '"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"torch-npu-profiler"}\n'
                     ),
                     "",
                 )
@@ -2476,6 +2477,277 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             for extra in observed_extra_env:
                 if extra is not None:
                     self.assertEqual(extra["TRITON_ALWAYS_COMPILE"], "1")  # type: ignore[index]
+
+    # ------------------------------------------------------------------
+    # bench_mode in PerfCaseRecord and JSONL rendering
+    # ------------------------------------------------------------------
+
+    def test_perf_case_record_jsonl_includes_bench_mode_for_perf_counter(self) -> None:
+        module = load_perf_artifacts_module()
+        record = module.PerfCaseRecord(
+            case_label="case-a",
+            kernel_names=["KernelA"],
+            kernel_source="metadata",
+            metrics={"kernel_avg_time_us": 12.5, "ops": []},
+            case_wall_clock_seconds=1.23,
+            bench_mode="perf-counter",
+        )
+        line = module.render_perf_case_record_jsonl(record)
+        self.assertIn('"bench_mode":"perf-counter"', line)
+
+    def test_perf_case_record_jsonl_includes_bench_mode_for_torch_npu_profiler(self) -> None:
+        module = load_perf_artifacts_module()
+        record = module.PerfCaseRecord(
+            case_label="case-b",
+            kernel_names=["KernelB"],
+            kernel_source="metadata",
+            metrics={
+                "kernel_avg_time_us": 10.0,
+                "ops": [{"op_type": "KernelB", "avg_time_us": 10.0}],
+            },
+            case_wall_clock_seconds=2.0,
+            bench_mode="torch-npu-profiler",
+        )
+        line = module.render_perf_case_record_jsonl(record)
+        self.assertIn('"bench_mode":"torch-npu-profiler"', line)
+
+    def test_perf_case_record_jsonl_bench_mode_null_for_backward_compat(self) -> None:
+        module = load_perf_artifacts_module()
+        record = module.PerfCaseRecord(
+            case_label="case-c",
+            kernel_names=["KernelC"],
+            kernel_source="metadata",
+            metrics={
+                "kernel_avg_time_us": 5.0,
+                "ops": [{"op_type": "KernelC", "avg_time_us": 5.0}],
+            },
+            case_wall_clock_seconds=0.5,
+        )
+        line = module.render_perf_case_record_jsonl(record)
+        self.assertIn('"bench_mode":null', line)
+
+    def test_perf_counter_total_op_equals_kernel_avg_when_ops_empty(self) -> None:
+        module = load_perf_artifacts_module()
+        record = module.PerfCaseRecord(
+            case_label="case-d",
+            kernel_names=["KernelD"],
+            kernel_source="metadata",
+            metrics={"kernel_avg_time_us": 12.5, "ops": []},
+            case_wall_clock_seconds=1.23,
+            bench_mode="perf-counter",
+        )
+        line = module.render_perf_case_record_jsonl(record)
+        self.assertIn('"total_op_avg_time_us":12.5', line)
+        self.assertIn('"kernel_avg_time_us":12.5', line)
+
+    def test_total_op_avg_time_us_still_sums_ops_for_profiler_modes(self) -> None:
+        module = load_perf_artifacts_module()
+        record = module.PerfCaseRecord(
+            case_label="case-e",
+            kernel_names=["KA", "KB"],
+            kernel_source="metadata",
+            metrics={
+                "kernel_avg_time_us": 11.0,
+                "ops": [
+                    {"op_type": "KA", "avg_time_us": 5.0},
+                    {"op_type": "KB", "avg_time_us": 6.0},
+                ],
+            },
+            case_wall_clock_seconds=1.5,
+            bench_mode="torch-npu-profiler",
+        )
+        line = module.render_perf_case_record_jsonl(record)
+        self.assertIn('"total_op_avg_time_us":11.0', line)
+
+    # ------------------------------------------------------------------
+    # cross-mode comparison guards
+    # ------------------------------------------------------------------
+
+    def test_compare_perf_rejects_mismatched_bench_mode(self) -> None:
+        module = load_perf_artifacts_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "compare_perf.txt"
+            baseline.write_text(
+                '{"case_label":"a","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":10.0,"ops":[],"total_op_avg_time_us":10.0,"error_message":null,"case_wall_clock_seconds":1.0,"bench_mode":"msprof"}\n',
+                encoding="utf-8",
+            )
+            compare.write_text(
+                '{"case_label":"a","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":10.0,"ops":[],"total_op_avg_time_us":10.0,"error_message":null,"case_wall_clock_seconds":1.0,"bench_mode":"perf-counter"}\n',
+                encoding="utf-8",
+            )
+            stdout_path = root / "stdout.txt"
+            original_stdout = sys.stdout
+            try:
+                with stdout_path.open("w", encoding="utf-8") as handle:
+                    sys.stdout = handle
+                    return_code = module.compare_perf_files(baseline, compare)
+            finally:
+                sys.stdout = original_stdout
+
+            self.assertEqual(return_code, 1)
+            output = stdout_path.read_text(encoding="utf-8")
+            self.assertIn("cannot compare results from different bench modes", output)
+
+    def test_compare_perf_rejects_known_vs_none_bench_mode(self) -> None:
+        module = load_perf_artifacts_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "compare_perf.txt"
+            baseline.write_text(
+                '{"case_label":"a","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":10.0,"ops":[{"op_type":"k","avg_time_us":10.0}],"total_op_avg_time_us":10.0,"error_message":null,"case_wall_clock_seconds":1.0,"bench_mode":null}\n',
+                encoding="utf-8",
+            )
+            compare.write_text(
+                '{"case_label":"a","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":10.0,"ops":[],"total_op_avg_time_us":10.0,"error_message":null,"case_wall_clock_seconds":1.0,"bench_mode":"perf-counter"}\n',
+                encoding="utf-8",
+            )
+            return_code = module.compare_perf_files(baseline, compare)
+
+            self.assertEqual(return_code, 1)
+
+    def test_read_bench_mode_detects_mixed_mode_when_first_is_null(self) -> None:
+        module = load_perf_artifacts_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            perf = root / "mixed_perf.txt"
+            perf.write_text(
+                '{"case_label":"a","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":10.0,"ops":[],"total_op_avg_time_us":10.0,"error_message":null,"case_wall_clock_seconds":1.0,"bench_mode":null}\n'
+                '{"case_label":"b","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":11.0,"ops":[],"total_op_avg_time_us":11.0,"error_message":null,"case_wall_clock_seconds":1.1,"bench_mode":"perf-counter"}\n',
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError) as ctx:
+                module._read_bench_mode_from_jsonl(perf)
+            self.assertIn("mixed bench_mode", str(ctx.exception))
+
+    def test_compare_perf_skips_check_when_both_bench_mode_null(self) -> None:
+        module = load_perf_artifacts_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_perf.txt"
+            compare = root / "compare_perf.txt"
+            baseline.write_text(
+                '{"case_label":"a","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":10.0,"ops":[{"op_type":"k","avg_time_us":10.0}],"total_op_avg_time_us":10.0,"error_message":null,"case_wall_clock_seconds":1.0,"bench_mode":null}\n',
+                encoding="utf-8",
+            )
+            compare.write_text(
+                '{"case_label":"a","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":8.0,"ops":[{"op_type":"k","avg_time_us":8.0}],"total_op_avg_time_us":8.0,"error_message":null,"case_wall_clock_seconds":0.9,"bench_mode":null}\n',
+                encoding="utf-8",
+            )
+            stdout_path = root / "stdout.txt"
+            original_stdout = sys.stdout
+            try:
+                with stdout_path.open("w", encoding="utf-8") as handle:
+                    sys.stdout = handle
+                    return_code = module.compare_perf_files(baseline, compare)
+            finally:
+                sys.stdout = original_stdout
+
+            self.assertEqual(return_code, 0)
+            output = stdout_path.read_text(encoding="utf-8")
+            self.assertIn("Avg improvement", output)
+
+    # ------------------------------------------------------------------
+    # perf-counter dispatch in bench_runner
+    # ------------------------------------------------------------------
+
+    def test_run_local_bench_dispatches_perf_counter_to_time_all_bench_cases(self) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator.py"
+            bench_file.write_text(
+                """# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_bench_cases():
+    return [{"id": "case-x", "warmup": 0, "repeats": 1}]
+
+def build_bench_case_fn(operator_api, case):
+    def run_case():
+        pass
+    return run_case
+""",
+                encoding="utf-8",
+            )
+            operator_file.write_text(
+                "def build_api():\n    return lambda: None\n",
+                encoding="utf-8",
+            )
+
+            mock_runtime = SimpleNamespace()
+            mock_runtime.time_all_bench_cases = MagicMock(
+                return_value=(make_skill_result(0, "", ""), root / "out.txt"),
+            )
+
+            with patch.object(
+                module, "_load_bench_runtime_module", return_value=mock_runtime,
+            ):
+                result, _perf_path = module.run_local_bench(
+                    bench_file,
+                    operator_file,
+                    "perf-counter",
+                )
+
+            self.assertEqual(result["return_code"], 0)
+            mock_runtime.time_all_bench_cases.assert_called_once()
+            call_kwargs = mock_runtime.time_all_bench_cases.call_args.kwargs
+            self.assertEqual(call_kwargs["bench_mode"], "perf-counter")
+
+    def test_run_local_bench_defaults_to_torch_npu_profiler_when_no_perf_counter(
+        self,
+    ) -> None:
+        module = load_bench_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator.py"
+            bench_file.write_text(
+                """# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_bench_cases():
+    return [{"id": "case-y", "warmup": 0, "repeats": 1}]
+
+def build_bench_case_fn(operator_api, case):
+    def run_case():
+        pass
+    return run_case
+""",
+                encoding="utf-8",
+            )
+            operator_file.write_text(
+                "def build_api():\n    return lambda: None\n",
+                encoding="utf-8",
+            )
+
+            mock_runtime = SimpleNamespace()
+            mock_runtime.profile_all_bench_cases = MagicMock(
+                return_value=(make_skill_result(0, "", ""), root / "out.txt"),
+            )
+
+            with patch.object(
+                module, "_load_bench_runtime_module", return_value=mock_runtime,
+            ):
+                result, _perf_path = module.run_local_bench(
+                    bench_file,
+                    operator_file,
+                    "torch-npu-profiler",
+                )
+
+            self.assertEqual(result["return_code"], 0)
+            mock_runtime.profile_all_bench_cases.assert_called_once()
 
 
 if __name__ == "__main__":

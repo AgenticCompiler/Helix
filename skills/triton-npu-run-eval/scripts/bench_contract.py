@@ -25,7 +25,10 @@ def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
         if ":" not in body:
             continue
         key, value = body.split(":", 1)
-        metadata[key.strip()] = value.strip()
+        key_stripped = key.strip()
+        if key_stripped == "bench-mode":
+            continue
+        metadata[key_stripped] = value.strip()
     return metadata
 
 

@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import shutil
+import statistics
 import sys
 import tempfile
 import time
@@ -278,8 +279,116 @@ def profile_all_bench_cases(
 
 
 # ---------------------------------------------------------------------------
+# Perf-counter timing (no profiler)
+# ---------------------------------------------------------------------------
+
+
+def _time_case_iterations(
+    *,
+    fn: Callable[[], object],
+    warmup: int,
+    repeats: int,
+) -> PerfMetrics:
+    import torch
+    for _ in range(warmup):
+        fn()
+        _synchronize(torch)
+    iteration_times: list[float] = []
+    for _ in range(repeats):
+        t0 = time.perf_counter()
+        fn()
+        _synchronize(torch)
+        iteration_times.append(time.perf_counter() - t0)
+    avg_us = statistics.mean(iteration_times) * 1_000_000
+    return {"kernel_avg_time_us": avg_us, "ops": []}
+
+
+def _time_bench_case(
+    case: BenchCase,
+    resolution: KernelResolution,
+    *,
+    bench_mode: str,
+) -> PerfCaseRecord:
+    t0 = time.monotonic()
+    try:
+        metrics = _time_case_iterations(
+            fn=case.fn,
+            warmup=case.warmup,
+            repeats=case.repeats,
+        )
+        elapsed = time.monotonic() - t0
+        return PerfCaseRecord(
+            case_label=case.case_id,
+            kernel_names=resolution.kernel_names,
+            kernel_source=resolution.kernel_source,
+            metrics=metrics,
+            case_wall_clock_seconds=elapsed,
+            bench_mode=bench_mode,
+        )
+    except Exception as exc:
+        elapsed = time.monotonic() - t0
+        return PerfCaseRecord(
+            case_label=case.case_id,
+            kernel_names=resolution.kernel_names,
+            kernel_source=resolution.kernel_source,
+            error_message=f"{type(exc).__name__}: {exc}",
+            case_wall_clock_seconds=elapsed,
+            bench_mode=bench_mode,
+        )
+
+
+def time_all_bench_cases(
+    bench_file: Path,
+    operator_file: Path,
+    *,
+    bench_mode: str = "perf-counter",
+    output: str | None = None,
+) -> tuple[ResultPayload, Path]:
+    prev = os.environ.get("TRITON_ALWAYS_COMPILE")
+    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+    try:
+        cases, resolution = load_bench_cases(bench_file, operator_file)
+        case_records: list[PerfCaseRecord] = []
+        had_failures = False
+        stderr_chunks: list[str] = []
+
+        for case in cases:
+            record = _time_bench_case(
+                case,
+                resolution,
+                bench_mode=bench_mode,
+            )
+            if record.error_message is not None:
+                had_failures = True
+                stderr_chunks.append(f"{case.case_id}: {record.error_message}")
+            case_records.append(record)
+
+        perf_path = _resolve_output_path(operator_file, output=output)
+        write_perf_lines(
+            perf_path,
+            render_perf_case_records_jsonl(
+                case_records,
+            ),
+        )
+        return (
+            make_result(
+                return_code=1 if had_failures else 0,
+                stdout="",
+                stderr="\n".join(stderr_chunks),
+            ),
+            perf_path,
+        )
+    finally:
+        if prev is None:
+            del os.environ["TRITON_ALWAYS_COMPILE"]
+        else:
+            os.environ["TRITON_ALWAYS_COMPILE"] = prev
+
+
+# ---------------------------------------------------------------------------
 # Profiling internals
 # ---------------------------------------------------------------------------
+
 
 def _profile_case_with_profiler(
     case: BenchCase,
@@ -357,6 +466,7 @@ def _run_bench_case(
     cleanup_workdir: Path,
     *,
     verbose: bool = False,
+    bench_mode: str = "torch-npu-profiler",
 ) -> PerfCaseRecord:
     profile_root, temp_dir = _create_local_bench_profile_dir(case.case_id, preserved_run_dir)
     try:
@@ -379,6 +489,7 @@ def _run_bench_case(
             kernel_source=resolution.kernel_source,
             error_message=error_message,
             case_wall_clock_seconds=elapsed,
+            bench_mode=bench_mode,
         )
     return PerfCaseRecord(
         case_label=case.case_id,
@@ -386,6 +497,7 @@ def _run_bench_case(
         kernel_source=resolution.kernel_source,
         metrics=metrics,
         case_wall_clock_seconds=elapsed,
+        bench_mode=bench_mode,
     )
 
 

@@ -26,27 +26,18 @@ def _profile_timeout() -> int:
     return env_int("TRITON_AGENT_PROFILE_TIMEOUT_SECONDS", 900)
 
 
-def _normalize_bench_mode(bench_mode: str) -> str:
-    return "torch-npu-profiler" if bench_mode == "standalone" else bench_mode
-
-
 def run_local_profile_bench(
     bench_file: Path,
     operator_file: Path,
-    bench_mode: str,
     case_id: str | None = None,
     kernel_name: str | None = None,
 ) -> tuple[ResultPayload, Path | None]:
-    bench_mode = _normalize_bench_mode(bench_mode)
     del kernel_name
-    if bench_mode == "msprof":
-        result = _run_local_profile_msprof(bench_file, operator_file, case_id)
-    else:
-        if case_id is None:
-            raise ValueError("torch-npu-profiler benchmark profiling requires --case-id <id>.")
-        result = _run_local_profile_torch_npu_profiler(
-            bench_file, operator_file, case_id,
-        )
+    if case_id is None:
+        raise ValueError("torch-npu-profiler benchmark profiling requires --case-id <id>.")
+    result = _run_local_profile_torch_npu_profiler(
+        bench_file, operator_file, case_id,
+    )
     if not result_succeeded(result):
         return result, None
     profile_dir = _resolve_local_profile_dir(bench_file.parent)
@@ -56,7 +47,6 @@ def run_local_profile_bench(
 def run_remote_profile_bench(
     bench_file: Path,
     operator_file: Path,
-    bench_mode: str,
     remote: str,
     remote_workdir: str | None,
     case_id: str | None = None,
@@ -65,7 +55,6 @@ def run_remote_profile_bench(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
-    bench_mode = _normalize_bench_mode(bench_mode)
     del kernel_name
     spec, remote_workspace = create_remote_workspace(
         remote, remote_workdir, verbose=verbose, stderr=stderr
@@ -81,39 +70,17 @@ def run_remote_profile_bench(
             verbose=verbose,
             stderr=stderr,
         )
-        if bench_mode == "msprof":
-            if case_id is not None:
-                result = _run_remote_profile_msprof(
-                    spec,
-                    remote_workspace,
-                    bench_file,
-                    operator_file,
-                    case_id,
-                    verbose=verbose,
-                    stderr=stderr,
-                )
-            else:
-                result = _run_remote_profile_msprof(
-                    spec,
-                    remote_workspace,
-                    bench_file,
-                    operator_file,
-                    None,
-                    verbose=verbose,
-                    stderr=stderr,
-                )
-        else:
-            if case_id is None:
-                raise ValueError("torch-npu-profiler benchmark profiling requires --case-id <id>.")
-            result = _run_remote_profile_torch_npu_profiler(
-                spec,
-                remote_workspace,
-                bench_file,
-                operator_file,
-                case_id,
-                verbose=verbose,
-                stderr=stderr,
-            )
+        if case_id is None:
+            raise ValueError("torch-npu-profiler benchmark profiling requires --case-id <id>.")
+        result = _run_remote_profile_torch_npu_profiler(
+            spec,
+            remote_workspace,
+            bench_file,
+            operator_file,
+            case_id,
+            verbose=verbose,
+            stderr=stderr,
+        )
         if not result_succeeded(result):
             return result, None, remote_workspace
         remote_profile_name = _resolve_remote_profile_name(
@@ -155,7 +122,7 @@ def _run_local_profile_torch_npu_profiler(
             os.environ["TRITON_ALWAYS_COMPILE"] = prev
 
 
-def _run_local_profile_msprof(
+def _run_local_profile_msprof(  # pyright: ignore[reportUnusedFunction]
     bench_file: Path,
     operator_file: Path,
     case_id: str | None,
@@ -217,7 +184,7 @@ def _run_remote_profile_torch_npu_profiler(
     )
 
 
-def _run_remote_profile_msprof(
+def _run_remote_profile_msprof(  # pyright: ignore[reportUnusedFunction]
     spec: RemoteSpec,
     remote_workspace: str,
     bench_file: Path,

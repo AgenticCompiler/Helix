@@ -273,7 +273,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("--bench-mode msprof", run_bench)
 
         self.assertIn("--case-id <id>", profile_bench)
-        self.assertIn("do not pass kernel filter arguments", profile_bench)
+        self.assertIn("always uses `torch_npu.profiler`", profile_bench)
         self.assertIn("--keep-remote-workdir", profile_bench)
 
         self.assertIn("rerun or inspect the comparison separately from `run-test-optimize`", compare_result)
@@ -1135,8 +1135,8 @@ class GenerationContractTests(unittest.TestCase):
         self.assertFalse((REPO_ROOT / "skills" / "triton-npu-gen-bench" / "references" / "bench-standalone-spec.md").exists())
         self.assertFalse((REPO_ROOT / "skills" / "triton-npu-gen-bench" / "references" / "bench-msprof-spec.md").exists())
 
-        self.assertIn("# bench-mode: <torch-npu-profiler|msprof>", bench_spec)
-        self.assertIn("`# bench-mode:` is required", bench_spec)
+        self.assertIn("Bench mode is a runtime concern", bench_spec)
+        self.assertIn("execution tooling owns", bench_spec)
         self.assertIn("`torch-npu-profiler`", bench_spec)
         self.assertIn("`msprof`", bench_spec)
         self.assertIn("# api-name: <resolved_entrypoint>", bench_spec)
@@ -1180,7 +1180,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertNotIn('parser.add_argument("--operator-file"', test_spec)
         self.assertNotIn('parser.add_argument("--api-name"', test_spec)
 
-        self.assertIn("# bench-mode:", bench_spec)
+        self.assertIn("# api-name:", bench_spec)
         self.assertIn("# api-name:", bench_spec)
         self.assertIn("# api-kind:", bench_spec)
         self.assertIn("# kernels:", bench_spec)
