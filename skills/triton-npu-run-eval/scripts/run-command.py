@@ -95,6 +95,7 @@ class RunLocalBenchFn(Protocol):
         npu_devices: str | None = None,
         extract_dest_dir: Path | None = None,
         output: str | None = None,
+        simulator_case_idx: int = 1,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -200,14 +201,15 @@ def build_parser() -> argparse.ArgumentParser:
     run_bench.add_argument("--remote-workdir")
     run_bench.add_argument("--keep-remote-workdir", action="store_true")
     run_bench.add_argument("--verbose", action="store_true")
-    run_bench.add_argument("--bench-mode", choices=["torch-npu-profiler", "msprof"])
+    run_bench.add_argument("--bench-mode", choices=["torch-npu-profiler", "msprof", "msprof-simulator"])
     run_bench.add_argument("--npu-devices")
+    run_bench.add_argument("--simulator-case-idx", type=int, default=1)
     run_bench.add_argument("--extract-dest-dir")
 
     profile_bench = subparsers.add_parser("profile-bench")
     profile_bench.add_argument("--bench-file", required=True)
     profile_bench.add_argument("--operator-file", required=True)
-    profile_bench.add_argument("--bench-mode", choices=["torch-npu-profiler", "msprof"])
+    profile_bench.add_argument("--bench-mode", choices=["torch-npu-profiler", "msprof", "msprof-simulator"])
     profile_bench.add_argument("--case-id")
     profile_bench.add_argument("--kernel-name", help=argparse.SUPPRESS)
     profile_bench.add_argument("--target-op")
@@ -446,6 +448,7 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
                 operator_file,
                 resolved_bench_mode,
                 args.npu_devices,
+                simulator_case_idx=args.simulator_case_idx,
                 extract_dest_dir=extract_dest_dir,
                 output=args.output,
             )
