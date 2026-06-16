@@ -165,7 +165,7 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
         operator_file: Annotated[str, Field(description="Absolute path to the operator implementation file.")],
         bench_mode: Annotated[
             str | None,
-            Field(description="Optional benchmark mode override. Supported values: torch-npu-profiler, msprof."),
+            Field(description="Optional benchmark mode override. Supported values: torch-npu-profiler, msprof, perf-counter."),
         ] = None,
         remote: Annotated[str | None, Field(description="Optional remote execution target.")] = None,
         remote_workdir: Annotated[str | None, Field(description="Optional remote workspace root override.")] = None,
@@ -201,10 +201,6 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
     def profile_bench(
         bench_file: Annotated[str, Field(description="Absolute path to the benchmark entry file.")],
         operator_file: Annotated[str, Field(description="Absolute path to the operator implementation file.")],
-        bench_mode: Annotated[
-            str | None,
-            Field(description="Optional benchmark mode override. Supported values: torch-npu-profiler, msprof."),
-        ] = None,
         case_id: Annotated[str | None, Field(description="Optional benchmark case id to profile.")] = None,
         kernel_name: Annotated[str | None, Field(description="Optional kernel name filter for profiling.")] = None,
         target_op: Annotated[
@@ -221,8 +217,6 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
             "--operator-file",
             operator_file,
         ]
-        if bench_mode is not None:
-            arguments.extend(["--bench-mode", bench_mode])
         if case_id is not None:
             arguments.extend(["--case-id", case_id])
         if kernel_name is not None:

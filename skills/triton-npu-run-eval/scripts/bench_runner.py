@@ -129,6 +129,24 @@ def run_local_bench(
                 )
             return _run_local_bench_msprof(bench_file, operator_file, verbose=verbose,
                                            output=output)
+        if bench_mode == "perf-counter":
+            if devices is not None:
+                source_root, json_search_root = _resolve_case_workspace_roots(
+                    bench_file,
+                    operator_file,
+                    invocation_root=invocation_root,
+                )
+                return _run_local_bench_perf_counter_parallel(
+                    bench_file,
+                    operator_file,
+                    devices,
+                    source_root=source_root,
+                    json_search_root=json_search_root,
+                    verbose=verbose,
+                    output=output,
+                )
+            return _run_local_bench_perf_counter(bench_file, operator_file, verbose=verbose,
+                                                 output=output)
         if devices is not None:
             source_root, json_search_root = _resolve_case_workspace_roots(
                 bench_file,
@@ -215,6 +233,34 @@ def run_remote_bench(
                 stderr=stderr,
                 output=output,
             )
+        if bench_mode == "perf-counter":
+            if devices is not None:
+                source_root, json_search_root = _resolve_case_workspace_roots(
+                    bench_file,
+                    operator_file,
+                    invocation_root=invocation_root,
+                )
+                return _run_remote_bench_perf_counter_parallel(
+                    spec,
+                    remote_workspace,
+                    bench_file,
+                    operator_file,
+                    devices,
+                    source_root=source_root,
+                    json_search_root=json_search_root,
+                    verbose=verbose,
+                    stderr=stderr,
+                    output=output,
+                )
+            return _run_remote_bench_perf_counter(
+                spec,
+                remote_workspace,
+                bench_file,
+                operator_file,
+                verbose=verbose,
+                stderr=stderr,
+                output=output,
+            )
         if devices is not None:
             source_root, json_search_root = _resolve_case_workspace_roots(
                 bench_file,
@@ -261,6 +307,193 @@ def _run_local_bench_torch_npu_profiler(
         verbose=verbose,
         output=output,
     )
+
+
+def _run_local_bench_perf_counter(
+    bench_file: Path,
+    operator_file: Path,
+    *,
+    verbose: bool = False,
+    output: str | None = None,
+) -> tuple[ResultPayload, Path | None]:
+    runtime = _load_bench_runtime_module()
+    return runtime.time_all_bench_cases(
+        bench_file,
+        operator_file,
+        bench_mode="perf-counter",
+        output=output,
+    )
+
+
+def _run_local_bench_perf_counter_parallel(
+    bench_file: Path,
+    operator_file: Path,
+    devices: tuple[str, ...],
+    *,
+    source_root: Path,
+    json_search_root: Path,
+    verbose: bool = False,
+    output: str | None = None,
+) -> tuple[ResultPayload, Path | None]:
+    runtime = _load_bench_runtime_module()
+    cases, _resolution = runtime.load_bench_cases(bench_file, operator_file)
+    case_ids = [case.case_id for case in cases]
+    pool = NpuDevicePool(devices)
+
+    def _worker(case_id: str) -> PerfCaseRecord:
+        case_workspace, cleanup = _create_local_torch_npu_profiler_case_workspace(
+            bench_file,
+            operator_file,
+            case_id,
+            source_root=source_root,
+            json_search_root=json_search_root,
+            verbose=verbose,
+        )
+        try:
+            with pool.acquire() as device:
+                return _run_local_perf_counter_case_in_subprocess(
+                    case_workspace,
+                    bench_file,
+                    operator_file,
+                    case_id,
+                    device,
+                    source_root=source_root,
+                    verbose=verbose,
+                )
+        finally:
+            cleanup()
+
+    case_records = _run_parallel_case_workers(case_ids, min(len(case_ids), len(devices)), _worker)
+    _sort_case_records(case_records, case_ids)
+    perf_path = _write_perf_counter_perf(operator_file, case_records, output=output)
+    return _build_perf_counter_result(case_records), perf_path
+
+
+def _write_perf_counter_perf(
+    operator_file: Path,
+    case_records: list[PerfCaseRecord],
+    *,
+    output: str | None = None,
+) -> Path:
+    perf_path = _resolve_perf_output_path(operator_file, output=output)
+    write_perf_lines(perf_path, render_perf_case_records_jsonl(case_records))
+    return perf_path
+
+
+def _build_perf_counter_result(case_records: list[PerfCaseRecord]) -> ResultPayload:
+    had_failures = any(record.error_message is not None for record in case_records)
+    stderr = "\n".join(
+        str(record.error_message) for record in case_records if record.error_message is not None
+    )
+    return make_result(return_code=1 if had_failures else 0, stdout="", stderr=stderr)
+
+
+def _run_remote_bench_perf_counter(
+    spec: RemoteSpec,
+    remote_workspace: str,
+    bench_file: Path,
+    operator_file: Path,
+    *,
+    verbose: bool = False,
+    stderr: TextIO | None = None,
+    output: str | None = None,
+) -> tuple[ResultPayload, Path | None, str]:
+    _stage_remote_bench_runtime_support_files(
+        spec,
+        remote_workspace,
+        verbose=verbose,
+        stderr=stderr,
+    )
+    perf_path = _resolve_perf_output_path(operator_file, output=output)
+    extra_env: dict[str, str] | None = {"TRITON_ALWAYS_COMPILE": "1"}
+    with _stream_target_for_verbosity(verbose) as stream_target:
+        result = run_remote_command_streaming(
+            spec,
+            remote_workspace,
+            [
+                "python3",
+                "-c",
+                _build_remote_perf_counter_run_all_script(verbose=verbose),
+                bench_file.name,
+                operator_file.name,
+                perf_path.name,
+            ],
+            stdout=stream_target,
+            verbose=verbose,
+            stderr=stderr,
+            stall_timeout_seconds=_bench_timeout(),
+            extra_env=extra_env,
+        )
+    copied_perf_path: Path | None = None
+    try:
+        copy_file_from_remote(
+            spec,
+            f"{remote_workspace}/{perf_path.name}",
+            perf_path,
+            verbose=verbose,
+            stderr=stderr,
+        )
+        copied_perf_path = perf_path
+    except RuntimeError:
+        if result_succeeded(result):
+            raise
+    return result, copied_perf_path, remote_workspace
+
+
+def _run_remote_bench_perf_counter_parallel(
+    spec: RemoteSpec,
+    remote_workspace: str,
+    bench_file: Path,
+    operator_file: Path,
+    devices: tuple[str, ...],
+    *,
+    source_root: Path,
+    json_search_root: Path,
+    verbose: bool = False,
+    stderr: TextIO | None = None,
+    output: str | None = None,
+) -> tuple[ResultPayload, Path | None, str]:
+    runtime = _load_bench_runtime_module()
+    cases, _resolution = runtime.load_bench_cases(bench_file, operator_file)
+    case_ids = [case.case_id for case in cases]
+    pool = NpuDevicePool(devices)
+
+    def _worker(case_id: str) -> PerfCaseRecord:
+        case_workspace = f"{remote_workspace}/case-{case_id}"
+        run_remote_command_buffered(
+            spec,
+            remote_workspace,
+            ["mkdir", "-p", case_workspace],
+            verbose=verbose,
+            stderr=stderr,
+        )
+        workspace_root = _stage_remote_torch_npu_profiler_case_workspace(
+            spec,
+            bench_file,
+            operator_file,
+            case_workspace,
+            source_root=source_root,
+            json_search_root=json_search_root,
+            verbose=verbose,
+            stderr=stderr,
+        )
+        with pool.acquire() as device:
+            return _run_remote_perf_counter_case(
+                spec,
+                workspace_root,
+                bench_file,
+                operator_file,
+                case_id,
+                device,
+                source_root=source_root,
+                verbose=verbose,
+                stderr=stderr,
+            )
+
+    case_records = _run_parallel_case_workers(case_ids, min(len(case_ids), len(devices)), _worker)
+    _sort_case_records(case_records, case_ids)
+    perf_path = _write_perf_counter_perf(operator_file, case_records, output=output)
+    return _build_perf_counter_result(case_records), perf_path, remote_workspace
 
 
 @contextlib.contextmanager
@@ -573,6 +806,7 @@ def _run_local_bench_msprof(
                         kernel_source=resolution.kernel_source,
                         error_message=_format_msprof_command_failure(result),
                         case_wall_clock_seconds=elapsed,
+                        bench_mode="msprof",
                     ),
                 )
                 continue
@@ -588,6 +822,7 @@ def _run_local_bench_msprof(
                         kernel_source=resolution.kernel_source,
                         error_message=str(exc),
                         case_wall_clock_seconds=elapsed,
+                        bench_mode="msprof",
                     )
                 )
                 continue
@@ -599,6 +834,7 @@ def _run_local_bench_msprof(
                     kernel_source=resolution.kernel_source,
                     metrics=metrics,
                     case_wall_clock_seconds=elapsed,
+                    bench_mode="msprof",
                 )
             )
         finally:
@@ -741,6 +977,7 @@ def _run_remote_bench_msprof(
                         kernel_source=resolution.kernel_source,
                         error_message=_format_msprof_command_failure(result),
                         case_wall_clock_seconds=elapsed,
+                        bench_mode="msprof",
                     ),
                 )
                 continue
@@ -763,6 +1000,7 @@ def _run_remote_bench_msprof(
                         kernel_source=resolution.kernel_source,
                         error_message=str(exc),
                         case_wall_clock_seconds=elapsed,
+                        bench_mode="msprof",
                     )
                 )
                 continue
@@ -774,6 +1012,7 @@ def _run_remote_bench_msprof(
                     kernel_source=resolution.kernel_source,
                     metrics=metrics,
                     case_wall_clock_seconds=elapsed,
+                    bench_mode="msprof",
                 )
             )
         finally:
@@ -1258,6 +1497,45 @@ def _build_remote_torch_npu_profiler_run_all_script(*, verbose: bool = False) ->
     )
 
 
+def _build_remote_perf_counter_run_all_script(*, verbose: bool = False) -> str:
+    del verbose
+    return (
+        "import pathlib, shutil, sys; "
+        "import bench_runtime as runtime; "
+        "bench_file = pathlib.Path(sys.argv[1]); "
+        "operator_file = pathlib.Path(sys.argv[2]); "
+        "target_path = pathlib.Path(sys.argv[3]); "
+        "result, perf_path = runtime.time_all_bench_cases(bench_file, operator_file, bench_mode='perf-counter'); "  # noqa: E501
+        "target_path.parent.mkdir(parents=True, exist_ok=True); "
+        "shutil.copyfile(perf_path, target_path) if perf_path != target_path else None; "
+        "raise SystemExit(int(result['return_code']))"
+    )
+
+
+def _build_perf_counter_run_one_case_script(*, verbose: bool = False) -> str:
+    del verbose
+    return (
+        "import json, pathlib, sys; "
+        "import bench_runtime as runtime; "
+        "bench_file = pathlib.Path(sys.argv[1]); "
+        "operator_file = pathlib.Path(sys.argv[2]); "
+        "case_id = sys.argv[3]; "
+        "cases, resolution = runtime.load_bench_cases(bench_file, operator_file); "
+        "case = runtime.select_bench_case(cases, case_id); "
+        "record = runtime._time_bench_case(case, resolution, bench_mode='perf-counter'); "  # noqa: E501
+        "payload = {"
+        "'case_label': record.case_label, "
+        "'kernel_names': record.kernel_names, "
+        "'kernel_source': record.kernel_source, "
+        "'metrics': record.metrics, "
+        "'error_message': record.error_message, "
+        "'case_wall_clock_seconds': record.case_wall_clock_seconds, "
+        "'bench_mode': record.bench_mode"
+        "}; "
+        "print(json.dumps(payload, separators=(',', ':')))"
+    )
+
+
 def _build_torch_npu_profiler_run_one_case_script(*, verbose: bool = False) -> str:
     return (
         "import json, pathlib, sys; "
@@ -1277,7 +1555,8 @@ def _build_torch_npu_profiler_run_one_case_script(*, verbose: bool = False) -> s
         "'kernel_source': record.kernel_source, "
         "'metrics': record.metrics, "
         "'error_message': record.error_message, "
-        "'case_wall_clock_seconds': record.case_wall_clock_seconds"
+        "'case_wall_clock_seconds': record.case_wall_clock_seconds, "
+        "'bench_mode': getattr(record, 'bench_mode', None)"
         "}; "
         "print(json.dumps(payload, separators=(',', ':')))"
     )
@@ -1332,6 +1611,50 @@ def _run_local_torch_npu_profiler_case_in_subprocess(
         result,
         case_id=case_id,
         fallback_kernel_source="metadata",
+    )
+
+
+def _run_local_perf_counter_case_in_subprocess(
+    workspace_root: Path,
+    bench_file: Path,
+    operator_file: Path,
+    case_id: str,
+    device: str,
+    *,
+    source_root: Path,
+    verbose: bool = False,
+) -> PerfCaseRecord:
+    extra_env = affinity_env_for_device(device)
+    extra_env["TRITON_ALWAYS_COMPILE"] = "1"
+    command = [
+        local_python_executable(),
+        "-c",
+        _build_perf_counter_run_one_case_script(),
+        _case_workspace_command_path(bench_file, source_root=source_root),
+        _case_workspace_command_path(operator_file, source_root=source_root),
+        case_id,
+    ]
+    if verbose:
+        with _stream_target_for_verbosity(True) as stream_target:
+            result = run_streaming_process(
+                command,
+                str(workspace_root),
+                stall_timeout_seconds=_bench_timeout(),
+                stdout=stream_target,
+                extra_env=extra_env,
+            )
+    else:
+        result = run_buffered_process(
+            command,
+            str(workspace_root),
+            stall_timeout_seconds=_bench_timeout(),
+            extra_env=extra_env,
+        )
+    return _parse_worker_case_result_payload(
+        result,
+        case_id=case_id,
+        fallback_kernel_source="metadata",
+        bench_mode="perf-counter",
     )
 
 
@@ -1399,19 +1722,73 @@ def _run_remote_torch_npu_profiler_case(
     )
 
 
+def _run_remote_perf_counter_case(
+    spec: RemoteSpec,
+    case_workspace: str,
+    bench_file: Path,
+    operator_file: Path,
+    case_id: str,
+    device: str,
+    *,
+    source_root: Path,
+    verbose: bool = False,
+    stderr: TextIO | None = None,
+) -> PerfCaseRecord:
+    extra_env = affinity_env_for_device(device)
+    extra_env["TRITON_ALWAYS_COMPILE"] = "1"
+    result = run_remote_command_streaming(
+        spec,
+        case_workspace,
+        [
+            "python3",
+            "-c",
+            _build_perf_counter_run_one_case_script(),
+            _case_workspace_command_path(bench_file, source_root=source_root),
+            _case_workspace_command_path(operator_file, source_root=source_root),
+            case_id,
+        ],
+        verbose=verbose,
+        stderr=stderr,
+        extra_env=extra_env,
+        stall_timeout_seconds=_bench_timeout(),
+    )
+    return _parse_worker_case_result_payload(
+        result,
+        case_id=case_id,
+        fallback_kernel_source="metadata",
+        bench_mode="perf-counter",
+    )
+
+
 def _parse_torch_npu_profiler_case_result_payload(
     result: ResultPayload,
     *,
     case_id: str,
     fallback_kernel_source: str,
 ) -> PerfCaseRecord:
+    return _parse_worker_case_result_payload(
+        result,
+        case_id=case_id,
+        fallback_kernel_source=fallback_kernel_source,
+        bench_mode="torch-npu-profiler",
+    )
+
+
+def _parse_worker_case_result_payload(
+    result: ResultPayload,
+    *,
+    case_id: str,
+    fallback_kernel_source: str,
+    bench_mode: str,
+) -> PerfCaseRecord:
     if not result_succeeded(result):
         return PerfCaseRecord(
             case_label=case_id,
             kernel_names=[],
             kernel_source=fallback_kernel_source,
-            error_message=_format_torch_npu_profiler_command_failure(result),
+            error_message=_format_worker_command_failure(result, bench_mode),
             case_wall_clock_seconds=None,
+            bench_mode=bench_mode,
         )
     stdout_text = str(result["stdout"]).strip()
     if not stdout_text:
@@ -1419,8 +1796,9 @@ def _parse_torch_npu_profiler_case_result_payload(
             case_label=case_id,
             kernel_names=[],
             kernel_source=fallback_kernel_source,
-            error_message="torch-npu-profiler worker produced no JSON payload",
+            error_message=f"{bench_mode} worker produced no JSON payload",
             case_wall_clock_seconds=None,
+            bench_mode=bench_mode,
         )
     try:
         payload = stdout_text.splitlines()[-1].strip()
@@ -1430,10 +1808,12 @@ def _parse_torch_npu_profiler_case_result_payload(
             case_label=case_id,
             kernel_names=[],
             kernel_source=fallback_kernel_source,
-            error_message=f"failed to parse torch-npu-profiler worker payload: {exc}",
+            error_message=f"failed to parse {bench_mode} worker payload: {exc}",
             case_wall_clock_seconds=None,
+            bench_mode=bench_mode,
         )
     metrics_payload = parsed["metrics"]
+    parsed_bench_mode = parsed.get("bench_mode")
     return PerfCaseRecord(
         case_label=str(parsed["case_label"]),
         kernel_names=[str(name) for name in parsed["kernel_names"]],
@@ -1443,13 +1823,18 @@ def _parse_torch_npu_profiler_case_result_payload(
         case_wall_clock_seconds=None
         if parsed["case_wall_clock_seconds"] is None
         else float(parsed["case_wall_clock_seconds"]),
+        bench_mode=None if parsed_bench_mode is None else str(parsed_bench_mode),
     )
 
 
-def _format_torch_npu_profiler_command_failure(result: ResultPayload) -> str:
+def _format_worker_command_failure(result: ResultPayload, bench_mode: str) -> str:
     details = str(result["stderr"]).strip() or str(result["stdout"]).strip()
-    prefix = f"torch-npu-profiler command failed with return code {int(result['return_code'])}"
+    prefix = f"{bench_mode} command failed with return code {int(result['return_code'])}"
     return f"{prefix}: {details}" if details else prefix
+
+
+def _format_torch_npu_profiler_command_failure(result: ResultPayload) -> str:
+    return _format_worker_command_failure(result, "torch-npu-profiler")
 
 
 def _write_torch_npu_profiler_perf(
@@ -1639,6 +2024,7 @@ def _build_local_msprof_case_outcome(
             kernel_source=resolution.kernel_source,
             error_message=_format_msprof_command_failure(result),
             case_wall_clock_seconds=elapsed,
+            bench_mode="msprof",
         )
     else:
         try:
@@ -1649,6 +2035,7 @@ def _build_local_msprof_case_outcome(
                 kernel_source=resolution.kernel_source,
                 metrics=metrics,
                 case_wall_clock_seconds=elapsed,
+                bench_mode="msprof",
             )
         except (FileNotFoundError, ValueError) as exc:
             record = PerfCaseRecord(
@@ -1657,6 +2044,7 @@ def _build_local_msprof_case_outcome(
                 kernel_source=resolution.kernel_source,
                 error_message=str(exc),
                 case_wall_clock_seconds=elapsed,
+                bench_mode="msprof",
             )
     return _MsprofCaseOutcome(
         case_id=case_id,
@@ -1687,6 +2075,7 @@ def _build_remote_msprof_case_outcome(
             kernel_source=resolution.kernel_source,
             error_message=_format_msprof_command_failure(result),
             case_wall_clock_seconds=elapsed,
+            bench_mode="msprof",
         )
     else:
         try:
@@ -1704,6 +2093,7 @@ def _build_remote_msprof_case_outcome(
                 kernel_source=resolution.kernel_source,
                 metrics=metrics,
                 case_wall_clock_seconds=elapsed,
+                bench_mode="msprof",
             )
         except RuntimeError as exc:
             record = PerfCaseRecord(
@@ -1712,6 +2102,7 @@ def _build_remote_msprof_case_outcome(
                 kernel_source=resolution.kernel_source,
                 error_message=str(exc),
                 case_wall_clock_seconds=elapsed,
+                bench_mode="msprof",
             )
     return _MsprofCaseOutcome(
         case_id=case_id,

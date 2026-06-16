@@ -1,6 +1,6 @@
 ## Unified benchmark file specification for Triton operators
 
-This document describes the shared benchmark-file contract for Triton Ascend operators. Generated `torch-npu-profiler` and `msprof` benchmark files now use the same import-only module structure; the only required mode marker in the generated file is `# bench-mode: <torch-npu-profiler|msprof>`. External execution tooling owns case selection, profiling, perf parsing, and output formatting.
+This document describes the shared benchmark-file contract for Triton Ascend operators. All benchmark files use the same import-only module structure regardless of execution mode. Bench mode is a runtime concern owned by execution tooling; generated files do not carry a `# bench-mode` header.
 
 The benchmark must call the resolved public entrypoint to run the operator. Raw `@triton.jit` kernels are not valid direct harness APIs.
 
@@ -14,16 +14,10 @@ The benchmark must call the resolved public entrypoint to run the operator. Raw 
 The benchmark file must include this metadata header near the top of the file:
 
 ```python
-# bench-mode: <torch-npu-profiler|msprof>
 # api-name: <resolved_entrypoint>
 # api-kind: <resolved_api_kind>
 # kernels: <resolved_kernel_names>
 ```
-
-`# bench-mode:` is required and must be set to the generated benchmark's default execution mode:
-
-- `torch-npu-profiler`: the benchmark defaults to runner-owned `torch_npu.profiler` behavior.
-- `msprof`: the benchmark defaults to `msprof` runner-owned profiling behavior.
 
 `<resolved_api_kind>` must be replaced with exactly one supported enum value:
 
@@ -125,11 +119,11 @@ Mode notes:
 
 - In `torch-npu-profiler` mode, external execution tooling profiles each declared case with centralized `torch_npu.profiler` logic.
 - In `msprof` mode, external execution tooling resolves case execution through the shared benchmark runtime helper and wraps it in `msprof`.
+- In `perf-counter` mode, external execution tooling measures per-iteration wall-clock time with `time.perf_counter()` instead of profiling.
 
 ### 7. Example
 
 ```python
-# bench-mode: torch-npu-profiler
 # api-name: <resolved_entrypoint>
 # api-kind: <resolved_api_kind>
 # kernels: <resolved_kernel_names>
@@ -160,4 +154,3 @@ def build_bench_case_fn(operator_api, case):
     return _run
 ```
 
-In an actual generated file, replace `# bench-mode: torch-npu-profiler` with `# bench-mode: msprof` when the requested default mode is `msprof`.

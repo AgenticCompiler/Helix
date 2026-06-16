@@ -26,6 +26,7 @@ class PerfCaseRecord:
     metrics: PerfMetrics | None = None
     error_message: str | None = None
     case_wall_clock_seconds: float | None = None
+    bench_mode: str | None = None
 
 
 ComparisonMode = Literal["latency", "total-op"]
@@ -59,6 +60,61 @@ class PerfValueMap(dict[str, float]):
 RequiredLatencyIds = Union[Collection[str], dict[str, PerfEntry], PerfValueMap]
 
 
+def _read_bench_mode_from_jsonl(path: Path) -> str | None:
+    """Return the bench_mode from the first non-empty JSONL record.
+
+    Also verifies that all records in the file have the same bench_mode.
+    A mix of modes within one file is treated as corrupt data.
+    """
+    mode: str | None = None
+    seen_first: bool = False
+    try:
+        with path.open(encoding="utf-8") as handle:
+            for line_no, line in enumerate(handle, start=1):
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                record = json.loads(stripped)
+                record_mode = record.get("bench_mode")
+                if not seen_first:
+                    mode = record_mode
+                    seen_first = True
+                elif mode != record_mode:
+                    raise ValueError(
+                        f"{path}: mixed bench_mode in same file: "
+                        f"line {line_no} has bench_mode={record_mode}, "
+                        f"but earlier records have bench_mode={mode}"
+                    )
+    except (json.JSONDecodeError, OSError):
+        return None
+    return mode
+
+
+def _check_cross_mode(baseline_perf: Path, compare_perf: Path) -> None:
+    try:
+        baseline_mode = _read_bench_mode_from_jsonl(baseline_perf)
+        compare_mode = _read_bench_mode_from_jsonl(compare_perf)
+    except ValueError as exc:
+        raise ValueError(f"cannot compare results: {exc}") from exc
+    if baseline_mode is None and compare_mode is None:
+        return
+    if baseline_mode is None:
+        raise ValueError(
+            f"cannot compare results: candidate has bench_mode={compare_mode} "
+            f"but baseline has no bench_mode (pre-perf-counter record)"
+        )
+    if compare_mode is None:
+        raise ValueError(
+            f"cannot compare results: baseline has bench_mode={baseline_mode} "
+            f"but candidate has no bench_mode (pre-perf-counter record)"
+        )
+    if baseline_mode != compare_mode:
+        raise ValueError(
+            f"cannot compare results from different bench modes: "
+            f"baseline={baseline_mode}, candidate={compare_mode}"
+        )
+
+
 def compare_perf_files(
     baseline_perf: Path,
     compare_perf: Path,
@@ -72,6 +128,11 @@ def compare_perf_files(
             compare_perf,
             skip_latency_errors=skip_latency_errors,
         )
+    try:
+        _check_cross_mode(baseline_perf, compare_perf)
+    except ValueError as exc:
+        print(f"FAIL: {exc}")
+        return 1
     try:
         baseline_outcome = _parse_perf_entries_for_comparison(
             baseline_perf,
@@ -158,6 +219,11 @@ def _compare_perf_files_all(
     *,
     skip_latency_errors: bool,
 ) -> int:
+    try:
+        _check_cross_mode(baseline_perf, compare_perf)
+    except ValueError as exc:
+        print(f"FAIL: {exc}")
+        return 1
     exit_codes: list[int] = []
     section_results: list[tuple[str, str]] = []
     for section_metric_source in ("kernel", "total-op"):
@@ -397,7 +463,12 @@ def render_perf_case_record_jsonl(
     if metrics is not None:
         kernel_avg_time_us = metrics["kernel_avg_time_us"]
         ops = metrics["ops"]
-        total_op_avg_time_us = sum(op["avg_time_us"] for op in metrics["ops"])
+        if ops:
+            total_op_avg_time_us = sum(op["avg_time_us"] for op in ops)
+        elif record.bench_mode == "perf-counter":
+            total_op_avg_time_us = kernel_avg_time_us
+        else:
+            total_op_avg_time_us = 0.0
     error_message = record.error_message
     if error_message is None and metrics is not None and kernel_avg_time_us is None:
         error_message = missing_kernel_match_error
@@ -410,6 +481,7 @@ def render_perf_case_record_jsonl(
         "total_op_avg_time_us": total_op_avg_time_us,
         "error_message": error_message,
         "case_wall_clock_seconds": record.case_wall_clock_seconds,
+        "bench_mode": record.bench_mode,
     }
     return json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
 

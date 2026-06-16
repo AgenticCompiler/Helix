@@ -171,7 +171,7 @@ class SkillCommandScriptTests(unittest.TestCase):
             [
                 bench_file.resolve(),
                 operator.resolve(),
-                "msprof",
+                "torch-npu-profiler",
                 "0,2",
             ],
         )
@@ -251,7 +251,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(
             observed,
-            [bench_file.resolve(), operator.resolve(), "msprof", None, str(perf_file)],
+            [bench_file.resolve(), operator.resolve(), "torch-npu-profiler", None, str(perf_file)],
         )
 
     def test_script_run_bench_uses_remote_env_when_flag_missing(self) -> None:

@@ -5,8 +5,8 @@ Use the `run-bench` MCP tool to execute a generated benchmark.
 Rules:
 
 - Always pass both `bench_file` and `operator_file`.
-- If `bench_mode` is omitted, the tool reads `# bench-mode: ...` from the benchmark file.
-- Use `bench_mode="torch-npu-profiler"` or `bench_mode="msprof"` only when you need to override the embedded metadata.
+- If `bench_mode` is omitted, defaults to `torch-npu-profiler`.
+- Use `bench_mode="torch-npu-profiler"`, `bench_mode="msprof"`, or `bench_mode="perf-counter"` only when you need to override the default.
 - On success, `run-bench` prints `Perf file: <path>` and a short hint to use `compare-perf` instead of reading perf files directly.
 - On failure, `run-bench` prints the captured benchmark output so the error remains diagnosable.
 
