@@ -219,7 +219,7 @@ class OptimizeCommandHandlerTests(unittest.TestCase):
             mock_report.assert_called_once_with(
                 workspace=workspace.resolve(),
                 agent_name="codex",
-                show_output=False,
+                show_output=True,
             )
 
     def test_handle_optimize_no_auto_upload_on_failure(self) -> None:

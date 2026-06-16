@@ -144,7 +144,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
         round_name: str,
         *,
         parent_round: str,
-        round_disposition: str,
         perf_text: str = "case0: 1.0\n",
         operator_source: Optional[str] = None,
     ) -> Path:
@@ -178,7 +177,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     "effective_metric_source": "kernel",
                     "summary_path": "summary.md",
                     "opt_note_updated": True,
-                    "round_disposition": round_disposition,
                 }
             ),
             encoding="utf-8",
@@ -223,7 +221,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -258,7 +256,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -289,7 +287,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -317,7 +315,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -344,7 +342,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -376,7 +374,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -407,7 +405,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -435,7 +433,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -463,7 +461,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -491,7 +489,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote="alice@example.com:2200",
                 remote_workdir="/tmp/triton-agent",
                 min_rounds=1,
@@ -523,7 +521,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -577,7 +575,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -605,7 +603,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -633,7 +631,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -665,7 +663,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -700,7 +698,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -735,7 +733,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -767,7 +765,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -800,7 +798,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -834,7 +832,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -878,7 +876,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -916,7 +914,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=5,
@@ -949,7 +947,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=True,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=30,
@@ -989,7 +987,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -1017,7 +1015,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             workdir,
                             "opt-round-1",
                             parent_round="round-0",
-                            round_disposition="stop",
                         )
                     else:
                         self.supervisor_calls += 1
@@ -1094,7 +1091,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -1127,27 +1124,23 @@ class OptimizeRuntimeTests(unittest.TestCase):
                                 workdir,
                                 "opt-round-1",
                                 parent_round="round-0",
-                                round_disposition="continue",
-                            )
+                                )
                             self_outer._write_round(
                                 workdir,
                                 "opt-round-2",
                                 parent_round="round-1",
-                                round_disposition="continue",
-                            )
+                                )
                         else:
                             self_outer._write_round(
                                 workdir,
                                 "opt-round-3",
                                 parent_round="round-2",
-                                round_disposition="continue",
-                            )
+                                )
                             self_outer._write_round(
                                 workdir,
                                 "opt-round-4",
                                 parent_round="round-3",
-                                round_disposition="stop",
-                            )
+                                )
                         return AgentResult(return_code=0, stdout="worker ok", stderr="")
                     latest_round_dir = _latest_round_dir(workdir)
                     self_outer._write_supervisor_handoff(
@@ -1208,7 +1201,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -1238,8 +1231,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                                 workdir,
                                 "opt-round-1",
                                 parent_round="round-0",
-                                round_disposition="stop",
-                            )
+                                )
                             return AgentResult(return_code=0, stdout="worker ok", stderr="")
                         return AgentResult(return_code=1, stdout="", stderr="stop after second prompt for test")
                     self_outer._write_supervisor_handoff(
@@ -1282,8 +1274,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 workdir,
                 "opt-round-1",
                 parent_round="round-0",
-                round_disposition="continue",
-            )
+                            )
 
             request = AgentRequest(
                 command_kind=CommandKind.OPTIMIZE,
@@ -1294,7 +1285,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -1376,7 +1367,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -1446,7 +1437,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -1478,13 +1469,11 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             workdir,
                             "opt-round-1",
                             parent_round="round-0",
-                            round_disposition="continue",
                         )
                         self_outer._write_round(
                             workdir,
                             "opt-round-2",
                             parent_round="round-1",
-                            round_disposition="continue",
                         )
                         return AgentResult(return_code=0, stdout="worker ok", stderr="")
                     return AgentResult(return_code=1, stdout="", stderr="stop after second batch prompt for test")
@@ -1552,7 +1541,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -1605,7 +1594,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -1637,19 +1626,16 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             workdir,
                             "opt-round-1",
                             parent_round="round-0",
-                            round_disposition="continue",
                         )
                         self_outer._write_round(
                             workdir,
                             "opt-round-2",
                             parent_round="round-1",
-                            round_disposition="continue",
                         )
                         self_outer._write_round(
                             workdir,
                             "opt-round-3",
                             parent_round="round-2",
-                            round_disposition="continue",
                         )
                         return AgentResult(return_code=0, stdout="worker ok", stderr="")
                     return AgentResult(return_code=1, stdout="", stderr="stop after repair prompt for test")
@@ -1721,7 +1707,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         agent_name="codex",
                         interact=False,
                         verbose=False,
-                        show_output=False,
+                        stream_output=False,
                         remote=None,
                         remote_workdir=None,
                         min_rounds=1,
@@ -1777,7 +1763,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -1833,7 +1819,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -1884,7 +1870,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -1924,7 +1910,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -1982,7 +1968,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -2034,7 +2020,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -2078,7 +2064,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -2157,7 +2143,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -2213,7 +2199,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -2260,7 +2246,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -2307,7 +2293,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -2372,7 +2358,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -2521,7 +2507,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=True,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -2548,7 +2534,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             workdir,
                             "opt-round-1",
                             parent_round="round-0",
-                            round_disposition="stop",
                         )
                     else:
                         assert request.supervisor_report_path is not None
@@ -2592,7 +2577,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=True,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -2623,7 +2608,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             workdir,
                             f"opt-round-{round_number}",
                             parent_round=f"round-{round_number - 1}",
-                            round_disposition="stop" if round_number == 30 else "continue",
                             perf_text="latency-a: 1.0\n",
                         )
                     return AgentResult(return_code=0, stdout="ok", stderr="")
@@ -2660,7 +2644,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -2691,7 +2675,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             workdir,
                             "opt-round-1",
                             parent_round="round-0",
-                            round_disposition="stop",
                         )
                     else:
                         assert request.supervisor_report_path is not None
@@ -2735,7 +2718,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -2766,8 +2749,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                                 workdir,
                                 "opt-round-1",
                                 parent_round="round-0",
-                                round_disposition="continue",
-                            )
+                                )
                             return AgentResult(return_code=0, stdout="worker ok", stderr="")
                         return AgentResult(return_code=1, stdout="", stderr="worker stopped for test")
                     self.supervisor_calls += 1
@@ -2832,7 +2814,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -2863,7 +2845,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             workdir,
                             "opt-round-1",
                             parent_round="round-0",
-                            round_disposition="continue",
                         )
                         return AgentResult(return_code=0, stdout="worker ok", stderr="")
                     return AgentResult(return_code=1, stdout="", stderr="stop after second prompt for test")
@@ -2918,7 +2899,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -2947,7 +2928,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
                             workdir,
                             "opt-round-1",
                             parent_round="round-0",
-                            round_disposition="continue",
                         )
                         return AgentResult(return_code=0, stdout="worker ok", stderr="")
                     return AgentResult(return_code=1, stdout="", stderr="stop after second prompt for test")
@@ -2995,7 +2975,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -3025,8 +3005,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                         workdir,
                         "opt-round-1",
                         parent_round="round-0",
-                        round_disposition="stop",
-                        operator_source="print('broken round')\n",
+                                                operator_source="print('broken round')\n",
                     )
                     return AgentResult(return_code=0, stdout="ok", stderr="")
 
@@ -3061,8 +3040,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 workdir,
                 "opt-round-1",
                 parent_round="round-0",
-                round_disposition="continue",
-            )
+                            )
 
             guidance_state = self._build_guidance_state(workdir)
 
@@ -3075,7 +3053,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -3131,8 +3109,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 workdir,
                 "opt-round-1",
                 parent_round="round-0",
-                round_disposition="continue",
-            )
+                            )
 
             guidance_state = self._build_guidance_state(workdir)
 
@@ -3145,7 +3122,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -3198,8 +3175,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 workdir,
                 "opt-round-1",
                 parent_round="round-0",
-                round_disposition="stop",
-            )
+                            )
 
             guidance_state = self._build_guidance_state(workdir)
             request = AgentRequest(
@@ -3211,7 +3187,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",
@@ -3271,14 +3247,12 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 workdir,
                 "opt-round-2",
                 parent_round="round-1",
-                round_disposition="continue",
-            )
+                            )
             self._write_round(
                 workdir,
                 "opt-round-10",
                 parent_round="round-9",
-                round_disposition="continue",
-            )
+                            )
 
             latest = _latest_round_dir(workdir)
 
@@ -3294,8 +3268,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 workdir,
                 "opt-round-2",
                 parent_round="round-1",
-                round_disposition="continue",
-            )
+                            )
             (workdir / "opt-round-final").mkdir()
             (workdir / "opt-round-notes").mkdir()
 
@@ -3314,8 +3287,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 workdir,
                 "opt-round-1",
                 parent_round="round-0",
-                round_disposition="continue",
-            )
+                            )
             (workdir / "opt-round-2").mkdir()
 
             latest = _latest_round_dir(workdir)
@@ -3336,7 +3308,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -3382,7 +3354,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -3428,7 +3400,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 agent_name="codex",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 remote=None,
                 remote_workdir=None,
                 min_rounds=1,
@@ -3475,7 +3447,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 bench_mode="torch-npu-profiler",
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-optimize",

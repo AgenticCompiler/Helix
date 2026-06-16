@@ -352,7 +352,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
             bench_mode=None,
             interact=interact,
             verbose=verbose,
-            show_output=show_output,
+            stream_output=show_output,
             force_overwrite=False,
             agent_name="openhands",
             skill_name="triton-npu-gen-test",

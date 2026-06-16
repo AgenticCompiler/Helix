@@ -111,4 +111,4 @@ class ReportCommandHandlerTests(unittest.TestCase):
                             exit_code = handle_report_batch(parser, args)
 
         self.assertEqual(exit_code, 0)
-        mocked.assert_called_once_with(workspace, "codex", False)
+        mocked.assert_called_once_with(workspace, "codex", True)

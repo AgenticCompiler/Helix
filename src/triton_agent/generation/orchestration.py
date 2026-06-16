@@ -72,7 +72,7 @@ def build_generation_request(
         bench_mode=options.bench_mode,
         interact=options.interact,
         verbose=options.verbose,
-        show_output=options.show_output,
+        stream_output=options.stream_output,
         force_overwrite=options.force_overwrite,
         agent_name=options.agent_name,
         skill_name=COMMAND_TO_SKILL[command_kind],

@@ -111,7 +111,6 @@ class RoundState:
     effective_metric_source: str
     summary_path: str
     opt_note_updated: bool
-    round_disposition: str
     analysis_skipped_reason: str | None = None
     profile_dir: str | None = None
     ir_dir: str | None = None
@@ -255,7 +254,6 @@ def load_round_state(round_dir: Path) -> RoundState:
         effective_metric_source=str(data["effective_metric_source"]),
         summary_path=str(data["summary_path"]),
         opt_note_updated=bool(data["opt_note_updated"]),
-        round_disposition=str(data["round_disposition"]),
         analysis_skipped_reason=_optional_str(data.get("analysis_skipped_reason")),
         profile_dir=_optional_str(data.get("profile_dir")),
         ir_dir=_optional_str(data.get("ir_dir")),

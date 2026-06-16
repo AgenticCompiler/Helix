@@ -77,7 +77,7 @@ def handle_convert(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
             f"Agent executable not found: {exc}. "
             f"Make sure the '{options.agent_name}' CLI is installed and available in PATH."
         )
-    render_result(loop_result.agent_result, show_output=request.show_output)
+    render_result(loop_result.agent_result, show_output=request.stream_output)
     if loop_result.validation_summary is not None:
         print(loop_result.validation_summary, file=sys.stderr)
     return loop_result.return_code
@@ -109,7 +109,7 @@ def convert_options_from_args(args: argparse.Namespace) -> ConvertOptions:
     return ConvertOptions(
         interact=bool(getattr(args, "interact", False)),
         verbose=bool(getattr(args, "verbose", False)),
-        show_output=bool(getattr(args, "show_output", False)),
+        stream_output=bool(getattr(args, "stream_output", True)),
         force_overwrite=bool(getattr(args, "force_overwrite", False)),
         agent_name=args.agent,
         remote=getattr(args, "remote", None),

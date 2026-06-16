@@ -7,7 +7,7 @@ from dataclasses import dataclass
 class GenerationOptions:
     interact: bool
     verbose: bool
-    show_output: bool
+    stream_output: bool
     force_overwrite: bool
     agent_name: str
     remote: str | None

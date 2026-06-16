@@ -123,7 +123,7 @@ class AgentRunner(ABC):
     def _select_mode(self, request: AgentRequest) -> str:
         if request.interact:
             return "interactive"
-        if request.show_output:
+        if request.stream_output:
             return "streaming"
         return "buffered"
 
@@ -142,7 +142,7 @@ class AgentRunner(ABC):
 
                 rendered_chunk_sink = _write_rendered_chunk
 
-            collect_stdout = not request.show_output
+            collect_stdout = not request.stream_output
             result = self._run_once(
                 command,
                 request,

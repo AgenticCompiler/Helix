@@ -51,7 +51,7 @@ class ReportCommandTests(unittest.TestCase):
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp).resolve()
-            args = parser.parse_args(["report", "-i", str(workspace), "--show-output"])
+            args = parser.parse_args(["report", "-i", str(workspace)])
             captured: dict[str, AgentRequest] = {}
 
             with patch(
@@ -104,7 +104,7 @@ class ReportCommandTests(unittest.TestCase):
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp).resolve()
-            args = parser.parse_args(["report", "-i", str(workspace), "--show-output"])
+            args = parser.parse_args(["report", "-i", str(workspace)])
             stderr = StringIO()
             captured: dict[str, AgentRequest] = {}
 

@@ -86,7 +86,7 @@ class OpenHandsRunner(AgentRunner):
                 return _error_result(f"OpenHands backend failed: {exc}")
 
             final_line = _event_to_text(result)
-            if request.show_output:
+            if request.stream_output:
                 if not saw_output[0] and final_line:
                     rendered = final_line if final_line.endswith("\n") else f"{final_line}\n"
                     print(rendered, file=stdout or sys.stdout, end="")
@@ -149,7 +149,7 @@ class OpenHandsRunner(AgentRunner):
             if not line:
                 return
             saw_output[0] = True
-            if request.show_output:
+            if request.stream_output:
                 rendered = line if line.endswith("\n") else f"{line}\n"
                 stream = stdout or sys.stdout
                 print(rendered, file=stream, end="")

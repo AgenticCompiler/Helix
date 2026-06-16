@@ -84,7 +84,7 @@ def _handle_generation_command(
             f"Agent executable not found: {exc}. "
             f"Make sure the '{options.agent_name}' CLI is installed and available in PATH."
         )
-    render_result(result, show_output=request.show_output)
+    render_result(result, show_output=request.stream_output)
     return result.return_code
 
 
@@ -97,7 +97,7 @@ def generation_options_from_args(args: argparse.Namespace) -> GenerationOptions:
     return GenerationOptions(
         interact=bool(getattr(args, "interact", False)),
         verbose=bool(getattr(args, "verbose", False)),
-        show_output=bool(getattr(args, "show_output", False)),
+        stream_output=bool(getattr(args, "stream_output", True)),
         force_overwrite=bool(getattr(args, "force_overwrite", False)),
         agent_name=args.agent,
         remote=getattr(args, "remote", None),

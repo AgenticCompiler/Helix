@@ -72,8 +72,7 @@ class VerifyTests(unittest.TestCase):
                     "comparison_target": "baseline/perf.txt",
                     "effective_metric_source": "kernel",
                     "summary_path": "summary.md",
-                    "opt_note_updated": True,
-                    "round_disposition": "stop",
+                    "opt_note_updated": True
                 }
             ),
             encoding="utf-8",
@@ -151,8 +150,7 @@ class VerifyTests(unittest.TestCase):
                     "comparison_target": "baseline/perf.txt",
                     "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
-                        "opt_note_updated": True,
-                        "round_disposition": "stop",
+                        "opt_note_updated": True
                     }
                 ),
                 encoding="utf-8",

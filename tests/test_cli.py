@@ -96,7 +96,7 @@ class CliParserTests(unittest.TestCase):
                 "--concurrency",
                 "4",
                 "--verbose",
-                "--show-output",
+                "--no-stream-output",
             ]
         )
         self.assertEqual(args.command, "log-check-batch")
@@ -105,7 +105,7 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.summary_file, "custom_summary.txt")
         self.assertEqual(args.concurrency, 4)
         self.assertTrue(args.verbose)
-        self.assertTrue(args.show_output)
+        self.assertFalse(args.stream_output)
 
     def test_log_check_batch_rejects_max_concurrency_keyword(self) -> None:
         parser = build_parser()
@@ -492,7 +492,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertFalse(hasattr(args, "agent"))
         self.assertFalse(hasattr(args, "interact"))
         self.assertFalse(hasattr(args, "output"))
-        self.assertFalse(hasattr(args, "show_output"))
+        self.assertFalse(hasattr(args, "stream_output"))
 
     def test_verify_accepts_phase_and_remote_options(self) -> None:
         parser = build_parser()
@@ -931,10 +931,20 @@ class CliMCPServerCommandTests(unittest.TestCase):
         args = parser.parse_args(["gen-test", "-i", "kernel.py", "--verbose"])
         self.assertTrue(args.verbose)
 
-    def test_show_output_option_is_available(self) -> None:
+    def test_no_stream_output_option_is_available(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["gen-test", "-i", "kernel.py", "--show-output"])
-        self.assertTrue(args.show_output)
+        args = parser.parse_args(["gen-test", "-i", "kernel.py", "--no-stream-output"])
+        self.assertFalse(args.stream_output)
+
+    def test_agent_commands_stream_output_by_default(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["gen-test", "-i", "kernel.py"])
+        self.assertTrue(args.stream_output)
+
+    def test_show_output_option_no_longer_parses(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["gen-test", "-i", "kernel.py", "--show-output"])
 
     def test_force_overwrite_option_is_available_for_generators(self) -> None:
         parser = build_parser()
@@ -1154,7 +1164,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
                 "msprof",
                 "--concurrency",
                 "3",
-                "--show-output",
+                "--no-stream-output",
             ]
         )
         self.assertEqual(args.agent, "pi")
@@ -1163,7 +1173,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(args.test_mode, "standalone")
         self.assertEqual(args.bench_mode, "msprof")
         self.assertEqual(args.concurrency, 3)
-        self.assertTrue(args.show_output)
+        self.assertFalse(args.stream_output)
 
     def test_optimize_command_supports_mode_options(self) -> None:
         parser = build_parser()
@@ -1480,7 +1490,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
             agent="codex",
             interact=False,
             verbose=False,
-            show_output=False,
+            stream_output=True,
             remote=None,
             remote_workdir=None,
             min_rounds=5,
@@ -1503,7 +1513,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(args.concurrency, 1)
         self.assertEqual(args.agent, "codex")
         self.assertFalse(hasattr(args, "interact"))
-        self.assertFalse(args.show_output)
+        self.assertTrue(args.stream_output)
 
     def test_optimize_batch_accepts_round_modes(self) -> None:
         parser = build_parser()
@@ -1521,14 +1531,14 @@ class CliMCPServerCommandTests(unittest.TestCase):
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.prompt, "Avoid numerics changes.")
 
-    def test_optimize_batch_defaults_round_batch_size_to_ten(self) -> None:
+    def test_optimize_batch_defaults_round_batch_size_to_five(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize-batch", "-i", "kernels"])
         self.assertEqual(args.round_mode, "checked")
-        self.assertEqual(args.round_batch_size, 10)
+        self.assertEqual(args.round_batch_size, 5)
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.round_mode, "checked")
-        self.assertEqual(options.round_batch_size, 10)
+        self.assertEqual(options.round_batch_size, 5)
         self.assertEqual(args.target_chip, "A5")
         self.assertEqual(options.target_chip, "A5")
 
@@ -1579,7 +1589,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
                 "--no-agent-session",
                 "--concurrency",
                 "3",
-                "--show-output",
+                "--no-stream-output",
             ]
         )
         self.assertEqual(args.agent, "pi")
@@ -1592,7 +1602,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(args.target_chip, "A3")
         self.assertTrue(args.no_agent_session)
         self.assertEqual(args.concurrency, 3)
-        self.assertTrue(args.show_output)
+        self.assertFalse(args.stream_output)
 
     def test_optimize_batch_defaults_resume_to_auto(self) -> None:
         parser = build_parser()
@@ -2107,7 +2117,7 @@ class PathResolutionTests(unittest.TestCase):
 
             seen_inputs: list[Path] = []
 
-            def _fake_run(request):
+            def _fake_run(request, stdout=None, stderr=None):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
@@ -2130,7 +2140,7 @@ class PathResolutionTests(unittest.TestCase):
 
             seen_inputs: list[Path] = []
 
-            def _fake_run(request):
+            def _fake_run(request, stdout=None, stderr=None):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
@@ -2149,7 +2159,7 @@ class PathResolutionTests(unittest.TestCase):
 
             seen_inputs: list[Path] = []
 
-            def _fake_run(request):
+            def _fake_run(request, stdout=None, stderr=None):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
@@ -2173,7 +2183,7 @@ class PathResolutionTests(unittest.TestCase):
             stdout = StringIO()
             seen_inputs: list[Path] = []
 
-            def _fake_run(request):
+            def _fake_run(request, stdout=None, stderr=None):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
@@ -2200,7 +2210,7 @@ class PathResolutionTests(unittest.TestCase):
             stdout = StringIO()
             seen_inputs: list[Path] = []
 
-            def _fake_run(request):
+            def _fake_run(request, stdout=None, stderr=None):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
@@ -2230,7 +2240,7 @@ class PathResolutionTests(unittest.TestCase):
             stdout = StringIO()
             seen_inputs: list[Path] = []
 
-            def _fake_run(request):
+            def _fake_run(request, stdout=None, stderr=None):
                 seen_inputs.append(request.input_path)
                 return AgentResult(return_code=0, stdout="", stderr="")
 
@@ -2258,7 +2268,7 @@ class PathResolutionTests(unittest.TestCase):
             first_pair_ready = threading.Event()
             release_gate = threading.Event()
 
-            def _fake_run(_request):
+            def _fake_run(_request, stdout=None, stderr=None):
                 nonlocal active, max_active, launched
                 with lock:
                     launched += 1
@@ -2326,7 +2336,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with patch("triton_agent.optimize.batch.run_optimize_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
-                    exit_code = main(["optimize-batch", "-i", str(root), "--show-output"])
+                    exit_code = main(["optimize-batch", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()
@@ -2382,7 +2392,7 @@ class PathResolutionTests(unittest.TestCase):
 
             captured_modes: dict[str, Optional[str]] = {}
 
-            def _fake_run(request):
+            def _fake_run(request, stdout=None, stderr=None):
                 captured_modes[request.workdir.name] = request.bench_mode
                 return AgentResult(return_code=0, stdout="", stderr="")
 
@@ -2451,7 +2461,7 @@ class PathResolutionTests(unittest.TestCase):
 
             captured_modes: dict[str, Optional[str]] = {}
 
-            def _fake_run(request):
+            def _fake_run(request, stdout=None, stderr=None):
                 captured_modes[request.workdir.name] = request.bench_mode
                 return AgentResult(return_code=0, stdout="", stderr="")
 
@@ -2639,7 +2649,7 @@ class PathResolutionTests(unittest.TestCase):
 
             with patch("triton_agent.generation.batch.run_generation_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
-                    exit_code = main(["gen-eval-batch", "-i", str(root), "--show-output"])
+                    exit_code = main(["gen-eval-batch", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()

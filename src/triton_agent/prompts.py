@@ -57,7 +57,7 @@ def build_prompt(
     enable_subagent: bool = False,
     current_round: int = 1,
     final_round: int | None = None,
-    round_batch_size: int = 10,
+    round_batch_size: int = 5,
     optimize_baseline_ready: bool = True,
 ) -> str:
     should_resume_existing_session = (

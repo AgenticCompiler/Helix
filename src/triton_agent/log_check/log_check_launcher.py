@@ -265,7 +265,7 @@ def build_log_check_request(
         bench_mode=None,
         interact=False,
         verbose=verbose,
-        show_output=show_output,
+        stream_output=show_output,
         force_overwrite=False,
         agent_name=agent_name,
         skill_name="triton-npu-optimize-submit-round",
@@ -377,7 +377,7 @@ def run_log_check(
             emit_verbose_lines(sys.stderr, "skills", cleanup_warnings)
 
     if not result.succeeded:
-        if request.show_output:
+        if request.stream_output:
             detail = result.stderr.strip() or f"agent execution failed; see show-output log: {show_output_log_path(request)}"
         else:
             detail = result.stderr.strip() or result.stdout.strip() or "agent execution failed"

@@ -67,7 +67,7 @@ class ConvertRuntimeTests(unittest.TestCase):
             ConvertOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote=None,
@@ -103,7 +103,7 @@ class ConvertRuntimeTests(unittest.TestCase):
             ConvertOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote=None,
@@ -131,7 +131,7 @@ class ConvertRuntimeTests(unittest.TestCase):
             ConvertOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote="alice@example.com",
@@ -159,7 +159,7 @@ class ConvertRuntimeTests(unittest.TestCase):
             ConvertOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote=None,
@@ -185,7 +185,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 ConvertOptions(
                     interact=False,
                     verbose=False,
-                    show_output=False,
+                    stream_output=False,
                     force_overwrite=False,
                     agent_name="codex",
                     remote=None,
@@ -374,7 +374,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-convert-pytorch-operator",
@@ -407,7 +407,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-convert-pytorch-operator",
@@ -440,7 +440,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-convert-pytorch-operator",
@@ -473,7 +473,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-convert-pytorch-operator",
@@ -522,7 +522,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-convert-pytorch-operator",
@@ -569,7 +569,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-convert-pytorch-operator",
@@ -614,7 +614,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-convert-pytorch-operator",
@@ -748,7 +748,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 ConvertOptions(
                     interact=False,
                     verbose=False,
-                    show_output=False,
+                    stream_output=False,
                     force_overwrite=False,
                     agent_name="codex",
                     remote=None,
@@ -823,7 +823,7 @@ class ConvertBatchTests(unittest.TestCase):
                 ConvertOptions(
                     interact=False,
                     verbose=False,
-                    show_output=False,
+                    stream_output=False,
                     force_overwrite=False,
                     agent_name="codex",
                     remote=None,
@@ -853,7 +853,7 @@ class ConvertBatchTests(unittest.TestCase):
             options = ConvertOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote=None,
@@ -907,7 +907,7 @@ class ConvertBatchTests(unittest.TestCase):
                     ConvertOptions(
                         interact=False,
                         verbose=False,
-                        show_output=False,
+                        stream_output=False,
                         force_overwrite=False,
                         agent_name="codex",
                         remote=None,
@@ -950,7 +950,7 @@ class ConvertBatchTests(unittest.TestCase):
                     ConvertOptions(
                         interact=False,
                         verbose=False,
-                        show_output=False,
+                        stream_output=False,
                         force_overwrite=False,
                         agent_name="codex",
                         remote=None,
@@ -990,7 +990,7 @@ class ConvertBatchTests(unittest.TestCase):
                     ConvertOptions(
                         interact=False,
                         verbose=False,
-                        show_output=False,
+                        stream_output=False,
                         force_overwrite=False,
                         agent_name="codex",
                         remote=None,
@@ -1021,7 +1021,7 @@ class ConvertBatchTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-convert-pytorch-operator",
@@ -1094,7 +1094,7 @@ class ConvertBatchTests(unittest.TestCase):
 
             with patch("triton_agent.convert.batch.run_convert_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
-                    exit_code = main(["convert-batch", "-i", str(root), "--show-output"])
+                    exit_code = main(["convert-batch", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()
