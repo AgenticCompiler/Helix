@@ -97,7 +97,7 @@ def handle_report(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         for warning in cleanup_warnings:
             emit_verbose(verbose_stream, "skills", warning)
 
-    render_result(result, show_output=stream_output)
+    render_result(result, skip_stdout=stream_output)
     if result.succeeded:
         report_path = workspace / "report.md"
         if report_path.exists():

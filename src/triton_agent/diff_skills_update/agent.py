@@ -16,14 +16,14 @@ def run_diff_skills_agent(
     agent_name: str,
     workdir: Path,
     prompt: str,
-    show_output: bool,
+    stream_output: bool,
     verbose: bool,
     skills_root: Path | None = None,
     output_label: str = "",
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
 ) -> AgentResult:
-    prefixed_stdout = _prefixed_stream(stdout or sys.stdout, output_label) if show_output and output_label else stdout
+    prefixed_stdout = _prefixed_stream(stdout or sys.stdout, output_label) if stream_output and output_label else stdout
     request = AgentRequest(
         command_kind=CommandKind.DIFF_SKILLS_UPDATE,
         input_path=workdir,
@@ -33,7 +33,7 @@ def run_diff_skills_agent(
         bench_mode=None,
         interact=False,
         verbose=verbose,
-        show_output=show_output,
+        stream_output=stream_output,
         force_overwrite=False,
         agent_name=agent_name,
         skill_name="",

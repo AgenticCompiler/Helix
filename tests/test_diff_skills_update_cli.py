@@ -28,7 +28,7 @@ class DiffSkillsUpdateCliTests(unittest.TestCase):
                 "--force",
                 "--skip-existing",
                 "--promote-converged-skills",
-                "--show-output",
+                "--no-stream-output",
             ]
         )
 
@@ -42,7 +42,7 @@ class DiffSkillsUpdateCliTests(unittest.TestCase):
         self.assertTrue(args.force)
         self.assertTrue(args.skip_existing)
         self.assertTrue(args.promote_converged_skills)
-        self.assertTrue(args.show_output)
+        self.assertFalse(args.stream_output)
 
 
 if __name__ == "__main__":

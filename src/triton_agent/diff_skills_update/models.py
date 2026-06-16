@@ -17,7 +17,7 @@ class DiffSkillsUpdateConfig:
     agent_name: str
     max_iterations: int
     concurrency: int
-    show_output: bool
+    stream_output: bool
     verbose: bool
     force: bool
     skip_existing: bool

@@ -94,7 +94,7 @@ class DiffSkillsUpdateWorkflowTests(unittest.TestCase):
                 agent_name="codex",
                 max_iterations=2,
                 concurrency=1,
-                show_output=False,
+                stream_output=False,
                 verbose=False,
                 force=False,
                 skip_existing=False,

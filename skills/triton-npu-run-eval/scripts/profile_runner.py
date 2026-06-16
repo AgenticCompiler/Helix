@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
+from bench_runner import stream_target_for_verbosity
 from run_runtime import (
     RemoteSpec,
     ResultPayload,
@@ -166,63 +167,25 @@ def _run_remote_profile_torch_npu_profiler(
             stderr=stderr,
         )
     extra_env = {"TRITON_ALWAYS_COMPILE": "1"}
-    return run_remote_command_streaming(
-        spec,
-        remote_workspace,
-        [
-            "python3",
-            "-c",
-            _build_remote_torch_npu_profiler_profile_script(),
-            bench_file.name,
-            operator_file.name,
-            case_id,
-        ],
-        stall_timeout_seconds=_profile_timeout(),
-        verbose=verbose,
-        stderr=stderr,
-        extra_env=extra_env,
-    )
-
-
-def _run_remote_profile_msprof(  # pyright: ignore[reportUnusedFunction]
-    spec: RemoteSpec,
-    remote_workspace: str,
-    bench_file: Path,
-    operator_file: Path,
-    case_id: str | None,
-    verbose: bool = False,
-    stderr: TextIO | None = None,
-) -> ResultPayload:
-    selected_case = _resolve_bench_case(bench_file, operator_file, case_id)
-    for support_path in _bench_runtime_support_paths():
-        copy_file_to_remote(
+    with stream_target_for_verbosity(verbose) as stream_target:
+        return run_remote_command_streaming(
             spec,
-            support_path,
-            f"{remote_workspace}/{support_path.name}",
+            remote_workspace,
+            [
+                "python3",
+                "-c",
+                _build_remote_torch_npu_profiler_profile_script(),
+                bench_file.name,
+                operator_file.name,
+                case_id,
+            ],
+            stdout=stream_target,
+            stall_timeout_seconds=_profile_timeout(),
             verbose=verbose,
             stderr=stderr,
+            extra_env=extra_env,
         )
-    extra_env = {"TRITON_ALWAYS_COMPILE": "1"}
-    return run_remote_command_streaming(
-        spec,
-        remote_workspace,
-        [
-            "msprof",
-            "python3",
-            "bench_runtime.py",
-            "run-one",
-            "--bench-file",
-            bench_file.name,
-            "--operator-file",
-            operator_file.name,
-            "--case-id",
-            selected_case,
-        ],
-        stall_timeout_seconds=_profile_timeout(),
-        verbose=verbose,
-        stderr=stderr,
-        extra_env=extra_env,
-    )
+
 
 def _resolve_local_profile_dir(search_root: Path) -> Path:
     candidates = [candidate for candidate in search_root.iterdir() if candidate.is_dir() and candidate.name.startswith("PROF_")]

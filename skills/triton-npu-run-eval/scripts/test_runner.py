@@ -57,11 +57,11 @@ def run_local_test(
 ) -> tuple[ResultPayload, Path | None]:
     maybe_print_visible_devices()
     if test_mode == "standalone":
-        result = _run_import_only_standalone_test(test_file, operator_file)
+        result = _run_import_only_standalone_test(test_file, operator_file, verbose=verbose)
         return _filter_result_payload(result, verbose=verbose), None
     if test_mode == "differential":
         archive_path = _differential_archive_path(operator_file)
-        result = _run_declarative_differential_test(test_file, operator_file, archive_path)
+        result = _run_declarative_differential_test(test_file, operator_file, archive_path, verbose=verbose)
         archived_result = archive_path if result_succeeded(result) else None
         return _filter_result_payload(result, verbose=verbose), archived_result
     raise ValueError(f"Unsupported test mode: {test_mode}")
@@ -148,7 +148,10 @@ def _normalize_differential_case_records(raw_cases: object) -> list[dict[str, ob
 def _run_import_only_standalone_test(
     test_file: Path,
     operator_file: Path,
+    *,
+    verbose: bool = False,
 ) -> ResultPayload:
+    real_stderr = sys.stderr
     prev = os.environ.get("TRITON_ALWAYS_COMPILE")
     os.environ["TRITON_ALWAYS_COMPILE"] = "1"
     stdout_buffer = StringIO()
@@ -157,6 +160,12 @@ def _run_import_only_standalone_test(
         test_path = test_file.resolve()
         operator_path = operator_file.resolve()
         metadata = parse_test_metadata(test_path)
+        if verbose:
+            print("[run-test] mode: standalone", file=real_stderr)
+            print(f"[run-test] test file: {test_path}", file=real_stderr)
+            print(f"[run-test] operator file: {operator_path}", file=real_stderr)
+            print(f"[run-test] operator api: {metadata.get('api-name', '?')} ({metadata.get('api-kind', '?')})", file=real_stderr)
+            print("[run-test] running...", file=real_stderr)
         with _temporary_sys_path_entries(test_path.parent, operator_path.parent, SCRIPT_DIR):
             test_module = _load_module(test_path, f"standalone_test_{test_path.stem}")
             main_fn = _require_callable(test_module, "main", test_path, kind="Standalone test module")
@@ -165,12 +174,16 @@ def _run_import_only_standalone_test(
             with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
                 main_fn(operator_api)
                 _maybe_synchronize_torch()
+        if verbose:
+            print("[run-test] PASSED", file=real_stderr)
         return make_result(
             return_code=0,
             stdout=stdout_buffer.getvalue(),
             stderr=stderr_buffer.getvalue(),
         )
     except Exception:
+        if verbose:
+            print("[run-test] FAILED", file=real_stderr)
         return make_result(
             return_code=1,
             stdout=stdout_buffer.getvalue(),
@@ -187,7 +200,10 @@ def _run_declarative_differential_test(
     test_file: Path,
     operator_file: Path,
     archive_path: Path,
+    *,
+    verbose: bool = False,
 ) -> ResultPayload:
+    real_stderr = sys.stderr
     try:
         torch = importlib.import_module("torch")
     except ImportError as exc:
@@ -202,11 +218,22 @@ def _run_declarative_differential_test(
     stderr_buffer = StringIO()
     try:
         metadata = parse_test_metadata(test_file)
+        if verbose:
+            print("[run-test] mode: differential", file=real_stderr)
+            print(f"[run-test] test file: {test_file}", file=real_stderr)
+            print(f"[run-test] operator file: {operator_file}", file=real_stderr)
         compute = _compute_flag_from_metadata(metadata)
         cases = load_differential_test_cases(test_file, operator_file)
+        if verbose:
+            print(f"[run-test] total cases: {len(cases)}", file=real_stderr)
         records: list[dict[str, object]] = []
         with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
-            for case in cases:
+            for i, case in enumerate(cases):
+                if verbose:
+                    print(
+                        f"[run-test] [{i + 1}/{len(cases)}] {case.case_id} ...",
+                        file=real_stderr, end="", flush=True,
+                    )
                 records.append(
                     {
                         "id": case.case_id,
@@ -215,13 +242,19 @@ def _run_declarative_differential_test(
                     }
                 )
                 _synchronize(torch)
+                if verbose:
+                    print(" ok", file=real_stderr)
         torch.save({"compute": compute, "cases": records}, archive_path)
+        if verbose:
+            print(f"[run-test] archive saved: {archive_path}", file=real_stderr)
         return make_result(
             return_code=0,
             stdout=stdout_buffer.getvalue(),
             stderr=stderr_buffer.getvalue(),
         )
     except Exception:
+        if verbose:
+            print("[run-test] FAILED", file=real_stderr)
         return make_result(
             return_code=1,
             stdout=stdout_buffer.getvalue(),
