@@ -22,6 +22,7 @@ from bench_contract import (  # noqa: F401
     parse_bench_metadata,
     resolve_bench_kernel_names,
     resolve_bench_kernel_resolution,
+    resolve_msprof_bench_file,
 )
 from npu_affinity import NpuDevicePool, affinity_env_for_device, parse_npu_devices
 from debug_device import maybe_print_visible_devices
@@ -112,6 +113,8 @@ def run_local_bench(
     simulator_case_idx: int = 1,
 ) -> tuple[ResultPayload, Path | None]:
     bench_mode = _normalize_bench_mode(bench_mode)
+    if bench_mode in ("msprof", "msprof-simulator"):
+        bench_file = resolve_msprof_bench_file(bench_file)
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
     maybe_print_visible_devices()
@@ -222,6 +225,8 @@ def run_remote_bench(
     output: str | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
     bench_mode = _normalize_bench_mode(bench_mode)
+    if bench_mode in ("msprof", "msprof-simulator"):
+        bench_file = resolve_msprof_bench_file(bench_file)
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
     maybe_print_visible_devices()
