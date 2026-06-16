@@ -57,7 +57,7 @@ class RunEvalMCPServerToolMetadataTests(unittest.TestCase):
         )
         self.assertEqual(
             tools["run-bench"].parameters["properties"]["bench_mode"]["description"],
-            "Optional benchmark mode override. Supported values: torch-npu-profiler, msprof.",
+            "Optional benchmark mode override. Supported values: torch-npu-profiler, msprof, perf-counter.",
         )
 
         self.assertEqual(
@@ -72,10 +72,7 @@ class RunEvalMCPServerToolMetadataTests(unittest.TestCase):
             tools["profile-bench"].parameters["properties"]["target_op"]["description"],
             "Optional operator name to highlight in the generated profile summary.",
         )
-        self.assertEqual(
-            tools["profile-bench"].parameters["properties"]["bench_mode"]["description"],
-            "Optional benchmark mode override. Supported values: torch-npu-profiler, msprof.",
-        )
+        self.assertNotIn("bench_mode", tools["profile-bench"].parameters["properties"])
         self.assertNotIn("bench", tools["profile-bench"].parameters["properties"])
 
         self.assertEqual(

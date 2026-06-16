@@ -145,7 +145,6 @@ class RunLocalProfileBenchFn(Protocol):
         self,
         bench_file: Path,
         operator_file: Path,
-        bench_mode: str,
         case_id: str | None = None,
         kernel_name: str | None = None,
     ) -> tuple[ResultPayload, Path | None]: ...
@@ -156,7 +155,6 @@ class RunRemoteProfileBenchFn(Protocol):
         self,
         bench_file: Path,
         operator_file: Path,
-        bench_mode: str,
         remote: str,
         remote_workdir: str | None,
         case_id: str | None = None,
@@ -198,13 +196,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_bench.add_argument("--remote-workdir")
     run_bench.add_argument("--keep-remote-workdir", action="store_true")
     run_bench.add_argument("--verbose", action="store_true")
-    run_bench.add_argument("--bench-mode", choices=["torch-npu-profiler", "msprof"])
+    run_bench.add_argument("--bench-mode", choices=["torch-npu-profiler", "msprof", "perf-counter"])
     run_bench.add_argument("--npu-devices")
 
     profile_bench = subparsers.add_parser("profile-bench")
     profile_bench.add_argument("--bench-file", required=True)
     profile_bench.add_argument("--operator-file", required=True)
-    profile_bench.add_argument("--bench-mode", choices=["torch-npu-profiler", "msprof"])
     profile_bench.add_argument("--case-id")
     profile_bench.add_argument("--kernel-name", help=argparse.SUPPRESS)
     profile_bench.add_argument("--target-op")
@@ -363,14 +360,12 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
         run_local_profile_bench, run_remote_profile_bench = _load_profile_functions()
         bench_file = _resolve_existing_path(parser, args.bench_file, "Bench file")
         operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
-        resolved_bench_mode = args.bench_mode or _resolve_bench_mode_from_metadata(bench_file)
         remote_workspace: str | None = None
         try:
             if remote is not None:
                 result, profile_dir, remote_workspace = run_remote_profile_bench(
                     bench_file,
                     operator_file,
-                    resolved_bench_mode,
                     remote,
                     remote_workdir,
                     case_id=args.case_id,
@@ -383,7 +378,6 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
                 result, profile_dir = run_local_profile_bench(
                     bench_file,
                     operator_file,
-                    resolved_bench_mode,
                     case_id=args.case_id,
                     kernel_name=args.kernel_name,
                 )
@@ -413,7 +407,7 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
     bench_file = _resolve_existing_path(parser, args.bench_file, "Bench file")
     operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
     _parse_bench_metadata, run_local_bench, run_remote_bench = _load_bench_functions()
-    resolved_bench_mode = args.bench_mode or _resolve_bench_mode_from_metadata(bench_file)
+    resolved_bench_mode = args.bench_mode or "torch-npu-profiler"
     remote_workspace: str | None = None
     try:
         if remote is not None:
@@ -624,17 +618,6 @@ def _raise_if_ref_run_failed(
 ) -> None:
     if int(ref_run_result["return_code"]) != 0 or archived_result is None:
         raise SystemExit(1)
-
-
-def _resolve_bench_mode_from_metadata(bench_file: Path) -> str:
-    parse_bench_metadata = _load_bench_functions()[0]
-    metadata = parse_bench_metadata(bench_file)
-    mode = metadata.get("bench-mode")
-    if mode == "standalone":
-        return "torch-npu-profiler"
-    if mode not in {"torch-npu-profiler", "msprof"}:
-        raise ValueError(f"Benchmark metadata is missing required 'bench-mode' entry: {bench_file}")
-    return str(mode)
 
 
 def _render_result(result: ResultPayload, show_output: bool) -> None:

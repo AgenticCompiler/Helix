@@ -154,11 +154,9 @@ def capture_local_archive(
     case_id: str | None = None,
 ) -> Path:
     _prepare_empty_archive_dir(archive_dir)
-    bench_mode = _resolve_bench_mode(bench_file)
     command = build_execution_command(
         bench_file=bench_file,
         operator_file=operator_file,
-        bench_mode=bench_mode,
         case_id=case_id,
     )
     result = _run_local_command(command, cwd=bench_file.parent)
@@ -206,12 +204,10 @@ def capture_remote_archive(
     remote_archive_dir = f"{remote_root}/archive"
     remote_bench_file = Path(bench_file.name)
     remote_operator_file = Path(operator_file.name)
-    bench_mode = _resolve_bench_mode(bench_file)
     command = build_execution_command(
         bench_file=remote_bench_file,
         operator_file=remote_operator_file,
         python_executable="python3",
-        bench_mode=bench_mode,
         case_id=case_id,
     )
     try:
@@ -476,15 +472,12 @@ def build_execution_command(
     bench_file: Path,
     operator_file: Path,
     python_executable: str | None = None,
-    bench_mode: str | None = None,
     case_id: str | None = None,
 ) -> list[str]:
     operator_arg = operator_file.name
     if bench_file.parent != operator_file.parent:
         operator_arg = os.path.relpath(operator_file, bench_file.parent)
     interpreter = sys.executable if python_executable is None else python_executable
-    resolved_bench_mode = bench_mode or _resolve_bench_mode(bench_file)
-    del resolved_bench_mode
     helper_script = _bench_runtime_script_path() if python_executable is None else Path("bench_runtime.py")
     return [
         interpreter,
@@ -534,31 +527,14 @@ def _stage_required_files(
         verbose=verbose,
         stderr=stderr,
     )
-    if _resolve_bench_mode(bench_file) in {"torch-npu-profiler", "msprof"}:
-        for helper_path in _bench_runtime_support_paths():
-            copy_file_to_remote(
-                spec,
-                helper_path,
-                f"{remote_source_dir}/{helper_path.name}",
-                verbose=verbose,
-                stderr=stderr,
-            )
-
-
-def _resolve_bench_mode(bench_file: Path) -> str:
-    for line in bench_file.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if not stripped.startswith("#"):
-            break
-        body = stripped[1:].strip()
-        if body.startswith("bench-mode:"):
-            mode = body.split(":", 1)[1].strip()
-            if mode == "standalone":
-                return "torch-npu-profiler"
-            return mode
-    return "torch-npu-profiler"
+    for helper_path in _bench_runtime_support_paths():
+        copy_file_to_remote(
+            spec,
+            helper_path,
+            f"{remote_source_dir}/{helper_path.name}",
+            verbose=verbose,
+            stderr=stderr,
+        )
 
 
 def _bench_runtime_script_path() -> Path:

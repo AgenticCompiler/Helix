@@ -1,13 +1,11 @@
 ---
 name: triton-npu-gen-bench
-description: Generate benchmark code for a Triton or Triton Ascend operator. Use when Codex needs to author a new benchmark file, infer the callable under benchmark, set the benchmark's default bench-mode metadata, or honor a requested output location.
+description: Generate benchmark code for a Triton or Triton Ascend operator. Use when there is a need to create a new benchmark file for a given operator.
 ---
 
 # Bench Gen
 
-Generate a Python benchmark script for one operator implementation.
-
-Use this skill when the user needs a performance benchmark file for `torch_npu.profiler`-based timing or `msprof` execution.
+Generate a Triton NPU operator benchmark script for one operator implementation.
 
 ## Operator File Assumption
 
@@ -24,8 +22,7 @@ Use this skill when the user needs a performance benchmark file for `torch_npu.p
 ## Inputs
 
 - Operator source code or an operator file path
-- Requested `torch-npu-profiler` mode means the generated file should default to `torch_npu.profiler` execution through its `# bench-mode:` metadata.
-- Requested `msprof` mode means the generated file should default to `msprof` execution through its `# bench-mode:` metadata.
+- The requested bench mode informs the generator about how the benchmark will be executed, but the generated file does not include a `# bench-mode:` header. Bench mode is a runtime concern.
 - A requested output path should become the final destination for the benchmark.
 - Auto-fix means running the generated benchmark and repairing the generated benchmark file rather than the operator when the generated harness fails.
 
@@ -43,17 +40,11 @@ Use this skill when the user needs a performance benchmark file for `torch_npu.p
 
 The generated benchmark file must include a short metadata header near the top of the file:
 
-- `# bench-mode: <mode>`
 - `# api-name: <resolved-entrypoint>`
 - `# api-kind: <triton-wrapper|torch-function|torch-module>`
 - `# kernels: <resolved_kernel_names>`
 
-The generator must not omit `# bench-mode:`:
-
-- set `# bench-mode: torch-npu-profiler` when the requested default execution mode is `torch-npu-profiler`
-- set `# bench-mode: msprof` when the requested default execution mode is `msprof`
-
-Across benchmark modes, the generated file must be an **import-only** module that exports:
+The generated file must be an **import-only** module that exports:
 
 - `build_operator_api(operator_module)`
 - `build_bench_cases()`
@@ -75,13 +66,14 @@ Use `run-bench` as the standard execution command for generated benchmarks.
 - For command details and required inputs, read only the focused `run-bench` guide from that skill.
 - Validate the original-operator or optimized-operator path that matches the outer task.
 - If the outer task is marked for remote execution, carry the same remote settings into the `run-bench` path.
+- Pass the according `bench-mode` to the `run-bench` command.
 
 ## Workflow
 
 1. Read the operator file and resolve the public entrypoint, `api-kind`, one or more Triton kernel names, and realistic benchmark inputs.
    - When the file has a `Model -> wrapper -> kernel` structure, resolve the module class as the entrypoint if it is a valid no-argument `torch-module`.
 2. If the public entrypoint is missing, ambiguous, or unsafe to use, stop and report the problem instead of guessing.
-3. Read the unified benchmark spec and map the requested benchmark mode to the generated file's `# bench-mode:` metadata.
+3. Read the unified benchmark spec. The requested bench mode informs the generation agent but is not written into the file header.
 4. Generate a benchmark harness that follows the shared spec, keeps setup separate from measurement when practical, and writes the required metadata header.
    - If the harness uses randomized input generation, fix the seed inside case construction so repeated runs of the same harness produce identical inputs.
    - For both modes, implement `build_operator_api(operator_module)`, `build_bench_cases()`, and `build_bench_case_fn(operator_api, case)` instead of a directly executable timing script.
@@ -93,7 +85,7 @@ Use `run-bench` as the standard execution command for generated benchmarks.
 ## Quality Rules
 
 - Generated benchmarks **must run on Ascend NPU** (`torch.npu`). Do **not** generate harnesses whose primary path executes the operator on CUDA, CPU, or other devices. See the unified spec for normative device rules.
-- Always emit the required `# bench-mode:` metadata line and set it to the requested default mode.
+- Bench mode is a runtime concern; do not emit a `# bench-mode:` metadata line.
 - Measure the operator body, not one-time setup.
 - Prefer stable repeated timing over a single run.
 - Keep generated code easy to edit by hand.

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import shutil
 
-from triton_agent.execution import parse_bench_metadata, parse_test_metadata
+from triton_agent.execution import parse_test_metadata
 from triton_agent.optimize.baseline import baseline_dir, baseline_gate_issues, load_baseline_state
 
 
@@ -110,11 +110,12 @@ def _classify_optimize_workspace(
             None,
         )
 
-    bench_mode = _parse_bench_mode(bench_harness)
-    if bench_mode is None:
+    try:
+        bench_mode = _resolve_bench_mode_from_baseline(workdir)
+    except (FileNotFoundError, ValueError, KeyError) as exc:
         return WorkspaceInspection(
             "partial-session",
-            f"unreadable bench-mode metadata in {bench_harness.name}",
+            f"unable to resolve bench mode from baseline/state.json: {exc}",
             None,
             None,
         )
@@ -331,14 +332,9 @@ def _parse_test_mode(test_file: Path) -> str | None:
     return str(mode)
 
 
-def _parse_bench_mode(bench_file: Path) -> str | None:
-    metadata = parse_bench_metadata(bench_file)
-    mode = metadata.get("bench-mode")
-    if mode == "standalone":
-        return "torch-npu-profiler"
-    if mode not in {"torch-npu-profiler", "msprof"}:
-        return None
-    return str(mode)
+def _resolve_bench_mode_from_baseline(workdir: Path) -> str:
+    state = load_baseline_state(workdir)
+    return state.bench_mode
 
 
 def _baseline_issue(workdir: Path) -> str | None:

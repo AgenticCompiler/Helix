@@ -4589,13 +4589,13 @@ class PathResolutionTests(unittest.TestCase):
                 output=str(perf_file),
             )
 
-    def test_main_run_bench_reads_mode_from_metadata_when_flag_missing(self) -> None:
+    def test_main_run_bench_defaults_to_torch_npu_profiler_when_flag_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             operator = root / "kernel.py"
             bench_file = root / "bench_kernel.py"
             operator.write_text("print('x')", encoding="utf-8")
-            bench_file.write_text("# bench-mode: msprof\n# kernel: k\nprint('bench')", encoding="utf-8")
+            bench_file.write_text("# kernel: k\nprint('bench')", encoding="utf-8")
 
             fake_result = AgentResult(return_code=0, stdout="", stderr="")
             with patch("triton_agent.commands.execution.run_local_bench", return_value=(fake_result, None)) as mocked:
@@ -4613,7 +4613,7 @@ class PathResolutionTests(unittest.TestCase):
             mocked.assert_called_once_with(
                 bench_file.resolve(),
                 operator.resolve(),
-                "msprof",
+                "torch-npu-profiler",
                 None,
                 verbose=False,
                 output=None,
@@ -4645,7 +4645,7 @@ class PathResolutionTests(unittest.TestCase):
             mocked.assert_called_once_with(
                 bench_file.resolve(),
                 operator.resolve(),
-                "msprof",
+                "torch-npu-profiler",
                 "0,2-3",
                 verbose=False,
                 output=None,

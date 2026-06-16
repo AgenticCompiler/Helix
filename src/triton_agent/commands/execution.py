@@ -6,7 +6,7 @@ from pathlib import Path
 
 from triton_agent.commands.comparison import compare_result_files
 from triton_agent.execution import (
-    resolve_bench_mode_from_metadata,
+    resolve_bench_mode_default,
     resolve_test_mode_from_metadata,
     run_local_bench,
     run_local_simulator,
@@ -83,7 +83,7 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
 
 def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     bench_file, operator_file = resolve_run_bench_paths(parser, args)
-    resolved_bench_mode = args.bench_mode or resolve_bench_mode_from_metadata(bench_file)
+    resolved_bench_mode = args.bench_mode or resolve_bench_mode_default()
     remote, remote_workdir = resolve_remote_execution(
         getattr(args, "remote", None),
         getattr(args, "remote_workdir", None),
