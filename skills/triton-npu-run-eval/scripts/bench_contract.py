@@ -114,3 +114,13 @@ def _describe_kernel_source(metadata_kernels: list[str], operator_kernels: list[
     if metadata_kernels:
         return "metadata"
     return "operator"
+
+
+def resolve_msprof_bench_file(bench_file: Path) -> Path:
+    """If an msprof-specific bench file exists alongside the given file, return it.
+
+    Given ``bench_abs.py``, checks for ``bench_abs_msprof.py`` in the same directory.
+    Returns the msprof variant if found, otherwise returns the original file.
+    """
+    msprof_file = bench_file.with_name(f"{bench_file.stem}_msprof{bench_file.suffix}")
+    return msprof_file if msprof_file.is_file() else bench_file
