@@ -422,8 +422,10 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
 
         self.assertEqual(
             remote_run.call_args.args[2],
-            ["python3", "test kernel.py", "--operator-file", "kernel op.py"],
+            ["python3", "-c", remote_run.call_args.args[2][2]],
         )
+        self.assertIn("test kernel.py", remote_run.call_args.args[2][2])
+        self.assertIn("kernel op.py", remote_run.call_args.args[2][2])
 
     def test_compare_remote_result_files_quotes_filenames_with_spaces(self) -> None:
         module = load_compare_result_module()
@@ -449,7 +451,6 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                     module.compare_remote_result_files(
                         oracle,
                         new,
-                        "balanced",
                         "alice@example.com",
                         None,
                     )
@@ -468,12 +469,10 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             [
                 "python3",
                 "compare_result.py",
-                "--oracle-result",
+                "--ref-result",
                 "oracle result.pt",
                 "--new-result",
                 "new result.pt",
-                "--compare-level",
-                "balanced",
             ],
         )
 

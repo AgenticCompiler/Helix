@@ -32,6 +32,11 @@ def load_simulator_runner_module():
 def load_compare_result_module():
     return load_operator_eval_script_module("compare_result")
 
+
+def load_npu_compare_module():
+    return load_operator_eval_script_module("npu_compare")
+
+
 def load_bench_runtime_module():
     return load_operator_eval_script_module("bench_runtime")
 

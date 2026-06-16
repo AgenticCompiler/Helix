@@ -114,7 +114,7 @@ def test_main_optimize_resume_fresh_rejects_existing_optimize_artifacts(self) ->
     self.assertIn("resume fresh refused because optimize artifacts already exist", stderr.getvalue())
 ```
 
-Also replace the old `--continue` validation tests with `--resume continue` coverage and add the continue-path mode-override rejection cases.
+Also replace the old `--continue` validation tests with `--resume continue` coverage and add continue-path mode-assertion validation cases (matching modes succeed, conflicting modes fail).
 
 - [ ] **Step 2: Run the focused tests to verify they fail**
 
@@ -182,7 +182,7 @@ def test_optimize_prompt_mentions_continue_mode_for_resolved_resume(self) -> Non
 
 Add request-building assertions that:
 - `--resume auto` + `no-session` keeps explicit `--test-mode` / `--bench-mode`
-- `--resume auto` + `resumable-session` reuses metadata and rejects explicit mode overrides
+- `--resume auto` + `resumable-session` reuses metadata and treats explicit mode flags as assertions: matching values succeed, conflicting values fail
 - resume requests keep the effective continuation flag when `AgentRunner.resume()` clones the request
 
 - [ ] **Step 2: Run the prompt/request tests to verify they fail**

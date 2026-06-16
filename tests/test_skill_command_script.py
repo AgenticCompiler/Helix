@@ -8,7 +8,7 @@ import importlib.util
 import json
 from io import StringIO
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TextIO, get_type_hints
 from unittest.mock import patch
 
 _TRITON_ROUND_OPERATOR = """\
@@ -741,7 +741,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(exc.exception.code, 2)
         self.assertIn("--oracle-result", stderr.getvalue())
 
-    def test_script_run_test_auto_compares_when_baseline_result_is_provided(self) -> None:
+    def test_script_run_test_auto_compares_when_ref_result_is_provided(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
@@ -806,11 +806,10 @@ class SkillCommandScriptTests(unittest.TestCase):
                         module,
                         "_load_compare_result_functions",
                         return_value=(
-                            lambda baseline_path, new_path, compare_level: (
+                            lambda baseline_path, new_path: (
                                 0
                                 if baseline_path == baseline_result.resolve()
                                 and new_path == archive
-                                and compare_level == "balanced"
                                 else 2
                             ),
                             lambda *_args, **_kwargs: 0,
@@ -823,7 +822,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                                 str(test_file),
                                 "--operator-file",
                                 str(operator),
-                                "--baseline-result",
+                                "--ref-result",
                                 str(baseline_result),
                             ]
                         )
@@ -834,6 +833,52 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(stdout.getvalue(), f"Return code: 0\nArchived result: {archive}\n")
         self.assertEqual(stderr.getvalue(), "")
+
+    def test_run_test_parser_prefers_ref_flag_names_with_legacy_aliases(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_ref_flag_parser_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        ref_args = module.build_parser().parse_args(
+            [
+                "run-test",
+                "--test-file",
+                "differential_test_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--ref-result",
+                "ref_result.pt",
+                "--ref-operator-file",
+                "ref_kernel.py",
+            ]
+        )
+        alias_args = module.build_parser().parse_args(
+            [
+                "run-test",
+                "--test-file",
+                "differential_test_kernel.py",
+                "--operator-file",
+                "kernel.py",
+                "--baseline-result",
+                "baseline_result.pt",
+                "--baseline-operator-file",
+                "baseline_kernel.py",
+            ]
+        )
+
+        self.assertEqual(ref_args.ref_result, "ref_result.pt")
+        self.assertEqual(ref_args.ref_operator_file, "ref_kernel.py")
+        self.assertEqual(alias_args.ref_result, "baseline_result.pt")
+        self.assertEqual(alias_args.ref_operator_file, "baseline_kernel.py")
 
     def test_script_run_test_uses_existing_derived_baseline_result(self) -> None:
         script = (
@@ -904,11 +949,10 @@ class SkillCommandScriptTests(unittest.TestCase):
                         module,
                         "_load_compare_result_functions",
                         return_value=(
-                            lambda baseline_path, new_path, compare_level: (
+                            lambda baseline_path, new_path: (
                                 0
                                 if baseline_path == derived_baseline_result.resolve()
                                 and new_path == archive
-                                and compare_level == "balanced"
                                 else 2
                             ),
                             lambda *_args, **_kwargs: 0,
@@ -921,7 +965,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                                 str(test_file),
                                 "--operator-file",
                                 str(operator),
-                                "--baseline-operator-file",
+                                "--ref-operator-file",
                                 str(baseline_operator),
                             ]
                         )
@@ -1013,11 +1057,10 @@ class SkillCommandScriptTests(unittest.TestCase):
                         module,
                         "_load_compare_result_functions",
                         return_value=(
-                            lambda baseline_path, new_path, compare_level: (
+                            lambda baseline_path, new_path: (
                                 0
                                 if baseline_path == baseline_archive.resolve()
                                 and new_path == archive
-                                and compare_level == "balanced"
                                 else 2
                             ),
                             lambda *_args, **_kwargs: 0,
@@ -1030,7 +1073,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                                 str(test_file),
                                 "--operator-file",
                                 str(operator),
-                                "--baseline-operator-file",
+                                "--ref-operator-file",
                                 str(baseline_operator),
                             ]
                         )
@@ -1122,7 +1165,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 sys.stderr = original_stderr
 
         self.assertEqual(exc.exception.code, 2)
-        self.assertIn("requires exactly one of --baseline-result or --baseline-operator-file", stderr.getvalue())
+        self.assertIn("requires exactly one of --ref-result or --ref-operator-file", stderr.getvalue())
 
     def test_script_run_test_optimize_requires_baseline_source_for_differential_metadata(self) -> None:
         script = (
@@ -1163,9 +1206,9 @@ class SkillCommandScriptTests(unittest.TestCase):
                 sys.stderr = original_stderr
 
         self.assertEqual(exc.exception.code, 2)
-        self.assertIn("requires exactly one of --baseline-result or --baseline-operator-file", stderr.getvalue())
+        self.assertIn("requires exactly one of --ref-result or --ref-operator-file", stderr.getvalue())
 
-    def test_script_run_test_optimize_rejects_both_baseline_result_and_operator_file(self) -> None:
+    def test_script_run_test_optimize_rejects_both_ref_result_and_operator_file(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
@@ -1202,9 +1245,9 @@ class SkillCommandScriptTests(unittest.TestCase):
                             str(test_file),
                             "--operator-file",
                             str(operator),
-                            "--baseline-result",
+                            "--ref-result",
                             str(baseline_result),
-                            "--baseline-operator-file",
+                            "--ref-operator-file",
                             str(baseline_operator),
                         ]
                     )
@@ -1212,9 +1255,9 @@ class SkillCommandScriptTests(unittest.TestCase):
                 sys.stderr = original_stderr
 
         self.assertEqual(exc.exception.code, 2)
-        self.assertIn("requires exactly one of --baseline-result or --baseline-operator-file", stderr.getvalue())
+        self.assertIn("requires exactly one of --ref-result or --ref-operator-file", stderr.getvalue())
 
-    def test_script_run_test_optimize_auto_compares_when_baseline_result_is_provided(self) -> None:
+    def test_script_run_test_optimize_auto_compares_when_ref_result_is_provided(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
@@ -1279,11 +1322,10 @@ class SkillCommandScriptTests(unittest.TestCase):
                     module,
                     "_load_compare_result_functions",
                     return_value=(
-                            lambda baseline_path, new_path, compare_level: (
+                            lambda baseline_path, new_path: (
                                 0
                                 if baseline_path == baseline_result.resolve()
                                 and new_path == archive
-                                and compare_level == "balanced"
                                 else 2
                             ),
                             lambda *_args, **_kwargs: 0,
@@ -1296,7 +1338,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                                 str(test_file),
                                 "--operator-file",
                                 str(operator),
-                                "--baseline-result",
+                                "--ref-result",
                                 str(baseline_result),
                             ]
                         )
@@ -1377,11 +1419,10 @@ class SkillCommandScriptTests(unittest.TestCase):
                         module,
                         "_load_compare_result_functions",
                         return_value=(
-                            lambda baseline_path, new_path, compare_level: (
+                            lambda baseline_path, new_path: (
                                 0
                                 if baseline_path == derived_baseline_result.resolve()
                                 and new_path == archive
-                                and compare_level == "balanced"
                                 else 2
                             ),
                             lambda *_args, **_kwargs: 0,
@@ -1394,7 +1435,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                                 str(test_file),
                                 "--operator-file",
                                 str(operator),
-                                "--baseline-operator-file",
+                                "--ref-operator-file",
                                 str(baseline_operator),
                             ]
                         )
@@ -1486,11 +1527,10 @@ class SkillCommandScriptTests(unittest.TestCase):
                         module,
                         "_load_compare_result_functions",
                         return_value=(
-                            lambda baseline_path, new_path, compare_level: (
+                            lambda baseline_path, new_path: (
                                 0
                                 if baseline_path == baseline_archive.resolve()
                                 and new_path == optimize_archive
-                                and compare_level == "balanced"
                                 else 2
                             ),
                             lambda *_args, **_kwargs: 0,
@@ -1847,6 +1887,24 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(compare_result.__module__, "compare_result")
         self.assertEqual(compare_remote_result.__name__, "compare_remote_result_files")
         self.assertEqual(compare_remote_result.__module__, "compare_result")
+
+    def test_compare_remote_result_protocol_uses_textio_stderr(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "triton-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_compare_result_protocol_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        hints = get_type_hints(module.CompareRemoteResultFn.__call__)
+
+        self.assertEqual(hints["stderr"], Optional[TextIO])
 
     def test_optimize_submit_baseline_script_help_runs_without_installed_entrypoint(self) -> None:
         script = (

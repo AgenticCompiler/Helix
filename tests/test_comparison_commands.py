@@ -107,10 +107,10 @@ class ComparisonCommandHandlerTests(unittest.TestCase):
         new = Path("/tmp/new.pt")
 
         with patch.object(module, "compare_result_files", return_value=0) as mocked:
-            exit_code = comparison_module.compare_result_files(oracle, new, "balanced")
+            exit_code = comparison_module.compare_result_files(oracle, new)
 
         self.assertEqual(exit_code, 0)
-        mocked.assert_called_once_with(oracle, new, "balanced")
+        mocked.assert_called_once_with(oracle, new)
 
     def test_compare_remote_result_files_runs_via_skill_wrapper(self) -> None:
         module = comparison_module._load_compare_result()
@@ -121,7 +121,6 @@ class ComparisonCommandHandlerTests(unittest.TestCase):
             exit_code = comparison_module.compare_remote_result_files(
                 oracle,
                 new,
-                "balanced",
                 "alice@example.com",
                 "/tmp/remote-workdir",
                 verbose=True,
@@ -132,7 +131,6 @@ class ComparisonCommandHandlerTests(unittest.TestCase):
         mocked.assert_called_once_with(
             oracle,
             new,
-            "balanced",
             "alice@example.com",
             "/tmp/remote-workdir",
             verbose=True,
@@ -150,7 +148,7 @@ class ComparisonCommandHandlerTests(unittest.TestCase):
             args = parser.parse_args(
                 [
                     "compare-result",
-                    "--oracle-result",
+                    "--ref-result",
                     str(oracle),
                     "--new-result",
                     str(new),
@@ -179,7 +177,7 @@ class ComparisonCommandHandlerTests(unittest.TestCase):
             args = parser.parse_args(
                 [
                     "compare-result",
-                    "--oracle-result",
+                    "--ref-result",
                     str(oracle),
                     "--new-result",
                     str(new),
@@ -204,7 +202,6 @@ class ComparisonCommandHandlerTests(unittest.TestCase):
             mocked.assert_called_once_with(
                 oracle.resolve(),
                 new.resolve(),
-                "balanced",
                 "alice@example.com",
                 "/tmp/triton-agent",
                 verbose=False,

@@ -4,7 +4,7 @@
 
 - Replace the old boolean continue flag with `optimize --resume {auto,continue,fresh}`.
 - `auto` should resume a complete existing optimization session, start fresh when no optimize artifacts exist, and fail explicitly for partial optimize state.
-- Continue-path optimize runs must reject new `--test-mode` and `--bench-mode` overrides.
+- Continue-path optimize runs allow `--test-mode` and `--bench-mode` only when they match existing harness metadata; mismatches are rejected.
 
 ## User-Visible Behavior
 
@@ -18,16 +18,17 @@
   - an existing generated benchmark harness with readable `# bench-mode: ...` metadata
 - `resume auto` starts fresh only when the workspace has no optimize artifacts at all.
 - If the workspace contains partial optimize artifacts, `resume auto` fails immediately with a short actionable error instead of guessing.
-- In continuation paths, `--test-mode` and `--bench-mode` are rejected because the optimize session already has established validation artifacts and modes.
+- In continuation paths (`--resume auto` with an existing session and `--resume continue`), `--test-mode` and `--bench-mode` are allowed only when they match the existing session's modes; mismatches are rejected because the optimize session already has established validation artifacts and modes.
 
 ## Mode Resolution
 
 - Fresh optimize runs keep the existing behavior:
   - default test mode: `differential`
   - default bench mode: `torch-npu-profiler`
-- Continue-path optimize runs resolve modes from existing generated harness metadata:
+- Continue-path optimize runs (`--resume auto` with an existing session and `--resume continue`) resolve modes from existing generated harness metadata:
   - test mode from the existing optimize test harness
   - bench mode from the existing optimize benchmark harness
+- Explicit `--test-mode` and `--bench-mode` flags on these paths are treated as assertions: matching values succeed, conflicting values fail.
 - If multiple plausible test harnesses exist for a continuation path, fail explicitly instead of guessing.
 
 ## Prompt Contract
@@ -58,8 +59,8 @@
 
 - Parser tests for `optimize --resume` and `optimize-batch --resume`.
 - CLI tests for:
-  - rejecting `--resume continue --test-mode`
-  - rejecting `--resume continue --bench-mode`
+  - allowing `--resume continue --test-mode` when it matches existing metadata and rejecting mismatches
+  - allowing `--resume continue --bench-mode` when it matches existing metadata and rejecting mismatches
   - resolving `resume auto` to fresh for no-session workspaces
   - rejecting partial optimize state in `resume auto`
   - rejecting existing optimize artifacts in `resume fresh`

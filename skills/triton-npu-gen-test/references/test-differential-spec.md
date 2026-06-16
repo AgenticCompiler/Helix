@@ -15,10 +15,13 @@ The test file must include this metadata header near the top of the file:
 
 ```python
 # test-mode: differential
+# compute-kind: <compute|non-compute>
 # api-name: <name>
 # api-kind: <triton-wrapper|torch-function|torch-module>
 # kernels: <name>
 ```
+
+`# compute-kind:` is optional for legacy files and defaults to `compute`, but generated files must always include it. Use `compute` for operators that perform numeric computation. Use `non-compute` only for pure data movement, layout, view, copy, or similar operators that must be checked with binary equality.
 
 The file must be **import-only**:
 - Do not make the test file a self-executing command-line program.
@@ -33,9 +36,19 @@ The module must export:
 
 `build_differential_test_cases(operator_api)` should return an iterable of case mappings. Each case mapping must include:
 - `id`: a non-empty string case identifier
+- `inputs`: a tuple or list containing the exact runtime arguments passed to the operator
 - `fn`: a callable that executes one deterministic case and returns the operator output
 
-External execution tooling owns case execution and archiving.
+External execution tooling owns case execution and archiving. It records the file-level compute flag and writes payloads shaped as:
+
+```python
+{
+    "compute": <bool>,
+    "cases": [
+        {"id": "...", "inputs": (...,), "result": ...},
+    ],
+}
+```
 
 ### 3. Operator API loading
 
@@ -93,9 +106,9 @@ def build_operator_api(operator_module):
 
 ### 5. Differential output behavior
 
-- External execution tooling calls each case function in execution order and collects outputs into a `results` list.
+- External execution tooling calls each case function in execution order and collects case ids, inputs, and outputs into a `cases` list.
 - Do **not** perform result assertions in this file.
-- Each entry in `results` must be the operator output for one case, appended in execution order.
+- Each entry in `cases` must include the operator output for one case and the exact inputs used to run it.
 - External execution tooling writes the result directly to `<operator>_result.pt`.
 
 ### 6. Test function structure
@@ -108,6 +121,7 @@ def build_operator_api(operator_module):
 
 ```python
 # test-mode: differential
+# compute-kind: compute
 # api-name: <resolved_entrypoint>
 # api-kind: <resolved_api_kind>
 # kernels: <resolved_kernel_names>
@@ -123,12 +137,15 @@ def build_operator_api(operator_module):
     return getattr(operator_module, API_NAME)
 
 def build_differential_test_cases(operator_api):
+    inputs_1 = (...)
+    inputs_2 = (...)
+    inputs_3 = (...)
     return [
-        {"id": "case-1", "fn": lambda: operator_api(...)},
-        {"id": "case-2", "fn": lambda: operator_api(...)},
-        {"id": "case-3", "fn": lambda: operator_api(...)},
+        {"id": "case-1", "inputs": inputs_1, "fn": lambda: operator_api(*inputs_1)},
+        {"id": "case-2", "inputs": inputs_2, "fn": lambda: operator_api(*inputs_2)},
+        {"id": "case-3", "inputs": inputs_3, "fn": lambda: operator_api(*inputs_3)},
     ]
 ```
 
-- External execution tooling executes `build_differential_test_cases(operator_api)` and writes the result directly to `<operator>_result.pt` after success.
+- External execution tooling executes `build_differential_test_cases(operator_api)` and writes the case records directly to `<operator>_result.pt` after success.
 - Running the file directly is not part of this contract.

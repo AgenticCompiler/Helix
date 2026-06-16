@@ -12,16 +12,14 @@ from triton_agent.skill_loader import load_operator_eval_script_module
 class CompareResultModule(Protocol):
     def compare_result_files(
         self,
-        oracle_result: Path,
+        ref_result: Path,
         new_result: Path,
-        compare_level: str,
     ) -> int: ...
 
     def compare_remote_result_files(
         self,
-        oracle_result: Path,
+        ref_result: Path,
         new_result: Path,
-        compare_level: str,
         remote: str,
         remote_workdir: str | None,
         verbose: bool = False,
@@ -48,14 +46,13 @@ def _load_compare_perf() -> ComparePerfModule:
     return cast(ComparePerfModule, load_operator_eval_script_module("perf_artifacts"))
 
 
-def compare_result_files(oracle_result: Path, new_result: Path, compare_level: str) -> int:
-    return _load_compare_result().compare_result_files(oracle_result, new_result, compare_level)
+def compare_result_files(ref_result: Path, new_result: Path) -> int:
+    return _load_compare_result().compare_result_files(ref_result, new_result)
 
 
 def compare_remote_result_files(
-    oracle_result: Path,
+    ref_result: Path,
     new_result: Path,
-    compare_level: str,
     remote: str,
     remote_workdir: str | None,
     *,
@@ -63,9 +60,8 @@ def compare_remote_result_files(
     stderr: TextIO | None = None,
 ) -> int:
     return _load_compare_result().compare_remote_result_files(
-        oracle_result,
+        ref_result,
         new_result,
-        compare_level,
         remote,
         remote_workdir,
         verbose=verbose,
@@ -89,9 +85,9 @@ def compare_perf_files(
 
 
 def handle_compare_result(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
-    oracle_result = Path(args.oracle_result).expanduser().resolve()
-    if not oracle_result.exists():
-        parser.error(f"Oracle result path does not exist: {oracle_result}")
+    ref_result = Path(args.ref_result).expanduser().resolve()
+    if not ref_result.exists():
+        parser.error(f"Reference result path does not exist: {ref_result}")
     new_result = Path(args.new_result).expanduser().resolve()
     if not new_result.exists():
         parser.error(f"New result path does not exist: {new_result}")
@@ -102,9 +98,8 @@ def handle_compare_result(parser: argparse.ArgumentParser, args: argparse.Namesp
     if remote is not None:
         try:
             return compare_remote_result_files(
-                oracle_result,
+                ref_result,
                 new_result,
-                args.compare_level,
                 remote,
                 remote_workdir,
                 verbose=args.verbose,
@@ -113,7 +108,7 @@ def handle_compare_result(parser: argparse.ArgumentParser, args: argparse.Namesp
         except (RuntimeError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
             return 1
-    return compare_result_files(oracle_result, new_result, args.compare_level)
+    return compare_result_files(ref_result, new_result)
 
 
 def handle_compare_perf(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
