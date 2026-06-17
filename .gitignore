@@ -8,3 +8,5 @@ workspace/
 .worktrees/
 .vscode/
 .sisyphus/
+test_case/*
+sim_signal_design/*

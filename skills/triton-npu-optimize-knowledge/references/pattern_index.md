@@ -181,9 +181,9 @@ Evaluate these after collecting all available canonical features and scanning th
 | Field | Requirement |
 |---|---|
 | Source gate | High-dimensional contiguous tensor is accessed through flattened 1D offsets, manual coordinate decode, or inner-dimension stride arithmetic that could be modeled with `tl.make_block_ptr`. |
-| Required signals | ANY strong signal: `SCALAR_to_VECTOR_cycles > 10`; OR `MTE3_cycles% > 10` AND `SCALAR_and_MTE3_over_SCALAR > 20%`; OR `MTE2_and_MTE3_over_MTE2 > 50%`. |
-| Supporting signals | `flow_bidirectional_exists = true`; `SCALAR_and_VECTOR_over_SCALAR < 2%` AND `SCALAR_cycles% > 10`; few active cores in per-core sections. |
-| Reject when | Access is truly gather/scatter or index-pointer driven; `SCALAR_and_VECTOR_over_VECTOR > 60%`; `MTE2_cycles% < 0.5%`. |
+| Required signals | ANY strong signal: `SCALAR_cycles% / VECTOR_cycles% > 10`; OR `MTE3_cycles% > 10%` AND `%(SCALAR&MTE3/SCALAR) > 20%`; OR `%(MTE2&MTE3/MTE2) > 50%`. |
+| Supporting signals | `flow_bidirectional_exists = true`; `%(SCALAR&VECTOR/SCALAR) < 2%` AND `SCALAR_cycles% > 10%`; few active cores in per-core sections. |
+| Reject when | Access is truly gather/scatter or index-pointer driven; `%(SCALAR&VECTOR/VECTOR) > 60%`; `MTE2_cycles% < 0.5%`. |
 | Candidate | `block-pointer-dimensionality` |
 
 **Composite route: `software-pipeline-dependency-profiling`**
