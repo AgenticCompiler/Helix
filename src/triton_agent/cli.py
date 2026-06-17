@@ -40,7 +40,7 @@ _Handler = Callable[[argparse.ArgumentParser, argparse.Namespace], int]
 _AGENT_CHOICES = ("codex", "opencode", "pi", "claude", "openhands", "traecli")
 _FORMAT_CHOICES = ("text", "markdown")
 _TEST_MODE_CHOICES = ("standalone", "differential")
-_BENCH_MODE_CHOICES = ("torch-npu-profiler", "msprof")
+_BENCH_MODE_CHOICES = ("torch-npu-profiler", "msprof", "perf-counter")
 _RESUME_CHOICES = ("auto", "continue", "fresh")
 _ROUND_MODE_CHOICES = ("checked", "supervised")
 _TARGET_CHIP_CHOICES = ("A3", "A5")
@@ -196,7 +196,6 @@ class _CommandSpec:
     has_log_tools: bool = False
     has_url: bool = False
     has_diff_skills_update_options: bool = False
-    has_operator_filter: bool = False
 
 
 _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
@@ -234,7 +233,6 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         concurrency_default=1,
         concurrency_accepts_max=True,
         has_log_tools=True,
-        has_operator_filter=True,
     ),
     CommandKind.CONVERT: _CommandSpec(
         handler=handle_convert,
@@ -266,7 +264,6 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         concurrency_default=1,
         concurrency_accepts_max=True,
         has_log_tools=True,
-        has_operator_filter=True,
     ),
     CommandKind.GEN_TEST: _CommandSpec(
         handler=handle_gen_test,
@@ -446,7 +443,6 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         concurrency_default=1,
         concurrency_accepts_max=True,
         has_log_tools=True,
-        has_operator_filter=True,
     ),
     CommandKind.DIFF_SKILLS_UPDATE: _CommandSpec(
         handler=handle_diff_skills_update,
@@ -602,11 +598,6 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--enable-report", action="store_true", default=False)
         if spec.has_prompt:
             subparser.add_argument("--prompt")
-        if spec.has_operator_filter:
-            subparser.add_argument(
-                "--operator-filter",
-                help="Shell-style glob matched against the selected operator filename basename after built-in exclusions.",
-            )
         if spec.has_diff_skills_update_options:
             subparser.add_argument(
                 "--source",
