@@ -57,8 +57,8 @@ class DiscoveryResult:
 
 @dataclass
 class DiffAgentOutput:
-    matched_patterns: list[str] = field(default_factory=list)
-    updated_patterns: list[str] = field(default_factory=list)
+    matched_patterns: list[str] = field(default_factory=list[str])
+    updated_patterns: list[str] = field(default_factory=list[str])
     summary: str = ""
 
 
@@ -70,7 +70,7 @@ class IterationReport:
     simulate_return_code: int
     analysis_return_code: int
     analysis_summary: str
-    updated_patterns: list[str] = field(default_factory=list)
+    updated_patterns: list[str] = field(default_factory=list[str])
 
 
 @dataclass

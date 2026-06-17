@@ -159,6 +159,9 @@ def collect_workspace_upload_files(workspace: Path) -> CollectedUpload:
         if rel_str.endswith("agent-sessions.jsonl"):
             excluded_entries.append((rel_str, "excluded file type"))
             continue
+        if "/agent-session-" in f"/{rel_str}" and rel_str.endswith(".json"):
+            excluded_entries.append((rel_str, "excluded file type"))
+            continue
 
         filtered.append(f)
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from triton_agent.diff_skills_update.models import PairRunResult, SkipRecord
 
@@ -19,7 +19,7 @@ def read_json_file(path: Path) -> dict[str, object]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         return {}
-    return data
+    return cast(dict[str, object], data)
 
 
 def write_pair_report(result: PairRunResult) -> None:

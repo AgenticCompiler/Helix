@@ -8,3 +8,4 @@ workspace/
 .worktrees/
 .vscode/
 .sisyphus/
+simulate-foo-*.json

@@ -48,6 +48,13 @@ def tool_trace_path(run_dir: Path) -> Path:
     return run_dir / "tool-traces.jsonl"
 
 
+def trace_summary_path(trace_path: Path) -> Path:
+    name = trace_path.name
+    if name.startswith("trace-") and name.endswith(".jsonl"):
+        return trace_path.with_name(name[:-6] + ".summary.json")
+    return trace_path.parent / "summary.json"
+
+
 def build_trace_env(
     existing: dict[str, str] | None,
     *,
@@ -91,7 +98,7 @@ def write_tool_trace_summary(
     show_output_path: Path | None = None,
 ) -> list[str]:
     warnings: list[str] = []
-    summary_path = trace_path.parent / "summary.json"
+    summary_path = trace_summary_path(trace_path)
     try:
         trace_path.parent.mkdir(parents=True, exist_ok=True)
         trace_path.touch(exist_ok=True)
@@ -125,7 +132,7 @@ def build_tool_trace_summary(
     evidence_gaps = _tool_trace_evidence_gaps(capabilities)
     paths = {
         "trace": trace_path.as_posix(),
-        "summary": (trace_path.parent / "summary.json").as_posix(),
+        "summary": trace_summary_path(trace_path).as_posix(),
     }
     if show_output_path is not None:
         paths["show_output"] = show_output_path.as_posix()
