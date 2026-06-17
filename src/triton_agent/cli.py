@@ -544,7 +544,13 @@ def build_parser() -> argparse.ArgumentParser:
         if spec.has_interact:
             subparser.add_argument("--interact", action="store_true")
         if spec.has_show_output:
-            subparser.add_argument("--show-output", action="store_true")
+            subparser.add_argument(
+                "--no-stream-output",
+                dest="stream_output",
+                action="store_false",
+                default=True,
+                help="Disable live streaming of non-interactive agent output.",
+            )
         if spec.has_log_tools:
             subparser.add_argument("--log-tools", "--log-tool", dest="log_tools", action="store_true")
         if spec.has_agent:
@@ -571,7 +577,7 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--npu-devices")
         if spec.has_optimize_options:
             subparser.add_argument("--min-rounds", "--min-round", dest="min_rounds", type=int, default=5)
-            subparser.add_argument("--round-batch-size", type=int, default=10)
+            subparser.add_argument("--round-batch-size", type=int, default=5)
             subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES)
             subparser.add_argument("--reset-optimize", action="store_true")
             subparser.add_argument("--enable-compiler-source-analysis", action="store_true")
