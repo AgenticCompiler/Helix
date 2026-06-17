@@ -14,7 +14,6 @@ class ArchiveState:
     """Paths for one optimize run archive under `triton-agent-logs/{run_id}/`."""
 
     run_archive_dir: Path
-    agent_sessions_path: Path
     shared_guidance_snapshot_path: Optional[Path] = None
 
     @property
@@ -26,16 +25,17 @@ class ArchiveState:
         return self.run_archive_dir.parent.parent
 
     @property
-    def otel_dir(self) -> Path:
-        return self.run_archive_dir / "otel"
-
-    @property
-    def otel_trace_path(self) -> Path:
-        return self.otel_dir / "trace.jsonl"
-
-    @property
     def show_output_path(self) -> Path:
         return self.run_archive_dir / "show-output.log"
+
+    def trace_path(self, label: str) -> Path:
+        return self.run_archive_dir / f"trace-{label}.jsonl"
+
+    def trace_summary_path(self, label: str) -> Path:
+        return self.run_archive_dir / f"trace-{label}.summary.json"
+
+    def agent_session_path(self, label: str) -> Path:
+        return self.run_archive_dir / f"agent-session-{label}.json"
 
 
 class ArchiveManager:
@@ -52,7 +52,6 @@ class ArchiveManager:
             shared_guidance_snapshot_path = run_archive_dir / "shared-guidance.md"
         return ArchiveState(
             run_archive_dir=run_archive_dir,
-            agent_sessions_path=run_archive_dir / "agent-sessions.jsonl",
             shared_guidance_snapshot_path=shared_guidance_snapshot_path,
         )
 
@@ -71,15 +70,16 @@ class ArchiveManager:
         # otel traces, tool-traces) are expected to already exist in the run
         # directory. Only treat truly unexpected children as a stale archive.
         _EXPECTED_NAMES = frozenset({
-            "agent-sessions.jsonl", "show-output.log", "tool-traces.jsonl",
-            "otel", "history", "shared-guidance.md", "supervisor-report.md",
+            "show-output.log", "tool-traces.jsonl",
+            "history", "shared-guidance.md", "supervisor-report.md",
         })
         if archive_dir.exists():
             unexpected_paths = [
                 path for path in archive_dir.iterdir()
-                if path != state.agent_sessions_path
-                and path.name not in _EXPECTED_NAMES
+                if path.name not in _EXPECTED_NAMES
                 and not path.name.startswith("show-output-")
+                and not (path.name.startswith("trace-") and (path.name.endswith(".jsonl") or path.name.endswith(".summary.json")))
+                and not (path.name.startswith("agent-session-") and path.name.endswith(".json"))
             ]
             if unexpected_paths:
                 warnings.append(f"Refusing to overwrite existing optimize log archive at {archive_dir}")
@@ -124,10 +124,11 @@ class ArchiveManager:
         self,
         state: ArchiveState,
         *,
+        label: str,
         session_id: str | None,
         agent: str,
     ) -> str | None:
-        """Append one JSONL session record without disturbing the rest of the archive."""
+        """Write one compact session record for a single optimize agent launch."""
         payload = {
             "timestamp": datetime.now(timezone.utc)
             .replace(microsecond=0)
@@ -136,12 +137,15 @@ class ArchiveManager:
             "session_id": session_id or "unknown",
             "agent": agent,
         }
+        path = state.agent_session_path(label)
         try:
-            state.agent_sessions_path.parent.mkdir(parents=True, exist_ok=True)
-            with state.agent_sessions_path.open("a", encoding="utf-8") as stream:
-                stream.write(json.dumps(payload, separators=(",", ":")) + "\n")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                json.dumps(payload, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
         except OSError as exc:
-            return f"Failed to record optimize agent session at {state.agent_sessions_path}: {exc}"
+            return f"Failed to record optimize agent session at {path}: {exc}"
         return None
 
     def _new_run_id(self) -> str:

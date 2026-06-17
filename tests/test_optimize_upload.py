@@ -68,6 +68,10 @@ class OptimizeUploadCollectorTests(unittest.TestCase):
         (tmp / "triton-agent-logs").mkdir()
         (tmp / "triton-agent-logs" / "run-001").mkdir()
         (tmp / "triton-agent-logs" / "run-001" / "show-output.log").write_text("", encoding="utf-8")
+        (tmp / "triton-agent-logs" / "run-001" / "agent-session-batch-1-5.json").write_text(
+            '{"session_id":"abc"}\n',
+            encoding="utf-8",
+        )
         # Excluded paths
         (tmp / "opt-round-1" / "ir").mkdir()
         (tmp / "opt-round-1" / "ir" / "dummy.txt").write_text("", encoding="utf-8")
@@ -106,6 +110,7 @@ class OptimizeUploadCollectorTests(unittest.TestCase):
             self.assertNotIn(".pt", name)
             self.assertNotIn("PROF_", name)
             self.assertNotIn("archive.tar.gz", name)
+            self.assertNotIn("agent-session-batch-1-5.json", name)
 
     def test_collect_validates_workspace_exists(self) -> None:
         with self.assertRaises(ValueError):

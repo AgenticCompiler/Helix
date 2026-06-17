@@ -87,7 +87,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
             ),
             archive=ArchiveState(
                 run_archive_dir=run_archive_dir,
-                agent_sessions_path=run_archive_dir / "agent-sessions.jsonl",
                 shared_guidance_snapshot_path=shared_guidance_snapshot_path,
             ),
             hidden_triton_agent_dir=hidden_triton_agent_dir,
@@ -108,7 +107,6 @@ class OptimizeRuntimeTests(unittest.TestCase):
             ),
             archive=ArchiveState(
                 run_archive_dir=run_archive_dir,
-                agent_sessions_path=run_archive_dir / "agent-sessions.jsonl",
                 shared_guidance_snapshot_path=shared_guidance_snapshot_path,
             ),
         )
@@ -1064,16 +1062,23 @@ class OptimizeRuntimeTests(unittest.TestCase):
             self.assertTrue((run_archive / "shared-guidance.md").exists())
             self.assertTrue((run_archive / "supervisor-report.md").exists())
             self.assertTrue((run_archive / "history").exists())
-            session_lines = (run_archive / "agent-sessions.jsonl").read_text(encoding="utf-8").splitlines()
-            self.assertEqual(len(session_lines), 2)
-            session_entries = [json.loads(line) for line in session_lines]
             self.assertEqual(
-                [(entry["session_id"], entry["agent"]) for entry in session_entries],
+                [
+                    (
+                        json.loads((run_archive / "agent-session-batch-1-1.json").read_text(encoding="utf-8"))["session_id"],
+                        json.loads((run_archive / "agent-session-batch-1-1.json").read_text(encoding="utf-8"))["agent"],
+                    ),
+                    (
+                        json.loads((run_archive / "agent-session-supervisor.json").read_text(encoding="utf-8"))["session_id"],
+                        json.loads((run_archive / "agent-session-supervisor.json").read_text(encoding="utf-8"))["agent"],
+                    ),
+                ],
                 [
                     ("019da9c2-dfcb-7c71-a2f9-7a90bab2e0f5", "codex"),
                     ("119da9c2-dfcb-7c71-a2f9-7a90bab2e0f5", "codex"),
                 ],
             )
+            self.assertFalse((run_archive / "agent-sessions.jsonl").exists())
 
     def test_run_optimize_request_supervised_runs_one_supervisor_per_batch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

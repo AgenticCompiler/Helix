@@ -7,7 +7,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from threading import Lock
-from typing import TextIO
+from typing import TextIO, cast
 
 from triton_agent.diff_skills_update.agent import run_diff_skills_agent
 from triton_agent.diff_skills_update.discovery import discover_operator_pairs
@@ -80,7 +80,7 @@ def run_diff_skills_update(
             for pair in discovery.pairs
         ]
     else:
-        results = []
+        results: list[PairRunResult] = []
         with ThreadPoolExecutor(max_workers=config.concurrency) as executor:
             futures = {
                 executor.submit(
@@ -303,7 +303,7 @@ def _read_diff_output(path: Path) -> DiffAgentOutput:
 def _string_list(value: object) -> tuple[str, ...]:
     if not isinstance(value, list):
         return ()
-    return tuple(item for item in value if isinstance(item, str))
+    return tuple(item for item in cast(list[object], value) if isinstance(item, str))
 
 
 def _updated_patterns_from_analysis(data: dict[str, object]) -> list[str]:

@@ -38,13 +38,14 @@ class OptimizeSessionArtifactsState:
     def run_archive_dir(self) -> Path:
         return self.archive.run_archive_dir
 
-    @property
-    def agent_sessions_path(self) -> Path:
-        return self.archive.agent_sessions_path
+    def agent_session_path(self, label: str) -> Path:
+        return self.archive.agent_session_path(label)
 
-    @property
-    def otel_trace_path(self) -> Path:
-        return self.archive.otel_trace_path
+    def trace_path(self, label: str) -> Path:
+        return self.archive.trace_path(label)
+
+    def trace_summary_path(self, label: str) -> Path:
+        return self.archive.trace_summary_path(label)
 
     @property
     def shared_guidance_snapshot_path(self) -> Path | None:
@@ -194,12 +195,14 @@ class OptimizeSessionArtifactsManager:
         self,
         state: OptimizeSessionArtifactsState,
         *,
+        label: str,
         session_id: str | None,
         agent: str,
     ) -> str | None:
-        """Append a compact session-id record to the optimize archive."""
+        """Write one compact session-id record for one optimize launch."""
         return self._archives.record_agent_session(
             state.archive,
+            label=label,
             session_id=session_id,
             agent=agent,
         )

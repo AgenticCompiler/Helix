@@ -70,7 +70,8 @@ class TestClaudeJsonLineParser(unittest.TestCase):
         })
         result = parser.parse_line(line + "\n")
         assert result is not None
-        self.assertIn("[tool:start] Read call_00_abcd", result)
+        self.assertIn("[tool:start] Read", result)
+        self.assertNotIn("[tool:start] Read call_00_abcd", result)
         self.assertIn("file_path: /abs/path/to/file", result)
         self.assertIn("/abs/path/to/file", result)
         events = trace_path.read_text().splitlines()
@@ -129,7 +130,8 @@ class TestClaudeJsonLineParser(unittest.TestCase):
         })
         result = parser.parse_line(end_line + "\n")
         assert result is not None
-        self.assertIn("[tool:end] Bash call_00_abcd ok in", result)
+        self.assertIn("[tool:end] Bash ok in", result)
+        self.assertNotIn("[tool:end] Bash call_00_abcd ok in", result)
         self.assertIn("rc=0", result)
         self.assertIn("stdout: hello", result)
         events = trace_path.read_text().splitlines()
@@ -250,7 +252,8 @@ class TestClaudeJsonLineParser(unittest.TestCase):
             },
         }) + "\n")
         assert result is not None
-        self.assertIn("[tool:end] Bash call_error_01 error", result)
+        self.assertIn("[tool:end] Bash error", result)
+        self.assertNotIn("call_error_01", result)
         self.assertIn("rc=49", result)
         self.assertIn("error: ModuleNotFoundError: No module named 'torch'", result)
         self.assertIn("stderr excerpt:", result)
@@ -442,7 +445,8 @@ class TestClaudeJsonOutputFilter(unittest.TestCase):
                 ],
             },
         }) + "\n", flush=True)
-        self.assertIn("[tool:start] Read call-1", result)
+        self.assertIn("[tool:start] Read", result)
+        self.assertNotIn("[tool:start] Read call-1", result)
         self.assertIn("No Claude native thinking block was present in stdout.", result)
         self.assertTrue(trace_path.exists())
         self.assertGreater(len(trace_path.read_text()), 0)
