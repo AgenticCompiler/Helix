@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from triton_agent.diff_skills_update.models import DiffSkillsUpdateConfig, DiffSkillsUpdateMode
+from triton_agent.diff_skills_update.models import DiffSkillsUpdateConfig, DiffSkillsUpdateSource
 from triton_agent.diff_skills_update.workflow import run_diff_skills_update
 
 
@@ -44,16 +44,16 @@ def _config_from_args(args: argparse.Namespace) -> DiffSkillsUpdateConfig:
     max_iterations = int(getattr(args, "max_iterations", 3))
     if max_iterations < 1:
         raise ValueError("--max-iterations must be positive")
-    mode = cast(DiffSkillsUpdateMode, args.mode)
+    source = cast(DiffSkillsUpdateSource, args.source)
     return DiffSkillsUpdateConfig(
         input_root=input_root,
         skills_dir=skills_dir,
         update_skills_dir=update_skills_dir,
-        mode=mode,
+        source=source,
         agent_name=str(getattr(args, "agent", "codex")),
         max_iterations=max_iterations,
         concurrency=concurrency,
-        stream_output=bool(getattr(args, "stream_output", True)),
+        show_output=bool(getattr(args, "show_output", False)),
         verbose=bool(getattr(args, "verbose", False)),
         force=bool(getattr(args, "force", False)),
         skip_existing=bool(getattr(args, "skip_existing", False)),

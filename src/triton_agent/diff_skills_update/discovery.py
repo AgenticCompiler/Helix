@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TextIO
 
 from triton_agent.diff_skills_update.models import (
-    DiffSkillsUpdateMode,
+    DiffSkillsUpdateSource,
     DiscoveryResult,
     OperatorPair,
     SkipRecord,
@@ -16,7 +16,7 @@ from triton_agent.diff_skills_update.models import (
 def discover_operator_pairs(
     root: Path,
     *,
-    mode: DiffSkillsUpdateMode = "diff",
+    source: DiffSkillsUpdateSource = "code-diff",
     stream: TextIO | None = None,
     exclude_dirs: set[Path] | None = None,
 ) -> DiscoveryResult:
@@ -26,7 +26,7 @@ def discover_operator_pairs(
         raise ValueError(f"Input path is not a directory: {root}")
 
     excluded = {path.resolve() for path in exclude_dirs or set()}
-    if mode == "opt":
+    if source == "optimize-process":
         return _discover_optimize_process_pairs(root, excluded=excluded, stream=stream)
     return _discover_diff_pairs(root, excluded=excluded, stream=stream)
 
@@ -50,7 +50,13 @@ def _discover_optimize_process_pairs(
         path for path in root.iterdir() if path.is_dir() and path.resolve() not in excluded
     )
     if not operator_dirs or _looks_like_optimize_workspace(root):
-        skips.append(_record_skip(root, "learned_lessons.md not found in opt mode", stream=stream))
+        skips.append(
+            _record_skip(
+                root,
+                "learned_lessons.md not found in optimize-process source",
+                stream=stream,
+            )
+        )
         return DiscoveryResult(pairs=tuple(pairs), skips=tuple(skips))
     for operator_dir in operator_dirs:
         if (operator_dir / "learned_lessons.md").is_file():
@@ -60,7 +66,13 @@ def _discover_optimize_process_pairs(
             if skip is not None:
                 skips.append(skip)
             continue
-        skips.append(_record_skip(operator_dir, "learned_lessons.md not found in opt mode", stream=stream))
+        skips.append(
+            _record_skip(
+                operator_dir,
+                "learned_lessons.md not found in optimize-process source",
+                stream=stream,
+            )
+        )
     return DiscoveryResult(pairs=tuple(pairs), skips=tuple(skips))
 
 

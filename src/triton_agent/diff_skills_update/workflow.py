@@ -52,7 +52,7 @@ def run_diff_skills_update(
     output_stream = stream or sys.stderr
     discovery = discover_operator_pairs(
         config.input_root,
-        mode=config.mode,
+        source=config.source,
         stream=output_stream,
         exclude_dirs={config.skills_dir, config.update_skills_dir},
     )
@@ -153,7 +153,7 @@ def _run_pair(
             agent_name=config.agent_name,
             workdir=pair.operator_dir,
             prompt=diff_prompt,
-            stream_output=config.stream_output,
+            show_output=config.show_output,
             verbose=config.verbose,
             output_label=f"[{pair.operator_dir.name}] [diff-skills]",
         )
@@ -197,7 +197,7 @@ def _run_pair(
             agent_name=config.agent_name,
             workdir=simulate_dir,
             prompt=simulate_prompt,
-            stream_output=config.stream_output,
+            show_output=config.show_output,
             verbose=config.verbose,
             skills_root=config.skills_dir,
             output_label=f"[{pair.operator_dir.name}] [simulate-iter-{iteration}/{config.max_iterations}]",
@@ -235,7 +235,7 @@ def _run_pair(
                 agent_name=config.agent_name,
                 workdir=pair.operator_dir,
                 prompt=analysis_prompt,
-                stream_output=config.stream_output,
+                show_output=config.show_output,
                 verbose=config.verbose,
                 output_label=f"[{pair.operator_dir.name}] [analyze-iter-{iteration}/{config.max_iterations}]",
             )
@@ -332,10 +332,7 @@ def _write_skip_report(record: SkipRecord) -> None:
 
 
 def _regenerate_if_possible(knowledge_dir: Path) -> None:
-    try:
-        regenerate_pattern_index(knowledge_dir)
-    except Exception as exc:
-        print(f"Warning: pattern index regeneration failed: {exc}", file=sys.stderr)
+    regenerate_pattern_index(knowledge_dir)
 
 
 def _delete_unaligned_candidate(candidate_path: Path) -> None:

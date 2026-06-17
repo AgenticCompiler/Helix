@@ -22,8 +22,8 @@ class DiffSkillsUpdateCliTests(unittest.TestCase):
                 "opencode",
                 "--skills-dir",
                 "custom-skills",
-                "--mode",
-                "opt",
+                "--source",
+                "optimize-process",
                 "--max-iterations",
                 "4",
                 "--concurrency",
@@ -31,7 +31,7 @@ class DiffSkillsUpdateCliTests(unittest.TestCase):
                 "--force",
                 "--skip-existing",
                 "--promote-converged-skills",
-                "--no-stream-output",
+                "--show-output",
             ]
         )
 
@@ -40,13 +40,13 @@ class DiffSkillsUpdateCliTests(unittest.TestCase):
         self.assertEqual(args.input, "operators")
         self.assertEqual(args.agent, "opencode")
         self.assertEqual(args.skills_dir, "custom-skills")
-        self.assertEqual(args.mode, "opt")
+        self.assertEqual(args.source, "optimize-process")
         self.assertEqual(args.max_iterations, 4)
         self.assertEqual(args.concurrency, 2)
         self.assertTrue(args.force)
         self.assertTrue(args.skip_existing)
         self.assertTrue(args.promote_converged_skills)
-        self.assertFalse(args.stream_output)
+        self.assertTrue(args.show_output)
 
     def test_diff_skills_update_defaults_to_skills_and_update_skills_dirs(self) -> None:
         parser = build_parser()
@@ -56,7 +56,7 @@ class DiffSkillsUpdateCliTests(unittest.TestCase):
 
         self.assertEqual(config.skills_dir, (Path("operators").resolve() / "skills"))
         self.assertEqual(config.update_skills_dir, (Path("operators").resolve() / "update_skills"))
-        self.assertEqual(config.mode, "diff")
+        self.assertEqual(config.source, "code-diff")
 
 
 if __name__ == "__main__":

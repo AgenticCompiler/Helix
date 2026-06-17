@@ -76,7 +76,7 @@ class DiffSkillsUpdateDiscoveryTests(unittest.TestCase):
             (round_two / "opt_kernel.py").write_text("x = 2\n", encoding="utf-8")
             (round_two / "attempts.md").write_text("round two attempts\n", encoding="utf-8")
 
-            result = discover_operator_pairs(root, mode="opt")
+            result = discover_operator_pairs(root, source="optimize-process")
 
             self.assertEqual(len(result.pairs), 1)
             pair = result.pairs[0]
@@ -96,13 +96,13 @@ class DiffSkillsUpdateDiscoveryTests(unittest.TestCase):
             baseline_dir.mkdir()
             (baseline_dir / "kernel.py").write_text("x = 1\n", encoding="utf-8")
 
-            result = discover_operator_pairs(root, mode="opt")
+            result = discover_operator_pairs(root, source="optimize-process")
 
             self.assertEqual(result.pairs, ())
             self.assertEqual(len(result.skips), 1)
             self.assertIn("final optimized operator", result.skips[0].reason)
 
-    def test_opt_mode_skips_operator_without_learned_lessons(self) -> None:
+    def test_optimize_process_source_skips_operator_without_learned_lessons(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             op_dir = root / "op"
@@ -110,19 +110,19 @@ class DiffSkillsUpdateDiscoveryTests(unittest.TestCase):
             (op_dir / "foo.py").write_text("x = 1\n", encoding="utf-8")
             (op_dir / "opt_foo.py").write_text("x = 2\n", encoding="utf-8")
 
-            result = discover_operator_pairs(root, mode="opt")
+            result = discover_operator_pairs(root, source="optimize-process")
 
             self.assertEqual(result.pairs, ())
             self.assertEqual(len(result.skips), 1)
             self.assertIn("learned_lessons.md not found", result.skips[0].reason)
 
-    def test_opt_mode_skips_direct_workspace_without_learned_lessons(self) -> None:
+    def test_optimize_process_source_skips_direct_workspace_without_learned_lessons(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "baseline").mkdir()
             (root / "opt-round-1").mkdir()
 
-            result = discover_operator_pairs(root, mode="opt")
+            result = discover_operator_pairs(root, source="optimize-process")
 
             self.assertEqual(result.pairs, ())
             self.assertEqual(len(result.skips), 1)

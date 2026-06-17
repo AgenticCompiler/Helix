@@ -3,23 +3,23 @@
 ## User-visible behavior
 
 `triton-agent diff-skills-update -i <operators-root>` supports two explicit
-input modes selected by `--mode`.
+input sources selected by `--source`.
 
-In the default `--mode diff`, the command scans one level of operator directories
-under the input root. Each operator directory may contain one or more `opt_*.py`
-files. For every `opt_xxx.py`, the command looks for a sibling `xxx.py`; pairs
-without either side are skipped with an explicit reason. This mode does not treat
-`learned_lessons.md` as an optimize-process marker.
+In the default `--source code-diff`, the command scans one level of operator
+directories under the input root. Each operator directory may contain one or more
+`opt_*.py` files. For every `opt_xxx.py`, the command looks for a sibling
+`xxx.py`; pairs without either side are skipped with an explicit reason. This
+source does not treat `learned_lessons.md` as an optimize-process marker.
 
-In `--mode opt`, the input is a completed optimize workspace or a parent of
-completed optimize workspaces. The command only processes directories that
-contain `learned_lessons.md`; operator directories without `learned_lessons.md`
-are skipped instead of falling back to `opt_*.py` diff discovery. For each
-optimize workspace, it uses `baseline/state.json` (with fallback scanning under
-`baseline/`) to find the pre-optimization operator, uses `opt-note.md`'s final
-best round or the latest `opt-round-N/` to find the optimized operator, and gives
-the skills-update agent `learned_lessons.md`, `opt-note.md`, and round
-`summary.md`/`attempts.md` context.
+In `--source optimize-process`, the input is a completed optimize workspace or a
+parent of completed optimize workspaces. The command only processes directories
+that contain `learned_lessons.md`; operator directories without
+`learned_lessons.md` are skipped instead of falling back to `opt_*.py` diff
+discovery. For each optimize workspace, it uses `baseline/state.json` (with
+fallback scanning under `baseline/`) to find the pre-optimization operator, uses
+`opt-note.md`'s final best round or the latest `opt-round-N/` to find the
+optimized operator, and gives the skills-update agent `learned_lessons.md`,
+`opt-note.md`, and round `summary.md`/`attempts.md` context.
 
 Each valid pair uses `xxx.py` as the pre-optimization baseline and `opt_xxx.py`
 as the expected optimized answer. The command compares the pair, updates an
@@ -34,7 +34,7 @@ reached.
 ## Paths
 
 - Input root: CLI `-i/--input`.
-- Input mode: `--mode diff|opt`, defaulting to `diff`.
+- Input source: `--source code-diff|optimize-process`, defaulting to `code-diff`.
 - Skills workspace: `--skills-dir`, defaulting to `<operators-root>/skills`.
 - Updated-pattern export: `--update-skills-dir`, defaulting to
   `<operators-root>/update_skills`. After the run completes, only pattern cards
