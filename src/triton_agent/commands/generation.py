@@ -30,7 +30,12 @@ def handle_gen_eval_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
         max_concurrency = resolve_batch_concurrency(args.concurrency)
     except ValueError as exc:
         parser.error(str(exc))
-    return run_gen_eval_batch(root, generation_options_from_args(args), max_concurrency=max_concurrency)
+    return run_gen_eval_batch(
+        root,
+        generation_options_from_args(args),
+        max_concurrency=max_concurrency,
+        operator_filter=getattr(args, "operator_filter", None),
+    )
 
 
 def handle_gen_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:

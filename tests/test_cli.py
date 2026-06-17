@@ -82,6 +82,13 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["gen-eval-batch", "-i", "kernels", "--concurrency", "max"])
         self.assertEqual(args.concurrency, "max")
 
+    def test_gen_eval_batch_accepts_operator_filter(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["gen-eval-batch", "-i", "kernels", "--operator-filter", "kernel*.py"]
+        )
+        self.assertEqual(args.operator_filter, "kernel*.py")
+
     def test_log_check_batch_accepts_result_options(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
@@ -241,6 +248,13 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.agent, "codex")
         self.assertFalse(hasattr(args, "interact"))
         self.assertFalse(hasattr(args, "output"))
+
+    def test_convert_batch_accepts_operator_filter(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["convert-batch", "-i", "kernels", "--operator-filter", "kernel*.py"]
+        )
+        self.assertEqual(args.operator_filter, "kernel*.py")
 
     def test_convert_command_accepts_user_prompt(self) -> None:
         parser = build_parser()
@@ -1515,6 +1529,13 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertFalse(hasattr(args, "interact"))
         self.assertTrue(args.stream_output)
 
+    def test_optimize_batch_accepts_operator_filter(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["optimize-batch", "-i", "kernels", "--operator-filter", "kernel*.py"]
+        )
+        self.assertEqual(args.operator_filter, "kernel*.py")
+
     def test_optimize_batch_accepts_round_modes(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize-batch", "-i", "kernels", "--round-mode", "supervised"])
@@ -2293,8 +2314,9 @@ class PathResolutionTests(unittest.TestCase):
             root = Path(tmp)
             captured: dict[str, object] = {}
 
-            def _fake_run_optimize_batch(root, options, max_concurrency):
+            def _fake_run_optimize_batch(root, options, max_concurrency, operator_filter=None):
                 del root, options
+                self.assertIsNone(operator_filter)
                 captured["max_concurrency"] = max_concurrency
                 return 0
 
@@ -2316,6 +2338,31 @@ class PathResolutionTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(captured["max_concurrency"], 4)
+
+    def test_main_optimize_batch_forwards_operator_filter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+
+            def _fake_run_optimize_batch(root, options, max_concurrency, operator_filter=None):
+                del options
+                captured["root"] = root
+                captured["max_concurrency"] = max_concurrency
+                captured["operator_filter"] = operator_filter
+                return 0
+
+            with patch(
+                "triton_agent.commands.optimize.run_optimize_batch",
+                side_effect=_fake_run_optimize_batch,
+            ):
+                exit_code = main(
+                    ["optimize-batch", "-i", str(root), "--operator-filter", "kernel*.py"]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["root"], root.resolve())
+            self.assertEqual(captured["max_concurrency"], 1)
+            self.assertEqual(captured["operator_filter"], "kernel*.py")
 
     def test_main_optimize_batch_show_output_prefixes_workspace_streams(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2629,6 +2676,56 @@ class PathResolutionTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(max_active, 2)
+
+    def test_main_gen_eval_batch_forwards_operator_filter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+
+            def _fake_run(root_path, options, max_concurrency, operator_filter=None):
+                del options
+                captured["root"] = root_path
+                captured["max_concurrency"] = max_concurrency
+                captured["operator_filter"] = operator_filter
+                return 0
+
+            with patch(
+                "triton_agent.commands.generation.run_gen_eval_batch",
+                side_effect=_fake_run,
+            ):
+                exit_code = main(
+                    ["gen-eval-batch", "-i", str(root), "--operator-filter", "kernel*.py"]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["root"], root.resolve())
+            self.assertEqual(captured["max_concurrency"], 1)
+            self.assertEqual(captured["operator_filter"], "kernel*.py")
+
+    def test_main_convert_batch_forwards_operator_filter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+
+            def _fake_run(root_path, options, max_concurrency, operator_filter=None):
+                del options
+                captured["root"] = root_path
+                captured["max_concurrency"] = max_concurrency
+                captured["operator_filter"] = operator_filter
+                return 0
+
+            with patch(
+                "triton_agent.commands.convert.run_convert_batch",
+                side_effect=_fake_run,
+            ):
+                exit_code = main(
+                    ["convert-batch", "-i", str(root), "--operator-filter", "kernel*.py"]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["root"], root.resolve())
+            self.assertEqual(captured["max_concurrency"], 1)
+            self.assertEqual(captured["operator_filter"], "kernel*.py")
 
     def test_main_gen_eval_batch_show_output_prefixes_workspace_streams(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

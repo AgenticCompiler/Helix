@@ -1806,6 +1806,59 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 self.assertEqual(request.prompt, "")
                 self.assertEqual(request.user_prompt, "Avoid changing numerics.")
 
+    def test_run_optimize_batch_operator_filter_selects_matching_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "kernel_workspace"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+            (workspace / "kernel_fp16.py").write_text("print('y')\n", encoding="utf-8")
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=1,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                round_mode="checked",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+            )
+            captured_requests: List[AgentRequest] = []
+
+            def fake_run_request(
+                request: AgentRequest,
+                stdout: Optional[object] = None,
+                stderr: Optional[object] = None,
+            ) -> AgentResult:
+                del stdout, stderr
+                captured_requests.append(request)
+                return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            with patch(
+                "triton_agent.optimize.batch.render_batch_optimize_results",
+                return_value=0,
+            ):
+                exit_code = run_optimize_batch(
+                    root,
+                    options,
+                    max_concurrency=1,
+                    operator_filter="*_fp16.py",
+                    stdout=StringIO(),
+                    run_request=fake_run_request,
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(len(captured_requests), 1)
+            self.assertEqual(captured_requests[0].input_path.name, "kernel_fp16.py")
+
     def test_run_optimize_batch_assigns_distinct_affinity_env_per_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
