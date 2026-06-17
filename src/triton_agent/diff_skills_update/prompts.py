@@ -17,6 +17,13 @@ PATTERN_UPDATE_GUIDANCE = """Pattern update guidance:
 - Update durable guidance in the main card sections. Prefer refining
   `## Use When`, `## Avoid When`, `## Signals`, and
   `## What To Verify After Applying` over appending round-specific notes.
+- Remember what the generated `pattern_index.md` exposes to later optimizer
+  agents: card identifier/title, `priority: high` placement, the first paragraph
+  of `## Summary`, and bullet items under `## Use When`. Put the most important
+  retrieval keywords, applicability conditions, and symptom-to-pattern routing
+  cues in `## Summary` and `## Use When`; details kept only in `## Avoid When`,
+  `## Signals`, or verification sections help readers after opening the card but
+  will not make the pattern easy to find from the index.
 - Preserve useful existing guidance unless the new evidence clearly supersedes
   it. Integrate successful cases, failures, anti-signals, and stop conditions.
 - Keep final card prose kernel-agnostic, self-contained, and free of round IDs or
