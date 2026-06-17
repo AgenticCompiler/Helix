@@ -126,7 +126,12 @@ def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
         parser.error(f"Input path does not exist: {root}")
     if not root.is_dir():
         parser.error(f"Input path is not a directory: {root}")
-    return run_optimize_batch(root, options, max_concurrency=max_concurrency)
+    return run_optimize_batch(
+        root,
+        options,
+        max_concurrency=max_concurrency,
+        operator_filter=getattr(args, "operator_filter", None),
+    )
 
 
 def _validate_round_mode(args: argparse.Namespace) -> Literal["checked", "supervised"]:
