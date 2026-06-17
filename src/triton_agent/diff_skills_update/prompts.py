@@ -7,6 +7,22 @@ from pathlib import Path
 from triton_agent.diff_skills_update.models import OperatorPair
 
 
+PATTERN_UPDATE_GUIDANCE = """Pattern update guidance:
+- Map changes to pattern cards semantically, not by keyword or cited filename alone.
+- Treat logs, summaries, attempts, and citations as evidence hints; confirm the
+  actual mechanism from code structure, before/after diffs, correctness, and
+  performance/profile outcomes when available.
+- If no existing card's `## Summary` and `## Use When` are an honest fit, add a
+  new generic pattern card instead of forcing the evidence into a near match.
+- Update durable guidance in the main card sections. Prefer refining
+  `## Use When`, `## Avoid When`, `## Signals`, and
+  `## What To Verify After Applying` over appending round-specific notes.
+- Preserve useful existing guidance unless the new evidence clearly supersedes
+  it. Integrate successful cases, failures, anti-signals, and stop conditions.
+- Keep final card prose kernel-agnostic, self-contained, and free of round IDs or
+  artifact-path narration except for concise illustrative examples."""
+
+
 def build_diff_to_skill_prompt(
     pair: OperatorPair,
     *,
@@ -25,9 +41,13 @@ Input kind: {pair.source_kind}
 
 Analyze the available optimization evidence. For `optimize-process` inputs,
 start from `learned_lessons.md`, then cross-check `opt-note.md`, round summaries,
-attempt logs, and the before/after code diff. Update relevant pattern cards or
-add a new generic pattern card when the mechanism is not covered under:
+attempt logs, round states, optional perf/profile analysis, and the before/after
+code diff. For plain `diff` inputs, infer the mechanism from the code diff and
+any nearby evidence included in the operator directory. Update relevant pattern
+cards or add a new generic pattern card when the mechanism is not covered under:
 {skills_dir}/triton-npu-optimize-knowledge/references/patterns
+
+{PATTERN_UPDATE_GUIDANCE}
 
 Keep the skill content generic and reusable. Do not copy operator-specific names
 unless they are necessary inside a concise example. After editing or adding
@@ -105,6 +125,14 @@ whether the candidate captures the same optimization mechanism and important
 code changes. If it does not, update relevant generic skill pattern cards or add
 a new generic pattern card in the editable skills directory so the next simulate
 iteration has better guidance.
+
+When updating skills, explain the missing guidance in terms of semantic
+preconditions, exact code-shape change, observed mismatch, and what should be
+verified next. If the candidate failed because the current card overgeneralized,
+add an `Avoid When`, anti-signal, or verification rule rather than only adding a
+new positive example.
+
+{PATTERN_UPDATE_GUIDANCE}
 
 Pattern card format is mandatory:
 - Every pattern card must begin with `# <Human Title>`.

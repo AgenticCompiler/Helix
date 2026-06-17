@@ -118,7 +118,10 @@ def export_changed_patterns(
         shutil.copy2(path, dest_patterns / path.name)
         exported.append(path.name)
 
-    regenerate_pattern_index(dest_knowledge)
+    try:
+        regenerate_pattern_index(dest_knowledge)
+    except Exception as exc:
+        print(f"Warning: export pattern index regeneration failed: {exc}", file=sys.stderr)
     manifest = {
         "exported_patterns": exported,
         "updated_pattern_names": list(updated_pattern_names or []),

@@ -33,7 +33,7 @@ class DiffSkillsUpdateDiscoveryTests(unittest.TestCase):
             op_dir.mkdir()
             (op_dir / "opt_foo.py").write_text("x = 2\n", encoding="utf-8")
 
-            result = discover_operator_pairs(root, mode="opt")
+            result = discover_operator_pairs(root)
 
             self.assertEqual(result.pairs, ())
             self.assertEqual(len(result.skips), 1)
