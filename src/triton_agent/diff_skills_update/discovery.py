@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import TextIO
+from typing import TextIO, cast
 
 from triton_agent.diff_skills_update.models import (
     DiffSkillsUpdateSource,
@@ -176,8 +176,9 @@ def _resolve_baseline_operator(operator_dir: Path) -> Path | None:
         except json.JSONDecodeError:
             data = {}
         if isinstance(data, dict):
+            resolved_data: dict[str, object] = cast(dict[str, object], data)
             for key in ("baseline_operator", "source_operator"):
-                candidate = data.get(key)
+                candidate: object = resolved_data.get(key)
                 if isinstance(candidate, str) and candidate:
                     for base_dir in (baseline_dir, operator_dir):
                         path = (base_dir / candidate).resolve()
