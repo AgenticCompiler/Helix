@@ -378,8 +378,8 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
     CommandKind.TRACE_ANALYZE: _CommandSpec(
         handler=handle_trace_analyze,
         help_group="Optimization",
-        help_summary="Analyze an otel trace file and generate summary.json.",
-        description="Parse an otel trace file and generate a structured JSON summary report.",
+        help_summary="Analyze a trace file and generate a JSON summary.",
+        description="Parse a trace JSONL file and generate a structured JSON summary report.",
         has_output=False,
         has_verbose=False,
         input_mode="trace-analyze",
@@ -785,7 +785,7 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--port", type=int, default=0)
         return
     if spec.input_mode == "trace-analyze":
-        subparser.add_argument("-t", "--trace", required=True, help="Path to the otel trace.jsonl file.")
+        subparser.add_argument("-t", "--trace", required=True, help="Path to the trace JSONL file.")
         return
     subparser.add_argument("-i", "--input", required=True)
 

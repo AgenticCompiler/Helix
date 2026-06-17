@@ -59,15 +59,23 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             expected_run_dir = workdir / "triton-agent-logs" / "20260423-123456-000000"
             self.assertEqual(state.run_archive_dir, expected_run_dir)
             self.assertEqual(
-                state.agent_sessions_path,
-                state.run_archive_dir / "agent-sessions.jsonl",
+                state.agent_session_path("baseline"),
+                state.run_archive_dir / "agent-session-baseline.json",
+            )
+            self.assertEqual(
+                state.trace_path("batch-1-5"),
+                state.run_archive_dir / "trace-batch-1-5.jsonl",
+            )
+            self.assertEqual(
+                state.trace_summary_path("supervisor"),
+                state.run_archive_dir / "trace-supervisor.summary.json",
             )
             self.assertEqual(
                 state.shared_guidance_snapshot_path,
                 state.run_archive_dir / "shared-guidance.md",
             )
 
-    def test_archive_manager_records_agent_session_compact_jsonl(self) -> None:
+    def test_archive_manager_records_agent_session_compact_json(self) -> None:
         from triton_agent.optimize.archive import ArchiveManager
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -77,14 +85,13 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
 
             warning = manager.record_agent_session(
                 state,
+                label="batch-1-5",
                 session_id="019da9c2-dfcb-7c71-a2f9-7a90bab2e0f5",
                 agent="codex",
             )
 
             self.assertIsNone(warning)
-            lines = state.agent_sessions_path.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(len(lines), 1)
-            payload = json.loads(lines[0])
+            payload = json.loads(state.agent_session_path("batch-1-5").read_text(encoding="utf-8"))
             self.assertEqual(set(payload), {"timestamp", "session_id", "agent"})
 
     def test_render_bullet_block_formats_markdown_list(self) -> None:
@@ -245,7 +252,14 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertTrue(state.supervisor_report_path.exists())
             self.assertTrue(state.supervisor_history_dir.exists())
             self.assertEqual(state.run_archive_dir.parent, workdir / "triton-agent-logs")
-            self.assertEqual(state.agent_sessions_path, state.run_archive_dir / "agent-sessions.jsonl")
+            self.assertEqual(
+                state.agent_session_path("baseline"),
+                state.run_archive_dir / "agent-session-baseline.json",
+            )
+            self.assertEqual(
+                state.trace_path("supervisor"),
+                state.run_archive_dir / "trace-supervisor.jsonl",
+            )
 
             self.assertIn("## Triton Agent Optimize Orchestration", shared_content)
             self.assertIn("This workspace is under optimize orchestration.", shared_content)
@@ -290,7 +304,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             warnings = manager.cleanup_checked_session(state)
             self.assertEqual(warnings, [])
 
-    def test_record_agent_session_appends_compact_jsonl(self) -> None:
+    def test_record_agent_session_writes_compact_json_per_label(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             manager = OptimizeSessionArtifactsManager()
@@ -301,20 +315,21 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
 
             manager.record_agent_session(
                 state,
+                label="batch-1-5",
                 session_id="019da9c2-dfcb-7c71-a2f9-7a90bab2e0f5",
                 agent="codex",
             )
 
-            lines = state.agent_sessions_path.read_text(encoding="utf-8").splitlines()
-            self.assertEqual(len(lines), 1)
-            payload = json.loads(lines[0])
+            payload = json.loads(
+                state.agent_session_path("batch-1-5").read_text(encoding="utf-8")
+            )
             self.assertEqual(set(payload), {"timestamp", "session_id", "agent"})
             self.assertEqual(payload["session_id"], "019da9c2-dfcb-7c71-a2f9-7a90bab2e0f5")
             self.assertEqual(payload["agent"], "codex")
 
             warnings = manager.cleanup_checked_session(state)
             self.assertEqual(warnings, [])
-            self.assertTrue(state.agent_sessions_path.exists())
+            self.assertTrue(state.agent_session_path("batch-1-5").exists())
 
     def test_record_agent_session_uses_unknown_when_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -327,11 +342,12 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
 
             manager.record_agent_session(
                 state,
+                label="supervisor",
                 session_id=None,
                 agent="codex",
             )
 
-            payload = json.loads(state.agent_sessions_path.read_text(encoding="utf-8"))
+            payload = json.loads(state.agent_session_path("supervisor").read_text(encoding="utf-8"))
             self.assertEqual(payload["session_id"], "unknown")
 
     def test_prepare_uses_claude_file_and_restores_existing_content(self) -> None:

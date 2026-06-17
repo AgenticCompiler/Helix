@@ -98,7 +98,8 @@ class ClaudeShowOutputRenderer:
 
     def render_tool_start(self, tool: str, tool_use_id: str, tool_input: dict[str, Any]) -> str:
         self.stats.tools += 1
-        lines = [f"[tool:start] {tool} {tool_use_id or 'unknown'}"]
+        del tool_use_id
+        lines = [f"[tool:start] {tool}"]
         lines.extend(self._input_lines(tool, tool_input))
         return self._block(*lines)
 
@@ -117,7 +118,7 @@ class ClaudeShowOutputRenderer:
             self.stats.errors += 1
         rc_text = str(return_code) if return_code is not None else "unknown"
         lines = [
-            f"[tool:end] {tool} {tool_use_id or 'unknown'} "
+            f"[tool:end] {tool} "
             f"{status} in {duration_ms}ms rc={rc_text}"
         ]
         combined = _join_non_empty(

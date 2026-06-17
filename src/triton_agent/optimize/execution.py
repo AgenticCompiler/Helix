@@ -483,11 +483,12 @@ class MultiInvocationOptimizeController:
 
     def _run_request(self, request: AgentRequest, *, show_output_label: str = "") -> AgentResult:
         run_id = self._artifacts_state.archive.run_id
+        launch_label = show_output_label or "run"
         env = dict(request.extra_env or {})
         env[TRACE_RUN_ID_ENV] = run_id
         env[TRACE_WORKSPACE_ROOT_ENV] = str(request.workdir)
         if request.log_tools:
-            env[TRACE_PATH_ENV] = str(self._artifacts_state.archive.otel_trace_path)
+            env[TRACE_PATH_ENV] = str(self._artifacts_state.archive.trace_path(launch_label))
         request = replace(
             request,
             run_id=run_id,
@@ -514,6 +515,7 @@ class MultiInvocationOptimizeController:
                 pass
         self._artifacts_manager.record_agent_session(
             self._artifacts_state,
+            label=launch_label,
             session_id=result.session_id,
             agent=request.agent_name,
         )

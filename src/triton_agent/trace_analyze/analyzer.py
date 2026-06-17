@@ -6,12 +6,14 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
+from triton_agent.otel_trace import trace_summary_path
+
 
 def analyze_trace(*, trace_path: Path) -> list[str]:
     """Parse an otel trace file and write summary.json alongside it."""
     warnings: list[str] = []
     output_dir = trace_path.parent
-    summary_json_path = output_dir / "summary.json"
+    summary_json_path = trace_summary_path(trace_path)
 
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -113,7 +115,7 @@ def build_summary(
         "capabilities": capabilities,
         "paths": {
             "trace": trace_path.as_posix(),
-            "summary_json": (trace_path.parent / "summary.json").as_posix(),
+            "summary_json": trace_summary_path(trace_path).as_posix(),
         },
         "event_counts": {
             "total": len(events),
