@@ -804,6 +804,47 @@ class ConvertBatchTests(unittest.TestCase):
 
             self.assertEqual(resolved, workspace / "kernel.py")
 
+    def test_run_convert_batch_operator_filter_does_not_reinclude_triton_prefixed_files(self) -> None:
+        from triton_agent.convert.batch import run_convert_batch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "kernel_workspace"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+            (workspace / "triton_kernel.py").write_text("print('y')\n", encoding="utf-8")
+
+            stream = StringIO()
+            exit_code = run_convert_batch(
+                root,
+                ConvertOptions(
+                    interact=False,
+                    verbose=False,
+                    stream_output=False,
+                    force_overwrite=False,
+                    agent_name="codex",
+                    remote=None,
+                    remote_workdir=None,
+                    output=None,
+                    test_mode="differential",
+                    prompt=None,
+                ),
+                max_concurrency=1,
+                operator_filter="triton_*.py",
+                stdout=stream,
+                run_request=lambda request, stdout=None, stderr=None: AgentResult(
+                    return_code=0,
+                    stdout="ok",
+                    stderr="",
+                ),
+            )
+
+            self.assertEqual(exit_code, 1)
+            self.assertIn(
+                "found no candidate operator file after applying --operator-filter 'triton_*.py'",
+                stream.getvalue(),
+            )
+
     def test_run_convert_batch_accepts_root_as_single_workspace(self) -> None:
         from triton_agent.convert.batch import run_convert_batch
 

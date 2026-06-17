@@ -43,6 +43,7 @@ def run_optimize_batch(
     options: OptimizeRunOptions,
     *,
     max_concurrency: int,
+    operator_filter: str | None = None,
     stdout: TextIO | None = None,
     run_request: Callable[..., AgentResult] | None = None,
 ) -> int:
@@ -52,7 +53,10 @@ def run_optimize_batch(
     batch_status = load_optimize_batch_status(root)
     discovered, failures = discover_batch_workspaces(
         root,
-        resolve_operator_file=resolve_batch_optimize_operator_file,
+        resolve_operator_file=lambda workspace: resolve_batch_optimize_operator_file(
+            workspace,
+            operator_filter=operator_filter,
+        ),
         no_candidate_message=NO_CANDIDATE_OPERATOR_FILE,
     )
     runnable = [
