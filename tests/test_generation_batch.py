@@ -42,6 +42,72 @@ class GenerationBatchHelpersTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "multiple candidate operator files"):
                 resolve_batch_gen_eval_operator_file(workspace)
 
+    def test_resolve_batch_gen_eval_operator_file_applies_operator_filter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('a')\n", encoding="utf-8")
+            (workspace / "kernel_fp16.py").write_text("print('b')\n", encoding="utf-8")
+
+            resolved = resolve_batch_gen_eval_operator_file(
+                workspace,
+                operator_filter="*_fp16.py",
+            )
+
+            self.assertEqual(resolved, workspace / "kernel_fp16.py")
+
+    def test_resolve_batch_gen_eval_operator_file_treats_empty_filter_as_absent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('a')\n", encoding="utf-8")
+
+            resolved = resolve_batch_gen_eval_operator_file(
+                workspace,
+                operator_filter="",
+            )
+
+            self.assertEqual(resolved, workspace / "kernel.py")
+
+    def test_resolve_batch_gen_eval_operator_file_treats_blank_filter_as_absent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('a')\n", encoding="utf-8")
+
+            resolved = resolve_batch_gen_eval_operator_file(
+                workspace,
+                operator_filter="   \t",
+            )
+
+            self.assertEqual(resolved, workspace / "kernel.py")
+
+    def test_resolve_batch_gen_eval_operator_file_reports_no_match_after_filter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('a')\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                ValueError,
+                r"found no candidate operator file after applying --operator-filter 'triton_\*\.py'",
+            ):
+                resolve_batch_gen_eval_operator_file(
+                    workspace,
+                    operator_filter="triton_*.py",
+                )
+
+    def test_resolve_batch_gen_eval_operator_file_reports_multiple_matches_after_filter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel_a.py").write_text("print('a')\n", encoding="utf-8")
+            (workspace / "kernel_b.py").write_text("print('b')\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                ValueError,
+                r"found multiple candidate operator files after applying --operator-filter 'kernel_\*\.py':",
+            ):
+                resolve_batch_gen_eval_operator_file(
+                    workspace,
+                    operator_filter="kernel_*.py",
+                )
+
     def test_is_batch_gen_eval_operator_candidate_filters_non_operator_names(self) -> None:
         workspace = Path("/tmp")
 

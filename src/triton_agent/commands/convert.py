@@ -97,6 +97,7 @@ def handle_convert_batch(parser: argparse.ArgumentParser, args: argparse.Namespa
         root,
         convert_options_from_args(args),
         max_concurrency=max_concurrency,
+        operator_filter=getattr(args, "operator_filter", None),
     )
 
 
