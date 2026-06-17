@@ -197,6 +197,8 @@ class _CommandSpec:
     has_url: bool = False
     has_diff_skills_update_options: bool = False
     has_operator_filter: bool = False
+
+    
 _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
     CommandKind.GEN_EVAL: _CommandSpec(
         handler=handle_gen_eval,
