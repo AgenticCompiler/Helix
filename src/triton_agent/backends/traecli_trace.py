@@ -91,6 +91,11 @@ class TraeCliShowOutputRenderer:
             return None
         return f"{stripped}\n\n"
 
+    def render_assistant_text_delta(self, text: str) -> str | None:
+        if not text:
+            return None
+        return text
+
 
 class TraeCliJsonLineParser:
     _ROUTE: dict[str, str] = {
@@ -105,6 +110,8 @@ class TraeCliJsonLineParser:
         self._banner_emitted = False
         self._thinking_open = False
         self._streamed_reasoning = False
+        self._content_open = False
+        self._streamed_content = False
         self._session_id: str | None = None
 
     def parse_line(self, line: str) -> str | None:
@@ -126,10 +133,12 @@ class TraeCliJsonLineParser:
         return handler(event)
 
     def flush(self) -> str | None:
+        parts = [self._close_content()]
         if self._thinking_open:
             self._thinking_open = False
-            return "\n\n"
-        return None
+            parts.append("\n\n")
+        combined = "".join(part for part in parts if part)
+        return combined or None
 
     @property
     def stats(self) -> TraeCliShowOutputStats:
@@ -153,6 +162,7 @@ class TraeCliJsonLineParser:
 
         reasoning = _string_or_empty(delta.get("reasoning_content"))
         if reasoning:
+            prefix = self._close_content()
             rendered = self._renderer.render_thinking_delta(
                 reasoning,
                 first_chunk=not self._thinking_open,
@@ -160,15 +170,20 @@ class TraeCliJsonLineParser:
             if rendered is not None:
                 self._thinking_open = True
                 self._streamed_reasoning = True
-                return rendered
+                return prefix + rendered
             if not self._thinking_open:
                 self._thinking_open = True
                 self._streamed_reasoning = True
-            return reasoning
+            return prefix + reasoning
 
         content = _string_or_empty(delta.get("content"))
         if content:
-            return self._close_thinking() + (self._renderer.render_assistant_text(content) or "")
+            rendered = self._renderer.render_assistant_text_delta(content)
+            if rendered is None:
+                return self._close_thinking() or None
+            self._content_open = True
+            self._streamed_content = True
+            return self._close_thinking() + rendered
         return None
 
     def _handle_assistant(self, event: dict[str, Any]) -> str | None:
@@ -197,24 +212,35 @@ class TraeCliJsonLineParser:
                 function = cast(dict[str, Any], function)
                 tool_name = _string_or_empty(function.get("name")) or "unknown"
                 arguments = _string_or_empty(function.get("arguments"))
+                parts.append(self._close_content())
                 parts.append(self._close_thinking())
                 parts.append(self._renderer.render_tool(tool_name, arguments))
 
         content = _string_or_empty(message.get("content"))
-        if content:
+        if content and not self._streamed_content:
             parts.append(self._close_thinking())
             rendered = self._renderer.render_assistant_text(content)
             if rendered:
                 parts.append(rendered)
+        elif self._content_open:
+            parts.append(self._close_content())
 
         combined = "".join(part for part in parts if part)
         return combined or None
 
     def _handle_result(self, _event: dict[str, Any]) -> str | None:
+        parts = [self._close_content()]
         if self._thinking_open:
             self._thinking_open = False
-            return "\n\n"
-        return None
+            parts.append("\n\n")
+        combined = "".join(part for part in parts if part)
+        return combined or None
+
+    def _close_content(self) -> str:
+        if not self._content_open:
+            return ""
+        self._content_open = False
+        return "\n\n"
 
     def _close_thinking(self) -> str:
         if not self._thinking_open:
