@@ -8,12 +8,15 @@ from triton_agent.models import AgentResult
 
 
 Status = Literal["aligned", "not_aligned", "failed", "skipped"]
+DiffSkillsUpdateSource = Literal["code-diff", "optimize-process"]
 
 
 @dataclass(frozen=True)
 class DiffSkillsUpdateConfig:
     input_root: Path
     skills_dir: Path
+    update_skills_dir: Path
+    source: DiffSkillsUpdateSource
     agent_name: str
     max_iterations: int
     concurrency: int
@@ -29,6 +32,10 @@ class OperatorPair:
     operator_dir: Path
     baseline_path: Path
     expected_path: Path
+    learned_lessons_path: Path | None = None
+    opt_note_path: Path | None = None
+    context_paths: tuple[Path, ...] = ()
+    source_kind: Literal["operator-pair", "optimize-process"] = "operator-pair"
 
     @property
     def stem(self) -> str:

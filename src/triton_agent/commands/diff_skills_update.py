@@ -3,8 +3,9 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import cast
 
-from triton_agent.diff_skills_update.models import DiffSkillsUpdateConfig
+from triton_agent.diff_skills_update.models import DiffSkillsUpdateConfig, DiffSkillsUpdateSource
 from triton_agent.diff_skills_update.workflow import run_diff_skills_update
 
 
@@ -32,15 +33,23 @@ def _config_from_args(args: argparse.Namespace) -> DiffSkillsUpdateConfig:
         if getattr(args, "skills_dir", None)
         else input_root / "skills"
     )
+    update_skills_dir = (
+        Path(args.update_skills_dir).expanduser().resolve()
+        if getattr(args, "update_skills_dir", None)
+        else input_root / "update_skills"
+    )
     concurrency = int(getattr(args, "concurrency", 1))
     if concurrency < 1:
         raise ValueError("--concurrency must be positive")
     max_iterations = int(getattr(args, "max_iterations", 3))
     if max_iterations < 1:
         raise ValueError("--max-iterations must be positive")
+    source = cast(DiffSkillsUpdateSource, args.source)
     return DiffSkillsUpdateConfig(
         input_root=input_root,
         skills_dir=skills_dir,
+        update_skills_dir=update_skills_dir,
+        source=source,
         agent_name=str(getattr(args, "agent", "codex")),
         max_iterations=max_iterations,
         concurrency=concurrency,
