@@ -36,6 +36,69 @@ class TraeCLIRunnerTests(unittest.TestCase):
             command = runner.build_command(request)
             self.assertEqual(command, ["traecli", "--print", "--yolo", "Prompt body"])
 
+    def test_stream_output_uses_stream_json_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = TraeCLIRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                stream_output=True,
+                force_overwrite=False,
+                agent_name="traecli",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+            )
+            command = runner.build_command(request)
+            self.assertEqual(
+                command,
+                [
+                    "traecli",
+                    "--print",
+                    "--yolo",
+                    "--output-format",
+                    "stream-json",
+                    "--include-partial-messages",
+                    "Prompt body",
+                ],
+            )
+
+    def test_output_filter_enabled_for_stream_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = TraeCLIRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                stream_output=True,
+                force_overwrite=False,
+                agent_name="traecli",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+            )
+            output_filter = runner.output_filter(request)
+            self.assertIsNotNone(output_filter)
+            assert output_filter is not None
+            rendered = output_filter.feed(
+                '{"type":"system","subtype":"init","model":"GLM-5.1"}\n',
+                flush=True,
+            )
+            self.assertIn("> build · GLM-5.1", rendered)
+
     def test_interactive_command_uses_prompt_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
