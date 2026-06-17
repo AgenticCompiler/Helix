@@ -26,8 +26,14 @@ def write_pair_report(result: PairRunResult) -> None:
     data: dict[str, Any] = {
         "status": result.status,
         "operator_dir": str(result.pair.operator_dir),
+        "source_kind": result.pair.source_kind,
         "baseline": str(result.pair.baseline_path),
         "expected": str(result.pair.expected_path),
+        "learned_lessons": (
+            str(result.pair.learned_lessons_path)
+            if result.pair.learned_lessons_path is not None
+            else None
+        ),
         "matched_patterns": result.matched_patterns,
         "updated_patterns": result.updated_patterns,
         "message": result.message,

@@ -45,7 +45,7 @@ class DiffSkillsUpdateWorkflowTests(unittest.TestCase):
                 prompt = str(kwargs["prompt"])
                 workdir = Path(kwargs["workdir"])  # type: ignore[arg-type]
                 calls.append(kwargs)
-                if "Analyze the unified diff" in prompt:
+                if "updating Triton Ascend NPU optimization knowledge" in prompt:
                     self.assertEqual(kwargs["output_label"], "[op] [diff-skills]")
                     _json_path_from_prompt(prompt).write_text(
                         json.dumps(
@@ -91,6 +91,8 @@ class DiffSkillsUpdateWorkflowTests(unittest.TestCase):
             config = DiffSkillsUpdateConfig(
                 input_root=root,
                 skills_dir=skills_dir,
+                update_skills_dir=root / "update_skills",
+                source="code-diff",
                 agent_name="codex",
                 max_iterations=2,
                 concurrency=1,

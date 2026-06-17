@@ -7,6 +7,29 @@ from pathlib import Path
 from triton_agent.diff_skills_update.models import OperatorPair
 
 
+PATTERN_UPDATE_GUIDANCE = """Pattern update guidance:
+- Map changes to pattern cards semantically, not by keyword or cited filename alone.
+- Treat logs, summaries, attempts, and citations as evidence hints; confirm the
+  actual mechanism from code structure, before/after diffs, correctness, and
+  performance/profile outcomes when available.
+- If no existing card's `## Summary` and `## Use When` are an honest fit, add a
+  new generic pattern card instead of forcing the evidence into a near match.
+- Update durable guidance in the main card sections. Prefer refining
+  `## Use When`, `## Avoid When`, `## Signals`, and
+  `## What To Verify After Applying` over appending round-specific notes.
+- Remember what the generated `pattern_index.md` exposes to later optimizer
+  agents: card identifier/title, `priority: high` placement, the first paragraph
+  of `## Summary`, and bullet items under `## Use When`. Put the most important
+  retrieval keywords, applicability conditions, and symptom-to-pattern routing
+  cues in `## Summary` and `## Use When`; details kept only in `## Avoid When`,
+  `## Signals`, or verification sections help readers after opening the card but
+  will not make the pattern easy to find from the index.
+- Preserve useful existing guidance unless the new evidence clearly supersedes
+  it. Integrate successful cases, failures, anti-signals, and stop conditions.
+- Keep final card prose kernel-agnostic, self-contained, and free of round IDs or
+  artifact-path narration except for concise illustrative examples."""
+
+
 def build_diff_to_skill_prompt(
     pair: OperatorPair,
     *,
@@ -14,19 +37,37 @@ def build_diff_to_skill_prompt(
     output_json: Path,
 ) -> str:
     diff_text = _unified_diff(pair.baseline_path, pair.expected_path)
+    process_context = _process_context_text(pair)
     return f"""You are updating Triton Ascend NPU optimization knowledge.
 
 Baseline file: {pair.baseline_path}
 Optimized answer file: {pair.expected_path}
 Editable skills directory: {skills_dir}
+Input kind: {pair.source_kind}
+{process_context}
 
-Analyze the unified diff below. Update relevant pattern cards or add a new
-generic pattern card when the mechanism is not covered under:
+Analyze the available optimization evidence. For `optimize-process` inputs,
+start from `learned_lessons.md`, then cross-check `opt-note.md`, round summaries,
+attempt logs, round states, optional perf/profile analysis, and the before/after
+code diff. For plain `diff` inputs, infer the mechanism from the code diff and
+any nearby evidence included in the operator directory. Update relevant pattern
+cards or add a new generic pattern card when the mechanism is not covered under:
 {skills_dir}/triton-npu-optimize-knowledge/references/patterns
+
+{PATTERN_UPDATE_GUIDANCE}
 
 Keep the skill content generic and reusable. Do not copy operator-specific names
 unless they are necessary inside a concise example. After editing or adding
 pattern cards, regenerate the pattern index if needed.
+
+Pattern card format is mandatory:
+- Every pattern card must begin with `# <Human Title>`.
+- The first section after the title must be `## Summary`.
+- The second section must be `## Use When`.
+- Do not put warning, checklist, mandatory, priority, or "check first" sections
+  before `## Summary` and `## Use When`.
+- Put detection rules under `## Use When` or `## Signals`.
+- Put verification rules under `## What To Verify After Applying`.
 
 Write JSON to {output_json} with this shape:
 {{
@@ -92,6 +133,23 @@ code changes. If it does not, update relevant generic skill pattern cards or add
 a new generic pattern card in the editable skills directory so the next simulate
 iteration has better guidance.
 
+When updating skills, explain the missing guidance in terms of semantic
+preconditions, exact code-shape change, observed mismatch, and what should be
+verified next. If the candidate failed because the current card overgeneralized,
+add an `Avoid When`, anti-signal, or verification rule rather than only adding a
+new positive example.
+
+{PATTERN_UPDATE_GUIDANCE}
+
+Pattern card format is mandatory:
+- Every pattern card must begin with `# <Human Title>`.
+- The first section after the title must be `## Summary`.
+- The second section must be `## Use When`.
+- Do not put warning, checklist, mandatory, priority, or "check first" sections
+  before `## Summary` and `## Use When`.
+- Put detection rules under `## Use When` or `## Signals`.
+- Put verification rules under `## What To Verify After Applying`.
+
 Write JSON to {output_json} with this shape:
 {{
   "aligned": true,
@@ -113,3 +171,18 @@ def _unified_diff(before: Path, after: Path) -> str:
             tofile=str(after),
         )
     )
+
+
+def _process_context_text(pair: OperatorPair) -> str:
+    if pair.source_kind != "optimize-process":
+        return ""
+    lines = ["Optimization process evidence:"]
+    if pair.learned_lessons_path is not None:
+        lines.append(f"- learned_lessons: {pair.learned_lessons_path}")
+    if pair.opt_note_path is not None:
+        lines.append(f"- opt_note: {pair.opt_note_path}")
+    for path in pair.context_paths:
+        if path == pair.learned_lessons_path or path == pair.opt_note_path:
+            continue
+        lines.append(f"- round_context: {path}")
+    return "\n".join(lines)

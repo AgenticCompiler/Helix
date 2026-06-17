@@ -33,8 +33,10 @@ from triton_agent.diff_skills_update.reports import (
 )
 from triton_agent.diff_skills_update.skills_workspace import (
     ensure_skills_workspace,
+    export_changed_patterns,
     promote_converged_knowledge_workspace,
     regenerate_pattern_index,
+    snapshot_pattern_cards,
 )
 from triton_agent.models import AgentResult
 
@@ -50,10 +52,12 @@ def run_diff_skills_update(
     output_stream = stream or sys.stderr
     discovery = discover_operator_pairs(
         config.input_root,
+        source=config.source,
         stream=output_stream,
-        exclude_dirs={config.skills_dir},
+        exclude_dirs={config.skills_dir, config.update_skills_dir},
     )
     knowledge_dir = ensure_skills_workspace(config.skills_dir)
+    pattern_snapshot = snapshot_pattern_cards(knowledge_dir)
     pair_counts = Counter(pair.operator_dir for pair in discovery.pairs)
     skills_lock = Lock()
     for skip in discovery.skips:
@@ -63,7 +67,7 @@ def run_diff_skills_update(
         return []
 
     if config.concurrency <= 1:
-        return [
+        results = [
             _run_pair(
                 pair,
                 config=config,
@@ -75,24 +79,40 @@ def run_diff_skills_update(
             )
             for pair in discovery.pairs
         ]
+    else:
+        results = []
+        with ThreadPoolExecutor(max_workers=config.concurrency) as executor:
+            futures = {
+                executor.submit(
+                    _run_pair,
+                    pair,
+                    config=config,
+                    knowledge_dir=knowledge_dir,
+                    pair_count_in_dir=pair_counts[pair.operator_dir],
+                    agent_runner=agent_runner,
+                    skills_lock=skills_lock,
+                    stream=output_stream,
+                ): pair
+                for pair in discovery.pairs
+            }
+            for future in as_completed(futures):
+                results.append(future.result())
 
-    results: list[PairRunResult] = []
-    with ThreadPoolExecutor(max_workers=config.concurrency) as executor:
-        futures = {
-            executor.submit(
-                _run_pair,
-                pair,
-                config=config,
-                knowledge_dir=knowledge_dir,
-                pair_count_in_dir=pair_counts[pair.operator_dir],
-                agent_runner=agent_runner,
-                skills_lock=skills_lock,
-                stream=output_stream,
-            ): pair
-            for pair in discovery.pairs
-        }
-        for future in as_completed(futures):
-            results.append(future.result())
+    updated_pattern_names = _merge_unique(
+        [],
+        [name for result in results for name in result.updated_patterns],
+    )
+    exported = export_changed_patterns(
+        knowledge_dir,
+        config.update_skills_dir,
+        pattern_snapshot=pattern_snapshot,
+        updated_pattern_names=updated_pattern_names,
+    )
+    if exported:
+        print(
+            f"exported updated patterns: {', '.join(exported)} -> {config.update_skills_dir}",
+            file=output_stream,
+        )
     return results
 
 
@@ -312,10 +332,7 @@ def _write_skip_report(record: SkipRecord) -> None:
 
 
 def _regenerate_if_possible(knowledge_dir: Path) -> None:
-    try:
-        regenerate_pattern_index(knowledge_dir)
-    except Exception as exc:
-        print(f"Warning: pattern index regeneration failed: {exc}", file=sys.stderr)
+    regenerate_pattern_index(knowledge_dir)
 
 
 def _delete_unaligned_candidate(candidate_path: Path) -> None:
