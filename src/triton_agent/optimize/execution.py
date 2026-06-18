@@ -9,6 +9,14 @@ from typing import Any, TextIO, cast
 from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.optimize.checks import check_baseline, check_round
+from triton_agent.optimize.recovery import (
+    RecoveryBudget,
+    build_optimize_progress_probe,
+    classify_worker_failure,
+    compute_range_progress,
+    render_stall_recovery_note,
+    render_transient_recovery_note,
+)
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
 from triton_agent.skill_loader import load_skill_script_module
 from triton_agent.optimize.session_artifacts import (
@@ -235,6 +243,7 @@ class MultiInvocationOptimizeController:
         self._stdout = stdout
         self._stderr = stderr
         self._verbose_stream = verbose_stream
+        self._worker_recovery_budget = RecoveryBudget()
 
     def preflight_baseline(self, request: AgentRequest) -> BaselinePreflightResult:
         baseline_dir = request.workdir / "baseline"
@@ -299,9 +308,11 @@ class MultiInvocationOptimizeController:
                 batch_end=batch_end,
             )
 
-            round_result = self._run_request(
+            worker_request, round_result = self._run_worker_with_recovery(
+                request,
                 worker_request,
-                show_output_label=f"batch-{batch_start}-{batch_end}",
+                issues=previous_batch_issues,
+                original_batch_start=batch_start,
             )
             if not round_result.succeeded:
                 return round_result
@@ -331,6 +342,100 @@ class MultiInvocationOptimizeController:
             batch_start, batch_end = self._advance_batch_bounds(request, current_batch_end=batch_end)
 
         return AgentResult(return_code=0, stdout="", stderr="")
+
+    def _run_worker_with_recovery(
+        self,
+        request: AgentRequest,
+        worker_request: AgentRequest,
+        *,
+        issues: str | None,
+        original_batch_start: int,
+    ) -> tuple[AgentRequest, AgentResult]:
+        active_request = worker_request
+        attempt = 0
+        while True:
+            attempt += 1
+            result = self._run_request(
+                active_request,
+                show_output_label=(
+                    f"batch-{active_request.current_round}-{active_request.final_round}-r{attempt}"
+                ),
+            )
+            if result.succeeded:
+                return active_request, result
+
+            failure_kind = classify_worker_failure(result)
+            if failure_kind == "fatal":
+                return active_request, result
+
+            progress = compute_range_progress(
+                request.workdir,
+                batch_start=active_request.current_round,
+                batch_end=active_request.final_round,
+                optimize_target=request.optimize_target,
+            )
+            unresolved_round = progress.first_unresolved_round
+            if unresolved_round > active_request.final_round:
+                return active_request, AgentResult(
+                    return_code=0,
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                    session_id=result.session_id,
+                )
+
+            self._worker_recovery_budget.consume(unresolved_round)
+            if self._worker_recovery_budget.exhausted(unresolved_round):
+                return active_request, AgentResult(
+                    return_code=1,
+                    stdout=result.stdout,
+                    stderr=self._build_recovery_budget_exhausted_message(
+                        unresolved_round=unresolved_round,
+                        failure_kind=failure_kind,
+                        last_error=result.stderr or result.stdout,
+                    ),
+                    stalled=result.stalled,
+                    session_id=result.session_id,
+                    retryable_failure=result.retryable_failure,
+                )
+
+            next_batch_start = progress.first_unresolved_round if failure_kind == "stall" else active_request.current_round
+            if failure_kind == "stall":
+                note = render_stall_recovery_note(
+                    original_batch_start=original_batch_start,
+                    last_accepted_round=progress.last_accepted_round,
+                    first_unresolved_round=progress.first_unresolved_round,
+                    batch_end=active_request.final_round,
+                )
+            else:
+                note = render_transient_recovery_note(
+                    batch_start=next_batch_start,
+                    batch_end=active_request.final_round,
+                )
+
+            active_request = self._request_with_recovery_note(
+                request,
+                issues=issues,
+                batch_start=next_batch_start,
+                batch_end=active_request.final_round,
+                note=note,
+            )
+
+    def _request_with_recovery_note(
+        self,
+        request: AgentRequest,
+        *,
+        issues: str | None,
+        batch_start: int,
+        batch_end: int,
+        note: str,
+    ) -> AgentRequest:
+        worker_request = self._request_with_fresh_batch_prompt(
+            request,
+            issues=issues,
+            batch_start=batch_start,
+            batch_end=batch_end,
+        )
+        return replace(worker_request, prompt=f"{worker_request.prompt}\n\n{note}")
 
     def check_batch_round(
         self,
@@ -422,6 +527,8 @@ class MultiInvocationOptimizeController:
             skill_name="triton-npu-optimize",
             interact=False,
             no_agent_session=True,
+            disable_backend_retry=False,
+            progress_probe=None,
         )
         supervisor_result = self._run_request(supervisor_request, show_output_label="supervisor")
         if not supervisor_result.succeeded:
@@ -559,6 +666,8 @@ class MultiInvocationOptimizeController:
             prompt=prompt,
             current_round=batch_start,
             final_round=batch_end,
+            disable_backend_retry=True,
+            progress_probe=build_optimize_progress_probe(request.workdir),
         )
 
     def _request_with_fresh_batch_prompt(
@@ -600,6 +709,22 @@ class MultiInvocationOptimizeController:
             "optimize batch check failed after the final scheduled batch.\n"
             f"{batch_summary}"
         )
+
+    def _build_recovery_budget_exhausted_message(
+        self,
+        *,
+        unresolved_round: int,
+        failure_kind: str,
+        last_error: str,
+    ) -> str:
+        lines = [
+            f"optimize worker recovery budget exhausted for unresolved round {unresolved_round}.",
+            f"Last recoverable failure kind: {failure_kind}.",
+        ]
+        detail = last_error.strip()
+        if detail:
+            lines.append(detail)
+        return "\n".join(lines)
 
     def _serialize_check_result(self, result: object) -> dict[str, object]:
         payload: dict[str, object] = {

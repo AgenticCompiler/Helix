@@ -42,6 +42,9 @@ class OutputFilter(Protocol):
     def feed(self, text: str, *, flush: bool = False) -> str: ...
 
 
+ProgressProbe = Callable[[], Optional[float]]
+
+
 @dataclass(frozen=True)
 class InterruptPolicy:
     first_sigint_grace_seconds: float = 2.0
@@ -53,7 +56,7 @@ def run_process(
     command: list[str],
     workdir: str,
     mode: str,
-    stall_timeout_seconds: int = 0,
+    stall_timeout_seconds: float = 0,
     session_id_extractor: Optional[Callable[[str], Optional[str]]] = None,
     stdout: Optional[TextIO] = None,
     output_filter: Optional[OutputFilter] = None,
@@ -62,6 +65,7 @@ def run_process(
     *,
     rendered_chunk_sink: Optional[Callable[[str], None]] = None,
     collect_stdout: bool = True,
+    progress_probe: ProgressProbe | None = None,
 ) -> AgentResult:
     if mode == "interactive":
         return run_interactive_process(command, workdir, extra_env=extra_env)
@@ -77,6 +81,7 @@ def run_process(
             extra_env=extra_env,
             rendered_chunk_sink=rendered_chunk_sink,
             collect_stdout=collect_stdout,
+            progress_probe=progress_probe,
         )
     if mode == "buffered":
         return run_buffered_process(
@@ -87,6 +92,7 @@ def run_process(
             output_filter=output_filter,
             interrupt_policy=interrupt_policy,
             extra_env=extra_env,
+            progress_probe=progress_probe,
         )
     raise ValueError(f"Unsupported process runner mode: {mode}")
 
@@ -110,11 +116,12 @@ def run_interactive_process(
 def run_buffered_process(
     command: list[str],
     workdir: str,
-    stall_timeout_seconds: int,
+    stall_timeout_seconds: float,
     session_id_extractor: Callable[[str], Optional[str]],
     output_filter: Optional[OutputFilter] = None,
     interrupt_policy: Optional[InterruptPolicy] = None,
     extra_env: Optional[dict[str, str]] = None,
+    progress_probe: ProgressProbe | None = None,
 ) -> AgentResult:
     process = subprocess.Popen(
         _resolve_command(command),
@@ -173,10 +180,13 @@ def run_buffered_process(
                 for reader in readers:
                     reader.join(timeout=1.0)
                 break
+            if progress_probe is not None:
+                probe_time = progress_probe()
+                if probe_time is not None:
+                    with lock:
+                        start_ref[0] = max(start_ref[0], probe_time)
             if stall_timeout_seconds > 0 and time.monotonic() - start_ref[0] > stall_timeout_seconds:
-                process.terminate()
-                if not _wait_for_process_exit(process, 1.0):
-                    process.kill()
+                _terminate_process_tree(process, grace_seconds=1.0)
                 for reader in readers:
                     reader.join(timeout=1.0)
                 session_id = _flush_session_id_buffer(session_id_extractor, session_id, session_buffer)
@@ -211,6 +221,7 @@ def run_buffered_process(
             session_id=session_id,
         )
 
+    _reap_process_tree_after_exit(process)
     session_id = _flush_session_id_buffer(session_id_extractor, session_id, session_buffer)
     trailing = output_filter.feed("", flush=True) if output_filter is not None else ""
     with lock:
@@ -230,7 +241,7 @@ def run_buffered_process(
 def run_streaming_process(
     command: list[str],
     workdir: str,
-    stall_timeout_seconds: int,
+    stall_timeout_seconds: float,
     stdout: Optional[TextIO] = None,
     output_filter: Optional[OutputFilter] = None,
     session_id_extractor: Optional[Callable[[str], Optional[str]]] = None,
@@ -239,6 +250,7 @@ def run_streaming_process(
     *,
     rendered_chunk_sink: Optional[Callable[[str], None]] = None,
     collect_stdout: bool = True,
+    progress_probe: ProgressProbe | None = None,
 ) -> AgentResult:
     if _IS_WINDOWS:
         return _run_streaming_process_windows(
@@ -252,6 +264,7 @@ def run_streaming_process(
             extra_env=extra_env,
             rendered_chunk_sink=rendered_chunk_sink,
             collect_stdout=collect_stdout,
+            progress_probe=progress_probe,
         )
     return _run_streaming_process_pty(
         command,
@@ -264,13 +277,14 @@ def run_streaming_process(
         extra_env=extra_env,
         rendered_chunk_sink=rendered_chunk_sink,
         collect_stdout=collect_stdout,
+        progress_probe=progress_probe,
     )
 
 
 def _run_streaming_process_windows(
     command: list[str],
     workdir: str,
-    stall_timeout_seconds: int,
+    stall_timeout_seconds: float,
     stdout: Optional[TextIO] = None,
     output_filter: Optional[OutputFilter] = None,
     session_id_extractor: Callable[[str], Optional[str]] = lambda _text: None,
@@ -279,6 +293,7 @@ def _run_streaming_process_windows(
     *,
     rendered_chunk_sink: Optional[Callable[[str], None]] = None,
     collect_stdout: bool = True,
+    progress_probe: ProgressProbe | None = None,
 ) -> AgentResult:
     """Windows-compatible streaming using threads to drain stdout and stderr."""
     process = subprocess.Popen(
@@ -329,9 +344,13 @@ def _run_streaming_process_windows(
             if process.poll() is not None:
                 break
             with lock:
+                if progress_probe is not None:
+                    probe_time = progress_probe()
+                    if probe_time is not None:
+                        start_ref[0] = max(start_ref[0], probe_time)
                 elapsed = time.monotonic() - start_ref[0]
             if stall_timeout_seconds > 0 and elapsed > stall_timeout_seconds:
-                process.terminate()
+                _terminate_process_tree(process, grace_seconds=1.0)
                 stalled_ref[0] = True
                 break
     except KeyboardInterrupt:
@@ -370,6 +389,8 @@ def _run_streaming_process_windows(
             if rendered_chunk_sink is not None:
                 rendered_chunk_sink(trailing)
         captured_stdout = "".join(output_chunks) if collect_stdout else ""
+    if not stalled_ref[0]:
+        _reap_process_tree_after_exit(process)
     rc = process.wait() if not stalled_ref[0] else 1
     return AgentResult(
         return_code=rc,
@@ -384,7 +405,7 @@ def _run_streaming_process_windows(
 def _run_streaming_process_pty(
     command: list[str],
     workdir: str,
-    stall_timeout_seconds: int,
+    stall_timeout_seconds: float,
     stdout: Optional[TextIO] = None,
     output_filter: Optional[OutputFilter] = None,
     session_id_extractor: Callable[[str], Optional[str]] = lambda _text: None,
@@ -393,6 +414,7 @@ def _run_streaming_process_pty(
     *,
     rendered_chunk_sink: Optional[Callable[[str], None]] = None,
     collect_stdout: bool = True,
+    progress_probe: ProgressProbe | None = None,
 ) -> AgentResult:
     """Unix PTY-backed streaming so the child sees a terminal and flushes incrementally."""
     if pty is None or select is None:
@@ -450,8 +472,13 @@ def _run_streaming_process_pty(
                     break
             elif process.poll() is not None:
                 break
-            elif stall_timeout_seconds > 0 and time.monotonic() - start > stall_timeout_seconds:
-                process.terminate()
+            else:
+                if progress_probe is not None:
+                    probe_time = progress_probe()
+                    if probe_time is not None:
+                        start = max(start, probe_time)
+            if stall_timeout_seconds > 0 and time.monotonic() - start > stall_timeout_seconds:
+                _terminate_process_tree(process, grace_seconds=1.0)
                 return AgentResult(
                     return_code=1,
                     stdout="".join(output_chunks) if collect_stdout else "",
@@ -468,6 +495,7 @@ def _run_streaming_process_pty(
                 print(trailing, file=stdout or sys.stdout, end="")
                 if rendered_chunk_sink is not None:
                     rendered_chunk_sink(trailing)
+        _reap_process_tree_after_exit(process)
         return AgentResult(
             return_code=process.wait(),
             stdout="".join(output_chunks) if collect_stdout else "",
@@ -604,8 +632,7 @@ def _interrupt_process_unix(process: subprocess.Popen[Any], policy: InterruptPol
     _signal_process_group(process, _signal.SIGINT)
     if _wait_for_process_exit(process, policy.second_sigint_grace_seconds):
         return
-    sigkill = cast(Any, getattr(_signal, "SIGKILL", _signal.SIGTERM))
-    _signal_process_group(process, sigkill)
+    _signal_process_group(process, _signal.SIGKILL)
 
 
 def _signal_process_group(process: subprocess.Popen[Any], sig: Any) -> None:
@@ -617,7 +644,35 @@ def _signal_process_group(process: subprocess.Popen[Any], sig: Any) -> None:
         return
     try:
         killpg(process.pid, sig)
+    except PermissionError:
+        process.kill()
     except ProcessLookupError:
+        return
+
+
+def _terminate_process_tree(process: subprocess.Popen[Any], grace_seconds: float) -> None:
+    if _IS_WINDOWS:
+        process.terminate()
+        if not _wait_for_process_exit(process, grace_seconds):
+            process.kill()
+        return
+    _signal_process_group(process, _signal.SIGTERM)
+    if _wait_for_process_exit(process, grace_seconds):
+        return
+    _signal_process_group(process, _signal.SIGKILL)
+
+
+def _reap_process_tree_after_exit(process: subprocess.Popen[Any]) -> None:
+    if _IS_WINDOWS:
+        return
+    if process.poll() is None:
+        return
+    killpg = cast(Callable[[int, Any], None] | None, getattr(os, "killpg", None))
+    if killpg is None:
+        return
+    try:
+        killpg(process.pid, _signal.SIGTERM)
+    except (PermissionError, ProcessLookupError):
         return
 
 
