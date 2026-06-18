@@ -1556,7 +1556,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             baseline_request = recorded_requests[0]
             self.assertEqual(_optimize_invocation_kind(baseline_request), "baseline")
             self.assertIn(f"Operator input: {operator.as_posix()}", baseline_request.prompt)
-            self.assertIn(f"Requested output: {output_path.as_posix()}", baseline_request.prompt)
+            self.assertNotIn("Requested output:", baseline_request.prompt)
             self.assertIn("Requested test mode: differential", baseline_request.prompt)
             self.assertIn("Requested bench mode: torch-npu-profiler", baseline_request.prompt)
             self.assertIn("Remote execution target: alice@example.com:2200", baseline_request.prompt)

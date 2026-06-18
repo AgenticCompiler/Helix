@@ -181,11 +181,11 @@ class OptimizeUploadPackagerTests(unittest.TestCase):
 
 
 class OptimizeUploadClientTests(unittest.TestCase):
-    def test_load_upload_url_raises_when_unset(self) -> None:
-        from triton_agent.optimize_upload.client import load_upload_url
-        with self.assertRaises(ValueError):
-            with patch.dict(os.environ, {}, clear=True):
-                load_upload_url()
+    def test_load_upload_url_returns_default_when_unset(self) -> None:
+        from triton_agent.optimize_upload.client import _DEFAULT_UPLOAD_URL, load_upload_url
+
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(load_upload_url(), _DEFAULT_UPLOAD_URL)
 
     def test_load_upload_url_returns_from_env(self) -> None:
         from triton_agent.optimize_upload.client import load_upload_url
@@ -394,15 +394,31 @@ class OptimizeUploadClientTests(unittest.TestCase):
 
 
 class OptimizeUploadWorkflowTests(unittest.TestCase):
-    def test_workflow_missing_url_raises(self) -> None:
+    def test_workflow_uses_default_url_when_env_unset(self) -> None:
         workspace = Path(tempfile.mkdtemp())
         (workspace / "kernel.py").write_text("code", encoding="utf-8")
         (workspace / "baseline").mkdir()
         (workspace / "baseline" / "state.json").write_text("{}", encoding="utf-8")
+        from triton_agent.optimize_upload.client import _DEFAULT_UPLOAD_URL
+        from triton_agent.optimize_upload.models import UploadResponse
         from triton_agent.optimize_upload.workflow import upload_optimize_workspace
+
+        mock_response = UploadResponse(
+            ok=True,
+            upload_uid="uid",
+            upload_timestamp="ts",
+            workspace_name="ws",
+            workspace_slug="ws",
+            stored_path="/store/path",
+        )
         with patch.dict(os.environ, {}, clear=True):
-            with self.assertRaises(ValueError):
+            with patch(
+                "triton_agent.optimize_upload.workflow.upload_tarball", return_value=mock_response
+            ) as mock_upload:
                 upload_optimize_workspace(workspace, verbose=True)
+            mock_upload.assert_called_once()
+            _, _, call_url = mock_upload.call_args[0]
+            self.assertTrue(call_url.startswith(_DEFAULT_UPLOAD_URL))
 
     def test_workflow_invalid_workspace_raises(self) -> None:
         from triton_agent.optimize_upload.workflow import upload_optimize_workspace
