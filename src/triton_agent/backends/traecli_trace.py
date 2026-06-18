@@ -152,6 +152,8 @@ class TraeCliJsonLineParser:
                 clean[key] = event[key]
         if "tool_result" in event:
             clean["tool_result"] = event["tool_result"]
+        if not clean:
+            return None
         return f"[event:{event_type}] {json.dumps(clean, ensure_ascii=False)}\n"
 
     def _handle_system(self, event: dict[str, Any]) -> str | None:

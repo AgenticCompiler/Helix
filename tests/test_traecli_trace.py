@@ -108,6 +108,20 @@ class TestTraeCliJsonLineParser(unittest.TestCase):
         result = parser.parse_line(assistant + "\n")
         self.assertIsNone(result)
 
+    def test_unknown_event_renders_compact_json_line(self) -> None:
+        parser = self._parser()
+        line = json.dumps(
+            {
+                "type": "tool_result",
+                "tool_use_id": "tool-1",
+                "error": "boom",
+            }
+        )
+        result = parser.parse_line(line + "\n")
+        assert result is not None
+        self.assertIn("[event:tool_result]", result)
+        self.assertIn("tool-1", result)
+
 
 class TestTraeCliJsonOutputFilter(unittest.TestCase):
     def test_feed_across_chunk_boundaries(self) -> None:

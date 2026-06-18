@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Any, TextIO, cast
 
 from triton_agent.optimize.agent_exit_log import write_agent_exit_log
+from triton_agent.transient_failures import (
+    OPTIMIZE_WORKER_RETRY_DELAYS_SECONDS,
+    is_optimize_worker_retryable,
+)
 
 from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
@@ -485,8 +489,6 @@ class MultiInvocationOptimizeController:
             }
         )
 
-    _BATCH_FAILURE_RETRY_DELAYS = (2, 4, 8)
-
     def _run_request_with_retry(
         self,
         request: AgentRequest,
@@ -496,25 +498,34 @@ class MultiInvocationOptimizeController:
     ) -> AgentResult:
         label = f"batch-{batch_start}-{batch_end}"
         result = self._run_request(request, show_output_label=label)
-        if result.succeeded:
+        if result.succeeded or not is_optimize_worker_retryable(result):
+            if not result.succeeded:
+                emit_verbose(
+                    self._verbose_stream,
+                    "optimize",
+                    (
+                        f"{label} failure (rc={result.return_code}, stalled={result.stalled}) "
+                        "is not eligible for optimize worker retry"
+                    ),
+                )
             return result
 
-        for attempt, delay in enumerate(self._BATCH_FAILURE_RETRY_DELAYS, start=1):
+        for attempt, delay in enumerate(OPTIMIZE_WORKER_RETRY_DELAYS_SECONDS, start=1):
             emit_verbose(
                 self._verbose_stream,
                 "optimize",
                 f"{label} failure (rc={result.return_code}, stalled={result.stalled}), "
-                f"retry {attempt}/{len(self._BATCH_FAILURE_RETRY_DELAYS)} in {delay}s",
+                f"retry {attempt}/{len(OPTIMIZE_WORKER_RETRY_DELAYS_SECONDS)} in {delay}s",
             )
             time.sleep(delay)
             result = self._run_request(request, show_output_label=f"{label}-retry-{attempt}")
-            if result.succeeded:
+            if result.succeeded or not is_optimize_worker_retryable(result):
                 return result
 
         emit_verbose(
             self._verbose_stream,
             "optimize",
-            f"{label} exhausted {len(self._BATCH_FAILURE_RETRY_DELAYS)} retries, giving up",
+            f"{label} exhausted {len(OPTIMIZE_WORKER_RETRY_DELAYS_SECONDS)} retries, giving up",
         )
         return result
 
@@ -534,6 +545,7 @@ class MultiInvocationOptimizeController:
             no_agent_session=True,
             supervisor_report_path=self._artifacts_state.supervisor_report_path,
         )
+        start_counter = time.perf_counter()
         try:
             if self._stdout is None and self._stderr is None:
                 result = self._runner.run(request)
@@ -564,6 +576,7 @@ class MultiInvocationOptimizeController:
             stderr=result.stderr,
             stalled=result.stalled,
             session_id=result.session_id,
+            duration_ms=int((time.perf_counter() - start_counter) * 1000),
         )
         return result
 

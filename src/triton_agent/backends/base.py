@@ -24,7 +24,7 @@ from triton_agent.show_output_log import (
     open_show_output_log,
     write_show_output_chunk,
 )
-from triton_agent.transient_failures import contains_transient_agent_failure_text
+from triton_agent.transient_failures import is_transient_agent_failure
 from triton_agent.verbose import emit_command_block
 
 
@@ -155,7 +155,7 @@ class AgentRunner(ABC):
 
             max_retries = _code_agent_max_retries()
             attempt = 0
-            while _is_transient_agent_failure(result) and attempt < max_retries:
+            while is_transient_agent_failure(result) and attempt < max_retries:
                 attempt += 1
                 time.sleep(_retry_delay_seconds(attempt))
                 result = self._run_once(
@@ -231,15 +231,6 @@ _CODE_AGENT_MAX_RETRIES_ENV = "TRITON_AGENT_CODE_AGENT_MAX_RETRIES"
 _DEFAULT_CODE_AGENT_MAX_RETRIES = 2
 _STALL_TIMEOUT_SECONDS_ENV = "TRITON_AGENT_STALL_TIMEOUT_SECONDS"
 _DEFAULT_STALL_TIMEOUT_SECONDS = 900
-
-
-def _is_transient_agent_failure(result: AgentResult) -> bool:
-    if result.stalled or result.return_code == 130:
-        return False
-    if result.retryable_failure:
-        return True
-    combined = f"{result.stdout}\n{result.stderr}".lower()
-    return contains_transient_agent_failure_text(combined)
 
 
 def _retry_delay_seconds(retry_number: int) -> float:

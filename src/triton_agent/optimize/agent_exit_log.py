@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from triton_agent.otel_trace import utc_timestamp
+
 
 def write_agent_exit_log(
     *,
@@ -13,11 +15,14 @@ def write_agent_exit_log(
     stderr: str,
     stalled: bool,
     session_id: str | None,
+    duration_ms: int,
 ) -> None:
     log_dir = workdir / "triton-agent-logs" / run_id
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"agent-exit-{label}.json"
     payload = {
+        "ended_at": utc_timestamp(),
+        "duration_ms": duration_ms,
         "return_code": return_code,
         "stalled": stalled,
         "session_id": session_id,
