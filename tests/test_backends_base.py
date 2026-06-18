@@ -75,6 +75,62 @@ class SharedRunnerBaseTests(unittest.TestCase):
 
         self.assertEqual(mocked.call_args.kwargs["extra_env"], {"ASCEND_RT_VISIBLE_DEVICES": "2"})
 
+    def test_base_runner_uses_explicit_progress_probe_from_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = _DummyRunner()
+            def probe() -> float:
+                return 1.0
+
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                force_overwrite=False,
+                agent_name="dummy",
+                skill_name="triton-npu-optimize",
+                prompt="Prompt body",
+                workdir=workspace,
+                progress_probe=probe,
+            )
+
+            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked_run:
+                runner.run(request)
+
+            self.assertIs(mocked_run.call_args.kwargs["progress_probe"], probe)
+
+    def test_base_runner_omits_progress_probe_without_request_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = _DummyRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.GEN_TEST,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "test_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                force_overwrite=False,
+                agent_name="dummy",
+                skill_name="triton-npu-gen-test",
+                prompt="Prompt body",
+                workdir=workspace,
+            )
+
+            with patch("triton_agent.backends.base.run_process", return_value=_ok_result()) as mocked_run:
+                runner.run(request)
+
+            self.assertIsNone(mocked_run.call_args.kwargs["progress_probe"])
+
     def test_base_runner_rejects_request_scoped_mcp_servers_when_backend_unsupported(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -490,6 +546,44 @@ class SharedRunnerBaseTests(unittest.TestCase):
             )
             with (
                 patch.dict(environ, {"TRITON_AGENT_CODE_AGENT_MAX_RETRIES": "0"}, clear=False),
+                patch("triton_agent.backends.base.run_process", return_value=transient) as mocked_run,
+                patch("time.sleep") as mocked_sleep,
+            ):
+                result = runner.run(request)
+
+            self.assertEqual(result.return_code, 1)
+            self.assertEqual(mocked_run.call_count, 1)
+            mocked_sleep.assert_not_called()
+
+    def test_base_runner_can_disable_shared_retry_per_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = _DummyRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                force_overwrite=False,
+                agent_name="dummy",
+                skill_name="triton-npu-optimize",
+                prompt="Prompt body",
+                workdir=workspace,
+                disable_backend_retry=True,
+            )
+
+            transient = AgentResult(
+                return_code=1,
+                stdout="",
+                stderr="ERROR: exceeded retry limit, last status: 429 Too Many Requests",
+            )
+            with (
+                patch.dict(environ, {"TRITON_AGENT_CODE_AGENT_MAX_RETRIES": "5"}, clear=False),
                 patch("triton_agent.backends.base.run_process", return_value=transient) as mocked_run,
                 patch("time.sleep") as mocked_sleep,
             ):
