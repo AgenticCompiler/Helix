@@ -5252,7 +5252,7 @@ class PromptTests(unittest.TestCase):
             remote_workdir="/tmp/remote",
         )
         self.assertIn("Operator input: /tmp/op.py", prompt)
-        self.assertIn("Requested output: /tmp/opt_op.py", prompt)
+        self.assertNotIn("Requested output:", prompt)
         self.assertIn("Requested test mode: differential", prompt)
         self.assertIn("Requested bench mode: torch-npu-profiler", prompt)
         self.assertIn("Remote execution target: alice@example.com:2200", prompt)
@@ -5497,8 +5497,13 @@ class PromptTests(unittest.TestCase):
         self.assertIn("This invocation owns rounds 1 through 5.", prompt)
         self.assertIn("Execute those rounds strictly one at a time.", prompt)
         self.assertIn("Do not pre-plan the full batch before acting.", prompt)
+        self.assertNotIn("Requested output:", prompt)
         self.assertIn("Requested test mode: differential", prompt)
         self.assertIn("Requested bench mode: torch-npu-profiler", prompt)
+        self.assertIn(
+            "For each round, write the optimized operator snapshot as `opt_<original-operator>.py` inside `opt-round-N/`.",
+            prompt,
+        )
         self.assertIn("Reuse existing correctness tests and benchmark cases when they already exist", prompt)
         self.assertIn("State the optimization hypothesis and why it may help", prompt)
         self.assertIn("Explain what evidence supports the change", prompt)
