@@ -43,6 +43,7 @@ WARMUP_DEFAULT = 5
 REPEATS_DEFAULT = 50
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched profiler operator details"
 _LOCAL_BENCH_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_OUTPUT_DIR"
+_TORCH_BACKEND_AUTOLOAD_ENV = "TORCH_DEVICE_BACKEND_AUTOLOAD"
 
 
 @dataclass(frozen=True)
@@ -147,6 +148,7 @@ def load_bench_cases(
 ) -> tuple[list[BenchCase], KernelResolution]:
     bench_path = bench_file.resolve()
     operator_path = operator_file.resolve()
+    _bootstrap_torch_npu()
     bench_module = _load_module(bench_path, f"bench_runtime_bench_{bench_path.stem}")
     operator_module = _load_module(operator_path, f"bench_runtime_operator_{operator_path.stem}")
     build_operator_api = _require_callable(bench_module, "build_operator_api", bench_path)
@@ -658,6 +660,32 @@ def _set_directory_owner_only(path: Path) -> None:
 def _sanitize_case_id(case_id: str) -> str:
     sanitized = "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in case_id)
     return sanitized or "case"
+
+
+def _bootstrap_torch_npu() -> None:
+    loaded_torch = sys.modules.get("torch")
+    if loaded_torch is not None and hasattr(loaded_torch, "npu"):
+        return
+
+    # Import torch/torch_npu before exec_module(user_module) runs any top-level
+    # benchmark or operator code. On Ascend, if the first torch import happens
+    # from inside that dynamic module execution path, torch backend discovery
+    # can race with torch_npu initialization and later leave Triton with no
+    # active NPU driver. torch is mandatory for this runtime, so its import
+    # failure should still surface immediately.
+    previous = os.environ.get(_TORCH_BACKEND_AUTOLOAD_ENV)
+    os.environ[_TORCH_BACKEND_AUTOLOAD_ENV] = "0"
+    try:
+        importlib.import_module("torch")
+        try:
+            importlib.import_module("torch_npu")
+        except ImportError:
+            pass
+    finally:
+        if previous is None:
+            os.environ.pop(_TORCH_BACKEND_AUTOLOAD_ENV, None)
+        else:
+            os.environ[_TORCH_BACKEND_AUTOLOAD_ENV] = previous
 
 
 def _cleanup_local_bench_extra_info(workdir: Path) -> None:

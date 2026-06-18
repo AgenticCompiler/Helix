@@ -31,6 +31,7 @@ from run_runtime import (
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 _WARNING_PREFIX = "[WARNING]"
+_TORCH_BACKEND_AUTOLOAD_ENV = "TORCH_DEVICE_BACKEND_AUTOLOAD"
 
 
 def _test_timeout() -> int:
@@ -91,6 +92,7 @@ def load_differential_test_cases(
 ) -> list[DifferentialTestCase]:
     test_path = test_file.resolve()
     operator_path = operator_file.resolve()
+    _bootstrap_torch_npu()
     with _temporary_sys_path_entries(test_path.parent, operator_path.parent, SCRIPT_DIR):
         test_module = _load_module(test_path, f"differential_test_{test_path.stem}")
         build_operator_api = _require_callable(test_module, "build_operator_api", test_path)
@@ -166,6 +168,7 @@ def _run_import_only_standalone_test(
             print(f"[run-test] operator file: {operator_path}", file=real_stderr)
             print(f"[run-test] operator api: {metadata.get('api-name', '?')} ({metadata.get('api-kind', '?')})", file=real_stderr)
             print("[run-test] running...", file=real_stderr)
+        _bootstrap_torch_npu()
         with _temporary_sys_path_entries(test_path.parent, operator_path.parent, SCRIPT_DIR):
             test_module = _load_module(test_path, f"standalone_test_{test_path.stem}")
             main_fn = _require_callable(test_module, "main", test_path, kind="Standalone test module")
@@ -205,6 +208,7 @@ def _run_declarative_differential_test(
 ) -> ResultPayload:
     real_stderr = sys.stderr
     try:
+        _bootstrap_torch_npu()
         torch = importlib.import_module("torch")
     except ImportError as exc:
         return make_result(
@@ -267,6 +271,32 @@ def _run_declarative_differential_test(
             os.environ["TRITON_ALWAYS_COMPILE"] = prev
 
 
+def _bootstrap_torch_npu() -> None:
+    loaded_torch = sys.modules.get("torch")
+    if loaded_torch is not None and hasattr(loaded_torch, "npu"):
+        return
+
+    # Import torch/torch_npu before exec_module(user_module) runs any top-level
+    # user code. On Ascend, letting the very first torch import happen inside a
+    # dynamically executed user module can leave torch's backend auto-discovery
+    # and torch_npu initialization in a bad state, which later shows up as
+    # hangs or missing Triton NPU drivers. The torch import itself is required
+    # for these runtimes, so ImportError remains fatal here.
+    previous = os.environ.get(_TORCH_BACKEND_AUTOLOAD_ENV)
+    os.environ[_TORCH_BACKEND_AUTOLOAD_ENV] = "0"
+    try:
+        importlib.import_module("torch")
+        try:
+            importlib.import_module("torch_npu")
+        except ImportError:
+            pass
+    finally:
+        if previous is None:
+            os.environ.pop(_TORCH_BACKEND_AUTOLOAD_ENV, None)
+        else:
+            os.environ[_TORCH_BACKEND_AUTOLOAD_ENV] = previous
+
+
 def _filter_result_payload(result: ResultPayload, *, verbose: bool) -> ResultPayload:
     if verbose:
         return result
@@ -297,7 +327,11 @@ def _load_module(module_path: Path, module_name: str) -> Any:
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load module from {module_path}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(spec.name, None)
     return module
 
 
