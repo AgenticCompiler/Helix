@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from triton_agent.otel_trace import trace_summary_path
 from triton_agent.trace_analyze import analyze_trace
 
 
@@ -17,7 +18,5 @@ def handle_trace_analyze(parser: argparse.ArgumentParser, args: argparse.Namespa
         print(f"trace-analyze: {warning}")
 
     if not warnings:
-        output_dir = trace_path.parent
-        print(f"Wrote {output_dir / 'summary.json'}")
+        print(f"Wrote {trace_summary_path(trace_path)}")
     return 0 if not warnings else 1
-
