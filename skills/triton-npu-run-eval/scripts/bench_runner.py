@@ -737,12 +737,20 @@ def _load_bench_runtime_module():
         if spec is None or spec.loader is None:
             raise ImportError(f"Unable to load bench runtime helper: {script_path}")
         module = importlib.util.module_from_spec(spec)
+        script_dir = str(script_path.parent)
+        added = False
+        if script_dir not in sys.path:
+            sys.path.insert(0, script_dir)
+            added = True
         sys.modules[module_name] = module
         try:
             spec.loader.exec_module(module)
         except Exception:
             sys.modules.pop(module_name, None)
             raise
+        finally:
+            if added:
+                sys.path.remove(script_dir)
         _bench_runtime_module_cache = module
         return module
 

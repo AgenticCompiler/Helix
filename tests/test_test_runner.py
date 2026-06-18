@@ -6,6 +6,7 @@ import unittest
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Optional
 from unittest.mock import patch
 
 from tests.run_skill_test_utils import load_compare_result_module, load_test_runner_module
@@ -15,6 +16,149 @@ _ANOTHER_WARNING_LINE = "[WARNING] autotune fallback was used\n"
 
 
 class LocalTestRunnerTests(unittest.TestCase):
+    def test_load_module_registers_temporary_module_in_sys_modules_during_exec(self) -> None:
+        module = load_test_runner_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            script = root / "temp_module.py"
+            script.write_text(
+                "import sys\n"
+                "SEEN_DURING_EXEC = __name__ in sys.modules\n",
+                encoding="utf-8",
+            )
+
+            loaded = module._load_module(script, "temp_runtime")
+
+        self.assertTrue(loaded.SEEN_DURING_EXEC)
+        self.assertNotIn(loaded.__name__, sys.modules)
+
+    def test_load_differential_test_cases_bootstraps_torch_before_user_module_exec(self) -> None:
+        module = load_test_runner_module()
+        import_events: list[str] = []
+
+        def fake_import(name: str, package: Optional[str] = None):
+            import_events.append(name)
+            if name == "torch":
+                return SimpleNamespace(npu=SimpleNamespace())
+            if name == "torch_npu":
+                return SimpleNamespace()
+            return original_import(name, package)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "abs.py"
+            test_file = root / "differential_test_abs.py"
+            operator.write_text(
+                "def build_api():\n"
+                "    return lambda value: value.upper()\n",
+                encoding="utf-8",
+            )
+            test_file.write_text(
+                "TRACE = []\n"
+                "TRACE.append('module-imported')\n\n"
+                "def build_operator_api(operator_module):\n"
+                "    return operator_module.build_api()\n\n"
+                "def build_differential_test_cases(operator_api):\n"
+                "    return [\n"
+                "        {'id': 'case-a', 'inputs': ('a',), 'fn': lambda: operator_api('a')}\n"
+                "    ]\n",
+                encoding="utf-8",
+            )
+            original_import = module.importlib.import_module
+            with patch.object(module.importlib, "import_module", side_effect=fake_import):
+                cases = module.load_differential_test_cases(test_file, operator)
+
+        self.assertEqual([case.case_id for case in cases], ["case-a"])
+        self.assertGreaterEqual(import_events[:2], ["torch", "torch_npu"])
+
+    def test_run_import_only_standalone_test_bootstraps_torch_before_user_module_exec(self) -> None:
+        module = load_test_runner_module()
+        import_events: list[str] = []
+
+        def fake_import(name: str, package: Optional[str] = None):
+            import_events.append(name)
+            if name == "torch":
+                return SimpleNamespace(npu=SimpleNamespace(synchronize=lambda: None))
+            if name == "torch_npu":
+                return SimpleNamespace()
+            return original_import(name, package)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "abs.py"
+            test_file = root / "test_abs.py"
+            operator.write_text("def abs_entry():\n    return 1\n", encoding="utf-8")
+            test_file.write_text(
+                """# test-mode: standalone
+# compute-kind: compute
+# api-name: abs_entry
+# api-kind: torch-function
+# kernels: KernelA
+
+MARKER = "loaded"
+
+def main(operator_api):
+    print(operator_api())
+""",
+                encoding="utf-8",
+            )
+            original_import = module.importlib.import_module
+            with patch.object(module.importlib, "import_module", side_effect=fake_import):
+                result = module._run_import_only_standalone_test(test_file, operator, verbose=False)
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertGreaterEqual(import_events[:2], ["torch", "torch_npu"])
+
+    def test_run_declarative_differential_test_bootstraps_before_importing_torch(self) -> None:
+        module = load_test_runner_module()
+        events: list[str] = []
+
+        def fake_bootstrap() -> None:
+            events.append("bootstrap")
+
+        def fake_import(name: str, package: Optional[str] = None):
+            events.append(f"import:{name}")
+            if name == "torch":
+                return SimpleNamespace(save=lambda *_args, **_kwargs: None)
+            return original_import(name, package)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "abs.py"
+            test_file = root / "differential_test_abs.py"
+            archive_path = root / "abs_result.pt"
+            operator.write_text("def build_api():\n    return lambda value: value.upper()\n", encoding="utf-8")
+            test_file.write_text(
+                """# test-mode: differential
+# compute-kind: compute
+# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_differential_test_cases(operator_api):
+    return [{"id": "case-a", "inputs": ("a",), "fn": lambda: operator_api("a")}]
+""",
+                encoding="utf-8",
+            )
+            original_import = module.importlib.import_module
+            with patch.object(module, "_bootstrap_torch_npu", side_effect=fake_bootstrap), patch.object(
+                module.importlib,
+                "import_module",
+                side_effect=fake_import,
+            ):
+                result = module._run_declarative_differential_test(
+                    test_file,
+                    operator,
+                    archive_path,
+                    verbose=False,
+                )
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertEqual(events[0:2], ["bootstrap", "import:torch"])
+
     def test_run_local_test_prints_visible_devices_when_debug_enabled(self) -> None:
         module = load_test_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
