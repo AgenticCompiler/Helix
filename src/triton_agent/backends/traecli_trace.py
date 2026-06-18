@@ -144,8 +144,15 @@ class TraeCliJsonLineParser:
     def stats(self) -> TraeCliShowOutputStats:
         return self._renderer.stats
 
-    def _handle_unknown(self, _event: dict[str, Any]) -> str | None:
-        return None
+    def _handle_unknown(self, event: dict[str, Any]) -> str | None:
+        event_type = str(event.get("type", ""))
+        clean: dict[str, Any] = {}
+        for key in ("type", "subtype", "message", "error", "stop_reason", "tool_use_id"):
+            if key in event:
+                clean[key] = event[key]
+        if "tool_result" in event:
+            clean["tool_result"] = event["tool_result"]
+        return f"[event:{event_type}] {json.dumps(clean, ensure_ascii=False)}\n"
 
     def _handle_system(self, event: dict[str, Any]) -> str | None:
         if event.get("subtype") != "init" or self._banner_emitted:
