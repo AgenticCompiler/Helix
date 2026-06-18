@@ -55,13 +55,21 @@ Optimize worker invocations should treat these results as recoverable:
 
 These two categories share one optimize-owned recovery mechanism.
 
+Recovery classification precedence should be explicit:
+
+1. if `result.stalled` is true, use stall recovery
+2. else if the result matches transient backend failure detection, use transient recovery
+3. else treat the failure as non-recoverable
+
+This keeps optimize behavior deterministic even when a stalled result also contains rate-limit text in captured output.
+
 ### Recovery point
 
 When a worker invocation needs recovery, the CLI should recompute accepted progress from disk instead of trusting the interrupted invocation's intended batch range.
 
 Recovery point rules:
 
-1. Scan the current target round range from its starting round upward.
+1. Scan the current worker target round range from its starting round upward.
 2. For each round, require the round directory to exist and `check_round(...)` to pass.
 3. Stop at the first missing or failing round.
 4. Treat the longest passing prefix as accepted progress.
@@ -77,6 +85,11 @@ Example:
 Recovery should resume from rounds 14 through 15.
 
 Already accepted rounds must not be rerun.
+
+This longest-passing-prefix helper is range-local rather than session-global:
+
+- when the current worker target is rounds 11 through 15, the helper starts scanning at 11 rather than round 1
+- rounds accepted before the current worker target range are assumed to remain accepted for this helper
 
 ### Recovery prompt
 
@@ -195,9 +208,20 @@ The stall timer should reset when either:
 
 `process_runner.py` must not contain optimize-specific file-name knowledge.
 
+The progress probe should run inline inside the existing stall polling loops for buffered and streaming execution paths.
+
+This version should not introduce a separate probe thread. The polling loop already sleeps briefly between checks, and inline probe calls keep synchronization simpler.
+
 ### Optimize file activity rules
 
 Optimize should provide a worker-only progress probe that scans a narrow whitelist of business artifacts.
+
+Use concrete allow-list roots under the optimize workspace:
+
+- `baseline/**`
+- `opt-round-*/**`
+- `opt-note.md`
+- `learned_lessons.md`
 
 Count as progress:
 
@@ -230,14 +254,24 @@ The probe should treat file progress conservatively:
 - count forward-moving file `mtime`
 - do not treat directory `mtime` alone as progress
 
+Implementation should prefer these explicit allow-list roots over loose extension-based heuristics.
+
 ### Request wiring
 
 Add small request-level plumbing so optimize worker launches can:
 
 - disable shared backend retry
-- provide an optimize progress probe to the subprocess layer
+- provide optimize progress-source configuration to the subprocess layer
 
 The request model should stay explicit rather than encoding this through command-name conditionals inside the backend base layer.
+
+Implementation should not store a live Python callback on `AgentRequest`.
+
+Preferred shape:
+
+- keep a request-level boolean opt-out for shared backend retry
+- keep a request-level progress-source configuration object
+- construct the actual progress probe callable in the runner / process layer from that configuration
 
 ### Prompt construction
 
@@ -279,9 +313,14 @@ No special hidden retry path should bypass normal launch recording.
 
 - Add explicit request fields for:
   - disabling shared backend retry
-  - passing a process progress probe or equivalent progress-source configuration
+  - passing process progress-source configuration
 
-The exact field names can be chosen during implementation, but the intent should be obvious from the request model.
+Preferred field shape:
+
+- `disable_backend_retry: bool = False`
+- `progress_source: ProgressSourceConfig | None = None`
+
+The exact helper type name may vary, but the model should carry configuration rather than a live callback.
 
 ### `src/triton_agent/optimize/execution.py`
 
@@ -314,6 +353,9 @@ This keeps restart behavior simple:
 
 - if the CLI process exits completely, a later `--resume continue` run still rebuilds state from real artifacts
 - recovery does not depend on hidden in-memory-only acceptance records surviving across separate CLI invocations
+- recovery budget resets on a fresh CLI restart by design, so an unresolved round can receive a new local recovery budget after the optimize command is restarted
+
+This asymmetry is intentional: accepted artifact progress survives process restarts, but in-memory retry exhaustion does not.
 
 ## Testing Strategy
 
@@ -324,6 +366,7 @@ Add or update tests for these cases.
 - output is quiet but optimize business files keep changing, so the process is not marked stalled
 - only log or trace files change, so the process can still be marked stalled
 - no output and no business file progress still triggers stall
+- the external progress probe runs inline inside the existing stall polling loops rather than from a separate thread
 
 ### Backend base
 
@@ -339,6 +382,11 @@ Add or update tests for these cases.
 - recovery budget is tracked per unresolved round and resets when accepted progress advances
 - budget exhaustion for one round terminates the optimize session clearly
 - baseline repair and supervisor launches do not accidentally enter round-prefix recovery behavior
+- business artifact changes such as `round-state.json`, `summary.md`, and `attempts.md` reset stall timing through the optimize progress source
+- excluded paths such as `triton-agent-logs/` and `.triton-agent/` do not reset stall timing
+- directory `mtime` changes alone do not reset stall timing
+- non-recoverable worker-launch failures exit the recovery loop immediately
+- worker-launch success followed by ordinary batch validation failure stays on the existing post-run batch failure path rather than re-entering worker recovery
 
 ### High-value regression case
 

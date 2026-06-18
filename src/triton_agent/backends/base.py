@@ -155,7 +155,11 @@ class AgentRunner(ABC):
 
             max_retries = _code_agent_max_retries()
             attempt = 0
-            while _is_transient_agent_failure(result) and attempt < max_retries:
+            while (
+                not request.disable_backend_retry
+                and _is_transient_agent_failure(result)
+                and attempt < max_retries
+            ):
                 attempt += 1
                 time.sleep(_retry_delay_seconds(attempt))
                 result = self._run_once(
@@ -193,6 +197,7 @@ class AgentRunner(ABC):
                 extra_env=request.extra_env,
                 rendered_chunk_sink=rendered_chunk_sink,
                 collect_stdout=collect_stdout,
+                progress_probe=request.progress_probe,
             )
             return result
         except BaseException as exc:
