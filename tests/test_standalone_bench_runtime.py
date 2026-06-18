@@ -16,6 +16,52 @@ from tests.run_skill_test_utils import (
 
 
 class StandaloneBenchRuntimeTests(unittest.TestCase):
+    def test_load_bench_cases_bootstraps_torch_before_user_module_exec(self) -> None:
+        module = load_bench_runtime_module()
+        import_events: list[str] = []
+
+        def fake_import(name: str, package: Optional[str] = None):
+            import_events.append(name)
+            if name == "torch":
+                return SimpleNamespace(npu=SimpleNamespace())
+            if name == "torch_npu":
+                return SimpleNamespace()
+            return original_import(name, package)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            bench_file.write_text(
+                """# bench-mode: torch-npu-profiler
+# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_bench_cases():
+    return [{"id": "case-a"}]
+
+def build_bench_case_fn(operator_api, case):
+    return lambda: operator_api(case["id"])
+""",
+                encoding="utf-8",
+            )
+            operator_file.write_text(
+                """def build_api():
+    return lambda *_args, **_kwargs: None
+""",
+                encoding="utf-8",
+            )
+            original_import = module.importlib.import_module
+            with patch.object(module.importlib, "import_module", side_effect=fake_import):
+                cases, _resolution = module.load_bench_cases(bench_file, operator_file)
+
+        self.assertEqual([case.case_id for case in cases], ["case-a"])
+        self.assertGreaterEqual(import_events[:2], ["torch", "torch_npu"])
+
     def test_load_bench_cases_builds_callables_without_eager_execution(self) -> None:
         module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
