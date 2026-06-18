@@ -401,8 +401,6 @@ def build_optimize_baseline_prompt(
     context_lines = [
         f"Operator input: {_display_path(input_path)}",
     ]
-    if output_path is not None:
-        context_lines.append(f"Requested output: {_display_path(output_path)}")
     if test_mode is not None:
         context_lines.append(f"Requested test mode: {test_mode}")
     if bench_mode is not None:
