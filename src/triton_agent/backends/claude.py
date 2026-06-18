@@ -27,7 +27,7 @@ class ClaudeRunner(AgentRunner):
     def build_command(self, request: AgentRequest) -> list[str]:
         command = [self.executable]
         if not request.interact:
-            command.extend(["--print", "--dangerously-skip-permissions"])
+            command.extend(["--print"])
             command.extend(["--output-format", "stream-json", "--verbose"])
             if sys.platform == "win32":
                 command.extend(["--debug-file", "NUL"])

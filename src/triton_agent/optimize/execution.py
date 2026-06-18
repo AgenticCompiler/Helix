@@ -3,8 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any, TextIO, cast
+
+from triton_agent.optimize.agent_exit_log import write_agent_exit_log
 
 from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
@@ -299,9 +302,10 @@ class MultiInvocationOptimizeController:
                 batch_end=batch_end,
             )
 
-            round_result = self._run_request(
+            round_result = self._run_request_with_retry(
                 worker_request,
-                show_output_label=f"batch-{batch_start}-{batch_end}",
+                batch_start=batch_start,
+                batch_end=batch_end,
             )
             if not round_result.succeeded:
                 return round_result
@@ -481,6 +485,39 @@ class MultiInvocationOptimizeController:
             }
         )
 
+    _BATCH_FAILURE_RETRY_DELAYS = (2, 4, 8)
+
+    def _run_request_with_retry(
+        self,
+        request: AgentRequest,
+        *,
+        batch_start: int,
+        batch_end: int,
+    ) -> AgentResult:
+        label = f"batch-{batch_start}-{batch_end}"
+        result = self._run_request(request, show_output_label=label)
+        if result.succeeded:
+            return result
+
+        for attempt, delay in enumerate(self._BATCH_FAILURE_RETRY_DELAYS, start=1):
+            emit_verbose(
+                self._verbose_stream,
+                "optimize",
+                f"{label} failure (rc={result.return_code}, stalled={result.stalled}), "
+                f"retry {attempt}/{len(self._BATCH_FAILURE_RETRY_DELAYS)} in {delay}s",
+            )
+            time.sleep(delay)
+            result = self._run_request(request, show_output_label=f"{label}-retry-{attempt}")
+            if result.succeeded:
+                return result
+
+        emit_verbose(
+            self._verbose_stream,
+            "optimize",
+            f"{label} exhausted {len(self._BATCH_FAILURE_RETRY_DELAYS)} retries, giving up",
+        )
+        return result
+
     def _run_request(self, request: AgentRequest, *, show_output_label: str = "") -> AgentResult:
         run_id = self._artifacts_state.archive.run_id
         launch_label = show_output_label or "run"
@@ -518,6 +555,15 @@ class MultiInvocationOptimizeController:
             label=launch_label,
             session_id=result.session_id,
             agent=request.agent_name,
+        )
+        write_agent_exit_log(
+            workdir=request.workdir,
+            run_id=run_id,
+            label=launch_label,
+            return_code=result.return_code,
+            stderr=result.stderr,
+            stalled=result.stalled,
+            session_id=result.session_id,
         )
         return result
 
