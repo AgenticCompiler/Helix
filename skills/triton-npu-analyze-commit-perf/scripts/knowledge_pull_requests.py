@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pull-request helpers for PERF_KNOWLEDGE_BASE.md and workspace planning."""
+"""Pull-request helpers for workspace planning."""
 
 from __future__ import annotations
 
