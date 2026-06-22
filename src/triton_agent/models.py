@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Callable, Literal, Optional
 
 
 class CommandKind(str, Enum):
@@ -62,6 +62,8 @@ COMMAND_TO_SKILL = {
     CommandKind.DIFF_SKILLS_UPDATE: "",
 }
 
+ProgressProbe = Callable[[], Optional[float]]
+
 
 @dataclass
 class AgentRequest:
@@ -105,6 +107,8 @@ class AgentRequest:
     mcp_servers: tuple[str, ...] | None = None
     show_output_label: str = ""
     run_id: str = ""
+    disable_backend_retry: bool = False
+    progress_probe: ProgressProbe | None = None
 
     def with_prompt(self, prompt: str) -> "AgentRequest":
         return replace(self, prompt=prompt)

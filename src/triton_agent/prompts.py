@@ -91,7 +91,7 @@ def build_prompt(
                 f"Requested benchmark output: {_display_path(bench_output)}",
             ]
         )
-    if output_path is not None and command_kind != CommandKind.GEN_EVAL:
+    if output_path is not None and command_kind not in {CommandKind.GEN_EVAL, CommandKind.OPTIMIZE}:
         lines.append(f"Requested output: {_display_path(output_path)}")
     if test_mode is not None:
         lines.append(f"Requested test mode: {test_mode}")
