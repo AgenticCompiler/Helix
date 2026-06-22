@@ -114,10 +114,7 @@ def collect_workspace_upload_files(workspace: Path) -> CollectedUpload:
     has_round = any(p.is_dir() and p.name.startswith("opt-round-") for p in workspace.iterdir())
     has_opt_note = (workspace / "opt-note.md").is_file()
     if not has_baseline or not has_round or not has_opt_note:
-        raise ValueError(
-            f"Workspace must have baseline/, at least one opt-round-* directory, "
-            f"and an opt-note.md before uploading: {workspace}"
-        )
+        raise ValueError(f"Directory does not look like an optimize workspace: {workspace}")
 
     included: list[Path] = []
     excluded_entries: list[tuple[str, str]] = []
