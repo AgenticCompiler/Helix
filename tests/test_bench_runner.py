@@ -864,7 +864,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
 
             def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
                 self.assertEqual(workdir, str(root))
-                self.assertEqual(stall_timeout_seconds, 900)
+                self.assertEqual(stall_timeout_seconds, 300)
                 self.assertEqual(command[0], "msprof")
                 self.assertTrue(command[1].startswith("--output="))
                 output_dir = Path(command[1].split("=", 1)[1])
@@ -1344,7 +1344,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
 
             def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
                 self.assertEqual(workdir, str(root))
-                self.assertEqual(stall_timeout_seconds, 900)
+                self.assertEqual(stall_timeout_seconds, 300)
                 self.assertEqual(command[0], "msprof")
                 self.assertTrue(command[1].startswith("--output="))
                 output_dir = Path(command[1].split("=", 1)[1])
@@ -1510,7 +1510,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
 
             def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
                 self.assertEqual(workdir, str(root))
-                self.assertEqual(stall_timeout_seconds, 900)
+                self.assertEqual(stall_timeout_seconds, 300)
                 case_idx = int(str(command[-1]).removeprefix("case-"))
                 output_dir = Path(command[1].split("=", 1)[1])
                 if case_idx == 1:

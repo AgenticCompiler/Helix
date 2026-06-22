@@ -43,9 +43,9 @@ from run_runtime import (
     cleanup_remote_workspace,
     copy_file_from_remote,
     copy_file_to_remote,
+    eval_stall_timeout_seconds,
     create_remote_workspace,
     emit_verbose,
-    env_int,
     local_python_executable,
     result_succeeded,
     run_buffered_process,
@@ -71,10 +71,6 @@ class _MsprofCaseOutcome:
     stderr: str
     stalled: bool
     session_id: str | None
-
-
-def _bench_timeout() -> int:
-    return env_int("TRITON_AGENT_BENCH_TIMEOUT_SECONDS", 900)
 
 
 def _collect_env_copy_files(search_dir: Path) -> list[Path]:
@@ -421,7 +417,7 @@ def _run_remote_bench_perf_counter(
             stdout=stream_target,
             verbose=verbose,
             stderr=stderr,
-            stall_timeout_seconds=_bench_timeout(),
+            stall_timeout_seconds=eval_stall_timeout_seconds(),
             extra_env=extra_env,
         )
     copied_perf_path: Path | None = None
@@ -571,7 +567,7 @@ def _run_remote_bench_torch_npu_profiler(
             stdout=stream_target,
             verbose=verbose,
             stderr=stderr,
-            stall_timeout_seconds=_bench_timeout(),
+            stall_timeout_seconds=eval_stall_timeout_seconds(),
             extra_env=extra_env,
         )
     copied_perf_path: Path | None = None
@@ -795,7 +791,7 @@ def _run_local_bench_msprof(
                 result = run_streaming_process(
                     command,
                     str(bench_file.parent),
-                    stall_timeout_seconds=_bench_timeout(),
+                    stall_timeout_seconds=eval_stall_timeout_seconds(),
                     stdout=stream_target,
                     extra_env={"TRITON_ALWAYS_COMPILE": "1"},
                 )
@@ -970,7 +966,7 @@ def _run_remote_bench_msprof(
                     stdout=stream_target,
                     verbose=verbose,
                     stderr=stderr,
-                    stall_timeout_seconds=_bench_timeout(),
+                    stall_timeout_seconds=eval_stall_timeout_seconds(),
                 )
             elapsed = time.monotonic() - t0
             stdout_chunks.append(str(result["stdout"]))
@@ -1606,7 +1602,7 @@ def _run_local_torch_npu_profiler_case_in_subprocess(
             result = run_streaming_process(
                 command,
                 str(workspace_root),
-                stall_timeout_seconds=_bench_timeout(),
+                stall_timeout_seconds=eval_stall_timeout_seconds(),
                 stdout=stream_target,
                 extra_env=extra_env,
             )
@@ -1614,7 +1610,7 @@ def _run_local_torch_npu_profiler_case_in_subprocess(
         result = run_buffered_process(
             command,
             str(workspace_root),
-            stall_timeout_seconds=_bench_timeout(),
+            stall_timeout_seconds=eval_stall_timeout_seconds(),
             extra_env=extra_env,
         )
     return _parse_torch_npu_profiler_case_result_payload(
@@ -1649,7 +1645,7 @@ def _run_local_perf_counter_case_in_subprocess(
             result = run_streaming_process(
                 command,
                 str(workspace_root),
-                stall_timeout_seconds=_bench_timeout(),
+                stall_timeout_seconds=eval_stall_timeout_seconds(),
                 stdout=stream_target,
                 extra_env=extra_env,
             )
@@ -1657,7 +1653,7 @@ def _run_local_perf_counter_case_in_subprocess(
         result = run_buffered_process(
             command,
             str(workspace_root),
-            stall_timeout_seconds=_bench_timeout(),
+            stall_timeout_seconds=eval_stall_timeout_seconds(),
             extra_env=extra_env,
         )
     return _parse_worker_case_result_payload(
@@ -1723,7 +1719,7 @@ def _run_remote_torch_npu_profiler_case(
         verbose=verbose,
         stderr=stderr,
         extra_env=extra_env,
-        stall_timeout_seconds=_bench_timeout(),
+        stall_timeout_seconds=eval_stall_timeout_seconds(),
     )
     return _parse_torch_npu_profiler_case_result_payload(
         result,
@@ -1760,7 +1756,7 @@ def _run_remote_perf_counter_case(
         verbose=verbose,
         stderr=stderr,
         extra_env=extra_env,
-        stall_timeout_seconds=_bench_timeout(),
+        stall_timeout_seconds=eval_stall_timeout_seconds(),
     )
     return _parse_worker_case_result_payload(
         result,
@@ -1925,7 +1921,7 @@ def _run_local_msprof_case_parallel(
                 result = run_streaming_process(
                     command,
                     str(case_workspace),
-                    stall_timeout_seconds=_bench_timeout(),
+                    stall_timeout_seconds=eval_stall_timeout_seconds(),
                     stdout=stream_target,
                     extra_env=extra_env,
                 )
@@ -1996,7 +1992,7 @@ def _run_remote_msprof_case_parallel(
                 verbose=verbose,
                 stderr=stderr,
                 extra_env=extra_env,
-                stall_timeout_seconds=_bench_timeout(),
+                stall_timeout_seconds=eval_stall_timeout_seconds(),
             )
             elapsed = time.monotonic() - t0
         return _build_remote_msprof_case_outcome(

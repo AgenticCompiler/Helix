@@ -59,8 +59,8 @@ def _scp_timeout() -> int:
     return env_int("TRITON_AGENT_SCP_TIMEOUT_SECONDS", 300)
 
 
-def _eval_stall_timeout() -> int:
-    return env_int("TRITON_AGENT_EVAL_TIMEOUT_SECONDS", 900)
+def eval_stall_timeout_seconds() -> int:
+    return env_int("TRITON_AGENT_EVAL_TIMEOUT_SECONDS", 300)
 
 
 def emit_verbose(stderr: TextIO, category: str, message: str) -> None:
@@ -108,7 +108,7 @@ def run_buffered_process(
                 start = time.monotonic()
             elif process.poll() is not None:
                 break
-            elif time.monotonic() - start > stall_timeout_seconds:
+            elif stall_timeout_seconds > 0 and time.monotonic() - start > stall_timeout_seconds:
                 process.terminate()
                 stderr_thread.join(timeout=5)
                 return make_result(
@@ -188,7 +188,7 @@ def _run_streaming_windows(
             break
         with lock:
             elapsed = time.monotonic() - start_ref[0]
-        if elapsed > stall_timeout_seconds:
+        if stall_timeout_seconds > 0 and elapsed > stall_timeout_seconds:
             process.terminate()
             stalled_ref[0] = True
             break
@@ -256,7 +256,7 @@ def _run_streaming_pty(
                     break
             elif process.poll() is not None:
                 break
-            elif time.monotonic() - start > stall_timeout_seconds:
+            elif stall_timeout_seconds > 0 and time.monotonic() - start > stall_timeout_seconds:
                 process.terminate()
                 return make_result(
                     return_code=1,
@@ -378,7 +378,7 @@ def run_remote_command_streaming(
         f"cd {shlex.quote(remote_workspace)} && {env_prefix + ' ' if env_prefix else ''}{command_text}",
     )
     _maybe_emit_remote_command(command, verbose, stderr)
-    timeout = stall_timeout_seconds if stall_timeout_seconds is not None else _eval_stall_timeout()
+    timeout = stall_timeout_seconds if stall_timeout_seconds is not None else eval_stall_timeout_seconds()
     return run_streaming_process(command, ".", stall_timeout_seconds=timeout, stdout=stdout)
 
 
@@ -398,7 +398,7 @@ def run_remote_command_buffered(
         f"cd {shlex.quote(remote_workspace)} && {env_prefix + ' ' if env_prefix else ''}{command_text}",
     )
     _maybe_emit_remote_command(command, verbose, stderr)
-    timeout = stall_timeout_seconds if stall_timeout_seconds is not None else _eval_stall_timeout()
+    timeout = stall_timeout_seconds if stall_timeout_seconds is not None else eval_stall_timeout_seconds()
     return run_buffered_process(command, ".", stall_timeout_seconds=timeout)
 
 
