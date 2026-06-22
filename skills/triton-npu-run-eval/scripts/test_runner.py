@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import argparse
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 import importlib
 import importlib.util
 import inspect
+import json
 import os
 import sys
+import tempfile
 import textwrap
 import traceback
 from io import StringIO
@@ -22,20 +25,20 @@ from run_runtime import (
     copy_file_from_remote,
     copy_file_to_remote,
     create_remote_workspace,
-    env_int,
+    eval_stall_timeout_seconds,
+    local_python_executable,
     make_result,
     result_succeeded,
+    run_buffered_process,
     run_remote_command_streaming,
+    run_streaming_process,
 )
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+_LOCAL_TEST_WORKER_COMMAND = "local-test-worker"
 _WARNING_PREFIX = "[WARNING]"
 _TORCH_BACKEND_AUTOLOAD_ENV = "TORCH_DEVICE_BACKEND_AUTOLOAD"
-
-
-def _test_timeout() -> int:
-    return env_int("TRITON_AGENT_TEST_TIMEOUT_SECONDS", 900)
 
 
 @dataclass(frozen=True)
@@ -49,6 +52,117 @@ def _differential_archive_path(operator_file: Path) -> Path:
     return operator_file.parent / f"{operator_file.stem}_result.pt"
 
 
+def _write_local_test_worker_payload(
+    result_file: Path,
+    result: ResultPayload,
+    archived_result: Path | None,
+) -> None:
+    result_file.write_text(
+        json.dumps(
+            {
+                "result": {
+                    "return_code": int(result["return_code"]),
+                    "stdout": str(result["stdout"]),
+                    "stderr": str(result["stderr"]),
+                    "stalled": bool(result["stalled"]),
+                    "session_id": result["session_id"],
+                },
+                "archived_result": None if archived_result is None else str(archived_result.resolve()),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _read_local_test_worker_payload(result_file: Path) -> tuple[ResultPayload, Path | None]:
+    payload = json.loads(result_file.read_text(encoding="utf-8"))
+    result_payload = payload["result"]
+    result = make_result(
+        return_code=int(result_payload["return_code"]),
+        stdout=str(result_payload["stdout"]),
+        stderr=str(result_payload["stderr"]),
+        stalled=bool(result_payload["stalled"]),
+        session_id=cast(str | None, result_payload["session_id"]),
+    )
+    archived_raw = payload.get("archived_result")
+    archived_result = None if archived_raw is None else Path(str(archived_raw)).expanduser().resolve()
+    return result, archived_result
+
+
+def _merge_failed_worker_result(result: ResultPayload) -> tuple[ResultPayload, None]:
+    return result, None
+
+
+def _local_test_worker_command(
+    test_file: Path,
+    operator_file: Path,
+    test_mode: str,
+    result_file: Path,
+    *,
+    verbose: bool,
+) -> list[str]:
+    command = [
+        local_python_executable(),
+        str(Path(__file__).resolve()),
+        _LOCAL_TEST_WORKER_COMMAND,
+        "--test-file",
+        str(test_file.resolve()),
+        "--operator-file",
+        str(operator_file.resolve()),
+        "--test-mode",
+        test_mode,
+        "--result-file",
+        str(result_file),
+    ]
+    if verbose:
+        command.append("--verbose")
+    return command
+
+
+def _build_local_test_worker_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog=Path(__file__).name)
+    parser.add_argument("command", choices=[_LOCAL_TEST_WORKER_COMMAND])
+    parser.add_argument("--test-file", required=True)
+    parser.add_argument("--operator-file", required=True)
+    parser.add_argument("--test-mode", choices=["standalone", "differential"], required=True)
+    parser.add_argument("--result-file", required=True)
+    parser.add_argument("--verbose", action="store_true")
+    return parser
+
+
+def _run_local_test_worker(
+    test_file: Path,
+    operator_file: Path,
+    test_mode: str,
+    result_file: Path,
+    *,
+    verbose: bool,
+) -> int:
+    if test_mode == "standalone":
+        result = _run_import_only_standalone_test(test_file, operator_file, verbose=verbose)
+        archived_result = None
+    elif test_mode == "differential":
+        archive_path = _differential_archive_path(operator_file)
+        result = _run_declarative_differential_test(test_file, operator_file, archive_path, verbose=verbose)
+        archived_result = archive_path if result_succeeded(result) and archive_path.exists() else None
+    else:
+        raise ValueError(f"Unsupported test mode: {test_mode}")
+    _write_local_test_worker_payload(result_file, result, archived_result)
+    return 0
+
+
+def _run_local_test_worker_main(argv: list[str] | None = None) -> int:
+    parser = _build_local_test_worker_parser()
+    args = parser.parse_args(argv)
+    return _run_local_test_worker(
+        Path(args.test_file).expanduser().resolve(),
+        Path(args.operator_file).expanduser().resolve(),
+        cast(str, args.test_mode),
+        Path(args.result_file).expanduser().resolve(),
+        verbose=bool(args.verbose),
+    )
+
+
 def run_local_test(
     test_file: Path,
     operator_file: Path,
@@ -57,15 +171,44 @@ def run_local_test(
     verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
     maybe_print_visible_devices()
-    if test_mode == "standalone":
-        result = _run_import_only_standalone_test(test_file, operator_file, verbose=verbose)
-        return _filter_result_payload(result, verbose=verbose), None
-    if test_mode == "differential":
-        archive_path = _differential_archive_path(operator_file)
-        result = _run_declarative_differential_test(test_file, operator_file, archive_path, verbose=verbose)
-        archived_result = archive_path if result_succeeded(result) else None
-        return _filter_result_payload(result, verbose=verbose), archived_result
-    raise ValueError(f"Unsupported test mode: {test_mode}")
+    with tempfile.TemporaryDirectory() as tmp:
+        result_file = Path(tmp) / "local-test-result.json"
+        command = _local_test_worker_command(
+            test_file,
+            operator_file,
+            test_mode,
+            result_file,
+            verbose=verbose,
+        )
+        if verbose:
+            runner_result = run_streaming_process(
+                command,
+                str(test_file.resolve().parent),
+                stall_timeout_seconds=eval_stall_timeout_seconds(),
+            )
+        else:
+            runner_result = run_buffered_process(
+                command,
+                str(test_file.resolve().parent),
+                stall_timeout_seconds=eval_stall_timeout_seconds(),
+            )
+        if result_succeeded(runner_result):
+            if not result_file.exists():
+                return _merge_failed_worker_result(
+                    make_result(
+                        return_code=1,
+                        stdout=str(runner_result["stdout"]),
+                        stderr=(
+                            str(runner_result["stderr"])
+                            + f"Local test worker did not write result payload: {result_file}"
+                        ),
+                        stalled=bool(runner_result["stalled"]),
+                        session_id=runner_result["session_id"],
+                    )
+                )
+            result, archived_result = _read_local_test_worker_payload(result_file)
+            return _filter_result_payload(result, verbose=verbose), archived_result
+        return _merge_failed_worker_result(runner_result)
 
 
 def parse_test_metadata(test_file: Path) -> dict[str, str]:
@@ -421,7 +564,7 @@ def run_remote_test(
                 spec,
                 remote_workspace,
                 _build_remote_standalone_command(test_file.name, operator_file.name),
-                stall_timeout_seconds=_test_timeout(),
+                stall_timeout_seconds=eval_stall_timeout_seconds(),
                 verbose=verbose,
                 stderr=stderr,
                 extra_env=extra_env,
@@ -433,7 +576,7 @@ def run_remote_test(
                 spec,
                 remote_workspace,
                 _build_remote_differential_command(test_file.name, operator_file.name),
-                stall_timeout_seconds=_test_timeout(),
+                stall_timeout_seconds=eval_stall_timeout_seconds(),
                 verbose=verbose,
                 stderr=stderr,
                 extra_env=extra_env,
@@ -675,3 +818,11 @@ def _parse_compute_kind(raw_value: object) -> bool:
     if normalized == "non-compute":
         return False
     raise ValueError("Test metadata 'compute-kind' must be 'compute' or 'non-compute'")
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(_run_local_test_worker_main())
+    except Exception:
+        traceback.print_exc()
+        raise SystemExit(1)

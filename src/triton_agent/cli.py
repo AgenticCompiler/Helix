@@ -137,15 +137,7 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
             ),
             (
                 "TRITON_AGENT_EVAL_TIMEOUT_SECONDS",
-                "Stall timeout in seconds for remote command execution (default: 900).",
-            ),
-            (
-                "TRITON_AGENT_TEST_TIMEOUT_SECONDS",
-                "Stall timeout in seconds for test execution (default: 900).",
-            ),
-            (
-                "TRITON_AGENT_BENCH_TIMEOUT_SECONDS",
-                "Stall timeout in seconds for benchmark execution (default: 900).",
+                "Stall timeout in seconds for run-test and run-bench execution (default: 300).",
             ),
             (
                 "TRITON_AGENT_PROFILE_TIMEOUT_SECONDS",
