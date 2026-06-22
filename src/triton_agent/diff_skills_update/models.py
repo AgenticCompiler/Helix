@@ -8,7 +8,12 @@ from triton_agent.models import AgentResult
 
 
 Status = Literal["aligned", "not_aligned", "failed", "skipped"]
-DiffSkillsUpdateSource = Literal["code-diff", "optimize-process"]
+DiffSkillsUpdateSource = Literal["code-diff", "optimize-process", "git-record"]
+
+
+def _empty_str_list() -> list[str]:
+    """default_factory compatible with Python 3.9 where ``list[str]`` is not callable."""
+    return []
 
 
 @dataclass(frozen=True)
@@ -25,6 +30,7 @@ class DiffSkillsUpdateConfig:
     force: bool
     skip_existing: bool
     promote_converged_skills: bool
+    base_revision: str = ""  # empty → auto-detect from origin/HEAD
 
 
 @dataclass(frozen=True)
@@ -57,8 +63,8 @@ class DiscoveryResult:
 
 @dataclass
 class DiffAgentOutput:
-    matched_patterns: list[str] = field(default_factory=list[str])
-    updated_patterns: list[str] = field(default_factory=list[str])
+    matched_patterns: list[str] = field(default_factory=_empty_str_list)
+    updated_patterns: list[str] = field(default_factory=_empty_str_list)
     summary: str = ""
 
 
@@ -70,7 +76,7 @@ class IterationReport:
     simulate_return_code: int
     analysis_return_code: int
     analysis_summary: str
-    updated_patterns: list[str] = field(default_factory=list[str])
+    updated_patterns: list[str] = field(default_factory=_empty_str_list)
 
 
 @dataclass

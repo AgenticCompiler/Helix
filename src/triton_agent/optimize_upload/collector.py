@@ -17,7 +17,7 @@ _EXCLUDED_DIRS = frozenset({
 })
 _EXCLUDED_EXTENSIONS = frozenset({".pt", ".tar", ".tar.gz", ".tgz", ".zip"})
 
-_ROOT_WHITELIST_GLOBS = ("*.py", "opt-note.md", "learned_lessons.md")
+_ROOT_WHITELIST_GLOBS = ("*.py", "opt-note.md", "learned_lessons.md", "report.md")
 _OPTIMIZE_LOG_PATTERN = "**/show-output*.log"
 
 
@@ -83,11 +83,12 @@ def _resolve_state_path(state_dir: Path, workspace: Path, relative_path: str) ->
 
 def _resolve_round_artifacts(workspace: Path, round_dir: Path) -> list[Path]:
     files: list[Path] = []
-    # Round operator via the contract resolver.
+    # Round operator via the contract resolver so we don't accidentally
+    # pick up bench_kernel.py, test_kernel.py, etc.
     op = _OPTIMIZE_ROUND.resolve_round_operator_file(round_dir)
     if op is not None and op.exists():
         files.append(op)
-    # Round notes and state.
+    # Round notes, state, and perf analysis.
     for name in ("attempts.md", "summary.md", "round-state.json", "perf-analysis.md", "compiler-analysis.md"):
         p = round_dir / name
         if p.exists():
@@ -111,8 +112,12 @@ def collect_workspace_upload_files(workspace: Path) -> CollectedUpload:
 
     has_baseline = (workspace / "baseline").is_dir()
     has_round = any(p.is_dir() and p.name.startswith("opt-round-") for p in workspace.iterdir())
-    if not has_baseline and not has_round:
-        raise ValueError(f"Directory does not look like an optimize workspace: {workspace}")
+    has_opt_note = (workspace / "opt-note.md").is_file()
+    if not has_baseline or not has_round or not has_opt_note:
+        raise ValueError(
+            f"Workspace must have baseline/, at least one opt-round-* directory, "
+            f"and an opt-note.md before uploading: {workspace}"
+        )
 
     included: list[Path] = []
     excluded_entries: list[tuple[str, str]] = []
@@ -126,7 +131,11 @@ def collect_workspace_upload_files(workspace: Path) -> CollectedUpload:
         pass
 
     root_py_files = sorted(workspace.glob("*.py"))
-    root_md_files = sorted(workspace.glob("opt-note.md")) + sorted(workspace.glob("learned_lessons.md"))
+    root_md_files = (
+        sorted(workspace.glob("opt-note.md"))
+        + sorted(workspace.glob("learned_lessons.md"))
+        + sorted(workspace.glob("report.md"))
+    )
     for f in root_py_files + root_md_files:
         if f.is_file():
             included.append(f)

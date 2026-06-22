@@ -80,6 +80,11 @@ STAGE_RULES: dict[CommandKind, StageRule] = {
             "+triton-npu-repair-guide",
         ),
     ),
+    CommandKind.DIFF_SKILLS_UPDATE: StageRule(
+        directives=(
+            "+triton-npu-optimize-knowledge",
+        ),
+    ),
 }
 
 
