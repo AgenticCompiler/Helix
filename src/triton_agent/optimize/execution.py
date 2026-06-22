@@ -373,6 +373,16 @@ class MultiInvocationOptimizeController:
 
             failure_kind = classify_worker_failure(result)
             if failure_kind == "fatal":
+                if is_optimize_worker_retryable(result):
+                    label = (
+                        f"batch-{active_request.current_round}-"
+                        f"{active_request.final_round}-r{attempt}"
+                    )
+                    result = self._apply_generic_worker_retries(
+                        active_request,
+                        result,
+                        label=label,
+                    )
                 return active_request, result
 
             progress = compute_range_progress(
@@ -595,15 +605,13 @@ class MultiInvocationOptimizeController:
             }
         )
 
-    def _run_request_with_retry(
+    def _apply_generic_worker_retries(
         self,
         request: AgentRequest,
+        result: AgentResult,
         *,
-        batch_start: int,
-        batch_end: int,
+        label: str,
     ) -> AgentResult:
-        label = f"batch-{batch_start}-{batch_end}"
-        result = self._run_request(request, show_output_label=label)
         if result.succeeded or not is_optimize_worker_retryable(result):
             if not result.succeeded:
                 emit_verbose(
@@ -616,15 +624,18 @@ class MultiInvocationOptimizeController:
                 )
             return result
 
-        for attempt, delay in enumerate(OPTIMIZE_WORKER_RETRY_DELAYS_SECONDS, start=1):
+        for retry_attempt, delay in enumerate(OPTIMIZE_WORKER_RETRY_DELAYS_SECONDS, start=1):
             emit_verbose(
                 self._verbose_stream,
                 "optimize",
                 f"{label} failure (rc={result.return_code}, stalled={result.stalled}), "
-                f"retry {attempt}/{len(OPTIMIZE_WORKER_RETRY_DELAYS_SECONDS)} in {delay}s",
+                f"retry {retry_attempt}/{len(OPTIMIZE_WORKER_RETRY_DELAYS_SECONDS)} in {delay}s",
             )
             time.sleep(delay)
-            result = self._run_request(request, show_output_label=f"{label}-retry-{attempt}")
+            result = self._run_request(
+                request,
+                show_output_label=f"{label}-retry-{retry_attempt}",
+            )
             if result.succeeded or not is_optimize_worker_retryable(result):
                 return result
 
@@ -634,6 +645,17 @@ class MultiInvocationOptimizeController:
             f"{label} exhausted {len(OPTIMIZE_WORKER_RETRY_DELAYS_SECONDS)} retries, giving up",
         )
         return result
+
+    def _run_request_with_retry(
+        self,
+        request: AgentRequest,
+        *,
+        batch_start: int,
+        batch_end: int,
+    ) -> AgentResult:
+        label = f"batch-{batch_start}-{batch_end}"
+        result = self._run_request(request, show_output_label=label)
+        return self._apply_generic_worker_retries(request, result, label=label)
 
     def _run_request(self, request: AgentRequest, *, show_output_label: str = "") -> AgentResult:
         run_id = self._artifacts_state.archive.run_id

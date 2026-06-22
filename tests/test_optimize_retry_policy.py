@@ -4,6 +4,7 @@ import json
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from io import StringIO
 from pathlib import Path
 from typing import Any, cast
@@ -181,6 +182,66 @@ class OptimizeRetryPolicyTests(unittest.TestCase):
             self.assertTrue(result.stalled)
             self.assertEqual(calls, ["run"])
             sleep_mock.assert_not_called()
+
+    def test_worker_recovery_retries_fatal_generic_failures(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=operator,
+                operator_path=operator,
+                output_path=workdir / "opt_kernel.py",
+                test_mode="differential",
+                bench_mode="torch-npu-profiler",
+                interact=False,
+                verbose=True,
+                stream_output=False,
+                force_overwrite=False,
+                agent_name="traecli",
+                skill_name="triton-npu-optimize",
+                prompt="worker prompt",
+                workdir=workdir,
+                min_rounds=1,
+                current_round=1,
+                final_round=1,
+            )
+            worker_request = replace(request, prompt="worker prompt")
+            artifacts_state = OptimizeSessionArtifactsManager().prepare_checked_session(
+                workdir,
+                agent_name="traecli",
+                optimize_target="kernel",
+                compiler_source_path=None,
+                compiler_source_commit=None,
+                enable_cann_ext_api=False,
+                enable_subagent=False,
+                optimize_knowledge_skill_name=None,
+            )
+            calls: list[str] = []
+
+            class FakeRunner:
+                def run(self, _request: AgentRequest, **_kwargs: Any) -> AgentResult:
+                    calls.append("run")
+                    return AgentResult(return_code=1, stdout="agent crashed", stderr="")
+
+            controller = MultiInvocationOptimizeController(
+                cast(Any, FakeRunner()),
+                OptimizeSessionArtifactsManager(),
+                artifacts_state=artifacts_state,
+                verbose_stream=StringIO(),
+            )
+            with patch("triton_agent.optimize.execution.time.sleep") as sleep_mock:
+                _worker_request, result = controller._run_worker_with_recovery(
+                    request,
+                    worker_request,
+                    issues=None,
+                    original_batch_start=1,
+                )
+
+            self.assertFalse(result.succeeded)
+            self.assertEqual(len(calls), 1 + 3)
+            self.assertEqual(sleep_mock.call_count, 3)
 
 
 if __name__ == "__main__":
