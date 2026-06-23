@@ -23,6 +23,7 @@ from triton_agent.optimize.execution import (
     _latest_round_dir,
 )
 from triton_agent.optimize.orchestration import build_optimize_request, run_optimize_request
+from triton_agent.optimize.prompts import build_optimize_round_prompt
 from triton_agent.optimize.pt_cleanup import cleanup_workspace_pt_files
 from triton_agent.optimize.archive import ArchiveState
 from triton_agent.optimize.memory_file import MemoryFileState
@@ -201,6 +202,49 @@ class OptimizeRuntimeTests(unittest.TestCase):
     ) -> None:
         self.assertFalse(hasattr(execution_module, "SupervisedOptimizeAdapter"))
         self.assertFalse(hasattr(execution_module, "execute_supervised_optimize"))
+
+    def test_build_optimize_round_prompt_includes_phase_summary_when_present(self) -> None:
+        prompt = build_optimize_round_prompt(
+            Path("kernel.py"),
+            None,
+            test_mode="differential",
+            bench_mode="torch-npu-profiler",
+            round_mode="checked",
+            current_round=1,
+            final_round=1,
+            workflow_phase_summary="Current phase: round_active\nCurrent round: 1",
+        )
+
+        self.assertIn("Workflow phase summary:", prompt)
+        self.assertIn("Current phase: round_active", prompt)
+
+    def test_build_optimize_request_preserves_enable_agent_hooks_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=1,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                round_mode="checked",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                enable_agent_hooks=True,
+            )
+
+            request = build_optimize_request(operator, workdir, options)
+
+        self.assertTrue(request.enable_agent_hooks)
 
     def _build_guidance_state(self, workdir: Path) -> OptimizeSessionArtifactsState:
         hidden_triton_agent_dir = workdir / ".triton-agent"

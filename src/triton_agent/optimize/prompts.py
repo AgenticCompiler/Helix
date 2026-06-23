@@ -205,6 +205,7 @@ def build_optimize_supervisor_prompt(
     latest_round_dir: Path | None = None,
     optimize_target: str = "kernel",
     cli_followup_summary: str | None = None,
+    workflow_phase_summary: str | None = None,
 ) -> str:
     lines = [
         "This invocation is the optimize supervisor pass.",
@@ -212,6 +213,8 @@ def build_optimize_supervisor_prompt(
         f"Target optimization scope for this optimize session: {optimize_target}.",
         f"Read `{_display_path(workdir / 'opt-note.md')}` before acting.",
     ]
+    if workflow_phase_summary is not None:
+        lines.extend(["Workflow phase summary:", workflow_phase_summary])
     if latest_round_dir is not None:
         lines.append(f"Read `{_display_path(latest_round_dir)}` before acting.")
         if cli_followup_summary is not None:
@@ -338,6 +341,7 @@ def build_optimize_round_prompt(
     current_round: int = 1,
     final_round: int = 1,
     round_batch_size: int = 5,
+    workflow_phase_summary: str | None = None,
 ) -> str:
     del input_path, output_path, test_mode, bench_mode, round_batch_size, round_mode
     lines = [
@@ -359,6 +363,8 @@ def build_optimize_round_prompt(
         lines.append(
             "Do not rely on a separate baseline-preflight invocation or a later worker batch to do that setup for you."
         )
+    if workflow_phase_summary is not None:
+        lines.extend(["", "Workflow phase summary:", workflow_phase_summary])
     lines.extend(
         _shared_optimize_prompt_lines(
             target_chip=target_chip,
@@ -393,6 +399,7 @@ def build_optimize_baseline_prompt(
     base_prompt: str | None = None,
     remote: str | None = None,
     remote_workdir: str | None = None,
+    workflow_phase_summary: str | None = None,
 ) -> str:
     lines = [
         "This invocation repairs the optimize baseline before the round loop begins.",
@@ -427,6 +434,8 @@ def build_optimize_baseline_prompt(
         context_lines.extend(["", *additional_user_instructions])
     if context_lines:
         lines.extend(["", *context_lines])
+    if workflow_phase_summary is not None:
+        lines.extend(["", "Workflow phase summary:", workflow_phase_summary])
     lines.extend(
         [
             "",

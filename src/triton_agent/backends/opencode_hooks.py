@@ -74,16 +74,19 @@ def _write_opencode_policy(
     extra_allowed_read_roots: Sequence[Path] = (),
 ) -> None:
     allow_read_roots = _allow_read_roots(workspace, extra_allowed_read_roots)
+    protected_script_roots = [str((workspace / ".opencode" / "skills").resolve())]
     policy = {
         "workspace_root": str(workspace),
         "trace": _trace_policy(options),
         "guard": {
             "enabled": options.guard_enabled,
             "allow_read_roots": allow_read_roots,
+            "protected_script_roots": protected_script_roots,
             "deny_read_globs": [str(workspace / pattern) for pattern in _OPENCODE_DENY_READ_GLOBS],
             "deny_message": _OPENCODE_DENY_MESSAGE,
         },
         "allow_read_roots": allow_read_roots,
+        "protected_script_roots": protected_script_roots,
         "deny_read_globs": [str(workspace / pattern) for pattern in _OPENCODE_DENY_READ_GLOBS],
         "deny_message": _OPENCODE_DENY_MESSAGE,
     }

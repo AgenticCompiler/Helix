@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
 
+// Unique tool-use ID counter shared across all invocations in a session.
 const toolLifecycleCache = new Map();
 let _toolUseIdCounter = 0;
 function generateToolUseId() {
@@ -25,6 +26,7 @@ const PATH_FRAGMENT_RE =
   /(?:^|[^A-Za-z0-9_./-])(?<path>(?:\/|\.\.?\/|\.opencode\/|triton-agent-logs\/)[A-Za-z0-9_./*?{}+@%:,=-]+)/g;
 const WINDOWS_PATH_FRAGMENT_RE = /[A-Za-z]:[\\/][A-Za-z0-9_ .\\/(){}+@%:,=-]+/g;
 const EDIT_TOOLS = new Set(["edit", "write", "patch", "update", "multiedit", "multi_edit"]);
+const WORKFLOW_STATE_RELATIVE_PATH = ".triton-agent/state.json";
 
 export async function TritonAgentHookGuard(context) {
   const policy = await loadPolicy(context);
@@ -113,6 +115,17 @@ async function evaluateOutput(policy, input, output) {
     typeof guardPolicy.deny_message === "string" && guardPolicy.deny_message.length > 0
       ? guardPolicy.deny_message
       : "This read is blocked by workspace policy.";
+
+  // Built-in edit tools (write, edit, patch, …) are checked against
+  // .triton-agent/state.json for phase enforcement before falling
+  // through to the read/Bash deny_globs layer.
+  if (EDIT_TOOLS.has(String(input.tool).toLowerCase())) {
+    const filePath = firstToolPath(output.args);
+    if (typeof filePath !== "string") {
+      return null;
+    }
+    return evaluateBuiltInEditCandidate(filePath, cwd, workspaceRoot);
+  }
 
   if (input.tool === "read") {
     const filePath = output.args?.filePath;
@@ -275,8 +288,8 @@ function tracePolicyFor(policy) {
 }
 
 function toolSummary(tool, args) {
-  if (tool === "bash" && typeof args.command === "string") {
-    return args.command;
+  if ((tool === "bash" || tool === "shell") && typeof args.command === "string") {
+    return `${tool}: ${classifyCommand(args.command)}`;
   }
   if (typeof args.filePath === "string") {
     return args.filePath;
@@ -436,6 +449,140 @@ async function evaluateCandidate(
   return null;
 }
 
+async function evaluateBuiltInEditCandidate(candidate, cwd, workspaceRoot) {
+  const resolved = await resolveCandidate(candidate, cwd);
+  if (!resolved) {
+    return null;
+  }
+  if (!isUnderRoot(resolved, workspaceRoot)) {
+    return builtInEditOutsideWorkspaceDenial();
+  }
+
+  const state = await loadWorkflowState(workspaceRoot);
+  if (!state) {
+    return builtInEditMissingStateDenial();
+  }
+
+  const relative = displayPath(resolved, workspaceRoot);
+  if (state.phase === "baseline") {
+    if (isAllowedBaselineEditPath(relative, state.source_operator)) {
+      return null;
+    }
+    return baselinePhaseBuiltInEditDenial();
+  }
+  if (state.phase === "awaiting_round_start") {
+    return awaitingRoundStartBuiltInEditDenial();
+  }
+  if (state.phase === "round_active") {
+    const roundDir = activeRoundDir(state);
+    if (!roundDir) {
+      return builtInEditMissingStateDenial();
+    }
+    if (relative === roundDir || relative.startsWith(`${roundDir}/`)) {
+      return null;
+    }
+    return roundActiveBuiltInEditDenial(roundDir);
+  }
+
+  return builtInEditMissingStateDenial();
+}
+
+async function loadWorkflowState(workspaceRoot) {
+  const statePath = path.join(workspaceRoot, WORKFLOW_STATE_RELATIVE_PATH);
+  try {
+    const state = JSON.parse(await fs.readFile(statePath, "utf8"));
+    if (!state || typeof state !== "object") {
+      return null;
+    }
+    if (typeof state.phase !== "string" || state.phase.length === 0) {
+      return null;
+    }
+    if (typeof state.source_operator !== "string" || state.source_operator.length === 0) {
+      return null;
+    }
+    return state;
+  } catch {
+    return null;
+  }
+}
+
+function isAllowedBaselineEditPath(relativePath, sourceOperator) {
+  if (relativePath === "baseline" || relativePath.startsWith("baseline/")) {
+    return true;
+  }
+  if (relativePath === sourceOperator) {
+    return true;
+  }
+  if (relativePath.includes("/")) {
+    return false;
+  }
+  return (
+    relativePath.startsWith("test_") ||
+    relativePath.startsWith("differential_test_") ||
+    relativePath.startsWith("bench_")
+  );
+}
+
+function activeRoundDir(state) {
+  if (!Number.isInteger(state.current_round) || !state.rounds || typeof state.rounds !== "object") {
+    return null;
+  }
+  const roundEntry = state.rounds[String(state.current_round)];
+  if (!roundEntry || typeof roundEntry !== "object") {
+    return null;
+  }
+  if (roundEntry.status !== "active" || typeof roundEntry.round_dir !== "string" || roundEntry.round_dir.length === 0) {
+    return null;
+  }
+  return roundEntry.round_dir;
+}
+
+function builtInEditMissingStateDenial() {
+  return (
+    "Built-in edit tool blocked by optimize workflow policy. " +
+    "Optimize workflow state is missing or invalid at `.triton-agent/state.json`. " +
+    "Ask the runner to restart the optimize session so workflow state can be rebuilt. " +
+    "First-version scope: only built-in edit tools are blocked here; Bash file writes are not blocked."
+  );
+}
+
+function builtInEditOutsideWorkspaceDenial() {
+  return (
+    "Built-in edit tool blocked by optimize workflow policy. " +
+    "Keep built-in edits inside the current optimize workspace. " +
+    "First-version scope: only built-in edit tools are blocked here; Bash file writes are not blocked."
+  );
+}
+
+function baselinePhaseBuiltInEditDenial() {
+  return (
+    "Built-in edit tool blocked by optimize workflow policy. " +
+    "Current phase is baseline. During baseline, built-in edits are limited to the baseline-minimal file set: " +
+    "the source operator, root-level test/bench harness files, and `baseline/` artifacts. " +
+    "Finish or repair baseline, then submit it through `triton-npu-optimize-submit-baseline` before opening a round. " +
+    "First-version scope: only built-in edit tools are blocked here; Bash file writes are not blocked."
+  );
+}
+
+function awaitingRoundStartBuiltInEditDenial() {
+  return (
+    "Built-in edit tool blocked by optimize workflow policy. " +
+    "Current phase is awaiting_round_start, so no optimize round is active yet. " +
+    "Use `triton-npu-optimize-start-round` to open the next `opt-round-N/` before editing. " +
+    "First-version scope: only built-in edit tools are blocked here; Bash file writes are not blocked."
+  );
+}
+
+function roundActiveBuiltInEditDenial(roundDir) {
+  return (
+    "Built-in edit tool blocked by optimize workflow policy. " +
+    `Current active round is ${roundDir}. Built-in edits must stay inside \`${roundDir}/\`. ` +
+    "Edit the round-local snapshot and round artifacts instead of top-level workspace files. " +
+    "When this round is ready, use `triton-npu-optimize-submit-round` to submit it before moving on. " +
+    "First-version scope: only built-in edit tools are blocked here; Bash file writes are not blocked."
+  );
+}
+
 function splitCommand(command) {
   const tokens = [];
   let current = "";
@@ -590,7 +737,12 @@ async function resolveCandidate(candidate, cwd) {
   try {
     return await fs.realpath(resolved);
   } catch {
-    return resolved;
+    try {
+      const realParent = await fs.realpath(path.dirname(resolved));
+      return path.join(realParent, path.basename(resolved));
+    } catch {
+      return resolved;
+    }
   }
 }
 

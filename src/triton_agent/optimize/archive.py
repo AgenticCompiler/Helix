@@ -71,7 +71,7 @@ class ArchiveManager:
         # directory. Only treat truly unexpected children as a stale archive.
         _EXPECTED_NAMES = frozenset({
             "show-output.log", "tool-traces.jsonl",
-            "history", "shared-guidance.md", "supervisor-report.md",
+            "history", "round-timings.json", "shared-guidance.md", "supervisor-report.md",
         })
         if archive_dir.exists():
             unexpected_paths = [

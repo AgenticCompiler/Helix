@@ -230,6 +230,38 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertFalse(agents_path.exists())
             self.assertFalse((workdir / ".triton-agent").exists())
 
+    def test_prepare_checked_session_bootstraps_workflow_state_only_when_hooks_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            manager = OptimizeSessionArtifactsManager()
+
+            state_without_hooks = manager.prepare_checked_session(
+                workdir,
+                agent_name="codex",
+                enable_agent_hooks=False,
+                source_operator_path=operator,
+            )
+            self.assertIsNone(state_without_hooks.workflow_state_path)
+            self.assertFalse((workdir / ".triton-agent").exists())
+            warnings = manager.cleanup_checked_session(state_without_hooks)
+            self.assertEqual(warnings, [])
+
+            state_with_hooks = manager.prepare_checked_session(
+                workdir,
+                agent_name="codex",
+                enable_agent_hooks=True,
+                source_operator_path=operator,
+            )
+            self.assertEqual(state_with_hooks.workflow_state_path, workdir / ".triton-agent" / "state.json")
+            assert state_with_hooks.workflow_state_path is not None
+            self.assertTrue(state_with_hooks.workflow_state_path.exists())
+
+            warnings = manager.cleanup_checked_session(state_with_hooks)
+            self.assertEqual(warnings, [])
+            self.assertFalse((workdir / ".triton-agent").exists())
+
     def test_prepare_creates_shared_guidance_and_handoff_files_when_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
@@ -282,6 +314,55 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertTrue((state.run_archive_dir / "shared-guidance.md").exists())
             self.assertTrue((state.run_archive_dir / "supervisor-report.md").exists())
             self.assertTrue((state.run_archive_dir / "history").exists())
+
+    def test_cleanup_supervised_session_writes_round_timings_archive_for_passed_rounds(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            manager = OptimizeSessionArtifactsManager()
+            state = manager.prepare_supervised_session(
+                workdir,
+                agent_name="codex",
+                enable_agent_hooks=True,
+                source_operator_path=operator,
+            )
+
+            assert state.workflow_state_path is not None
+            state.workflow_state_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": state.archive.run_id,
+                        "phase": "round_active",
+                        "source_operator": "kernel.py",
+                        "current_round": 2,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-22T12:34:56Z"},
+                        "rounds": {
+                            "1": {
+                                "status": "passed",
+                                "round_dir": "opt-round-1",
+                                "started_at": "2026-06-22T12:40:00Z",
+                                "ended_at": "2026-06-22T12:55:00Z",
+                            },
+                            "2": {
+                                "status": "active",
+                                "round_dir": "opt-round-2",
+                                "started_at": "2026-06-22T13:10:00Z",
+                                "ended_at": None,
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            warnings = manager.cleanup_supervised_session(state)
+
+            self.assertEqual(warnings, [])
+            payload = json.loads((state.run_archive_dir / "round-timings.json").read_text(encoding="utf-8"))
+            self.assertEqual([row["round"] for row in payload], [1])
 
     def test_prepare_checked_session_mentions_operator_target_when_selected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
