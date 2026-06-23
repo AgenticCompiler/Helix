@@ -114,7 +114,7 @@ class DiffSkillsUpdateDiscoveryTests(unittest.TestCase):
 
             self.assertEqual(result.pairs, ())
             self.assertEqual(len(result.skips), 1)
-            self.assertIn("learned_lessons.md not found", result.skips[0].reason)
+            self.assertIn("directory does not look like an optimize workspace", result.skips[0].reason)
 
     def test_optimize_process_source_skips_direct_workspace_without_learned_lessons(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -127,7 +127,7 @@ class DiffSkillsUpdateDiscoveryTests(unittest.TestCase):
             self.assertEqual(result.pairs, ())
             self.assertEqual(len(result.skips), 1)
             self.assertEqual(result.skips[0].operator_dir, root)
-            self.assertIn("learned_lessons.md not found", result.skips[0].reason)
+            self.assertIn("baseline operator not found in optimize workspace", result.skips[0].reason)
 
 
 if __name__ == "__main__":

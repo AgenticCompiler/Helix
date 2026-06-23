@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import sys
 from collections import Counter
@@ -36,6 +37,7 @@ from triton_agent.diff_skills_update.skills_workspace import (
     export_changed_patterns,
     promote_converged_knowledge_workspace,
     regenerate_pattern_index,
+    resolve_pattern_card,
     snapshot_pattern_cards,
 )
 from triton_agent.diff_skills_update.workspace_organizer import (
@@ -267,6 +269,14 @@ def run_diff_skills_update(
         )
     else:
         print("no pattern cards were changed.", file=output_stream)
+
+    _write_enriched_manifest(
+        config=config,
+        knowledge_dir=knowledge_dir,
+        exported=exported,
+        updated_pattern_names=updated_pattern_names,
+        results=results,
+    )
 
     # ── Final skills summary ─────────────────────────────────────────
     aligned = sum(1 for r in results if r.status == "aligned")
@@ -506,6 +516,43 @@ def _merge_unique(left: list[str], right: list[str]) -> list[str]:
         if item not in merged:
             merged.append(item)
     return merged
+
+
+def _write_enriched_manifest(
+    *,
+    config: DiffSkillsUpdateConfig,
+    knowledge_dir: Path,
+    exported: list[str],
+    updated_pattern_names: list[str],
+    results: list[PairRunResult],
+) -> None:
+    """Write updated_patterns.json with per-operator exported pattern mapping."""
+    operator_records: list[dict[str, object]] = []
+    for result in results:
+        operator_exported: list[str] = []
+        for name in result.updated_patterns:
+            resolved = resolve_pattern_card(knowledge_dir, name)
+            if resolved is not None and resolved.name in exported:
+                if resolved.name not in operator_exported:
+                    operator_exported.append(resolved.name)
+        operator_records.append({
+            "operator_dir": str(result.pair.operator_dir),
+            "status": result.status,
+            "matched_patterns": result.matched_patterns,
+            "updated_patterns": result.updated_patterns,
+            "exported_patterns": operator_exported,
+        })
+    manifest = {
+        "exported_patterns": exported,
+        "updated_pattern_names": updated_pattern_names,
+        "operators": operator_records,
+    }
+    config.update_skills_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = config.update_skills_dir / "updated_patterns.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _write_skip_report(record: SkipRecord) -> None:
