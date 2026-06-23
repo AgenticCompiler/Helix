@@ -10,13 +10,23 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `autotune`
 
-- Summary: **Autotune** here means Triton’s `@triton.autotune` decorator: runtime benchmarks a **small, bounded** set of launch/meta configurations and caches the fastest by key.
+- Summary: **Autotune** here means Triton's `@triton.autotune` decorator: runtime benchmarks a **small, bounded** set of launch/meta configurations and caches the fastest by key.
 - Source: [autotune.md](patterns/autotune.md)
+
+### `program-multiple-rows`
+
+- Summary: Map multiple logical rows to one Triton program (`BLOCK_M > 1`). **PREFER the 2D vectorized BLOCK_M variant** (`offs_m[:, None]` + `offs_n[None, :]` broadcasting with `BLOCK_M` as `tl.constexpr`) over the looped `BLOCK_ROWS` variant. The 2D variant enables coalesced loads and parallel row processing; the looped variant is a fallback for cases where per-row loop-carried state prevents merging.
+- Source: [program-multiple-rows.md](patterns/program-multiple-rows.md)
 
 ### `grid-flatten-and-ub-buffering`
 
 - Summary: Use this pattern when latency is dominated by oversized logical grids, uneven per-core work, or tiny per-program transfers after gather/scatter-style rewrites.
 - Source: [grid-flatten-and-ub-buffering.md](patterns/grid-flatten-and-ub-buffering.md)
+
+### `tile-selection-heuristic`
+
+- Summary: Replace or augment `@triton.autotune` with a host-side `_choose_tiling` function that sweeps `BLOCK_M × BLOCK_SIZE` candidates and selects the pair minimizing total grid programs. Most effective when the operator spans wide shape ranges where fixed autotune configs cannot adapt.
+- Source: [tile-selection-heuristic.md](patterns/tile-selection-heuristic.md)
 
 ## Generated Pattern Summaries
 
@@ -155,6 +165,23 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Signals / Profile:
   - Strong parent kernel with small remaining inefficiencies.
   - Hint-only rounds produce mixed outcomes (some wins, some regressions), indicating sensitivity.
+
+### `exact-tile-no-boundary-fast-path`
+
+- Summary: Split exact-tile hot paths from generic masked kernels when dispatch-time shape guards can prove there are no tail tiles. Eliminates boundary-only masks, padding values, and `boundary_check` for perfectly aligned shapes. Composes well with `tile-selection-heuristic`.
+- Source: [exact-tile-no-boundary-fast-path.md](patterns/exact-tile-no-boundary-fast-path.md)
+- Use When:
+  - A dominant benchmark shape is exactly tile-divisible (`M % BLOCK_M == 0` and `N % BLOCK_N == 0`).
+  - Python dispatch can guard the aligned branch before launch and keep the original masked kernel as fallback.
+  - The kernel is already structurally reasonable, so bounded control-overhead cleanup can matter.
+- Avoid When:
+  - The mask is algorithm semantics, not a boundary/tail guard.
+  - Exact-divisibility cannot be proven at dispatch.
+  - Tail-heavy or irregular shapes dominate the workload.
+- Signals / Code:
+  - `tl.load(..., mask=tail_mask, other=...)` where the mask only protects block edges.
+  - `tl.store(..., mask=tail_mask)` on shapes known to be full-tile.
+  - Removing the mask does not change address math for the guarded shape.
 
 ### `diagonal`
 
@@ -311,7 +338,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `program-multiple-rows`
 
-- Summary: Map multiple logical rows to one Triton program (`BLOCK_M > 1`) to amortize per-program overhead and improve vector utilization in row-structured kernels.
+- Summary: Map multiple logical rows to one Triton program (`BLOCK_M > 1`). **PREFER the 2D vectorized BLOCK_M variant** (`offs_m[:, None]` + `offs_n[None, :]` broadcasting, `BLOCK_M` as `tl.constexpr`) over the looped `BLOCK_ROWS` variant. The 2D variant enables coalesced memory access and parallel row processing; use the looped variant only as a fallback when per-row loop-carried state prevents tile merging.
 - Source: [program-multiple-rows.md](patterns/program-multiple-rows.md)
 - Use When:
   - Kernel is naturally row-wise (row reductions, row-wise fused epilogues, row-major transforms).
@@ -470,6 +497,26 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Multiple tensors and temporaries are simultaneously live in one tile iteration.
   - Large `BLOCK_SIZE` values trigger overflow or access violations.
   - Performance degrades sharply when increasing tile width.
+
+### `tile-selection-heuristic`
+
+- Summary: Replace or augment `@triton.autotune` with a host-side `_choose_tiling` function that sweeps `BLOCK_M × BLOCK_SIZE` candidates and selects the pair minimizing total grid programs. Most effective when the operator spans wide shape ranges where fixed autotune configs cannot adapt.
+- Source: [tile-selection-heuristic.md](patterns/tile-selection-heuristic.md)
+- Use When:
+  - Autotune with limited configs produces inconsistent winners across diverse shape regimes.
+  - The operator evaluates on 50+ shapes spanning multiple orders of magnitude in row/col count.
+  - The kernel already uses 2D grid `(cdiv(rows, BLOCK_M), cdiv(cols, BLOCK_SIZE))`.
+  - Autotune overhead is problematic or key design is fragile.
+- Avoid When:
+  - The core algorithm/layout is still changing (stabilize structure first).
+  - The kernel uses a 1D grid that cannot benefit from 2D tile decomposition.
+  - UB capacity constraints force strict upper bounds on tile size.
+- Signals / Code:
+  - Existing autotune configs only vary `BLOCK_SIZE`/`BLOCK_ROWS` across a handful of values.
+  - Per-shape benchmarks show tile-size sensitivity with no single best config.
+- Signals / Profile:
+  - Some shapes show excessive grid programs while others are compute-bound.
+  - Autotune search overhead is visible in first-run benchmarks.
 
 ### `vec-cmp`
 

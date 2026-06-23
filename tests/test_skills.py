@@ -42,9 +42,9 @@ class SkillLinkManagerTests(unittest.TestCase):
         self.assertIn("propagate_nan=tl.PropagateNan.ALL", semantic_repairs)
         self.assertIn("tl.maximum()", semantic_repairs)
         self.assertIn("tl.minimum()", semantic_repairs)
-        self.assertIn("semantic choice", semantic_repairs)
+        self.assertIn("Do not skip this based on reasoning alone", semantic_repairs)
         self.assertIn("propagate_nan=tl.PropagateNan.ALL", vec_cmp_text)
-        self.assertIn("NaN-input behavior", vec_cmp_text)
+        self.assertIn("Do not skip this as", vec_cmp_text)
 
     def test_repo_skills_stage_split_optimize_submit_skills_for_codex(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

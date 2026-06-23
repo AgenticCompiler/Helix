@@ -2,81 +2,184 @@
 
 ## Summary
 
-Amortize per-program fixed costs and improve vector-friendly batching for **row-reduction or row-wise fused kernels** by mapping **multiple rows** to one Triton `program_id` via `BLOCK_M > 1`, instead of one row per program.
+Map multiple logical rows to one Triton program (`BLOCK_M > 1`) to amortize per-program overhead and improve vector utilization in row-structured kernels.
+
+This is a program-granularity pattern: fewer, heavier programs doing more row work per launch.
 
 ## Use When
 
-- The kernel is **naturally row-wise**: each output row depends mainly on one row of input (e.g. row-wise LogSumExp, row norms, row softmax statistics).
-- Profiling or timeline views suggest **high scalar/control overhead**, **under-filled vector work per program**, or **many tiny programs** relative to problem size `B` (batch / number of rows).
-- The row-wise math already uses **tile loops along `N`** (`BLOCK_N`); increasing **`BLOCK_M`** does not force an extra full pass over global memory if you keep a **single streaming pass** over `N` per program.
-- `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR imbalance, such as `%(SCALAR instr) >= 70%` or `%(SCALAR cycles) >= 40%`, while `%(VECTOR instr) <= 15%` or `%(VECTOR cycles) <= 15%`.
-- `report.txt` overall `[Key Ratios]` shows a high `SCALAR:VECTOR` ratio, such as `SCALAR:VECTOR_instr >= 8:1` or `SCALAR:VECTOR_cycles >= 3:1`, and code inspection shows `program_id(0)` maps one-to-one to rows.
-- `report.txt` overall `[VECTOR Unit]` shows low utilization or a small amount of vector work per program, such as only tens of VECTOR instructions, near-zero utilization, or mask/setup-heavy top VECTOR instructions.
-- `report.txt` total instruction/event counts are small, or only one/few cores appear active, while the same report still shows SCALAR-heavy / VECTOR-thin ratios.
-- `report.txt` `[WAIT_FLAG / BAR Sync]`, `[Pipeline Flows]`, or timeline views show short-program synchronization/control traces rather than long sustained vector work. When these traits appear with scalar/vector thin-program ratios, `program-multiple-rows` is worth trying; frequent wait/barrier patterns strengthen the signal, but low counts do not rule it out.
-- `report.txt` `[Pipe Distribution Over Each Core]` shows similar SCALAR-heavy / VECTOR-thin behavior across cores.
+- Kernel is naturally row-wise (row reductions, row-wise fused epilogues, row-major transforms).
+- Current launch maps one row per program and profiling shows many thin programs or scalar-heavy overhead.
+- Inner-dimension streaming over `N` can remain single-pass while widening row count.
+- Row count is large enough to amortize wider per-program bundles.
+
+## Avoid When
+
+- Row count is tiny and wider bundles cannot amortize setup.
+- Increasing `BLOCK_M` introduces second full passes or unstable numeric behavior.
+- Main bottleneck is elsewhere (layout/store shape, algorithm structure, unrelated scalar traps).
+- Ping-pong/multibuffer variants are introduced without clear MTE-vector overlap evidence.
 
 ## Signals
 
 ### Code
 
-- `program_id(0)` indexes **rows 1:1** (`pid_m` is the row index), and the inner loop only tiles **`N`**.
-- Scalar helpers (`program_id`, pointer arithmetic per row) run once **per row**; vector units see **narrow** tensors (e.g. `(1, BLOCK_N)` loads).
-- Another grid axis may similarly map one-to-one to logical input rows, tokens, or samples, with approximately `B` programs launched along that axis.
-- Each program loads one row index or computes one row base pointer, then broadcasts that row-specific state across a narrow `BLOCK_N` or `BLOCK_COLS` tile.
-- The useful tile is effectively shaped like `(1, BLOCK_N)`, or one logical row is split across `(row_pid, col_pid)`, causing many programs to repeat the same kinds of per-row setup.
-- Multiple logical input rows can be processed independently until their final store or atomic accumulation; final `tl.atomic_*` operations do not automatically disqualify the pattern.
-- Converting row scalars to vectors and row pointers to `rows[:, None]` produces a natural `(BLOCK_M, BLOCK_N)` tile without introducing cross-row reductions or another full pass over row data.
-- Treat this pattern as a candidate only when at least one code signal above is confirmed; profile evidence alone is insufficient.
+- `program_id(0)` maps directly to one row.
+- Repeated per-row pointer/control setup dominates loop body.
+- Inner-dimension tiling exists (`BLOCK_N`), but row axis remains under-batched.
 
 ### Profile
 
-- **`aiv_scalar_ratio`** or scalar-related time is **disproportionately high** compared to useful vector math, for workloads where `B` is large enough that vector throughput should dominate.
-- **`op_statistic`** (per-kernel): **Avg** latency improves when the same logical work uses **fewer launches** (compare with care: **Count** and input shapes must be comparable across runs).
-- If **`aiv_mte2_ratio`** is **not** the sole dominant bucket, pure “double-buffer the loads” may be the wrong first lever; **program batching** can still help by making each program’s inner loop **wider** along rows.
-- Frequent **barrier / wait** patterns tied to **many short programs** or **thin** vector blocks.
-- **Note:** High **`BAR`** cycle counts alone are **not** a success metric; correlate with **wall time**, **op_statistic Avg**, and correctness.
-- `report.txt` overall `[Pipe Distribution]` shows high SCALAR-to-VECTOR imbalance, for example `%(SCALAR instr) >= 70%` or `%(SCALAR cycles) >= 40%` while `%(VECTOR instr) <= 15%` or `%(VECTOR cycles) <= 15%`. This supports `program-multiple-rows` only when the code has independent row-wise work, because fixed per-program setup can dominate when each program processes just one thin row.
-- `report.txt` overall `[Key Ratios]` shows a high `SCALAR:VECTOR` ratio, such as `SCALAR:VECTOR_instr >= 8:1` or `SCALAR:VECTOR_cycles >= 3:1`. This matches `program-multiple-rows` when `program_id(0)` maps one-to-one to rows, because batching rows with `BLOCK_M > 1` amortizes row pointer arithmetic, masks, and other scalar setup across multiple rows.
-- `report.txt` overall `[VECTOR Unit]` shows low utilization or a small amount of vector work, such as only tens of VECTOR instructions, near-zero utilization, or top VECTOR instructions dominated by mask/setup operations rather than sustained arithmetic. This suggests each row tile is too narrow, which is the failure mode `program-multiple-rows` addresses by widening work from `(1, BLOCK_N)` to `(BLOCK_M, BLOCK_N)`.
-- `report.txt` total instruction/event counts are small, or only one/few cores appear active, but the same report still shows SCALAR-heavy / VECTOR-thin ratios. This can still support `program-multiple-rows` when code inspection confirms many independent logical rows, because tiny simulator reports can expose per-program fixed overhead even when multi-core distribution evidence is absent.
-- `report.txt` `[WAIT_FLAG / BAR Sync]`, `[Pipeline Flows]`, or timeline views show short-program synchronization/control traces rather than long sustained vector work. When these traits appear with scalar/vector thin-program ratios and many one-row programs, `program-multiple-rows` is worth trying; frequent wait/barrier patterns strengthen the diagnosis, but low WAIT/BAR counts alone do not rule the pattern out.
-- `report.txt` `[Pipe Distribution Over Each Core]` shows similar SCALAR-heavy / VECTOR-thin behavior across cores. This is a strong signal that the issue is global program granularity rather than a single-core anomaly, but it is not required for tiny simulator cases where only one or a few cores appear in the report.
-- Treat the `report.txt` evidence as a trigger only when it matches the code signal: `program_id(0)` or an equivalent grid axis maps 1:1 to independent rows, the row-wise math already streams along `N`, and increasing `BLOCK_M` does not add a second full pass over the same row data.
+- Scalar/control pressure stays high with one-row programs.
+- Moderate row batching gives clear gains, but over-widening regresses.
+- Useful cues include `aiv_scalar_ratio`, `aiv_mte2_ratio`, and `op_statistic` Avg/Count deltas; treat `BAR` cycles as diagnostic context, not a success metric by itself.
+- Barrier/wait growth with many short programs is a common indicator that row granularity is too fine.
 
-## Implementation sketch (Triton)
+Profiler interpretation notes:
 
-1. Add **`BLOCK_M: tl.constexpr`** and treat **`pid_m`** as a **block of rows**:
-   - `rows = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)`
-   - `row_mask = rows < B`
-2. Build **2D tiles**: `vals` shape **`(BLOCK_M, BLOCK_N)`**; row-wise reductions use **`axis=1`** (max, sum) so running state **`m`, `s`** are **`(BLOCK_M,)`**.
-3. Adjust **grid**: `grid = (triton.cdiv(B, BLOCK_M),)`.
-4. **Stores**: one scalar per row → `tl.store(y_ptr + rows * stride_ym, x, mask=row_mask)`.
-5. **Tune `BLOCK_M`**: start with a small power of two (e.g. 4–16). Too large **`BLOCK_M * BLOCK_N`** may hurt UB/register pressure; validate with benchmark + profile.
+- `op_statistic` Avg should be compared on matched shapes/workload; Count changes can otherwise hide regressions.
+- If `aiv_mte2_ratio` dominates while scalar ratio is low, row batching may be secondary to transfer/layout levers.
+- If scalar ratio remains high after moderate `BLOCK_M` increases, combine with scalar-control cleanups rather than widening blindly.
 
-### Example reference (row-wise LSE + fused activations)
+## Optimization Strategy
 
-See the operator workspace pattern: row pointers `row_ptrs = x_ptr + rows[:, None] * stride_xm`, masked load to `(BLOCK_M, BLOCK_N)`, streaming LSE with `tl.max` / `tl.sum` on `axis=1`, then fused elementwise ops and masked store.
+1. **Prefer the 2D vectorized BLOCK_M variant.** Unlike the looped BLOCK_ROWS approach (which processes rows one-by-one in a Python-level for-loop), the 2D BLOCK_M variant uses `offs_m[:, None]` + `offs_n[None, :]` broadcasting to process multiple rows simultaneously with coalesced memory access. This is the strongly preferred form for row-structured elementwise/fused-epilogue kernels.
+2. Introduce `BLOCK_M > 1` as `tl.constexpr` and remap row ownership to row blocks using `offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)`.
+3. Use 2D addressing: `row_offsets = offs_m[:, None] * row_stride` and `col_offsets = offs_n[None, :]` to create a full `[BLOCK_M, BLOCK_N]` tile.
+4. Keep one-pass inner-dimension streaming when possible.
+5. Tune `BLOCK_M` progressively with parent-vs-parent checks.
+6. Add shape/dtype gates when one global `BLOCK_M` regresses some regimes.
+7. Compose with inner-tile and launch-parameter tuning only after each row-batching step is validated.
 
-## Avoid When
+## Implementation sketches (Triton)
 
-- **Second full pass** over `x` for the same row (e.g. two-pass LSE) usually **increases global reads**; msprof often shows **more MTE / wait** unless the algorithm truly requires it. Prefer **single-pass streaming LSE** when numerically stable.
-- **Ping-pong / multibuffer** without evidence of **MTE–vector overlap** can add **sync and UB** cost; treat as a **separate hypothesis** to validate.
-- Do not conclude from **one** metric (e.g. `BAR` cycles) without **end-to-end** timing and comparable workload.
-- Rows are not independent, or batching multiple rows would introduce cross-row dependencies, atomics, ordering constraints, or extra synchronization.
-- The current program already processes multiple rows or a sufficiently wide 2D tile, so `BLOCK_M > 1` would mostly increase register/UB pressure instead of amortizing fixed setup.
-- `report.txt` shows MTE2/MTE3, gather/scatter, layout conversion, or UB conflicts dominate the profile; in that case memory/layout/UB patterns are a better first lever than row batching.
-- `report.txt` shows VECTOR/CUBE work is already well utilized and scalar/control work is small, so program granularity is unlikely to be the main bottleneck.
-- The only evidence is frequent `BAR` or wait activity, but wall time, `op_statistic Avg`, and comparable shapes do not improve; do not treat synchronization counters alone as a success or selection metric.
+### Variant A: 2D BLOCK_M (PREFERRED) — coalesced multi-row access with broadcasting
+
+Use this when the kernel operates on a 2D [rows, cols] view of the data. The 2D broadcast pattern enables coalesced loads across both dimensions. This is the variant the structural optimization priority gate requires evaluating first.
+
+```python
+@triton.jit
+def _row_structured_kernel(
+    x_ptr,
+    out_ptr,
+    in_row_stride,
+    out_row_stride,
+    cols,
+    rows,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid_m = tl.program_id(axis=0)
+    pid_n = tl.program_id(axis=1)
+
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+
+    mask_m = offs_m < rows
+    mask_n = offs_n < cols
+    mask = mask_m[:, None] & mask_n[None, :]
+
+    row_offsets = offs_m[:, None] * in_row_stride
+    vals = tl.load(x_ptr + row_offsets + offs_n[None, :], mask=mask, other=0.0)
+
+    # row-wise compute on vals [BLOCK_M, BLOCK_N]...
+
+    out_row_offsets = offs_m[:, None] * out_row_stride
+    tl.store(out_ptr + out_row_offsets + offs_n[None, :], result, mask=mask)
+```
+
+Host launch:
+```python
+grid = (triton.cdiv(rows, BLOCK_M), triton.cdiv(cols, BLOCK_N))
+_row_structured_kernel[grid](x_2d, out_2d, ...)
+```
+
+### Concrete example: row-wise fused operation with two independent input windows
+
+```python
+@triton.jit
+def _swiglu_kernel(
+    x_ptr,
+    out_ptr,
+    in_row_stride,
+    out_row_stride,
+    half_cols,
+    rows,
+    BLOCK_M: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid_m = tl.program_id(axis=0)
+    pid_n = tl.program_id(axis=1)
+
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+
+    mask_m = offs_m < rows
+    mask_n = offs_n < half_cols
+    mask = mask_m[:, None] & mask_n[None, :]
+
+    row_offsets = offs_m[:, None] * in_row_stride
+    gate_raw = tl.load(x_ptr + row_offsets + offs_n[None, :], mask=mask, other=0.0)
+    value_raw = tl.load(x_ptr + row_offsets + half_cols + offs_n[None, :], mask=mask, other=0.0)
+
+    gate = gate_raw.to(tl.float32)
+    value = value_raw.to(tl.float32)
+    out = gate * tl.sigmoid(gate) * value
+
+    out_row_offsets = offs_m[:, None] * out_row_stride
+    tl.store(out_ptr + out_row_offsets + offs_n[None, :], out.to(gate_raw.dtype), mask=mask)
+```
+
+### Variant B: Looped BLOCK_ROWS (FALLBACK) — sequential row processing
+
+Use this only when the 2D BLOCK_M variant is not applicable (e.g., when rows have different lengths, or the per-row computation requires per-row loop-carried state that prevents merging into a 2D tile). This variant processes rows one-by-one in a for-loop, which incurs per-row scalar overhead.
+
+```python
+pid_row = tl.program_id(axis=0)
+col_offsets = pid_block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+mask = col_offsets < out_cols
+
+for r_offset in range(BLOCK_ROWS):
+    pid_row = row_pid * BLOCK_ROWS + r_offset
+    if pid_row < rows:
+        row_start = pid_row * in_row_stride
+        gate_raw = tl.load(gate_ptr + row_start + col_offsets, mask=mask, other=0.0)
+        value_raw = tl.load(value_ptr + row_start + half_cols_or_zero + col_offsets, mask=mask, other=0.0)
+        # ... per-row compute ...
+```
+
+### Why Variant A outperforms Variant B
+
+- **Coalesced memory access:** Variant A loads a full `[BLOCK_M, BLOCK_SIZE]` tile in one operation; Variant B makes `BLOCK_ROWS` separate 1D loads.
+- **No Python-level loop:** Variant A avoids the per-row for-loop, eliminating per-row scalar dispatch overhead.
+- **Better vector utilization:** The 2D broadcast pattern feeds the VECTOR unit wider tiles, reducing SCALAR:VECTOR instruction ratio.
+- **Grid dimension trade-off:** Variant A uses 2D grid `(cdiv(rows, BLOCK_M), cdiv(cols, BLOCK_SIZE))`, which enables better core utilization than Variant B's `(cdiv(rows, BLOCK_ROWS), cdiv(cols, BLOCK_SIZE))`.
+
+## Failure Modes And Anti-signals
+
+- Assuming larger `BLOCK_M` is monotonic; it often is not.
+- Applying one wide-row setting globally and regressing small/short regimes.
+- Introducing a second full pass while widening rows.
+- Treating PMR as universal even when another primary lever dominates.
+
+## Risks
+
+- Wider row bundles increase temporary footprint and scheduling pressure.
+- Gated dispatch adds maintenance complexity.
+- Multi-lever edits can hide regressions without strict parent comparisons.
 
 ## What To Verify After Applying
 
-1. **Correctness**: same dtypes, masks for `rows >= B`, and numerically stable reductions (e.g. LSE max-shift) unchanged in meaning.
-2. **Benchmark**: compare **mean / geomean** with the same harness; use project **`compare-perf`** flow when available—avoid hand-computed speedups from raw logs.
-3. **Profiler**: compare **`op_statistic` Avg** for the same op; note **Count** and tensor shapes. Optionally re-check **`op_summary`** vector/scalar/MTE mix.
-4. **Sanity**: if `B` is tiny, **`BLOCK_M > 1`** may help little; if `B` is huge, launching **`cdiv(B, BLOCK_M)`** programs should visibly reduce launch/program overhead.
+1. Correctness on boundary rows and tail masks.
+2. Parent-vs-child benchmark improvement in each representative regime (prefer the project compare-perf authority when available).
+3. Fewer launches/programs for intended shapes.
+4. No unintended extra global passes.
+5. Dispatch gates route correctly for tiny vs large regimes.
 
 ## Related Patterns
 
-- Complements **`parallel`**: `BLOCK_M` widens work **within** one program; `tl.parallel` splits **independent** subgraphs across vector cores—orthogonal when dependencies allow.
-- Differs from **`software-pipeline`**: multibuffer targets **load/compute overlap** along a tile loop; **`program-multiple-rows`** targets **program granularity** and **row batching**.
+- `grid-flatten-and-ub-buffering`
+- `tiling`
+- `parallel`
+- `layout-store-and-block-pointers`
+- `software-pipeline` (overlap tuning after row granularity is already chosen)
