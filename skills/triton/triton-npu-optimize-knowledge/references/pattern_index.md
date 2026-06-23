@@ -70,6 +70,19 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - Pairwise gated tiles compute `exp(g_i - g_j)` only as a multiplicative factor and can use row/column broadcast factors instead.
   - You want fewer global passes or cheaper elementwise work **before** changing tile sizes, pipelines, or autotune grids.
 
+### `atomic-contention-owner-computes-store`
+
+- Summary: Replace many-program atomic updates to a small output domain with an owner-computes decomposition: transpose the grid from input tiles to output targets, let each program own one bucket or reduction target, scan the contributing input region, and write the final value with a plain `tl.store`.
+- Source: [atomic-contention-owner-computes-store.md](patterns/atomic-contention-owner-computes-store.md)
+- Use When:
+  - The hot kernel updates a small or moderate output domain with `tl.atomic_add`, `tl.atomic_max`, or a similar atomic operation from many programs.
+  - Multiple programs can write the same output address, such as histogram bins, class buckets, segment IDs, sparse row buckets, or other low-cardinality reduction targets.
+  - Profiling or benchmark scaling indicates atomic/store-side contention is more expensive than rereading the input for each owner program.
+  - The output target can be partitioned so exactly one Triton program owns each bucket, output row, segment, or reduction slot.
+  - The per-owner scan can be expressed with regular `tl.load`, vector predicates, and `tl.sum` / `tl.max` / another associative reduction.
+  - The output cardinality is small enough that the extra read traffic, roughly `output_targets * input_extent`, is plausible for the benchmark shape range.
+  - The aggregation is order-independent under the operator's reference tolerance, such as count, integer sum, max without order-dependent tie-breaking, or floating-point sum where reordered accumulation is acceptable.
+
 ### `attention-cv-pipeline`
 
 - Summary: Reduce latency in Cube+Vector fused attention-like kernels by cutting vector-side instruction pressure, making mask/scale work cheaper, and using architecture-gated compile options only when the target device supports them.
