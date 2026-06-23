@@ -57,6 +57,40 @@ Optimize target modes:
 - If the round starts from reused deeper evidence, cite the reused evidence path and explain why the shallower level is already established or insufficient.
 - Treat `opt-note.md` as the top-level round ledger plus final `## Overall Summary`.
 
+## Optimization Priority Guide
+
+Optimizations are **not equal in impact**. Prioritize based on the operator's kernel structure, not personal preference. Applying a low-impact optimization (e.g., compile hints) early may consume rounds that should go to structural changes, and structural changes may later make the early work obsolete.
+
+### Priority 1: Structural optimizations (2-10x impact)
+
+Eliminate Python for-loops that launch one Triton kernel per iteration by fusing the loop **inside** the kernel. The kernel maintains state in registers across loop iterations; it does not need to load all data upfront.
+
+**Cue**: `for t in range(N): kernel[grid](...)` in the wrapper → fuse the loop inside the kernel as `for t in range(N): ...` inside `@triton.jit`.
+
+**Cue**: `torch.exp(...)`, `torch_npu.npu_*(...)`, or other torch/npu operations in the wrapper that feed data into a Triton kernel → move them into the kernel using `tl.exp()`, `tl.load()` + inline computation, etc. Each external op remaining in the wrapper adds a separate NPU kernel launch.
+
+**Cue**: When an operator file defines multiple Triton kernels on the same hot path → fuse them into a single kernel before optimizing further (also see Hard Rules).
+
+### Priority 2: Wrapper overhead elimination (1.1-1.5x impact)
+
+After the kernel structure is fixed, eliminate unnecessary wrapper-level operations:
+
+- Dtype conversions (`tensor.to(torch.float32)`) that could be done inside the kernel with `.to(tl.float32)` — but prefer doing them once in the wrapper rather than per-load inside the kernel.
+- Redundant `contiguous()` calls on already-contiguous tensors.
+- Unnecessary mask + `other=` on `tl.load` when the tile exactly covers the dimension (e.g., hidden_size divisible by BLOCK_H and no tail case).
+
+### Priority 3: Micro-architecture tuning (1.05-1.3x impact)
+
+BLOCK_H/BLOCK_M/BLOCK_N, num_stages, autotune. Only effective after structural optimizations are applied. Autotune (preferred over manual sweeps) should be done last.
+
+### Priority 4: Compiler hints (1.0-1.05x impact)
+
+`tl.constexpr`, `tl.max_contiguous`, `tl.multiple_of`, `propagate_nan`. Small improvements on an already-optimized kernel. These should not consume rounds that could go to higher-priority work.
+
+### Check before each round
+
+Before committing to a round hypothesis, ask: *"Is there a higher-priority optimization available that I have not yet attempted?"* If yes, do that instead. The higher-priority change may make the current hypothesis obsolete or less impactful.
+
 ## Stage 2: Layered Analysis
 
 Optimize analysis is layered.
@@ -76,7 +110,11 @@ Optimize analysis is layered.
 - Inspect current code structure and benchmark behavior before choosing a direction.
 - Use the sibling [`../triton-npu-optimize-knowledge/SKILL.md`](../triton-npu-optimize-knowledge/SKILL.md) as the generic optimize knowledge library.
 - When the optimize target is `operator`, also use the sibling [`../torch-npu-optimize-knowledge/SKILL.md`](../torch-npu-optimize-knowledge/SKILL.md) for Torch NPU and whole-operator pattern routing such as framework-op fallback, wrapper-level changes, or broader operator restructuring.
-- During pattern triage, check for `extracted_bin_data/report.txt` relative to the operator workspace root and the current `opt-round-N/` directory. If found, read it before selecting patterns.
+- **Structural optimization priority gate (MUST evaluate before any micro-optimizations):** Before considering fp32-elision, contiguous-call removal, cache modifiers, or autotune, you **must** evaluate these three structural optimization directions in order. Record the evaluation result for each in `attempts.md` even if the answer is "not applicable":
+  1. **Multi-row batching (program-multiple-rows, BLOCK_M variant):** Is the kernel row-structured and processing one row per program? Does the current launch lack a row-batching dimension (`BLOCK_M > 1`)? The **2D vectorized BLOCK_M variant** (`offs_m[:, None]` + `offs_n[None, :]` broadcasting with `BLOCK_M` as `tl.constexpr`) is the preferred form because it enables coalesced loads and parallel row processing. The looped `BLOCK_ROWS` variant is a weaker fallback. Read [`../triton-npu-optimize-knowledge/references/patterns/program-multiple-rows.md`](../triton-npu-optimize-knowledge/references/patterns/program-multiple-rows.md) and explicitly choose the 2D BLOCK_M variant if the kernel structure permits it.
+  2. **Dispatch-parameter specialization:** Does the operator use dispatch parameters (dimension arguments, dtype, mode flags) that cause the same generic kernel to handle structurally different data layouts? Are there parameter values that incur avoidable wrapper-level overhead (layout transposition, contiguity materialization, reshape chains)? Evaluate whether dedicated kernels for specific parameter values can materialize the optimal layout on the host before kernel launch, eliminating in-kernel compensation work. This is the **layout-materialization-elision** approach.
+  3. **Grid-decomposition optimization (tile-selection-heuristic):** After structural dispatch is addressed, evaluate whether a manual tile-selection heuristic (grid-minimization sweep over `BLOCK_M × BLOCK_SIZE` tile sizes) can beat autotune. Autotune with a limited config set may not adapt well to diverse shape regimes. If the operator spans wide shape ranges (e.g., rows varying by orders of magnitude, col widths from tens to tens of thousands), read [`../triton-npu-optimize-knowledge/references/patterns/tile-selection-heuristic.md`](../triton-npu-optimize-knowledge/references/patterns/tile-selection-heuristic.md) and consider replacing or augmenting autotune with a grid-minimization heuristic.
+- After the structural optimization priority gate is satisfied (all three directions evaluated and addressed where applicable), proceed to the mandatory diagnostic steps below.
 - **Simulation-signal as mandatory diagnostic step:** When `extracted_bin_data/report.txt` exists, you must read [`../triton-npu-optimize-knowledge/references/patterns/scalar-vector-simulation-signal.md`](../triton-npu-optimize-knowledge/references/patterns/scalar-vector-simulation-signal.md) and execute the signal matching flow (check each Category in priority order). If any Category fires, `scalar-vector-simulation-signal (Cat N)` could appear as a candidate pattern in the `attempts.md` candidate list. When selecting the final pattern, evaluate `scalar-vector-simulation-signal` alongside other candidates: it may be selected as the primary pattern (using its Code Manifestations and generic transforms), or it may route to a more specific domain pattern via its Related Patterns / Optimization Direction. Record the fired Categories and the reasoning for whether simulation-signal was selected or routed to another pattern in `attempts.md`.
 - **Autotune as mandatory signal-driven optimization:** When `extracted_bin_data/report.txt` exists in the workspace or current `opt-round-N/` directory, you **must** read [`../triton-npu-optimize-knowledge/references/patterns/autotune.md`](../triton-npu-optimize-knowledge/references/patterns/autotune.md) and execute all three phases. Execute this check **after** the simulation-signal check (scalar-vector-simulation-signal) so that code-level signals are evaluated first. **Phase 1 (Pre-Gate A-Cat-5):** Check if memory layout is fundamentally fragmented. If A-Cat-5 fires, autotune is not suitable — route to `compile_hint` or `discrete_memory_access` and exit. **Phase 2 (Parameter Diagnostics):** Only if Pre-Gate passes — check A-Cat-6 → A-Cat-1 → A-Cat-2 → A-Cat-3 → A-Cat-4 in order. The fired Category's Optimization Direction already contains concrete `triton.Config` examples. **Phase 3 (Config Route):** Choose Route 1 (`configs=[]` auto-infer), Route 2 (`hints`), or Route 3 (hand-written, using Category examples as starting points). Record the diagnosis result and reasoning explicitly in `attempts.md`.
 - **Profiling-data-driven self-directed exploration:** When `extracted_bin_data/` exists, read the instruction-level profiling methodology in [`references/optimize.md`](references/optimize.md). Read all available files: `report.txt`, `dataType_4_API_INSTR.json`, `dataType_3_API_FILE.json`, `dataType_1_SOURCE_<operator_name>.txt`, `flows.json`, and `dataType_2_TRACE.json`. Identify bottlenecks against all 6 metrics, evaluate all 7 optimization categories, and avoid the 5 prohibited optimizations. Every metric and category needs an explicit conclusion. Record bottleneck metrics, evaluated categories, and their conclusions in `attempts.md`.
@@ -127,13 +165,32 @@ Optimize analysis is layered.
 
 ## Kernel Semantic Repairs
 
-- During kernel optimization work, inspect kernel compare-helper call sites such as `tl.maximum()` and `tl.minimum()` across the operator, not only the lines touched by the primary optimization.
-- If a kernel compare-helper call omits `propagate_nan`, you may add `propagate_nan=tl.PropagateNan.ALL` as a consistency repair when the intended semantics are explicit NaN propagation.
-- Treat this as a semantic choice because it can change NaN-input behavior. Do not present it as a no-op cleanup.
+During optimization, you may encounter Triton kernel parameters that control numerical or behavioral semantics (NaN propagation, precision, rounding, overflow behavior, etc.). These require special handling because on Ascend NPU:
+
+1. **They change numerical output** — always validate correctness when adding or removing them.
+2. **They may also affect performance** — a parameter that appears purely semantic can influence compiler instruction selection. The performance impact cannot be predicted from first principles; it must be measured.
+
+### General rules
+
+- During kernel optimization work, inspect call sites of operators that expose semantic parameters (e.g., `tl.maximum`, `tl.minimum`, or any function with `propagate_nan` or similar flags) across the entire operator, not only the lines touched by the primary optimization. Inconsistent parameter usage between call sites is a red flag.
+- When a semantic parameter is absent from a call site where it could apply:
+  - **Try adding it and benchmark both variants.** Record the benchmark comparison explicitly in `attempts.md`.
+  - If the change regresses or is neutral, restore the original and document the result.
+- **Do not skip this based on reasoning alone.** The most common mistake is treating a semantic parameter as "just a correctness change, not a performance change" and dismissing it without measurement. If you find yourself thinking "this is only a correctness change," that is exactly the signal to benchmark it.
+- **Test semantic changes in isolation when possible.** If you bundle a semantic-parameter change with other modifications and correctness fails, follow the isolated-testing guidance in Stage 3 to isolate the true cause. A semantic change incorrectly blamed for an unrelated failure may never be re-evaluated.
+- When the semantics controlled by the parameter do not matter for the operator's use case, still benchmark both variants — on Ascend NPU the performance effect is often independent of whether the semantics are required.
+
+### Example: `propagate_nan` on `tl.maximum` / `tl.minimum`
+
+The most common semantic repair on Ascend NPU kernels is adding `propagate_nan=tl.PropagateNan.ALL` to `tl.maximum()` or `tl.minimum()` calls that omit it. Apply the general rules above when encountering this case. Specifically:
+
+- `propagate_nan` changes NaN-input behavior (semantic effect) but also selects faster vector comparison instructions on Ascend NPU (performance effect).
+- Benchmark both with and without `propagate_nan` even when NaN propagation is not semantically required — the performance effect is independent of whether NaN semantics matter.
 
 ## Stage 3: Validate And Record
 
 - Run correctness validation before trusting any performance result.
+- **Isolate correctness failures when multiple changes are bundled.** If a round contains two or more independent changes and correctness fails, do not assume which change caused the failure. Revert changes one at a time and retest until the failing change is identified. An optimization incorrectly blamed for an unrelated failure will be discarded and may never be re-evaluated.
 - After correctness passes, run benchmark validation and preserve the round-local benchmark evidence.
 - In each round directory, keep the optimized operator snapshot as `opt_<original-operator>.py`.
 - In each round directory, keep the benchmark artifact as `opt_<original-operator>_perf.txt`, ensure that file is generated by the `triton-npu-run-eval` skill's `run-bench` flow, and record that exact filename in `round-state.json`.
