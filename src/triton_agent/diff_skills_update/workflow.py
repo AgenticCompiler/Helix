@@ -123,6 +123,7 @@ def run_diff_skills_update(
             prompt=organize_prompt,
             stream_output=config.stream_output,
             verbose=config.verbose,
+            language=config.language,
             output_label="[git-repo]",
         )
         if plan_result.return_code != 0 or not plan_path.is_file():
@@ -176,7 +177,7 @@ def run_diff_skills_update(
         stream=output_stream,
         exclude_dirs={config.skills_dir, config.update_skills_dir},
     )
-    knowledge_dir = ensure_skills_workspace(config.skills_dir)
+    knowledge_dir = ensure_skills_workspace(config.skills_dir, language=config.language)
     pattern_snapshot = snapshot_pattern_cards(knowledge_dir)
     for skip in discovery.skips:
         _write_skip_report(skip)
@@ -257,6 +258,7 @@ def run_diff_skills_update(
     exported = export_changed_patterns(
         knowledge_dir,
         config.update_skills_dir,
+        language=config.language,
         pattern_snapshot=pattern_snapshot,
         updated_pattern_names=updated_pattern_names,
     )
@@ -314,7 +316,7 @@ def _run_pair(
     shutil.copy2(pair.baseline_path, baseline_copy)
 
     diff_output = simulate_dir / f"diff-skills-{pair.stem}.json"
-    diff_prompt = build_diff_to_skill_prompt(pair, skills_dir=config.skills_dir, output_json=diff_output)
+    diff_prompt = build_diff_to_skill_prompt(pair, skills_dir=config.skills_dir, output_json=diff_output, language=config.language)
     with skills_lock:
         diff_result = agent_runner(
             agent_name=config.agent_name,
@@ -322,6 +324,7 @@ def _run_pair(
             prompt=diff_prompt,
             stream_output=config.stream_output,
             verbose=config.verbose,
+            language=config.language,
             output_label=f"[{pair.operator_dir.name}] [diff-skills]",
         )
         if diff_result.return_code == 0:
@@ -366,6 +369,7 @@ def _run_pair(
             prompt=simulate_prompt,
             stream_output=config.stream_output,
             verbose=config.verbose,
+            language=config.language,
             skills_root=config.skills_dir,
             output_label=f"[{pair.operator_dir.name}] [simulate-iter-{iteration}/{config.max_iterations}]",
         )
@@ -404,6 +408,7 @@ def _run_pair(
                 prompt=analysis_prompt,
                 stream_output=config.stream_output,
                 verbose=config.verbose,
+                language=config.language,
                 output_label=f"[{pair.operator_dir.name}] [analyze-iter-{iteration}/{config.max_iterations}]",
             )
             if analysis_result.return_code == 0:
@@ -411,7 +416,7 @@ def _run_pair(
             analysis_data = read_json_file(analysis_output)
             aligned = bool(analysis_data.get("aligned"))
             if analysis_result.return_code == 0 and aligned and config.promote_converged_skills:
-                promoted_dir = promote_converged_knowledge_workspace(knowledge_dir)
+                promoted_dir = promote_converged_knowledge_workspace(knowledge_dir, language=config.language)
                 print(f"[{pair.operator_dir.name}] promote-converged-skills: {promoted_dir}", file=stream)
         if analysis_result.return_code != 0:
             aligned = False

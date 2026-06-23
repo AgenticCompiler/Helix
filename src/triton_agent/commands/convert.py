@@ -113,6 +113,7 @@ def convert_options_from_args(args: argparse.Namespace) -> ConvertOptions:
         stream_output=bool(getattr(args, "stream_output", True)),
         force_overwrite=bool(getattr(args, "force_overwrite", False)),
         agent_name=args.agent,
+        language=getattr(args, "language", "triton"),
         remote=getattr(args, "remote", None),
         remote_workdir=getattr(args, "remote_workdir", None),
         output=getattr(args, "output", None),

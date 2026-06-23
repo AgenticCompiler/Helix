@@ -23,6 +23,7 @@ class DiffSkillsUpdateConfig:
     update_skills_dir: Path
     source: DiffSkillsUpdateSource
     agent_name: str
+    language: str
     max_iterations: int
     concurrency: int
     stream_output: bool

@@ -10,6 +10,7 @@ class ConvertOptions:
     stream_output: bool
     force_overwrite: bool
     agent_name: str
+    language: str
     remote: str | None
     remote_workdir: str | None
     output: str | None

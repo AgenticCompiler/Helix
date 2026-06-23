@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from triton_agent.models import COMMAND_TO_SKILL, CommandKind
+from triton_agent.models import CommandKind, command_to_skill
 from triton_agent.optimize.prompts import (
     build_optimize_round_prompt,
 )
@@ -51,6 +51,7 @@ def build_prompt(
     round_mode: Literal["checked", "supervised"] = "checked",
     target_chip: str | None = None,
     optimize_target: str = "kernel",
+    language: str = "triton",
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
     enable_cann_ext_api: bool = False,
@@ -65,7 +66,7 @@ def build_prompt(
     )
     resolved_min_rounds = 5 if min_rounds is None else min_rounds
     resolved_final_round = resolved_min_rounds if final_round is None else final_round
-    skill_name = COMMAND_TO_SKILL[command_kind]
+    skill_name = command_to_skill(command_kind, language=language)
     lines = [PROMPT_INTROS[command_kind]]
     if skill_name:
         lines.extend(
@@ -206,6 +207,7 @@ def build_prompt(
             build_optimize_round_prompt(
                 input_path,
                 output_path,
+                language=language,
                 test_mode=test_mode,
                 bench_mode=bench_mode,
                 target_chip=target_chip or "A5",

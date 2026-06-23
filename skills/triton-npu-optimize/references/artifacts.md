@@ -198,7 +198,7 @@ Keep entries chronological so another engineer can reconstruct how the round evo
 
 - Preserve the normalized benchmark result from `run-bench`.
 - For a valid round, the round-local perf artifact must be the generated `opt_<original-operator>_perf.txt`.
-- That `opt_<original-operator>_perf.txt` file must be produced by the `triton-npu-run-eval` skill's `run-bench` flow for the round operator, not handwritten, post-processed, or substituted from another workflow.
+- That `opt_<original-operator>_perf.txt` file must be produced by the `npu-run-eval` skill's `run-bench` flow for the round operator, not handwritten, post-processed, or substituted from another workflow.
 - Keep enough evidence to reconstruct the performance claim without rerunning the entire round immediately.
 - Keep `opt_<original-operator>_perf.txt` even when profiler or IR evidence also exists; richer evidence does not replace the round's basic benchmark summary.
 
@@ -207,7 +207,7 @@ Keep entries chronological so another engineer can reconstruct how the round evo
 - When a round needs deeper diagnosis, prefer writing a standalone `perf-analysis.md` in the round directory.
 - Treat `perf-analysis.md` as optional in the first iteration of this workflow, not a required artifact for every round.
 - When `round-state.json` declares `perf_analysis_path`, that path becomes the authoritative location for the analysis file.
-- Treat the content and structure of `perf-analysis.md` as owned by `triton-npu-analyze-round-performance`, not by the optimize workflow contract.
+- Treat the content and structure of `perf-analysis.md` as owned by `npu-analyze-round-performance`, not by the optimize workflow contract.
 
 ## Profile And IR Evidence
 

@@ -139,6 +139,7 @@ class SkillLinkManager:
         target: Path,
         skill_names: tuple[str, ...] | None,
         skill_sources: dict[str, str] | None = None,
+        language: str = "triton",
     ) -> list[Path]:
         created: list[Path] = []
         for staged_name, skill_dir in self._iter_selected_skill_dirs(skill_names, skill_sources):
@@ -148,8 +149,41 @@ class SkillLinkManager:
                     raise RuntimeError(f"Skill path already exists as a symlink: {staged_path}")
                 continue
             shutil.copytree(skill_dir, staged_path, symlinks=False)
+            self._merge_language_scripts(staged_path, language)
+            self._resolve_placeholders(staged_path, language)
             created.append(staged_path)
         return created
+
+    @staticmethod
+    def _merge_language_scripts(staged_skill_path: Path, language: str) -> None:
+        """Merge ``scripts/{language}/`` contents up into ``scripts/``.
+
+        After this step the language-specific scripts directory is removed so
+        the agent sees a flat ``scripts/`` layout.
+        """
+        lang_scripts_dir = staged_skill_path / "scripts" / language
+        if not lang_scripts_dir.is_dir():
+            return
+        target_scripts_dir = staged_skill_path / "scripts"
+        for entry in sorted(lang_scripts_dir.iterdir()):
+            dest = target_scripts_dir / entry.name
+            if dest.is_dir():
+                shutil.rmtree(dest)
+            elif dest.exists():
+                dest.unlink()
+            shutil.move(str(entry), str(dest))
+        lang_scripts_dir.rmdir()
+
+    @staticmethod
+    def _resolve_placeholders(staged_skill_path: Path, language: str) -> None:
+        """Replace ``{language}`` and ``{Language}`` placeholders in all .md files."""
+        display = {"triton": "Triton", "tilelang": "TileLang"}.get(language, language.capitalize())
+        for md_file in staged_skill_path.rglob("*.md"):
+            text = md_file.read_text(encoding="utf-8")
+            if "{language}" not in text and "{Language}" not in text:
+                continue
+            text = text.replace("{language}", language).replace("{Language}", display)
+            md_file.write_text(text, encoding="utf-8")
 
     def prepare_skills(
         self,
@@ -157,6 +191,7 @@ class SkillLinkManager:
         workdir: Path,
         skill_names: tuple[str, ...] | None = None,
         skill_sources: dict[str, str] | None = None,
+        language: str = "triton",
     ) -> SkillLinkSet:
         config = _SKILL_BACKEND_CONFIGS.get(backend)
         if config is None:
@@ -180,7 +215,7 @@ class SkillLinkManager:
             self._prepare_target_dir(target)
 
             if config.copy_root_when_missing and not any(target.iterdir()) and skill_names is not None:
-                created.extend(self._copy_selected_skill_dirs(target, skill_names, skill_sources))
+                created.extend(self._copy_selected_skill_dirs(target, skill_names, skill_sources, language=language))
                 if created:
                     result = [target]
                     if not root_pre_existed:
@@ -188,7 +223,7 @@ class SkillLinkManager:
                     return SkillLinkSet(result, temporary_git_dir=temporary_git_dir)
                 return SkillLinkSet([], temporary_git_dir=temporary_git_dir)
 
-            created.extend(self._copy_selected_skill_dirs(target, skill_names, skill_sources))
+            created.extend(self._copy_selected_skill_dirs(target, skill_names, skill_sources, language=language))
             if not root_pre_existed:
                 created.insert(0, backend_root_path)
             return SkillLinkSet(created, temporary_git_dir=temporary_git_dir)

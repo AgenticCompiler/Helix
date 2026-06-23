@@ -83,10 +83,11 @@ def build_log_check_prompt(
     log_check_json_file: str = _LOG_CHECK_JSON_FILENAME,
     pattern_analysis_json_file: str = _PATTERN_ANALYSIS_JSON_FILENAME,
     agent_name: str = "codex",
+    language: str = "triton",
 ) -> str:
     normalized_target = target_path.resolve()
     backend_skills = staged_skill_dir(agent_name)
-    patterns_path = backend_skills / "triton-npu-optimize-knowledge" / "references" / "patterns"
+    patterns_path = backend_skills / f"{language}-npu-optimize-knowledge" / "references" / "patterns"
     return f"""\
 Please examine your current working directory (this is the operator workspace):
 
@@ -250,6 +251,7 @@ def build_log_check_request(
     staged_skill_names: tuple[str, ...] | None = None,
     staged_skill_sources: dict[str, str] | None = None,
     log_tools: bool = False,
+    language: str = "triton",
 ) -> AgentRequest:
     resolved_target = target_path.resolve()
     extra_env = None
@@ -263,17 +265,19 @@ def build_log_check_request(
         output_path=None,
         test_mode=None,
         bench_mode=None,
+        language=language,
         interact=False,
         verbose=verbose,
         stream_output=show_output,
         force_overwrite=False,
         agent_name=agent_name,
-        skill_name="triton-npu-optimize-submit-round",
+        skill_name="npu-optimize-submit-round",
         prompt=build_log_check_prompt(
             target_path=resolved_target,
             log_check_json_file=output_json,
             pattern_analysis_json_file=pattern_analysis_json,
             agent_name=agent_name,
+            language=language,
         ),
         workdir=resolved_target,
         extra_env=extra_env,
@@ -317,10 +321,12 @@ def run_log_check(
     verbose: bool = False,
     show_output: bool = True,
     log_tools: bool = False,
+    language: str = "triton",
 ) -> int:
     normalized_target = target_path.expanduser().resolve()
     staged_skill_names, staged_skill_sources = resolve_staged_skills(
         CommandKind.LOG_CHECK,
+        language=language,
     )
     request = build_log_check_request(
         target_path=normalized_target,
@@ -332,6 +338,7 @@ def run_log_check(
         staged_skill_names=staged_skill_names,
         staged_skill_sources=staged_skill_sources,
         log_tools=log_tools,
+        language=language,
     )
     try:
         runner = create_runner(agent_name)
@@ -345,6 +352,7 @@ def run_log_check(
         normalized_target,
         skill_names=staged_skill_names,
         skill_sources=staged_skill_sources,
+        language=language,
     )
     if verbose:
         emit_verbose_lines(sys.stderr, "skills", manager.describe_prepare(links))

@@ -35,10 +35,12 @@ def build_diff_to_skill_prompt(
     *,
     skills_dir: Path,
     output_json: Path,
+    language: str = "triton",
 ) -> str:
+    display = "TileLang" if language == "tilelang" else "Triton"
     diff_text = _unified_diff(pair.baseline_path, pair.expected_path)
     process_context = _process_context_text(pair)
-    return f"""You are updating Triton Ascend NPU optimization knowledge.
+    return f"""You are updating {display} Ascend NPU optimization knowledge.
 
 Baseline file: {pair.baseline_path}
 Optimized answer file: {pair.expected_path}
@@ -52,7 +54,7 @@ attempt logs, round states, optional perf/profile analysis, and the before/after
 code diff. For plain `diff` inputs, infer the mechanism from the code diff and
 any nearby evidence included in the operator directory. Update relevant pattern
 cards or add a new generic pattern card when the mechanism is not covered under:
-{skills_dir}/triton-npu-optimize-knowledge/references/patterns
+{skills_dir}/{language}-npu-optimize-knowledge/references/patterns
 
 {PATTERN_UPDATE_GUIDANCE}
 

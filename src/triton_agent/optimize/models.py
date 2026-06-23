@@ -27,6 +27,7 @@ class OptimizeRunOptions:
     interact: bool
     verbose: bool
     stream_output: bool
+    language: str
     remote: str | None
     remote_workdir: str | None
     min_rounds: int

@@ -23,6 +23,7 @@ def run_log_check_batch(
     verbose: bool = False,
     show_output: bool = False,
     log_tools: bool = False,
+    language: str = "triton",
     max_concurrency: int = 1,
     stdout: TextIO | None = None,
     run_one: Callable[..., int] | None = None,
@@ -50,6 +51,7 @@ def run_log_check_batch(
             verbose=verbose,
             show_output=show_output,
             log_tools=log_tools,
+            language=language,
         )
         if rc != 0:
             return BatchOptimizeResult(workspace=workspace, status="failed", message=f"log check exited with return code {rc}")

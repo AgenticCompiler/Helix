@@ -258,7 +258,7 @@ def run_scaffold_operators(
     """
     scaffold_script = (
         skills_root()
-        / "triton-npu-analyze-commit-perf"
+        / "npu-analyze-commit-perf"
         / "scripts"
         / "scaffold_operators.py"
     )

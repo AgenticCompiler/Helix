@@ -79,6 +79,7 @@ class OptimizeSessionArtifactsManager:
         self,
         workdir: Path,
         agent_name: str,
+        language: str = "triton",
         optimize_target: str = "kernel",
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
@@ -91,6 +92,7 @@ class OptimizeSessionArtifactsManager:
         subagent_stage_set = self._prepare_subagents(
             agent_name=agent_name,
             workdir=workdir,
+            language=language,
             optimize_target=optimize_target,
             enable_cann_ext_api=enable_cann_ext_api,
             enable_subagent=enable_subagent,
@@ -121,6 +123,7 @@ class OptimizeSessionArtifactsManager:
         self,
         workdir: Path,
         agent_name: str,
+        language: str = "triton",
         optimize_target: str = "kernel",
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
@@ -146,6 +149,7 @@ class OptimizeSessionArtifactsManager:
             subagent_stage_set = self._prepare_subagents(
                 agent_name=agent_name,
                 workdir=workdir,
+                language=language,
                 optimize_target=optimize_target,
                 enable_cann_ext_api=enable_cann_ext_api,
                 enable_subagent=enable_subagent,
@@ -287,6 +291,7 @@ class OptimizeSessionArtifactsManager:
         *,
         agent_name: str,
         workdir: Path,
+        language: str,
         optimize_target: str,
         enable_cann_ext_api: bool,
         enable_subagent: bool,
@@ -294,6 +299,7 @@ class OptimizeSessionArtifactsManager:
         if not enable_subagent:
             return None
         definition = perf_diagnosis_subagent_definition(
+            language=language,
             optimize_target=optimize_target,
             enable_cann_ext_api=enable_cann_ext_api,
         )
