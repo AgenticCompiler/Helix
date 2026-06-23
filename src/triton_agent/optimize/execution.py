@@ -762,21 +762,21 @@ class MultiInvocationOptimizeController:
         return payload
 
     def _snapshot_live_handoff_files(self) -> None:
-        history_dir = self._artifacts_state.supervisor_history_dir
+        handoff_dir = self._artifacts_state.supervisor_handoff_dir
         supervisor_report_path = self._artifacts_state.supervisor_report_path
-        if history_dir is None or supervisor_report_path is None:
+        if handoff_dir is None or supervisor_report_path is None:
             return
-        history_dir.mkdir(parents=True, exist_ok=True)
-        round_label = self._next_history_round_label(history_dir)
+        handoff_dir.mkdir(parents=True, exist_ok=True)
+        round_label = self._next_handoff_round_label(handoff_dir)
         report_content = supervisor_report_path.read_text(encoding="utf-8")
-        (history_dir / f"{round_label}-supervisor-report.md").write_text(
+        (handoff_dir / f"{round_label}-supervisor-report.md").write_text(
             report_content,
             encoding="utf-8",
         )
 
-    def _next_history_round_label(self, history_dir: Path) -> str:
+    def _next_handoff_round_label(self, handoff_dir: Path) -> str:
         max_index = 0
-        for path in history_dir.glob("round-*.md"):
+        for path in handoff_dir.glob("round-*.md"):
             if not path.is_file():
                 continue
             match = re.match(r"round-(\d+)-", path.name)

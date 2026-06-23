@@ -24,7 +24,7 @@ class OptimizeSessionArtifactsState:
 
     hidden_triton_agent_dir: Path | None = None
     supervisor_report_path: Path | None = None
-    supervisor_history_dir: Path | None = None
+    supervisor_handoff_dir: Path | None = None
     workflow_state_path: Path | None = None
 
     @property
@@ -160,8 +160,7 @@ class OptimizeSessionArtifactsManager:
         """Prepare the full artifact set used by worker/supervisor orchestration."""
         hidden_triton_agent_dir = self._prepare_hidden_triton_agent_dir(workdir)
         supervisor_report_path = workdir / "supervisor-report.md"
-        supervisor_history_dir = hidden_triton_agent_dir / "supervisor-history"
-        supervisor_history_dir.mkdir(parents=True, exist_ok=True)
+        supervisor_handoff_dir = hidden_triton_agent_dir / "supervisor-handoffs"
         supervisor_report_path.write_text(
             "# Optimize Supervisor Report\n\nPending first supervisor pass.\n",
             encoding="utf-8",
@@ -211,7 +210,7 @@ class OptimizeSessionArtifactsManager:
             subagent_stage_set=subagent_stage_set,
             hidden_triton_agent_dir=hidden_triton_agent_dir,
             supervisor_report_path=supervisor_report_path,
-            supervisor_history_dir=supervisor_history_dir,
+            supervisor_handoff_dir=supervisor_handoff_dir,
             workflow_state_path=workflow_state_path,
         )
 
@@ -221,7 +220,7 @@ class OptimizeSessionArtifactsManager:
             state.archive,
             guidance_path=state.guidance_path,
             supervisor_report_path=state.supervisor_report_path,
-            history_dir=state.supervisor_history_dir,
+            handoff_dir=state.supervisor_handoff_dir,
         )
         if state.workflow_state_path is not None:
             try:

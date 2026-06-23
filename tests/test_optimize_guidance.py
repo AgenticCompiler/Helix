@@ -25,7 +25,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
 
         self.assertEqual(manager.guidance_filename("claude"), "CLAUDE.md")
 
-    def test_supervised_session_creates_and_cleans_runtime_tree(self) -> None:
+    def test_supervised_session_creates_runtime_tree_without_eager_handoff_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
@@ -38,9 +38,9 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             )
 
             assert state.supervisor_report_path is not None
-            assert state.supervisor_history_dir is not None
+            assert state.supervisor_handoff_dir is not None
             self.assertTrue(state.supervisor_report_path.exists())
-            self.assertTrue(state.supervisor_history_dir.exists())
+            self.assertFalse(state.supervisor_handoff_dir.exists())
 
             warnings = manager.cleanup_supervised_session(state)
 
@@ -52,11 +52,11 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            manager = ArchiveManager(run_id_factory=lambda: "20260423-123456-000000")
+            manager = ArchiveManager(run_id_factory=lambda: "20260423-123456")
 
             state = manager.prepare(workdir, include_shared_guidance_snapshot=True)
 
-            expected_run_dir = workdir / "triton-agent-logs" / "20260423-123456-000000"
+            expected_run_dir = workdir / "triton-agent-logs" / "20260423-123456"
             self.assertEqual(state.run_archive_dir, expected_run_dir)
             self.assertEqual(
                 state.agent_session_path("baseline"),
@@ -80,7 +80,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
-            manager = ArchiveManager(run_id_factory=lambda: "20260423-123456-000000")
+            manager = ArchiveManager(run_id_factory=lambda: "20260423-123456")
             state = manager.prepare(workdir)
 
             warning = manager.record_agent_session(
@@ -262,7 +262,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertEqual(warnings, [])
             self.assertFalse((workdir / ".triton-agent").exists())
 
-    def test_prepare_creates_shared_guidance_and_handoff_files_when_missing(self) -> None:
+    def test_prepare_creates_shared_guidance_without_eager_handoff_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             operator = workdir / "kernel.py"
@@ -280,9 +280,9 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertEqual(state.guidance_path, agents_path)
             self.assertIsNone(state.backup_path)
             assert state.supervisor_report_path is not None
-            assert state.supervisor_history_dir is not None
+            assert state.supervisor_handoff_dir is not None
             self.assertTrue(state.supervisor_report_path.exists())
-            self.assertTrue(state.supervisor_history_dir.exists())
+            self.assertFalse(state.supervisor_handoff_dir.exists())
             self.assertEqual(state.run_archive_dir.parent, workdir / "triton-agent-logs")
             self.assertEqual(
                 state.agent_session_path("baseline"),
@@ -316,7 +316,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertTrue(state.run_archive_dir.exists())
             self.assertTrue((state.run_archive_dir / "shared-guidance.md").exists())
             self.assertTrue((state.run_archive_dir / "supervisor-report.md").exists())
-            self.assertTrue((state.run_archive_dir / "history").exists())
+            self.assertFalse((state.run_archive_dir / "supervisor-handoffs").exists())
 
     def test_cleanup_supervised_session_writes_round_timings_archive_for_passed_rounds(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
