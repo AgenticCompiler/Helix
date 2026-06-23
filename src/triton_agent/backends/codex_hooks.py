@@ -40,6 +40,12 @@ def prepare_codex_hooks(
         raise RuntimeError(f"Codex hook template directory does not exist: {template_dir}")
     if not shared_template_dir.is_dir():
         raise RuntimeError(f"Shared hook template directory does not exist: {shared_template_dir}")
+    guard_template = template_dir / "pretooluse_guard.py"
+    policy_engine_template = shared_template_dir / "tool_use_guard_policy.py"
+    if not guard_template.is_file():
+        raise RuntimeError(f"Codex hook guard template does not exist: {guard_template}")
+    if not policy_engine_template.is_file():
+        raise RuntimeError(f"Shared guard policy template does not exist: {policy_engine_template}")
 
     hooks_json = workspace / _CODEX_HOOKS_JSON
     hook_dir = workspace / _CODEX_HOOK_DIR
@@ -56,7 +62,8 @@ def prepare_codex_hooks(
         created_paths.append(hooks_json)
 
         hook_dir.mkdir(parents=True)
-        shutil.copy2(shared_template_dir / "pretooluse_guard.py", hook_dir / "pretooluse_guard.py")
+        shutil.copy2(guard_template, hook_dir / "pretooluse_guard.py")
+        shutil.copy2(policy_engine_template, hook_dir / "tool_use_guard_policy.py")
         shutil.copy2(template_dir / "tool_trace_hook.py", hook_dir / "tool_trace_hook.py")
         created_paths.append(hook_dir)
         _write_codex_policy(
@@ -83,19 +90,16 @@ def _write_codex_policy(
     extra_allowed_read_roots: Sequence[Path] = (),
 ) -> None:
     allow_read_roots = _allow_read_roots(workspace, extra_allowed_read_roots)
-    protected_script_roots = [str((workspace / ".codex" / "skills").resolve())]
     policy = {
         "workspace_root": str(workspace),
         "trace": _trace_policy(options),
         "guard": {
             "enabled": options.guard_enabled,
             "allow_read_roots": allow_read_roots,
-            "protected_script_roots": protected_script_roots,
             "deny_read_globs": [str(workspace / pattern) for pattern in _CODEX_DENY_READ_GLOBS],
             "deny_message": _CODEX_DENY_MESSAGE,
         },
         "allow_read_roots": allow_read_roots,
-        "protected_script_roots": protected_script_roots,
         "deny_read_globs": [str(workspace / pattern) for pattern in _CODEX_DENY_READ_GLOBS],
         "deny_message": _CODEX_DENY_MESSAGE,
     }

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Clarify hook asset ownership now that the Python `PreToolUse` guard is shared by Codex and Claude, and reduce trace noise in OpenCode by avoiding duplicated full-command text across `tool_call` and `command` events.
+Clarify hook asset ownership now that Codex and Claude share guard policy logic but should keep backend-specific hook wrappers, and reduce trace noise in OpenCode by avoiding duplicated full-command text across `tool_call` and `command` events.
 
 ## User-Visible Semantics
 
@@ -12,13 +12,17 @@ Clarify hook asset ownership now that the Python `PreToolUse` guard is shared by
 
 ## Design
 
-### Shared Guard Asset
+### Shared Guard Policy Asset
 
-- Move the shared Python guard template from `hooks/codex/pretooluse_guard.py` to `hooks/shared/pretooluse_guard.py`.
-- Keep backend-owned assets in backend directories:
-  - `hooks/codex/` keeps Codex-only templates such as `hooks.json` and `tool_trace_hook.py`
+- Keep backend-owned executable wrappers in backend directories:
+  - `hooks/codex/` keeps Codex-only templates such as `hooks.json`, `tool_trace_hook.py`, and a Codex `pretooluse_guard.py` wrapper
+  - `hooks/claude/` keeps the Claude `pretooluse_guard.py` wrapper
   - `hooks/opencode/` keeps the OpenCode plugin hook
-- Codex and Claude staging code should both copy the guard from `hooks/shared/pretooluse_guard.py` into their backend-local staged hook directories.
+- Move only the backend-agnostic decision logic into `hooks/shared/tool_use_guard_policy.py`.
+- Codex and Claude staging code should copy both:
+  - the backend-specific `pretooluse_guard.py` wrapper
+  - the shared `tool_use_guard_policy.py` module
+- The staged workspace filename `pretooluse_guard.py` remains unchanged for both backends, but the file is now a wrapper rather than the full policy implementation.
 
 ### OpenCode Trace Summary
 

@@ -42,8 +42,9 @@ class AgentHookStageTests(unittest.TestCase):
             workspace.mkdir()
             templates_root = Path(__file__).resolve().parents[1] / "hooks"
             self.assertFalse((templates_root / "codex" / "policy.json").exists())
-            self.assertTrue((templates_root / "shared" / "pretooluse_guard.py").exists())
-            self.assertFalse((templates_root / "codex" / "pretooluse_guard.py").exists())
+            self.assertTrue((templates_root / "shared" / "tool_use_guard_policy.py").exists())
+            self.assertTrue((templates_root / "codex" / "pretooluse_guard.py").exists())
+            self.assertTrue((templates_root / "claude" / "pretooluse_guard.py").exists())
 
             state = prepare_codex_hooks(templates_root, workspace)
 
@@ -51,10 +52,12 @@ class AgentHookStageTests(unittest.TestCase):
             hook_dir = workspace / ".codex" / "triton-agent-hooks"
             policy_json = hook_dir / "policy.json"
             guard_script = hook_dir / "pretooluse_guard.py"
+            guard_policy_module = hook_dir / "tool_use_guard_policy.py"
             trace_script = hook_dir / "tool_trace_hook.py"
             self.assertTrue(hooks_json.exists())
             self.assertTrue(policy_json.exists())
             self.assertTrue(guard_script.exists())
+            self.assertTrue(guard_policy_module.exists())
             self.assertTrue(trace_script.exists())
             self.assertEqual(state.created_paths, [hooks_json, hook_dir])
 
@@ -170,9 +173,11 @@ class AgentHookStageTests(unittest.TestCase):
             settings_json = hook_dir / "settings.json"
             policy_json = hook_dir / "policy.json"
             guard_script = hook_dir / "pretooluse_guard.py"
+            guard_policy_module = hook_dir / "tool_use_guard_policy.py"
             self.assertTrue(settings_json.exists())
             self.assertTrue(policy_json.exists())
             self.assertTrue(guard_script.exists())
+            self.assertTrue(guard_policy_module.exists())
             self.assertEqual(state.created_paths, [settings_json, hook_dir])
 
             settings = json.loads(settings_json.read_text(encoding="utf-8"))
@@ -205,10 +210,6 @@ class AgentHookStageTests(unittest.TestCase):
                     str(workspace.resolve() / "triton-agent-logs" / "**"),
                     str(workspace.resolve() / ".claude" / "skills" / "*" / "scripts" / "**"),
                 ],
-            )
-            self.assertEqual(
-                policy["protected_script_roots"],
-                [str((workspace.resolve() / ".claude" / "skills").resolve())],
             )
             self.assertIn(".claude/skills/*/scripts/", policy["deny_message"])
 

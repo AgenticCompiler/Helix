@@ -15,12 +15,13 @@ Add `--enable-agent-hook` support to the Claude backend with the same request-sc
 
 - Stage a temporary request-scoped Claude settings file under `.claude/triton-agent-hooks/settings.json`.
 - Pass that file to Claude with `--settings <path>`.
-- Keep using the shared Python guard script at `hooks/shared/pretooluse_guard.py` instead of creating a third backend-specific guard implementation.
-- Make the guard policy-driven for protected skill roots so it can protect `.claude/skills/*/scripts/` in addition to the existing Codex and OpenCode staged skill roots.
+- Use a Claude-specific `pretooluse_guard.py` wrapper while keeping the guard policy logic shared with other backends.
+- Make the shared guard policy logic policy-driven for protected skill roots so it can protect `.claude/skills/*/scripts/` in addition to the existing Codex and OpenCode staged skill roots.
 - Stage these Claude-owned files:
   - `.claude/triton-agent-hooks/settings.json`
   - `.claude/triton-agent-hooks/policy.json`
   - `.claude/triton-agent-hooks/pretooluse_guard.py`
+  - `.claude/triton-agent-hooks/tool_use_guard_policy.py`
 
 ## Scope
 

@@ -372,7 +372,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             self.assertIn("Current active round is opt-round-2", str(result["message"]))
             self.assertIn("must stay inside `opt-round-2/`", str(result["message"]))
             self.assertIn("triton-npu-optimize-submit-round", str(result["message"]))
-            self.assertIn("built-in edit tools", str(result["message"]))
+            self.assertNotIn("First-version scope", str(result["message"]))
 
     @_skip_if_no_node
     def test_missing_workflow_state_blocks_native_write_with_restart_hint(self) -> None:

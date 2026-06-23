@@ -33,9 +33,12 @@ def prepare_claude_hooks(
 
     workspace = workdir.absolute()
     policy_workspace = workspace.resolve()
-    guard_template = hooks_root / "shared" / "pretooluse_guard.py"
+    guard_template = hooks_root / "claude" / "pretooluse_guard.py"
+    policy_engine_template = hooks_root / "shared" / "tool_use_guard_policy.py"
     if not guard_template.is_file():
         raise RuntimeError(f"Claude hook guard template does not exist: {guard_template}")
+    if not policy_engine_template.is_file():
+        raise RuntimeError(f"Shared guard policy template does not exist: {policy_engine_template}")
 
     hook_dir = workspace / _CLAUDE_HOOK_DIR
     settings_json = workspace / _CLAUDE_SETTINGS_JSON
@@ -48,6 +51,7 @@ def prepare_claude_hooks(
         hook_dir.parent.mkdir(parents=True, exist_ok=True)
         hook_dir.mkdir(parents=True)
         shutil.copy2(guard_template, hook_dir / "pretooluse_guard.py")
+        shutil.copy2(policy_engine_template, hook_dir / "tool_use_guard_policy.py")
         _write_claude_policy(
             hook_dir / "policy.json",
             policy_workspace,
@@ -72,19 +76,16 @@ def _write_claude_policy(
     extra_allowed_read_roots: Sequence[Path] = (),
 ) -> None:
     allow_read_roots = _allow_read_roots(workspace, extra_allowed_read_roots)
-    protected_script_roots = [str((workspace / ".claude" / "skills").resolve())]
     policy = {
         "workspace_root": str(workspace),
         "trace": _trace_policy(options),
         "guard": {
             "enabled": options.guard_enabled,
             "allow_read_roots": allow_read_roots,
-            "protected_script_roots": protected_script_roots,
             "deny_read_globs": [str(workspace / pattern) for pattern in _CLAUDE_DENY_READ_GLOBS],
             "deny_message": _CLAUDE_DENY_MESSAGE,
         },
         "allow_read_roots": allow_read_roots,
-        "protected_script_roots": protected_script_roots,
         "deny_read_globs": [str(workspace / pattern) for pattern in _CLAUDE_DENY_READ_GLOBS],
         "deny_message": _CLAUDE_DENY_MESSAGE,
     }

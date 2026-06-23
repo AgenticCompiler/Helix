@@ -19,13 +19,13 @@ This design covers only backend built-in edit tools. It does not add Bash write 
 - During `awaiting_round_start`, built-in edit tools may not modify any files. The denial message must tell the agent to use `triton-npu-optimize-start-round` before editing.
 - During `round_active`, built-in edit tools may modify only files under the active `opt-round-N/` directory.
 - When a `round_active` edit is denied for targeting files outside the active round directory, the denial message must tell the agent to use `triton-npu-optimize-submit-round` when the current round is ready to be submitted.
-- The denial message must explicitly say this first version only guards built-in edit tools, not Bash file writes.
+- Agent-facing denial messages should stay operational and recovery-oriented. Version-scope caveats such as “Bash file writes are not blocked in this first version” belong in design docs, not in denial text shown to the agent.
 
 ## Backend Scope
 
 - Codex:
-  - extend `hooks/shared/pretooluse_guard.py` to recognize `Write`, `Edit`, and `MultiEdit`
-  - stage that guard on `PreToolUse` for the same matcher set, so edit tools are blocked before execution rather than traced after the fact
+  - extend the shared policy module plus the Codex `pretooluse_guard.py` wrapper to recognize `Write`, `Edit`, and `MultiEdit`
+  - stage the Codex wrapper on `PreToolUse` for the same matcher set, so edit tools are blocked before execution rather than traced after the fact
 - OpenCode:
   - extend `hooks/opencode/triton-agent-hook-guard.js` built-in edit enforcement in `tool.execute.before`
   - recognize the existing built-in edit tool aliases already traced there (`write`, `edit`, `patch`, `update`, `multiedit`, `multi_edit`)

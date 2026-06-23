@@ -6,9 +6,12 @@ from pathlib import Path
 from typing import Optional
 
 
+_MODULE_NAME = "codex_pretooluse_guard"
+
+
 def _load_guard_module():
-    guard_path = Path(__file__).resolve().parents[1] / "hooks" / "shared" / "pretooluse_guard.py"
-    spec = importlib.util.spec_from_file_location("codex_pretooluse_guard", guard_path)
+    guard_path = Path(__file__).resolve().parents[1] / "hooks" / "shared" / "tool_use_guard_policy.py"
+    spec = importlib.util.spec_from_file_location(_MODULE_NAME, guard_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load guard script: {guard_path}")
     module = importlib.util.module_from_spec(spec)
@@ -17,6 +20,21 @@ def _load_guard_module():
 
 
 class CodexPreToolUseGuardTests(unittest.TestCase):
+    def test_deny_reason_for_tool_use_matches_read_denial_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            outside = Path(tmp) / "outside.txt"
+            workspace.mkdir()
+            outside.write_text("secret\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.deny_reason_for_tool_use(
+                _policy(workspace),
+                _payload(workspace, f"cat {outside}"),
+            )
+
+            self.assertEqual(reason, _DENY_MESSAGE)
+
     def test_allows_in_workspace_non_protected_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -25,7 +43,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             readme.write_text("hello\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, f"sed -n '1,20p' {readme}"),
             )
@@ -40,7 +58,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             outside.write_text("secret\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, f"cat {outside}"),
             )
@@ -55,7 +73,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             outside.write_text("secret\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, "sed -n '1,20p' ../outside.txt"),
             )
@@ -70,7 +88,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, f"sed -n '1,80p' {script}"),
             )
@@ -85,7 +103,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, f"python3 -c \"print(open('{script}').read())\""),
             )
@@ -100,7 +118,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, f"python3 {script} run-test-optimize --test-file differential_test_file.py"),
             )
@@ -115,7 +133,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace, skill_backend_root=".claude"),
                 _payload(workspace, f"sed -n '1,80p' {script}"),
             )
@@ -130,7 +148,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace, skill_backend_root=".claude"),
                 _payload(workspace, f"python3 {script} run-test-optimize --test-file differential_test_file.py"),
             )
@@ -151,7 +169,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             operator_file.write_text("pass\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(
                     workspace,
@@ -172,7 +190,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, f"bash -lc \"sed -n '1,20p' {script}\""),
             )
@@ -187,7 +205,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             log_file.write_text("log output\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, f"sed -n '1,20p' {log_file}"),
             )
@@ -202,7 +220,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             log_file.write_text("log output\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, "cat triton-agent-logs/gen-test.show-output.log"),
             )
@@ -217,7 +235,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             script.write_text("print('opt')\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, f"python3 -c \"print(open('{script}').read())\""),
             )
@@ -232,7 +250,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             log_file.write_text("log output\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(
                     workspace,
@@ -250,7 +268,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             readme.write_text("not a log\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, f"cat {readme}"),
             )
@@ -267,7 +285,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             workspace.mkdir()
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace, extra_allow_roots=[compiler_source]),
                 _payload(workspace, f"sed -n '1,20p' {source_file}"),
             )
@@ -283,7 +301,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             script.write_text("print('helper')\n", encoding="utf-8")
             payload = _read_payload(script)
 
-            reason = guard.evaluate_payload(_policy(workspace), payload)
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), payload)
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
@@ -295,7 +313,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             outside.write_text("secret\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(_policy(workspace), _read_payload(outside))
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _read_payload(outside))
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
@@ -307,7 +325,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             readme.write_text("hello\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(_policy(workspace), _read_payload(readme))
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _read_payload(readme))
 
             self.assertIsNone(reason)
 
@@ -320,7 +338,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             script.write_text("print('helper')\n", encoding="utf-8")
             payload = _read_payload(script, key="filePath")
 
-            reason = guard.evaluate_payload(_policy(workspace), payload)
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), payload)
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
@@ -338,7 +356,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             )
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(_policy(workspace), _write_payload(operator_file))
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(operator_file))
 
             self.assertIsNone(reason)
 
@@ -356,12 +374,12 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             )
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(_policy(workspace), _write_payload(round_file))
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(round_file))
 
             assert reason is not None
             self.assertIn("Current phase is baseline", reason)
             self.assertIn("baseline-minimal", reason)
-            self.assertIn("built-in edit tools", reason)
+            self.assertNotIn("First-version scope", reason)
 
     def test_awaiting_round_start_blocks_native_write_with_start_round_hint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -377,7 +395,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             )
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(_policy(workspace), _write_payload(round_file))
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(round_file))
 
             assert reason is not None
             self.assertIn("awaiting_round_start", reason)
@@ -406,7 +424,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             )
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(_policy(workspace), _write_payload(round_file))
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(round_file))
 
             self.assertIsNone(reason)
 
@@ -433,7 +451,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             )
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(_policy(workspace), _write_payload(operator_file))
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(operator_file))
 
             assert reason is not None
             self.assertIn("Current active round is opt-round-2", reason)
@@ -448,7 +466,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             round_file.parent.mkdir(parents=True)
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(_policy(workspace), _write_payload(round_file))
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(round_file))
 
             assert reason is not None
             self.assertIn(".triton-agent/state.json", reason)
@@ -460,26 +478,9 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             workspace.mkdir()
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(_policy(workspace), {"tool_name": "Bash"})
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), {"tool_name": "Bash"})
 
             self.assertIsNone(reason)
-
-    def test_build_denial_output_uses_pretooluse_permission_decision_shape(self) -> None:
-        guard = _load_guard_module()
-
-        output = guard.build_denial_output(_DENY_MESSAGE)
-
-        self.assertEqual(
-            output,
-            {
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "deny",
-                    "permissionDecisionReason": _DENY_MESSAGE,
-                }
-            },
-        )
-
 
 _DENY_MESSAGE = (
     "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
@@ -511,7 +512,6 @@ def _policy(
     return {
         "workspace_root": str(root),
         "allow_read_roots": allow_read_roots,
-        "protected_script_roots": [str((root / skill_backend_root / "skills").resolve())],
         "deny_read_globs": [
             str(root / "triton-agent-logs" / "**"),
             str(root / skill_backend_root / "skills" / "*" / "scripts" / "**"),
