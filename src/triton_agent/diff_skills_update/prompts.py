@@ -27,7 +27,60 @@ PATTERN_UPDATE_GUIDANCE = """Pattern update guidance:
 - Preserve useful existing guidance unless the new evidence clearly supersedes
   it. Integrate successful cases, failures, anti-signals, and stop conditions.
 - Keep final card prose kernel-agnostic, self-contained, and free of round IDs or
-  artifact-path narration except for concise illustrative examples."""
+  artifact-path narration except for concise illustrative examples.
+- Keep `## Summary` and `## Use When` concise — they serve as an indexable
+  abstract, not a full explanation. Prefer short, direct bullets over long
+  paragraphs. Elaborate in `## Signals`, `## Avoid When`, or
+  `## What To Verify After Applying` when more detail is needed."""
+
+
+OPTIMIZE_WORKSPACE_LAYOUT = """## Optimize workspace file reference
+
+- `opt-note.md`: **Start here.** Cross-round summary written by the optimizer. Each
+  `## Round N` section records what was tried, what worked, and the final code diff.
+  The `## Overall Summary` section captures the key takeaways.
+- `baseline/`: Initial unoptimized Triton kernel and its perf baseline (`state.json`
+  records paths to baseline operator and perf artifact).
+- `learned_lessons.md`: Optional short summary of reusable lessons. Use as a
+  secondary reference only — the full narrative is in `opt-note.md` and round files.
+- `opt-round-N/`: One directory per optimization round.
+  - `attempts.md`: Detailed round log — hypotheses, patterns applied, code changes,
+    correctness failures, benchmark results.
+  - `summary.md`: Round conclusion — what worked, final direction, open issues.
+  - `round-state.json`: Machine-readable round state (metric source, paths, status).
+  - `opt_<operator>.py`: Kernel snapshot after this round.
+  - `opt_<operator>_perf.txt`: Benchmark result after this round (if available).
+  - `perf-analysis.md`: Profiler-driven analysis (optional, when deeper diagnosis
+    was used).
+  - `logs/compare-perf.txt`: Baseline-vs-round comparison (optional)."""
+
+OPTIMIZE_PROCESS_ANALYSIS = """## Analysis workflow (optimize-process)
+
+1. **Read `opt-note.md` first.** This gives you the full optimization narrative
+   across all rounds. Note any optimizations described as accidental discoveries,
+   unexpected wins, or "we found that..." moments.
+
+2. **Trace each round's code changes.** For each `opt-round-N/`, compare the
+   kernel snapshot against the previous round (or baseline for round 1). Use
+   `attempts.md` and `summary.md` to understand the *why* behind each diff.
+
+3. **Extract optimization mechanisms.** For each meaningful code change:
+   - What was the pattern or insight?
+   - Was it driven by a known pattern, a profile signal, or trial-and-error?
+   - Is it generic enough to reuse across operators?
+
+4. **Compare against existing skills.** Read pattern cards under the editable
+   skills directory. For each extracted mechanism, check if it is already covered:
+
+   - **All covered and guidance is complete** → set `aligned: true`, do NOT update
+     any pattern cards. The simulate-analyze loop will be skipped.
+   - **New mechanism found OR existing card is incomplete/outdated** → update the
+     relevant card(s) or add a new generic card, then set `aligned: false`.
+     The simulate-analyze loop will verify the update.
+
+   Do not force a match. If an optimization is genuinely novel, create a new card.
+   If the existing card already says the same thing in different words, mark it as
+   covered — do not rewrite cards just for phrasing changes."""
 
 
 def build_diff_to_skill_prompt(
@@ -38,6 +91,17 @@ def build_diff_to_skill_prompt(
 ) -> str:
     diff_text = _unified_diff(pair.baseline_path, pair.expected_path)
     process_context = _process_context_text(pair)
+
+    if pair.source_kind == "optimize-process":
+        workflow = OPTIMIZE_PROCESS_ANALYSIS
+        layout = "\n" + OPTIMIZE_WORKSPACE_LAYOUT
+    else:
+        workflow = f"""Analyze the code diff and any nearby evidence in the operator
+directory. Update relevant pattern cards or add a new generic pattern card when
+the mechanism is not covered under:
+{skills_dir}/triton-npu-optimize-knowledge/references/patterns"""
+        layout = ""
+
     return f"""You are updating Triton Ascend NPU optimization knowledge.
 
 Baseline file: {pair.baseline_path}
@@ -45,14 +109,9 @@ Optimized answer file: {pair.expected_path}
 Editable skills directory: {skills_dir}
 Input kind: {pair.source_kind}
 {process_context}
+{layout}
 
-Analyze the available optimization evidence. For `optimize-process` inputs,
-start from `learned_lessons.md`, then cross-check `opt-note.md`, round summaries,
-attempt logs, round states, optional perf/profile analysis, and the before/after
-code diff. For plain `diff` inputs, infer the mechanism from the code diff and
-any nearby evidence included in the operator directory. Update relevant pattern
-cards or add a new generic pattern card when the mechanism is not covered under:
-{skills_dir}/triton-npu-optimize-knowledge/references/patterns
+{workflow}
 
 {PATTERN_UPDATE_GUIDANCE}
 
@@ -71,6 +130,7 @@ Pattern card format is mandatory:
 
 Write JSON to {output_json} with this shape:
 {{
+  "aligned": true_or_false,
   "matched_patterns": ["pattern-card-name-or-title"],
   "updated_patterns": ["pattern-card-name-or-title-that-was-added-or-edited"],
   "summary": "short explanation of the mechanism"
@@ -177,10 +237,10 @@ def _process_context_text(pair: OperatorPair) -> str:
     if pair.source_kind != "optimize-process":
         return ""
     lines = ["Optimization process evidence:"]
-    if pair.learned_lessons_path is not None:
-        lines.append(f"- learned_lessons: {pair.learned_lessons_path}")
     if pair.opt_note_path is not None:
         lines.append(f"- opt_note: {pair.opt_note_path}")
+    if pair.learned_lessons_path is not None:
+        lines.append(f"- learned_lessons: {pair.learned_lessons_path}")
     for path in pair.context_paths:
         if path == pair.learned_lessons_path or path == pair.opt_note_path:
             continue

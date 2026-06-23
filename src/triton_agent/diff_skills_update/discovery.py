@@ -39,7 +39,7 @@ def _discover_optimize_process_pairs(
 ) -> DiscoveryResult:
     pairs: list[OperatorPair] = []
     skips: list[SkipRecord] = []
-    if (root / "learned_lessons.md").is_file():
+    if _looks_like_optimize_workspace(root):
         pair, skip = _discover_optimize_process_pair(root, stream=stream)
         if pair is not None:
             pairs.append(pair)
@@ -49,17 +49,17 @@ def _discover_optimize_process_pairs(
     operator_dirs = sorted(
         path for path in root.iterdir() if path.is_dir() and path.resolve() not in excluded
     )
-    if not operator_dirs or _looks_like_optimize_workspace(root):
+    if not operator_dirs:
         skips.append(
             _record_skip(
                 root,
-                "learned_lessons.md not found in optimize-process source",
+                "no optimize workspace found",
                 stream=stream,
             )
         )
         return DiscoveryResult(pairs=tuple(pairs), skips=tuple(skips))
     for operator_dir in operator_dirs:
-        if (operator_dir / "learned_lessons.md").is_file():
+        if _looks_like_optimize_workspace(operator_dir):
             pair, skip = _discover_optimize_process_pair(operator_dir, stream=stream)
             if pair is not None:
                 pairs.append(pair)
@@ -69,7 +69,7 @@ def _discover_optimize_process_pairs(
         skips.append(
             _record_skip(
                 operator_dir,
-                "learned_lessons.md not found in optimize-process source",
+                "directory does not look like an optimize workspace",
                 stream=stream,
             )
         )
@@ -139,7 +139,7 @@ def _discover_optimize_process_pair(
     if baseline_path is None:
         skip = _record_skip(
             operator_dir,
-            "learned_lessons.md found but baseline operator was not found",
+            "baseline operator not found in optimize workspace",
             stream=stream,
         )
         return None, skip
@@ -147,18 +147,19 @@ def _discover_optimize_process_pair(
     if expected_path is None:
         skip = _record_skip(
             operator_dir,
-            "learned_lessons.md found but final optimized operator was not found",
+            "final optimized operator not found in optimize workspace",
             stream=stream,
         )
         return None, skip
     opt_note_path = operator_dir / "opt-note.md"
+    learned_lessons = operator_dir / "learned_lessons.md"
     context_paths = _optimize_process_context_paths(operator_dir, opt_note_path)
     return (
         OperatorPair(
             operator_dir=operator_dir,
             baseline_path=baseline_path,
             expected_path=expected_path,
-            learned_lessons_path=operator_dir / "learned_lessons.md",
+            learned_lessons_path=learned_lessons if learned_lessons.is_file() else None,
             opt_note_path=opt_note_path if opt_note_path.is_file() else None,
             context_paths=context_paths,
             source_kind="optimize-process",
@@ -236,9 +237,12 @@ def _operator_py_candidates(directory: Path) -> list[Path]:
 
 
 def _optimize_process_context_paths(operator_dir: Path, opt_note_path: Path) -> tuple[Path, ...]:
-    paths: list[Path] = [operator_dir / "learned_lessons.md"]
+    paths: list[Path] = []
     if opt_note_path.is_file():
         paths.append(opt_note_path)
+    learned_lessons = operator_dir / "learned_lessons.md"
+    if learned_lessons.is_file():
+        paths.append(learned_lessons)
     for round_dir in sorted(
         (path for path in operator_dir.glob("opt-round-*") if path.is_dir()),
         key=_round_sort_key,
