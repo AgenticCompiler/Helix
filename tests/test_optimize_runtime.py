@@ -250,8 +250,8 @@ class OptimizeRuntimeTests(unittest.TestCase):
         hidden_triton_agent_dir.mkdir(parents=True, exist_ok=True)
         guidance_path = workdir / "AGENTS.md"
         guidance_path.write_text("shared guidance\n", encoding="utf-8")
-        history_dir = hidden_triton_agent_dir / "history"
-        history_dir.mkdir(parents=True, exist_ok=True)
+        handoff_dir = hidden_triton_agent_dir / "supervisor-handoffs"
+        handoff_dir.mkdir(parents=True, exist_ok=True)
         supervisor_report_path = workdir / "supervisor-report.md"
         supervisor_report_path.write_text("report\n", encoding="utf-8")
         run_archive_dir = workdir / "triton-agent-logs" / "run-001"
@@ -268,7 +268,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             ),
             hidden_triton_agent_dir=hidden_triton_agent_dir,
             supervisor_report_path=supervisor_report_path,
-            supervisor_history_dir=history_dir,
+            supervisor_handoff_dir=handoff_dir,
         )
 
     def _build_checked_guidance_state(self, workdir: Path) -> OptimizeSessionArtifactsState:
@@ -1246,7 +1246,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
             run_archive = run_archives[0]
             self.assertTrue((run_archive / "shared-guidance.md").exists())
             self.assertTrue((run_archive / "supervisor-report.md").exists())
-            self.assertTrue((run_archive / "history").exists())
+            self.assertTrue((run_archive / "supervisor-handoffs").exists())
             self.assertEqual(
                 [
                     (
@@ -3991,8 +3991,8 @@ class OptimizeRuntimeTests(unittest.TestCase):
             )
 
             self.assertEqual(gate_result.payload["status"], "pass")
-            assert guidance_state.supervisor_history_dir is not None
-            report_snapshot = guidance_state.supervisor_history_dir / "round-001-supervisor-report.md"
+            assert guidance_state.supervisor_handoff_dir is not None
+            report_snapshot = guidance_state.supervisor_handoff_dir / "round-001-supervisor-report.md"
             self.assertTrue(report_snapshot.exists())
             assert guidance_state.supervisor_report_path is not None
             self.assertEqual(
