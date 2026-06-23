@@ -93,7 +93,7 @@ _SHARED_GUIDANCE_TEMPLATE = (
         """\
         Use the staged workspace skills as the workflow source of truth.
         Invocation-specific behavior comes from the launch prompt.
-        Use `.triton-agent/supervisor-report.md` as the supervisor audit report file when supervised mode is active.
+        Use `supervisor-report.md` as the supervisor audit report file when supervised mode is active.
         Treat `baseline/` as the canonical optimize baseline.
         Use `compare-perf` as the authoritative source for round performance summaries.
         {analysis_block}
@@ -359,6 +359,6 @@ class MemoryFileManager:
         )
         if include_supervisor_handoff:
             base += (
-                "\nUse `.triton-agent/supervisor-report.md` as the supervisor audit report file.\n"
+                "\nUse `supervisor-report.md` as the supervisor audit report file.\n"
             )
         return base

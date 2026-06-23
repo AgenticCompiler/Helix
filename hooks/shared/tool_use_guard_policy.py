@@ -28,12 +28,17 @@ from typing import Any
 READ_COMMANDS = {
     "awk",
     "cat",
+    "find",
+    "grep",
     "head",
     "less",
+    "ls",
     "more",
     "rg",
     "sed",
+    "stat",
     "tail",
+    "tree",
 }
 
 # Built-in edit tools are checked against workflow phase rules. Bash-based
@@ -43,11 +48,14 @@ READ_TOOL_PATH_KEYS = ("file_path", "filePath")
 EDIT_TOOL_PATH_KEYS = ("file_path", "path", "filePath", "notebook_path", "notebookPath")
 SHELL_WRAPPER_FLAGS = {"-c", "-lc"}
 SHELL_WRAPPERS = {"bash", "sh", "zsh"}
-PROTECTED_RELATIVE_PATH_PREFIXES = ("triton-agent-logs/",)
+PROTECTED_RELATIVE_PATH_PREFIXES = (
+    ".triton-agent/",
+    "triton-agent-logs/",
+)
 WORKFLOW_STATE_RELATIVE_PATH = Path(".triton-agent") / "state.json"
 
 PATH_FRAGMENT_RE = re.compile(
-    r"(?:^|[^A-Za-z0-9_./-])(?P<path>(?:/|\.\.?/|\.codex/|\.claude/|\.opencode/|triton-agent-logs/)[A-Za-z0-9_./*?{}+@%:,=-]+)"
+    r"(?:^|[^A-Za-z0-9_./-])(?P<path>(?:/|\.\.?/|\.triton-agent/|\.codex/|\.claude/|\.opencode/|triton-agent-logs/)[A-Za-z0-9_./*?{}+@%:,=-]+)"
 )
 WINDOWS_PATH_FRAGMENT_RE = re.compile(
     r"(?P<path>[A-Za-z]:[\\/][A-Za-z0-9_ .\\/(){}+@%:,=-]+)"
@@ -280,7 +288,7 @@ def _active_round_dir(state: dict[str, Any]) -> str | None:
 def _built_in_edit_missing_state_denial() -> str:
     return (
         "Built-in edit tool blocked by optimize workflow policy. "
-        "Optimize workflow state is missing or invalid at `.triton-agent/state.json`. "
+        "The temporary optimize workflow state is missing or invalid. "
         "Ask the runner to restart the optimize session so workflow state can be rebuilt."
     )
 
@@ -351,17 +359,19 @@ def _collect_command_path_references_inner(
             _collect_command_path_references_inner(nested_command, seen_commands=next_seen_commands)
         )
 
-    if not _contains_read_command(tokens):
+    scan_command = _strip_heredoc_payload(command)
+    scan_tokens = _filter_tokens_for_read_scan(_split_command(scan_command))
+    if not _contains_read_command(scan_tokens):
         return path_texts
 
-    explicit_path_tokens = {token for token in tokens if _looks_like_path(token)}
-    for token in tokens:
+    explicit_path_tokens = {token for token in scan_tokens if _looks_like_path(token)}
+    for token in scan_tokens:
         if _is_read_command_token(token):
             continue
         if _looks_like_path(token):
             path_texts.append(token)
 
-    for path_text in _path_fragments_from_command(command, explicit_path_tokens):
+    for path_text in _path_fragments_from_command(" ".join(scan_tokens), explicit_path_tokens):
         path_texts.append(path_text)
 
     return path_texts
@@ -399,6 +409,68 @@ def _collect_shell_wrapper_commands(tokens: list[str]) -> list[str]:
     return commands
 
 
+def _strip_heredoc_payload(command: str) -> str:
+    if "<<" not in command or "\n" not in command:
+        return command
+    return command.splitlines()[0]
+
+
+def _filter_tokens_for_read_scan(tokens: list[str]) -> list[str]:
+    filtered: list[str] = []
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if _is_heredoc_operator_token(token):
+            index += 1
+            if token in {"<<", "<<-"} and index < len(tokens):
+                index += 1
+            continue
+
+        output_target = _output_redirection_target(token)
+        if output_target is not None:
+            if output_target == "":
+                index += 2
+            else:
+                index += 1
+            continue
+
+        input_target = _input_redirection_target(token)
+        if input_target is not None:
+            if input_target == "":
+                index += 1
+                if index < len(tokens):
+                    filtered.append(tokens[index])
+                    index += 1
+                continue
+            filtered.append(input_target)
+            index += 1
+            continue
+
+        filtered.append(token)
+        index += 1
+    return filtered
+
+
+def _is_heredoc_operator_token(token: str) -> bool:
+    return token in {"<<", "<<-"} or token.startswith("<<")
+
+
+def _output_redirection_target(token: str) -> str | None:
+    match = re.match(r"^(?:(?:\d+)?>>|(?:\d+)?>\||(?:\d+)?>|&>>|&>)(.*)$", token)
+    if match is None:
+        return None
+    return match.group(1)
+
+
+def _input_redirection_target(token: str) -> str | None:
+    if token.startswith("<<"):
+        return None
+    match = re.match(r"^(?:(?:\d+)?<>|(?:\d+)?<)(.*)$", token)
+    if match is None:
+        return None
+    return match.group(1)
+
+
 def _split_command(command: str) -> list[str]:
     try:
         return shlex.split(command, posix=os.name != "nt")
@@ -419,7 +491,8 @@ def _looks_like_path(token: str) -> bool:
         return False
     path = Path(token)
     return (
-        path.is_absolute()
+        token == ".triton-agent"
+        or path.is_absolute()
         or token.startswith("/")
         or token.startswith("./")
         or token.startswith("../")

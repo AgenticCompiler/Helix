@@ -298,9 +298,11 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             self.assertIn("Use the staged workspace skills as the workflow source of truth.", shared_content)
             self.assertIn("Invocation-specific behavior comes from the launch prompt.", shared_content)
             self.assertIn(
-                "Use `.triton-agent/supervisor-report.md` as the supervisor audit report file when supervised mode is active.",
+                "Use `supervisor-report.md` as the supervisor audit report file when supervised mode is active.",
                 shared_content,
             )
+            self.assertNotIn(".triton-agent/supervisor-report.md", shared_content)
+            self.assertNotIn(".triton-agent/state.json", shared_content)
             self.assertIn("Treat `baseline/` as the canonical optimize baseline", shared_content)
             self.assertIn("Use `compare-perf` as the authoritative source", shared_content)
             self.assertNotIn("Improve the Triton operator", shared_content)
@@ -309,6 +311,7 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             warnings = manager.cleanup_supervised_session(state)
             self.assertEqual(warnings, [])
             self.assertFalse(agents_path.exists())
+            self.assertFalse((workdir / "supervisor-report.md").exists())
             self.assertFalse((workdir / ".triton-agent").exists())
             self.assertTrue(state.run_archive_dir.exists())
             self.assertTrue((state.run_archive_dir / "shared-guidance.md").exists())

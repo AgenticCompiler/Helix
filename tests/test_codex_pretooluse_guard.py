@@ -469,8 +469,32 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(round_file))
 
             assert reason is not None
-            self.assertIn(".triton-agent/state.json", reason)
+            self.assertIn("temporary optimize workflow state", reason)
             self.assertIn("restart the optimize session", reason)
+            self.assertNotIn(".triton-agent/state.json", reason)
+
+    def test_blocks_runtime_state_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            state_path = workspace / ".triton-agent" / "state.json"
+            state_path.parent.mkdir(parents=True)
+            state_path.write_text("{}", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _read_payload(state_path))
+
+            self.assertEqual(reason, _DENY_MESSAGE)
+
+    def test_blocks_hidden_runtime_directory_listing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            runtime_dir = workspace / ".triton-agent"
+            runtime_dir.mkdir(parents=True)
+            guard = _load_guard_module()
+
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _payload(workspace, "ls .triton-agent"))
+
+            self.assertEqual(reason, _DENY_MESSAGE)
 
     def test_malformed_payload_fails_open(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -484,8 +508,8 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
 _DENY_MESSAGE = (
     "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
-    "and do not inspect protected files (staged skill implementation files under "
-    ".codex/skills/*/scripts/ or triton-agent-logs/ output). "
+    "and do not inspect protected runner-managed files (temporary optimize runtime files, "
+    "staged skill implementation files under .codex/skills/*/scripts/, or triton-agent-logs/ output). "
     "Use the skill instructions and documented command interface instead."
 )
 
@@ -493,8 +517,9 @@ _DENY_MESSAGE = (
 def _deny_message(skill_backend_root: str) -> str:
     return (
         "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
-        "and do not inspect protected files (staged skill implementation files under "
-        f"{skill_backend_root}/skills/*/scripts/ or triton-agent-logs/ output). "
+        "and do not inspect protected runner-managed files (temporary optimize runtime files, "
+        f"staged skill implementation files under {skill_backend_root}/skills/*/scripts/, or "
+        "triton-agent-logs/ output). "
         "Use the skill instructions and documented command interface instead."
     )
 
@@ -513,6 +538,10 @@ def _policy(
         "workspace_root": str(root),
         "allow_read_roots": allow_read_roots,
         "deny_read_globs": [
+            str(root / ".triton-agent"),
+            str(root / ".triton-agent" / "**"),
+            str(root / skill_backend_root / "triton-agent-hooks"),
+            str(root / skill_backend_root / "triton-agent-hooks" / "**"),
             str(root / "triton-agent-logs" / "**"),
             str(root / skill_backend_root / "skills" / "*" / "scripts" / "**"),
         ],

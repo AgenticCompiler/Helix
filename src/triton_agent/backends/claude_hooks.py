@@ -12,12 +12,21 @@ _CLAUDE_HOOK_DIR = Path(".claude") / "triton-agent-hooks"
 _CLAUDE_SETTINGS_JSON = _CLAUDE_HOOK_DIR / "settings.json"
 _CLAUDE_DENY_MESSAGE = (
     "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
-    "and do not inspect protected files (staged skill implementation files under "
-    ".claude/skills/*/scripts/ or triton-agent-logs/ output). "
+    "and do not inspect protected runner-managed files (temporary optimize runtime files, "
+    "staged skill implementation files under .claude/skills/*/scripts/, or triton-agent-logs/ "
+    "output). "
     "Use the skill instructions and documented command interface instead."
 )
-_SHARED_DENY_READ_GLOBS = (Path("triton-agent-logs") / "**",)
-_CLAUDE_DENY_READ_GLOBS = _SHARED_DENY_READ_GLOBS + (Path(".claude") / "skills" / "*" / "scripts" / "**",)
+_SHARED_DENY_READ_GLOBS = (
+    Path(".triton-agent"),
+    Path(".triton-agent") / "**",
+    Path("triton-agent-logs") / "**",
+)
+_CLAUDE_DENY_READ_GLOBS = _SHARED_DENY_READ_GLOBS + (
+    Path(".claude") / "triton-agent-hooks",
+    Path(".claude") / "triton-agent-hooks" / "**",
+    Path(".claude") / "skills" / "*" / "scripts" / "**",
+)
 
 
 def prepare_claude_hooks(

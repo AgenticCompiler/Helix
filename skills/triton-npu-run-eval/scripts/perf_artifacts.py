@@ -384,6 +384,7 @@ def perf_output_path(operator_file: Path) -> Path:
 
 
 def write_perf_lines(path: Path, lines: list[str]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
     return path
 

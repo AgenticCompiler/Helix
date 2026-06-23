@@ -244,7 +244,7 @@ def build_optimize_supervisor_prompt(
                     else "Allow fallback-driven rounds to pass when their recorded `effective_metric_source` is `total-op` or `mixed`, but require that mismatch to be called out as a warning."
                 ),
                 "Reject rounds that preserve only the public API shape but replace the Triton kernel path with pure PyTorch computation.",
-                "Write `.triton-agent/supervisor-report.md` with a `Status:` line and a `Blocking issues:` line.",
+                "Write `supervisor-report.md` with a `Status:` line and a `Blocking issues:` line.",
                 "Use only these supervisor statuses: `pass` or `fail`.",
                 "The CLI will read that supervisor report and pass the relevant continuation context into any later worker invocation.",
                 "The CLI decides whether another round is required from the round-loop policy; do not encode stop-versus-continue in the supervisor report.",

@@ -122,6 +122,40 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             self.assertEqual(result, {"allowed": True})
 
     @_skip_if_no_node
+    def test_allows_heredoc_write_when_body_mentions_protected_runtime_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+
+            result = _evaluate_plugin(
+                _policy(workspace),
+                "bash",
+                "cat > learned_lessons.md << 'ENDOFFILE'\n"
+                "reference .triton-agent/state.json in prose\n"
+                "ENDOFFILE",
+                workspace,
+            )
+
+            self.assertEqual(result, {"allowed": True})
+
+    @_skip_if_no_node
+    def test_blocks_redirected_read_from_outside_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            outside = Path(tmp) / "outside.txt"
+            workspace.mkdir()
+            outside.write_text("secret\n", encoding="utf-8")
+
+            result = _evaluate_plugin(
+                _policy(workspace),
+                "bash",
+                f"cat {outside} > learned_lessons.md",
+                workspace,
+            )
+
+            self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
+
+    @_skip_if_no_node
     def test_blocks_read_tool_for_protected_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -390,8 +424,32 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             )
 
             self.assertFalse(result["allowed"])
-            self.assertIn(".triton-agent/state.json", str(result["message"]))
+            self.assertIn("temporary optimize workflow state", str(result["message"]))
             self.assertIn("restart the optimize session", str(result["message"]))
+            self.assertNotIn(".triton-agent/state.json", str(result["message"]))
+
+    @_skip_if_no_node
+    def test_blocks_runtime_state_read_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            state_path = workspace / ".triton-agent" / "state.json"
+            state_path.parent.mkdir(parents=True)
+            state_path.write_text("{}", encoding="utf-8")
+
+            result = _evaluate_plugin(_policy(workspace), "read", str(state_path), workspace)
+
+            self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
+
+    @_skip_if_no_node
+    def test_blocks_hidden_runtime_directory_listing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            runtime_dir = workspace / ".triton-agent"
+            runtime_dir.mkdir(parents=True)
+
+            result = _evaluate_plugin(_policy(workspace), "bash", "ls .triton-agent", workspace)
+
+            self.assertEqual(result, {"allowed": False, "message": _DENY_MESSAGE})
 
     @_skip_if_no_node
     def test_trace_tool_call_summary_is_shorter_than_full_bash_command(self) -> None:
@@ -420,11 +478,34 @@ class OpenCodeHookGuardTests(unittest.TestCase):
                 "run-bench --bench-file bench_kernel.py --bench-mode msprof",
             )
 
+    @_skip_if_no_node
+    def test_trace_events_omit_source_confidence_and_duration_source_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+
+            events = _trace_plugin_args(
+                _policy(workspace),
+                "bash",
+                {
+                    "command": "python3 .opencode/skills/triton-npu-run-eval/scripts/run-command.py "
+                    "run-bench --bench-file bench_kernel.py --bench-mode msprof",
+                    "cwd": str(workspace),
+                },
+                workspace,
+            )
+
+            self.assertGreaterEqual(len(events), 4)
+            for event in events:
+                self.assertNotIn("source", event)
+                self.assertNotIn("confidence", event)
+                self.assertNotIn("duration_source", event)
+
 
 _DENY_MESSAGE = (
     "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
-    "and do not inspect protected files (staged skill implementation files under "
-    ".opencode/skills/*/scripts/ or triton-agent-logs/ output). "
+    "and do not inspect protected runner-managed files (temporary optimize runtime files, "
+    "staged skill implementation files under .opencode/skills/*/scripts/, or triton-agent-logs/ output). "
     "Use the skill instructions and documented command interface instead."
 )
 
@@ -438,6 +519,11 @@ def _policy(workspace: Path, extra_allow_roots: Optional[list[Path]] = None) -> 
         "workspace_root": str(root),
         "allow_read_roots": allow_read_roots,
         "deny_read_globs": [
+            str(root / ".triton-agent"),
+            str(root / ".triton-agent" / "**"),
+            str(root / ".opencode" / "plugins" / "triton-agent-hook-guard.js"),
+            str(root / ".opencode" / "triton-agent-hooks"),
+            str(root / ".opencode" / "triton-agent-hooks" / "**"),
             str(root / "triton-agent-logs" / "**"),
             str(root / ".opencode" / "skills" / "*" / "scripts" / "**"),
         ],

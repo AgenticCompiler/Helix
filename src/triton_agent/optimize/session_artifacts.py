@@ -159,7 +159,7 @@ class OptimizeSessionArtifactsManager:
     ) -> OptimizeSessionArtifactsState:
         """Prepare the full artifact set used by worker/supervisor orchestration."""
         hidden_triton_agent_dir = self._prepare_hidden_triton_agent_dir(workdir)
-        supervisor_report_path = hidden_triton_agent_dir / "supervisor-report.md"
+        supervisor_report_path = workdir / "supervisor-report.md"
         supervisor_history_dir = hidden_triton_agent_dir / "supervisor-history"
         supervisor_history_dir.mkdir(parents=True, exist_ok=True)
         supervisor_report_path.write_text(
@@ -265,6 +265,7 @@ class OptimizeSessionArtifactsManager:
         except Exception as exc:
             warnings.append(f"Failed to archive optimize supervised logs: {exc}")
 
+        warnings.extend(self._cleanup_supervisor_report_path(state.supervisor_report_path))
         warnings.extend(self._cleanup_hidden_triton_agent_dir(state.hidden_triton_agent_dir))
         warnings.extend(self.cleanup_session(state))
         return warnings
@@ -324,6 +325,21 @@ class OptimizeSessionArtifactsManager:
             )
         messages.extend(self.describe_cleanup_session(state))
         return messages
+
+    def _cleanup_supervisor_report_path(self, supervisor_report_path: Path | None) -> list[str]:
+        if supervisor_report_path is None:
+            return []
+        if supervisor_report_path.name != "supervisor-report.md":
+            return [
+                "Refusing to remove unexpected optimize supervisor report file "
+                f"{supervisor_report_path}"
+            ]
+        try:
+            if supervisor_report_path.exists():
+                supervisor_report_path.unlink()
+        except OSError as exc:
+            return [f"Failed to remove temporary optimize file {supervisor_report_path}: {exc}"]
+        return []
 
     def describe_cleanup_checked_session(
         self,

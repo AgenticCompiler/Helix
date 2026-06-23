@@ -12,12 +12,22 @@ _OPENCODE_HOOK_DIR = Path(".opencode") / "triton-agent-hooks"
 _OPENCODE_PLUGIN_FILE = Path(".opencode") / "plugins" / "triton-agent-hook-guard.js"
 _OPENCODE_DENY_MESSAGE = (
     "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
-    "and do not inspect protected files (staged skill implementation files under "
-    ".opencode/skills/*/scripts/ or triton-agent-logs/ output). "
+    "and do not inspect protected runner-managed files (temporary optimize runtime files, "
+    "staged skill implementation files under .opencode/skills/*/scripts/, or triton-agent-logs/ "
+    "output). "
     "Use the skill instructions and documented command interface instead."
 )
-_SHARED_DENY_READ_GLOBS = (Path("triton-agent-logs") / "**",)
-_OPENCODE_DENY_READ_GLOBS = _SHARED_DENY_READ_GLOBS + (Path(".opencode") / "skills" / "*" / "scripts" / "**",)
+_SHARED_DENY_READ_GLOBS = (
+    Path(".triton-agent"),
+    Path(".triton-agent") / "**",
+    Path("triton-agent-logs") / "**",
+)
+_OPENCODE_DENY_READ_GLOBS = _SHARED_DENY_READ_GLOBS + (
+    Path(".opencode") / "plugins" / "triton-agent-hook-guard.js",
+    Path(".opencode") / "triton-agent-hooks",
+    Path(".opencode") / "triton-agent-hooks" / "**",
+    Path(".opencode") / "skills" / "*" / "scripts" / "**",
+)
 
 
 def prepare_opencode_hooks(

@@ -13,12 +13,21 @@ _CODEX_HOOK_DIR = Path(".codex") / "triton-agent-hooks"
 _CODEX_HOOKS_JSON = Path(".codex") / "hooks.json"
 _CODEX_DENY_MESSAGE = (
     "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
-    "and do not inspect protected files (staged skill implementation files under "
-    ".codex/skills/*/scripts/ or triton-agent-logs/ output). "
+    "and do not inspect protected runner-managed files (temporary optimize runtime files, "
+    "staged skill implementation files under .codex/skills/*/scripts/, or triton-agent-logs/ "
+    "output). "
     "Use the skill instructions and documented command interface instead."
 )
-_SHARED_DENY_READ_GLOBS = (Path("triton-agent-logs") / "**",)
-_CODEX_DENY_READ_GLOBS = _SHARED_DENY_READ_GLOBS + (Path(".codex") / "skills" / "*" / "scripts" / "**",)
+_SHARED_DENY_READ_GLOBS = (
+    Path(".triton-agent"),
+    Path(".triton-agent") / "**",
+    Path("triton-agent-logs") / "**",
+)
+_CODEX_DENY_READ_GLOBS = _SHARED_DENY_READ_GLOBS + (
+    Path(".codex") / "triton-agent-hooks",
+    Path(".codex") / "triton-agent-hooks" / "**",
+    Path(".codex") / "skills" / "*" / "scripts" / "**",
+)
 
 
 def prepare_codex_hooks(
