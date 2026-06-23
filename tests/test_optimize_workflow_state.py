@@ -117,6 +117,40 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unsupported workflow state schema_version"):
                 module.load_state(state_path)
 
+    def test_render_phase_summary_omits_workflow_state_path(self) -> None:
+        module = load_workflow_state_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / ".triton-agent" / "state.json"
+            state_path.parent.mkdir()
+            module.bootstrap_state(
+                state_path,
+                run_id="optimize-20260623-123456-abcdef",
+                source_operator="kernel.py",
+                baseline_reused=True,
+            )
+            module.start_round(state_path, "opt-round-2")
+
+            summary = module.render_phase_summary(state_path)
+
+        self.assertIn("Current phase: round_active", summary)
+        self.assertIn("Current round: 2", summary)
+        self.assertIn("Baseline source: reused", summary)
+        self.assertNotIn("Workflow state path:", summary)
+        self.assertNotIn(".triton-agent/state.json", summary)
+
+    def test_load_state_malformed_json_does_not_leak_workflow_state_path(self) -> None:
+        module = load_workflow_state_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / ".triton-agent" / "state.json"
+            state_path.parent.mkdir()
+            state_path.write_text("{", encoding="utf-8")
+
+            with self.assertRaises(ValueError) as raised:
+                module.load_state(state_path)
+
+        self.assertIn("malformed workflow state JSON", str(raised.exception))
+        self.assertNotIn(".triton-agent/state.json", str(raised.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

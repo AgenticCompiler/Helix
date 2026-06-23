@@ -549,7 +549,6 @@ class MultiInvocationOptimizeController:
             ),
             skill_name="triton-npu-optimize",
             interact=False,
-            no_agent_session=True,
             disable_backend_retry=False,
             progress_probe=None,
         )
@@ -624,7 +623,6 @@ class MultiInvocationOptimizeController:
             run_id=run_id,
             extra_env=env,
             show_output_label=show_output_label,
-            no_agent_session=True,
             supervisor_report_path=self._artifacts_state.supervisor_report_path,
         )
         try:

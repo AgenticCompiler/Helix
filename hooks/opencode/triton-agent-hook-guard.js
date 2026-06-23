@@ -17,17 +17,22 @@ function generateToolUseId() {
 const READ_COMMANDS = new Set([
   "awk",
   "cat",
+  "find",
+  "grep",
   "head",
   "less",
+  "ls",
   "more",
   "rg",
   "sed",
+  "stat",
   "tail",
+  "tree",
 ]);
-const PROTECTED_RELATIVE_PATH_PREFIXES = ["triton-agent-logs/"];
+const PROTECTED_RELATIVE_PATH_PREFIXES = [".triton-agent/", "triton-agent-logs/"];
 
 const PATH_FRAGMENT_RE =
-  /(?:^|[^A-Za-z0-9_./-])(?<path>(?:\/|\.\.?\/|\.opencode\/|triton-agent-logs\/)[A-Za-z0-9_./*?{}+@%:,=-]+)/g;
+  /(?:^|[^A-Za-z0-9_./-])(?<path>(?:\/|\.\.?\/|\.triton-agent\/|\.opencode\/|triton-agent-logs\/)[A-Za-z0-9_./*?{}+@%:,=-]+)/g;
 const WINDOWS_PATH_FRAGMENT_RE = /[A-Za-z]:[\\/][A-Za-z0-9_ .\\/(){}+@%:,=-]+/g;
 const EDIT_TOOLS = new Set(["edit", "write", "patch", "update", "multiedit", "multi_edit"]);
 const WORKFLOW_STATE_RELATIVE_PATH = ".triton-agent/state.json";
@@ -208,8 +213,6 @@ async function appendTraceEvents(policy, input, output) {
     tool,
     status: "started",
     summary: toolSummary(tool, args),
-    source: "opencode_hook",
-    confidence: "high",
   };
   await appendTraceEvent(tracePolicy.path, toolCallStartEvent);
 
@@ -225,8 +228,6 @@ async function appendTraceEvents(policy, input, output) {
       command,
       remote: extractRemote(command),
       status: "started",
-      source: "opencode_hook",
-      confidence: "high",
     });
 
     const tokens = splitCommand(command);
@@ -272,8 +273,6 @@ async function appendTraceEvents(policy, input, output) {
           removed_lines: stats.removedLines,
           diff_digest: stats.diffDigest,
           status: "started",
-          source: "opencode_hook",
-          confidence: "high",
         });
       }
     }
@@ -290,8 +289,6 @@ async function appendFileAccessTrace(tracePath, toolCallStartEvent, workspaceRoo
     action,
     path: displayPath(resolvedPath, workspaceRoot),
     status: "started",
-    source: "opencode_hook",
-    confidence: "high",
   });
 }
 
@@ -565,7 +562,7 @@ function activeRoundDir(state) {
 function builtInEditMissingStateDenial() {
   return (
     "Built-in edit tool blocked by optimize workflow policy. " +
-    "Optimize workflow state is missing or invalid at `.triton-agent/state.json`. " +
+    "The temporary optimize workflow state is missing or invalid. " +
     "Ask the runner to restart the optimize session so workflow state can be rebuilt."
   );
 }
@@ -660,10 +657,13 @@ function isReadCommandToken(token) {
 }
 
 function collectCommandPathReferences(command, tokens) {
+  const scanCommand = stripHeredocPayload(command);
+  const scanTokens = filterTokensForReadScan(splitCommand(scanCommand));
+  const scanText = scanTokens.join(" ");
   const pathTexts = [];
-  const explicitPathTokens = new Set(tokens.filter((token) => looksLikePath(token)));
+  const explicitPathTokens = new Set(scanTokens.filter((token) => looksLikePath(token)));
 
-  for (const token of tokens) {
+  for (const token of scanTokens) {
     if (isReadCommandToken(token)) {
       continue;
     }
@@ -672,7 +672,7 @@ function collectCommandPathReferences(command, tokens) {
     }
   }
 
-  for (const match of command.matchAll(PATH_FRAGMENT_RE)) {
+  for (const match of scanText.matchAll(PATH_FRAGMENT_RE)) {
     const pathText = match.groups?.path;
     if (typeof pathText !== "string") {
       continue;
@@ -681,7 +681,7 @@ function collectCommandPathReferences(command, tokens) {
       pathTexts.push(pathText);
     }
   }
-  for (const match of command.matchAll(WINDOWS_PATH_FRAGMENT_RE)) {
+  for (const match of scanText.matchAll(WINDOWS_PATH_FRAGMENT_RE)) {
     const pathText = match[0].replace(/['"),]+$/g, "");
     if (!isReadCommandToken(pathText) && !isNestedPathFragment(pathText, explicitPathTokens)) {
       pathTexts.push(pathText);
@@ -691,11 +691,76 @@ function collectCommandPathReferences(command, tokens) {
   return pathTexts;
 }
 
+function stripHeredocPayload(command) {
+  if (!command.includes("<<") || !command.includes("\n")) {
+    return command;
+  }
+  return command.split(/\r?\n/, 1)[0];
+}
+
+function filterTokensForReadScan(tokens) {
+  const filtered = [];
+  for (let index = 0; index < tokens.length;) {
+    const token = tokens[index];
+    if (isHeredocOperatorToken(token)) {
+      index += 1;
+      if ((token === "<<" || token === "<<-") && index < tokens.length) {
+        index += 1;
+      }
+      continue;
+    }
+
+    const outputTarget = outputRedirectionTarget(token);
+    if (outputTarget !== null) {
+      index += outputTarget.length === 0 ? 2 : 1;
+      continue;
+    }
+
+    const inputTarget = inputRedirectionTarget(token);
+    if (inputTarget !== null) {
+      if (inputTarget.length === 0) {
+        index += 1;
+        if (index < tokens.length) {
+          filtered.push(tokens[index]);
+          index += 1;
+        }
+        continue;
+      }
+      filtered.push(inputTarget);
+      index += 1;
+      continue;
+    }
+
+    filtered.push(token);
+    index += 1;
+  }
+  return filtered;
+}
+
+function isHeredocOperatorToken(token) {
+  return token === "<<" || token === "<<-" || token.startsWith("<<");
+}
+
+function outputRedirectionTarget(token) {
+  const match = token.match(/^(?:(?:\d+)?>>|(?:\d+)?>\||(?:\d+)?>|&>>|&>)(.*)$/);
+  return match ? match[1] : null;
+}
+
+function inputRedirectionTarget(token) {
+  if (token.startsWith("<<")) {
+    return null;
+  }
+  const match = token.match(/^(?:(?:\d+)?<>|(?:\d+)?<)(.*)$/);
+  return match ? match[1] : null;
+}
+
 function looksLikePath(token) {
   return (
+    token === ".triton-agent" ||
     token.startsWith("/") ||
     token.startsWith("./") ||
     token.startsWith("../") ||
+    token.startsWith(".triton-agent/") ||
     token.startsWith(".opencode/") ||
     PROTECTED_RELATIVE_PATH_PREFIXES.some((prefix) => token.startsWith(prefix)) ||
     token.includes("\\") ||
@@ -833,10 +898,7 @@ async function handleToolAfter(policy, input, output) {
     tool,
     tool_use_id: toolUseId,
     duration_ms: durationMs,
-    duration_source: "hook_clock_join",
     status,
-    source: "opencode_hook",
-    confidence: "high",
   });
 
   if (tool === "bash" || tool === "shell") {
@@ -852,10 +914,7 @@ async function handleToolAfter(policy, input, output) {
       command,
       remote: command ? extractRemote(command) : null,
       duration_ms: durationMs,
-      duration_source: "hook_clock_join",
       status,
-      source: "opencode_hook",
-      confidence: "high",
     });
   }
 

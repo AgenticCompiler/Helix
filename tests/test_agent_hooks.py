@@ -87,10 +87,15 @@ class AgentHookStageTests(unittest.TestCase):
             self.assertEqual(
                 policy["deny_read_globs"],
                 [
+                    str(workspace.resolve() / ".triton-agent"),
+                    str(workspace.resolve() / ".triton-agent" / "**"),
                     str(workspace.resolve() / "triton-agent-logs" / "**"),
+                    str(workspace.resolve() / ".codex" / "triton-agent-hooks"),
+                    str(workspace.resolve() / ".codex" / "triton-agent-hooks" / "**"),
                     str(workspace.resolve() / ".codex" / "skills" / "*" / "scripts" / "**"),
                 ],
             )
+            self.assertIn("temporary optimize runtime files", policy["deny_message"])
             self.assertIn("triton-agent-logs", policy["deny_message"])
             self.assertIn("triton-agent workspace policy", policy["deny_message"])
 
@@ -122,10 +127,16 @@ class AgentHookStageTests(unittest.TestCase):
             self.assertEqual(
                 policy["deny_read_globs"],
                 [
+                    str(workspace.resolve() / ".triton-agent"),
+                    str(workspace.resolve() / ".triton-agent" / "**"),
                     str(workspace.resolve() / "triton-agent-logs" / "**"),
+                    str(workspace.resolve() / ".opencode" / "plugins" / "triton-agent-hook-guard.js"),
+                    str(workspace.resolve() / ".opencode" / "triton-agent-hooks"),
+                    str(workspace.resolve() / ".opencode" / "triton-agent-hooks" / "**"),
                     str(workspace.resolve() / ".opencode" / "skills" / "*" / "scripts" / "**"),
                 ],
             )
+            self.assertIn("temporary optimize runtime files", policy["deny_message"])
             self.assertIn("triton-agent-logs", policy["deny_message"])
             self.assertIn("triton-agent workspace policy", policy["deny_message"])
             self.assertIn(".opencode/skills/*/scripts/", policy["deny_message"])
@@ -207,10 +218,15 @@ class AgentHookStageTests(unittest.TestCase):
             self.assertEqual(
                 policy["deny_read_globs"],
                 [
+                    str(workspace.resolve() / ".triton-agent"),
+                    str(workspace.resolve() / ".triton-agent" / "**"),
                     str(workspace.resolve() / "triton-agent-logs" / "**"),
+                    str(workspace.resolve() / ".claude" / "triton-agent-hooks"),
+                    str(workspace.resolve() / ".claude" / "triton-agent-hooks" / "**"),
                     str(workspace.resolve() / ".claude" / "skills" / "*" / "scripts" / "**"),
                 ],
             )
+            self.assertIn("temporary optimize runtime files", policy["deny_message"])
             self.assertIn(".claude/skills/*/scripts/", policy["deny_message"])
 
             warnings = cleanup_hook_stage(state)

@@ -74,6 +74,50 @@ class PreToolUseGuardWrapperTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0)
             self.assertEqual(result.stdout, "")
 
+    def test_claude_wrapper_allows_heredoc_write_when_body_mentions_protected_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+
+            result = _run_wrapper(
+                backend="claude",
+                workspace=workspace,
+                payload=_bash_payload(
+                    workspace,
+                    "cat > learned_lessons.md << 'ENDOFFILE'\n"
+                    "reference .triton-agent/state.json in prose\n"
+                    "ENDOFFILE",
+                ),
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "")
+
+    def test_claude_wrapper_still_denies_redirected_read_from_outside_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            outside = Path(tmp) / "outside.txt"
+            workspace.mkdir()
+            outside.write_text("secret\n", encoding="utf-8")
+
+            result = _run_wrapper(
+                backend="claude",
+                workspace=workspace,
+                payload=_bash_payload(workspace, f"cat {outside} > learned_lessons.md"),
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(
+                json.loads(result.stdout),
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": _deny_message(".claude"),
+                    }
+                },
+            )
+
 
 def _run_wrapper(
     *,
@@ -107,6 +151,10 @@ def _policy(workspace: Path, *, backend_root: str) -> dict[str, object]:
         "workspace_root": str(root),
         "allow_read_roots": [str(root)],
         "deny_read_globs": [
+            str(root / ".triton-agent"),
+            str(root / ".triton-agent" / "**"),
+            str(root / backend_root / "triton-agent-hooks"),
+            str(root / backend_root / "triton-agent-hooks" / "**"),
             str(root / "triton-agent-logs" / "**"),
             str(root / backend_root / "skills" / "*" / "scripts" / "**"),
         ],
@@ -117,8 +165,9 @@ def _policy(workspace: Path, *, backend_root: str) -> dict[str, object]:
 def _deny_message(backend_root: str) -> str:
     return (
         "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
-        "and do not inspect protected files (staged skill implementation files under "
-        f"{backend_root}/skills/*/scripts/ or triton-agent-logs/ output). "
+        "and do not inspect protected runner-managed files (temporary optimize runtime files, "
+        f"staged skill implementation files under {backend_root}/skills/*/scripts/, or "
+        "triton-agent-logs/ output). "
         "Use the skill instructions and documented command interface instead."
     )
 

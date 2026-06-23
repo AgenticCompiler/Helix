@@ -1822,6 +1822,21 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
             with self.assertRaisesRegex(ValueError, "Failed to parse operator file for Triton kernels"):
                 module.resolve_bench_kernel_names(bench_file, operator_file)
 
+    def test_write_perf_lines_creates_missing_parent_directory(self) -> None:
+        module = load_perf_artifacts_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            perf_path = root / "baseline" / "matmul_perf.txt"
+
+            written_path = module.write_perf_lines(perf_path, ['{"case_label":"case-a"}'])
+
+            self.assertEqual(written_path, perf_path)
+            self.assertTrue(perf_path.parent.is_dir())
+            self.assertEqual(
+                perf_path.read_text(encoding="utf-8"),
+                '{"case_label":"case-a"}\n',
+            )
+
     def test_compare_perf_files_reports_per_case_deltas(self) -> None:
         module = load_perf_artifacts_module()
         with tempfile.TemporaryDirectory() as tmp:

@@ -2345,6 +2345,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["status"], "fail")
         self.assertIn("restart the optimize session", payload["guideline"])
+        self.assertNotIn(".triton-agent/state.json", completed.stdout)
         self.assertEqual(completed.stderr, "")
 
     def test_optimize_submit_round_cli_outputs_json_only_with_guideline_and_next_option(self) -> None:

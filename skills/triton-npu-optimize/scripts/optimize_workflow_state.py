@@ -24,7 +24,7 @@ def load_state(state_path: Path) -> dict[str, object]:
     except FileNotFoundError:
         raise
     except json.JSONDecodeError as exc:
-        raise ValueError(f"malformed workflow state JSON at {state_path}: {exc}") from exc
+        raise ValueError(f"malformed workflow state JSON: {exc}") from exc
     if not isinstance(raw_payload, dict):
         raise ValueError("workflow state must be a JSON object")
     payload = cast(dict[str, object], raw_payload)
@@ -156,7 +156,6 @@ def render_phase_summary(state_path: Path) -> str:
         f"Current round: {current_round}" if current_round is not None else "Current round: none"
     )
     lines.append(f"Baseline source: {baseline_source}")
-    lines.append(f"Workflow state path: {state_path.as_posix()}")
     return "\n".join(lines)
 
 

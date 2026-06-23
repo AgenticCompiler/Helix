@@ -78,8 +78,8 @@ def _workflow_failure_guideline(message: str) -> str:
     if "workflow state" in message:
         return (
             "The temporary optimize workflow state is invalid. Do not continue to round work. "
-            "Ask the runner to restart the optimize session so `.triton-agent/state.json` can "
-            "be rebuilt cleanly."
+            "Ask the runner to restart the optimize session so the runner-managed workflow state "
+            "can be rebuilt cleanly."
         )
     return (
         "Baseline validation passed, but workflow-state advancement failed. Restart the "
