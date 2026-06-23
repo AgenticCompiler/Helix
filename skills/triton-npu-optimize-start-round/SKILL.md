@@ -9,6 +9,12 @@ This skill must be used right before beginning a new `opt-round-N/`.
 
 IMPORTANT guidance: make sure the next round starts from a deliberate bottleneck-backed plan instead of a rushed or parallelized workflow.
 
+Run:
+
+```bash
+python3 scripts/optimize_start_round.py start-round --round-dir opt-round-1
+```
+
 ## Hard Rules
 
 - Only one optimize round may be active at a time.
