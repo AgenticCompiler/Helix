@@ -52,7 +52,7 @@ Convert integer comparisons to `fp32` type to leverage `vec_cast` and `vec_cmp` 
 - **`tl.load` and `tl.store` masks**: The compiler automatically optimizes comparison operations in mask parameters. Manual conversion is NOT needed for these cases.
 - **Explicit comparisons**: Only target comparison operations that produce explicit boolean masks used in conditional logic (e.g., `tl.where`, conditional assignments)
 - **Type safety**: When converting types, ensure numerical precision is maintained for downstream operations
-- **Compare helpers and NaN semantics**: When hot-path compare helpers such as `tl.maximum()` or `tl.minimum()` appear in the optimized kernel, inspect similar call sites for omitted `propagate_nan`. Add `propagate_nan=tl.PropagateNan.ALL` only when the round intentionally wants explicit, consistent NaN propagation, and record that this can change NaN-input behavior.
+- **Compare helpers and NaN semantics**: When hot-path compare helpers such as `tl.maximum()` or `tl.minimum()` appear in the optimized kernel, **try adding `propagate_nan=tl.PropagateNan.ALL` and benchmark both variants.** On Ascend NPU, `propagate_nan` also acts as a compiler hint that can select faster vector comparison instructions — the performance impact cannot be predicted from first principles. **Do not skip this as "just a semantic change"** — benchmark it even when NaN propagation is not semantically required.
 
 ## Detection Pattern
 
@@ -158,4 +158,4 @@ x = tl.load(x_ptr + offsets, mask=mask_fp32)
 - Verify both operands are cast in a way that preserves semantic equivalence for the downstream mask usage.
 - Re-check downstream dtype expectations and confirm the comparison is no longer a scalarization bottleneck.
 - Re-check `extracted_bin_data/report.txt` when available and confirm the scalar/vector balance improved instead of merely moving the bottleneck.
-- Re-check `tl.maximum()` and `tl.minimum()` call sites on the hot path and document any intentional `propagate_nan` choice as a semantics change.
+- Re-check `tl.maximum()` and `tl.minimum()` call sites on the hot path and benchmark both with and without `propagate_nan` — on Ascend NPU this flag can affect vector instruction selection and kernel performance. **Do not dismiss it as "only a correctness flag" without measuring.** Document the benchmark result and the intentional choice in the round record.

@@ -24,11 +24,20 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Summary: Flatten logical work items onto physical cores and batch small row-wise memory transfers into wider UB stores to reduce launch overhead and improve per-core work density.
 - Source: [grid-flatten-and-ub-buffering.md](patterns/grid-flatten-and-ub-buffering.md)
 
+### `program-multiple-rows`
+
+- Summary: Map multiple logical rows to one Triton program (`BLOCK_M > 1`). **PREFER the 2D vectorized BLOCK_M variant** (`offs_m[:, None]` + `offs_n[None, :]` broadcasting, `BLOCK_M` as `tl.constexpr`) over the looped `BLOCK_ROWS` variant. The 2D variant enables coalesced memory access and parallel row processing.
+- Source: [program-multiple-rows.md](patterns/program-multiple-rows.md)
+
 ### `software-pipeline-dependency-profiling`
 
 - Summary: Use this pattern when `extracted_bin_data/report.txt` suggests transfer and compute are weakly overlapped, the kernel contains `tl.load`, and the load latency can plausibly be hidden behind vector/cube compute. Constructing a `for` loop or steady-state loop around regular `tl.load` work can enable compiler prefetch, improve pipeline parallelism, and then be tuned with `num_stages` or manual prefetch when needed.
 - Source: [software-pipeline-dependency-profiling.md](patterns/software-pipeline-dependency-profiling.md)
 
+### `tile-selection-heuristic`
+
+- Summary: Replace or augment `@triton.autotune` with a host-side `_choose_tiling` function that sweeps `BLOCK_M × BLOCK_SIZE` candidates and selects the pair minimizing total grid programs. Most effective when the operator spans wide shape ranges where fixed autotune configs cannot adapt.
+- Source: [tile-selection-heuristic.md](patterns/tile-selection-heuristic.md)
 
 ## Generated Pattern Summaries
 
@@ -254,7 +263,7 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `program-multiple-rows`
 
-- Summary: Amortize per-program fixed costs and improve vector-friendly batching for **row-reduction or row-wise fused kernels** by mapping **multiple rows** to one Triton `program_id` via `BLOCK_M > 1`, instead of one row per program.
+- Summary: Map multiple logical rows to one Triton program (`BLOCK_M > 1`) to amortize per-program overhead and improve vector utilization. **PREFER the 2D vectorized BLOCK_M variant** (`offs_m[:, None]` + `offs_n[None, :]` broadcasting, `BLOCK_M` as `tl.constexpr`) over the looped `BLOCK_ROWS` variant. The 2D variant enables coalesced memory access and parallel row processing.
 - Source: [program-multiple-rows.md](patterns/program-multiple-rows.md)
 - Use When:
   - The kernel is **naturally row-wise**: each output row depends mainly on one row of input (e.g. row-wise LogSumExp, row norms, row softmax statistics).
@@ -430,6 +439,26 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Use When:
   - Block sizes, live intermediates, or multi-tensor loads risk UB overflow or poor locality.
   - The main problem is working-set size and memory footprint, not the need for a completely different kernel structure.
+
+### `tile-selection-heuristic`
+
+- Summary: Replace or augment `@triton.autotune` with a host-side `_choose_tiling` function that sweeps `BLOCK_M × BLOCK_SIZE` candidates and selects the pair minimizing total grid programs. Most effective when the operator spans wide shape ranges where fixed autotune configs cannot adapt.
+- Source: [tile-selection-heuristic.md](patterns/tile-selection-heuristic.md)
+- Use When:
+  - Autotune with limited configs produces inconsistent winners across diverse shape regimes.
+  - The operator evaluates on 50+ shapes spanning multiple orders of magnitude in row/col count.
+  - The kernel already uses 2D grid `(cdiv(rows, BLOCK_M), cdiv(cols, BLOCK_SIZE))`.
+  - Autotune overhead is problematic or key design is fragile.
+- Avoid When:
+  - The core algorithm/layout is still changing (stabilize structure first).
+  - The kernel uses a 1D grid that cannot benefit from 2D tile decomposition.
+  - UB capacity constraints force strict upper bounds on tile size.
+- Signals / Code:
+  - Existing autotune configs only vary `BLOCK_SIZE`/`BLOCK_ROWS` across a handful of values.
+  - Per-shape benchmarks show tile-size sensitivity with no single best config.
+- Signals / Profile:
+  - Some shapes show excessive grid programs while others are compute-bound.
+  - Autotune search overhead is visible in first-run benchmarks.
 
 ### `vec-cmp`
 
