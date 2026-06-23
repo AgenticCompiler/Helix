@@ -35,7 +35,7 @@ optimization pattern and symptom library.
 ### Stage 1: Collect Git Context
 
 ```bash
-python3 .codex/skills/triton-npu-analyze-commit-perf/scripts/collect_commit_context.py \
+python3 ./scripts/collect_commit_context.py \
   --base <base-revision> \
   --output .triton-agent/commit-perf-context.json
 ```
@@ -46,7 +46,7 @@ Common causes: `HEAD` equals the base revision, or the wrong branch is checked o
 ### Stage 2: Group By File
 
 ```bash
-python3 .codex/skills/triton-npu-analyze-commit-perf/scripts/group_commit_context_by_file.py \
+python3 ./scripts/group_commit_context_by_file.py \
   --input .triton-agent/commit-perf-context.json \
   --output .triton-agent/commit-perf-file-groups.json
 ```

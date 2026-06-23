@@ -61,13 +61,13 @@ def run_diff_skills_update(
 ) -> list[PairRunResult]:
     output_stream = stream or sys.stderr
 
-    # ── Phase 1 (git-record): Agent → workspace-plan.json → scaffold ─────
+    # ── Phase 1 (git-repo): Agent → workspace-plan.json → scaffold ─────
     discovery_root = config.input_root
-    if config.source == "git-record":
+    if config.source == "git-repo":
         git_info = try_detect_git_repo(config.input_root)
         if git_info is None:
             print(
-                "[git-record] Input is not inside a Git work tree. "
+                "[git-repo] Input is not inside a Git work tree. "
                 "Use --source code-diff for pre-organized operator directories.",
                 file=output_stream,
             )
@@ -78,12 +78,12 @@ def run_diff_skills_update(
         base_branch = config.base_revision or detect_default_base(repo_root=repo_root)
         if config.base_revision:
             print(
-                f"[git-record] Using base branch: {base_branch}",
+                f"[git-repo] Using base branch: {base_branch}",
                 file=output_stream,
             )
         else:
             print(
-                f"[git-record] Auto-detected base branch: {base_branch}",
+                f"[git-repo] Auto-detected base branch: {base_branch}",
                 file=output_stream,
             )
 
@@ -93,14 +93,14 @@ def run_diff_skills_update(
         )
         if fork_revision is None:
             print(
-                f"[git-record] Failed to compute merge-base "
+                f"[git-repo] Failed to compute merge-base "
                 f"({base_branch}..HEAD). "
                 f"Ensure the base branch ref exists (e.g. `git fetch` first).",
                 file=output_stream,
             )
             return []
         print(
-            f"[git-record] Fork point (merge-base {base_branch}..HEAD): "
+            f"[git-repo] Fork point (merge-base {base_branch}..HEAD): "
             f"{fork_revision[:12]}...",
             file=output_stream,
         )
@@ -114,7 +114,7 @@ def run_diff_skills_update(
             plan_path=plan_path,
         )
         print(
-            "[git-record] Running agent to produce workspace plan...",
+            "[git-repo] Running agent to produce workspace plan...",
             file=output_stream,
         )
         plan_result = agent_runner(
@@ -123,22 +123,22 @@ def run_diff_skills_update(
             prompt=organize_prompt,
             stream_output=config.stream_output,
             verbose=config.verbose,
-            output_label="[git-record]",
+            output_label="[git-repo]",
         )
         if plan_result.return_code != 0 or not plan_path.is_file():
             print(
-                "[git-record] Agent failed to produce workspace plan.",
+                "[git-repo] Agent failed to produce workspace plan.",
                 file=output_stream,
             )
             return []
         print(
-            f"[git-record] Plan written to {plan_path.as_posix()}",
+            f"[git-repo] Plan written to {plan_path.as_posix()}",
             file=output_stream,
         )
 
         organized_dir = config.input_root / DEFAULT_OPERATORS_DIR
         print(
-            "[git-record] Running scaffold script to create operator workspaces...",
+            "[git-repo] Running scaffold script to create operator workspaces...",
             file=output_stream,
         )
         scaffold_rc = run_scaffold_operators(
@@ -150,15 +150,24 @@ def run_diff_skills_update(
         )
         if scaffold_rc != 0 or not workspace_organizer_succeeded(organized_dir):
             print(
-                "[git-record] Scaffold script failed to create operator workspaces.",
+                "[git-repo] Scaffold script failed to create operator workspaces.",
                 file=output_stream,
             )
             return []
         discovery_root = organized_dir
         print(
-            f"[git-record] Workspaces created in {organized_dir.as_posix()}",
+            f"[git-repo] Workspaces created in {organized_dir.as_posix()}",
             file=output_stream,
         )
+
+        # Clean up intermediate .triton-agent/ directory — no longer needed
+        triton_agent_dir = config.input_root / ".triton-agent"
+        if triton_agent_dir.is_dir():
+            shutil.rmtree(triton_agent_dir)
+            print(
+                f"[git-repo] Cleaned up intermediate {triton_agent_dir.as_posix()}",
+                file=output_stream,
+            )
 
     # ── Phase 2: Operator Pair Discovery ────────────────────────────────
     discovery = discover_operator_pairs(

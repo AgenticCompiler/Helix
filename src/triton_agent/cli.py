@@ -608,12 +608,12 @@ def build_parser() -> argparse.ArgumentParser:
         if spec.has_diff_skills_update_options:
             subparser.add_argument(
                 "--source",
-                choices=("code-diff", "optimize-process", "git-record"),
+                choices=("code-diff", "optimize-process", "git-repo"),
                 default="code-diff",
                 help=(
                     "Input source: code-diff uses opt_*.py pairs; "
                     "optimize-process uses optimize workspaces with learned_lessons.md; "
-                    "git-record extracts operator workspaces from git commit history."
+                    "git-repo extracts operator workspaces from git commit history."
                 ),
             )
             subparser.add_argument(
@@ -637,7 +637,7 @@ def build_parser() -> argparse.ArgumentParser:
                 help="After a pair converges, overwrite the bundled optimize knowledge skill and rebuild its pattern index.",
             )
             subparser.add_argument(
-                "--base",
+                "--git-base",
                 default=None,
                 help="Base branch used to compute the fork point (merge-base). Auto-detected from origin/HEAD when omitted.",
             )

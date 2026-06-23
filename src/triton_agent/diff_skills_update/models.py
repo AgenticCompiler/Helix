@@ -8,7 +8,7 @@ from triton_agent.models import AgentResult
 
 
 Status = Literal["aligned", "not_aligned", "failed", "skipped"]
-DiffSkillsUpdateSource = Literal["code-diff", "optimize-process", "git-record"]
+DiffSkillsUpdateSource = Literal["code-diff", "optimize-process", "git-repo"]
 
 
 def _empty_str_list() -> list[str]:
