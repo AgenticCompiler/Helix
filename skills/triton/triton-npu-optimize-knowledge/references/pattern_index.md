@@ -96,6 +96,19 @@ Before scanning the full list, first analyze whether the operator matches any hi
   - The operator is vector-like rather than a Cube-only kernel path.
   - You are not already in a launch-mode experiment that explicitly changes execution style; if applying the A5 SIMT-only discrete-access pattern, `num_warps` and grid decomposition are rechecked there after `force_simt_only=True`.
 
+### `auxiliary-op-fusion`
+
+- Summary: Fuse or Tritonize simple Torch/CANN auxiliary operators when they only produce intermediate values for a downstream Triton path. The fused implementation must remain Triton-based — do not delegate the fused logic to `torch.ops.npu.*` or `aclnn*` ops. Each auxiliary op is a separate GM↔UB round-trip plus an AIV kernel launch; removing those external ops reduces launch count, intermediate tensor traffic, and `total_op_avg_time_us`.
+- Source: [auxiliary-op-fusion.md](patterns/auxiliary-op-fusion.md)
+- Use When:
+  - Source code has a clear **auxiliary-op sequence -> Triton path** structure.
+  - The auxiliary ops compute intermediate values such as scales, masks, clamps, casts, offsets, row statistics, or broadcasted factors that are consumed by the Triton path.
+  - Perf output shows the auxiliary ops in `ops` before the main Triton path, and their combined time is meaningful in `total_op_avg_time_us`.
+  - The auxiliary output has one dominant downstream consumer, OR multiple consumers that share the same upstream load (multi-output fusion case).
+  - If the auxiliary output is part of the API result, the fused or Tritonized path can still store the same output.
+  - The auxiliary logic can be expressed in Triton with simple elementwise math, broadcast, cast, clamp, masking, row-wise reduction, scale computation, or simple index transforms. The fused implementation must be a Triton kernel — do not delegate to `torch.ops.npu.*` or `aclnn*` ops even if an equivalent exists.
+  - Simulator data for the fused candidate does not show that the extra in-kernel work overwhelms the removed auxiliary-op cost.
+
 ### `block-pointer-dimensionality`
 
 - Summary: Use `tl.make_block_ptr` to model multidimensional contiguous tensor dimensions directly, enabling wider DMA transfers and reducing scalar address-generation overhead compared to flattened 1D offsets.
