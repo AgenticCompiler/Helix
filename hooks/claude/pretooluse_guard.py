@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Codex PreToolUse hook wrapper for triton-agent optimize runs.
+Claude Code PreToolUse hook wrapper for triton-agent optimize runs.
 
-This wrapper adapts Codex hook stdin/stdout handling to the shared
+This wrapper adapts Claude Code hook stdin/stdout handling to the shared
 backend-agnostic guard policy module.
 """
 from __future__ import annotations
@@ -24,13 +24,13 @@ def main(argv: list[str] | None = None) -> int:
         policy = _load_json(Path(args.policy))
         payload = json.load(sys.stdin)
     except Exception as exc:  # noqa: BLE001 - Hooks should fail open.
-        print(f"triton-agent codex hook failed open: {exc}", file=sys.stderr)
+        print(f"triton-agent claude hook failed open: {exc}", file=sys.stderr)
         return 0
 
     try:
         reason = _deny_reason_for_tool_use(policy, payload)
     except Exception as exc:  # noqa: BLE001 - Hooks should fail open.
-        print(f"triton-agent codex hook failed open: {exc}", file=sys.stderr)
+        print(f"triton-agent claude hook failed open: {exc}", file=sys.stderr)
         return 0
 
     if reason is None:

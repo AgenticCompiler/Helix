@@ -1,13 +1,17 @@
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Optional
 
 
+_MODULE_NAME = "codex_pretooluse_guard"
+
+
 def _load_guard_module():
-    guard_path = Path(__file__).resolve().parents[1] / "hooks" / "codex" / "pretooluse_guard.py"
-    spec = importlib.util.spec_from_file_location("codex_pretooluse_guard", guard_path)
+    guard_path = Path(__file__).resolve().parents[1] / "hooks" / "shared" / "tool_use_guard_policy.py"
+    spec = importlib.util.spec_from_file_location(_MODULE_NAME, guard_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load guard script: {guard_path}")
     module = importlib.util.module_from_spec(spec)
@@ -16,6 +20,21 @@ def _load_guard_module():
 
 
 class CodexPreToolUseGuardTests(unittest.TestCase):
+    def test_deny_reason_for_tool_use_matches_read_denial_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            outside = Path(tmp) / "outside.txt"
+            workspace.mkdir()
+            outside.write_text("secret\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.deny_reason_for_tool_use(
+                _policy(workspace),
+                _payload(workspace, f"cat {outside}"),
+            )
+
+            self.assertEqual(reason, _DENY_MESSAGE)
+
     def test_allows_in_workspace_non_protected_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -24,7 +43,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             readme.write_text("hello\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, f"sed -n '1,20p' {readme}"),
             )
@@ -39,7 +58,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             outside.write_text("secret\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, f"cat {outside}"),
             )
@@ -54,7 +73,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             outside.write_text("secret\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, "sed -n '1,20p' ../outside.txt"),
             )
@@ -69,7 +88,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, f"sed -n '1,80p' {script}"),
             )
@@ -84,7 +103,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, f"python3 -c \"print(open('{script}').read())\""),
             )
@@ -99,8 +118,38 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
+                _payload(workspace, f"python3 {script} run-test-optimize --test-file differential_test_file.py"),
+            )
+
+            self.assertIsNone(reason)
+
+    def test_blocks_staged_claude_skill_script_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            script = workspace / ".claude" / "skills" / "triton-npu-run-eval" / "scripts" / "run-command.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("print('helper')\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.deny_reason_for_tool_use(
+                _policy(workspace, skill_backend_root=".claude"),
+                _payload(workspace, f"sed -n '1,80p' {script}"),
+            )
+
+            self.assertEqual(reason, _deny_message(".claude"))
+
+    def test_allows_python_entrypoint_for_staged_claude_helper_script(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            script = workspace / ".claude" / "skills" / "triton-npu-run-eval" / "scripts" / "run-command.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("print('helper')\n", encoding="utf-8")
+            guard = _load_guard_module()
+
+            reason = guard.deny_reason_for_tool_use(
+                _policy(workspace, skill_backend_root=".claude"),
                 _payload(workspace, f"python3 {script} run-test-optimize --test-file differential_test_file.py"),
             )
 
@@ -120,7 +169,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             operator_file.write_text("pass\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(
                     workspace,
@@ -141,7 +190,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             script.write_text("print('helper')\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, f"bash -lc \"sed -n '1,20p' {script}\""),
             )
@@ -156,7 +205,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             log_file.write_text("log output\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, f"sed -n '1,20p' {log_file}"),
             )
@@ -171,7 +220,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             log_file.write_text("log output\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, "cat triton-agent-logs/gen-test.show-output.log"),
             )
@@ -186,7 +235,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             script.write_text("print('opt')\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, f"python3 -c \"print(open('{script}').read())\""),
             )
@@ -201,7 +250,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             log_file.write_text("log output\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(
                     workspace,
@@ -219,7 +268,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             readme.write_text("not a log\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace),
                 _payload(workspace, f"cat {readme}"),
             )
@@ -236,7 +285,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             workspace.mkdir()
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(
+            reason = guard.deny_reason_for_tool_use(
                 _policy(workspace, extra_allow_roots=[compiler_source]),
                 _payload(workspace, f"sed -n '1,20p' {source_file}"),
             )
@@ -252,7 +301,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             script.write_text("print('helper')\n", encoding="utf-8")
             payload = _read_payload(script)
 
-            reason = guard.evaluate_payload(_policy(workspace), payload)
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), payload)
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
@@ -264,7 +313,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             outside.write_text("secret\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(_policy(workspace), _read_payload(outside))
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _read_payload(outside))
 
             self.assertEqual(reason, _DENY_MESSAGE)
 
@@ -276,7 +325,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             readme.write_text("hello\n", encoding="utf-8")
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(_policy(workspace), _read_payload(readme))
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _read_payload(readme))
 
             self.assertIsNone(reason)
 
@@ -289,9 +338,139 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             script.write_text("print('helper')\n", encoding="utf-8")
             payload = _read_payload(script, key="filePath")
 
-            reason = guard.evaluate_payload(_policy(workspace), payload)
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), payload)
 
             self.assertEqual(reason, _DENY_MESSAGE)
+
+    def test_baseline_phase_allows_native_write_to_source_operator(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            operator_file = workspace / "kernel.py"
+            operator_file.write_text("pass\n", encoding="utf-8")
+            _write_workflow_state(
+                workspace,
+                phase="baseline",
+                baseline_status="pending",
+                source_operator="kernel.py",
+            )
+            guard = _load_guard_module()
+
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(operator_file))
+
+            self.assertIsNone(reason)
+
+    def test_baseline_phase_blocks_native_write_outside_baseline_minimal_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            round_file = workspace / "opt-round-1" / "opt_kernel.py"
+            round_file.parent.mkdir(parents=True)
+            _write_workflow_state(
+                workspace,
+                phase="baseline",
+                baseline_status="pending",
+                source_operator="kernel.py",
+            )
+            guard = _load_guard_module()
+
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(round_file))
+
+            assert reason is not None
+            self.assertIn("Current phase is baseline", reason)
+            self.assertIn("baseline-minimal", reason)
+            self.assertNotIn("First-version scope", reason)
+
+    def test_awaiting_round_start_blocks_native_write_with_start_round_hint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            round_file = workspace / "opt-round-1" / "opt_kernel.py"
+            round_file.parent.mkdir(parents=True)
+            _write_workflow_state(
+                workspace,
+                phase="awaiting_round_start",
+                baseline_status="passed",
+                source_operator="kernel.py",
+            )
+            guard = _load_guard_module()
+
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(round_file))
+
+            assert reason is not None
+            self.assertIn("awaiting_round_start", reason)
+            self.assertIn("triton-npu-optimize-start-round", reason)
+
+    def test_round_active_allows_native_write_inside_current_round(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            round_file = workspace / "opt-round-2" / "attempts.md"
+            round_file.parent.mkdir(parents=True)
+            _write_workflow_state(
+                workspace,
+                phase="round_active",
+                baseline_status="passed",
+                source_operator="kernel.py",
+                current_round=2,
+                rounds={
+                    "2": {
+                        "status": "active",
+                        "round_dir": "opt-round-2",
+                        "started_at": "2026-06-23T08:00:00Z",
+                        "ended_at": None,
+                    }
+                },
+            )
+            guard = _load_guard_module()
+
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(round_file))
+
+            self.assertIsNone(reason)
+
+    def test_round_active_blocks_native_write_outside_current_round(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            operator_file = workspace / "kernel.py"
+            operator_file.write_text("pass\n", encoding="utf-8")
+            _write_workflow_state(
+                workspace,
+                phase="round_active",
+                baseline_status="passed",
+                source_operator="kernel.py",
+                current_round=2,
+                rounds={
+                    "2": {
+                        "status": "active",
+                        "round_dir": "opt-round-2",
+                        "started_at": "2026-06-23T08:00:00Z",
+                        "ended_at": None,
+                    }
+                },
+            )
+            guard = _load_guard_module()
+
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(operator_file))
+
+            assert reason is not None
+            self.assertIn("Current active round is opt-round-2", reason)
+            self.assertIn("must stay inside `opt-round-2/`", reason)
+            self.assertIn("triton-npu-optimize-submit-round", reason)
+
+    def test_missing_workflow_state_blocks_native_write_with_restart_hint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            round_file = workspace / "opt-round-1" / "attempts.md"
+            round_file.parent.mkdir(parents=True)
+            guard = _load_guard_module()
+
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), _write_payload(round_file))
+
+            assert reason is not None
+            self.assertIn(".triton-agent/state.json", reason)
+            self.assertIn("restart the optimize session", reason)
 
     def test_malformed_payload_fails_open(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -299,26 +478,9 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             workspace.mkdir()
             guard = _load_guard_module()
 
-            reason = guard.evaluate_payload(_policy(workspace), {"tool_name": "Bash"})
+            reason = guard.deny_reason_for_tool_use(_policy(workspace), {"tool_name": "Bash"})
 
             self.assertIsNone(reason)
-
-    def test_build_denial_output_uses_pretooluse_permission_decision_shape(self) -> None:
-        guard = _load_guard_module()
-
-        output = guard.build_denial_output(_DENY_MESSAGE)
-
-        self.assertEqual(
-            output,
-            {
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "deny",
-                    "permissionDecisionReason": _DENY_MESSAGE,
-                }
-            },
-        )
-
 
 _DENY_MESSAGE = (
     "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
@@ -328,7 +490,21 @@ _DENY_MESSAGE = (
 )
 
 
-def _policy(workspace: Path, extra_allow_roots: Optional[list[Path]] = None) -> dict[str, object]:
+def _deny_message(skill_backend_root: str) -> str:
+    return (
+        "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
+        "and do not inspect protected files (staged skill implementation files under "
+        f"{skill_backend_root}/skills/*/scripts/ or triton-agent-logs/ output). "
+        "Use the skill instructions and documented command interface instead."
+    )
+
+
+def _policy(
+    workspace: Path,
+    extra_allow_roots: Optional[list[Path]] = None,
+    *,
+    skill_backend_root: str = ".codex",
+) -> dict[str, object]:
     root = workspace.resolve()
     allow_read_roots = [str(root)]
     if extra_allow_roots is not None:
@@ -338,9 +514,9 @@ def _policy(workspace: Path, extra_allow_roots: Optional[list[Path]] = None) -> 
         "allow_read_roots": allow_read_roots,
         "deny_read_globs": [
             str(root / "triton-agent-logs" / "**"),
-            str(root / ".codex" / "skills" / "*" / "scripts" / "**"),
+            str(root / skill_backend_root / "skills" / "*" / "scripts" / "**"),
         ],
-        "deny_message": _DENY_MESSAGE,
+        "deny_message": _deny_message(skill_backend_root),
     }
 
 
@@ -372,6 +548,47 @@ def _read_payload(path: Path, *, key: str = "file_path") -> dict[str, object]:
         "tool_input": {key: str(path)},
         "tool_use_id": "call-1",
     }
+
+
+def _write_payload(path: Path, *, tool_name: str = "Write", key: str = "file_path") -> dict[str, object]:
+    return {
+        "session_id": "session",
+        "turn_id": "turn",
+        "transcript_path": None,
+        "cwd": str(path.parent),
+        "hook_event_name": "PreToolUse",
+        "model": "gpt-5.5",
+        "permission_mode": "default",
+        "tool_name": tool_name,
+        "tool_input": {key: str(path), "content": "updated\n"},
+        "tool_use_id": "call-1",
+    }
+
+
+def _write_workflow_state(
+    workspace: Path,
+    *,
+    phase: str,
+    baseline_status: str,
+    source_operator: str,
+    current_round: Optional[int] = None,
+    rounds: Optional[dict[str, object]] = None,
+) -> None:
+    state_path = workspace / ".triton-agent" / "state.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": 1,
+        "run_id": "optimize-20260623-guard",
+        "phase": phase,
+        "source_operator": source_operator,
+        "current_round": current_round,
+        "baseline": {
+            "status": baseline_status,
+            "submitted_at": None if baseline_status == "pending" else "2026-06-23T07:55:00Z",
+        },
+        "rounds": rounds or {},
+    }
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
 
 
 if __name__ == "__main__":

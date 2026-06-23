@@ -23,6 +23,10 @@ from triton_agent.optimize.session_artifacts import (
     OptimizeSessionArtifactsManager,
     OptimizeSessionArtifactsState,
 )
+from triton_agent.optimize.workflow_state import (
+    bootstrap_optimize_workflow_state,
+    render_optimize_phase_summary,
+)
 from triton_agent.optimize.models import (
     BaselinePreflightResult,
     BaselinePreflightState,
@@ -148,6 +152,8 @@ def execute_multi_invocation_optimize(
         artifacts_state = artifacts_manager.prepare_supervised_session(
             request.workdir,
             agent_name=request.agent_name,
+            enable_agent_hooks=request.enable_agent_hooks,
+            source_operator_path=request.input_path,
             optimize_target=request.optimize_target,
             compiler_source_path=request.compiler_source_path,
             compiler_source_commit=request.compiler_source_commit,
@@ -162,6 +168,8 @@ def execute_multi_invocation_optimize(
         artifacts_state = artifacts_manager.prepare_checked_session(
             request.workdir,
             agent_name=request.agent_name,
+            enable_agent_hooks=request.enable_agent_hooks,
+            source_operator_path=request.input_path,
             optimize_target=request.optimize_target,
             compiler_source_path=request.compiler_source_path,
             compiler_source_commit=request.compiler_source_commit,
@@ -189,6 +197,16 @@ def execute_multi_invocation_optimize(
         )
         if not request.interact:
             baseline_result = controller.preflight_baseline(request)
+            if (
+                baseline_result.state is BaselinePreflightState.READY
+                and artifacts_state.workflow_state_path is not None
+            ):
+                bootstrap_optimize_workflow_state(
+                    artifacts_state.workflow_state_path,
+                    run_id=artifacts_state.archive.run_id,
+                    source_operator=request.input_path,
+                    baseline_reused=True,
+                )
             if baseline_result.state is not BaselinePreflightState.READY:
                 baseline_fix_result = controller.run_baseline_phase(request, baseline_result)
                 if not baseline_fix_result.succeeded:
@@ -273,6 +291,7 @@ class MultiInvocationOptimizeController:
             "optimize",
             f"baseline preflight: {preflight.state.value}, launching baseline repair",
         )
+        phase_summary = render_optimize_phase_summary(self._artifacts_state.workflow_state_path)
         baseline_request = replace(
             request,
             prompt=build_optimize_baseline_prompt(
@@ -289,6 +308,7 @@ class MultiInvocationOptimizeController:
                 base_prompt=_request_user_prompt(request),
                 remote=request.remote,
                 remote_workdir=request.remote_workdir,
+                workflow_phase_summary=phase_summary,
             ),
             interact=False,
         )
@@ -523,6 +543,9 @@ class MultiInvocationOptimizeController:
                 latest_round_dir=latest_round_dir,
                 optimize_target=request.optimize_target,
                 cli_followup_summary=batch_round_summary,
+                workflow_phase_summary=render_optimize_phase_summary(
+                    self._artifacts_state.workflow_state_path
+                ),
             ),
             skill_name="triton-npu-optimize",
             interact=False,
@@ -634,6 +657,7 @@ class MultiInvocationOptimizeController:
         batch_start: int,
         batch_end: int,
     ) -> AgentRequest:
+        phase_summary = render_optimize_phase_summary(self._artifacts_state.workflow_state_path)
         prompt = append_additional_user_instructions(
             build_prompt(
                 CommandKind.OPTIMIZE,
@@ -658,6 +682,7 @@ class MultiInvocationOptimizeController:
                 final_round=batch_end,
                 round_batch_size=request.round_batch_size,
                 optimize_baseline_ready=not request.interact,
+                workflow_phase_summary=phase_summary,
             ),
             _request_user_prompt(request),
         )

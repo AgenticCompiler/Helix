@@ -59,6 +59,7 @@ def build_prompt(
     final_round: int | None = None,
     round_batch_size: int = 5,
     optimize_baseline_ready: bool = True,
+    workflow_phase_summary: str | None = None,
 ) -> str:
     should_resume_existing_session = (
         continue_optimize if resume_existing_session is None else resume_existing_session
@@ -220,6 +221,7 @@ def build_prompt(
                 current_round=current_round,
                 final_round=resolved_final_round,
                 round_batch_size=round_batch_size,
+                workflow_phase_summary=workflow_phase_summary,
             ).splitlines()
         )
     else:
