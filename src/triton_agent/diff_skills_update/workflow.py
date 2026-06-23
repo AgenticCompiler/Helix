@@ -340,8 +340,26 @@ def _run_pair(
         return result
 
     diff_output_data = _read_diff_output(diff_output)
-    matched_patterns = diff_output_data.matched_patterns
+    matched_patterns = _merge_unique(
+        diff_output_data.matched_patterns,
+        diff_output_data.updated_patterns,
+    )
     updated_patterns = list(diff_output_data.updated_patterns)
+
+    # optimize-process: skip simulate-analyze if all optimizations already covered
+    if pair.source_kind == "optimize-process" and diff_output_data.aligned:
+        result = PairRunResult(
+            pair=pair,
+            status="aligned",
+            matched_patterns=matched_patterns,
+            updated_patterns=updated_patterns,
+            iterations=[],
+            report_path=report_path,
+            message="all optimizations already covered by existing skills",
+        )
+        write_pair_report(result)
+        return result
+
     iterations: list[IterationReport] = []
     status: Status = "failed"
     message = "max iterations reached"
@@ -418,6 +436,7 @@ def _run_pair(
         analysis_summary = str(analysis_data.get("summary") or "")
         iteration_updated_patterns = _updated_patterns_from_analysis(analysis_data)
         updated_patterns = _merge_unique(updated_patterns, iteration_updated_patterns)
+        matched_patterns = _merge_unique(matched_patterns, iteration_updated_patterns)
         current_status: Status = "aligned" if aligned else "not_aligned"
         if analysis_result.return_code != 0:
             current_status = "failed"
@@ -464,6 +483,7 @@ def _read_diff_output(path: Path) -> DiffAgentOutput:
         matched_patterns=list(_string_list(data.get("matched_patterns"))),
         updated_patterns=list(_string_list(data.get("updated_patterns"))),
         summary=str(data.get("summary") or ""),
+        aligned=bool(data.get("aligned")),
     )
 
 

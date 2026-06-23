@@ -66,6 +66,7 @@ class DiffAgentOutput:
     matched_patterns: list[str] = field(default_factory=_empty_str_list)
     updated_patterns: list[str] = field(default_factory=_empty_str_list)
     summary: str = ""
+    aligned: bool = False
 
 
 @dataclass
