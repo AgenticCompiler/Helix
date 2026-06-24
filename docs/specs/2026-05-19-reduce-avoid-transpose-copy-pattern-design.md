@@ -12,7 +12,7 @@ Make this optimization direction discoverable during optimize triage when a non-
 
 ## User-Visible Behavior
 
-- A new pattern card is added under `skills/triton-npu-optimize-knowledge/references/patterns/`.
+- A new pattern card is added under `skills/triton/triton-npu-optimize-knowledge/references/patterns/`.
 - The card appears in the generated `pattern_index.md` as a normal-priority pattern.
 - The generated summary and `Use When` bullets make the copy-elimination opportunity recognizable before the agent opens the full card.
 - The authored card keeps the more detailed material needed to implement and validate the rewrite:
@@ -50,7 +50,7 @@ Leave the card at normal priority so it shows up in the generated summary list w
 
 ## Validation
 
-- Regenerate `skills/triton-npu-optimize-knowledge/references/pattern_index.md`.
+- Regenerate `skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md`.
 - Run the pattern-index generator with `--check`.
 - Re-read the generated summary entry to confirm the triage wording is concise and orthogonal to the full card.
 

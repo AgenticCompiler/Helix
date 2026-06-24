@@ -29,7 +29,7 @@ class PiRunnerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="pi",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )
@@ -118,7 +118,7 @@ class PiRunnerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="pi",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )
@@ -142,7 +142,7 @@ class PiRunnerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="pi",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )

@@ -110,7 +110,7 @@ The workflow-state helper should not live under `src/triton_agent/` because the 
 Instead, add a skill-side shared helper at:
 
 ```text
-skills/triton-npu-optimize/scripts/optimize_workflow_state.py
+skills/triton/triton-npu-optimize/scripts/optimize_workflow_state.py
 ```
 
 This helper should be the single owner of:

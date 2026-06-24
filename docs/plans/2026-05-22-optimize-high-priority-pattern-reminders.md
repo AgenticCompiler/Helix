@@ -12,21 +12,21 @@
 
 ## File Map
 
-- Create: `skills/triton-npu-optimize-knowledge/scripts/pattern_catalog.py`
-- Create: `skills/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py`
-- Create: `skills/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py`
+- Create: `skills/triton/triton-npu-optimize-knowledge/scripts/pattern_catalog.py`
+- Create: `skills/triton/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py`
+- Create: `skills/triton/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py`
 - Create: `src/triton_agent/optimize/pattern_reminders.py`
-- Modify: `skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py`
-- Modify: `skills/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py`
-- Modify: `skills/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py`
-- Modify: `skills/triton-npu-optimize-knowledge/references/patterns/grid-flatten-and-ub-buffering.md`
-- Modify: `skills/triton-npu-optimize-knowledge-v2/references/patterns/grid-flatten-and-ub-buffering.md`
-- Modify: `skills/triton-npu-optimize-knowledge-v3/references/patterns/grid-flatten-and-ub-buffering.md`
-- Modify: `skills/triton-npu-optimize-knowledge-v2/references/patterns/autotune.md`
-- Modify: `skills/triton-npu-optimize-knowledge-v3/references/patterns/autotune.md`
-- Modify: `skills/triton-npu-optimize-knowledge/references/pattern_index.md`
-- Modify: `skills/triton-npu-optimize-knowledge-v2/references/pattern_index.md`
-- Modify: `skills/triton-npu-optimize-knowledge-v3/references/pattern_index.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py`
+- Modify: `skills/triton/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py`
+- Modify: `skills/triton/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py`
+- Modify: `skills/triton/triton-npu-optimize-knowledge/references/patterns/grid-flatten-and-ub-buffering.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge-v2/references/patterns/grid-flatten-and-ub-buffering.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge-v3/references/patterns/grid-flatten-and-ub-buffering.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge-v2/references/patterns/autotune.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge-v3/references/patterns/autotune.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge-v2/references/pattern_index.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge-v3/references/pattern_index.md`
 - Modify: `src/triton_agent/optimize/memory_file.py`
 - Modify: `src/triton_agent/optimize/session_artifacts.py`
 - Modify: `src/triton_agent/optimize/execution.py`
@@ -48,7 +48,7 @@ Append these tests to `tests/test_optimize_pattern_tools.py`:
 ```python
     def test_v1_pattern_catalog_builds_high_priority_reminder_lines(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/pattern_catalog.py"
+            "skills/triton/triton-npu-optimize-knowledge/scripts/pattern_catalog.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -95,7 +95,7 @@ Keep peak footprint bounded.
 
     def test_v2_pattern_catalog_renders_high_priority_section_before_full_summaries(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py"
+            "skills/triton/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -126,7 +126,7 @@ Use bounded config search when structure is already sound.
 
     def test_v3_pattern_catalog_rejects_invalid_priority_value(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py"
+            "skills/triton/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -160,7 +160,7 @@ Still in `tests/test_optimize_pattern_tools.py`, add:
 ```python
     def test_checked_in_v2_pattern_index_matches_generator(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py"
         )
         patterns_dir = (
             REPO_ROOT
@@ -181,7 +181,7 @@ Still in `tests/test_optimize_pattern_tools.py`, add:
 
     def test_checked_in_v3_pattern_index_matches_generator(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py"
         )
         patterns_dir = (
             REPO_ROOT
@@ -208,7 +208,7 @@ Extend `tests/test_generation_contracts.py` with assertions like:
 ```python
     def test_grid_flatten_pattern_documents_runtime_query_and_core_count_fallbacks(self) -> None:
         grid = _read(
-            "skills/triton-npu-optimize-knowledge/references/patterns/grid-flatten-and-ub-buffering.md"
+            "skills/triton/triton-npu-optimize-knowledge/references/patterns/grid-flatten-and-ub-buffering.md"
         )
         self.assertIn("torch.npu.get_device_properties", grid)
         self.assertIn("cube cores: `24`", grid)
@@ -238,24 +238,24 @@ Expected: `FAIL` because `pattern_catalog.py` does not exist yet, `v2`/`v3` buil
 ## Task 2: Implement Pattern Catalog Helpers, Update High-Priority Cards, And Regenerate Indexes
 
 **Files:**
-- Create: `skills/triton-npu-optimize-knowledge/scripts/pattern_catalog.py`
-- Create: `skills/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py`
-- Create: `skills/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py`
-- Modify: `skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py`
-- Modify: `skills/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py`
-- Modify: `skills/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py`
-- Modify: `skills/triton-npu-optimize-knowledge/references/patterns/grid-flatten-and-ub-buffering.md`
-- Modify: `skills/triton-npu-optimize-knowledge-v2/references/patterns/grid-flatten-and-ub-buffering.md`
-- Modify: `skills/triton-npu-optimize-knowledge-v3/references/patterns/grid-flatten-and-ub-buffering.md`
-- Modify: `skills/triton-npu-optimize-knowledge-v2/references/patterns/autotune.md`
-- Modify: `skills/triton-npu-optimize-knowledge-v3/references/patterns/autotune.md`
-- Modify: `skills/triton-npu-optimize-knowledge/references/pattern_index.md`
-- Modify: `skills/triton-npu-optimize-knowledge-v2/references/pattern_index.md`
-- Modify: `skills/triton-npu-optimize-knowledge-v3/references/pattern_index.md`
+- Create: `skills/triton/triton-npu-optimize-knowledge/scripts/pattern_catalog.py`
+- Create: `skills/triton/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py`
+- Create: `skills/triton/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py`
+- Modify: `skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py`
+- Modify: `skills/triton/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py`
+- Modify: `skills/triton/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py`
+- Modify: `skills/triton/triton-npu-optimize-knowledge/references/patterns/grid-flatten-and-ub-buffering.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge-v2/references/patterns/grid-flatten-and-ub-buffering.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge-v3/references/patterns/grid-flatten-and-ub-buffering.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge-v2/references/patterns/autotune.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge-v3/references/patterns/autotune.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge-v2/references/pattern_index.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge-v3/references/pattern_index.md`
 
 - [ ] **Step 1: Create the `v1` pattern-catalog helper**
 
-Create `skills/triton-npu-optimize-knowledge/scripts/pattern_catalog.py` with the parser logic currently embedded in `build_pattern_index.py`, plus the new reminder API:
+Create `skills/triton/triton-npu-optimize-knowledge/scripts/pattern_catalog.py` with the parser logic currently embedded in `build_pattern_index.py`, plus the new reminder API:
 
 ```python
 from __future__ import annotations
@@ -335,7 +335,7 @@ def build_index_text(patterns_dir: Path) -> str:
 
 - [ ] **Step 2: Create matching `v2` and `v3` helpers with tree-specific full-index rendering**
 
-Create `skills/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py` and `skills/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py` by moving each tree’s current parser/renderer logic out of its `build_pattern_index.py`, then add:
+Create `skills/triton/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py` and `skills/triton/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py` by moving each tree’s current parser/renderer logic out of its `build_pattern_index.py`, then add:
 
 ```python
 VALID_PRIORITIES = ("high", "normal")
@@ -356,7 +356,7 @@ Keep `v2`/`v3` `build_index_text()` compatible with their current full-summary l
 
 - [ ] **Step 3: Reduce each `build_pattern_index.py` to a thin wrapper around the new helper**
 
-Replace the body of each builder with a thin CLI wrapper. For example, `skills/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py` should look like:
+Replace the body of each builder with a thin CLI wrapper. For example, `skills/triton/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py` should look like:
 
 ```python
 from __future__ import annotations
@@ -393,20 +393,20 @@ if __name__ == "__main__":
 
 Make these content changes:
 
-- `skills/triton-npu-optimize-knowledge/references/patterns/grid-flatten-and-ub-buffering.md`
+- `skills/triton/triton-npu-optimize-knowledge/references/patterns/grid-flatten-and-ub-buffering.md`
   - add `priority: high`
   - add the `torch.npu.current_device()` / `torch.npu.get_device_properties()` query snippet
   - add fallback guidance `cube cores: 24`, `vector cores: 48`
   - add task-kind-aware `cube` / `vector` / `mix` guidance
-- `skills/triton-npu-optimize-knowledge-v2/references/patterns/grid-flatten-and-ub-buffering.md`
+- `skills/triton/triton-npu-optimize-knowledge-v2/references/patterns/grid-flatten-and-ub-buffering.md`
   - add `priority: high`
   - add the same runtime query and fallback guidance in the v2 card style
-- `skills/triton-npu-optimize-knowledge-v3/references/patterns/grid-flatten-and-ub-buffering.md`
+- `skills/triton/triton-npu-optimize-knowledge-v3/references/patterns/grid-flatten-and-ub-buffering.md`
   - add `priority: high`
   - add the same runtime query and fallback guidance in the v3 card style
-- `skills/triton-npu-optimize-knowledge-v2/references/patterns/autotune.md`
+- `skills/triton/triton-npu-optimize-knowledge-v2/references/patterns/autotune.md`
   - add `priority: high`
-- `skills/triton-npu-optimize-knowledge-v3/references/patterns/autotune.md`
+- `skills/triton/triton-npu-optimize-knowledge-v3/references/patterns/autotune.md`
   - add `priority: high`
 
 Use prose like this in each grid-flattening card:
@@ -442,17 +442,17 @@ Use explicit cube/vector core-count facts from `props` when they are available. 
 Run:
 
 ```bash
-uv run python skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
-  --patterns-dir skills/triton-npu-optimize-knowledge/references/patterns \
-  --output skills/triton-npu-optimize-knowledge/references/pattern_index.md
+uv run python skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
+  --patterns-dir skills/triton/triton-npu-optimize-knowledge/references/patterns \
+  --output skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md
 
-uv run python skills/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py \
-  --patterns-dir skills/triton-npu-optimize-knowledge-v2/references/patterns \
-  --output skills/triton-npu-optimize-knowledge-v2/references/pattern_index.md
+uv run python skills/triton/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py \
+  --patterns-dir skills/triton/triton-npu-optimize-knowledge-v2/references/patterns \
+  --output skills/triton/triton-npu-optimize-knowledge-v2/references/pattern_index.md
 
-uv run python skills/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py \
-  --patterns-dir skills/triton-npu-optimize-knowledge-v3/references/patterns \
-  --output skills/triton-npu-optimize-knowledge-v3/references/pattern_index.md
+uv run python skills/triton/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py \
+  --patterns-dir skills/triton/triton-npu-optimize-knowledge-v3/references/patterns \
+  --output skills/triton/triton-npu-optimize-knowledge-v3/references/pattern_index.md
 ```
 
 Expected: all three checked-in `pattern_index.md` files are rewritten deterministically and now include `## High Priority Patterns`.
@@ -471,12 +471,12 @@ uv run python -m unittest \
 Then run the required file-scoped skill-script pyright checks:
 
 ```bash
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-knowledge/scripts/pattern_catalog.py
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py
+bash scripts/run-skill-script-pyright.sh skills/triton/triton-npu-optimize-knowledge/scripts/pattern_catalog.py
+bash scripts/run-skill-script-pyright.sh skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py
+bash scripts/run-skill-script-pyright.sh skills/triton/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py
+bash scripts/run-skill-script-pyright.sh skills/triton/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py
+bash scripts/run-skill-script-pyright.sh skills/triton/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py
+bash scripts/run-skill-script-pyright.sh skills/triton/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py
 ```
 
 Expected: all focused tests pass and each modified skill-side Python file passes the required strict pyright check.
@@ -487,20 +487,20 @@ Run:
 
 ```bash
 git add \
-  skills/triton-npu-optimize-knowledge/scripts/pattern_catalog.py \
-  skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
-  skills/triton-npu-optimize-knowledge/references/patterns/grid-flatten-and-ub-buffering.md \
-  skills/triton-npu-optimize-knowledge/references/pattern_index.md \
-  skills/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py \
-  skills/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py \
-  skills/triton-npu-optimize-knowledge-v2/references/patterns/grid-flatten-and-ub-buffering.md \
-  skills/triton-npu-optimize-knowledge-v2/references/patterns/autotune.md \
-  skills/triton-npu-optimize-knowledge-v2/references/pattern_index.md \
-  skills/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py \
-  skills/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py \
-  skills/triton-npu-optimize-knowledge-v3/references/patterns/grid-flatten-and-ub-buffering.md \
-  skills/triton-npu-optimize-knowledge-v3/references/patterns/autotune.md \
-  skills/triton-npu-optimize-knowledge-v3/references/pattern_index.md \
+  skills/triton/triton-npu-optimize-knowledge/scripts/pattern_catalog.py \
+  skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
+  skills/triton/triton-npu-optimize-knowledge/references/patterns/grid-flatten-and-ub-buffering.md \
+  skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md \
+  skills/triton/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py \
+  skills/triton/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py \
+  skills/triton/triton-npu-optimize-knowledge-v2/references/patterns/grid-flatten-and-ub-buffering.md \
+  skills/triton/triton-npu-optimize-knowledge-v2/references/patterns/autotune.md \
+  skills/triton/triton-npu-optimize-knowledge-v2/references/pattern_index.md \
+  skills/triton/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py \
+  skills/triton/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py \
+  skills/triton/triton-npu-optimize-knowledge-v3/references/patterns/grid-flatten-and-ub-buffering.md \
+  skills/triton/triton-npu-optimize-knowledge-v3/references/patterns/autotune.md \
+  skills/triton/triton-npu-optimize-knowledge-v3/references/pattern_index.md \
   tests/test_optimize_pattern_tools.py \
   tests/test_generation_contracts.py
 git commit -m "feat: add shared high-priority pattern catalog helpers"

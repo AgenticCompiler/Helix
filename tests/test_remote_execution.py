@@ -581,7 +581,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             compare_script,
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "compare_result.py",
         )

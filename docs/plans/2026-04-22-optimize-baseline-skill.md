@@ -13,7 +13,7 @@
 ## File Map
 
 - Create: `skills/triton-npu-prepare-optimize-baseline/SKILL.md`
-- Modify: `skills/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md`
 - Modify: `README.md`
 - Modify: `src/triton_agent/prompts.py`
@@ -27,7 +27,7 @@ No change is planned for `src/triton_agent/optimize/orchestration.py`: optimize 
 
 **Files:**
 - Create: `skills/triton-npu-prepare-optimize-baseline/SKILL.md`
-- Modify: `skills/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md`
 - Modify: `README.md`
 - Test: `tests/test_generation_contracts.py`
@@ -36,7 +36,7 @@ No change is planned for `src/triton_agent/optimize/orchestration.py`: optimize 
 
 ```python
     def test_optimize_baseline_preparation_uses_dedicated_skill(self) -> None:
-        optimize = _read("skills/triton-npu-optimize/SKILL.md")
+        optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
         baseline = _read("skills/triton-npu-prepare-optimize-baseline/SKILL.md")
         optimize_check = _read("skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md")
         readme = _read("README.md")
@@ -58,7 +58,7 @@ No change is planned for `src/triton_agent/optimize/orchestration.py`: optimize 
 
 Run: `uv run python -m unittest tests.test_generation_contracts.GenerationContractTests.test_optimize_baseline_preparation_uses_dedicated_skill -v`
 
-Expected: `FAIL` because the new skill file does not exist yet and `skills/triton-npu-optimize/SKILL.md` still contains direct `run-command.py` baseline instructions.
+Expected: `FAIL` because the new skill file does not exist yet and `skills/triton/triton-npu-optimize/SKILL.md` still contains direct `run-command.py` baseline instructions.
 
 - [ ] **Step 3: Implement the new documentation boundary**
 
@@ -116,7 +116,7 @@ Establish a reusable canonical `baseline/` before any optimize round begins.
 - Do not skip benchmark validation.
 ```
 
-Replace the baseline section in `skills/triton-npu-optimize/SKILL.md` with a handoff instead of a full procedure:
+Replace the baseline section in `skills/triton/triton-npu-optimize/SKILL.md` with a handoff instead of a full procedure:
 
 ```md
 ## Stage 0: Baseline Setup
@@ -158,7 +158,7 @@ Expected: all generation-contract tests pass, including the new baseline-skill r
 ```bash
 git add README.md \
   skills/triton-npu-prepare-optimize-baseline/SKILL.md \
-  skills/triton-npu-optimize/SKILL.md \
+  skills/triton/triton-npu-optimize/SKILL.md \
   skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/SKILL.md \
   tests/test_generation_contracts.py
 git commit -m "docs: add optimize baseline preparation skill"

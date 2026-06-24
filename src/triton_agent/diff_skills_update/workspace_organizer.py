@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
-from triton_agent.resources import skills_root
+from triton_agent.skill_catalog import resolve_skill_source_dir
 
 DEFAULT_OPERATORS_DIR = "operators"
 DEFAULT_PLAN_NAME = "workspace-plan.json"
@@ -257,8 +257,7 @@ def run_scaffold_operators(
     Returns 0 on success (at least one operator created), non-zero on failure.
     """
     scaffold_script = (
-        skills_root()
-        / "triton-npu-analyze-commit-perf"
+        resolve_skill_source_dir("ascend-npu-analyze-commit-perf")
         / "scripts"
         / "scaffold_operators.py"
     )

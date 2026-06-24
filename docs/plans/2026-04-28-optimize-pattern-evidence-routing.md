@@ -4,7 +4,7 @@
 
 **Goal:** Add the first evidence-routing layer for optimize by making pattern Markdown the authoring source of truth, generating the pattern semantic index from those files, adding a small symptom-routing reference set, and introducing a code-fact extractor that optimize guidance can use during pattern triage.
 
-**Architecture:** Keep the CLI thin and keep the agent as the final decision-maker. Implement one generator script under `skills/triton-npu-optimize/scripts/` that parses predefined Markdown sections and rewrites `references/pattern_index.md`, one code-fact extractor script that emits non-diagnostic structured evidence, a new symptom reference subtree under `triton-npu-analyze-round-performance`, and narrow skill/prompt/test updates that teach the new read order without introducing a new standalone routing skill.
+**Architecture:** Keep the CLI thin and keep the agent as the final decision-maker. Implement one generator script under `skills/triton/triton-npu-optimize/scripts/` that parses predefined Markdown sections and rewrites `references/pattern_index.md`, one code-fact extractor script that emits non-diagnostic structured evidence, a new symptom reference subtree under `triton-npu-analyze-round-performance`, and narrow skill/prompt/test updates that teach the new read order without introducing a new standalone routing skill.
 
 **Tech Stack:** Python 3.11, `unittest`, `ast`, `json`, `argparse`, Markdown skill docs, existing optimize prompt/guidance tests
 
@@ -23,7 +23,7 @@
 ```python
 def test_build_index_requires_summary_and_use_when(self) -> None:
     module = _load_skill_script(
-        "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+        "skills/triton/triton-npu-optimize/scripts/build_pattern_index.py"
     )
     with tempfile.TemporaryDirectory() as tmp:
         patterns_dir = Path(tmp)
@@ -37,7 +37,7 @@ def test_build_index_requires_summary_and_use_when(self) -> None:
 
 def test_build_index_keeps_free_sections_but_ignores_them_for_summary(self) -> None:
     module = _load_skill_script(
-        "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+        "skills/triton/triton-npu-optimize/scripts/build_pattern_index.py"
     )
     with tempfile.TemporaryDirectory() as tmp:
         patterns_dir = Path(tmp)
@@ -72,7 +72,7 @@ Extra prose that should stay in the source file but not become a first-line inde
 ```python
 def test_checked_in_pattern_index_matches_generator(self) -> None:
     module = _load_skill_script(
-        "skills/triton-npu-optimize/scripts/build_pattern_index.py"
+        "skills/triton/triton-npu-optimize/scripts/build_pattern_index.py"
     )
     patterns_dir = (
         REPO_ROOT / "skills" / "triton-npu-optimize" / "references" / "patterns"
@@ -95,7 +95,7 @@ def test_optimize_pattern_cards_use_required_sections_and_generated_index(self) 
             self.assertIn("## Summary", content)
             self.assertIn("## Use When", content)
 
-    optimize = _read("skills/triton-npu-optimize/SKILL.md")
+    optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
     self.assertIn("generated `references/pattern_index.md`", optimize)
     self.assertIn("extract_code_facts.py", optimize)
 ```
@@ -125,7 +125,7 @@ Expected: FAIL because the generator script does not exist yet, the pattern file
 ### Task 2: Implement the pattern-index generator script
 
 **Files:**
-- Create: `skills/triton-npu-optimize/scripts/build_pattern_index.py`
+- Create: `skills/triton/triton-npu-optimize/scripts/build_pattern_index.py`
 - Modify: `tests/test_optimize_pattern_tools.py`
 
 - [ ] **Step 1: Create the script with a parser and deterministic index renderer**
@@ -210,7 +210,7 @@ Expected: PASS
 Run:
 
 ```bash
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize/scripts/build_pattern_index.py
+bash scripts/run-skill-script-pyright.sh skills/triton/triton-npu-optimize/scripts/build_pattern_index.py
 ```
 
 Expected: `0 errors, 0 warnings, 0 informations`
@@ -218,22 +218,22 @@ Expected: `0 errors, 0 warnings, 0 informations`
 ### Task 3: Rewrite the optimize pattern library to the new section contract and regenerate the semantic index
 
 **Files:**
-- Modify: `skills/triton-npu-optimize/references/patterns/autotune.md`
-- Modify: `skills/triton-npu-optimize/references/patterns/cache_use.md`
-- Modify: `skills/triton-npu-optimize/references/patterns/classic-matmul.md`
-- Modify: `skills/triton-npu-optimize/references/patterns/compile_hint.md`
-- Modify: `skills/triton-npu-optimize/references/patterns/diagonal.md`
-- Modify: `skills/triton-npu-optimize/references/patterns/discrete_memory_access.md`
-- Modify: `skills/triton-npu-optimize/references/patterns/gather-load.md`
-- Modify: `skills/triton-npu-optimize/references/patterns/parallel.md`
-- Modify: `skills/triton-npu-optimize/references/patterns/program-multiple-rows.md`
-- Modify: `skills/triton-npu-optimize/references/patterns/reorder-load.md`
-- Modify: `skills/triton-npu-optimize/references/patterns/slice_coalesce.md`
-- Modify: `skills/triton-npu-optimize/references/patterns/slice_intermediate.md`
-- Modify: `skills/triton-npu-optimize/references/patterns/software-pipeline.md`
-- Modify: `skills/triton-npu-optimize/references/patterns/tiling.md`
-- Modify: `skills/triton-npu-optimize/references/patterns/vec-cmp.md`
-- Modify: `skills/triton-npu-optimize/references/pattern_index.md`
+- Modify: `skills/triton/triton-npu-optimize/references/patterns/autotune.md`
+- Modify: `skills/triton/triton-npu-optimize/references/patterns/cache_use.md`
+- Modify: `skills/triton/triton-npu-optimize/references/patterns/classic-matmul.md`
+- Modify: `skills/triton/triton-npu-optimize/references/patterns/compile_hint.md`
+- Modify: `skills/triton/triton-npu-optimize/references/patterns/diagonal.md`
+- Modify: `skills/triton/triton-npu-optimize/references/patterns/discrete_memory_access.md`
+- Modify: `skills/triton/triton-npu-optimize/references/patterns/gather-load.md`
+- Modify: `skills/triton/triton-npu-optimize/references/patterns/parallel.md`
+- Modify: `skills/triton/triton-npu-optimize/references/patterns/program-multiple-rows.md`
+- Modify: `skills/triton/triton-npu-optimize/references/patterns/reorder-load.md`
+- Modify: `skills/triton/triton-npu-optimize/references/patterns/slice_coalesce.md`
+- Modify: `skills/triton/triton-npu-optimize/references/patterns/slice_intermediate.md`
+- Modify: `skills/triton/triton-npu-optimize/references/patterns/software-pipeline.md`
+- Modify: `skills/triton/triton-npu-optimize/references/patterns/tiling.md`
+- Modify: `skills/triton/triton-npu-optimize/references/patterns/vec-cmp.md`
+- Modify: `skills/triton/triton-npu-optimize/references/pattern_index.md`
 - Test: `tests/test_optimize_pattern_tools.py`
 - Test: `tests/test_generation_contracts.py`
 
@@ -322,12 +322,12 @@ Short statement of the pattern's role.
 Run:
 
 ```bash
-python3 skills/triton-npu-optimize/scripts/build_pattern_index.py \
-  --patterns-dir skills/triton-npu-optimize/references/patterns \
-  --output skills/triton-npu-optimize/references/pattern_index.md
+python3 skills/triton/triton-npu-optimize/scripts/build_pattern_index.py \
+  --patterns-dir skills/triton/triton-npu-optimize/references/patterns \
+  --output skills/triton/triton-npu-optimize/references/pattern_index.md
 ```
 
-Expected: `skills/triton-npu-optimize/references/pattern_index.md` is rewritten deterministically from the pattern cards.
+Expected: `skills/triton/triton-npu-optimize/references/pattern_index.md` is rewritten deterministically from the pattern cards.
 
 - [ ] **Step 4: Run the repo-consistency and contract tests**
 
@@ -423,8 +423,8 @@ Expected: PASS
 ### Task 5: Implement the code-fact extractor and teach optimize guidance how to use it
 
 **Files:**
-- Create: `skills/triton-npu-optimize/scripts/extract_code_facts.py`
-- Modify: `skills/triton-npu-optimize/SKILL.md`
+- Create: `skills/triton/triton-npu-optimize/scripts/extract_code_facts.py`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `src/triton_agent/optimize/prompts.py`
 - Modify: `tests/test_optimize_pattern_tools.py`
 - Modify: `tests/test_generation_contracts.py`
@@ -436,7 +436,7 @@ Expected: PASS
 ```python
 def test_extract_code_facts_reports_manual_reduction_and_index_load(self) -> None:
     module = _load_skill_script(
-        "skills/triton-npu-optimize/scripts/extract_code_facts.py"
+        "skills/triton/triton-npu-optimize/scripts/extract_code_facts.py"
     )
     with tempfile.TemporaryDirectory() as tmp:
         operator = Path(tmp) / "kernel.py"
@@ -520,7 +520,7 @@ Expected: PASS
 Run:
 
 ```bash
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize/scripts/extract_code_facts.py
+bash scripts/run-skill-script-pyright.sh skills/triton/triton-npu-optimize/scripts/extract_code_facts.py
 ```
 
 Expected: `0 errors, 0 warnings, 0 informations`
@@ -551,8 +551,8 @@ Expected: PASS
 Run:
 
 ```bash
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize/scripts/build_pattern_index.py
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize/scripts/extract_code_facts.py
+bash scripts/run-skill-script-pyright.sh skills/triton/triton-npu-optimize/scripts/build_pattern_index.py
+bash scripts/run-skill-script-pyright.sh skills/triton/triton-npu-optimize/scripts/extract_code_facts.py
 ```
 
 Expected: both commands report no errors.
@@ -565,10 +565,10 @@ Run:
 git diff -- \
   docs/specs/2026-04-28-optimize-pattern-evidence-routing-design.md \
   docs/plans/2026-04-28-optimize-pattern-evidence-routing.md \
-  skills/triton-npu-optimize/SKILL.md \
-  skills/triton-npu-optimize/references/patterns \
-  skills/triton-npu-optimize/scripts/build_pattern_index.py \
-  skills/triton-npu-optimize/scripts/extract_code_facts.py \
+  skills/triton/triton-npu-optimize/SKILL.md \
+  skills/triton/triton-npu-optimize/references/patterns \
+  skills/triton/triton-npu-optimize/scripts/build_pattern_index.py \
+  skills/triton/triton-npu-optimize/scripts/extract_code_facts.py \
   skills/triton-npu-analyze-round-performance/SKILL.md \
   skills/triton-npu-analyze-round-performance/references/symptoms \
   src/triton_agent/optimize/prompts.py \

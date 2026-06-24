@@ -8,9 +8,9 @@ PERF_DIAGNOSIS_SUBAGENT_ID = "triton-agent-perf-diagnosis-advisor"
 
 _COMMON_SKILL_NAMES: tuple[str, ...] = (
     "triton-npu-optimize-knowledge",
-    "triton-npu-run-eval",
-    "triton-npu-profile-operator",
-    "triton-npu-analyze-ir",
+    "ascend-npu-run-eval",
+    "ascend-npu-profile-operator",
+    "ascend-npu-analyze-ir",
 )
 
 
@@ -91,8 +91,8 @@ def _render_common_prompt(
         "Read its `pattern_index.md` before detailed pattern cards.",
         "Use its `symptom_index.md` when profile or IR evidence needs symptom routing.",
         (
-            "Use skill `triton-npu-run-eval`, `triton-npu-profile-operator`, and "
-            "`triton-npu-analyze-ir` for documented evidence-collection entrypoints."
+            "Use skill `ascend-npu-run-eval`, `ascend-npu-profile-operator`, and "
+            "`ascend-npu-analyze-ir` for documented evidence-collection entrypoints."
         ),
         "You may inspect existing operator files, generated test and benchmark harnesses, previous perf artifacts, profiler outputs, and archived IR.",
         "You may collect fresh benchmark, profiler, or IR evidence when diagnosis needs new facts.",
@@ -185,10 +185,10 @@ def _render_opencode_agent(
         [
             "  bash:",
             '    "*": deny',
-            '    "python3 .opencode/skills/triton-npu-run-eval/scripts/run-command.py run-bench*": allow',
-            '    "python3 .opencode/skills/triton-npu-run-eval/scripts/run-command.py profile-bench*": allow',
-            '    "python3 .opencode/skills/triton-npu-analyze-ir/scripts/capture_ir.py*": allow',
-            '    "python3 .opencode/skills/triton-npu-analyze-ir/scripts/inspect_ir.py*": allow',
+            '    "python3 .opencode/skills/ascend-npu-run-eval/scripts/run-command.py run-bench*": allow',
+            '    "python3 .opencode/skills/ascend-npu-run-eval/scripts/run-command.py profile-bench*": allow',
+            '    "python3 .opencode/skills/ascend-npu-analyze-ir/scripts/capture_ir.py*": allow',
+            '    "python3 .opencode/skills/ascend-npu-analyze-ir/scripts/inspect_ir.py*": allow',
             "  webfetch: deny",
             "  websearch: deny",
         ]

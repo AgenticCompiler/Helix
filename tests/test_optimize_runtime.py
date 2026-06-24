@@ -567,7 +567,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
 
         self.assertEqual(
             request.staged_skill_sources,
-            {"triton-npu-run-eval": "triton-npu-run-eval-mcp"},
+            {"ascend-npu-run-eval": "ascend-npu-run-eval-mcp"},
         )
         self.assertEqual(request.mcp_servers, ("triton-agent-run-eval",))
 
@@ -748,16 +748,16 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 (
                     "triton-npu-optimize",
                     "triton-npu-optimize-knowledge",
-                    "triton-npu-prepare-optimize-baseline",
-                    "triton-npu-gen-test",
-                    "triton-npu-gen-bench",
-                    "triton-npu-run-eval",
-                    "triton-npu-optimize-submit-baseline",
-                    "triton-npu-optimize-submit-round",
-                    "triton-npu-optimize-start-round",
-                    "triton-npu-profile-operator",
-                    "triton-npu-analyze-round-performance",
-                    "triton-npu-analyze-ir",
+                    "ascend-npu-prepare-optimize-baseline",
+                    "ascend-npu-gen-test",
+                    "ascend-npu-gen-bench",
+                    "ascend-npu-run-eval",
+                    "ascend-npu-optimize-submit-baseline",
+                    "ascend-npu-optimize-submit-round",
+                    "ascend-npu-optimize-start-round",
+                    "ascend-npu-profile-operator",
+                    "ascend-npu-analyze-round-performance",
+                    "ascend-npu-analyze-ir",
                     "triton-npu-analyze-compiler-source",
                     "triton-npu-repair-guide",
                 ),

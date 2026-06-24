@@ -2,7 +2,7 @@
 
 ## Summary
 
-Tighten `skills/triton-npu-optimize/SKILL.md` without changing optimize behavior.
+Tighten `skills/triton/triton-npu-optimize/SKILL.md` without changing optimize behavior.
 
 This cleanup addresses three documentation problems:
 
@@ -28,7 +28,7 @@ This cleanup addresses three documentation problems:
 
 ### 1. Add A Short Layered-Analysis Contract Before The Layers
 
-In `skills/triton-npu-optimize/SKILL.md`, add a short summary block ahead of the detailed layer subsections.
+In `skills/triton/triton-npu-optimize/SKILL.md`, add a short summary block ahead of the detailed layer subsections.
 
 It should state that:
 
@@ -68,7 +68,7 @@ Reduce repetition in:
 
 ## Test Impact
 
-Update the doc-contract test that reads `skills/triton-npu-optimize/SKILL.md` so it checks:
+Update the doc-contract test that reads `skills/triton/triton-npu-optimize/SKILL.md` so it checks:
 
 - the layered-analysis section declares the escalation ladder before the detailed layers
 - the duplicated `compare-perf` line is removed

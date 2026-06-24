@@ -16,7 +16,8 @@ def _load_capture_ir_module():
     script = (
         REPO_ROOT
         / "skills"
-        / "triton-npu-analyze-ir"
+        / "common"
+        / "ascend-npu-analyze-ir"
         / "scripts"
         / "capture_ir.py"
     )
@@ -141,7 +142,8 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                 str(
                     REPO_ROOT
                     / "skills"
-                    / "triton-npu-run-eval"
+                    / "common"
+                    / "ascend-npu-run-eval"
                     / "scripts"
                     / "bench_runtime.py"
                 ),
@@ -183,7 +185,8 @@ class AscendOperatorIrAnalyzerTests(unittest.TestCase):
                 str(
                     REPO_ROOT
                     / "skills"
-                    / "triton-npu-run-eval"
+                    / "common"
+                    / "ascend-npu-run-eval"
                     / "scripts"
                     / "bench_runtime.py"
                 ),

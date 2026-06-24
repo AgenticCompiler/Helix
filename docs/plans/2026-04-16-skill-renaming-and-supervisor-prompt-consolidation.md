@@ -41,11 +41,11 @@
 - Move: `skills/bench-gen/` -> `skills/triton-npu-gen-bench/`
 - Move: `skills/eval-gen/` -> `skills/triton-npu-gen-eval-suite/`
 - Move: `skills/operator-eval/` -> `skills/triton-npu-run-eval/`
-- Move: `skills/optimize/` -> `skills/triton-npu-optimize/`
+- Move: `skills/optimize/` -> `skills/triton/triton-npu-optimize/`
 - Move: `skills/optimize-check/` -> `skills/triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round/`
-- Move: `skills/ascend-npu-operator-profiler/` -> `skills/triton-npu-profile-operator/`
+- Move: `skills/common/ascend-npu-operator-profiler/` -> `skills/triton-npu-profile-operator/`
 - Move: `skills/ascend-operator-ir-analyzer/` -> `skills/triton-npu-analyze-ir/`
-- Move: `skills/triton-repair-experience/` -> `skills/triton-npu-repair-guide/`
+- Move: `skills/triton-repair-experience/` -> `skills/triton/triton-npu-repair-guide/`
 - Modify: `src/triton_agent/models.py`
 - Modify: `src/triton_agent/generation/orchestration.py`
 - Modify: `src/triton_agent/optimize/orchestration.py`

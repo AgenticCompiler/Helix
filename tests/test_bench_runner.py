@@ -346,7 +346,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             operator_dir.mkdir()
             operator_file = operator_dir / "operator_case.py"
             json_file = source_root / "5_MoeInitRouting.json"
-            support_dir = source_root / ".opencode" / "skills" / "triton-npu-run-eval" / "scripts"
+            support_dir = source_root / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts"
             support_dir.mkdir(parents=True)
             support_file = support_dir / "bench_runtime.py"
             bench_file.write_text("print('bench')\n", encoding="utf-8")
@@ -387,7 +387,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             operator_dir.mkdir()
             operator_file = operator_dir / "operator_case.py"
             json_file = source_root / "5_MoeInitRouting.json"
-            support_dir = source_root / ".opencode" / "skills" / "triton-npu-run-eval" / "scripts"
+            support_dir = source_root / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts"
             support_dir.mkdir(parents=True)
             support_file = support_dir / "bench_runtime.py"
             bench_file.write_text("print('bench')\n", encoding="utf-8")
@@ -736,7 +736,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             root = Path(tmp)
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
-            runtime_dir = root / ".opencode" / "skills" / "triton-npu-run-eval" / "scripts"
+            runtime_dir = root / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts"
             runtime_script = runtime_dir / "bench_runtime.py"
             bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")

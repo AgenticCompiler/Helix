@@ -12,6 +12,7 @@ def _load_module():
     script = (
         REPO_ROOT
         / "skills"
+        / "triton"
         / "triton-npu-analyze-compiler-source"
         / "scripts"
         / "inspect_compiler_source.py"

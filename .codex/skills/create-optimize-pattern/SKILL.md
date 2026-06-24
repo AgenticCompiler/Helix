@@ -1,6 +1,6 @@
 ---
 name: create-optimize-pattern
-description: Create new optimization pattern cards or symptom cards for the triton-agent optimize knowledge base. Use when adding a new pattern card under skills/triton-npu-optimize-knowledge/references/patterns/, skills/torch-npu-optimize-knowledge/references/patterns/, skills/triton-npu-cann-ext-api-patterns/references/patterns/, or a new symptom card under skills/triton-npu-optimize-knowledge/references/symptoms/.
+description: Create new optimization pattern cards or symptom cards for the triton-agent optimize knowledge base. Use when adding a new pattern card under skills/triton/triton-npu-optimize-knowledge/references/patterns/, skills/triton/torch-npu-optimize-knowledge/references/patterns/, skills/triton/triton-npu-cann-ext-api-patterns/references/patterns/, or a new symptom card under skills/triton/triton-npu-optimize-knowledge/references/symptoms/.
 ---
 
 # Create Optimize Pattern / Symptom Card
@@ -13,10 +13,10 @@ Place new cards under the appropriate directory:
 
 | Card Type | Skill | Directory |
 |---|---|---|
-| Generic optimize pattern | `triton-npu-optimize-knowledge` | `skills/triton-npu-optimize-knowledge/references/patterns/` |
-| Torch NPU optimize pattern | `torch-npu-optimize-knowledge` | `skills/torch-npu-optimize-knowledge/references/patterns/` |
-| CANN extension API pattern | `triton-npu-cann-ext-api-patterns` | `skills/triton-npu-cann-ext-api-patterns/references/patterns/` |
-| Generic optimize symptom | `triton-npu-optimize-knowledge` | `skills/triton-npu-optimize-knowledge/references/symptoms/` |
+| Generic optimize pattern | `triton-npu-optimize-knowledge` | `skills/triton/triton-npu-optimize-knowledge/references/patterns/` |
+| Torch NPU optimize pattern | `torch-npu-optimize-knowledge` | `skills/triton/torch-npu-optimize-knowledge/references/patterns/` |
+| CANN extension API pattern | `triton-npu-cann-ext-api-patterns` | `skills/triton/triton-npu-cann-ext-api-patterns/references/patterns/` |
+| Generic optimize symptom | `triton-npu-optimize-knowledge` | `skills/triton/triton-npu-optimize-knowledge/references/symptoms/` |
 
 ## Pattern Card Template
 

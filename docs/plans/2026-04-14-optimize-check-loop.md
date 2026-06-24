@@ -39,7 +39,7 @@
   Narrow supervised loop behavior to worker launch, supervisor audit, and continue-or-stop handling.
 - `src/triton_agent/optimize/guidance.py`
   Keep only the guidance files needed for the simplified supervised handoff model.
-- `skills/triton-npu-optimize/SKILL.md`
+- `skills/triton/triton-npu-optimize/SKILL.md`
   Require baseline and round checks in both optimize modes.
 - `skills/optimize-supervisor/SKILL.md`
   Limit supervisor to metadata-only repair and explicit continuation decisions.
@@ -140,7 +140,7 @@ git commit -m "feat: add optimize check skill and script"
 ## Task 2: Update Worker And Supervisor Contracts Around Optimize-Check
 
 **Files:**
-- Modify: `skills/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `skills/optimize-supervisor/SKILL.md`
 - Modify: `src/triton_agent/prompts.py`
 - Modify: `tests/test_cli.py`
@@ -173,7 +173,7 @@ Expected: FAIL because current prompts still describe runtime-owned gate behavio
 
 - [ ] **Step 3: Update the optimize and optimize-supervisor contracts**
 
-In `skills/triton-npu-optimize/SKILL.md`, make both modes require:
+In `skills/triton/triton-npu-optimize/SKILL.md`, make both modes require:
 
 - baseline validation through `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round check-baseline`
 - round validation through `triton-npu-optimize-submit-baseline / triton-npu-optimize-submit-round check-round`
@@ -195,7 +195,7 @@ Expected: PASS for the updated prompt semantics and any existing optimize prompt
 - [ ] **Step 5: Commit the prompt and skill contract changes**
 
 ```bash
-git add skills/triton-npu-optimize/SKILL.md skills/optimize-supervisor/SKILL.md src/triton_agent/prompts.py tests/test_cli.py
+git add skills/triton/triton-npu-optimize/SKILL.md skills/optimize-supervisor/SKILL.md src/triton_agent/prompts.py tests/test_cli.py
 git commit -m "feat: require optimize self-checks in worker prompts"
 ```
 

@@ -5,7 +5,7 @@ This note captures reusable optimization knowledge found by comparing:
 - `src/kernels/fla/ops/common_origin/`
 - `src/kernels/fla/ops/common_ops/`
 
-The findings are review material for future `triton-npu-optimize-knowledge` pattern-card updates. They are intentionally not linked from `skills/triton-npu-optimize-knowledge/references/pattern_index.md` yet.
+The findings are review material for future `triton-npu-optimize-knowledge` pattern-card updates. They are intentionally not linked from `skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md` yet.
 
 ## Scope
 

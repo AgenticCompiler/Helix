@@ -101,7 +101,7 @@ Compiler source analysis should be used as an escalation path, not as the first 
 Add a new skill:
 
 ```text
-skills/triton-npu-analyze-compiler-source/
+skills/triton/triton-npu-analyze-compiler-source/
 ```
 
 The skill owns compiler-source analysis guidance. It should include:

@@ -2,7 +2,7 @@
 
 ## Summary
 
-Simplify the example in `skills/triton-npu-optimize-knowledge/references/patterns/diagonal.md` so the card teaches the diagonal traversal idea directly instead of embedding a full, duplicated matmul implementation.
+Simplify the example in `skills/triton/triton-npu-optimize-knowledge/references/patterns/diagonal.md` so the card teaches the diagonal traversal idea directly instead of embedding a full, duplicated matmul implementation.
 
 The revised card should keep the optimization meaning intact while making the example short enough to scan during pattern triage.
 

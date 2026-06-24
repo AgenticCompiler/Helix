@@ -41,7 +41,7 @@ That mismatch causes two problems:
 
 Add a new skill directory:
 
-- `skills/torch-npu-optimize-knowledge/`
+- `skills/triton/torch-npu-optimize-knowledge/`
 
 This skill is reference-only, like `triton-npu-optimize-knowledge`. It owns its own:
 

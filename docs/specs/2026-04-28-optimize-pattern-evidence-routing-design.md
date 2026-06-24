@@ -21,7 +21,7 @@
 
 The repository already has the main ingredients for good optimize reasoning:
 
-- pattern references under `skills/triton-npu-optimize/references/patterns/`
+- pattern references under `skills/triton/triton-npu-optimize/references/patterns/`
 - profiler-first deep analysis under `triton-npu-analyze-round-performance`
 - structured profile JSON from `triton-npu-profile-operator`
 - structured IR summaries from `triton-npu-analyze-ir`
@@ -81,7 +81,7 @@ The key design choice is that extractors do not diagnose and do not recommend pa
 
 The pattern Markdown files under:
 
-- `skills/triton-npu-optimize/references/patterns/*.md`
+- `skills/triton/triton-npu-optimize/references/patterns/*.md`
 
 should remain the only human-authored source of truth.
 
@@ -273,7 +273,7 @@ If a helper wants to highlight suspicious data for navigation, it should use obs
 
 Add a small code-fact extractor under the optimize skill, for example:
 
-- `skills/triton-npu-optimize/scripts/extract_code_facts.py`
+- `skills/triton/triton-npu-optimize/scripts/extract_code_facts.py`
 
 Its scope is to extract directly observable implementation facts such as:
 
@@ -412,7 +412,7 @@ The agent should continue to prefer the smallest source that can unblock the nex
 Phase 1 should keep the current file layout mostly additive:
 
 ```text
-skills/triton-npu-optimize/
+skills/triton/triton-npu-optimize/
   references/patterns/
     index.md
     autotune.md

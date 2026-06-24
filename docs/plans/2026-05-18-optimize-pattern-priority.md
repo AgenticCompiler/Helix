@@ -12,7 +12,7 @@
 
 ## File Map
 
-- Modify: `skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py`
+- Modify: `skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py`
   Parse optional priority metadata, validate it, and render the new high-priority section.
 - Modify: `tests/test_optimize_pattern_tools.py`
   Add focused generator tests for invalid priority handling and high-priority section rendering.
@@ -22,11 +22,11 @@
   Add the stable pattern-priority authoring rule for this repository.
 - Modify: `docs/notes/2026-04-29-optimize-pattern-card-authoring.md`
   Document `priority: high|normal`, the `normal` default, and the generated high-priority index section.
-- Modify: `skills/triton-npu-optimize-knowledge/references/patterns/autotune.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge/references/patterns/autotune.md`
   Add `priority: high` frontmatter.
-- Modify: `skills/triton-npu-optimize-knowledge/references/patterns/a5-force-simt-only-discrete-access.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge/references/patterns/a5-force-simt-only-discrete-access.md`
   Add `priority: high` frontmatter.
-- Modify: `skills/triton-npu-optimize-knowledge/references/pattern_index.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md`
   Regenerated output from the updated generator and card metadata.
 
 ### Task 1: Add Failing Generator And Contract Tests
@@ -42,7 +42,7 @@ Add these tests to `tests/test_optimize_pattern_tools.py`:
 ```python
     def test_build_index_rejects_invalid_priority_value(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -70,7 +70,7 @@ Short summary.
 
     def test_generated_index_lists_high_priority_patterns_before_full_summaries(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -119,7 +119,7 @@ Normal summary.
 
     def test_generated_index_renders_none_when_no_patterns_are_high_priority(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -186,13 +186,13 @@ git commit -m "test: add optimize pattern priority coverage"
 ### Task 2: Implement Priority Parsing And Authoring Rules
 
 **Files:**
-- Modify: `skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py`
+- Modify: `skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py`
 - Modify: `AGENTS.md`
 - Modify: `docs/notes/2026-04-29-optimize-pattern-card-authoring.md`
 
 - [ ] **Step 1: Implement priority parsing and validation in the generator**
 
-Update `skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py` with these changes:
+Update `skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py` with these changes:
 
 ```python
 VALID_PRIORITIES = ("high", "normal")
@@ -337,7 +337,7 @@ Run:
 
 ```bash
 bash scripts/run-skill-script-pyright.sh \
-  skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py
+  skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py
 ```
 
 Expected: `0 errors, 0 warnings, 0 informations`
@@ -346,7 +346,7 @@ Expected: `0 errors, 0 warnings, 0 informations`
 
 ```bash
 git add \
-  skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
+  skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
   AGENTS.md \
   docs/notes/2026-04-29-optimize-pattern-card-authoring.md
 git commit -m "feat: add optimize pattern priority metadata"
@@ -355,9 +355,9 @@ git commit -m "feat: add optimize pattern priority metadata"
 ### Task 3: Mark High-Priority Cards And Regenerate The Index
 
 **Files:**
-- Modify: `skills/triton-npu-optimize-knowledge/references/patterns/autotune.md`
-- Modify: `skills/triton-npu-optimize-knowledge/references/patterns/a5-force-simt-only-discrete-access.md`
-- Modify: `skills/triton-npu-optimize-knowledge/references/pattern_index.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge/references/patterns/autotune.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge/references/patterns/a5-force-simt-only-discrete-access.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md`
 - Modify: `tests/test_optimize_pattern_tools.py`
 
 - [ ] **Step 1: Add one checked-in index regression test for the two explicit high-priority cards**
@@ -382,7 +382,7 @@ Append this test to `tests/test_optimize_pattern_tools.py`:
 
 - [ ] **Step 2: Add `priority: high` frontmatter to the two selected pattern cards**
 
-Update `skills/triton-npu-optimize-knowledge/references/patterns/autotune.md`:
+Update `skills/triton/triton-npu-optimize-knowledge/references/patterns/autotune.md`:
 
 ```markdown
 ---
@@ -392,7 +392,7 @@ priority: high
 # Triton Autotune Pattern
 ```
 
-Update `skills/triton-npu-optimize-knowledge/references/patterns/a5-force-simt-only-discrete-access.md`:
+Update `skills/triton/triton-npu-optimize-knowledge/references/patterns/a5-force-simt-only-discrete-access.md`:
 
 ```markdown
 ---
@@ -407,9 +407,9 @@ priority: high
 Run:
 
 ```bash
-python3 skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
-  --patterns-dir skills/triton-npu-optimize-knowledge/references/patterns \
-  --output skills/triton-npu-optimize-knowledge/references/pattern_index.md
+python3 skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
+  --patterns-dir skills/triton/triton-npu-optimize-knowledge/references/patterns \
+  --output skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md
 ```
 
 Expected: command exits `0` and rewrites the checked-in index with the new `## High Priority Patterns` section.
@@ -429,9 +429,9 @@ Expected: `OK`
 Run:
 
 ```bash
-python3 skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
-  --patterns-dir skills/triton-npu-optimize-knowledge/references/patterns \
-  --output skills/triton-npu-optimize-knowledge/references/pattern_index.md \
+python3 skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
+  --patterns-dir skills/triton/triton-npu-optimize-knowledge/references/patterns \
+  --output skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md \
   --check
 ```
 
@@ -441,9 +441,9 @@ Expected: exit code `0`
 
 ```bash
 git add \
-  skills/triton-npu-optimize-knowledge/references/patterns/autotune.md \
-  skills/triton-npu-optimize-knowledge/references/patterns/a5-force-simt-only-discrete-access.md \
-  skills/triton-npu-optimize-knowledge/references/pattern_index.md \
+  skills/triton/triton-npu-optimize-knowledge/references/patterns/autotune.md \
+  skills/triton/triton-npu-optimize-knowledge/references/patterns/a5-force-simt-only-discrete-access.md \
+  skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md \
   tests/test_optimize_pattern_tools.py
 git commit -m "docs: highlight high-priority optimize patterns"
 ```
