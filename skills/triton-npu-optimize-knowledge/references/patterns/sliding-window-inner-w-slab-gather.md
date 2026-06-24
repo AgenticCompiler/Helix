@@ -82,6 +82,7 @@ The overlapping columns (**`2`**, **`4`**, **`6`**) are loaded once from global 
 - A common **2D** grid is **`(batch * channels * out_h, cdiv(out_w, BLOCK_OW))`**.
 - A common **3D** variant folds **`out_d * out_h`** into the row axis.
 - Pair with **`program-multiple-rows`** when consecutive flat spatial rows can share enough setup to amortize slab overhead.
+- **Dispatch threshold:** use slab+gather for **`out_w > 1`** (i.e., almost always). For **`out_w <= 1`** only, fall back to a simple baseline flat kernel. Do **not** add restrictive gates like `out_w >= 16` or `kw <= 7` — these limit slab coverage and force evaluation groups onto slower flat-kernel paths.
 
 ## Avoid When
 
@@ -153,6 +154,81 @@ Pick **`BLOCK_OW`** from **`out_w`** with a **small candidate list** (e.g. 128�
 
 - If **`tl.gather`** on **`f16`/`bf16`** faults, try **`slab = load(...).to(tl.float32)`** before **`gather`**, then accumulate in **`f32`**—validate numerics for **avg** and **max**.
 - After edit, confirm IR shows **`gather`** on the **slab tensor**, not only **`memref.copy`** loops without consumption—or **repeated per-`kw` loads**.
+
+### 6. Mandatory Follow-On Optimizations After Slab-Gather
+
+Once **slab + gather** is validated and producing correct results, immediately evaluate these follow-on optimizations in the order below. Each builds on the slab-gather structure and must be benchmarked before claiming success.
+
+#### 6a. Closed-form divisor on the slab path
+
+Replace per-kw `valid_count`/`padded_count` accumulation inside the kw loop with a pre-computed algebraic divisor derived from clip bounds. For W-slab kernels where D/H/W validity checks remain, compute divisor per lane:
+
+```python
+if COUNT_INCLUDE_PAD:
+    divisor = tl.full([BLOCK_OW], KERNEL_D * KERNEL_H * KERNEL_W, dtype=tl.float32)
+else:
+    w_len = tl.maximum(0, tl.minimum(in_w, w_end) - tl.maximum(0, w_start))
+    divisor = (d_len * h_len * w_len).to(tl.float32)
+```
+
+This eliminates `padded_count`/`valid_count` accumulators, `padded_valid_d/h/w` mask computations, and `tl.where(count)` operations inside the triple-nested loop — typically worth 15-25% on the slab path. See also `simt-clip-window-closed-reduction` for the SIMT-specific version.
+
+#### 6b. `BLOCK_DH` spatial batching (3D window only)
+
+Batch multiple D×H rows per program by mapping `program_id(0)` to a block of output rows instead of one row. This amortizes per-program fixed overhead (kh/kd loop setup, slab loads, out_offs computation).
+
+```python
+odh_start = (pid_outer % grid_dh) * BLOCK_DH
+for odh in range(odh_start, odh_start + BLOCK_DH):
+    od = odh // out_h
+    oh = odh % out_h
+    ...
+```
+
+Choose `BLOCK_DH` as a divisor of `out_d * out_h` (or the largest divisor ≤ 16-32) to minimize tail divergence. The grid outer dimension becomes `batch * channels * cdiv(out_d * out_h, BLOCK_DH)`. **Only applicable to 3D;** 2D should use `program-multiple-rows` or `BLOCK_OH` instead.
+
+#### 6c. `USE_DH_FAST_PATH` (no D/H validity checks)
+
+When **padding is zero on D and H** and **all windows are fully in-bounds** on those axes, eliminate `valid_d`, `valid_h`, `safe_d`, `safe_h`, and `dh_valid` from the inner loops. Host-side condition:
+
+```python
+use_dh_fast_path = (
+    padding[0] == 0 and padding[1] == 0
+    and (out_d - 1) * stride[0] + kernel_size[0] <= in_d
+    and (out_h - 1) * stride[1] + kernel_size[1] <= in_h
+)
+```
+
+When true, use absolute input indices (`start_d + kd`, `start_h + kh`) for address computation instead of `tl.where(valid_d, ..., 0)` branches. This saves 2×CMP + 2×AND + 2×`tl.where` per kw iteration per program.
+
+#### 6d. Eliminate `valid_w` when `USE_W_SLAB_LOAD` is active
+
+When `USE_W_SLAB_LOAD` is True (unmasked slab load, `PAD_W=0` and W fully in-bounds), the slab contains only valid data. The per-kw `valid_w` check and `tl.where(window_mask, ...)` on accumulate are redundant. The kw loop body becomes:
+
+```python
+if USE_W_SLAB_LOAD:
+    values = tl.gather(slab, lane_offsets + kw, axis=0)
+    acc += values.to(tl.float32)  # direct, no tl.where
+```
+
+This saves `valid_w` computation (CMP + AND), the `tl.where` masking, and the extra float32 conversion per kw iteration. On fully in-bounds cases this yields the largest single-round improvement after slab-gather is established (~25-35% additional).
+
+#### 6e. Relax dispatch threshold for slab
+
+The slab kernel should be used as broadly as possible. Use `out_w > 1` as the gate (unless `out_w <= 1` where a flat baseline kernel suffices). Do **not** restrict slab usage with narrow conditions like `out_w >= 16 and kw <= 7 and sw >= 1` — these force many evaluation groups onto the slower flat kernel path and widen the performance gap.
+
+#### 6f. Lane-level divisor for varied w_len
+
+When lanes have different `w_len` (e.g., tail tiles or `ceil_mode` boundaries), compute the divisor per lane rather than using a single scalar:
+
+```python
+w_start_per_lane = w_abs_min + lane_offsets
+w_end_per_lane = w_start_per_lane + KERNEL_W
+w_len = tl.maximum(0, tl.minimum(in_w, w_end_per_lane) - tl.maximum(0, w_start_per_lane))
+divisor = (d_len * h_len * w_len).to(tl.float32)
+```
+
+This ensures correctness when output columns at the tail of a tile have different effective window sizes, while still avoiding per-tap counting.
 
 ## Detection Pattern
 
@@ -264,7 +340,8 @@ kernel[grid](..., BLOCK_OW=block_ow, W_SLAB_LEN=w_slab_len,
 - `program-multiple-rows`
 - `scalar-latency-traps` (supporting lens for boundary math—not a substitute for W staging)
 - `a5-simt-sliding-window-tuning` — A5 SIMT fixed-window tuning (use before W-slab on `force_simt_only` paths)
-- `simt-clip-window-closed-reduction` — closed normalizer inner loop; not the default include-pad path on A5 SIMT
+- `simt-clip-window-closed-reduction` — closed normalizer inner loop for SIMT paths; also applicable on non-SIMT slab paths as §6a follow-on
+- `exact-tile-no-boundary-fast-path` — drop per-kw validity checks when fully in-bounds (pairs with §6c §6d)
 
 ## What To Verify After Applying
 
