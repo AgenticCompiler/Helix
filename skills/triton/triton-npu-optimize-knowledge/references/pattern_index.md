@@ -111,15 +111,16 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `auxiliary-op-fusion`
 
-- Summary: Fuse or Tritonize simple Torch/CANN auxiliary operators when they only produce intermediate values for a downstream Triton path. The fused implementation must remain Triton-based — do not delegate the fused logic to `torch.ops.npu.*` or `aclnn*` ops. Each auxiliary op is a separate GM↔UB round-trip plus an AIV kernel launch; removing those external ops reduces launch count, intermediate tensor traffic, and `total_op_avg_time_us`.
+- Summary: Fuse or Tritonize simple Torch/CANN auxiliary operators when they only produce intermediate values for a downstream Triton path. The optimized path should express the target auxiliary logic in Triton; simple Torch wrapper glue is allowed, but Torch/CANN compute operators should not replace the auxiliary logic being optimized. Each external auxiliary op is a separate GM↔UB round-trip plus an AIV kernel launch; removing those external ops reduces launch count, intermediate tensor traffic, and `total_op_avg_time_us`.
 - Source: [auxiliary-op-fusion.md](patterns/auxiliary-op-fusion.md)
 - Use When:
   - Source code has a clear **auxiliary-op sequence -> Triton path** structure.
   - The auxiliary ops compute intermediate values such as scales, masks, clamps, casts, offsets, row statistics, or broadcasted factors that are consumed by the Triton path.
+  - The auxiliary ops compute frequency/count metadata such as `bincount`, per-key counts, label counts, or segment counts that are consumed by the Triton path for scaling, filtering, normalization, or weighting; the output domain is known or bounded and the result is metadata rather than the operator's primary output.
   - Perf output shows the auxiliary ops in `ops` before the main Triton path, and their combined time is meaningful in `total_op_avg_time_us`.
   - The auxiliary output has one dominant downstream consumer, OR multiple consumers that share the same upstream load (multi-output fusion case).
   - If the auxiliary output is part of the API result, the fused or Tritonized path can still store the same output.
-  - The auxiliary logic can be expressed in Triton with simple elementwise math, broadcast, cast, clamp, masking, row-wise reduction, scale computation, or simple index transforms. The fused implementation must be a Triton kernel — do not delegate to `torch.ops.npu.*` or `aclnn*` ops even if an equivalent exists.
+  - The auxiliary logic can be expressed in Triton with simple elementwise math, broadcast, cast, clamp, masking, row-wise reduction, scale computation, frequency count, or simple index transforms. Use Torch only for non-compute wrapper glue; do not delegate the target auxiliary computation to `torch.ops.npu.*`, `aclnn*`, or another framework compute op.
   - Simulator data for the fused candidate does not show that the extra in-kernel work overwhelms the removed auxiliary-op cost.
 
 ### `block-pointer-dimensionality`
