@@ -571,7 +571,7 @@ class GenerationContractTests(unittest.TestCase):
         optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
         self.assertIn("triton-npu-optimize-knowledge", optimize)
         self.assertIn(
-            "../triton-npu-optimize-knowledge/references/pattern_index.md",
+            "staged `triton-npu-optimize-knowledge` skill's `references/pattern_index.md`",
             optimize,
         )
         self.assertNotIn("extract_code_facts.py", optimize)
@@ -683,9 +683,11 @@ class GenerationContractTests(unittest.TestCase):
 
     def test_optimize_skill_documents_round_local_ir_commands(self) -> None:
         optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
-        self.assertIn("python3 ../ascend-npu-analyze-ir/scripts/capture_ir.py", optimize)
+        self.assertIn("`ascend-npu-analyze-ir` skill's helpers", optimize)
+        self.assertIn("capture_ir.py --ir-dir opt-round-N/ir", optimize)
         self.assertIn("--ir-dir opt-round-N/ir", optimize)
-        self.assertIn("python3 ../ascend-npu-analyze-ir/scripts/inspect_ir.py", optimize)
+        self.assertIn("inspect_ir.py list-stages", optimize)
+        self.assertNotIn("../ascend-npu-analyze-ir/scripts/", optimize)
 
     def test_round_performance_skill_describes_layered_profiler_and_binary_analysis(self) -> None:
         content = _read("skills/common/ascend-npu-analyze-round-performance/SKILL.md")
@@ -735,11 +737,11 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("triton-npu-optimize-knowledge", skill)
         self.assertIn("torch-npu-optimize-knowledge", skill)
         self.assertIn(
-            "../triton-npu-optimize-knowledge/references/symptom_index.md",
+            "staged `triton-npu-optimize-knowledge` skill's `references/symptom_index.md`",
             skill,
         )
         self.assertIn(
-            "../torch-npu-optimize-knowledge/references/pattern_index.md",
+            "staged `torch-npu-optimize-knowledge` skill's `references/pattern_index.md`",
             skill,
         )
         self.assertIn("weak-pipeline-overlap", symptom_index)
@@ -1077,15 +1079,35 @@ class GenerationContractTests(unittest.TestCase):
 
     def test_profiler_skill_documents_torch_npu_profiler_case_id_contract(self) -> None:
         profiler = _read("skills/common/ascend-npu-profile-operator/SKILL.md")
-        self.assertIn("../ascend-npu-run-eval/scripts/run-command.py profile-bench", profiler)
+        self.assertIn("`ascend-npu-run-eval` skill's `profile-bench` helper", profiler)
         self.assertIn("torch-npu-profiler", profiler)
         self.assertIn("msprof", profiler)
         self.assertIn("--case-id <id>", profiler)
         self.assertIn("profile one selected `--case-id <id>` case", profiler)
         self.assertIn("must not receive `--bench` or `--num-bench`", profiler)
+        self.assertNotIn("../ascend-npu-run-eval/scripts/run-command.py", profiler)
         self.assertNotIn("first query `--num-bench`", profiler)
         self.assertNotIn("profile one selected `--bench <N>` case", profiler)
         self.assertNotIn("msprof python3 bench_<op>.py --operator-file <operator-file>", profiler)
+
+    def test_live_skill_docs_avoid_cross_skill_relative_paths(self) -> None:
+        relative_paths = (
+            "skills/common/ascend-npu-analyze-ir/SKILL.md",
+            "skills/common/ascend-npu-analyze-round-performance/SKILL.md",
+            "skills/common/ascend-npu-gen-eval-suite/SKILL.md",
+            "skills/common/ascend-npu-profile-operator/SKILL.md",
+            "skills/common/ascend-npu-kernel-bench-logs/SKILL.md",
+            "skills/triton/triton-npu-optimize/SKILL.md",
+            "skills/triton/triton-npu-optimize/references/artifacts.md",
+        )
+
+        for relative_path in relative_paths:
+            with self.subTest(path=relative_path):
+                content = _read(relative_path)
+                self.assertNotRegex(
+                    content,
+                    r"\.\./[^ )\]]+/(SKILL\.md|references/|scripts/)",
+                )
 
     def test_test_generation_specs_distinguish_standalone_cli_and_differential_hooks(self) -> None:
         standalone = _read("skills/common/ascend-npu-gen-test/references/test-standalone-spec.md")

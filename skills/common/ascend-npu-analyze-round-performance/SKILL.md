@@ -29,8 +29,8 @@ When compiler source analysis is enabled by the launch prompt or workspace guida
 Read [references/ascend-npu-profiling-analysis.md](references/ascend-npu-profiling-analysis.md) when the round needs deeper interpretation of `op_summary`, `task_time`, `api_statistic`, `msprof` JSON, or `.bin` signals.
 Read [references/ascend-npu-optimization-guidance.md](references/ascend-npu-optimization-guidance.md) when you need help turning profiling symptoms and IR findings into concrete potential optimization points.
 Read [references/ascend-npu-architecture-notes.md](references/ascend-npu-architecture-notes.md) when the likely optimization point depends on chip differences such as A3 versus A5 buffer sizes, layout behavior, or cube/vector data handoff.
-Read [`../triton-npu-optimize-knowledge/references/symptom_index.md`](../triton-npu-optimize-knowledge/references/symptom_index.md) when structured profile or IR evidence is available and you need Triton/kernel-oriented symptom cards to narrow likely pattern directions before returning to detailed pattern references.
-When the optimize target is `operator` and the evidence points to Torch NPU or framework-op behavior, also read [`../torch-npu-optimize-knowledge/references/pattern_index.md`](../torch-npu-optimize-knowledge/references/pattern_index.md) for operator-level pattern routing.
+Use the staged `triton-npu-optimize-knowledge` skill when structured profile or IR evidence is available and you need Triton/kernel-oriented symptom cards to narrow likely pattern directions before returning to detailed pattern references. Start from that skill's `references/symptom_index.md`.
+When the optimize target is `operator` and the evidence points to Torch NPU or framework-op behavior, also use the staged `torch-npu-optimize-knowledge` skill and start from its `references/pattern_index.md` for operator-level pattern routing.
 
 Read the references in this order:
 
@@ -43,30 +43,30 @@ Read the references in this order:
 1. Resolve the current round directory and round-local operator file.
 2. Confirm the round has profile evidence.
    - Prefer round-local evidence such as `opt-round-N/profile/`.
-   - If profile evidence is missing, collect it first through the existing profiling flow from [`../ascend-npu-profile-operator/SKILL.md`](../ascend-npu-profile-operator/SKILL.md).
+   - If profile evidence is missing, collect it first through the `ascend-npu-profile-operator` skill.
 3. Strongly consider spawning a subagent before the deep analysis phase.
    - Use this when profile or IR artifacts are large, or when the round already has a long `attempts.md`.
    - If context is still small enough, the current agent may continue directly.
 4. Extract profile signals first.
-   - Prefer the bundled summary helper in JSON mode:
-     ```bash
-      python3 ../ascend-npu-run-eval/scripts/run-command.py profile-report --profile-dir <profile-dir> --format json
+   - Prefer the `ascend-npu-run-eval` skill's `profile-report` helper in JSON mode. The standard argument shape is:
+     ```text
+     profile-report --profile-dir <profile-dir> --format json
      ```
    - Use this as the default structured entrypoint for profiling evidence.
 5. Interpret profiling evidence through the profiling reference instead of ad hoc guesses.
    - Follow [references/ascend-npu-profiling-analysis.md](references/ascend-npu-profiling-analysis.md) for layered signal interpretation.
    - Escalate into `.bin` when CSV-level evidence is still not explanatory enough.
-6. Use [`../triton-npu-optimize-knowledge/references/symptom_index.md`](../triton-npu-optimize-knowledge/references/symptom_index.md) and the matching symptom cards to narrow the current hypothesis.
-   - Start from the symptom index, then read only the one or two symptom cards under [`../triton-npu-optimize-knowledge/references/symptoms/`](../triton-npu-optimize-knowledge/references/symptoms/) that best match the extracted evidence.
-   - When the optimize target is `operator` and the bottleneck looks Torch NPU or framework-op specific, also use [`../torch-npu-optimize-knowledge/references/pattern_index.md`](../torch-npu-optimize-knowledge/references/pattern_index.md) and the matching pattern cards under [`../torch-npu-optimize-knowledge/references/patterns/`](../torch-npu-optimize-knowledge/references/patterns/).
+6. Use the staged `triton-npu-optimize-knowledge` skill's `references/symptom_index.md` and the matching symptom cards to narrow the current hypothesis.
+   - Start from that symptom index, then read only the one or two best-matching cards under the staged `triton-npu-optimize-knowledge` skill's `references/symptoms/` directory.
+   - When the optimize target is `operator` and the bottleneck looks Torch NPU or framework-op specific, also use the staged `torch-npu-optimize-knowledge` skill's `references/pattern_index.md` and the one or two best-matching cards under its `references/patterns/` directory.
    - Use symptom cards as routing aids, not as a replacement for the underlying profile or IR evidence.
 7. Decide whether profiler evidence is already sufficient on its own.
    - If the layered profiler signals already explain the likely operator problem well enough, continue to diagnosis.
    - If the profiler signals are suspicious but still not explanatory enough, capture or reuse IR under `opt-round-N/ir/`.
 8. Extract IR performance signals as the second analysis path for explanation and attribution.
-   - Prefer:
-     ```bash
-     python3 ../ascend-npu-analyze-ir/scripts/inspect_ir.py performance-signals --ir-dir <ir-dir> --format json
+   - Prefer the `ascend-npu-analyze-ir` skill's `inspect_ir.py` helper in `performance-signals` mode:
+     ```text
+     inspect_ir.py performance-signals --ir-dir <ir-dir> --format json
      ```
    - Use `list-stages`, `stage-summary`, `find-changes`, or direct file inspection when the heuristic summary points to a specific stage or lowering symptom.
 9. Compare with parent or baseline evidence when it already exists and is useful.

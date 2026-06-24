@@ -54,8 +54,8 @@ If the successful fix is a new pattern not covered there, append a short entry t
 
 ## Validation Commands
 
-- Use the `ascend-npu-run-eval` skill for correctness validation, with `python3 ../ascend-npu-run-eval/scripts/run-command.py run-test-baseline ...` as the standard helper command.
-- Use the `ascend-npu-run-eval` skill for benchmark validation, with `python3 ../ascend-npu-run-eval/scripts/run-command.py run-bench ...` as the standard helper command.
+- Use the `ascend-npu-run-eval` skill for correctness validation, typically through its `run-test-baseline` helper.
+- Use the `ascend-npu-run-eval` skill for benchmark validation, typically through its `run-bench` helper.
 - If the outer task is remote-aware, carry the same remote flags into every validation command and reuse `--remote-workdir` when provided.
 
 ## Quality Rules
