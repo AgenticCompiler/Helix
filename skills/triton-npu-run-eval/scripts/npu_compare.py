@@ -660,7 +660,9 @@ def _compare_non_compute(
                 "actual_dtype": _dtype_name(actual_cpu.dtype),
             },
         )
-    if bytes(actual_cpu.contiguous().untyped_storage()) == bytes(golden_cpu.contiguous().untyped_storage()):
+    actual_bytes = actual_cpu.contiguous().view(torch.uint8)
+    golden_bytes = golden_cpu.contiguous().view(torch.uint8)
+    if torch.equal(actual_bytes, golden_bytes):
         return _case_result(
             passed=True,
             case_id=case_id,
