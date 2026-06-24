@@ -178,6 +178,7 @@ class MemoryFileManager:
         workdir: Path,
         *,
         agent_name: str,
+        language: str = "triton",
         optimize_target: str = "kernel",
         include_supervisor_handoff: bool = True,
         compiler_source_path: Path | None = None,
@@ -193,6 +194,7 @@ class MemoryFileManager:
             agent_name=agent_name,
             content=self._render_round_gated_guidance(
                 guidance_filename=guidance_filename,
+                language=language,
                 optimize_target=optimize_target,
                 include_supervisor_handoff=include_supervisor_handoff,
                 compiler_source_path=compiler_source_path,
@@ -308,7 +310,7 @@ class MemoryFileManager:
                 )
             ),
             cann_ext_api_block=_render_line_block(
-                cann_ext_api_lines(enabled=enable_cann_ext_api)
+                cann_ext_api_lines(enabled=enable_cann_ext_api, language=language)
             ),
         )
 
@@ -316,6 +318,7 @@ class MemoryFileManager:
         self,
         *,
         guidance_filename: str,
+        language: str = "triton",
         optimize_target: str = "kernel",
         include_supervisor_handoff: bool = True,
         compiler_source_path: Path | None = None,
@@ -354,7 +357,7 @@ class MemoryFileManager:
                 )
             ),
             cann_ext_api_block=_render_line_block(
-                cann_ext_api_lines(enabled=enable_cann_ext_api)
+                cann_ext_api_lines(enabled=enable_cann_ext_api, language=language)
             ),
         )
         if include_supervisor_handoff:

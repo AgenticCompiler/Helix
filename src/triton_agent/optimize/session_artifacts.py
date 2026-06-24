@@ -101,6 +101,7 @@ class OptimizeSessionArtifactsManager:
             memory_file_state = self._memory_files.prepare_round_gated(
                 workdir,
                 agent_name=agent_name,
+                language=language,
                 optimize_target=optimize_target,
                 include_supervisor_handoff=False,
                 compiler_source_path=compiler_source_path,
