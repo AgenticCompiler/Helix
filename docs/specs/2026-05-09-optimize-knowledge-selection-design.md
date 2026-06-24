@@ -11,8 +11,8 @@ This option must be supported by both `optimize` and `optimize-batch`.
 - Add `--optimize-knowledge {v1,v2}` to `optimize`.
 - Add `--optimize-knowledge {v1,v2}` to `optimize-batch`.
 - Default the option to `v1` so existing behavior does not change.
-- Map `v1` to the repository skill directory `skills/triton-npu-optimize-knowledge/`.
-- Map `v2` to the repository skill directory `skills/triton-npu-optimize-knowledge-v2/`.
+- Map `v1` to the repository skill directory `skills/triton/triton-npu-optimize-knowledge/`.
+- Map `v2` to the repository skill directory `skills/triton/triton-npu-optimize-knowledge-v2/`.
 - Keep the staged workspace skill name stable as `triton-npu-optimize-knowledge` for both versions.
 
 ## Design

@@ -13,7 +13,7 @@
 
 Generic optimize knowledge currently lives under multiple skill owners:
 
-- generic pattern references live under `skills/triton-npu-optimize/`
+- generic pattern references live under `skills/triton/triton-npu-optimize/`
 - generic symptom references live under `skills/triton-npu-analyze-round-performance/`
 
 That layout already works, but it mixes three different responsibilities:
@@ -237,13 +237,13 @@ Keep these analysis references under `triton-npu-analyze-round-performance`:
 
 Keep this evidence helper outside the new knowledge skill in phase 1:
 
-- `skills/triton-npu-optimize/scripts/extract_code_facts.py`
+- `skills/triton/triton-npu-optimize/scripts/extract_code_facts.py`
 
 It is a structured evidence extractor, not reusable optimize knowledge.
 
 ## Knowledge Skill Contract
 
-`skills/triton-npu-optimize-knowledge/SKILL.md` should be reference-only.
+`skills/triton/triton-npu-optimize-knowledge/SKILL.md` should be reference-only.
 
 It should state:
 
@@ -295,7 +295,7 @@ Use a short migration window and complete the ownership handoff in one focused c
 
 ### Step 1: Add The New Knowledge Skill
 
-- create `skills/triton-npu-optimize-knowledge/`
+- create `skills/triton/triton-npu-optimize-knowledge/`
 - copy generic pattern assets into the new skill
 - copy generic symptom assets into the new skill
 - add a reference-only `SKILL.md`
@@ -345,9 +345,9 @@ If temporary placeholder files are used, they should clearly say that ownership 
 
 Update tests that currently assume:
 
-- `skills/triton-npu-optimize/references/pattern_index.md` is the generic pattern source of truth
+- `skills/triton/triton-npu-optimize/references/pattern_index.md` is the generic pattern source of truth
 - `skills/triton-npu-analyze-round-performance/references/symptom_index.md` is the generic symptom source of truth
-- `skills/triton-npu-optimize/scripts/build_pattern_index.py` is owned by the optimize workflow skill
+- `skills/triton/triton-npu-optimize/scripts/build_pattern_index.py` is owned by the optimize workflow skill
 
 Add or update checks for:
 

@@ -66,9 +66,9 @@ def _optimize_target_guidance_lines(*, optimize_target: str) -> list[str]:
 _OPTIMIZE_GUIDANCE_RULES_BLOCK = dedent(
     """\
     IMPORTANT:
-        - Use `triton-npu-optimize-submit-baseline` skill to submit the initial baseline.
-        - Use `triton-npu-optimize-start-round` skill to start a new optimization round.
-        - Use `triton-npu-optimize-submit-round` skill to submit each complete optimization round.
+        - Use `ascend-npu-optimize-submit-baseline` skill to submit the initial baseline.
+        - Use `ascend-npu-optimize-start-round` skill to start a new optimization round.
+        - Use `ascend-npu-optimize-submit-round` skill to submit each complete optimization round.
 
     - Read files cautiously. Do not read unrelated files speculatively or just in case.
     - Prefer the smallest source that can unblock the next decision.

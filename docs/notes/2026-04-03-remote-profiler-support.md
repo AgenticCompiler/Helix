@@ -43,5 +43,5 @@
 
 - Update `skills/triton-npu-profile-operator/SKILL.md` to prefer `profile-bench` and explain mode-specific argument rules.
 - Update `skills/triton-npu-run-eval/SKILL.md` so the helper is discoverable beside `run-test` and `run-bench`.
-- Update `skills/triton-npu-optimize/SKILL.md` so remote-aware optimize runs keep passing profiler execution through the same remote settings.
+- Update `skills/triton/triton-npu-optimize/SKILL.md` so remote-aware optimize runs keep passing profiler execution through the same remote settings.
 - Update `README.md` and `AGENTS.md` so the repository-level contract matches the helper behavior.

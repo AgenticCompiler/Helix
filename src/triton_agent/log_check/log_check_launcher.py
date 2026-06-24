@@ -268,7 +268,7 @@ def build_log_check_request(
         stream_output=show_output,
         force_overwrite=False,
         agent_name=agent_name,
-        skill_name="triton-npu-optimize-submit-round",
+        skill_name="ascend-npu-optimize-submit-round",
         prompt=build_log_check_prompt(
             target_path=resolved_target,
             log_check_json_file=output_json,

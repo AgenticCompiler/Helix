@@ -9,7 +9,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES_ROOT = REPO_ROOT / "tests" / "fixtures" / "ascend_npu_operator_profiler"
 _SKILL_SCRIPTS = (
-    REPO_ROOT / "skills" / "triton-npu-profile-operator" / "scripts"
+    REPO_ROOT / "skills" / "common" / "ascend-npu-profile-operator" / "scripts"
 )
 
 

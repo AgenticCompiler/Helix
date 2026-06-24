@@ -4,7 +4,7 @@
 
 **Goal:** Add hook-gated optimize workflow state under `.triton-agent/state.json`, track per-round start/end timestamps, and archive completed round timings into `triton-agent-logs/<run-id>/round-timings.json` without changing non-hook optimize behavior.
 
-**Architecture:** Keep workflow-state authority in a skill-side helper under `skills/triton-npu-optimize/scripts/`, then load it from runtime through a thin `src/` bridge. Baseline submit, round submit, and the new start-round script mutate state automatically when the runtime bootstrapped the state file, while runtime owns hook-gated bootstrap, prompt-phase summary rendering, and cleanup-time archive projection.
+**Architecture:** Keep workflow-state authority in a skill-side helper under `skills/triton/triton-npu-optimize/scripts/`, then load it from runtime through a thin `src/` bridge. Baseline submit, round submit, and the new start-round script mutate state automatically when the runtime bootstrapped the state file, while runtime owns hook-gated bootstrap, prompt-phase summary rendering, and cleanup-time archive projection.
 
 **Tech Stack:** Python 3.11, `argparse`, `json`, `pathlib`, `tempfile`, `unittest`, `load_skill_script_module`, optimize runtime/session-artifact code, skill-script pyright wrapper, `uv`
 
@@ -14,7 +14,7 @@
 
 ## File Map
 
-- Create: `skills/triton-npu-optimize/scripts/optimize_workflow_state.py`
+- Create: `skills/triton/triton-npu-optimize/scripts/optimize_workflow_state.py`
   Own JSON loading, validation, legal phase transitions, UTC timestamp generation, atomic writes, phase-summary rendering, and `round-timings.json` projection.
 - Create: `skills/triton-npu-optimize-start-round/scripts/optimize_start_round.py`
   Provide the `start-round` CLI that opens one round in workflow state immediately before the next optimize round begins.
@@ -192,12 +192,12 @@ Run:
 uv run python -m unittest tests.test_optimize_workflow_state -v
 ```
 
-Expected: FAIL because `skills/triton-npu-optimize/scripts/optimize_workflow_state.py` does not exist yet and none of the transition/archive helpers are implemented.
+Expected: FAIL because `skills/triton/triton-npu-optimize/scripts/optimize_workflow_state.py` does not exist yet and none of the transition/archive helpers are implemented.
 
 ### Task 2: Implement the skill-side helper and the runtime bridge
 
 **Files:**
-- Create: `skills/triton-npu-optimize/scripts/optimize_workflow_state.py`
+- Create: `skills/triton/triton-npu-optimize/scripts/optimize_workflow_state.py`
 - Create: `src/triton_agent/optimize/workflow_state.py`
 - Test: `tests/test_optimize_workflow_state.py`
 
@@ -661,7 +661,7 @@ Run:
 
 ```bash
 uv run python -m unittest tests.test_skill_command_script -v
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize/scripts/optimize_workflow_state.py
+bash scripts/run-skill-script-pyright.sh skills/triton/triton-npu-optimize/scripts/optimize_workflow_state.py
 bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-submit-baseline/scripts/optimize_submit_baseline.py
 bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round.py
 bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-start-round/scripts/optimize_start_round.py
@@ -1006,7 +1006,7 @@ Expected: PASS
 Run:
 
 ```bash
-bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize/scripts/optimize_workflow_state.py
+bash scripts/run-skill-script-pyright.sh skills/triton/triton-npu-optimize/scripts/optimize_workflow_state.py
 bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-submit-baseline/scripts/optimize_submit_baseline.py
 bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round.py
 bash scripts/run-skill-script-pyright.sh skills/triton-npu-optimize-start-round/scripts/optimize_start_round.py

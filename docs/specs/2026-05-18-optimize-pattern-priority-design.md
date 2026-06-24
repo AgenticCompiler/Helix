@@ -60,9 +60,9 @@ Priority only controls whether a pattern is also repeated in the dedicated high-
 
 ## Validation
 
-- Regenerate `skills/triton-npu-optimize-knowledge/references/pattern_index.md`.
+- Regenerate `skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md`.
 - Run the pattern-index generator with `--check` to confirm the checked-in file is current.
-- Run the file-scoped strict pyright check for `skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py`.
+- Run the file-scoped strict pyright check for `skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py`.
 
 ## Scope Boundaries
 

@@ -27,7 +27,7 @@ The real shared mechanism is broader:
 
 ## Required Documentation Changes
 
-- Rename `skills/triton-npu-optimize-knowledge/references/patterns/constexpr-tile-discrete-access.md` to `effective-extent-tiling.md`.
+- Rename `skills/triton/triton-npu-optimize-knowledge/references/patterns/constexpr-tile-discrete-access.md` to `effective-extent-tiling.md`.
 - Rewrite the card to keep:
   - the generic masked-tile rule
   - the copy-axis `next_power_of_2()` warning on Ascend

@@ -11,7 +11,7 @@ Remove duplicated baseline schema from the round submit contract, make path-bear
 - Any state field that represents a file or directory path must be written relative to the directory that contains that state JSON file.
 - Baseline and round checkers first resolve declared paths relative to the state file directory.
 - For compatibility with agent mistakes and older outputs, if a declared path does not exist there, the checker retries resolution relative to the operator workspace root before reporting a missing artifact.
-- `skills/triton-npu-optimize/references/artifacts.md` keeps the surrounding workflow guidance, but its baseline-state and round-state sections are regenerated from the two contract JSON files by a dedicated script.
+- `skills/triton/triton-npu-optimize/references/artifacts.md` keeps the surrounding workflow guidance, but its baseline-state and round-state sections are regenerated from the two contract JSON files by a dedicated script.
 
 ## Implementation Notes
 

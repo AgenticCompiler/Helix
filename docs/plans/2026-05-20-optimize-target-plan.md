@@ -24,7 +24,7 @@
 - Modify: `src/triton_agent/commands/comparison.py`
 - Modify: `src/triton_agent/optimize/session_artifacts.py`
 - Modify: `src/triton_agent/optimize/memory_file.py`
-- Modify: `skills/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `skills/triton-npu-optimize-submit-round/references/contract.json`
 - Modify: `skills/triton-npu-optimize-submit-round/scripts/optimize_submit_round_contract.py`
 - Modify: `skills/triton-npu-run-eval/scripts/perf_artifacts.py`
@@ -557,12 +557,12 @@ Expected: `PASS`
 ## Task 8: Update Skill And README Contracts
 
 **Files:**
-- Modify: `skills/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `README.md`
 
 - [ ] **Step 1: Update optimize skill guidance for explicit target modes**
 
-In `skills/triton-npu-optimize/SKILL.md`, revise the hard rules so they describe both modes:
+In `skills/triton/triton-npu-optimize/SKILL.md`, revise the hard rules so they describe both modes:
 
 - keep the kernel-focused wording as the default contract
 - add operator-target wording that allows whole-operator optimization work

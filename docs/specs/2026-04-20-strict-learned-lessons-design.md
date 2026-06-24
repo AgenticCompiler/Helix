@@ -26,8 +26,8 @@ The artifact must not receive ordinary round narrative. Round-local attempts, co
 
 Keep the change in the workflow contract and prompt layer:
 
-- Update `skills/triton-npu-optimize/SKILL.md` to define strict admission criteria and anti-examples.
-- Update `skills/triton-npu-optimize/references/artifacts.md` to describe the stricter artifact contract.
+- Update `skills/triton/triton-npu-optimize/SKILL.md` to define strict admission criteria and anti-examples.
+- Update `skills/triton/triton-npu-optimize/references/artifacts.md` to describe the stricter artifact contract.
 - Update optimize worker, unsupervised, and resume prompts in `src/triton_agent/prompts.py` so the rule is visible at execution time.
 - Update text contract tests so future edits keep the strict learned-lessons boundary intact.
 

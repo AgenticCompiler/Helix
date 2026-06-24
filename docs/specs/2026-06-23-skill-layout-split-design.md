@@ -293,11 +293,11 @@ As of this review, the live documentation audit finds four `SKILL.md` files with
 - `skills/triton-npu-gen-eval-suite/SKILL.md`
 - `skills/triton-npu-analyze-round-performance/SKILL.md`
 - `skills/triton-npu-profile-operator/SKILL.md`
-- `skills/triton-npu-optimize/SKILL.md`
+- `skills/triton/triton-npu-optimize/SKILL.md`
 
 There is also at least one current live reference document with the same pattern:
 
-- `skills/triton-npu-optimize/references/artifacts.md`
+- `skills/triton/triton-npu-optimize/references/artifacts.md`
 
 Those files should be updated as part of the rename-and-layout migration rather than left for a later doc-only cleanup.
 

@@ -103,11 +103,11 @@ class OptimizeCheckTests(unittest.TestCase):
         self.assertEqual(round_result.kind, "round")
         self.assertEqual(round_result.summary, "checked opt-round-1")
         mocked.assert_any_call(
-            "triton-npu-optimize-submit-baseline",
+            "ascend-npu-optimize-submit-baseline",
             "optimize_submit_baseline",
         )
         mocked.assert_any_call(
-            "triton-npu-optimize-submit-round",
+            "ascend-npu-optimize-submit-round",
             "optimize_submit_round",
         )
 
@@ -471,7 +471,7 @@ class OptimizeCheckTests(unittest.TestCase):
             self.assertIn("Round 2/4 in the current worker batch is complete.", result.summary)
             self.assertIn("Next round: opt-round-3.", result.summary)
             self.assertIn(
-                "Use the staged `triton-npu-optimize-start-round` skill to open opt-round-3 before beginning the next round.",
+                "Use the staged `ascend-npu-optimize-start-round` skill to open opt-round-3 before beginning the next round.",
                 result.summary,
             )
             self.assertNotIn("Do not rush into the next code change.", result.summary)

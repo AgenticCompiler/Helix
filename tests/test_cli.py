@@ -5196,10 +5196,10 @@ class PromptTests(unittest.TestCase):
         self.assertIn("This invocation is an audit and handoff pass", prompt)
         self.assertIn("Read `/tmp/opt-round-3`", prompt)
         self.assertIn("Use only existing `compare-perf` results", prompt)
-        self.assertIn("`triton-npu-prepare-optimize-baseline`", prompt)
-        self.assertIn("`triton-npu-optimize-submit-baseline`", prompt)
-        self.assertIn("`triton-npu-optimize-submit-round`", prompt)
-        self.assertIn("`triton-npu-optimize-start-round`", prompt)
+        self.assertIn("`ascend-npu-prepare-optimize-baseline`", prompt)
+        self.assertIn("`ascend-npu-optimize-submit-baseline`", prompt)
+        self.assertIn("`ascend-npu-optimize-submit-round`", prompt)
+        self.assertIn("`ascend-npu-optimize-start-round`", prompt)
         self.assertIn("Write `supervisor-report.md`", prompt)
         self.assertNotIn(".triton-agent/supervisor-report.md", prompt)
         self.assertIn("The CLI will read that supervisor report", prompt)
@@ -5277,7 +5277,7 @@ class PromptTests(unittest.TestCase):
             bench_mode="torch-npu-profiler",
             force_overwrite=False,
         )
-        self.assertIn("triton-npu-gen-eval-suite", prompt)
+        self.assertIn("ascend-npu-gen-eval-suite", prompt)
         self.assertIn("Requested test output: /tmp/differential_test_op.py", prompt)
         self.assertIn("Requested benchmark output: /tmp/bench_op.py", prompt)
         self.assertIn("may edit the original operator file directly", prompt)
@@ -5294,7 +5294,7 @@ class PromptTests(unittest.TestCase):
             bench_mode=None,
             force_overwrite=False,
         )
-        self.assertIn("triton-npu-gen-test", prompt)
+        self.assertIn("ascend-npu-gen-test", prompt)
         self.assertIn("primary workflow contract", prompt)
         self.assertIn("helper scripts or subcommands", prompt)
         self.assertIn("/tmp/op.py", prompt)
@@ -5463,7 +5463,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Only generate a new test when no suitable reusable test exists", prompt)
         self.assertIn("Do not modify the original input operator file.", prompt)
         self.assertIn("Read the original input operator file, but treat it as immutable source material and a correctness oracle only.", prompt)
-        self.assertNotIn("triton-npu-prepare-optimize-baseline", prompt)
+        self.assertNotIn("ascend-npu-prepare-optimize-baseline", prompt)
         self.assertIn("Requested output: /tmp/triton_op.py", prompt)
 
     def test_convert_prompt_mentions_standalone_validation_when_requested(self) -> None:

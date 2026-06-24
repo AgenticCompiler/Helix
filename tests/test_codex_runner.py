@@ -31,7 +31,7 @@ class CodexRunnerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )
@@ -85,7 +85,7 @@ class CodexRunnerTests(unittest.TestCase):
                 stream_output=True,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )
@@ -110,7 +110,7 @@ class CodexRunnerTests(unittest.TestCase):
                 stream_output=True,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )
@@ -287,7 +287,7 @@ class CodexRunnerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )
@@ -319,7 +319,7 @@ class CodexRunnerTests(unittest.TestCase):
                 stream_output=True,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )
@@ -344,7 +344,7 @@ class CodexRunnerTests(unittest.TestCase):
                 stream_output=True,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )
@@ -368,7 +368,7 @@ class CodexRunnerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
                 mcp_servers=("triton-agent-run-eval",),
@@ -456,7 +456,7 @@ class CodexRunnerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )
@@ -509,7 +509,7 @@ class CodexRunnerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )

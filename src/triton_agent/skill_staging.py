@@ -14,73 +14,78 @@ class StageRule:
 STAGE_RULES: dict[CommandKind, StageRule] = {
     CommandKind.GEN_EVAL: StageRule(
         directives=(
-            "+triton-npu-gen-eval-suite",
-            "+triton-npu-gen-test",
-            "+triton-npu-gen-bench",
-            "+triton-npu-run-eval",
+            "+ascend-npu-gen-eval-suite",
+            "+ascend-npu-gen-test",
+            "+ascend-npu-gen-bench",
+            "+ascend-npu-run-eval",
             "+triton-npu-repair-guide",
         ),
     ),
     CommandKind.GEN_TEST: StageRule(
         directives=(
-            "+triton-npu-gen-test",
-            "+triton-npu-run-eval",
+            "+ascend-npu-gen-test",
+            "+ascend-npu-run-eval",
             "+triton-npu-repair-guide",
         )
     ),
     CommandKind.GEN_BENCH: StageRule(
         directives=(
-            "+triton-npu-gen-bench",
-            "+triton-npu-run-eval",
+            "+ascend-npu-gen-bench",
+            "+ascend-npu-run-eval",
             "+triton-npu-repair-guide",
         ),
     ),
     CommandKind.CONVERT: StageRule(
         directives=(
             "+triton-npu-convert-pytorch-operator",
-            "+triton-npu-gen-test",
-            "+triton-npu-run-eval",
+            "+ascend-npu-gen-test",
+            "+ascend-npu-run-eval",
             "+triton-npu-repair-guide",
         ),
     ),
     CommandKind.LOG_CHECK: StageRule(
         directives=(
             "+triton-npu-optimize-knowledge",
-            "+triton-npu-optimize-submit-baseline",
-            "+triton-npu-optimize-submit-round",
+            "+ascend-npu-optimize-submit-baseline",
+            "+ascend-npu-optimize-submit-round",
         ),
     ),
     CommandKind.LOG_CHECK_BATCH: StageRule(
         directives=(
             "+triton-npu-optimize-knowledge",
-            "+triton-npu-optimize-submit-baseline",
-            "+triton-npu-optimize-submit-round",
+            "+ascend-npu-optimize-submit-baseline",
+            "+ascend-npu-optimize-submit-round",
         ),
     ),
     CommandKind.REPORT: StageRule(
         directives=(
-            "+triton-npu-report",
+            "+ascend-npu-report",
         ),
     ),
     CommandKind.OPTIMIZE: StageRule(
         directives=(
             "+triton-npu-optimize",
             "+triton-npu-optimize-knowledge",
-            "+triton-npu-prepare-optimize-baseline",
-            "+triton-npu-gen-test",
-            "+triton-npu-gen-bench",
-            "+triton-npu-run-eval",
-            "+triton-npu-optimize-submit-baseline",
-            "+triton-npu-optimize-submit-round",
-            "+triton-npu-optimize-start-round",
-            "+triton-npu-profile-operator",
-            "+triton-npu-analyze-round-performance",
-            "+triton-npu-analyze-ir",
+            "+ascend-npu-prepare-optimize-baseline",
+            "+ascend-npu-gen-test",
+            "+ascend-npu-gen-bench",
+            "+ascend-npu-run-eval",
+            "+ascend-npu-optimize-submit-baseline",
+            "+ascend-npu-optimize-submit-round",
+            "+ascend-npu-optimize-start-round",
+            "+ascend-npu-profile-operator",
+            "+ascend-npu-analyze-round-performance",
+            "+ascend-npu-analyze-ir",
             "+triton-npu-analyze-compiler-source",
             "+triton-npu-repair-guide",
         ),
     ),
     CommandKind.DIFF_SKILLS_UPDATE: StageRule(
+        directives=(
+            "+triton-npu-optimize-knowledge",
+        ),
+    ),
+    CommandKind.TRACE_ANALYZE: StageRule(
         directives=(
             "+triton-npu-optimize-knowledge",
         ),
@@ -155,8 +160,8 @@ def _resolve_skill_sources(
     enable_mcp: bool = False,
 ) -> dict[str, str] | None:
     sources: dict[str, str] = {}
-    if enable_mcp and staged_skill_names is not None and "triton-npu-run-eval" in staged_skill_names:
-        sources["triton-npu-run-eval"] = "triton-npu-run-eval-mcp"
+    if enable_mcp and staged_skill_names is not None and "ascend-npu-run-eval" in staged_skill_names:
+        sources["ascend-npu-run-eval"] = "ascend-npu-run-eval-mcp"
     if command_kind == CommandKind.OPTIMIZE and staged_skill_names is not None:
         if "triton-npu-optimize-knowledge" not in staged_skill_names:
             return sources or None

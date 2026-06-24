@@ -68,7 +68,7 @@ The card should preserve the most decision-relevant platform guidance:
 
 ## Validation
 
-- Regenerate `skills/triton-npu-optimize-knowledge/references/pattern_index.md`.
+- Regenerate `skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md`.
 - Run the pattern-index generator with `--check`.
 - Run the targeted optimize-pattern tool tests that verify checked-in index consistency.
 

@@ -129,9 +129,9 @@ This keeps later readers from inferring the round level solely from the presence
 
 Update these areas:
 
-- `skills/triton-npu-optimize/SKILL.md`
+- `skills/triton/triton-npu-optimize/SKILL.md`
 - `skills/triton-npu-analyze-round-performance/SKILL.md`
-- `skills/triton-npu-optimize/references/artifacts.md`
+- `skills/triton/triton-npu-optimize/references/artifacts.md`
 - optimize contract tests that read those files
 
 Prompt changes should stay small and only reinforce the same ownership language where useful.
