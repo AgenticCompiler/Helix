@@ -8,6 +8,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from triton_agent_upload_server.config import parse_args
+from triton_agent_upload_server.dedup import UploadGuard
 from triton_agent_upload_server.routes import create_router
 from triton_agent_upload_server.storage import UploadStorage
 
@@ -16,6 +17,11 @@ def create_app(
     storage_root: Path | None = None,
     temp_root: Path | None = None,
     max_upload_bytes: int = 536870912,
+    min_upload_bytes: int = 102400,
+    dedup_window_seconds: int = 900,
+    rate_limit_max_slugs: int = 3,
+    rate_limit_window_seconds: int = 30,
+    rate_limit_cooldown_seconds: int = 600,
 ) -> FastAPI:
     app = FastAPI(title="triton-agent-upload-server")
 
@@ -26,7 +32,13 @@ def create_app(
         storage_root=_storage_root,
         temp_root=_temp_root,
     )
-    router = create_router(storage=storage, max_upload_bytes=max_upload_bytes)
+    guard = UploadGuard(
+        dedup_window_seconds=dedup_window_seconds,
+        rate_limit_max_slugs=rate_limit_max_slugs,
+        rate_limit_window_seconds=rate_limit_window_seconds,
+        cooldown_seconds=rate_limit_cooldown_seconds,
+    )
+    router = create_router(storage=storage, max_upload_bytes=max_upload_bytes, min_upload_bytes=min_upload_bytes, guard=guard)
     app.include_router(router)
 
     return app
@@ -44,6 +56,11 @@ def main(argv: list[str] | None = None) -> int:
         storage_root=config.storage_root,
         temp_root=config.temp_root,
         max_upload_bytes=config.max_upload_bytes,
+        min_upload_bytes=config.min_upload_bytes,
+        dedup_window_seconds=config.dedup_window_seconds,
+        rate_limit_max_slugs=config.rate_limit_max_slugs,
+        rate_limit_window_seconds=config.rate_limit_window_seconds,
+        rate_limit_cooldown_seconds=config.rate_limit_cooldown_seconds,
     )
 
     uvicorn.run(
