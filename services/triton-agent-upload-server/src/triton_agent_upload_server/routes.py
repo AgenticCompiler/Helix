@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Request
 
 from triton_agent_upload_server.auth import authorize_request
+from triton_agent_upload_server.dedup import UploadGuard
 from triton_agent_upload_server.models import UploadReceipt
 from triton_agent_upload_server.naming import (
     build_archive_name,
@@ -17,7 +18,7 @@ from triton_agent_upload_server.storage import UploadStorage
 logger = logging.getLogger(__name__)
 
 
-def create_router(storage: UploadStorage, max_upload_bytes: int) -> APIRouter:
+def create_router(storage: UploadStorage, max_upload_bytes: int, guard: UploadGuard | None = None, min_upload_bytes: int = 102400) -> APIRouter:
     router = APIRouter()
 
     @router.get("/healthz")
@@ -44,6 +45,11 @@ def create_router(storage: UploadStorage, max_upload_bytes: int) -> APIRouter:
                 413, "Payload Too Large",
                 f"Upload exceeds maximum size of {max_upload_bytes} bytes",
             )
+        if content_length < min_upload_bytes:
+            return error_response(
+                400, "Bad Request",
+                f"Upload smaller than minimum size of {min_upload_bytes} bytes",
+            )
 
         try:
             header_data = validate_upload_headers(dict(request.headers))
@@ -63,6 +69,32 @@ def create_router(storage: UploadStorage, max_upload_bytes: int) -> APIRouter:
             header_data["workspace_slug"],
             header_data["upload_uid"],
         )
+
+        client_ip = _client_ip(request)
+        workspace_slug = header_data["workspace_slug"]
+
+        if guard is not None:
+            result = guard.check(client_ip, workspace_slug)
+            if result.rejected:
+                logger.warning(
+                    "Burst upload rejected: ip=%s slug=%s uid=%s",
+                    client_ip,
+                    workspace_slug,
+                    header_data["upload_uid"],
+                )
+                return error_response(
+                    429, "Too Many Requests",
+                    "Too many distinct uploads from this IP; temporarily banned",
+                )
+            if result.replace and result.old_archive_name is not None:
+                logger.info(
+                    "Dedup replacing old upload: ip=%s slug=%s old=%s new=%s",
+                    client_ip,
+                    workspace_slug,
+                    result.old_archive_name,
+                    archive_name,
+                )
+                storage.delete_upload(result.old_archive_name)
 
         receipt = UploadReceipt(
             upload_uid=header_data["upload_uid"],
@@ -96,6 +128,9 @@ def create_router(storage: UploadStorage, max_upload_bytes: int) -> APIRouter:
             archive_path,
         )
 
+        if guard is not None:
+            guard.record(client_ip, workspace_slug, archive_name)
+
         return success_response({
             "upload_uid": header_data["upload_uid"],
             "upload_timestamp": header_data["upload_timestamp"],
@@ -105,3 +140,9 @@ def create_router(storage: UploadStorage, max_upload_bytes: int) -> APIRouter:
         })
 
     return router
+
+
+def _client_ip(request: Request) -> str:
+    if request.client is not None:
+        return request.client.host
+    return "unknown"

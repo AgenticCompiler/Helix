@@ -8,6 +8,17 @@ from triton_agent.diff_skills_update.models import OperatorPair
 
 
 PATTERN_UPDATE_GUIDANCE = """Pattern update guidance:
+- **MANDATORY — `## Summary` and `## Use When` must be as concise as possible
+  while still providing enough signal for pattern retrieval.** These two
+  sections are indexable abstracts that later optimizer agents rely on to
+  find the right pattern. Include the key retrieval keywords, applicability
+  conditions, and symptom-to-pattern routing cues — but no more than needed.
+  Long reasoning, mechanism walkthroughs, multi-paragraph prose, and exhaustive
+  examples must never appear in `## Summary` or `## Use When`. Place supporting
+  detail, narrative explanation, code examples, benchmarks, and edge-case
+  discussion anywhere later in the card — in `## Signals`,
+  `## Avoid When`, `## What To Verify After Applying`, or
+  additional dedicated sections as needed.
 - Map changes to pattern cards semantically, not by keyword or cited filename alone.
 - Treat logs, summaries, attempts, and citations as evidence hints; confirm the
   actual mechanism from code structure, before/after diffs, correctness, and
@@ -21,17 +32,12 @@ PATTERN_UPDATE_GUIDANCE = """Pattern update guidance:
   agents: card identifier/title, `priority: high` placement, the first paragraph
   of `## Summary`, and bullet items under `## Use When`. Put the most important
   retrieval keywords, applicability conditions, and symptom-to-pattern routing
-  cues in `## Summary` and `## Use When`; details kept only in `## Avoid When`,
-  `## Signals`, or verification sections help readers after opening the card but
-  will not make the pattern easy to find from the index.
+  cues in `## Summary` and `## Use When`. Supporting detail belongs in later
+  sections of the card, not in the index-facing summary.
 - Preserve useful existing guidance unless the new evidence clearly supersedes
   it. Integrate successful cases, failures, anti-signals, and stop conditions.
 - Keep final card prose kernel-agnostic, self-contained, and free of round IDs or
-  artifact-path narration except for concise illustrative examples.
-- Keep `## Summary` and `## Use When` concise — they serve as an indexable
-  abstract, not a full explanation. Prefer short, direct bullets over long
-  paragraphs. Elaborate in `## Signals`, `## Avoid When`, or
-  `## What To Verify After Applying` when more detail is needed."""
+  artifact-path narration except for concise illustrative examples."""
 
 
 OPTIMIZE_WORKSPACE_LAYOUT = """## Optimize workspace file reference
