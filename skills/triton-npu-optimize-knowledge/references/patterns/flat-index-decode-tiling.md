@@ -91,7 +91,14 @@ Fast paths should be shape/permutation/stride guarded and benchmarked against th
 
 ### Choose tile sizes from stride locality and UB footprint
 
-Prefer widening dimensions with stride `1` or small stride first. Bound the total tile product by dtype, live tensors, masks, and temporary values. A useful heuristic is to grow one axis at a time while the UB estimate stays below budget, then choose `num_warps` from the resulting tile size.
+Follow this order strictly:
+
+1. **Start with the widest possible tile.** For each axis, prefer the full logical extent (e.g., the entire `half_dim`, the entire row width) before considering any split or loop. Do not pre-emptively shrink any axis based on assumed register pressure.
+2. **Estimate UB footprint after choosing the tile.** Count: dtype width × number of live tensors (loads + stores + intermediates + masks) × tile product. Compare against the target UB budget.
+3. **Shrink only if the estimate exceeds budget.** If step 2 shows the tile fits, use it as-is. Only if it exceeds budget, reduce the largest-stride axis first, then re-estimate. Do not reduce a stride-1 axis before exhausting all larger-stride axes.
+4. **Choose `num_warps` from the final tile size.**
+
+Do not skip step 1. Choosing a small tile without first attempting the widest tile and verifying the UB estimate is the most common failure mode for this pattern.
 
 ### Cap grid dimensions with grid-stride loops
 
