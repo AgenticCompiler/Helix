@@ -74,11 +74,11 @@ Optimize analysis is layered.
 ### pattern triage
 
 - Inspect current code structure and benchmark behavior before choosing a direction.
-- Use the sibling [`../triton-npu-optimize-knowledge/SKILL.md`](../triton-npu-optimize-knowledge/SKILL.md) as the generic optimize knowledge library.
-- When the optimize target is `operator`, also use the sibling [`../torch-npu-optimize-knowledge/SKILL.md`](../torch-npu-optimize-knowledge/SKILL.md) for Torch NPU and whole-operator pattern routing such as framework-op fallback, wrapper-level changes, or broader operator restructuring.
-- Read [`../triton-npu-optimize-knowledge/references/pattern_index.md`](../triton-npu-optimize-knowledge/references/pattern_index.md) before detailed pattern references.
-- Read only the one or two most relevant detailed pattern files under [`../triton-npu-optimize-knowledge/references/patterns/`](../triton-npu-optimize-knowledge/references/patterns/) after the generated index has narrowed the candidate set.
-- When the optimize target is `operator` and the bottleneck looks Torch NPU or framework-op specific, read [`../torch-npu-optimize-knowledge/references/pattern_index.md`](../torch-npu-optimize-knowledge/references/pattern_index.md) before detailed Torch NPU pattern references.
+- Use the staged `triton-npu-optimize-knowledge` skill as the generic optimize knowledge library.
+- When the optimize target is `operator`, also use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and whole-operator pattern routing such as framework-op fallback, wrapper-level changes, or broader operator restructuring.
+- Read the staged `triton-npu-optimize-knowledge` skill's `references/pattern_index.md` before detailed pattern references.
+- Read only the one or two most relevant detailed pattern files under the staged `triton-npu-optimize-knowledge` skill's `references/patterns/` directory after the generated index has narrowed the candidate set.
+- When the optimize target is `operator` and the bottleneck looks Torch NPU or framework-op specific, read the staged `torch-npu-optimize-knowledge` skill's `references/pattern_index.md` before detailed Torch NPU pattern references.
 - When code structure is still unclear at pattern triage, inspect the operator file directly and narrow candidates with the generated pattern index.
 - Do not leave the chosen pattern implicit in free-form prose; write it down explicitly in `attempts.md`, and carry the final named pattern direction into `summary.md` when it guided the round.
 - Very strongly consider using subagents to read pattern references, scan for potentially useful optimization ideas, and report back which patterns look promising for the current kernel.
@@ -86,7 +86,7 @@ Optimize analysis is layered.
 - Pattern references are helpful guidance, not the only allowed source of ideas.
 - If your own Triton, Ascend NPU, or kernel-optimization knowledge suggests a stronger direction than the current pattern library, you may use that direction directly as long as you still record the hypothesis clearly and validate it with the same correctness and benchmark gates.
 - You do not need an existing pattern file to justify every optimization round.
-- When the kernel is structurally matmul-like, read [`../triton-npu-optimize-knowledge/references/patterns/classic-matmul.md`](../triton-npu-optimize-knowledge/references/patterns/classic-matmul.md) before rewriting the hot loop so the round records the standard tiled-matmul shape, dtype, and masking rules explicitly.
+- When the kernel is structurally matmul-like, read the staged `triton-npu-optimize-knowledge` skill's `references/patterns/classic-matmul.md` before rewriting the hot loop so the round records the standard tiled-matmul shape, dtype, and masking rules explicitly.
 - Do not treat pattern triage as permission for aimless pattern search without tying the candidate patterns back to the kernel structure or observed evidence.
 
 ### profiling diagnosis
@@ -105,10 +105,10 @@ Optimize analysis is layered.
 - In that flow, use `ascend-npu-analyze-ir` as the IR evidence companion for capture, navigation, and stage-level inspection.
 - Use the sibling `ascend-npu-analyze-ir` skill when compiler lowering details, stage-to-stage IR changes, or round-local IR evidence are needed to explain benchmark behavior.
 - Keep IR evidence under `opt-round-N/ir/`.
-- In optimize rounds, keep IR capture round-local, for example:
-  ```bash
-  python3 ../ascend-npu-analyze-ir/scripts/capture_ir.py --ir-dir opt-round-N/ir --bench-file bench_<operator>.py --operator-file opt-round-N/<optimized-operator>.py
-  python3 ../ascend-npu-analyze-ir/scripts/inspect_ir.py list-stages --ir-dir opt-round-N/ir --sort-by interesting --limit 20
+- In optimize rounds, keep IR capture round-local. Use the `ascend-npu-analyze-ir` skill's helpers with argument shapes such as:
+  ```text
+  capture_ir.py --ir-dir opt-round-N/ir --bench-file bench_<operator>.py --operator-file opt-round-N/<optimized-operator>.py
+  inspect_ir.py list-stages --ir-dir opt-round-N/ir --sort-by interesting --limit 20
   ```
 
 ### compiler-source escalation

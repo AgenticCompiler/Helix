@@ -11,10 +11,12 @@ Profile Ascend NPU operators and summarize the resulting timing data.
 
 ### Profiling + summary (profile-bench)
 
-1. Profile benchmark harnesses through the unified ascend-npu-run-eval helper.
+1. Profile benchmark harnesses through the `ascend-npu-run-eval` skill's `profile-bench` helper.
+   - For the exact wrapper invocation, read that skill's `references/profile-bench.md`.
+   - The standard argument shape is:
 
-   ```bash
-   python3 ../ascend-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file matmul.py
+   ```text
+   profile-bench --bench-file bench_matmul.py --operator-file matmul.py
    ```
 
 2. The helper runs the profiler, copies back the generated local `PROF_*` directory, and prints a summary inline.
@@ -29,14 +31,14 @@ Profile Ascend NPU operators and summarize the resulting timing data.
 
 When the profiling data already exists (e.g. from a previous `profile-bench` run), use `profile-report` to generate a new summary without re-running the benchmark:
 
-```bash
-python3 ../ascend-npu-run-eval/scripts/run-command.py profile-report --profile-dir PROF_000001_.../ --target-op matmul_kernel
+```text
+profile-report --profile-dir PROF_000001_.../ --target-op matmul_kernel
 ```
 
 For round-analysis workflows that need structured signals, use JSON mode:
 
-```bash
-python3 ../ascend-npu-run-eval/scripts/run-command.py profile-report --profile-dir PROF_000001_.../ --target-op matmul_kernel --format json
+```text
+profile-report --profile-dir PROF_000001_.../ --target-op matmul_kernel --format json
 ```
 
 This is useful when you want to:
@@ -46,7 +48,7 @@ This is useful when you want to:
 
 ## Working rules
 
-- Prefer `python3 ../ascend-npu-run-eval/scripts/run-command.py profile-bench ...` for benchmark profiling, especially when the workflow is remote-aware.
+- Prefer the `ascend-npu-run-eval` skill's `profile-bench` helper for benchmark profiling, especially when the workflow is remote-aware.
 - profile one selected `--case-id <id>` case for both `torch-npu-profiler` and `msprof`; benchmark profiling must not receive `--bench` or `--num-bench`.
 - If the benchmark file declares exactly one case, the helper may auto-select it; otherwise provide `--case-id`.
 - If the benchmark metadata says `# bench-mode: msprof`, the selected case still requires resolvable `# kernels:` metadata in the benchmark header.
@@ -63,8 +65,8 @@ This is useful when you want to:
 
 - `torch-npu-profiler`
   - Use:
-    ```bash
-    python3 ../ascend-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py --case-id <id>
+    ```text
+    profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py --case-id <id>
     ```
   - Runtime command shape inside the helper:
     ```bash
@@ -75,8 +77,8 @@ This is useful when you want to:
 
 - `msprof`
   - Use:
-    ```bash
-    python3 ../ascend-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py --case-id <id>
+    ```text
+    profile-bench --bench-file bench_<operator>.py --operator-file <operator>.py --case-id <id>
     ```
   - Runtime command shape inside the helper:
     ```bash
@@ -131,28 +133,29 @@ This is useful when you want to:
 
 Profile a benchmark and summarize the hottest operator:
 
-```bash
-python3 ../ascend-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file matmul.py --case-id fp16_1024
+```text
+profile-bench --bench-file bench_matmul.py --operator-file matmul.py --case-id fp16_1024
 ```
 
 Profile a benchmark and summarize a known operator:
 
-```bash
-python3 ../ascend-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file matmul.py --case-id fp16_1024 --target-op MatMul
+```text
+profile-bench --bench-file bench_matmul.py --operator-file matmul.py --case-id fp16_1024 --target-op MatMul
 ```
 
 Profile one `msprof` benchmark case on a remote machine and keep the remote workspace:
 
-```bash
-python3 ../ascend-npu-run-eval/scripts/run-command.py profile-bench --bench-file bench_matmul.py --operator-file opt_matmul.py --case-id fp16_2048 --remote user@host:2222 --remote-workdir /tmp/triton-agent --keep-remote-workdir
+```text
+profile-bench --bench-file bench_matmul.py --operator-file opt_matmul.py --case-id fp16_2048 --remote user@host:2222 --remote-workdir /tmp/triton-agent --keep-remote-workdir
 ```
 
 Fallback manual profiling when you intentionally bypass the helper:
 
 ```bash
 msprof python3 bench_runtime.py run-one --bench-file bench_matmul.py --operator-file matmul.py --case-id fp16_1024
-python3 ../ascend-npu-run-eval/scripts/run-command.py profile-report --profile-dir PROF_000001_.../ --target-op MatMul
 ```
+
+Then re-summarize the copied-back profile through the `ascend-npu-run-eval` skill's `profile-report` helper, for example `profile-report --profile-dir PROF_000001_.../ --target-op MatMul`.
 
 Inspect a raw profiler binary block:
 

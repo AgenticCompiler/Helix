@@ -78,7 +78,7 @@ Capture complete Triton Ascend compiler IR into a stable archive directory, then
    - Use `diff-stages` to identify which pass introduced a suspicious structural change.
    - Once the search space is small enough, inspect the raw `.mlir` files directly with terminal tools such as `rg`, `sed`, or `diff` to trace specific ops, symbols, attributes, or layout details.
 
-5. If the user also needs hotspot evidence or operator timing attribution, use [`../ascend-npu-profile-operator/SKILL.md`](../ascend-npu-profile-operator/SKILL.md) as a companion skill.
+5. If the user also needs hotspot evidence or operator timing attribution, use the `ascend-npu-profile-operator` skill as a companion skill.
    - Use this pairing when IR suggests a likely bottleneck but you still need runtime evidence to confirm where time is spent.
    - Use this pairing when profiling already identified a hot operator and you want the IR archive to explain why that hotspot exists.
 

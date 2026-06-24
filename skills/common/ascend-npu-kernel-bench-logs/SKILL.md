@@ -79,7 +79,7 @@ The bench export root is the directory that **directly contains** the operator w
 
 ### 1) Build the relevant kernel inventory
 
-- Scope kernels with optimization records (`opt-note.md` plus `opt-round-*`) and map **every** round **semantically** against `../triton-npu-optimize-knowledge/references/pattern_index.md` (not keyword matching). The staging system maps both v2 and v3 source trees to the same `triton-npu-optimize-knowledge` logical skill name — always target that staged skill for pattern index reads.
+- Scope kernels with optimization records (`opt-note.md` plus `opt-round-*`) and map **every** round **semantically** against the staged `triton-npu-optimize-knowledge` skill's `references/pattern_index.md` (not keyword matching). The staging system maps both v2 and v3 source trees to the same `triton-npu-optimize-knowledge` logical skill name — always target that staged skill for pattern index reads.
 - **`attempts.md` citations are optional evidence, not the mapping source of truth.** Rounds that cite no pattern file, cite only `pattern_index.md`, or cite a misleading legacy slug must still be matched by reading the round hypothesis, code diff, and perf/profile outcome against the **full** index and detailed cards. Absence of a citation does **not** mean “skip pattern bookkeeping.”
 - **If no existing pattern’s `## Summary` / `## Use When` is an honest semantic fit** for a round or operator theme after reading the index and the strongest candidate cards, **add a new card** under `references/patterns/<new-slug>.md` in the same knowledge tree (follow `docs/notes/2026-04-29-optimize-pattern-card-authoring.md`), then **register it in `references/pattern_index.md`** for that tree (manual index rules in **§5** below apply to staged knowledge skill indices—do not leave new cards undiscoverable).
 - **Keep the per-card checklist on every touched pattern card for the whole mapping phase.** As soon as a kernel round maps to a card, ensure that card has (or gains) a temporary section with this exact shape:
@@ -92,7 +92,7 @@ The bench export root is the directory that **directly contains** the operator w
 ### 2) Write round narratives on pattern cards
 
 - **Operator order (mandatory):** When choosing which kernels to narrate in each batch, follow **`{bench_export_root}/PATTERN_AND_LOG_SYNC_PROGRESS.md` from the first operator row downward** through the table as printed (do **not** infer ordering from directory name prefixes). Take the **next** operator that still needs narrative coverage for the active knowledge tree—**do not** skip to later rows while earlier rows with **`Pattern card follow-up: todo`** are still incomplete for narratives, **unless the user explicitly names a different subset or ordering.**
-- For each mapped round, append an **expanded narrative** to the **one primary** pattern card under the active staged knowledge skill (`../triton-npu-optimize-knowledge/references/patterns/`, which the staging system maps from whichever v2/v3 source tree is the target).
+- For each mapped round, append an **expanded narrative** to the **one primary** pattern card under the active staged `triton-npu-optimize-knowledge` skill's `references/patterns/` directory.
 - **One primary pattern per ledger round (mandatory):** Pick a **single** best semantic home for each `opt-round-*` narrative. Do **not** paste the same round as a full five-field block on multiple pattern cards. You may add a **one-line cross-reference** in `Interpretation` (for example “see **`tiling`** for this round”) when a second pattern lens is informative.
 - **Compress consecutive same-pattern rounds (optional but encouraged):** When **several consecutive** ledger rounds for the same operator map to the **same** primary pattern and tell one sweep story (for example a tuple ladder or repeated “bounded config retuning”), merge them into **one** five-field block titled `#### Rounds a–b (...)` (or similar). The five fields must still be present at **merged** granularity: **`Kernel / round / parent`** should name the operator and round span; **`Pre-change scenario` / `Change` / `Evidence` / `Interpretation`** should summarize the sweep and point to `opt-note.md` plus one or two representative `opt-round-*/attempts.md` paths—do not require readers to open every round file.
 - **Mandatory five-field template (every narrated round or merged span):**
@@ -158,11 +158,11 @@ The bench export root is the directory that **directly contains** the operator w
   - If any substantive content is missing and not clearly invalidated by round evidence, restore it before marking the card done.
 - If unsure about style/shape, compare representative cards:
   - pre-synthesis style: the original `triton-npu-optimize-knowledge` skill's pattern cards (staged flat alongside this skill)
-  - post-synthesis style: the pattern cards you are actively editing in this workflow (same staged skill, `../triton-npu-optimize-knowledge/references/patterns/`)
+  - post-synthesis style: the pattern cards you are actively editing in this workflow under the staged `triton-npu-optimize-knowledge` skill's `references/patterns/` directory
 
 ### 5) Rewrite `pattern_index.md` manually after full synthesis
 
-- After synthesis is complete for all targeted pattern cards, rewrite `pattern_index.md` under the staged knowledge skill (`../triton-npu-optimize-knowledge/references/pattern_index.md`) as a human-authored quick-match index.
+- After synthesis is complete for all targeted pattern cards, rewrite the staged `triton-npu-optimize-knowledge` skill's `references/pattern_index.md` as a human-authored quick-match index.
 - Format requirements:
   - one **second-level markdown header** (`##`) per pattern slug,
   - inside each pattern section, write a short **4-5 line** summary of key points, with strongest emphasis on **when the pattern should be used**,
