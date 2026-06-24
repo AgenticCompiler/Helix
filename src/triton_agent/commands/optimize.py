@@ -163,6 +163,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
     return OptimizeRunOptions(
         agent_name=args.agent,
         interact=interact,
+        language=getattr(args, "language", "triton"),
         verbose=bool(getattr(args, "verbose", False)),
         stream_output=bool(getattr(args, "stream_output", True)),
         remote=getattr(args, "remote", None),

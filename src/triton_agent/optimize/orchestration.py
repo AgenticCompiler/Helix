@@ -8,7 +8,7 @@ from typing import TextIO
 from triton_agent.backends.factory import create_runner
 
 from triton_agent.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
-from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
+from triton_agent.models import AgentRequest, AgentResult, CommandKind, command_to_skill
 from triton_agent.optimize import execution as optimize_execution
 from triton_agent.optimize.compiler_source import prepare_compiler_source
 from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsManager
@@ -75,6 +75,7 @@ def build_optimize_request(
         )
     staged_skill_names, staged_skill_sources = resolve_staged_skills(
         CommandKind.OPTIMIZE,
+        language=options.language,
         optimize_knowledge=options.optimize_knowledge,
         optimize_target=options.optimize_target,
         enable_cann_ext_api=options.enable_cann_ext_api,
@@ -92,12 +93,13 @@ def build_optimize_request(
         output_path=output_path,
         test_mode=test_mode,
         bench_mode=bench_mode,
+        language=options.language,
         interact=options.interact,
         verbose=options.verbose,
         stream_output=options.stream_output,
         force_overwrite=False,
         agent_name=options.agent_name,
-        skill_name=COMMAND_TO_SKILL[CommandKind.OPTIMIZE],
+        skill_name=command_to_skill(CommandKind.OPTIMIZE, language=options.language),
         prompt="",
         workdir=workdir,
         remote=options.remote,
@@ -137,6 +139,7 @@ def run_optimize_request(
         request.workdir,
         skill_names=request.staged_skill_names,
         skill_sources=request.staged_skill_sources,
+        language=request.language,
     )
     verbose_stream = stderr or sys.stderr
     if request.verbose:

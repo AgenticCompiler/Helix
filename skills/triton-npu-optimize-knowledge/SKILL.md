@@ -15,7 +15,7 @@ This skill is the generic optimize knowledge library for reusable pattern and sy
 - This skill does not define optimize workflow behavior.
 - This skill does not own `opt-round-N/perf-analysis.md`, `attempts.md`, `summary.md`, or `opt-note.md`.
 - `triton-npu-optimize` owns optimize workflow and validation rules.
-- `triton-npu-analyze-round-performance` owns round-level performance diagnosis.
+- `npu-analyze-round-performance` owns round-level performance diagnosis.
 
 ## Reading Order
 

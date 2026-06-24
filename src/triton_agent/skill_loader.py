@@ -25,11 +25,11 @@ def skill_script_path(skill_name: str, script_name: str) -> Path:
 
 
 def operator_eval_skill_root() -> Path:
-    return skill_script_root("triton-npu-run-eval")
+    return skill_script_root("npu-run-eval")
 
 
 def operator_eval_script_path(script_name: str) -> Path:
-    return skill_script_path("triton-npu-run-eval", script_name)
+    return skill_script_path("npu-run-eval", script_name)
 
 
 @lru_cache(maxsize=None)
@@ -60,4 +60,4 @@ def load_skill_script_module(skill_name: str, script_name: str) -> ModuleType:
 
 
 def load_operator_eval_script_module(script_name: str) -> ModuleType:
-    return load_skill_script_module("triton-npu-run-eval", script_name)
+    return load_skill_script_module("npu-run-eval", script_name)

@@ -55,6 +55,7 @@ def _request_optimize_knowledge_skill_name(request: AgentRequest) -> str | None:
     return resolve_generic_optimize_knowledge_skill_name(
         request.staged_skill_names,
         request.staged_skill_sources,
+        language=request.language,
     )
 
 
@@ -94,7 +95,7 @@ def _round_sort_key(name: str) -> tuple[int, str]:
 
 def _iter_completed_round_dirs(workdir: Path) -> tuple[Path, ...]:
     module = load_skill_script_module(
-        "triton-npu-optimize-submit-round",
+        "npu-optimize-submit-round",
         "optimize_submit_round",
     )
     return tuple(cast(tuple[Path, ...], module.iter_completed_round_directories(workdir)))
@@ -154,6 +155,7 @@ def execute_multi_invocation_optimize(
             agent_name=request.agent_name,
             enable_agent_hooks=request.enable_agent_hooks,
             source_operator_path=request.input_path,
+            language=request.language,
             optimize_target=request.optimize_target,
             compiler_source_path=request.compiler_source_path,
             compiler_source_commit=request.compiler_source_commit,
@@ -170,6 +172,7 @@ def execute_multi_invocation_optimize(
             agent_name=request.agent_name,
             enable_agent_hooks=request.enable_agent_hooks,
             source_operator_path=request.input_path,
+            language=request.language,
             optimize_target=request.optimize_target,
             compiler_source_path=request.compiler_source_path,
             compiler_source_commit=request.compiler_source_commit,
@@ -297,6 +300,7 @@ class MultiInvocationOptimizeController:
             prompt=build_optimize_baseline_prompt(
                 request.input_path,
                 request.output_path,
+                language=request.language,
                 test_mode=request.test_mode,
                 bench_mode=request.bench_mode,
                 target_chip=request.target_chip,
@@ -540,6 +544,7 @@ class MultiInvocationOptimizeController:
             request,
             prompt=build_optimize_supervisor_prompt(
                 request.workdir,
+                language=request.language,
                 latest_round_dir=latest_round_dir,
                 optimize_target=request.optimize_target,
                 cli_followup_summary=batch_round_summary,
@@ -547,7 +552,7 @@ class MultiInvocationOptimizeController:
                     self._artifacts_state.workflow_state_path
                 ),
             ),
-            skill_name="triton-npu-optimize",
+            skill_name=f"{request.language}-npu-optimize",
             interact=False,
             disable_backend_retry=False,
             progress_probe=None,
@@ -672,6 +677,7 @@ class MultiInvocationOptimizeController:
                 round_mode=cast(Any, request.round_mode),
                 target_chip=request.target_chip,
                 optimize_target=request.optimize_target,
+                language=request.language,
                 compiler_source_path=request.compiler_source_path,
                 compiler_source_commit=request.compiler_source_commit,
                 enable_cann_ext_api=_request_enables_cann_ext_api(request),
