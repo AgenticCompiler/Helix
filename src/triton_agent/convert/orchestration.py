@@ -26,7 +26,7 @@ def build_convert_request(
     workdir: Path,
     options: ConvertOptions,
 ) -> AgentRequest:
-    output_path = resolve_convert_output_path(input_path, explicit_output=options.output)
+    output_path = resolve_convert_output_path(input_path, explicit_output=options.output, language=options.language)
     staged_skill_names, staged_skill_sources = resolve_staged_skills(
         CommandKind.CONVERT,
         language=options.language,
