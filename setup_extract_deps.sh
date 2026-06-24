@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="https://gitcode.com/ssq0404/BitfunProfilingTool.git"
+REPO_URL="git@gitcode.com:ssq0404/BitfunProfilingTool.git"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TARGET_DIR="${SCRIPT_DIR}/skills/triton-npu-run-eval/scripts"
 
