@@ -25,7 +25,7 @@ Accept any of these as SIMT-in-use evidence:
 - The current optimize round is applying **`a5-force-simt-only-discrete-access`** and SIMT-only launch is already enabled and compiling successfully.
 - The user explicitly states the kernel runs on a **SIMT-only** discrete-access path.
 
-If SIMT is not already in use, route to **`a5-force-simt-only-discrete-access`** first; do not expect the same benefit on non-SIMT launches.
+If SIMT is not already in use, route to **`a5-force-simt-only-discrete-access`** first; for non-SIMT slab paths, apply as a follow-on after `sliding-window-inner-w-slab-gather` (see its §6a).
 
 ## Structural Repair Precedence
 
@@ -33,7 +33,7 @@ If SIMT is not already in use, route to **`a5-force-simt-only-discrete-access`**
 2. **Launch mode**: A5 scalar/index dominated → `a5-force-simt-only-discrete-access`.
 3. **Dispatch / inner routing**: `a5-simt-sliding-window-tuning` — single launch, flat/row×col, interior path, mask vs clip by semantics and stack_pressure.
 4. **Inner structure (this card)**: **closed normalizer** — clip bounds + closed-form volume; no per-tap counting.
-5. **Inner-W slab**: `sliding-window-inner-w-slab-gather` on **non-SIMT** paths only when profile proves slab+gather wins.
+5. **Inner-W slab**: `sliding-window-inner-w-slab-gather` on **non-SIMT** paths — apply slab-gather first, then layer closed-form reduction as a follow-on per its §6a. On SIMT paths, prioritize `a5-simt-sliding-window-tuning`.
 
 Closed-form divisor is **related to but not the same as** generic loop-invariant hoisting (`loop-invariant-hoisting`): hoisting moves unchanged expressions out of a loop, while this pattern **replaces an O(window_volume) accumulation** (`valid_count += 1`) with an **O(1) algebraic formula** derived from the same clip bounds used for loads.
 
@@ -49,7 +49,7 @@ Closed-form divisor is **related to but not the same as** generic loop-invariant
 ## Avoid When
 
 - **SIMT is not enabled yet** — apply `a5-force-simt-only-discrete-access` first on A5 instead of using this pattern as a pre-SIMT cleanup.
-- The kernel is on an **HIVM W-slab** or other non-SIMT compile path where `force_simt_only` is off or incompatible.
+- The kernel is on an **HIVM W-slab** or other non-SIMT compile path — apply `sliding-window-inner-w-slab-gather` first, then layer closed-form reduction on the slab kernel as a follow-on optimization (see sliding-window-inner-w-slab-gather §6a).
 - Indices are value-dependent or the window is not a fixed affine span (true gather/scatter with irregular offsets).
 - The kernel is already dominated by Cube/matmul work; scalar window bookkeeping is not the bottleneck.
 - **Include-pad normalizer** is required — use coordinate-mask + one-shot normalizer (`a5-simt-sliding-window-tuning` §4) unless harness A/B proves clip wins.
@@ -216,7 +216,7 @@ for kd in range(KERNEL_D):
 - Applying clip for **heavy compare + half pad** without geomean proof — often loses to coordinate mask on A5 SIMT.
 - Applying only closed-form divisor but leaving kernel-index + `valid_*` loops — partial gain only.
 - Assuming clip-window removes all masks on **border outputs**; edge lanes still need `kd < d_len` guards.
-- Applying this pattern on a **non-SIMT** launch or replacing the SIMT path with W-slab without measurement — may regress or conflict on compile path (HIVM slab vs SIMT-only).
+- Applying this pattern on a **non-SIMT** launch — for HIVM slab paths, apply as a slab-gather follow-on (§6a of `sliding-window-inner-w-slab-gather`). For other non-SIMT paths, measure before assuming benefit.
 - Nested `@triton.jit` helpers that use unsupported APIs (`tl.zeros_like(..., dtype=...)`) on Ascend.
 
 ## What To Verify After Applying
@@ -235,7 +235,7 @@ for kd in range(KERNEL_D):
 - `loop-invariant-hoisting` — hoist `x_base`, masks, and bounds; closed-form divisor is algebraic LICM plus counting elimination
 - `a5-force-simt-only-discrete-access` — **required predecessor** on A5: enable and validate SIMT-only launch before inner-window repair
 - `a5-simt-sliding-window-tuning` — dispatch, interior path, mask vs clip routing
-- `sliding-window-inner-w-slab-gather` — inner-W slab on **non-SIMT** paths
+- `sliding-window-inner-w-slab-gather` — inner-W slab; closed-form reduction can layer on slab paths as §6a follow-on
 - `exact-tile-no-boundary-fast-path` — drop `d_ok/h_ok/w_ok` when tile is fully interior
 - `scalar-latency-traps` — remove redundant `safe_*`, narrow masks, and unsupported APIs
 - `algebraic-optimization` — closed-form divisor is an algebraic replacement for incremental counting

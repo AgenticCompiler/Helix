@@ -645,6 +645,7 @@ tl.store(y_ptr + offsets, out)
 
 - `discrete_memory_access`
 - `block-pointer-dimensionality`
+- `sliding-window-inner-w-slab-gather` — the primary repair for sliding-window (pooling) kernels when Cat 5 fires: contiguous W-slab load + gather replaces per-kw per-lane scattered loads, enabling MTE2→VECTOR data path
 
 ### Worked Example
 
