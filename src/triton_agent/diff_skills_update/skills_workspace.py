@@ -10,18 +10,19 @@ from pathlib import Path
 from triton_agent.resources import skills_root
 
 
-KNOWLEDGE_SKILL_NAME = "triton-npu-optimize-knowledge"
+def knowledge_skill_name(language: str = "triton") -> str:
+    return f"{language}-npu-optimize-knowledge"
 
-
-def ensure_skills_workspace(skills_dir: Path) -> Path:
+def ensure_skills_workspace(skills_dir: Path, language: str = "triton") -> Path:
+    skill_name = knowledge_skill_name(language)
     skills_dir.mkdir(parents=True, exist_ok=True)
-    knowledge_dir = skills_dir / KNOWLEDGE_SKILL_NAME
+    knowledge_dir = skills_dir / skill_name
     if knowledge_dir.exists():
         if not knowledge_dir.is_dir():
             raise ValueError(f"Skills workspace entry is not a directory: {knowledge_dir}")
         return knowledge_dir
 
-    bundled = skills_root() / KNOWLEDGE_SKILL_NAME
+    bundled = skills_root() / skill_name
     if not bundled.is_dir():
         raise ValueError(f"Bundled knowledge skill does not exist: {bundled}")
     shutil.copytree(bundled, knowledge_dir, symlinks=False)
@@ -48,10 +49,10 @@ def regenerate_pattern_index(knowledge_dir: Path) -> None:
     )
 
 
-def promote_converged_knowledge_workspace(source_knowledge_dir: Path) -> Path:
+def promote_converged_knowledge_workspace(source_knowledge_dir: Path, language: str = "triton") -> Path:
     if not source_knowledge_dir.is_dir():
         raise ValueError(f"Converged knowledge skill does not exist: {source_knowledge_dir}")
-    destination = skills_root() / KNOWLEDGE_SKILL_NAME
+    destination = skills_root() / knowledge_skill_name(language)
     if source_knowledge_dir.resolve() != destination.resolve():
         destination.parent.mkdir(parents=True, exist_ok=True)
         _remove_existing_path(destination)
@@ -97,6 +98,7 @@ def export_changed_patterns(
     source_knowledge_dir: Path,
     update_skills_dir: Path,
     *,
+    language: str = "triton",
     pattern_snapshot: dict[str, str],
     updated_pattern_names: list[str] | None = None,
 ) -> list[str]:
@@ -108,7 +110,7 @@ def export_changed_patterns(
     if not changed_paths:
         return []
 
-    dest_knowledge = update_skills_dir / KNOWLEDGE_SKILL_NAME
+    dest_knowledge = update_skills_dir / knowledge_skill_name(language)
     dest_patterns = dest_knowledge / "references" / "patterns"
     dest_patterns.mkdir(parents=True, exist_ok=True)
     _ensure_index_scripts(source_knowledge_dir, dest_knowledge)

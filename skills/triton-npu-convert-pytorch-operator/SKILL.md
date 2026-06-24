@@ -43,9 +43,9 @@ Use this skill when the user wants a new converted operator artifact instead of 
 
 1. If a suitable test already exists in the operator workspace, reuse it. This includes existing standalone and differential test cases when they already cover the operator workspace.
 2. Do not create a new test when an existing suitable test can be reused unless the user explicitly asks to regenerate it.
-3. When no suitable reusable test exists, use `triton-npu-gen-test` to generate a test for the converted output.
+3. When no suitable reusable test exists, use `npu-gen-test` to generate a test for the converted output.
 4. Use the original input operator as the reference implementation when the requested mode is differential, and use the converted output as the system under test in all cases.
-5. Use `triton-npu-run-eval` to execute validation — run the appropriate validation command (`run-test-optimize` for differential mode, `run-test-baseline` for standalone mode) as prescribed by the skill. The command output must contain `PASS:` for validation to be considered successful. See "Validation Enforcement Rules" below for the complete set of mandatory validation constraints.
+5. Use `npu-run-eval` to execute validation — run the appropriate validation command (`run-test-optimize` for differential mode, `run-test-baseline` for standalone mode) as prescribed by the skill. The command output must contain `PASS:` for validation to be considered successful. See "Validation Enforcement Rules" below for the complete set of mandatory validation constraints.
 6. If the converted output hits Triton compile, JIT, launch, or kernel-structure errors, use `triton-npu-repair-guide` for operator-side repair heuristics and then re-run validation.
 
 ## Validation Enforcement Rules
@@ -54,7 +54,7 @@ Correctness validation is **not advisory** — it is the final gate before conve
 
 ### Mandatory Validation Commands
 
-You MUST use the validation commands prescribed by the `triton-npu-run-eval` skill:
+You MUST use the validation commands prescribed by the `npu-run-eval` skill:
 
 - **Differential mode**: `run-command.py run-test-optimize` with `--baseline-operator-file <original>`
 - **Standalone mode**: `run-command.py run-test-baseline`
@@ -237,7 +237,7 @@ class ModelNew(nn.Module):
 - Do not create input-validation helpers (e.g., `_validate_index`, `_check_bounds`, `_assert_indices`, or similarly-named functions) that scan tensor data. Specifically, never call `.min().item()`, `.max().item()`, `.sum().item()`, or any reduction followed by `.item()` on GPU/NPU tensors before launching a kernel. These force a full-tensor GPU→CPU synchronization on every forward call. The converted operator inherits the same input contract as the original PyTorch operator — if the caller passes out-of-bounds indices, that is a caller bug, not something the conversion must guard against.
 - Do not submit a pure PyTorch rewrite as the converted result, even when the wrapper signature or standalone or differential outputs still look correct.
 - Do not write your own comparison script (e.g., `python3 -c "import torch; ..."`) to compare result `.pt` files or operator outputs.
-- Do not use `torch.allclose`, `torch.testing.assert_close`, `torch.equal`, or any other numerical comparison function with custom tolerances to validate conversion correctness — always use `run-test-optimize` or `run-test-baseline` from the `triton-npu-run-eval` skill.
+- Do not use `torch.allclose`, `torch.testing.assert_close`, `torch.equal`, or any other numerical comparison function with custom tolerances to validate conversion correctness — always use `run-test-optimize` or `run-test-baseline` from the `npu-run-eval` skill.
 - Do not self-declare the conversion as "PASS" based on your own tolerance analysis — only the printed output of `run-test-optimize` or `run-test-baseline` determines success.
 - Do not run differential test files directly with `python3` — always use `run-command.py run-test-optimize` or `run-command.py run-test-baseline`.
 - Do not save custom `.pt` files (e.g., `REFERENCE_RESULT.pt`, `COMPARE_RESULT.pt`) for manual comparison — this may interfere with the CLI validation loop's result caching.

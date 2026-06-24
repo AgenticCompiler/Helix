@@ -27,6 +27,7 @@ class OptimizeRunOptions:
     interact: bool
     verbose: bool
     stream_output: bool
+    language: Literal["triton", "tilelang"]
     remote: str | None
     remote_workdir: str | None
     min_rounds: int

@@ -7,10 +7,10 @@ from typing import cast
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 BASELINE_CONTRACT_PATH = (
-    SKILL_ROOT.parent / "triton-npu-optimize-submit-baseline" / "references" / "contract.json"
+    SKILL_ROOT.parent / "npu-optimize-submit-baseline" / "references" / "contract.json"
 )
 ROUND_CONTRACT_PATH = (
-    SKILL_ROOT.parent / "triton-npu-optimize-submit-round" / "references" / "contract.json"
+    SKILL_ROOT.parent / "npu-optimize-submit-round" / "references" / "contract.json"
 )
 ARTIFACTS_PATH = SKILL_ROOT / "references" / "artifacts.md"
 

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, TextIO, cast
 
 from triton_agent.backends.factory import create_runner
-from triton_agent.diff_skills_update.skills_workspace import KNOWLEDGE_SKILL_NAME
+from triton_agent.diff_skills_update.skills_workspace import knowledge_skill_name
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.skills import SkillLinkManager
 from triton_agent.verbose import emit_verbose_lines
@@ -18,6 +18,7 @@ def run_diff_skills_agent(
     prompt: str,
     stream_output: bool,
     verbose: bool,
+    language: str = "triton",
     skills_root: Path | None = None,
     output_label: str = "",
     stdout: TextIO | None = None,
@@ -31,6 +32,7 @@ def run_diff_skills_agent(
         output_path=None,
         test_mode=None,
         bench_mode=None,
+        language=language,
         interact=False,
         verbose=verbose,
         stream_output=stream_output,
@@ -49,7 +51,8 @@ def run_diff_skills_agent(
     links = manager.prepare_skills(
         agent_name,
         workdir,
-        skill_names=(KNOWLEDGE_SKILL_NAME,),
+        skill_names=(knowledge_skill_name(language),),
+        language=language,
     )
     verbose_stream = stderr or sys.stderr
     if verbose:

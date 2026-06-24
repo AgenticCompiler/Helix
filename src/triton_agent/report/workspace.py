@@ -38,7 +38,7 @@ def append_report_instructions(prompt: str, workspace: Path, hardware_info: str 
         f"{hw_section}"
         f"Your working directory is the operator workspace:\n\n"
         f"  {workspace.as_posix()}\n\n"
-        f"Read the local skill `triton-npu-report` from the workspace skills directory "
+        f"Read the local skill `npu-report` from the workspace skills directory "
         f"as the primary workflow contract. Follow its steps to read the workspace "
         f"artifacts (opt-note.md, opt-round-*/summary.md, operator source, "
         f"round-state.json, etc.) and generate report.md in this directory.\n\n"
@@ -69,7 +69,7 @@ def build_report_request(
         stream_output=show_output,
         force_overwrite=False,
         agent_name=agent_name,
-        skill_name="triton-npu-report",
+        skill_name="npu-report",
         prompt=prompt,
         workdir=workspace,
         no_agent_session=True,
