@@ -138,6 +138,37 @@ class OptimizeRuntimeTests(unittest.TestCase):
 
             self.assertEqual(after, before)
 
+    def test_optimize_recovery_scan_tolerates_transient_non_progress_directory_disappearing(self) -> None:
+        recovery = importlib.import_module("triton_agent.optimize.recovery")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "opt-note.md").write_text("note\n", encoding="utf-8")
+            round_dir = workspace / "opt-round-1"
+            round_dir.mkdir()
+            (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
+            disappearing_path = workspace / "kernel_meta"
+
+            real_rglob = Path.rglob
+
+            def fake_rglob(self: Path, pattern: str):  # type: ignore[no-untyped-def]
+                if self == workspace and pattern == "*":
+                    def generator():
+                        yield workspace / "opt-note.md"
+                        yield round_dir / "summary.md"
+                        raise FileNotFoundError(str(disappearing_path))
+
+                    return generator()
+                return real_rglob(self, pattern)
+
+            with patch("pathlib.Path.rglob", new=fake_rglob):
+                snapshot = recovery.scan_optimize_progress(workspace)
+
+            self.assertEqual(
+                tuple(path for path, _size, _mtime in snapshot.file_fingerprints),
+                ("opt-note.md", "opt-round-1/summary.md"),
+            )
+
     def test_optimize_recovery_compute_range_progress_is_range_local(self) -> None:
         recovery = importlib.import_module("triton_agent.optimize.recovery")
 
