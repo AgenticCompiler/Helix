@@ -645,6 +645,7 @@ tl.store(y_ptr + offsets, out)
 
 - `discrete_memory_access`
 - `block-pointer-dimensionality`
+- `sliding-window-inner-w-slab-gather`
 
 ### Worked Example
 
