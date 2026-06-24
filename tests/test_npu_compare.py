@@ -1,9 +1,65 @@
 import unittest
+from unittest.mock import patch
 
 from tests.run_skill_test_utils import load_npu_compare_module
 
 
 class NpuCompareTests(unittest.TestCase):
+    def test_compare_case_result_non_compute_avoids_python_storage_byte_materialization(self) -> None:
+        module = load_npu_compare_module()
+        import torch
+
+        actual = torch.tensor([1.0, 2.0], dtype=torch.float32)
+        golden = actual.clone()
+
+        with patch.object(
+            torch.storage.UntypedStorage,
+            "__iter__",
+            side_effect=AssertionError("non-compute compare should not iterate storage in Python"),
+        ):
+            result = module.compare_case_result(
+                case_id="case-non-compute-no-python-bytes",
+                actual=actual,
+                golden=golden,
+                inputs=(),
+                compute=False,
+            )
+
+        self.assertTrue(result.passed)
+        self.assertEqual(result.comparison_path, "non-compute")
+
+    def test_compare_case_result_non_compute_accepts_identical_nan_bit_patterns(self) -> None:
+        module = load_npu_compare_module()
+        import torch
+
+        value = torch.tensor([float("nan")], dtype=torch.float32)
+        result = module.compare_case_result(
+            case_id="case-non-compute-nan",
+            actual=value.clone(),
+            golden=value.clone(),
+            inputs=(),
+            compute=False,
+        )
+
+        self.assertTrue(result.passed)
+        self.assertEqual(result.comparison_path, "non-compute")
+
+    def test_compare_case_result_non_compute_rejects_signed_zero_bit_difference(self) -> None:
+        module = load_npu_compare_module()
+        import torch
+
+        result = module.compare_case_result(
+            case_id="case-non-compute-signed-zero",
+            actual=torch.tensor([0.0], dtype=torch.float32),
+            golden=torch.tensor([-0.0], dtype=torch.float32),
+            inputs=(),
+            compute=False,
+        )
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.comparison_path, "non-compute")
+        self.assertEqual(result.diagnostics["failure_stage"], "binary_equal")
+
     def test_compare_case_result_routes_float_to_int_as_quantized_path(self) -> None:
         module = load_npu_compare_module()
         import torch
