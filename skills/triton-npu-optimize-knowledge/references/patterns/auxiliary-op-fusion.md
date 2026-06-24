@@ -2,27 +2,34 @@
 
 ## Summary
 
-Fuse or Tritonize simple Torch/CANN auxiliary operators when they only produce intermediate values for a downstream Triton path. The fused implementation must remain Triton-based — do not delegate the fused logic to `torch.ops.npu.*` or `aclnn*` ops. Each auxiliary op is a separate GM↔UB round-trip plus an AIV kernel launch; removing those external ops reduces launch count, intermediate tensor traffic, and `total_op_avg_time_us`.
+Fuse or Tritonize simple Torch/CANN auxiliary operators when they only produce intermediate values for a downstream Triton path. The optimized path should express the target auxiliary logic in Triton; simple Torch wrapper glue is allowed, but Torch/CANN compute operators should not replace the auxiliary logic being optimized. Each external auxiliary op is a separate GM↔UB round-trip plus an AIV kernel launch; removing those external ops reduces launch count, intermediate tensor traffic, and `total_op_avg_time_us`.
+
+## Wrapper Torch API Boundary
+
+Simple Torch wrapper glue is acceptable when it is not the target auxiliary computation. This means buffer allocation (`torch.empty`, `torch.zeros`, `torch.ones`), shape/view preparation (`view`, `reshape`, `permute`, `transpose`, `contiguous` when required by the kernel contract), metadata reads (`shape`, `dtype`, `device`, `numel`), and Triton kernel launch setup. Do not use Torch compute functions, tensor arithmetic, reductions, or another complex Torch/CANN operator such as an NPU/CANN aggregation or a pre-baked `aclnn*`/`torch.ops.npu.*` op as the result of this pattern.
 
 ## Use When
 
 - Source code has a clear **auxiliary-op sequence -> Triton path** structure.
 - The auxiliary ops compute intermediate values such as scales, masks, clamps, casts, offsets, row statistics, or broadcasted factors that are consumed by the Triton path.
+- The auxiliary ops compute frequency/count metadata such as `bincount`, per-key counts, label counts, or segment counts that are consumed by the Triton path for scaling, filtering, normalization, or weighting; the output domain is known or bounded and the result is metadata rather than the operator's primary output.
 - Perf output shows the auxiliary ops in `ops` before the main Triton path, and their combined time is meaningful in `total_op_avg_time_us`.
 - The auxiliary output has one dominant downstream consumer, OR multiple consumers that share the same upstream load (multi-output fusion case).
 - If the auxiliary output is part of the API result, the fused or Tritonized path can still store the same output.
-- The auxiliary logic can be expressed in Triton with simple elementwise math, broadcast, cast, clamp, masking, row-wise reduction, scale computation, or simple index transforms. The fused implementation must be a Triton kernel — do not delegate to `torch.ops.npu.*` or `aclnn*` ops even if an equivalent exists.
+- The auxiliary logic can be expressed in Triton with simple elementwise math, broadcast, cast, clamp, masking, row-wise reduction, scale computation, frequency count, or simple index transforms. Use Torch only for non-compute wrapper glue; do not delegate the target auxiliary computation to `torch.ops.npu.*`, `aclnn*`, or another framework compute op.
 - Simulator data for the fused candidate does not show that the extra in-kernel work overwhelms the removed auxiliary-op cost.
 
 ## Avoid When
 
 - Multiple downstream operators consume different subsets of the auxiliary output, so the fused kernel would have to recompute the shared load for each consumer. (Multi-output fusion from a single shared load is fine — see Signals.)
-- The auxiliary operation has complex global semantics, such as sort, topk, unique, nonzero, complex gather/scatter, or cross-row/cross-batch dependencies.
+- The auxiliary operation has complex global semantics with order-dependent results or large/irregular output cardinality, such as sort, topk, unique, nonzero, complex gather/scatter, or cross-row/cross-batch dependencies.
+- Do not treat every global-looking aggregation as complex: order-independent aggregations with bounded output such as per-key count, label count, histogram-like bins, or per-key sum can still be candidates when the result is only metadata for a downstream Triton path.
+- The candidate auxiliary output is actually the operator's primary API result, not temporary metadata for a downstream Triton path; choose a result-producing kernel strategy instead of treating it as auxiliary glue.
 - The auxiliary output is API-visible and cannot be produced exactly by the Triton path.
 - PyTorch/CANN has special numerical behavior that is hard to reproduce in Triton, such as rounding modes, NaN/Inf behavior, dtype promotion, saturation, or broadcast corner cases.
 - The auxiliary op is a pure layout copy (`aclnnInplaceCopy`, `Transpose`, `Contiguous`, `Copy`). Layout copies belong to `layout-materialization-elision`, not arithmetic fusion.
-- The fused logic would be delegated to a `torch.ops.npu.*` or `aclnn*` op instead of a Triton kernel. This project requires full Triton-ization of operator logic; delegating complex auxiliary sequences to a pre-baked AscendC op is not an acceptable shortcut, even when one exists with matching semantics.
-- Fusion turns a single-pass kernel into a much more expensive multi-pass kernel for memory-bound or very wide shapes.
+- The fused logic would be delegated to a `torch.ops.npu.*`, `aclnn*`, or Torch framework compute op instead of a Triton kernel. Simple wrapper glue is fine; swapping one framework compute op for another is not auxiliary-op fusion.
+- Fusion adds more full input passes than the original auxiliary-plus-downstream sequence: i.e. the fused kernel rescans the entire input more times than the wrapper's auxiliary ops plus the downstream kernel already do. This usually means the fusion form was chosen wrong, not that the operator is unfit for fusion.
 - Perf shows the auxiliary ops are tiny and the main Triton kernel is already the dominant bottleneck.
 - Simulator suggests the fused kernel introduces too much register pressure, scalar/control overhead, MTE pressure, or occupancy loss.
 
@@ -33,16 +40,18 @@ Fuse or Tritonize simple Torch/CANN auxiliary operators when they only produce i
 - A Python wrapper computes temporary tensors with `torch` or CANN-backed ops and immediately passes them into a Triton kernel.
 - Common source patterns include:
   - `x.float().abs().amax(...).div(...).clamp(...)` feeding a quantization kernel.
+  - `counts = torch.bincount(indices, minlength=...)` or an equivalent per-key count used only by a downstream Triton kernel, often as `counts[keys]` for scaling or filtering.
   - `mask = ...` or `offsets = ...` materialized outside a kernel and consumed once.
   - `scale`, `bias`, `smooth`, or normalization factors computed by auxiliary ops before a row-wise kernel.
 - The auxiliary tensor is not used outside the local operator implementation, or it can be written by the Triton path as part of the public output contract.
 - The downstream Triton kernel already loads the same base tensor or nearby metadata, so the auxiliary logic can be colocated with existing tile loops.
-- The dependency is local enough for Triton tiling: elementwise, per-row, per-block, or reducible within the same logical tile.
+- The dependency is local enough for Triton tiling: elementwise, per-row, per-block, reducible within the same logical tile, or expressible as `tl.atomic_add` into a bounded metadata buffer.
 
 ### Profile
 
-- Perf `ops` contains several small or medium auxiliary ops around the target Triton path, such as `Abs`, `ReduceMax`, `Amax`, `Div`, `RealDiv`, `Clamp`, `Cast`, or `Where`. Pure layout copies (`Copy`, `InplaceCopy`, `Broadcast` as a view) are not fusion candidates here — see `layout-materialization-elision`.
-- `total_op_avg_time_us` is materially larger than the main `kernel_avg_time_us` because auxiliary ops are counted.
+- Perf `ops` contains several small or medium auxiliary ops around the target Triton path, such as `Abs`, `ReduceMax`, `Amax`, `Div`, `RealDiv`, `Clamp`, `Cast`, `Where`, `Bincount`, or count-like framework kernels. Pure layout copies (`Copy`, `InplaceCopy`, `Broadcast` as a view) are not fusion candidates here — see `layout-materialization-elision`.
+- A framework frequency-count op is a top `total_op_avg_time_us` contributor, while its output is only read by a later Triton path; as a soft signal, the auxiliary op or sequence is often worth trying when it is roughly >= 30% of `total_op_avg_time_us` or comparable to the downstream Triton kernel time.
+- `total_op_avg_time_us` is materially larger than the main `kernel_avg_time_us` because auxiliary ops are counted. When `total_op_avg_time_us / kernel_avg_time_us > 2`, framework-op replacement may pay off even if the downstream kernel is already well optimized.
 - Removing auxiliary ops would improve the current triton-agent metric even if pure host wall-clock gaps are not directly scored.
 - Shape-level perf suggests auxiliary-op overhead dominates small or medium shapes, while large shapes may be limited by memory traffic.
 - Repeated runs should be checked for cold-start or profiling outliers before attributing all speedup to fusion.
@@ -89,17 +98,11 @@ The **downstream Triton path** is the Triton kernel or Triton-kernel sequence th
 
 ### Choose the Implementation Form
 
-- **Single-kernel fusion:** inline the auxiliary logic into the consuming Triton kernel so intermediates stay in registers or UB and never round-trip through GM.
-- **Tritonized auxiliary path plus downstream kernel:** replace Torch/CANN auxiliary ops with a Triton preprocessing kernel while keeping the consuming downstream Triton kernel separate. Use this when single-kernel fusion would force expensive double reads or high register/UB pressure.
+Before picking a form, classify the code by whether the auxiliary logic and the downstream Triton path operate on the same base input and the same row/tile ownership. The two running examples below instantiate common sides of that classification; triage should match the target code against an example's applicability conditions first, then adopt that example's form when it fits. These examples are not exhaustive: if neither form fits but the dependency graph still has a clear auxiliary-op -> downstream Triton path, derive another fusion form only if it preserves the following invariants: remove the target Torch/CANN compute ops, avoid unnecessary GM round-trips, and prove the result with correctness plus `total-op` perf.
+
+- **Single-kernel fusion:** inline the auxiliary logic into the consuming Triton kernel so intermediates stay in registers or UB and never round-trip through GM. Preferred when the auxiliary output is a per-row/per-tile scalar or small vector (e.g. scale, amax, mean) consumed by one downstream kernel that traverses the same base input in the same tile — see "Fuse Auxiliary Statistics Into a Downstream Kernel" applicability conditions.
+- **Tritonized auxiliary path plus downstream kernel:** replace Torch/CANN auxiliary ops with a Triton preprocessing kernel while keeping the consuming downstream Triton kernel separate. Use this for count/scatter-style metadata as in "Tritonize Frequency Count Metadata", or as part of shape-dispatched composition when measured shape evidence shows single-kernel fusion loses because of register/UB pressure, repeated reads, or occupancy loss while a Tritonized auxiliary path wins `total-op`.
 - **Shape-dispatched composition:** keep more than one Triton-based path when fusion wins only for some shape ranges. For example, perf comparison across shape buckets shows single-kernel fusion wins for small/medium shapes but regresses on wide shapes (or vice versa). small shapes may prefer single-kernel fusion while wide shapes prefer Tritonized preprocessing plus the optimized downstream kernel.
-
-### Do Not Replace Triton Logic With `aclnn*`
-
-Production Ascend stacks (e.g. vLLM-Ascend) sometimes delegate auxiliary-op sequences like `rmsnorm + dynamic_quant` to a pre-baked AscendC op via `torch.ops.npu.*` or an inductor `PatternMatcherPass`. **This project does not take that path**: the goal is full Triton-ization of operator logic, so the fused candidate must be written as a Triton kernel even when an `aclnn*` equivalent exists.
-
-Treat such production references as evidence that the fusion pattern is real and worth implementing (e.g. one production fusion pass reported 22.8μs → 16.9μs), not as a recommendation to use the CANN op. The implementation here must express the auxiliary logic with `tl.*` ops and the `triton.language.extra.cann.extension` helpers (`extract_slice`, `insert_slice`, `get_element`), following the same idioms as the production Triton kernels that fuse complex logic such as `split_qkv + rmsnorm + rope` or multi-output gating.
-
-Simple data movement and layout copies between kernels (e.g. `Copy`, `Transpose`, `Contiguous`) are tolerable as glue; they belong to `layout-materialization-elision` rather than arithmetic fusion, and are not a substitute for fusing arithmetic auxiliary ops into the Triton path.
 
 ## Implementation Sketch
 
@@ -109,17 +112,19 @@ Simple data movement and layout copies between kernels (e.g. `Copy`, `Transpose`
    - Is the auxiliary output temporary?
    - Does it have one main consumer, or multiple consumers sharing the same upstream load?
    - Must it still be returned to the caller?
-4. Verify the auxiliary logic is expressible in Triton, including NaN/Inf behavior, dtype promotion, saturation, and rounding modes. The fused implementation must be a Triton kernel — do not delegate to `torch.ops.npu.*` or `aclnn*` ops even if an equivalent exists (see "Do Not Replace Triton Logic With `aclnn*`").
+4. Verify the auxiliary logic is expressible in Triton, including NaN/Inf behavior, dtype promotion, saturation, and rounding modes. Simple Torch wrapper glue is allowed, but the target auxiliary computation should not be delegated to a framework compute op.
 5. If the downstream Triton kernel was already optimized in the current operator file or previous local round, use that implementation as the base for the fusion attempt.
-6. Choose the implementation form:
-   - Inline the auxiliary logic into the consuming Triton kernel when load sharing and launch removal dominate.
-   - Write a Triton auxiliary/preprocessing kernel and keep the downstream kernel separate when single-kernel fusion causes double-read or register/UB pressure.
+6. Choose the implementation form from the applicability conditions above:
+   - If the auxiliary logic and the downstream computation belong to the same row/tile path over the same base input and have one dominant consumer, start with single-kernel fusion (the win comes from load sharing + launch removal).
+   - If the auxiliary output domain is misaligned with downstream traversal, requires bounded metadata aggregation, or measured shape evidence shows single-kernel fusion loses (e.g. double-read, register/UB pressure, occupancy loss) while a Tritonized auxiliary path wins `total-op`, use a Tritonized auxiliary path.
+   - If neither applies but the dependency graph still has a clear auxiliary-op -> downstream Triton path, derive a new fusion form only if it preserves the invariants in the form-selection note above; otherwise reject this pattern for the round and re-rank other patterns instead of forcing a weak fusion.
 7. Set the grid by `num_vectorcore` and use manual core-id chunking, not GPU-style SM oversubscription (see "Ascend Mechanics").
 8. If the auxiliary output is public, store it from the Triton path.
 9. Keep the original unfused path available when needed for complex shapes, group paths, or fallback dispatch.
 10. Run correctness tests for all dtype, shape, broadcast, and boundary cases.
 11. Compare both `kernel` and `total-op` metrics against baseline.
 12. Use simulator to inspect whether the fused or Tritonized path introduced new device-side bottlenecks.
+13. If this pattern does not improve warm `total-op` after coherent attempts, or simulator data shows a new dominant bottleneck, re-rank other candidate patterns instead of continuing to force fusion.
 
 ## Example: Fuse Auxiliary Statistics Into a Downstream Kernel
 
@@ -133,13 +138,106 @@ result = _launch_downstream_kernel(some_tensor, scale, extra_factors)
 
 Perf shows several arithmetic auxiliary ops (`Abs`, `ReduceMax`/`Amax`, `Div`/`RealDiv`, `Clamp`, `Cast`) preceding the downstream kernel, all counted toward `total_op_avg_time_us`.
 
-The fused candidate:
+Applicability conditions for this form:
 
-- One pass: load the row, compute the intermediate statistic (e.g. `max(abs(x))`), derive `scale` from it, then apply the downstream computation and store both the API-visible `scale` and the final result.
-- For wider shapes where the statistic and downstream computation cannot share a single pass, split into two passes inside the same kernel and reload the row, accepting the double read in exchange for eliminating auxiliary-op launches.
-- Follow up with `program-multiple-rows` to amortize per-program fixed cost if the fused kernel becomes launch-bound rather than memory-bound.
+- The auxiliary output is a per-row/per-tile scalar or small vector (e.g. `scale`, `amax`, `mean`), with a single dominant downstream consumer.
+- The auxiliary logic and the downstream computation belong to the same row/tile path over the same base input.
+- For row-wise statistics with one dominant downstream consumer, prefer this form even when the kernel needs to reload the row in a second pass.
+- Prefer a single Triton kernel when the statistic and downstream work can be computed together.
+- If the statistic needs a second pass over the same row inside the same kernel, keep it in the same kernel unless profiling shows the extra read is worse than a separate preprocessing kernel.
 
-This removes the external auxiliary ops for the simple path while keeping a fallback dispatch available for shapes where the double read dominates.
+Failure signal: if an attempt for this code class leaves a separate preprocessing kernel plus the downstream kernel, or leaves leftover Torch reduction/arithmetic in the wrapper, the implementation form is wrong. Retry as true single-kernel fusion first; only keep a Tritonized auxiliary path after you have benchmarked the single-kernel two-pass form and measured it loses because of register/UB pressure, occupancy loss, or other measured bottlenecks, unless the two-pass form fails to compile or fails correctness (in which case document the concrete compile/correctness failure). Performance concerns alone — double-read cost, register-pressure estimates, bandwidth intuition — do not qualify as a reason to skip the benchmark; they must be settled by actually running the two-pass form. The unfused wrapper chain often hides fp32 expansion and multiple GM round-trips that the two-pass form removes, so the two-pass form is frequently faster than intuition suggests.
+
+The fused candidate keeps the row path in one Triton kernel. When a row is wider than one tile, each pass loops over column blocks; the statistic is accumulated into a scalar register in pass 1, and the downstream work is applied in pass 2 over the same blocks. This is shape pseudocode; adapt block sizes, masks, dtype policy, rounding, and downstream math to the actual operator:
+
+```python
+@triton.jit
+def fused_row_kernel(x_ptr, out_ptr, scale_ptr, n_rows, n_cols,
+                     BLOCK_N: tl.constexpr):
+    row = tl.program_id(0)
+    row_base = row * n_cols
+    row_valid = row < n_rows
+
+    # Pass 1: accumulate the per-row statistic (e.g. max(abs(x))) into a scalar.
+    row_stat = 0.0
+    for col_start in range(0, n_cols, BLOCK_N):
+        offs = row_base + col_start + tl.arange(0, BLOCK_N)
+        mask = row_valid & ((col_start + tl.arange(0, BLOCK_N)) < n_cols)
+        x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+        row_stat = tl.maximum(row_stat, tl.max(tl.abs(x)))
+
+    scale = tl.maximum(row_stat / 127.0, 1e-10)
+    tl.store(scale_ptr + row, scale, mask=row_valid)
+
+    # Pass 2: re-walk the same row and apply the downstream computation.
+    for col_start in range(0, n_cols, BLOCK_N):
+        offs = row_base + col_start + tl.arange(0, BLOCK_N)
+        mask = row_valid & ((col_start + tl.arange(0, BLOCK_N)) < n_cols)
+        x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+        y = downstream_compute(x, scale)
+        tl.store(out_ptr + offs, y, mask=mask)
+```
+
+The two passes re-read the row from GM, but they stay inside one kernel launch and never materialize the statistic or intermediate scale through GM. This is the preferred single-kernel form when the row is wider than one tile; a separate preprocessing kernel is a fallback only when profiling proves the in-kernel re-read is worse.
+
+## Example: Tritonize Frequency Count Metadata
+
+This form is for scatter-like or bounded-metadata auxiliary paths, not for row-wise statistics that can still live in the consuming kernel.
+
+A common wrapper-side pattern computes per-key counts only so a downstream Triton kernel can normalize or weight each row:
+
+```python
+counts = torch.bincount(keys, minlength=num_keys)
+scaled = grad / counts[keys]
+result = _launch_downstream_kernel(grad, keys, scaled, ...)
+```
+
+Perf may show a count-like framework op, such as `Bincount` or `Histogram`, dominating `total_op_avg_time_us`, especially when the key tensor is large. If the counts are not the public result and are only consumed by the Triton path, replace the count op with a small Triton preprocessing kernel and pass the counts buffer to the downstream kernel.
+
+Applicability conditions for this form:
+
+- The auxiliary output domain does not align with the input tile traversal: the key→bin map is a scatter, so the downstream kernel cannot compute the count while walking the input in a single pass.
+- The auxiliary logic cannot share a `tl.load` with the downstream kernel, so inlining would not save more than a separate preprocessing kernel plus a downstream kernel.
+- The output domain is known/bounded (e.g. `num_keys`, label space), so the auxiliary result can be represented as a compact metadata buffer consumed by the downstream Triton path.
+
+Failure signal: if this form does not improve warm `total-op` on net (the new Triton count kernel time plus the downstream kernel time is not smaller than the removed framework count op), the count-to-Triton rewrite itself has no value for this operator. First retry a different fusion form only if the dependency graph still admits one that preserves the invariants above; otherwise re-rank other candidate patterns instead of forcing the preprocessing form.
+
+```python
+@triton.jit
+def _count_kernel(keys_ptr, counts_ptr, n_keys, ignore_key: tl.constexpr, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n_keys
+    key = tl.load(keys_ptr + offs, mask=mask, other=-1)
+
+    if ignore_key >= 0:
+        keep = key != ignore_key
+        mask = mask & keep
+        key = tl.where(mask, key, 0)
+
+    one = tl.full((BLOCK,), 1.0, dtype=tl.float32)
+    tl.atomic_add(counts_ptr + key, one, mask=mask)
+```
+
+The wrapper may still use simple Torch glue for allocation:
+
+```python
+counts = torch.zeros((num_keys,), dtype=torch.float32, device=keys.device)
+_count_kernel[(grid,)](keys, counts, keys.numel(), ignore_key, BLOCK=BLOCK_SIZE)
+result = _launch_downstream_kernel(values, keys, counts, ...)
+```
+
+The downstream kernel then loads `counts[key]` directly:
+
+```python
+if SCALE_BY_COUNT:
+    count = tl.load(counts_ptr + key, mask=valid, other=1.0)
+    values = values / count
+```
+
+Use this form when the output domain is large enough that output-owner scanning would be too expensive. After Tritonizing the count path, if profiling or simulator evidence shows the new count kernel is atomic-bound for a small output domain, compare with `atomic-contention-owner-computes-store`. The two patterns can compose: this pattern removes the framework count op, and the owner-computes pattern may remove atomic contention if the Triton count kernel exposes it.
+
+Validation should prioritize `total-op`, not just `kernel`, because the new count kernel may be reported as additional Triton kernel time even while it removes a much larger framework op. Verify ignored keys, invalid keys, empty inputs, count dtype conversion, count overflow assumptions, and count values consumed by the downstream path.
 
 ## Advanced Fusion Forms
 
@@ -235,6 +333,7 @@ This shape uses `extract_slice` / `insert_slice` from `triton.language.extra.can
 ## Related Patterns
 
 - `algebraic-optimization`
+- `atomic-contention-owner-computes-store`
 - `layout-materialization-elision`
 - `program-multiple-rows`
 - `scalar-vector-simulation-signal`
