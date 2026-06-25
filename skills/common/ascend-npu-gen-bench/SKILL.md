@@ -1,21 +1,24 @@
 ---
 name: ascend-npu-gen-bench
-description: Generate benchmark code for a Triton or Triton Ascend operator. Use when there is a need to create a new benchmark file for a given operator.
+description: Generate benchmark code for an Ascend NPU operator. Use when there is a need to create a new benchmark file for a given operator.
 ---
 
 # Bench Gen
 
-Generate a Triton NPU operator benchmark script for one operator implementation.
+Generate an Ascend NPU operator benchmark script for one operator implementation.
+
+In skill references below, `<Language>` is `triton` or `tilelang` depending on the kernel language of the current session.
 
 ## Operator File Assumption
 
-- An operator file may contain multiple `@triton.jit` kernel functions.
+- An operator file may contain multiple kernel functions (e.g., `@triton.jit`, `@tilelang.jit`, `@T.prim_func`).
 - The operator file must expose one public entrypoint that should be benchmarked.
 - The supported entrypoint kinds are:
   - `triton-wrapper`: a Python wrapper function that calls Triton kernel functions
-  - `torch-function`: a plain PyTorch-facing function or operator entrypoint that may internally call Triton kernels
+  - `tilelang-wrapper`: a Python wrapper function that calls TileLang kernel functions
+  - `torch-function`: a plain PyTorch-facing function or operator entrypoint that may internally call NPU kernels
   - `torch-module`: a `torch.nn.Module` class that represents the operator or model entrypoint and supports no-argument construction
-- When a `class Model` (or equivalent `torch.nn.Module`) calls a wrapper function and that wrapper launches the Triton kernel, prefer the module class as the public entrypoint rather than selecting the intermediate wrapper function.
+- When a `class Model` (or equivalent `torch.nn.Module`) calls a wrapper function and that wrapper launches the NPU kernel, prefer the module class as the public entrypoint rather than selecting the intermediate wrapper function.
 - Benchmark generation targets the resolved public entrypoint, not the raw kernel functions.
 - If no valid public entrypoint can be identified, stop and explain that benchmark generation cannot proceed safely.
 
@@ -41,7 +44,7 @@ Generate a Triton NPU operator benchmark script for one operator implementation.
 The generated benchmark file must include a short metadata header near the top of the file:
 
 - `# api-name: <resolved-entrypoint>`
-- `# api-kind: <triton-wrapper|torch-function|torch-module>`
+- `# api-kind: <triton-wrapper|tilelang-wrapper|torch-function|torch-module>`
 - `# kernels: <resolved_kernel_names>`
 
 The generated file must be an **import-only** module that exports:
@@ -70,7 +73,7 @@ Use `run-bench` as the standard execution command for generated benchmarks.
 
 ## Workflow
 
-1. Read the operator file and resolve the public entrypoint, `api-kind`, one or more Triton kernel names, and realistic benchmark inputs.
+1. Read the operator file and resolve the public entrypoint, `api-kind`, one or more NPU kernel names, and realistic benchmark inputs.
    - When the file has a `Model -> wrapper -> kernel` structure, resolve the module class as the entrypoint if it is a valid no-argument `torch-module`.
 2. If the public entrypoint is missing, ambiguous, or unsafe to use, stop and report the problem instead of guessing.
 3. Read the unified benchmark spec. The requested bench mode informs the generation agent but is not written into the file header.
@@ -79,8 +82,8 @@ Use `run-bench` as the standard execution command for generated benchmarks.
    - For both modes, implement `build_operator_api(operator_module)`, `build_bench_cases()`, and `build_bench_case_fn(operator_api, case)` instead of a directly executable timing script.
 5. If auto-fix is active, validate the generated benchmark with `run-bench` through the focused run-eval guide instead of doing a separate syntax-only check.
 6. If validation fails, repair only the benchmark file according to the self-repair rules below, retry, and then return a runnable script plus a short assumptions summary.
-   - For Triton Ascend compile, JIT, launch, or kernel-side failures, consult the `triton-npu-repair-guide` skill as a diagnostic reference before deciding on the smallest safe benchmark-side change.
-   - This workflow still owns only the generated benchmark file. Do not treat `triton-npu-repair-guide` as permission to edit the operator file here.
+   - For Ascend NPU compile, JIT, launch, or kernel-side failures, consult the corresponding `<Language>-npu-repair-guide` skill as a diagnostic reference before deciding on the smallest safe benchmark-side change.
+   - This workflow still owns only the generated benchmark file. Do not treat the corresponding `<Language>-npu-repair-guide` skill as permission to edit the operator file here.
 
 ## Quality Rules
 
@@ -94,20 +97,20 @@ Use `run-bench` as the standard execution command for generated benchmarks.
 - Do not violate interface, naming, warmup, artifact, or output rules from the unified spec.
 - Do not spend a separate step on syntax-only checking; rely on `run-bench` as the validation path.
 - When auto-fix mode is active, only repair the generated benchmark file; do not modify the operator file.
-- Do not treat raw `@triton.jit` kernel functions as direct harness APIs.
+- Do not treat raw kernel functions (e.g., `@triton.jit`, `@tilelang.jit`, `@T.prim_func`) as direct harness APIs.
 - Do not guess constructor arguments for `torch-module`; if no-argument construction is not safe, stop with an explicit explanation.
-- For `msprof`, fail explicitly if the public entrypoint is usable but the Triton kernel names cannot be resolved safely.
+- For `msprof`, fail explicitly if the public entrypoint is usable but the kernel names cannot be resolved safely.
 
 ## Self-Repair on Failure
 
 When auto-fix mode is active and the generated benchmark fails, repair the benchmark file directly — never modify the operator file. Infer the failure type from raw stdout, stderr, and traceback.
 
-For Triton Ascend compile, JIT, launch, or kernel-side failures, you may consult the `triton-npu-repair-guide` skill to classify the symptom first, but any resulting edit in this workflow must stay inside the generated benchmark file. If the failure is clearly operator-side and cannot be resolved from the benchmark alone, stop and report that blocker explicitly.
+For Ascend NPU compile, JIT, launch, or kernel-side failures, you may consult the corresponding `<Language>-npu-repair-guide` skill to classify the symptom first, but any resulting edit in this workflow must stay inside the generated benchmark file. If the failure is clearly operator-side and cannot be resolved from the benchmark alone, stop and report that blocker explicitly.
 
 | Inferred failure | Repair strategy |
 |------------------|-----------------|
 | **Timeout** | Reduce tensor shapes, case count, or benchmark workload so the script finishes within the execution limit |
-| **Compiler error** (Triton Ascend toolchain) | Use `triton-npu-repair-guide` to help classify whether the symptom is harness-induced, then regenerate a fresh benchmark for the same operator and mode rather than patching line by line. If the failure is clearly operator-side, stop and report it. |
+| **Compiler error** (Ascend NPU toolchain) | Use the corresponding `<Language>-npu-repair-guide` skill to help classify whether the symptom is harness-induced, then regenerate a fresh benchmark for the same operator and mode rather than patching line by line. If the failure is clearly operator-side, stop and report it. |
 | **General error** (CLI, shape mismatch, runtime, etc.) | Apply a minimal targeted fix — preserve the overall benchmark structure |
 | **ModuleNotFoundError** or environment issue | Report that the benchmark cannot be fixed from inside the benchmark file alone |
 

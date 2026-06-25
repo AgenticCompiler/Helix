@@ -537,13 +537,32 @@ def _stage_required_files(
         )
 
 
-def _bench_runtime_script_path() -> Path:
-    return (
-        Path(__file__).resolve().parents[2]
-        / "ascend-npu-run-eval"
-        / "scripts"
-        / "bench_runtime.py"
+def _find_common_skill_script(skill_name: str, script_name: str) -> Path:
+    """Find a script inside a common skill directory.
+
+    The skills directory layout differs between the repository source tree and
+    the flat staging workspace used at runtime:
+
+      Repo:    <root>/common/<skill_name>/scripts/<script_name>
+      Staging: <root>/<skill_name>/scripts/<script_name>   (no "common" group)
+
+    This helper checks both layouts so the script works in either environment.
+    """
+    script_file = Path(__file__).resolve()
+    flat = script_file.parents[2] / skill_name / "scripts" / script_name
+    if flat.is_file():
+        return flat
+    repo = script_file.parents[3] / "common" / skill_name / "scripts" / script_name
+    if repo.is_file():
+        return repo
+    raise FileNotFoundError(
+        f"Cannot find {skill_name}/scripts/{script_name} — "
+        f"tried flat={flat} and repo={repo}"
     )
+
+
+def _bench_runtime_script_path() -> Path:
+    return _find_common_skill_script("ascend-npu-run-eval", "bench_runtime.py")
 
 
 def _bench_runtime_support_paths() -> list[Path]:
@@ -629,12 +648,7 @@ def _format_failed_command_message(
 
 
 def _load_runtime_helpers() -> dict[str, Any]:
-    script = (
-        Path(__file__).resolve().parents[2]
-        / "ascend-npu-run-eval"
-        / "scripts"
-        / "run_runtime.py"
-    )
+    script = _find_common_skill_script("ascend-npu-run-eval", "run_runtime.py")
     spec = importlib.util.spec_from_file_location("capture_ir_run_runtime", script)
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load shared runtime helpers from {script}")
