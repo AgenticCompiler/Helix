@@ -30,4 +30,4 @@ python3 scripts/optimize_submit_round.py check-round --round-dir opt-round-2 --c
 - Do not use this skill to invent missing evidence or to replace benchmark, correctness, profile, or IR work that the workflow still requires.
 - Do not use this skill to generate missing harnesses, repair operator logic, or invent missing baseline evidence.
 - Baseline preparation belongs to `ascend-npu-prepare-optimize-baseline`.
-- Open-ended round analysis belongs to `triton-npu-optimize`.
+- Open-ended round analysis belongs to the corresponding `<Language>-npu-optimize` skill (where `<Language>` is `triton` or `tilelang`).

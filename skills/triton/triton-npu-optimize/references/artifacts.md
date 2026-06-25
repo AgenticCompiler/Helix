@@ -213,7 +213,7 @@ Keep entries chronological so another engineer can reconstruct how the round evo
 
 - When profiling is needed for a round decision, keep the resulting profiler artifacts under `opt-round-N/profile/`.
 - When IR capture is needed for a round decision, keep the resulting IR directory under `opt-round-N/ir/`.
-- A standard round-local IR workflow uses the `ascend-npu-analyze-ir` skill's helpers with argument shapes like:
+- A standard round-local IR workflow uses the `triton-npu-analyze-ir` skill's helpers with argument shapes like:
   ```text
   capture_ir.py --ir-dir opt-round-N/ir --bench-file bench_<operator>.py --operator-file opt-round-N/<optimized-operator>.py
   inspect_ir.py find-changes --ir-dir opt-round-N/ir --limit 20

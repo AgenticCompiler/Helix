@@ -127,7 +127,7 @@ class DiffSkillsUpdateWorkflowTests(unittest.TestCase):
             self.assertEqual(report["iterations"][0]["updated_patterns"], ["loop-invariant-hoisting"])
             simulate_calls = [call for call in calls if call.get("skills_root") == skills_dir]
             self.assertEqual(len(simulate_calls), 2)
-            promote.assert_called_once_with(knowledge_dir)
+            promote.assert_called_once_with(knowledge_dir, language="triton")
 
 
 def _json_path_from_prompt(prompt: str) -> Path:

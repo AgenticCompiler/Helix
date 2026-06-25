@@ -12,8 +12,8 @@ def _load_inspect_ir_module():
     script = (
         REPO_ROOT
         / "skills"
-        / "common"
-        / "ascend-npu-analyze-ir"
+        / "triton"
+        / "triton-npu-analyze-ir"
         / "scripts"
         / "inspect_ir.py"
     )

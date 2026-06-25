@@ -102,10 +102,10 @@ Optimize analysis is layered.
 
 - Use IR attribution only after profiler-backed symptoms still need explanation.
 - `ascend-npu-analyze-round-performance` may still own `opt-round-N/perf-analysis.md` when the round deepens from profiler evidence into IR-backed attribution.
-- In that flow, use `ascend-npu-analyze-ir` as the IR evidence companion for capture, navigation, and stage-level inspection.
-- Use the sibling `ascend-npu-analyze-ir` skill when compiler lowering details, stage-to-stage IR changes, or round-local IR evidence are needed to explain benchmark behavior.
+- In that flow, use `triton-npu-analyze-ir` as the IR evidence companion for capture, navigation, and stage-level inspection.
+- Use the sibling `triton-npu-analyze-ir` skill when compiler lowering details, stage-to-stage IR changes, or round-local IR evidence are needed to explain benchmark behavior.
 - Keep IR evidence under `opt-round-N/ir/`.
-- In optimize rounds, keep IR capture round-local. Use the `ascend-npu-analyze-ir` skill's helpers with argument shapes such as:
+- In optimize rounds, keep IR capture round-local. Use the `triton-npu-analyze-ir` skill's helpers with argument shapes such as:
   ```text
   capture_ir.py --ir-dir opt-round-N/ir --bench-file bench_<operator>.py --operator-file opt-round-N/<optimized-operator>.py
   inspect_ir.py list-stages --ir-dir opt-round-N/ir --sort-by interesting --limit 20

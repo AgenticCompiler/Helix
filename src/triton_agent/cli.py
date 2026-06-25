@@ -38,6 +38,7 @@ from triton_agent.remote_ssh_preflight import ensure_remote_ssh_ready
 
 _Handler = Callable[[argparse.ArgumentParser, argparse.Namespace], int]
 _AGENT_CHOICES = ("codex", "opencode", "pi", "claude", "openhands", "traecli")
+_LANGUAGE_CHOICES = ("triton", "tilelang")
 _FORMAT_CHOICES = ("text", "markdown")
 _TEST_MODE_CHOICES = ("standalone", "differential")
 _BENCH_MODE_CHOICES = ("torch-npu-profiler", "msprof", "perf-counter")
@@ -47,19 +48,19 @@ _TARGET_CHIP_CHOICES = ("A3", "A5")
 _OPTIMIZE_TARGET_CHOICES = ("kernel", "operator")
 _OPTIMIZE_KNOWLEDGE_CHOICES = ("v1", "v2", "v3")
 _VERIFY_PHASE_CHOICES = ("all", "test", "bench")
-_TOP_LEVEL_DESCRIPTION = "Generate, run, verify, and optimize Triton NPU operator workflows."
+_TOP_LEVEL_DESCRIPTION = "Generate, run, verify, and optimize NPU operator workflows."
 _TOP_LEVEL_EXAMPLES = (
-    "triton-agent gen-test -i kernel.py",
-    "triton-agent convert -i kernel.py",
-    "triton-agent convert-batch -i kernels",
+    "triton-agent gen-test -i kernel.py -l tilelang",
+    "triton-agent convert -i kernel.py -l tilelang",
+    "triton-agent convert-batch -i kernels -l tilelang",
     "triton-agent run-test --test-file test_kernel.py --operator-file kernel.py",
     "triton-agent compare-perf --baseline baseline.txt --compare candidate.txt",
     "triton-agent verify -i .",
     "triton-agent status -i .",
     "triton-agent log-check -i .",
-    "triton-agent log-check-batch -i kernels",
-    "triton-agent optimize -i kernel.py --agent codex",
-    "triton-agent diff-skills-update -i kernels --agent codex",
+    "triton-agent log-check-batch -i kernels -l tilelang",
+    "triton-agent optimize -i kernel.py --agent codex -l tilelang",
+    "triton-agent diff-skills-update -i kernels --agent codex -l tilelang",
     "triton-agent report-batch -i kernels",
     "triton-agent clean -i .",
 )
@@ -183,6 +184,7 @@ class _CommandSpec:
     report_workers_default: int | None = None
     has_force_overwrite: bool = False
     has_format: bool = False
+    has_language: bool = False
     has_verify_phase: bool = False
     has_force_verify: bool = False
     has_log_tools: bool = False
@@ -231,12 +233,13 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
     CommandKind.CONVERT: _CommandSpec(
         handler=handle_convert,
         help_group="Conversion",
-        help_summary="Convert one PyTorch operator into a Triton NPU-backed PyTorch operator.",
-        description="Convert one PyTorch operator file into a Triton NPU-backed PyTorch operator.",
+        help_summary="Convert one PyTorch operator into an NPU-backed PyTorch operator.",
+        description="Convert one PyTorch operator file into an NPU-backed PyTorch operator.",
         has_remote=True,
         has_agent=True,
         has_interact=True,
         has_show_output=True,
+        has_language=True,
         has_test_mode=True,
         test_mode_default="differential",
         has_prompt=True,
@@ -252,6 +255,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_remote=True,
         has_agent=True,
         has_show_output=True,
+        has_language=True,
         has_test_mode=True,
         test_mode_default="differential",
         has_prompt=True,
@@ -354,6 +358,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_output=False,
         has_agent=True,
         has_show_output=True,
+        has_language=True,
         has_log_tools=True,
     ),
     CommandKind.LOG_CHECK_BATCH: _CommandSpec(
@@ -364,6 +369,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_output=False,
         has_agent=True,
         has_show_output=True,
+        has_language=True,
         concurrency_default=1,
         has_log_tools=True,
     ),
@@ -416,6 +422,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_agent=True,
         has_interact=True,
         has_show_output=True,
+        has_language=True,
         has_test_mode=True,
         has_bench_mode=True,
         has_optimize_options=True,
@@ -431,6 +438,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_remote=True,
         has_agent=True,
         has_show_output=True,
+        has_language=True,
         has_test_mode=True,
         has_bench_mode=True,
         has_optimize_options=True,
@@ -448,6 +456,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_output=False,
         has_agent=True,
         has_show_output=True,
+        has_language=True,
         concurrency_default=1,
         has_diff_skills_update_options=True,
     ),
@@ -520,6 +529,8 @@ def build_parser() -> argparse.ArgumentParser:
         _add_primary_arguments(subparser, spec)
         if spec.has_format:
             subparser.add_argument("--format", default="text", choices=_FORMAT_CHOICES)
+        if spec.has_language:
+            subparser.add_argument("-l", "--language", default="triton", choices=_LANGUAGE_CHOICES)
         if spec.has_verify_phase:
             subparser.add_argument("--phase", default="all", choices=_VERIFY_PHASE_CHOICES)
         if spec.has_force_verify:

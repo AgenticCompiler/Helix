@@ -223,7 +223,7 @@ class OptimizeCheckTests(unittest.TestCase):
             self.assertEqual(result.status, "fail")
             self.assertEqual(result.kind, "round")
             self.assertIn(
-                "round operator no longer preserves a recognizable Triton kernel launch path",
+                "round operator no longer preserves a recognizable Ascend kernel launch path",
                 result.issues,
             )
 

@@ -35,7 +35,7 @@ Use this skill when optimize work cannot yet start because baseline artifacts ar
 
 ### 3. Write Canonical Baseline Artifacts
 
-- Read the `triton-npu-optimize` skill's `references/artifacts.md` before writing `baseline/state.json`.
+- Read the `<Language>-npu-optimize` (where `<Language>` is `triton` or `tilelang`) skill's `references/artifacts.md` before writing `baseline/state.json`.
 - Create `baseline/`.
 - Write `baseline/state.json`.
 - Write `baseline/<operator>_perf.txt`.

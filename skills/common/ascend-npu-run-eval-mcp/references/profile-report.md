@@ -54,7 +54,7 @@ Sections include:
 
 ### JSON
 
-All structured data from the parsed artifacts, plus classification results (operator type guess, bound analysis). Intended for machine consumption by downstream workflows such as `triton-npu-analyze-round-performance`.
+All structured data from the parsed artifacts, plus classification results (operator type guess, bound analysis). Intended for machine consumption by downstream workflows such as `ascend-npu-analyze-round-performance`.
 
 ## Relationship to `profile-bench`
 

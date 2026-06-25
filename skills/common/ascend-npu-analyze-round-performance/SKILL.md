@@ -7,15 +7,17 @@ description: Use when an optimize round needs deep performance diagnosis from ro
 
 Diagnose one `opt-round-N/` at a time and write the result to `opt-round-N/perf-analysis.md`.
 
-This skill is for deep round analysis inside `triton-npu-optimize`, not for supervisor audits and not for whole-session summaries.
-This skill is the owner of `opt-round-N/perf-analysis.md` for round-level performance diagnosis inside `triton-npu-optimize`.
+This skill is for deep round analysis inside the corresponding `<Language>-npu-optimize` skill, not for supervisor audits and not for whole-session summaries.
+This skill is the owner of `opt-round-N/perf-analysis.md` for round-level performance diagnosis inside the corresponding `<Language>-npu-optimize` skill.
+
+In file paths below, `<Language>` is `triton` or `tilelang` depending on the kernel language of the current optimize session.
 
 It supports both:
 
 - `profile-only diagnosis`
 - `profile-plus-IR diagnosis`
 
-When IR attribution is needed, use `ascend-npu-analyze-ir` as the IR evidence companion for capture, navigation, and stage-level inspection. That does not transfer ownership of `opt-round-N/perf-analysis.md`.
+When IR attribution is needed, use the corresponding `<Language>-npu-analyze-ir` skill as the IR evidence companion for capture, navigation, and stage-level inspection. That does not transfer ownership of `opt-round-N/perf-analysis.md`.
 
 Use two complementary analysis paths to find performance problems:
 
@@ -24,12 +26,12 @@ Use two complementary analysis paths to find performance problems:
 
 Use profiler-first layered analysis. Start from profiler evidence, deepen into `.bin` when the CSV-level view is not enough, and use IR as explanation and attribution rather than as the default entrypoint.
 
-When compiler source analysis is enabled by the launch prompt or workspace guidance, treat it as a later escalation after profile and IR analysis. Use `triton-npu-analyze-compiler-source` only when this skill has narrowed the problem to a concrete performance-related compiler-side question that still needs source-backed explanation before the next operator change is clear.
+When compiler source analysis is enabled by the launch prompt or workspace guidance, treat it as a later escalation after profile and IR analysis. Use the corresponding `<Language>-npu-analyze-compiler-source` skill only when this skill has narrowed the problem to a concrete performance-related compiler-side question that still needs source-backed explanation before the next operator change is clear.
 
 Read [references/ascend-npu-profiling-analysis.md](references/ascend-npu-profiling-analysis.md) when the round needs deeper interpretation of `op_summary`, `task_time`, `api_statistic`, `msprof` JSON, or `.bin` signals.
 Read [references/ascend-npu-optimization-guidance.md](references/ascend-npu-optimization-guidance.md) when you need help turning profiling symptoms and IR findings into concrete potential optimization points.
 Read [references/ascend-npu-architecture-notes.md](references/ascend-npu-architecture-notes.md) when the likely optimization point depends on chip differences such as A3 versus A5 buffer sizes, layout behavior, or cube/vector data handoff.
-Use the staged `triton-npu-optimize-knowledge` skill when structured profile or IR evidence is available and you need Triton/kernel-oriented symptom cards to narrow likely pattern directions before returning to detailed pattern references. Start from that skill's `references/symptom_index.md`.
+Use the staged `<Language>-npu-optimize-knowledge` skill when structured profile or IR evidence is available and you need Triton/kernel-oriented symptom cards to narrow likely pattern directions before returning to detailed pattern references. Start from that skill's `references/symptom_index.md`.
 When the optimize target is `operator` and the evidence points to Torch NPU or framework-op behavior, also use the staged `torch-npu-optimize-knowledge` skill and start from its `references/pattern_index.md` for operator-level pattern routing.
 
 Read the references in this order:
@@ -56,8 +58,8 @@ Read the references in this order:
 5. Interpret profiling evidence through the profiling reference instead of ad hoc guesses.
    - Follow [references/ascend-npu-profiling-analysis.md](references/ascend-npu-profiling-analysis.md) for layered signal interpretation.
    - Escalate into `.bin` when CSV-level evidence is still not explanatory enough.
-6. Use the staged `triton-npu-optimize-knowledge` skill's `references/symptom_index.md` and the matching symptom cards to narrow the current hypothesis.
-   - Start from that symptom index, then read only the one or two best-matching cards under the staged `triton-npu-optimize-knowledge` skill's `references/symptoms/` directory.
+6. Use the staged `<Language>-npu-optimize-knowledge` skill's `references/symptom_index.md` and the matching symptom cards to narrow the current hypothesis.
+   - Start from that symptom index, then read only the one or two best-matching cards under the staged `<Language>-npu-optimize-knowledge` skill's `references/symptoms/` directory.
    - When the optimize target is `operator` and the bottleneck looks Torch NPU or framework-op specific, also use the staged `torch-npu-optimize-knowledge` skill's `references/pattern_index.md` and the one or two best-matching cards under its `references/patterns/` directory.
    - Use symptom cards as routing aids, not as a replacement for the underlying profile or IR evidence.
 7. Decide whether profiler evidence is already sufficient on its own.
@@ -111,7 +113,7 @@ Inside `## Diagnosis`, prefer these subsections:
 - Treat IR as optional but strongly preferred when profiler evidence alone does not explain the likely implementation problem.
 - Use IR as explanation and attribution for profiler symptoms, not as the default entrypoint.
 - Use profiling analysis and IR analysis together when one source alone cannot explain the performance problem confidently.
-- Keep artifact ownership here even when IR evidence is used; `ascend-npu-analyze-ir` is the IR evidence companion, not the owner of `perf-analysis.md`.
+- Keep artifact ownership here even when IR evidence is used; the corresponding `<Language>-npu-analyze-ir` skill is the IR evidence companion, not the owner of `perf-analysis.md`.
 - Distinguish facts from inference.
 - Cite the specific profile path, IR path, stage name, or operator name that supports each nontrivial conclusion.
 - Do not stop at profiler or IR symptoms. The final diagnosis must point to likely problems in the current operator implementation.
