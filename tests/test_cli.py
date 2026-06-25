@@ -1689,6 +1689,26 @@ class CliMCPServerCommandTests(unittest.TestCase):
 
 
 class PathResolutionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self._upload_patches = [
+            patch(
+                "triton_agent.commands.optimize.upload_optimize_workspace",
+                return_value=None,
+            ),
+            patch(
+                "triton_agent.optimize.batch.upload_optimize_workspace",
+                return_value=None,
+            ),
+        ]
+        for p in self._upload_patches:
+            p.start()
+
+    def tearDown(self) -> None:
+        for p in self._upload_patches:
+            p.stop()
+        super().tearDown()
+
     def test_main_status_rejects_missing_root(self) -> None:
         stderr = StringIO()
         with redirect_stderr(stderr):
