@@ -50,17 +50,17 @@ _OPTIMIZE_KNOWLEDGE_CHOICES = ("v1", "v2", "v3")
 _VERIFY_PHASE_CHOICES = ("all", "test", "bench")
 _TOP_LEVEL_DESCRIPTION = "Generate, run, verify, and optimize NPU operator workflows."
 _TOP_LEVEL_EXAMPLES = (
-    "triton-agent gen-test -i kernel.py -l tilelang",
-    "triton-agent convert -i kernel.py -l tilelang",
-    "triton-agent convert-batch -i kernels -l tilelang",
+    "triton-agent gen-test -i kernel.py",
+    "triton-agent convert -i kernel.py -l triton",
+    "triton-agent convert-batch -i kernels",
     "triton-agent run-test --test-file test_kernel.py --operator-file kernel.py",
     "triton-agent compare-perf --baseline baseline.txt --compare candidate.txt",
     "triton-agent verify -i .",
     "triton-agent status -i .",
     "triton-agent log-check -i .",
-    "triton-agent log-check-batch -i kernels -l tilelang",
-    "triton-agent optimize -i kernel.py --agent codex -l tilelang",
-    "triton-agent diff-skills-update -i kernels --agent codex -l tilelang",
+    "triton-agent log-check-batch -i kernels",
+    "triton-agent optimize -i kernel.py --agent codex -l triton",
+    "triton-agent diff-skills-update -i kernels --agent codex",
     "triton-agent report-batch -i kernels",
     "triton-agent clean -i .",
 )
