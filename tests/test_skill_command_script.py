@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import subprocess
 import shutil
@@ -1369,6 +1371,141 @@ class SkillCommandScriptTests(unittest.TestCase):
                 sys.stderr = original_stderr
 
         self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout.getvalue(), f"Return code: 0\nArchived result: {archive}\n")
+        self.assertEqual(stderr.getvalue(), "")
+
+    def test_script_run_test_optimize_auto_compares_remote_result_via_remote_helper(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "opt_kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            archive = root / "opt_kernel_result.pt"
+            baseline_result = root / "kernel_result.pt"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            baseline_result.write_text("baseline\n", encoding="utf-8")
+
+            observed_remote_compare_calls: list[tuple[Path, Path, str, str | None, bool, TextIO | None]] = []
+
+            def fake_run_remote_test(
+                test_path: Path,
+                operator_path: Path,
+                test_mode: str,
+                remote: str,
+                remote_workdir: str | None,
+                keep_remote_workdir: bool = False,
+                verbose: bool = False,
+                stderr: TextIO | None = None,
+            ) -> tuple[dict[str, object], Path, str]:
+                self.assertEqual(test_path, test_file.resolve())
+                self.assertEqual(operator_path, operator.resolve())
+                self.assertEqual(test_mode, "differential")
+                self.assertEqual(remote, "alice@example.com")
+                self.assertEqual(remote_workdir, "/tmp/triton-agent")
+                self.assertFalse(keep_remote_workdir)
+                self.assertFalse(verbose)
+                self.assertIs(stderr, sys.stderr)
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    archive,
+                    "/tmp/triton-agent-123",
+                )
+
+            def fake_compare_remote_result(
+                baseline_path: Path,
+                new_path: Path,
+                remote: str,
+                remote_workdir: str | None,
+                *,
+                verbose: bool = False,
+                stderr: TextIO | None = None,
+            ) -> int:
+                observed_remote_compare_calls.append(
+                    (baseline_path, new_path, remote, remote_workdir, verbose, stderr)
+                )
+                return 0
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_test_functions",
+                    return_value=(
+                        lambda _path: {"test-mode": "differential"},
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                            AssertionError("local test runner should not run for remote tests")
+                        ),
+                        fake_run_remote_test,
+                    ),
+                ):
+                    with patch.object(
+                        module,
+                        "_load_compare_result_functions",
+                        return_value=(
+                            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                                AssertionError("local comparison should not run for remote tests")
+                            ),
+                            fake_compare_remote_result,
+                        ),
+                    ):
+                        exit_code = module.main(
+                            [
+                                "run-test-optimize",
+                                "--test-file",
+                                str(test_file),
+                                "--operator-file",
+                                str(operator),
+                                "--ref-result",
+                                str(baseline_result),
+                                "--remote",
+                                "alice@example.com",
+                                "--remote-workdir",
+                                "/tmp/triton-agent",
+                            ]
+                        )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            observed_remote_compare_calls,
+            [
+                (
+                    baseline_result.resolve(),
+                    archive,
+                    "alice@example.com",
+                    "/tmp/triton-agent",
+                    False,
+                    stderr,
+                )
+            ],
+        )
         self.assertEqual(stdout.getvalue(), f"Return code: 0\nArchived result: {archive}\n")
         self.assertEqual(stderr.getvalue(), "")
 
