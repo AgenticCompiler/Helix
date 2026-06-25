@@ -442,6 +442,7 @@ def _run_streaming_process_pty(
     session_id: Optional[str] = None
     retryable_failure = False
     rolling_window = ""
+    owns_process_group = interrupt_policy is not None
 
     try:
         while True:
@@ -452,6 +453,11 @@ def _run_streaming_process_pty(
                 except OSError as error:
                     if _is_clean_pty_eof(error, process):
                         break
+                    _cleanup_unexpected_pty_read_error(
+                        process,
+                        error,
+                        owns_process_group=owns_process_group,
+                    )
                     raise
                 if chunk:
                     text = chunk.decode(errors="replace")
@@ -538,6 +544,25 @@ def _is_clean_pty_eof(error: OSError, process: Any) -> bool:
     except subprocess.TimeoutExpired:
         return False
     return True
+
+
+def _cleanup_unexpected_pty_read_error(
+    process: subprocess.Popen[Any],
+    error: OSError,
+    *,
+    owns_process_group: bool,
+) -> None:
+    if error.errno != errno.EIO:
+        return
+    if process.poll() is not None:
+        return
+    if owns_process_group:
+        _terminate_process_tree(process, grace_seconds=1.0)
+        return
+    process.terminate()
+    if _wait_for_process_exit(process, 1.0):
+        return
+    process.kill()
 
 
 def _resolved_returncode(returncode: int | None) -> int:
