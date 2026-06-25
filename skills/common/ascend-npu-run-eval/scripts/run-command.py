@@ -342,8 +342,14 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
         if archived_result is not None:
             print(f"Archived result: {archived_result}")
             if ref_result is not None:
-                compare_result_files = _load_compare_result_functions()[0]
-                final_code = compare_result_files(ref_result, archived_result)
+                final_code = _compare_run_test_result(
+                    ref_result,
+                    archived_result,
+                    remote,
+                    remote_workdir,
+                    verbose=bool(args.verbose),
+                    stderr=sys.stderr,
+                )
             elif resolved_test_mode == "differential":
                 print(_RUN_TEST_HINT)
         elif ref_result is not None:
@@ -629,6 +635,32 @@ def _render_result(result: ResultPayload, skip_stdout: bool) -> None:
         print(stdout, end="" if stdout.endswith("\n") else "\n")
     if stderr:
         print(stderr, file=sys.stderr, end="" if stderr.endswith("\n") else "\n")
+
+
+def _compare_run_test_result(
+    ref_result: Path,
+    archived_result: Path,
+    remote: str | None,
+    remote_workdir: str | None,
+    *,
+    verbose: bool,
+    stderr: TextIO | None,
+) -> int:
+    compare_result_files, compare_remote_result_files = _load_compare_result_functions()
+    if remote is None:
+        return compare_result_files(ref_result, archived_result)
+    try:
+        return compare_remote_result_files(
+            ref_result,
+            archived_result,
+            remote,
+            remote_workdir,
+            verbose=verbose,
+            stderr=stderr,
+        )
+    except (RuntimeError, ValueError) as exc:
+        print(str(exc), file=stderr or sys.stderr)
+        return 1
 
 
 def _resolve_remote_execution(args: argparse.Namespace) -> tuple[str | None, str | None]:
