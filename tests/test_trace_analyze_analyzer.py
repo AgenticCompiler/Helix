@@ -15,12 +15,12 @@ class TraceAnalysisAnalyzerTests(unittest.TestCase):
             {
                 "type": "file_access",
                 "action": "read",
-                "path": ".codex/skills/triton-npu-run-eval/scripts/run-command.py",
+                "path": ".codex/skills/ascend-npu-run-eval/scripts/run-command.py",
             },
             {
                 "type": "file_access",
                 "action": "read",
-                "path": ".codex/skills/triton-npu-run-eval/scripts/run-command.py",
+                "path": ".codex/skills/ascend-npu-run-eval/scripts/run-command.py",
             },
             {
                 "type": "command",
@@ -53,7 +53,7 @@ class TraceAnalysisAnalyzerTests(unittest.TestCase):
         self.assertTrue(summary["capabilities"]["command_events"])
         self.assertEqual(
             summary["file_access"]["repeated_file_reads"],
-            {".codex/skills/triton-npu-run-eval/scripts/run-command.py": 2},
+            {".codex/skills/ascend-npu-run-eval/scripts/run-command.py": 2},
         )
         self.assertEqual(
             summary["commands"]["full_msprof_benchmark_commands"],
@@ -84,17 +84,17 @@ class TraceAnalysisAnalyzerTests(unittest.TestCase):
             {
                 "type": "file_access",
                 "action": "read",
-                "path": ".codex/skills/triton-npu-run-eval/SKILL.md",
+                "path": ".codex/skills/ascend-npu-run-eval/SKILL.md",
             },
             {
                 "type": "file_access",
                 "action": "read",
-                "path": ".codex/skills/triton-npu-run-eval/SKILL.md",
+                "path": ".codex/skills/ascend-npu-run-eval/SKILL.md",
             },
             {
                 "type": "file_access",
                 "action": "read",
-                "path": ".codex/skills/triton-npu-run-eval/references/pattern.md",
+                "path": ".codex/skills/ascend-npu-run-eval/references/pattern.md",
             },
         ]
 
@@ -105,7 +105,7 @@ class TraceAnalysisAnalyzerTests(unittest.TestCase):
         self.assertEqual(summary["file_access"]["reference_reads"], 1)
         self.assertEqual(
             summary["file_access"]["repeated_file_reads"],
-            {".codex/skills/triton-npu-run-eval/SKILL.md": 2},
+            {".codex/skills/ascend-npu-run-eval/SKILL.md": 2},
         )
 
     def test_build_summary_keeps_summary_json_for_non_optimize_trace_name(self) -> None:

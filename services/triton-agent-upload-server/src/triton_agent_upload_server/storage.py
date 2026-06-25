@@ -30,6 +30,13 @@ class UploadStorage:
         self._storage_root = storage_root
         self._temp_root = temp_root
 
+    def delete_upload(self, archive_name: str) -> None:
+        """Remove an archive and its receipt from storage."""
+        archive_path = self._storage_root / archive_name
+        receipt_path = self._storage_root / _receipt_name(archive_name)
+        archive_path.unlink(missing_ok=True)
+        receipt_path.unlink(missing_ok=True)
+
     async def save_upload(
         self,
         archive_name: str,

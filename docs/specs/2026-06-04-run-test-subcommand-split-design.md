@@ -96,7 +96,7 @@ Update `triton-npu-run-eval` and dependent skills so agent-facing instructions u
 | `skills/triton-npu-run-eval/references/run-test.md` | Replace with guidance for baseline and optimize subcommands |
 | `skills/triton-npu-gen-test/SKILL.md` | Use `run-test-baseline` for generated-test validation |
 | `skills/triton-npu-gen-eval-suite/SKILL.md` | Use `run-test-baseline` in generation flows |
-| `skills/triton-npu-repair-guide/SKILL.md` | Refer to baseline/optimize test execution explicitly |
+| `skills/triton/triton-npu-repair-guide/SKILL.md` | Refer to baseline/optimize test execution explicitly |
 | `tests/test_skill_command_script.py` | Cover parser/help/dispatch/error behavior |
 | `tests/test_generation_contracts.py` | Lock new skill wording |
 | `tests/test_codex_pretooluse_guard.py` | Accept staged helper invocation with new subcommands |

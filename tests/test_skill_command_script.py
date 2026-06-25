@@ -35,7 +35,7 @@ def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 """
 
 _RUN_EVAL_SCRIPT_DIR = (
-    Path(__file__).resolve().parents[1] / "skills" / "triton-npu-run-eval" / "scripts"
+    Path(__file__).resolve().parents[1] / "skills" / "common" / "ascend-npu-run-eval" / "scripts"
 )
 if str(_RUN_EVAL_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_RUN_EVAL_SCRIPT_DIR))
@@ -49,7 +49,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -67,7 +68,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -95,7 +97,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -188,7 +191,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -258,7 +262,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -347,7 +352,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -374,7 +380,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -402,7 +409,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -449,8 +457,8 @@ class SkillCommandScriptTests(unittest.TestCase):
             [
                 "bash",
                 script,
-                "skills/triton-npu-run-eval/scripts/bench_runner.py",
-                "skills/triton-npu-run-eval/scripts/profile_runner.py",
+                "skills/common/ascend-npu-run-eval/scripts/bench_runner.py",
+                "skills/common/ascend-npu-run-eval/scripts/profile_runner.py",
             ],
             cwd=repo_root,
             capture_output=True,
@@ -464,7 +472,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -502,7 +511,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -523,7 +533,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -609,7 +620,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -694,7 +706,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -745,7 +758,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -838,7 +852,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -884,7 +899,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -982,7 +998,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1097,7 +1114,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1128,7 +1146,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1171,7 +1190,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1212,7 +1232,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1261,7 +1282,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1354,7 +1376,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1452,7 +1475,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1567,7 +1591,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1645,7 +1670,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1669,7 +1695,7 @@ class SkillCommandScriptTests(unittest.TestCase):
     def test_script_resolves_real_repo_root_when_called_through_symlink(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         source_skills = repo_root / "skills"
-        source_script = source_skills / "triton-npu-run-eval" / "scripts" / "run-command.py"
+        source_script = source_skills / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
 
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
@@ -1679,7 +1705,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 symlinked_skills.symlink_to(source_skills, target_is_directory=True)
             except OSError as exc:
                 self.skipTest(f"directory symlinks are unavailable: {exc}")
-            symlinked_script = symlinked_skills / "triton-npu-run-eval" / "scripts" / "run-command.py"
+            symlinked_script = symlinked_skills / "common" / "ascend-npu-run-eval" / "scripts" / "run-command.py"
 
             completed = subprocess.run(
                 [sys.executable, str(symlinked_script), "--help"],
@@ -1697,7 +1723,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1717,7 +1744,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1738,7 +1766,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1761,7 +1790,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1833,7 +1863,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1852,7 +1883,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1871,7 +1903,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1892,7 +1925,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "run-command.py"
         )
@@ -1910,7 +1944,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-optimize-submit-baseline"
+            / "common"
+            / "ascend-npu-optimize-submit-baseline"
             / "scripts"
             / "optimize_submit_baseline.py"
         )
@@ -1933,7 +1968,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-optimize-submit-round"
+            / "common"
+            / "ascend-npu-optimize-submit-round"
             / "scripts"
             / "optimize_submit_round.py"
         )
@@ -1952,12 +1988,187 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertIn("check-round", completed.stdout)
         self.assertNotIn("check-baseline", completed.stdout)
 
-    def test_optimize_submit_baseline_script_supports_runtime_without_pt_cleanup_module(self) -> None:
-        repo_root = Path(__file__).resolve().parents[1]
+    def test_optimize_start_round_script_help_runs_without_installed_entrypoint(self) -> None:
         script = (
-            repo_root
+            Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-optimize-submit-baseline"
+            / "common"
+            / "ascend-npu-optimize-start-round"
+            / "scripts"
+            / "optimize_start_round.py"
+        )
+        env = os.environ.copy()
+        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        completed = subprocess.run(
+            [sys.executable, str(script), "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        self.assertEqual(completed.returncode, 0)
+        self.assertIn("optimize_start_round.py", completed.stdout)
+        self.assertIn("start-round", completed.stdout)
+
+    def test_optimize_start_round_returns_json_hint_when_workflow_state_missing(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-optimize-start-round"
+            / "scripts"
+            / "optimize_start_round.py"
+        )
+        env = os.environ.copy()
+        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-1"
+            round_dir.mkdir()
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "start-round",
+                    "--round-dir",
+                    str(round_dir),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "fail")
+        self.assertIn("--enable-agent-hook", payload["guideline"])
+        self.assertIn("hard_rules", payload)
+        self.assertIn("Only one optimize round may be active at a time.", payload["hard_rules"])
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_start_round_returns_json_hint_when_baseline_is_pending(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-optimize-start-round"
+            / "scripts"
+            / "optimize_start_round.py"
+        )
+        env = os.environ.copy()
+        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-1"
+            round_dir.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260623-123456-abcdef",
+                        "phase": "baseline",
+                        "source_operator": "kernel.py",
+                        "current_round": None,
+                        "baseline": {"status": "pending", "submitted_at": None},
+                        "rounds": {},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "start-round",
+                    "--round-dir",
+                    str(round_dir),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "fail")
+        self.assertIn("ascend-npu-optimize-submit-baseline", payload["guideline"])
+        self.assertIn("hard_rules", payload)
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_start_round_success_returns_hard_rules(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-optimize-start-round"
+            / "scripts"
+            / "optimize_start_round.py"
+        )
+        env = os.environ.copy()
+        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-1"
+            round_dir.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260623-123456-abcdef",
+                        "phase": "awaiting_round_start",
+                        "source_operator": "kernel.py",
+                        "current_round": None,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-23T12:34:56Z"},
+                        "rounds": {},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "start-round",
+                    "--round-dir",
+                    str(round_dir),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "pass")
+        self.assertEqual(payload["round"], "opt-round-1")
+        self.assertIn("hard_rules", payload)
+        self.assertIn(
+            "Do not use agents or subagents to advance multiple rounds in parallel while the current round is still in flight.",
+            payload["hard_rules"],
+        )
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_submit_baseline_script_supports_runtime_without_pt_cleanup_module(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-optimize-submit-baseline"
             / "scripts"
             / "optimize_submit_baseline.py"
         )
@@ -2039,11 +2250,151 @@ class SkillCommandScriptTests(unittest.TestCase):
             self.assertEqual(completed.stderr, "")
             self.assertTrue((workspace / "baseline" / "test_result.pt").exists())
 
+    def test_optimize_submit_baseline_updates_workflow_state_when_present(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-optimize-submit-baseline"
+            / "scripts"
+            / "optimize_submit_baseline.py"
+        )
+        env = os.environ.copy()
+        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260622-123456-abcdef",
+                        "phase": "baseline",
+                        "source_operator": "kernel.py",
+                        "current_round": None,
+                        "baseline": {"status": "pending", "submitted_at": None},
+                        "rounds": {},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "check-baseline",
+                    "--baseline-dir",
+                    str(baseline_dir),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(state_payload["phase"], "awaiting_round_start")
+        self.assertEqual(state_payload["baseline"]["status"], "passed")
+
+    def test_optimize_submit_baseline_returns_json_hint_when_workflow_state_is_invalid(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-optimize-submit-baseline"
+            / "scripts"
+            / "optimize_submit_baseline.py"
+        )
+        env = os.environ.copy()
+        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text("{", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "check-baseline",
+                    "--baseline-dir",
+                    str(baseline_dir),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "fail")
+        self.assertIn("restart the optimize session", payload["guideline"])
+        self.assertEqual(completed.stderr, "")
+
     def test_optimize_submit_round_cli_outputs_json_only_with_guideline_and_next_option(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-optimize-submit-round"
+            / "common"
+            / "ascend-npu-optimize-submit-round"
             / "scripts"
             / "optimize_submit_round.py"
         )
@@ -2132,7 +2483,261 @@ class SkillCommandScriptTests(unittest.TestCase):
             self.assertIn("guideline", payload)
             self.assertNotIn("summary", payload)
             self.assertIn("Round 4/25 in the current worker batch is complete.", payload["guideline"])
+            self.assertIn(
+                "Use the staged `ascend-npu-optimize-start-round` skill to open opt-round-5 before beginning the next round.",
+                payload["guideline"],
+            )
             self.assertEqual(completed.stderr, "")
+
+    def test_optimize_submit_round_returns_json_hint_when_round_has_not_started(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-optimize-submit-round"
+            / "scripts"
+            / "optimize_submit_round.py"
+        )
+        env = os.environ.copy()
+        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            round_dir = workspace / "opt-round-4"
+            baseline_dir.mkdir()
+            round_dir.mkdir()
+
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "opt-note.md").write_text("## Round\n", encoding="utf-8")
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (round_dir / "opt_kernel.py").write_text(_TRITON_ROUND_OPERATOR, encoding="utf-8")
+            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text("latency-a: 0.9\n", encoding="utf-8")
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-4",
+                        "parent_round": "round-3",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "opt_kernel_perf.txt",
+                        "comparison_target": "baseline/perf.txt",
+                        "effective_metric_source": "kernel",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (round_dir / "attempts.md").write_text("# Round 4 Attempts\n", encoding="utf-8")
+            (round_dir / "summary.md").write_text("# Round 4 Summary\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text("case0: 2.0\n", encoding="utf-8")
+            (round_dir / "opt_kernel.py").write_text("import triton\nimport triton.language as tl\n\n@triton.jit\ndef kernel(x_ptr, y_ptr, N, BLOCK: tl.constexpr):\n    pid = tl.program_id(0)\n    offs = pid * BLOCK + tl.arange(0, BLOCK)\n    x = tl.load(x_ptr + offs)\n    y = x * 2\n    tl.store(y_ptr + offs, y)\n\nkernel[(1,)](x, y, N, BLOCK=128)\n", encoding="utf-8")
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir(exist_ok=True)
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("case0: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260623-123456-abcdef",
+                        "phase": "awaiting_round_start",
+                        "source_operator": "kernel.py",
+                        "current_round": None,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-23T12:34:56Z"},
+                        "rounds": {},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "check-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--current-round",
+                    "4",
+                    "--final-round",
+                    "25",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "fail")
+        self.assertIn("ascend-npu-optimize-start-round", payload["guideline"])
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_submit_round_updates_workflow_state_when_present(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-optimize-submit-round"
+            / "scripts"
+            / "optimize_submit_round.py"
+        )
+        env = os.environ.copy()
+        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        script_dir = str(script.parent)
+        env["PYTHONPATH"] = ":".join(
+            entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            round_dir = workspace / "opt-round-4"
+            baseline_dir.mkdir()
+            round_dir.mkdir()
+
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "opt-note.md").write_text("## Round\n", encoding="utf-8")
+            (baseline_dir / "state.json").write_text(
+                json.dumps(
+                    {
+                        "baseline_kind": "prepared",
+                        "source_operator": "kernel.py",
+                        "baseline_operator": "baseline/kernel.py",
+                        "test_file": "differential_test_kernel.py",
+                        "test_mode": "differential",
+                        "bench_file": "bench_kernel.py",
+                        "bench_mode": "torch-npu-profiler",
+                        "perf_artifact": "baseline/perf.txt",
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "baseline_established": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+            (baseline_dir / "kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+            (round_dir / "opt_kernel.py").write_text(_TRITON_ROUND_OPERATOR, encoding="utf-8")
+            (round_dir / "attempts.md").write_text("attempts\n", encoding="utf-8")
+            (round_dir / "summary.md").write_text("summary\n", encoding="utf-8")
+            (round_dir / "opt_kernel_perf.txt").write_text("latency-a: 0.9\n", encoding="utf-8")
+            (round_dir / "round-state.json").write_text(
+                json.dumps(
+                    {
+                        "round": "opt-round-4",
+                        "parent_round": "round-3",
+                        "hypothesis": "vectorize loads",
+                        "evidence_sources": ["benchmark"],
+                        "correctness_status": "passed",
+                        "benchmark_status": "passed",
+                        "perf_artifact": "opt_kernel_perf.txt",
+                        "comparison_target": "baseline/perf.txt",
+                        "effective_metric_source": "kernel",
+                        "summary_path": "summary.md",
+                        "opt_note_updated": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260622-123456-abcdef",
+                        "phase": "round_active",
+                        "source_operator": "kernel.py",
+                        "current_round": 4,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-22T12:34:56Z"},
+                        "rounds": {
+                            "4": {
+                                "status": "active",
+                                "round_dir": "opt-round-4",
+                                "started_at": "2026-06-22T12:40:00Z",
+                                "ended_at": None,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "check-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--current-round",
+                    "4",
+                    "--final-round",
+                    "25",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(state_payload["phase"], "awaiting_round_start")
+        self.assertIsNone(state_payload["current_round"])
+        self.assertEqual(state_payload["rounds"]["4"]["status"], "passed")
 
 
 if __name__ == "__main__":

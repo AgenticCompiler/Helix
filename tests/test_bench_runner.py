@@ -346,7 +346,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             operator_dir.mkdir()
             operator_file = operator_dir / "operator_case.py"
             json_file = source_root / "5_MoeInitRouting.json"
-            support_dir = source_root / ".opencode" / "skills" / "triton-npu-run-eval" / "scripts"
+            support_dir = source_root / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts"
             support_dir.mkdir(parents=True)
             support_file = support_dir / "bench_runtime.py"
             bench_file.write_text("print('bench')\n", encoding="utf-8")
@@ -387,7 +387,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             operator_dir.mkdir()
             operator_file = operator_dir / "operator_case.py"
             json_file = source_root / "5_MoeInitRouting.json"
-            support_dir = source_root / ".opencode" / "skills" / "triton-npu-run-eval" / "scripts"
+            support_dir = source_root / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts"
             support_dir.mkdir(parents=True)
             support_file = support_dir / "bench_runtime.py"
             bench_file.write_text("print('bench')\n", encoding="utf-8")
@@ -736,7 +736,7 @@ class LocalBenchRunnerTests(unittest.TestCase):
             root = Path(tmp)
             bench_file = root / "bench_case.py"
             operator_file = root / "operator_case.py"
-            runtime_dir = root / ".opencode" / "skills" / "triton-npu-run-eval" / "scripts"
+            runtime_dir = root / ".opencode" / "skills" / "common" / "ascend-npu-run-eval" / "scripts"
             runtime_script = runtime_dir / "bench_runtime.py"
             bench_file.write_text("# bench-mode: torch-npu-profiler\n# kernel: KernelA\n", encoding="utf-8")
             operator_file.write_text("def build_api():\n    return None\n", encoding="utf-8")
@@ -864,7 +864,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
 
             def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
                 self.assertEqual(workdir, str(root))
-                self.assertEqual(stall_timeout_seconds, 900)
+                self.assertEqual(stall_timeout_seconds, 300)
                 self.assertEqual(command[0], "msprof")
                 self.assertTrue(command[1].startswith("--output="))
                 output_dir = Path(command[1].split("=", 1)[1])
@@ -1344,7 +1344,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
 
             def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
                 self.assertEqual(workdir, str(root))
-                self.assertEqual(stall_timeout_seconds, 900)
+                self.assertEqual(stall_timeout_seconds, 300)
                 self.assertEqual(command[0], "msprof")
                 self.assertTrue(command[1].startswith("--output="))
                 output_dir = Path(command[1].split("=", 1)[1])
@@ -1510,7 +1510,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
 
             def _fake_streaming(command, workdir, stall_timeout_seconds, stdout=None, **kwargs):
                 self.assertEqual(workdir, str(root))
-                self.assertEqual(stall_timeout_seconds, 900)
+                self.assertEqual(stall_timeout_seconds, 300)
                 case_idx = int(str(command[-1]).removeprefix("case-"))
                 output_dir = Path(command[1].split("=", 1)[1])
                 if case_idx == 1:
@@ -1821,6 +1821,21 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
 
             with self.assertRaisesRegex(ValueError, "Failed to parse operator file for Triton kernels"):
                 module.resolve_bench_kernel_names(bench_file, operator_file)
+
+    def test_write_perf_lines_creates_missing_parent_directory(self) -> None:
+        module = load_perf_artifacts_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            perf_path = root / "baseline" / "matmul_perf.txt"
+
+            written_path = module.write_perf_lines(perf_path, ['{"case_label":"case-a"}'])
+
+            self.assertEqual(written_path, perf_path)
+            self.assertTrue(perf_path.parent.is_dir())
+            self.assertEqual(
+                perf_path.read_text(encoding="utf-8"),
+                '{"case_label":"case-a"}\n',
+            )
 
     def test_compare_perf_files_reports_per_case_deltas(self) -> None:
         module = load_perf_artifacts_module()

@@ -9,9 +9,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, TextIO, cast
 
 from triton_agent.backends.base import AgentRunner
+from triton_agent.backends.claude_hooks import prepare_claude_hooks
+from triton_agent.backends.hook_common import cleanup_hook_stage, describe_cleanup, describe_prepare
 from triton_agent.mcp import resolve_managed_mcp_servers
 from triton_agent.models import AgentRequest
 from triton_agent.otel_trace import trace_path_from_request
+from triton_agent.verbose import emit_verbose_lines
 
 if TYPE_CHECKING:
     from triton_agent.backends.claude_trace import ClaudeJsonOutputFilter
@@ -37,6 +40,8 @@ class ClaudeRunner(AgentRunner):
                 command.append("--no-session-persistence")
             if request.mcp_servers:
                 command.extend(["--mcp-config", str(request.workdir / ".claude" / "mcp.json")])
+        if request.enable_agent_hooks:
+            command.extend(["--settings", str(request.workdir / ".claude" / "triton-agent-hooks" / "settings.json")])
         command.append(request.prompt)
         return command
 
@@ -74,18 +79,38 @@ class ClaudeRunner(AgentRunner):
         request: AgentRequest,
         stderr: Optional[TextIO] = None,
     ) -> Iterator[None]:
-        del stderr
         config_path: Path | None = None
+        hook_state = None
         if request.mcp_servers:
             config_path = _write_claude_mcp_config(request)
+        if request.enable_agent_hooks:
+            hook_state = prepare_claude_hooks(
+                _hooks_root(),
+                request.workdir,
+                self._hook_options(request),
+                extra_allowed_read_roots=self._extra_allowed_read_roots(request),
+            )
+            if request.verbose:
+                emit_verbose_lines(stderr or sys.stderr, "hooks", describe_prepare(hook_state))
         try:
             yield
         finally:
+            if hook_state is not None:
+                if request.verbose:
+                    emit_verbose_lines(stderr or sys.stderr, "hooks", describe_cleanup(hook_state))
+                cleanup_warnings = cleanup_hook_stage(hook_state)
+                if cleanup_warnings:
+                    emit_verbose_lines(stderr or sys.stderr, "hooks", cleanup_warnings)
             if config_path is not None and config_path.exists():
                 config_path.unlink()
                 parent = config_path.parent
                 if parent.exists() and not any(parent.iterdir()):
                     parent.rmdir()
+
+
+def _hooks_root() -> Path:
+    repo_root = Path(__file__).resolve().parents[3]
+    return repo_root / "hooks"
 
 
 def _extract_claude_session_id(text: str) -> str | None:

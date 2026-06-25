@@ -429,9 +429,9 @@ Expected: PASS for prompt and guidance tests.
 ### Task 5: Add The Compiler Source Analysis Skill
 
 **Files:**
-- Create: `skills/triton-npu-analyze-compiler-source/SKILL.md`
-- Modify: `skills/triton-npu-optimize/SKILL.md`
-- Modify: `skills/triton-npu-optimize/references/workflow.md`
+- Create: `skills/triton/triton-npu-analyze-compiler-source/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/references/workflow.md`
 - Modify: `skills/triton-npu-analyze-round-performance/SKILL.md`
 - Modify: `tests/test_skills.py` if skill discovery has explicit expectations
 
@@ -441,7 +441,7 @@ If existing skill tests enumerate expected skill names, add `triton-npu-analyze-
 
 - [ ] **Step 2: Create the skill**
 
-Add `skills/triton-npu-analyze-compiler-source/SKILL.md` with front matter:
+Add `skills/triton/triton-npu-analyze-compiler-source/SKILL.md` with front matter:
 
 ```markdown
 ---
@@ -472,7 +472,7 @@ The skill must explicitly say:
 
 - [ ] **Step 3: Update optimize skill references**
 
-In `skills/triton-npu-optimize/SKILL.md` and `references/workflow.md`, add compiler source analysis as an escalation after profiler and IR evidence. Keep this conditional on the feature being enabled by the launch prompt/guidance.
+In `skills/triton/triton-npu-optimize/SKILL.md` and `references/workflow.md`, add compiler source analysis as an escalation after profiler and IR evidence. Keep this conditional on the feature being enabled by the launch prompt/guidance.
 
 - [ ] **Step 4: Update round performance analysis skill**
 

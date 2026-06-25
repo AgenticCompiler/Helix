@@ -130,15 +130,15 @@ class GenerationHelpersTests(unittest.TestCase):
         self.assertEqual(
             request.staged_skill_names,
             (
-                "triton-npu-gen-eval-suite",
-                "triton-npu-gen-test",
-                "triton-npu-gen-bench",
-                "triton-npu-run-eval",
+                "ascend-npu-gen-eval-suite",
+                "ascend-npu-gen-test",
+                "ascend-npu-gen-bench",
+                "ascend-npu-run-eval",
                 "triton-npu-repair-guide",
             ),
         )
         self.assertIsNone(request.staged_skill_sources)
-        self.assertEqual(request.skill_name, "triton-npu-gen-eval-suite")
+        self.assertEqual(request.skill_name, "ascend-npu-gen-eval-suite")
 
     def test_build_generation_request_for_gen_test_uses_single_skill_rule(self) -> None:
         request = build_generation_request(
@@ -166,8 +166,8 @@ class GenerationHelpersTests(unittest.TestCase):
         self.assertEqual(
             request.staged_skill_names,
             (
-                "triton-npu-gen-test",
-                "triton-npu-run-eval",
+                "ascend-npu-gen-test",
+                "ascend-npu-run-eval",
                 "triton-npu-repair-guide",
             ),
         )
@@ -200,14 +200,14 @@ class GenerationHelpersTests(unittest.TestCase):
 
         self.assertEqual(
             request.staged_skill_sources,
-            {"triton-npu-run-eval": "triton-npu-run-eval-mcp"},
+            {"ascend-npu-run-eval": "ascend-npu-run-eval-mcp"},
         )
         self.assertEqual(request.mcp_servers, ("triton-agent-run-eval",))
 
     def test_build_generation_request_without_run_eval_skill_omits_mcp_servers(self) -> None:
         with patch(
             "triton_agent.generation.orchestration.resolve_staged_skills",
-            return_value=(("triton-npu-gen-test",), None),
+            return_value=(("ascend-npu-gen-test",), None),
         ):
             request = build_generation_request(
                 CommandKind.GEN_TEST,
@@ -538,10 +538,10 @@ class GenerationCommandHandlerTests(unittest.TestCase):
             self.assertEqual(
                 captured["staged_skill_names"],
                 (
-                    "triton-npu-gen-eval-suite",
-                    "triton-npu-gen-test",
-                    "triton-npu-gen-bench",
-                    "triton-npu-run-eval",
+                    "ascend-npu-gen-eval-suite",
+                    "ascend-npu-gen-test",
+                    "ascend-npu-gen-bench",
+                    "ascend-npu-run-eval",
                     "triton-npu-repair-guide",
                 ),
             )
@@ -686,7 +686,7 @@ class GenerationCommandHandlerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
                 mcp_servers=("triton-agent-run-eval",),

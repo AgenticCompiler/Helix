@@ -355,7 +355,7 @@ class OpenHandsRunnerTests(unittest.TestCase):
             stream_output=show_output,
             force_overwrite=False,
             agent_name="openhands",
-            skill_name="triton-npu-gen-test",
+            skill_name="ascend-npu-gen-test",
             prompt=prompt,
             workdir=workspace,
         )

@@ -34,14 +34,15 @@ Store Codex hook assets in a repository-owned template directory:
 hooks/codex/
 ```
 
-The directory should contain:
+The backend-specific directory should contain:
 
 ```text
 hooks/codex/hooks.json
-hooks/codex/pretooluse_guard.py
+hooks/codex/tool_trace_hook.py
+hooks/shared/pretooluse_guard.py
 ```
 
-Keeping these files in `hooks/codex/` makes the hook behavior inspectable and avoids embedding large JSON or script bodies in Python string constants.
+Keeping backend-owned templates under `hooks/codex/` and shared assets under `hooks/shared/` keeps ownership clear while still avoiding embedded JSON or script bodies in Python string constants.
 
 The staged workspace should receive copied hook assets under `.codex/`, using paths owned by the current run:
 

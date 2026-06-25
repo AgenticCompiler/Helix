@@ -117,7 +117,7 @@ class DiffSkillsUpdateWorkflowTests(unittest.TestCase):
             self.assertEqual(len(results), 1)
             self.assertEqual(results[0].status, "aligned")
             self.assertEqual(len(results[0].iterations), 2)
-            self.assertEqual(results[0].matched_patterns, ["tiling"])
+            self.assertEqual(results[0].matched_patterns, ["tiling", "loop-invariant-hoisting"])
             self.assertEqual(results[0].updated_patterns, ["tiling", "loop-invariant-hoisting"])
             self.assertTrue((op_dir / "simulate" / "foo.py").exists())
             self.assertTrue((op_dir / "simulate" / "generated_foo.py").exists())

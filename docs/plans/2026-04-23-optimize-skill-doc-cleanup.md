@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Clean up `skills/triton-npu-optimize/SKILL.md` so it declares the layered-analysis model before the detailed layers, removes repeated `compare-perf` guidance, and consolidates `learned_lessons.md` rules without changing optimize behavior.
+**Goal:** Clean up `skills/triton/triton-npu-optimize/SKILL.md` so it declares the layered-analysis model before the detailed layers, removes repeated `compare-perf` guidance, and consolidates `learned_lessons.md` rules without changing optimize behavior.
 
 **Architecture:** Treat this as a documentation-contract refactor only. Update the optimize skill text to improve structure and deduplicate repeated guidance, then tighten the single doc-contract test that reads the skill so the new structure and non-redundancy are protected.
 
@@ -12,7 +12,7 @@
 
 ## File Map
 
-- Modify: `skills/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `tests/test_generation_contracts.py`
 
 No runtime, prompt, CLI, or artifact-contract files should change for this task.
@@ -20,7 +20,7 @@ No runtime, prompt, CLI, or artifact-contract files should change for this task.
 ### Task 1: Rewrite The Optimize Skill Contract For Clarity And Deduplication
 
 **Files:**
-- Modify: `skills/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Test: `tests/test_generation_contracts.py`
 
 - [ ] **Step 1: Write the failing doc-contract test**
@@ -29,7 +29,7 @@ Add or update one test in `tests/test_generation_contracts.py` to assert the cle
 
 ```python
     def test_optimize_skill_declares_layered_analysis_and_deduplicates_compare_perf_and_lessons(self) -> None:
-        optimize = _read("skills/triton-npu-optimize/SKILL.md")
+        optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
 
         self.assertIn("Optimize analysis is layered.", optimize)
         self.assertIn(
@@ -55,7 +55,7 @@ Run: `uv run python -m unittest tests.test_generation_contracts.GenerationContra
 
 Expected: `FAIL` because the current skill does not yet contain the new layered-analysis summary wording, still repeats the `compare-perf` line, and still spreads `learned_lessons.md` guidance across multiple sections.
 
-- [ ] **Step 3: Rewrite `skills/triton-npu-optimize/SKILL.md`**
+- [ ] **Step 3: Rewrite `skills/triton/triton-npu-optimize/SKILL.md`**
 
 Update the layered-analysis section so the general model appears before the per-layer subsections:
 
@@ -116,6 +116,6 @@ Expected: all generation-contract tests pass, confirming the optimize skill clea
 - [ ] **Step 6: Commit the documentation cleanup**
 
 ```bash
-git add skills/triton-npu-optimize/SKILL.md tests/test_generation_contracts.py
+git add skills/triton/triton-npu-optimize/SKILL.md tests/test_generation_contracts.py
 git commit -m "docs: tighten optimize skill guidance"
 ```

@@ -9,7 +9,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_parse_bin_module(*, block_tabulate: bool):
-    script = REPO_ROOT / "skills" / "triton-npu-profile-operator" / "scripts" / "parse_bin.py"
+    script = REPO_ROOT / "skills" / "common" / "ascend-npu-profile-operator" / "scripts" / "parse_bin.py"
     spec = importlib.util.spec_from_file_location("parse_bin_test_module", script)
     if spec is None or spec.loader is None:
         raise AssertionError(f"Unable to load module spec for {script}")

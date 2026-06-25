@@ -15,7 +15,7 @@ class DiffSkillsUpdateSkillsWorkspaceTests(unittest.TestCase):
     def test_export_changed_patterns_copies_only_delta(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            source = root / "skills" / "triton-npu-optimize-knowledge"
+            source = root / "skills" / "triton" / "triton-npu-optimize-knowledge"
             patterns = source / "references" / "patterns"
             scripts = source / "scripts"
             patterns.mkdir(parents=True)

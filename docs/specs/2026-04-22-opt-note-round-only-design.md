@@ -138,10 +138,10 @@ No migration is required for existing workspaces.
 
 Update optimize workflow documentation and guidance so they all reflect the same artifact boundary:
 
-- `skills/triton-npu-optimize/SKILL.md`
-- `skills/triton-npu-optimize/references/workflow.md`
-- `skills/triton-npu-optimize/references/opt-note-format.md`
-- `skills/triton-npu-optimize/references/artifacts.md`
+- `skills/triton/triton-npu-optimize/SKILL.md`
+- `skills/triton/triton-npu-optimize/references/workflow.md`
+- `skills/triton/triton-npu-optimize/references/opt-note-format.md`
+- `skills/triton/triton-npu-optimize/references/artifacts.md`
 
 The key wording changes should:
 

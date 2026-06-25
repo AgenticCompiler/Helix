@@ -37,6 +37,10 @@ class ArchiveState:
     def agent_session_path(self, label: str) -> Path:
         return self.run_archive_dir / f"agent-session-{label}.json"
 
+    @property
+    def supervisor_handoffs_dir(self) -> Path:
+        return self.run_archive_dir / "supervisor-handoffs"
+
 
 class ArchiveManager:
     """Owns run archive layout, handoff snapshots, and session-id recording."""
@@ -61,7 +65,7 @@ class ArchiveManager:
         *,
         guidance_path: Path,
         supervisor_report_path: Path | None,
-        history_dir: Path | None,
+        handoff_dir: Path | None,
     ) -> list[str]:
         """Copy final multi-invocation outputs into the per-run archive directory."""
         warnings: list[str] = []
@@ -71,7 +75,7 @@ class ArchiveManager:
         # directory. Only treat truly unexpected children as a stale archive.
         _EXPECTED_NAMES = frozenset({
             "show-output.log", "tool-traces.jsonl",
-            "history", "shared-guidance.md", "supervisor-report.md",
+            "supervisor-handoffs", "round-timings.json", "shared-guidance.md", "supervisor-report.md",
         })
         if archive_dir.exists():
             unexpected_paths = [
@@ -85,8 +89,12 @@ class ArchiveManager:
                 warnings.append(f"Refusing to overwrite existing optimize log archive at {archive_dir}")
                 return warnings
 
+        handoff_files: list[Path] = []
+        if handoff_dir is not None and handoff_dir.exists():
+            handoff_files = [src for src in sorted(handoff_dir.iterdir()) if src.is_file()]
+
         try:
-            (archive_dir / "history").mkdir(parents=True, exist_ok=True)
+            archive_dir.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             return [f"Failed to create optimize log archive directories under {archive_dir}: {exc}"]
 
@@ -109,15 +117,18 @@ class ArchiveManager:
             else:
                 warnings.append(f"Missing expected optimize handoff file at {supervisor_report_path}")
 
-        if history_dir is not None and history_dir.exists():
-            for src in sorted(history_dir.iterdir()):
-                if not src.is_file():
-                    continue
-                dest = archive_dir / "history" / src.name
+        if handoff_files:
+            try:
+                state.supervisor_handoffs_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                warnings.append(f"Failed to create optimize handoff archive directory under {archive_dir}: {exc}")
+                return warnings
+            for src in handoff_files:
+                dest = state.supervisor_handoffs_dir / src.name
                 try:
                     dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
                 except OSError as exc:
-                    warnings.append(f"Failed to archive optimize history file {src}: {exc}")
+                    warnings.append(f"Failed to archive optimize handoff file {src}: {exc}")
         return warnings
 
     def record_agent_session(

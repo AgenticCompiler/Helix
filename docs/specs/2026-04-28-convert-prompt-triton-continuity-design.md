@@ -27,7 +27,7 @@
 
 ## Recommended Approach
 
-- Update `skills/triton-npu-convert-pytorch-operator/SKILL.md` so the required workflow and quality rules explicitly say:
+- Update `skills/triton/triton-npu-convert-pytorch-operator/SKILL.md` so the required workflow and quality rules explicitly say:
   - the task is to implement the converted computation as a Triton Ascend NPU kernel path
   - keeping a PyTorch-facing wrapper or module API is fine when that is the intended public entrypoint
   - a pure PyTorch rewrite does not satisfy the convert contract, even if differential tests pass

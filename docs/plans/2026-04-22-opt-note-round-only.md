@@ -21,10 +21,10 @@ Insert a new test near the other optimize-skill contract checks:
 
 ```python
     def test_optimize_docs_keep_opt_note_round_only_and_put_initial_hypothesis_in_attempts(self) -> None:
-        optimize = _read("skills/triton-npu-optimize/SKILL.md")
-        workflow = _read("skills/triton-npu-optimize/references/workflow.md")
-        opt_note = _read("skills/triton-npu-optimize/references/opt-note-format.md")
-        artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
+        optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
+        workflow = _read("skills/triton/triton-npu-optimize/references/workflow.md")
+        opt_note = _read("skills/triton/triton-npu-optimize/references/opt-note-format.md")
+        artifacts = _read("skills/triton/triton-npu-optimize/references/artifacts.md")
 
         self.assertIn("completed round records", opt_note)
         self.assertIn("one final `## Overall Summary`", opt_note)
@@ -48,12 +48,12 @@ Expected: FAIL because the current optimize docs still tell the agent to write a
 ### Task 2: Rewrite The Optimize Skill And Workflow Steps
 
 **Files:**
-- Modify: `skills/triton-npu-optimize/SKILL.md`
-- Modify: `skills/triton-npu-optimize/references/workflow.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/references/workflow.md`
 
 - [ ] **Step 1: Tighten the optimize skill output contract**
 
-Change the `Outputs` section in `skills/triton-npu-optimize/SKILL.md` so the `opt-note.md` bullet reads like this:
+Change the `Outputs` section in `skills/triton/triton-npu-optimize/SKILL.md` so the `opt-note.md` bullet reads like this:
 
 ```md
 - Updated `opt-note.md` in the operator workspace with completed round entries and one final `## Overall Summary`
@@ -114,12 +114,12 @@ Expected: still FAIL, because `opt-note-format.md` and `artifacts.md` have not b
 ### Task 3: Make The Reference Docs Match The New Boundary
 
 **Files:**
-- Modify: `skills/triton-npu-optimize/references/opt-note-format.md`
-- Modify: `skills/triton-npu-optimize/references/artifacts.md`
+- Modify: `skills/triton/triton-npu-optimize/references/opt-note-format.md`
+- Modify: `skills/triton/triton-npu-optimize/references/artifacts.md`
 
 - [ ] **Step 1: Rewrite the `opt-note.md` purpose section**
 
-Update `skills/triton-npu-optimize/references/opt-note-format.md` so the opening guidance says `opt-note.md` is the top-level running log for completed round records plus one final `## Overall Summary`.
+Update `skills/triton/triton-npu-optimize/references/opt-note-format.md` so the opening guidance says `opt-note.md` is the top-level running log for completed round records plus one final `## Overall Summary`.
 
 Use wording like:
 
@@ -145,7 +145,7 @@ Add a `Writing Guidance` bullet to `opt-note-format.md`:
 
 - [ ] **Step 4: Add a top-level `opt-note.md` artifact boundary to `artifacts.md`**
 
-Insert a short section after `## Workspace Layout` in `skills/triton-npu-optimize/references/artifacts.md`:
+Insert a short section after `## Workspace Layout` in `skills/triton/triton-npu-optimize/references/artifacts.md`:
 
 ```md
 ## Top-Level Session Note
@@ -171,10 +171,10 @@ Expected: PASS.
 
 **Files:**
 - Modify: `tests/test_generation_contracts.py`
-- Modify: `skills/triton-npu-optimize/SKILL.md`
-- Modify: `skills/triton-npu-optimize/references/workflow.md`
-- Modify: `skills/triton-npu-optimize/references/opt-note-format.md`
-- Modify: `skills/triton-npu-optimize/references/artifacts.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/references/workflow.md`
+- Modify: `skills/triton/triton-npu-optimize/references/opt-note-format.md`
+- Modify: `skills/triton/triton-npu-optimize/references/artifacts.md`
 
 - [ ] **Step 1: Re-run the focused verification command**
 
@@ -191,7 +191,7 @@ Expected: PASS with the new opt-note boundary locked in.
 Run:
 
 ```bash
-git diff -- docs/specs/2026-04-22-opt-note-round-only-design.md docs/plans/2026-04-22-opt-note-round-only.md tests/test_generation_contracts.py skills/triton-npu-optimize/SKILL.md skills/triton-npu-optimize/references/workflow.md skills/triton-npu-optimize/references/opt-note-format.md skills/triton-npu-optimize/references/artifacts.md
+git diff -- docs/specs/2026-04-22-opt-note-round-only-design.md docs/plans/2026-04-22-opt-note-round-only.md tests/test_generation_contracts.py skills/triton/triton-npu-optimize/SKILL.md skills/triton/triton-npu-optimize/references/workflow.md skills/triton/triton-npu-optimize/references/opt-note-format.md skills/triton/triton-npu-optimize/references/artifacts.md
 ```
 
 Expected: only the approved round-only `opt-note.md` contract, matching documentation updates, and the regression test change appear.

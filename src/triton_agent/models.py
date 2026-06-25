@@ -35,13 +35,13 @@ class CommandKind(str, Enum):
 
 
 COMMAND_TO_SKILL = {
-    CommandKind.GEN_EVAL: "triton-npu-gen-eval-suite",
+    CommandKind.GEN_EVAL: "ascend-npu-gen-eval-suite",
     CommandKind.GEN_EVAL_BATCH: "",
     CommandKind.CONVERT: "triton-npu-convert-pytorch-operator",
     CommandKind.CONVERT_BATCH: "",
-    CommandKind.GEN_TEST: "triton-npu-gen-test",
+    CommandKind.GEN_TEST: "ascend-npu-gen-test",
     CommandKind.RUN_TEST: "",
-    CommandKind.GEN_BENCH: "triton-npu-gen-bench",
+    CommandKind.GEN_BENCH: "ascend-npu-gen-bench",
     CommandKind.RUN_BENCH: "",
     CommandKind.RUN_SIMULATOR: "",
     CommandKind.COMPARE_RESULT: "",

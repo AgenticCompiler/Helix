@@ -102,7 +102,7 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW",
-                "Recent comparable round count for advisory local-optimum warnings in triton-npu-optimize-submit-round (default: 3).",
+                "Recent comparable round count for advisory local-optimum warnings in ascend-npu-optimize-submit-round (default: 3).",
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN",
@@ -137,15 +137,7 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
             ),
             (
                 "TRITON_AGENT_EVAL_TIMEOUT_SECONDS",
-                "Stall timeout in seconds for remote command execution (default: 900).",
-            ),
-            (
-                "TRITON_AGENT_TEST_TIMEOUT_SECONDS",
-                "Stall timeout in seconds for test execution (default: 900).",
-            ),
-            (
-                "TRITON_AGENT_BENCH_TIMEOUT_SECONDS",
-                "Stall timeout in seconds for benchmark execution (default: 900).",
+                "Stall timeout in seconds for run-test and run-bench execution (default: 300).",
             ),
             (
                 "TRITON_AGENT_PROFILE_TIMEOUT_SECONDS",
@@ -616,11 +608,12 @@ def build_parser() -> argparse.ArgumentParser:
         if spec.has_diff_skills_update_options:
             subparser.add_argument(
                 "--source",
-                choices=("code-diff", "optimize-process"),
+                choices=("code-diff", "optimize-process", "git-repo"),
                 default="code-diff",
                 help=(
                     "Input source: code-diff uses opt_*.py pairs; "
-                    "optimize-process uses optimize workspaces with learned_lessons.md."
+                    "optimize-process uses optimize workspaces with learned_lessons.md; "
+                    "git-repo extracts operator workspaces from git commit history."
                 ),
             )
             subparser.add_argument(
@@ -642,6 +635,11 @@ def build_parser() -> argparse.ArgumentParser:
                 "--promote-converged-skills",
                 action="store_true",
                 help="After a pair converges, overwrite the bundled optimize knowledge skill and rebuild its pattern index.",
+            )
+            subparser.add_argument(
+                "--git-base",
+                default=None,
+                help="Base branch used to compute the fork point (merge-base). Auto-detected from origin/HEAD when omitted.",
             )
         if command_kind in {CommandKind.LOG_CHECK, CommandKind.LOG_CHECK_BATCH}:
             subparser.add_argument(

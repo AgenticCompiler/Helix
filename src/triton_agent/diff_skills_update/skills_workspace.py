@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from triton_agent.resources import skills_root
+from triton_agent.skill_catalog import resolve_skill_source_dir
 
 
 KNOWLEDGE_SKILL_NAME = "triton-npu-optimize-knowledge"
@@ -21,7 +21,7 @@ def ensure_skills_workspace(skills_dir: Path) -> Path:
             raise ValueError(f"Skills workspace entry is not a directory: {knowledge_dir}")
         return knowledge_dir
 
-    bundled = skills_root() / KNOWLEDGE_SKILL_NAME
+    bundled = resolve_skill_source_dir(KNOWLEDGE_SKILL_NAME)
     if not bundled.is_dir():
         raise ValueError(f"Bundled knowledge skill does not exist: {bundled}")
     shutil.copytree(bundled, knowledge_dir, symlinks=False)
@@ -51,7 +51,7 @@ def regenerate_pattern_index(knowledge_dir: Path) -> None:
 def promote_converged_knowledge_workspace(source_knowledge_dir: Path) -> Path:
     if not source_knowledge_dir.is_dir():
         raise ValueError(f"Converged knowledge skill does not exist: {source_knowledge_dir}")
-    destination = skills_root() / KNOWLEDGE_SKILL_NAME
+    destination = resolve_skill_source_dir(KNOWLEDGE_SKILL_NAME)
     if source_knowledge_dir.resolve() != destination.resolve():
         destination.parent.mkdir(parents=True, exist_ok=True)
         _remove_existing_path(destination)

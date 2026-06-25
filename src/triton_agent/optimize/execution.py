@@ -30,6 +30,10 @@ from triton_agent.optimize.session_artifacts import (
     OptimizeSessionArtifactsManager,
     OptimizeSessionArtifactsState,
 )
+from triton_agent.optimize.workflow_state import (
+    bootstrap_optimize_workflow_state,
+    render_optimize_phase_summary,
+)
 from triton_agent.optimize.models import (
     BaselinePreflightResult,
     BaselinePreflightState,
@@ -97,7 +101,7 @@ def _round_sort_key(name: str) -> tuple[int, str]:
 
 def _iter_completed_round_dirs(workdir: Path) -> tuple[Path, ...]:
     module = load_skill_script_module(
-        "triton-npu-optimize-submit-round",
+        "ascend-npu-optimize-submit-round",
         "optimize_submit_round",
     )
     return tuple(cast(tuple[Path, ...], module.iter_completed_round_directories(workdir)))
@@ -155,6 +159,8 @@ def execute_multi_invocation_optimize(
         artifacts_state = artifacts_manager.prepare_supervised_session(
             request.workdir,
             agent_name=request.agent_name,
+            enable_agent_hooks=request.enable_agent_hooks,
+            source_operator_path=request.input_path,
             optimize_target=request.optimize_target,
             compiler_source_path=request.compiler_source_path,
             compiler_source_commit=request.compiler_source_commit,
@@ -169,6 +175,8 @@ def execute_multi_invocation_optimize(
         artifacts_state = artifacts_manager.prepare_checked_session(
             request.workdir,
             agent_name=request.agent_name,
+            enable_agent_hooks=request.enable_agent_hooks,
+            source_operator_path=request.input_path,
             optimize_target=request.optimize_target,
             compiler_source_path=request.compiler_source_path,
             compiler_source_commit=request.compiler_source_commit,
@@ -196,6 +204,16 @@ def execute_multi_invocation_optimize(
         )
         if not request.interact:
             baseline_result = controller.preflight_baseline(request)
+            if (
+                baseline_result.state is BaselinePreflightState.READY
+                and artifacts_state.workflow_state_path is not None
+            ):
+                bootstrap_optimize_workflow_state(
+                    artifacts_state.workflow_state_path,
+                    run_id=artifacts_state.archive.run_id,
+                    source_operator=request.input_path,
+                    baseline_reused=True,
+                )
             if baseline_result.state is not BaselinePreflightState.READY:
                 baseline_fix_result = controller.run_baseline_phase(request, baseline_result)
                 if not baseline_fix_result.succeeded:
@@ -280,6 +298,7 @@ class MultiInvocationOptimizeController:
             "optimize",
             f"baseline preflight: {preflight.state.value}, launching baseline repair",
         )
+        phase_summary = render_optimize_phase_summary(self._artifacts_state.workflow_state_path)
         baseline_request = replace(
             request,
             prompt=build_optimize_baseline_prompt(
@@ -296,6 +315,7 @@ class MultiInvocationOptimizeController:
                 base_prompt=_request_user_prompt(request),
                 remote=request.remote,
                 remote_workdir=request.remote_workdir,
+                workflow_phase_summary=phase_summary,
             ),
             interact=False,
         )
@@ -540,10 +560,12 @@ class MultiInvocationOptimizeController:
                 latest_round_dir=latest_round_dir,
                 optimize_target=request.optimize_target,
                 cli_followup_summary=batch_round_summary,
+                workflow_phase_summary=render_optimize_phase_summary(
+                    self._artifacts_state.workflow_state_path
+                ),
             ),
             skill_name="triton-npu-optimize",
             interact=False,
-            no_agent_session=True,
             disable_backend_retry=False,
             progress_probe=None,
         )
@@ -670,7 +692,6 @@ class MultiInvocationOptimizeController:
             run_id=run_id,
             extra_env=env,
             show_output_label=show_output_label,
-            no_agent_session=True,
             supervisor_report_path=self._artifacts_state.supervisor_report_path,
         )
         start_counter = time.perf_counter()
@@ -714,6 +735,7 @@ class MultiInvocationOptimizeController:
         batch_start: int,
         batch_end: int,
     ) -> AgentRequest:
+        phase_summary = render_optimize_phase_summary(self._artifacts_state.workflow_state_path)
         prompt = append_additional_user_instructions(
             build_prompt(
                 CommandKind.OPTIMIZE,
@@ -738,6 +760,7 @@ class MultiInvocationOptimizeController:
                 final_round=batch_end,
                 round_batch_size=request.round_batch_size,
                 optimize_baseline_ready=not request.interact,
+                workflow_phase_summary=phase_summary,
             ),
             _request_user_prompt(request),
         )
@@ -819,21 +842,21 @@ class MultiInvocationOptimizeController:
         return payload
 
     def _snapshot_live_handoff_files(self) -> None:
-        history_dir = self._artifacts_state.supervisor_history_dir
+        handoff_dir = self._artifacts_state.supervisor_handoff_dir
         supervisor_report_path = self._artifacts_state.supervisor_report_path
-        if history_dir is None or supervisor_report_path is None:
+        if handoff_dir is None or supervisor_report_path is None:
             return
-        history_dir.mkdir(parents=True, exist_ok=True)
-        round_label = self._next_history_round_label(history_dir)
+        handoff_dir.mkdir(parents=True, exist_ok=True)
+        round_label = self._next_handoff_round_label(handoff_dir)
         report_content = supervisor_report_path.read_text(encoding="utf-8")
-        (history_dir / f"{round_label}-supervisor-report.md").write_text(
+        (handoff_dir / f"{round_label}-supervisor-report.md").write_text(
             report_content,
             encoding="utf-8",
         )
 
-    def _next_history_round_label(self, history_dir: Path) -> str:
+    def _next_handoff_round_label(self, handoff_dir: Path) -> str:
         max_index = 0
-        for path in history_dir.glob("round-*.md"):
+        for path in handoff_dir.glob("round-*.md"):
             if not path.is_file():
                 continue
             match = re.match(r"round-(\d+)-", path.name)

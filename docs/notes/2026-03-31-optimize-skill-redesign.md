@@ -27,11 +27,11 @@
 
 ## Planned Skill Structure
 
-- `skills/triton-npu-optimize/SKILL.md`: trigger guidance, inputs, outputs, primary workflow, and required references
-- `skills/triton-npu-optimize/references/workflow.md`: round lifecycle, candidate selection, and recovery rules
-- `skills/triton-npu-optimize/references/artifacts.md`: required directory layout and per-round artifacts
-- `skills/triton-npu-optimize/references/opt-note-format.md`: expected `opt-note.md` structure and entry content
-- `skills/triton-npu-optimize/references/round-failure-handling.md`: round failure handling guidance for correctness failures, benchmark failures, and regressions
+- `skills/triton/triton-npu-optimize/SKILL.md`: trigger guidance, inputs, outputs, primary workflow, and required references
+- `skills/triton/triton-npu-optimize/references/workflow.md`: round lifecycle, candidate selection, and recovery rules
+- `skills/triton/triton-npu-optimize/references/artifacts.md`: required directory layout and per-round artifacts
+- `skills/triton/triton-npu-optimize/references/opt-note-format.md`: expected `opt-note.md` structure and entry content
+- `skills/triton/triton-npu-optimize/references/round-failure-handling.md`: round failure handling guidance for correctness failures, benchmark failures, and regressions
 
 ## Validation
 

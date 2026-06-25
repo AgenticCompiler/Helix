@@ -66,9 +66,9 @@ def _optimize_target_guidance_lines(*, optimize_target: str) -> list[str]:
 _OPTIMIZE_GUIDANCE_RULES_BLOCK = dedent(
     """\
     IMPORTANT:
-        - Use `triton-npu-optimize-submit-baseline` skill to submit the initial baseline.
-        - Use `triton-npu-optimize-start-round` skill to start a new optimization round.
-        - Use `triton-npu-optimize-submit-round` skill to submit each complete optimization round.
+        - Use `ascend-npu-optimize-submit-baseline` skill to submit the initial baseline.
+        - Use `ascend-npu-optimize-start-round` skill to start a new optimization round.
+        - Use `ascend-npu-optimize-submit-round` skill to submit each complete optimization round.
 
     - Read files cautiously. Do not read unrelated files speculatively or just in case.
     - Prefer the smallest source that can unblock the next decision.
@@ -93,7 +93,7 @@ _SHARED_GUIDANCE_TEMPLATE = (
         """\
         Use the staged workspace skills as the workflow source of truth.
         Invocation-specific behavior comes from the launch prompt.
-        Use `.triton-agent/supervisor-report.md` as the supervisor audit report file when supervised mode is active.
+        Use `supervisor-report.md` as the supervisor audit report file when supervised mode is active.
         Treat `baseline/` as the canonical optimize baseline.
         Use `compare-perf` as the authoritative source for round performance summaries.
         {analysis_block}
@@ -359,6 +359,6 @@ class MemoryFileManager:
         )
         if include_supervisor_handoff:
             base += (
-                "\nUse `.triton-agent/supervisor-report.md` as the supervisor audit report file.\n"
+                "\nUse `supervisor-report.md` as the supervisor audit report file.\n"
             )
         return base

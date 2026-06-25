@@ -13,6 +13,7 @@ from triton_agent.models import AgentRequest, AgentResult
 TRACE_PATH_ENV = "TRITON_AGENT_OTEL_TRACE_PATH"
 TRACE_RUN_ID_ENV = "TRITON_AGENT_OTEL_RUN_ID"
 TRACE_WORKSPACE_ROOT_ENV = "TRITON_AGENT_WORKSPACE_ROOT"
+_RUN_ID_COLLISION_COUNTS: Counter[str] = Counter()
 
 
 def utc_timestamp() -> str:
@@ -20,8 +21,11 @@ def utc_timestamp() -> str:
 
 
 def new_trace_run_id(prefix: str = "") -> str:
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
-    return f"{prefix}-{ts}" if prefix else ts
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    base = f"{prefix}-{ts}" if prefix else ts
+    _RUN_ID_COLLISION_COUNTS[base] += 1
+    count = _RUN_ID_COLLISION_COUNTS[base]
+    return base if count == 1 else f"{base}-{count}"
 
 
 def append_trace_event(trace_path: Path | str | None, event: Mapping[str, Any]) -> None:

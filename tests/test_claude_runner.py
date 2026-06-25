@@ -30,7 +30,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="claude",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )
@@ -58,7 +58,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="claude",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
                 log_tools=False,
@@ -93,7 +93,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 stream_output=True,
                 force_overwrite=False,
                 agent_name="claude",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
                 log_tools=False,
@@ -119,7 +119,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 stream_output=True,
                 force_overwrite=False,
                 agent_name="claude",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
                 log_tools=False,
@@ -142,7 +142,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="claude",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
                 log_tools=True,
@@ -248,6 +248,33 @@ class ClaudeRunnerTests(unittest.TestCase):
             command = runner.build_command(request)
             self.assertNotIn("--no-session-persistence", command)
 
+    def test_non_interactive_command_includes_settings_flag_when_hooks_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = ClaudeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                force_overwrite=False,
+                agent_name="claude",
+                skill_name="triton-npu-optimize",
+                prompt="Continue work",
+                workdir=workspace,
+                enable_agent_hooks=True,
+            )
+
+            command = runner.build_command(request)
+
+            self.assertIn("--settings", command)
+            self.assertIn(str(workspace / ".claude" / "triton-agent-hooks" / "settings.json"), command)
+
     def test_run_uses_unified_process_runner(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -264,7 +291,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="claude",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )
@@ -289,7 +316,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="claude",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
                 mcp_servers=("triton-agent-run-eval",),
@@ -323,6 +350,45 @@ class ClaudeRunnerTests(unittest.TestCase):
             self.assertEqual(result.return_code, 0)
             self.assertFalse((workspace / ".claude" / "mcp.json").exists())
 
+    def test_run_stages_backend_hooks_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            runner = ClaudeRunner()
+            request = AgentRequest(
+                command_kind=CommandKind.OPTIMIZE,
+                input_path=workspace / "op.py",
+                operator_path=workspace / "op.py",
+                output_path=workspace / "opt_op.py",
+                test_mode=None,
+                bench_mode=None,
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                force_overwrite=False,
+                agent_name="claude",
+                skill_name="triton-npu-optimize",
+                prompt="Continue work",
+                workdir=workspace,
+                enable_agent_hooks=True,
+            )
+
+            def _inspect_hooks(*args, **kwargs):
+                command = args[0]
+                hook_dir = workspace / ".claude" / "triton-agent-hooks"
+                settings_path = hook_dir / "settings.json"
+                self.assertTrue(settings_path.exists())
+                self.assertTrue((hook_dir / "policy.json").exists())
+                self.assertTrue((hook_dir / "pretooluse_guard.py").exists())
+                self.assertIn("--settings", command)
+                self.assertIn(str(settings_path), command)
+                return _ok_result()
+
+            with patch("triton_agent.backends.base.run_process", side_effect=_inspect_hooks):
+                result = runner.run(request)
+
+            self.assertEqual(result.return_code, 0)
+            self.assertFalse((workspace / ".claude" / "triton-agent-hooks").exists())
+
     def test_verbose_logging_prints_launch_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -339,7 +405,7 @@ class ClaudeRunnerTests(unittest.TestCase):
                 stream_output=False,
                 force_overwrite=False,
                 agent_name="claude",
-                skill_name="triton-npu-gen-test",
+                skill_name="ascend-npu-gen-test",
                 prompt="Prompt body",
                 workdir=workspace,
             )

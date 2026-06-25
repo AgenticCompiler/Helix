@@ -9,6 +9,7 @@ from unittest.mock import patch
 import tempfile
 import subprocess
 import shutil
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -313,6 +314,126 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
         self.assertTrue(process.stdout.closed)
         self.assertTrue(process.stderr.closed)
 
+    def test_run_runtime_buffered_zero_timeout_disables_stall_termination(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        class _FakeStdout:
+            def readline(self) -> str:
+                return ""
+
+            def close(self) -> None:
+                return None
+
+        class _FakeStderr:
+            def __iter__(self):
+                return iter(())
+
+            def close(self) -> None:
+                return None
+
+        class _FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = _FakeStdout()
+                self.stderr = _FakeStderr()
+                self.returncode = 0
+                self._poll_values = [None, 0]
+
+            def poll(self):
+                if self._poll_values:
+                    return self._poll_values.pop(0)
+                return 0
+
+            def terminate(self) -> None:
+                self.returncode = 1
+
+        with patch.object(module.time, "monotonic", side_effect=[0.0, 1.0]), patch.object(
+            module.subprocess,
+            "Popen",
+            return_value=_FakeProcess(),
+        ):
+            result = module.run_buffered_process(["python3", "bench.py"], ".", 0)
+
+        self.assertFalse(result["stalled"])
+        self.assertEqual(result["return_code"], 0)
+
+    def test_run_runtime_streaming_windows_zero_timeout_disables_stall_termination(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        class _FakeStdout:
+            def read(self, _size: int) -> bytes:
+                return b""
+
+        class _FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = _FakeStdout()
+                self.returncode = 0
+                self._poll_values = [None, 0]
+
+            def poll(self):
+                if self._poll_values:
+                    return self._poll_values.pop(0)
+                return 0
+
+            def wait(self) -> int:
+                return self.returncode
+
+            def terminate(self) -> None:
+                self.returncode = 1
+
+        with patch.object(module.time, "monotonic", side_effect=[0.0, 1.0]), patch.object(
+            module.subprocess,
+            "Popen",
+            return_value=_FakeProcess(),
+        ):
+            result = module._run_streaming_windows(["python3", "bench.py"], ".", 0)
+
+        self.assertFalse(result["stalled"])
+        self.assertEqual(result["return_code"], 0)
+
+    def test_run_runtime_streaming_pty_zero_timeout_disables_stall_termination(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        class _FakeProcess:
+            def __init__(self) -> None:
+                self.returncode = 0
+                self._poll_values = [None, 0]
+
+            def poll(self):
+                if self._poll_values:
+                    return self._poll_values.pop(0)
+                return 0
+
+            def wait(self, timeout=None) -> int:
+                del timeout
+                return self.returncode
+
+            def terminate(self) -> None:
+                self.returncode = 1
+
+        fake_pty = SimpleNamespace(openpty=lambda: (11, 12))
+        fake_select = SimpleNamespace(select=lambda _r, _w, _x, _t: ([], [], []))
+
+        with patch.object(module, "pty", fake_pty), patch.object(
+            module,
+            "select",
+            fake_select,
+        ), patch.object(module.time, "monotonic", side_effect=[0.0, 1.0]), patch.object(
+            module.subprocess,
+            "Popen",
+            return_value=_FakeProcess(),
+        ), patch.object(module.os, "close"):
+            result = module._run_streaming_pty(["python3", "bench.py"], ".", 0)
+
+        self.assertFalse(result["stalled"])
+        self.assertEqual(result["return_code"], 0)
+
+    def test_eval_timeout_env_rejects_negative_values(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        with patch.dict(module.os.environ, {"TRITON_AGENT_EVAL_TIMEOUT_SECONDS": "-1"}, clear=False):
+            with self.assertRaises(ValueError):
+                module.eval_stall_timeout_seconds()
+
     def test_run_remote_command_streaming_shell_joins_sequence_args(self) -> None:
         module = load_operator_eval_script_module("run_runtime")
 
@@ -460,7 +581,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             compare_script,
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "compare_result.py",
         )

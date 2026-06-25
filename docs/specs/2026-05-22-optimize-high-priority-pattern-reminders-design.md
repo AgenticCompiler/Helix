@@ -166,9 +166,9 @@ The memory-file reminder block will therefore render all current high-priority p
 
 Introduce a reusable skill-side helper module in each generic Triton optimize knowledge tree that can be selected by `--optimize-knowledge`:
 
-- `skills/triton-npu-optimize-knowledge/scripts/pattern_catalog.py`
-- `skills/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py`
-- `skills/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py`
+- `skills/triton/triton-npu-optimize-knowledge/scripts/pattern_catalog.py`
+- `skills/triton/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py`
+- `skills/triton/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py`
 
 This helper should own the reusable parsing and selection logic that is currently embedded in each `build_pattern_index.py`.
 

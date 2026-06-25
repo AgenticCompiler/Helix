@@ -41,7 +41,7 @@ Expected: FAIL because the stronger convert wording is not present yet.
 ### Task 2: Strengthen the convert workflow contract
 
 **Files:**
-- Modify: `skills/triton-npu-convert-pytorch-operator/SKILL.md`
+- Modify: `skills/triton/triton-npu-convert-pytorch-operator/SKILL.md`
 - Modify: `src/triton_agent/prompts.py`
 - Test: `tests/test_cli.py`
 - Test: `tests/test_generation_contracts.py`
@@ -82,6 +82,6 @@ Expected: PASS
 
 - [ ] **Step 2: Review the diff for scope**
 
-Run: `git diff -- docs/plans/2026-04-28-convert-prompt-triton-continuity.md docs/specs/2026-04-28-convert-prompt-triton-continuity-design.md skills/triton-npu-convert-pytorch-operator/SKILL.md src/triton_agent/prompts.py tests/test_cli.py tests/test_generation_contracts.py`
+Run: `git diff -- docs/plans/2026-04-28-convert-prompt-triton-continuity.md docs/specs/2026-04-28-convert-prompt-triton-continuity-design.md skills/triton/triton-npu-convert-pytorch-operator/SKILL.md src/triton_agent/prompts.py tests/test_cli.py tests/test_generation_contracts.py`
 
 Expected: Only plan/spec plus prompt-scope contract/test changes; no runtime enforcement logic.

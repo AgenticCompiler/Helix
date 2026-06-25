@@ -58,4 +58,5 @@ def _config_from_args(args: argparse.Namespace) -> DiffSkillsUpdateConfig:
         force=bool(getattr(args, "force", False)),
         skip_existing=bool(getattr(args, "skip_existing", False)),
         promote_converged_skills=bool(getattr(args, "promote_converged_skills", False)),
+        base_revision=str(getattr(args, "git_base", None) or ""),
     )

@@ -24,7 +24,7 @@ def _load_skill_script(relative_path: str):
 class PatternRoutingToolTests(unittest.TestCase):
     def test_build_index_requires_summary_and_use_when(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -37,7 +37,7 @@ class PatternRoutingToolTests(unittest.TestCase):
 
     def test_build_index_keeps_free_sections_but_ignores_them_for_summary(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -68,11 +68,12 @@ Extra prose that should stay in the source file but not become a first-line inde
 
     def test_checked_in_pattern_index_matches_generator(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         patterns_dir = (
             REPO_ROOT
             / "skills"
+            / "triton"
             / "triton-npu-optimize-knowledge"
             / "references"
             / "patterns"
@@ -81,6 +82,7 @@ Extra prose that should stay in the source file but not become a first-line inde
         checked_in = (
             REPO_ROOT
             / "skills"
+            / "triton"
             / "triton-npu-optimize-knowledge"
             / "references"
             / "pattern_index.md"
@@ -89,12 +91,13 @@ Extra prose that should stay in the source file but not become a first-line inde
 
     def test_checked_in_torch_npu_pattern_index_matches_generator(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         patterns_dir = (
             REPO_ROOT
             / "skills"
-            / "torch-npu-optimize-knowledge"
+            / "triton"
+            / "triton-npu-optimize-knowledge"
             / "references"
             / "patterns"
         )
@@ -102,7 +105,8 @@ Extra prose that should stay in the source file but not become a first-line inde
         checked_in = (
             REPO_ROOT
             / "skills"
-            / "torch-npu-optimize-knowledge"
+            / "triton"
+            / "triton-npu-optimize-knowledge"
             / "references"
             / "pattern_index.md"
         ).read_text(encoding="utf-8")
@@ -110,7 +114,7 @@ Extra prose that should stay in the source file but not become a first-line inde
 
     def test_v1_pattern_catalog_builds_high_priority_reminder_lines(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/pattern_catalog.py"
+            "skills/triton/triton-npu-optimize-knowledge/scripts/pattern_catalog.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -162,7 +166,7 @@ Keep peak footprint bounded.
         self,
     ) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py"
+            "skills/triton/triton-npu-optimize-knowledge-v2/scripts/pattern_catalog.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -195,7 +199,7 @@ Use bounded config search when structure is already sound.
 
     def test_v3_pattern_catalog_rejects_invalid_priority_value(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py"
+            "skills/triton/triton-npu-optimize-knowledge-v3/scripts/pattern_catalog.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -224,7 +228,7 @@ Short summary.
 
     def test_build_index_rejects_invalid_priority_value(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -252,7 +256,7 @@ Short summary.
 
     def test_generated_index_lists_high_priority_patterns_before_full_summaries(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -305,7 +309,7 @@ Normal summary.
 
     def test_generated_index_renders_none_when_no_patterns_are_high_priority(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -330,11 +334,12 @@ Normal summary.
 
     def test_checked_in_v2_pattern_index_matches_generator(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge-v2/scripts/build_pattern_index.py"
         )
         patterns_dir = (
             REPO_ROOT
             / "skills"
+            / "triton"
             / "triton-npu-optimize-knowledge-v2"
             / "references"
             / "patterns"
@@ -343,6 +348,7 @@ Normal summary.
         checked_in = (
             REPO_ROOT
             / "skills"
+            / "triton"
             / "triton-npu-optimize-knowledge-v2"
             / "references"
             / "pattern_index.md"
@@ -351,11 +357,12 @@ Normal summary.
 
     def test_checked_in_v3_pattern_index_matches_generator(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge-v3/scripts/build_pattern_index.py"
         )
         patterns_dir = (
             REPO_ROOT
             / "skills"
+            / "triton"
             / "triton-npu-optimize-knowledge-v3"
             / "references"
             / "patterns"
@@ -364,6 +371,7 @@ Normal summary.
         checked_in = (
             REPO_ROOT
             / "skills"
+            / "triton"
             / "triton-npu-optimize-knowledge-v3"
             / "references"
             / "pattern_index.md"
@@ -372,7 +380,7 @@ Normal summary.
 
     def test_generated_index_links_to_pattern_subdirectory(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -385,7 +393,7 @@ Normal summary.
 
     def test_generated_index_omits_post_apply_verification_section(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -412,7 +420,7 @@ Short summary.
 
     def test_generated_index_omits_related_patterns_section(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -439,7 +447,7 @@ Short summary.
 
     def test_build_index_ignores_pattern_directory_readme(self) -> None:
         module = _load_skill_script(
-            "skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
+            "skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py"
         )
         with tempfile.TemporaryDirectory() as tmp:
             patterns_dir = Path(tmp)
@@ -463,6 +471,7 @@ Short summary.
         checked_in = (
             REPO_ROOT
             / "skills"
+            / "triton"
             / "triton-npu-optimize-knowledge"
             / "references"
             / "pattern_index.md"

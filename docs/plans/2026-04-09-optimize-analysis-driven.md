@@ -100,11 +100,11 @@ Expected: PASS
 ### Task 3: Update Optimize Skill And Reference Docs
 
 **Files:**
-- Modify: `skills/triton-npu-optimize/SKILL.md`
-- Modify: `skills/triton-npu-optimize/references/workflow.md`
-- Modify: `skills/triton-npu-optimize/references/pattern_index.md`
-- Modify: `skills/triton-npu-optimize/references/artifacts.md`
-- Modify: `skills/triton-npu-optimize/references/opt-note-format.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/references/workflow.md`
+- Modify: `skills/triton/triton-npu-optimize/references/pattern_index.md`
+- Modify: `skills/triton/triton-npu-optimize/references/artifacts.md`
+- Modify: `skills/triton/triton-npu-optimize/references/opt-note-format.md`
 
 - [ ] **Step 1: Update the optimize skill workflow**
 
