@@ -31,6 +31,52 @@ Use this skill when the user wants a new converted operator artifact instead of 
 - Target Ascend NPU only for this conversion flow; do not add CUDA, CPU, MPS, or generic multi-backend fallback logic unless the source file already requires shared import structure around the public API.
 - Do not introduce unnecessary wrappers, compatibility branches, helper layers, or standalone or differential test code inside the converted operator file.
 
+## API Hierarchy
+
+TileLang-Ascend APIs are organized in three layers from base to advanced.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Layer 3: Expert programming model                            │
+│  · Explicit hardware memory: T.alloc_ub / T.alloc_L1 / L0*   │
+│  · Manual sync: T.barrier_all / T.set_flag / T.wait_flag     │
+│  · pass_configs: auto-passes OFF for full manual control     │
+├──────────────────────────────────────────────────────────────┤
+│  Layer 2: Extended compute primitives                         │
+│  · T.tile.add / .exp / .sqrt / .cast / .compare / .select    │
+│  · T.tile.sort / .topk / .merge_sort / .transpose / .fill    │
+│  · Use when Layer 1 cannot express the operation             │
+├──────────────────────────────────────────────────────────────┤
+│  Layer 1: Base primitives — recommended default               │
+│  · Memory: T.alloc_shared / T.alloc_fragment / T.alloc_var   │
+│  · Data: T.copy                                              │
+│  · Compute: T.gemm_v0 / T.reduce_* / T.Parallel + sym math   │
+│  · Schedule: T.serial / T.Pipelined / T.Persistent           │
+│  · Infrastructure: T.Kernel / @T.prim_func / @tilelang.jit   │
+│  · Auto-managed: pass_configs (AUTO_CV/SYNC/MEMORY/CROSS)    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+> **Note on layer naming**: This three-layer split is an engineering convention for convert workflows — a practical guide for what to reach for first, next, and last. In the TileLang source architecture, `T.tile.*` extensions and explicit memory / manual sync are all part of "Expert mode". The split here separates them into Layer 2 (extended compute — usable with auto-managed `pass_configs`) and Layer 3 (explicit hardware control — requires manual sync and Expert `pass_configs`) because they have different complexity costs in practice.
+
+### Convert Guidance
+
+1. **Start with Layer 1**: Use `T.alloc_shared` / `T.alloc_fragment` for memory, `T.Parallel` + symbolic math for element-wise, `T.gemm_v0` for matrix multiply, `T.reduce_*` for reductions. The compiler handles CV splitting, sync, and memory planning automatically via `pass_configs`.
+2. **Use Layer 2 when needed**: When Layer 1 primitives cannot express an operation (e.g., sort, topk, compare, cast, gather_mask, transpose), use the corresponding `T.tile.*` extension.
+3. **Layer 3 is available**: Explicit hardware memory (`T.alloc_ub` / `T.alloc_L1` / `T.alloc_L0*`), manual sync primitives, and Expert `pass_configs` offer finer control. Prefer the auto-managed Layer 1 approach; use Layer 3 only when the kernel genuinely requires precise hardware-level control.
+
+### Reference Documents
+
+| File | Contents |
+|------|----------|
+| [tilelang-kernel-basics.md](references/tilelang-kernel-basics.md) | Shared infrastructure: `@tilelang.jit`, `T.Kernel`, loops, `pass_configs`, cache, autotune |
+| [tilelang-memory-developer.md](references/tilelang-memory-developer.md) | Layer 1 memory: `T.alloc_shared`, `T.alloc_fragment`, `T.alloc_var`, `T.copy` |
+| [tilelang-memory-expert.md](references/tilelang-memory-expert.md) | Layer 3 memory: `T.alloc_ub`, `T.alloc_L1`, `T.alloc_L0*` |
+| [tilelang-compute-developer.md](references/tilelang-compute-developer.md) | Layer 1 compute: `T.gemm_v0`, `T.reduce_*`, `T.Parallel` + symbolic math |
+| [tilelang-compute-expert.md](references/tilelang-compute-expert.md) | Layer 2 extended `T.tile.*` + Layer 3 sync primitives |
+| [TileLang-Ascend Developer API Reference](../../TileLang-Ascend%20Developer%20API%20Reference.md) | Full Developer mode API reference |
+| [TileLang-Ascend Expert API Reference](../../TileLang-Ascend%20Expert%20API%20Reference.md) | Full Expert mode API reference |
+
 ## Required Workflow
 
 1. Read the original operator file carefully before editing anything, and identify the public PyTorch entrypoint that should remain visible after conversion.
@@ -43,9 +89,9 @@ Use this skill when the user wants a new converted operator artifact instead of 
 
 1. If a suitable test already exists in the operator workspace, reuse it. This includes existing standalone and differential test cases when they already cover the operator workspace.
 2. Do not create a new test when an existing suitable test can be reused unless the user explicitly asks to regenerate it.
-3. When no suitable reusable test exists, use `npu-gen-test` to generate a test for the converted output.
+3. When no suitable reusable test exists, use `ascend-npu-gen-test` to generate a test for the converted output.
 4. Use the original input operator as the reference implementation when the requested mode is differential, and use the converted output as the system under test in all cases.
-5. Use `npu-run-eval` to execute validation — run the appropriate validation command (`run-test-optimize` for differential mode, `run-test-baseline` for standalone mode) as prescribed by the skill. The command output must contain `PASS:` for validation to be considered successful. See "Validation Enforcement Rules" below for the complete set of mandatory validation constraints.
+5. Use `ascend-npu-run-eval` to execute validation — run the appropriate validation command (`run-test-optimize` for differential mode, `run-test-baseline` for standalone mode) as prescribed by the skill. The command output must contain `PASS:` for validation to be considered successful. See "Validation Enforcement Rules" below for the complete set of mandatory validation constraints.
 6. If the converted output hits TileLang compile, JIT, launch, or kernel-structure errors, use `tilelang-npu-repair-guide` for operator-side repair heuristics and then re-run validation.
 
 ## Validation Enforcement Rules
@@ -54,7 +100,7 @@ Correctness validation is **not advisory** — it is the final gate before conve
 
 ### Mandatory Validation Commands
 
-You MUST use the validation commands prescribed by the `npu-run-eval` skill:
+You MUST use the validation commands prescribed by the `ascend-npu-run-eval` skill:
 
 - **Differential mode**: `run-command.py run-test-optimize` with `--baseline-operator-file <original>`
 - **Standalone mode**: `run-command.py run-test-baseline`
@@ -80,11 +126,6 @@ The following self-validation patterns are **strictly forbidden**. Violating any
 - ANY other output (including `FAIL:`, Python exceptions, or empty output) — conversion has NOT passed
 - If the command does not print `PASS:` or `All tests passed!`, do NOT declare success. Instead, use the failure output to diagnose and fix the kernel, then re-run the same validation command.
 
-For TileLang API details beyond what the example shows:
-- [references/tilelang-kernel-basics.md](references/tilelang-kernel-basics.md) — kernel definition, launch, loops, JIT
-- [references/tilelang-memory.md](references/tilelang-memory.md) — memory allocation
-- [references/tilelang-compute.md](references/tilelang-compute.md) — compute primitives & data movement
-
 ## Converted Example
 
 Use a real converted output example in the generated file, not only a prose description. For a simple elementwise add conversion, a converted output may look like this:
@@ -96,15 +137,16 @@ import tilelang
 import tilelang.language as T
 
 pass_configs = {
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_COMBINE: True,
     tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,
     tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_CROSS_CORE_SYNC: True,
 }
 
 M = 1024
 N = 1024
 block_M = 128
 block_N = 128
-VEC_NUM = 2
 
 
 @tilelang.jit(out_idx=[-1], pass_configs=pass_configs)
@@ -118,21 +160,21 @@ def tilelang_add(M: int, N: int, block_M: int, block_N: int, dtype: str = "float
         B: T.Tensor((M, N), dtype),
         C: T.Tensor((M, N), dtype),
     ):
-        with T.Kernel(m_num * n_num, is_npu=True) as (cid, vid):
+        with T.Kernel(m_num * n_num, threads=2, is_npu=True) as (cid):
             bx = cid // n_num
             by = cid % n_num
 
-            a_ub = T.alloc_shared((block_M // VEC_NUM, block_N), dtype)
-            b_ub = T.alloc_shared((block_M // VEC_NUM, block_N), dtype)
-            c_ub = T.alloc_shared((block_M // VEC_NUM, block_N), dtype)
+            a_ub = T.alloc_shared((block_M, block_N), dtype)
+            b_ub = T.alloc_shared((block_M, block_N), dtype)
+            c_ub = T.alloc_shared((block_M, block_N), dtype)
 
-            T.copy(A[bx * block_M + vid * block_M // VEC_NUM, by * block_N], a_ub)
-            T.copy(B[bx * block_M + vid * block_M // VEC_NUM, by * block_N], b_ub)
+            T.copy(A[bx * block_M, by * block_N], a_ub)
+            T.copy(B[bx * block_M, by * block_N], b_ub)
 
-            for i, j in T.Parallel(block_M // VEC_NUM, block_N):
+            for i, j in T.Parallel(block_M, block_N):
                 c_ub[i, j] = a_ub[i, j] + b_ub[i, j]
 
-            T.copy(c_ub, C[bx * block_M + vid * block_M // VEC_NUM, by * block_N])
+            T.copy(c_ub, C[bx * block_M, by * block_N])
 
     return add_kernel
 
@@ -164,8 +206,9 @@ In this kind of conversion:
 - `add_kernel` is the `@T.prim_func` kernel definition — all compute happens here
 - `func = tilelang_add(M, N, block_M, block_N)` compiles the kernel at module load time via `@tilelang.jit`
 - `class ModelNew` is the converted public architecture — `forward()` just calls the compiled kernel
-- the trailing `get_init_inputs()` / `get_inputs()` block is preserved in the converted output instead of being dropped
-- the original source operator remains the correctness oracle for differential validation
+- The trailing `get_init_inputs()` / `get_inputs()` block is preserved in the converted output instead of being dropped
+- The original source operator remains the correctness oracle for differential validation
+- This example uses **Layer 1 (Developer mode)**: `T.alloc_shared` for memory, `T.Parallel` + symbolic math for compute, auto-managed `pass_configs` with all four auto-passes enabled, and `threads=2` vid elimination
 
 ## Forward Method Constraints
 
@@ -242,6 +285,7 @@ class ModelNew(nn.Module):
 - Prefer targeted conversion over unrelated refactoring.
 - Use the requested standalone or differential correctness validation mode instead of inventing a third validation workflow here.
 - Input validation in the converted operator must limit itself to zero-cost metadata checks (`.dtype`, `.ndim`, `.device`, `.shape`, `.numel()`). Never scan tensor data for bounds or value-range validation — calling `.min().item()`, `.max().item()`, or any reduction+`.item()` on input tensors forces a GPU→CPU synchronization on every forward call and destroys performance. The caller is responsible for providing valid inputs, just as it is for the original PyTorch operator.
+- Prefer Layer 1 base primitives for memory and compute (`T.alloc_shared`, `T.alloc_fragment`, `T.Parallel` + symbolic math). Use Layer 2 `T.tile.*` extensions when Layer 1 cannot express the needed operation. Layer 3 explicit hardware memory and manual sync are available but prefer the auto-managed approach — only use them when the kernel genuinely requires precise hardware-level control.
 
 ## Do Not
 
@@ -251,7 +295,7 @@ class ModelNew(nn.Module):
 - Do not create input-validation helpers (e.g., `_validate_index`, `_check_bounds`, `_assert_indices`, or similarly-named functions) that scan tensor data. Specifically, never call `.min().item()`, `.max().item()`, `.sum().item()`, or any reduction followed by `.item()` on GPU/NPU tensors before launching a kernel. These force a full-tensor GPU→CPU synchronization on every forward call. The converted operator inherits the same input contract as the original PyTorch operator — if the caller passes out-of-bounds indices, that is a caller bug, not something the conversion must guard against.
 - Do not submit a pure PyTorch rewrite as the converted result, even when the wrapper signature or standalone or differential outputs still look correct.
 - Do not write your own comparison script (e.g., `python3 -c "import torch; ..."`) to compare result `.pt` files or operator outputs.
-- Do not use `torch.allclose`, `torch.testing.assert_close`, `torch.equal`, or any other numerical comparison function with custom tolerances to validate conversion correctness — always use `run-test-optimize` or `run-test-baseline` from the `npu-run-eval` skill.
+- Do not use `torch.allclose`, `torch.testing.assert_close`, `torch.equal`, or any other numerical comparison function with custom tolerances to validate conversion correctness — always use `run-test-optimize` or `run-test-baseline` from the `ascend-npu-run-eval` skill.
 - Do not self-declare the conversion as "PASS" based on your own tolerance analysis — only the printed output of `run-test-optimize` or `run-test-baseline` determines success.
 - Do not run differential test files directly with `python3` — always use `run-command.py run-test-optimize` or `run-command.py run-test-baseline`.
 - Do not save custom `.pt` files (e.g., `REFERENCE_RESULT.pt`, `COMPARE_RESULT.pt`) for manual comparison — this may interfere with the CLI validation loop's result caching.
