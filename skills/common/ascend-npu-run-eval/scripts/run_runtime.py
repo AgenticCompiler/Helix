@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import errno
+import locale
 import os
 import shlex
 import subprocess
@@ -78,7 +79,7 @@ def run_buffered_process(
         cwd=workdir,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
+        text=False,
         env=_merged_env(extra_env),
     )
     stdout_pipe = process.stdout
@@ -90,8 +91,19 @@ def run_buffered_process(
         if stderr_pipe is None:
             return
         try:
-            for line in stderr_pipe:
-                stderr_lines.append(line)
+            try:
+                iterator = iter(stderr_pipe)
+            except TypeError:
+                # Defensive fallback for pipe-like test doubles or platform-specific
+                # wrappers that expose read() but not iteration.
+                read_stderr = getattr(stderr_pipe, "read", None)
+                if callable(read_stderr):
+                    chunk = read_stderr()
+                    if isinstance(chunk, (bytes, str)) and chunk:
+                        stderr_lines.append(_coerce_output_text(chunk))
+                return
+            for line in iterator:
+                stderr_lines.append(_coerce_output_text(line))
         except ValueError:
             pass  # pipe closed by parent
 
@@ -104,7 +116,7 @@ def run_buffered_process(
         while True:
             line = stdout_pipe.readline() if stdout_pipe is not None else ""
             if line:
-                stdout_lines.append(line)
+                stdout_lines.append(_coerce_output_text(line))
                 start = time.monotonic()
             elif process.poll() is not None:
                 break
@@ -173,7 +185,7 @@ def _run_streaming_windows(
             chunk = process.stdout.read(4096)
             if not chunk:
                 break
-            text = chunk.decode(errors="replace")
+            text = _coerce_output_text(chunk)
             with lock:
                 output_chunks.append(text)
                 print(text, file=stdout or sys.stdout, end="", flush=True)
@@ -248,7 +260,7 @@ def _run_streaming_pty(
                         break
                     raise
                 if chunk:
-                    text = chunk.decode(errors="replace")
+                    text = _coerce_output_text(chunk)
                     output_chunks.append(text)
                     print(text, file=stdout or sys.stdout, end="")
                     start = time.monotonic()
@@ -323,9 +335,10 @@ def copy_file_to_remote(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> None:
-    command = _scp_to_remote_command(spec, local_path, remote_path)
+    local_workdir, local_arg = _scp_local_operand(local_path)
+    command = _scp_to_remote_command(spec, local_arg, remote_path)
     _maybe_emit_remote_command(command, verbose, stderr)
-    result = run_buffered_process(command, ".", stall_timeout_seconds=_scp_timeout())
+    result = run_buffered_process(command, local_workdir, stall_timeout_seconds=_scp_timeout())
     if not result_succeeded(result):
         raise RuntimeError(result["stderr"] or result["stdout"] or f"Failed to copy {local_path} to remote.")
 
@@ -337,9 +350,10 @@ def copy_file_from_remote(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> None:
-    command = _scp_from_remote_command(spec, remote_path, local_path)
+    local_workdir, local_arg = _scp_local_operand(local_path)
+    command = _scp_from_remote_command(spec, remote_path, local_arg)
     _maybe_emit_remote_command(command, verbose, stderr)
-    result = run_buffered_process(command, ".", stall_timeout_seconds=_scp_timeout())
+    result = run_buffered_process(command, local_workdir, stall_timeout_seconds=_scp_timeout())
     if not result_succeeded(result):
         raise RuntimeError(result["stderr"] or result["stdout"] or f"Failed to copy {remote_path} from remote.")
 
@@ -352,9 +366,10 @@ def copy_directory_from_remote(
     stderr: TextIO | None = None,
 ) -> None:
     local_path.parent.mkdir(parents=True, exist_ok=True)
-    command = _scp_from_remote_command(spec, remote_path, local_path, recursive=True)
+    local_workdir, local_arg = _scp_local_operand(local_path)
+    command = _scp_from_remote_command(spec, remote_path, local_arg, recursive=True)
     _maybe_emit_remote_command(command, verbose, stderr)
-    result = run_buffered_process(command, ".", stall_timeout_seconds=_scp_timeout())
+    result = run_buffered_process(command, local_workdir, stall_timeout_seconds=_scp_timeout())
     if not result_succeeded(result):
         raise RuntimeError(
             result["stderr"] or result["stdout"] or f"Failed to copy directory {remote_path} from remote."
@@ -410,18 +425,18 @@ def _ssh_command(spec: RemoteSpec, remote_command: str) -> list[str]:
     return command
 
 
-def _scp_to_remote_command(spec: RemoteSpec, local_path: Path, remote_path: str) -> list[str]:
+def _scp_to_remote_command(spec: RemoteSpec, local_path_arg: str, remote_path: str) -> list[str]:
     command = ["scp"]
     if spec["port"] is not None:
         command.extend(["-P", str(spec["port"])])
-    command.extend([local_path.as_posix(), f"{spec['user_host']}:{remote_path}"])
+    command.extend([local_path_arg, f"{spec['user_host']}:{remote_path}"])
     return command
 
 
 def _scp_from_remote_command(
     spec: RemoteSpec,
     remote_path: str,
-    local_path: Path,
+    local_path_arg: str,
     recursive: bool = False,
 ) -> list[str]:
     command = ["scp"]
@@ -429,7 +444,7 @@ def _scp_from_remote_command(
         command.append("-r")
     if spec["port"] is not None:
         command.extend(["-P", str(spec["port"])])
-    command.extend([f"{spec['user_host']}:{remote_path}", local_path.as_posix()])
+    command.extend([f"{spec['user_host']}:{remote_path}", local_path_arg])
     return command
 
 
@@ -477,3 +492,19 @@ def _shell_env_prefix(extra_env: dict[str, str] | None) -> str:
     if not normalized:
         return ""
     return " ".join(f"{key}={shlex.quote(value)}" for key, value in sorted(normalized.items()))
+
+
+def _coerce_output_text(data: bytes | str) -> str:
+    # Keep this decoder local to the skill helper instead of importing a shared
+    # triton_agent utility: skill-side scripts must stay self-contained.
+    if isinstance(data, str):
+        return data
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        preferred = locale.getpreferredencoding(False) or "utf-8"
+        return data.decode(preferred, errors="replace")
+
+
+def _scp_local_operand(local_path: Path) -> tuple[str, str]:
+    return str(local_path.parent), local_path.name
