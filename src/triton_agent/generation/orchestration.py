@@ -9,7 +9,7 @@ from triton_agent.backends.factory import create_runner
 from triton_agent.generation.models import GenerationOptions
 from triton_agent.generation.outputs import resolve_generation_output_path
 from triton_agent.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
-from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
+from triton_agent.models import AgentRequest, AgentResult, CommandKind, command_to_skill
 from triton_agent.otel_trace import build_tool_trace_env, new_trace_run_id, trace_path_from_request, write_tool_trace_summary
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
 from triton_agent.remote_execution_env import merge_remote_execution_env
@@ -75,7 +75,7 @@ def build_generation_request(
         stream_output=options.stream_output,
         force_overwrite=options.force_overwrite,
         agent_name=options.agent_name,
-        skill_name=COMMAND_TO_SKILL[command_kind],
+        skill_name=command_to_skill(command_kind),
         prompt=prompt,
         workdir=workdir,
         remote=options.remote,

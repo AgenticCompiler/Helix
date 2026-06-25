@@ -1,6 +1,8 @@
-# From bench logs to `triton-npu-optimize-knowledge` pattern cards
+# From bench logs to `<Language>-npu-optimize-knowledge` pattern cards
 
-Use this workflow when distilling `workspace/NPUKernelBench_level_1_2_triton` (or a sibling export such as `workspace/kernelagent_v3`) into durable pattern knowledge. **Target only** the designated staged knowledge skill (`triton-npu-optimize-knowledge`, which corresponds to `triton-npu-optimize-knowledge-v2` or `triton-npu-optimize-knowledge-v3` in the source tree) for pattern edits; leave the triton-npu-optimize workflow skill unchanged unless the project explicitly promotes another path.
+In file paths and skill references below, `<Language>` is `triton` or `tilelang` depending on the kernel language.
+
+Use this workflow when distilling `workspace/NPUKernelBench_level_1_2_triton` (or a sibling export such as `workspace/kernelagent_v3`) into durable pattern knowledge. **Target only** the designated staged knowledge skill (`<Language>-npu-optimize-knowledge`, which corresponds to `triton-npu-optimize-knowledge-v2` or `triton-npu-optimize-knowledge-v3` in the source tree for Triton) for pattern edits; leave the `<Language>-npu-optimize` workflow skill unchanged unless the project explicitly promotes another path.
 
 ## Finding files under `workspace/` (gitignored)
 
@@ -36,18 +38,18 @@ For each operator workspace `NN_OperatorName/` that has `opt-note.md` and `opt-r
 
 1. **Context**
    - Read `NN_OperatorName.py` (PyTorch reference) and `NN_OperatorName.json` (cases).
-   - Read the **initial** Triton snapshot: `triton_NN_OperatorName.py` if present, else the kernel under `baseline/` alongside **`opt_NN_OperatorName.py`** when the export uses the short naming scheme.
+   - Read the **initial** kernel snapshot: `<Language>_NN_OperatorName.py` if present, else the kernel under `baseline/` alongside **`opt_NN_OperatorName.py`** when the export uses the short naming scheme.
    - Skim `NN_OperatorName_perf.txt` for PyTorch `raw-op-statistic-case-*` timings when you need reference timings.
 
 2. **Guided round walk**
    - Open `opt-note.md` and walk rounds in order (`## Round 1`, `## Round 2`, …).
    - For each round, open `opt-round-N/attempts.md` for hypotheses, cited pattern cards, analysis level, and failures; open `opt-round-N/summary.md` for the compact outcome; read `round-state.json` when paths or statuses need confirmation.
-   - For **each** round, read `references/pattern_index.md` in the **same** knowledge tree you are editing (the `triton-npu-optimize-knowledge` skill, which maps to the appropriate v2/v3 source tree) and choose the best semantic match as **one primary pattern** for the five-field narrative. Optional secondary lenses belong as **short cross-references** inside `Interpretation`, not as duplicate full round blocks on other cards. **Even when `attempts.md` cites no `references/patterns/*.md` path or only cites the index.** Log citations are hints, not proof of mapping completeness.
+   - For **each** round, read `references/pattern_index.md` in the **same** knowledge tree you are editing (the `<Language>-npu-optimize-knowledge` skill, which maps to the appropriate v2/v3 source tree for Triton) and choose the best semantic match as **one primary pattern** for the five-field narrative. Optional secondary lenses belong as **short cross-references** inside `Interpretation`, not as duplicate full round blocks on other cards. **Even when `attempts.md` cites no `references/patterns/*.md` path or only cites the index.** Log citations are hints, not proof of mapping completeness.
    - Do not map patterns by keyword search alone. Use kernel structure, code change intent, and evidence from perf/profile logs.
    - If no existing pattern’s `## Summary` / `## Use When` is a defensible fit after reading the index and the top candidate cards, treat the round as a **new pattern candidate**: add `references/patterns/<slug>.md` in the staged knowledge skill (authoring contract in `docs/notes/2026-04-29-optimize-pattern-card-authoring.md`) and **update `references/pattern_index.md` in the staged knowledge skill** so the slug is discoverable on the next pass.
 
 3. **Code diff discipline**
-   - Compare Triton **before vs after** the round: parent candidate (usually prior round **`opt_triton_*.py`** or **`opt_*.py`**, else `baseline/`) vs this round’s **`opt_triton_*.py`** or **`opt_*.py`** (whichever the export uses).
+   - Compare kernel **before vs after** the round: parent candidate (usually prior round **`opt_<Language>_*.py`** or **`opt_*.py`**, else `baseline/`) vs this round’s **`opt_<Language>_*.py`** or **`opt_*.py`** (whichever the export uses).
    - Tie observed code motion back to the cited pattern (what matched the card, what did not).
 
 4. **Kernel-local summary (before touching pattern cards)**

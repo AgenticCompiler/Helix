@@ -151,6 +151,7 @@ class MemoryFileManager:
         workdir: Path,
         *,
         agent_name: str,
+        language: str = "triton",
         optimize_target: str = "kernel",
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
@@ -164,6 +165,7 @@ class MemoryFileManager:
             agent_name=agent_name,
             content=self._render_shared_guidance(
                 guidance_filename=self.guidance_filename(agent_name),
+                language=language,
                 optimize_target=optimize_target,
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
@@ -178,6 +180,7 @@ class MemoryFileManager:
         workdir: Path,
         *,
         agent_name: str,
+        language: str = "triton",
         optimize_target: str = "kernel",
         include_supervisor_handoff: bool = True,
         compiler_source_path: Path | None = None,
@@ -193,6 +196,7 @@ class MemoryFileManager:
             agent_name=agent_name,
             content=self._render_round_gated_guidance(
                 guidance_filename=guidance_filename,
+                language=language,
                 optimize_target=optimize_target,
                 include_supervisor_handoff=include_supervisor_handoff,
                 compiler_source_path=compiler_source_path,
@@ -271,6 +275,7 @@ class MemoryFileManager:
         self,
         *,
         guidance_filename: str,
+        language: str = "triton",
         optimize_target: str = "kernel",
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
@@ -281,7 +286,7 @@ class MemoryFileManager:
         return _SHARED_GUIDANCE_TEMPLATE.format(
             guidance_filename=guidance_filename,
             analysis_block=_render_bullet_block(
-                layered_analysis_lines(round_scope="each round")
+                layered_analysis_lines(round_scope="each round", language=language)
                 + (
                     [
                         "Use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and operator-level pattern references.",
@@ -305,10 +310,11 @@ class MemoryFileManager:
                 compiler_source_analysis_lines(
                     compiler_source_path=compiler_source_path,
                     compiler_source_commit=compiler_source_commit,
+                    language=language,
                 )
             ),
             cann_ext_api_block=_render_line_block(
-                cann_ext_api_lines(enabled=enable_cann_ext_api)
+                cann_ext_api_lines(enabled=enable_cann_ext_api, language=language)
             ),
         )
 
@@ -316,6 +322,7 @@ class MemoryFileManager:
         self,
         *,
         guidance_filename: str,
+        language: str = "triton",
         optimize_target: str = "kernel",
         include_supervisor_handoff: bool = True,
         compiler_source_path: Path | None = None,
@@ -327,7 +334,7 @@ class MemoryFileManager:
         base = _ROUND_GATED_GUIDANCE_TEMPLATE.format(
             guidance_filename=guidance_filename,
             analysis_block=_render_bullet_block(
-                layered_analysis_lines(round_scope="each round")
+                layered_analysis_lines(round_scope="each round", language=language)
                 + (
                     [
                         "Use the staged `torch-npu-optimize-knowledge` skill for Torch NPU and operator-level pattern references.",
@@ -351,10 +358,11 @@ class MemoryFileManager:
                 compiler_source_analysis_lines(
                     compiler_source_path=compiler_source_path,
                     compiler_source_commit=compiler_source_commit,
+                    language=language,
                 )
             ),
             cann_ext_api_block=_render_line_block(
-                cann_ext_api_lines(enabled=enable_cann_ext_api)
+                cann_ext_api_lines(enabled=enable_cann_ext_api, language=language)
             ),
         )
         if include_supervisor_handoff:

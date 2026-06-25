@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass(frozen=True)
@@ -14,6 +15,7 @@ class ConvertOptions:
     remote_workdir: str | None
     output: str | None
     test_mode: str | None
+    language: Literal["triton", "tilelang"] = "triton"
     prompt: str | None = None
     log_tools: bool = False
     enable_mcp: bool = False

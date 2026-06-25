@@ -100,7 +100,7 @@ class SubagentManagerTests(unittest.TestCase):
             self.assertIn("mode: subagent", content)
             self.assertIn("Start with skill `triton-npu-optimize-knowledge`", content)
             self.assertIn(
-                "Use skill `ascend-npu-run-eval`, `ascend-npu-profile-operator`, and `ascend-npu-analyze-ir`",
+                "Use skill `ascend-npu-run-eval`, `ascend-npu-profile-operator`, and `triton-npu-analyze-ir`",
                 content,
             )
             self.assertIn("must not perform optimization work", content)

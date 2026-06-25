@@ -26,4 +26,4 @@ python3 scripts/optimize_submit_baseline.py check-baseline --baseline-dir baseli
 - Do not use this skill to invent missing evidence or to replace benchmark, correctness, profile, or IR work that the workflow still requires.
 - Do not use this skill to generate missing harnesses, repair operator logic, or invent missing baseline evidence.
 - Baseline preparation belongs to `ascend-npu-prepare-optimize-baseline`.
-- Open-ended optimization work belongs to `triton-npu-optimize`.
+- Open-ended optimization work belongs to `<Language>-npu-optimize` (where `<Language>` is `triton` or `tilelang`).

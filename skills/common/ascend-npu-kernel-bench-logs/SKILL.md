@@ -1,6 +1,6 @@
 ---
 name: ascend-npu-kernel-bench-logs
-description: Interprets NPUKernelBench-style operator workspaces with baseline, opt-round-N, PyTorch and Triton sources, and perf text logs (including opt_<Operator>.py and <Operator>_perf.txt naming). Use when reviewing archived optimization runs under trees such as workspace/NPUKernelBench_level_1_2_triton or sibling exports, comparing rounds without rerunning benchmarks, extracting PyTorch timings from raw-op-statistic-case lines, distilling lessons into triton-npu-optimize-knowledge-v2 or triton-npu-optimize-knowledge-v3 pattern cards (keeping per-card NPUKernelBench field inventory while mapping), or tracking progress in PATTERN_AND_LOG_SYNC_PROGRESS.md at the bench export root (create that file there if missing).
+description: Interprets NPUKernelBench-style operator workspaces with baseline, opt-round-N, PyTorch and kernel sources, and perf text logs (including opt_<Operator>.py and <Operator>_perf.txt naming). Use when reviewing archived optimization runs under trees such as workspace/NPUKernelBench_level_1_2_triton or sibling exports, comparing rounds without rerunning benchmarks, extracting PyTorch timings from raw-op-statistic-case lines, distilling lessons into triton-npu-optimize-knowledge-v2 or triton-npu-optimize-knowledge-v3 pattern cards (keeping per-card NPUKernelBench field inventory while mapping), or tracking progress in PATTERN_AND_LOG_SYNC_PROGRESS.md at the bench export root (create that file there if missing).
 ---
 
 # Kernel bench logs
@@ -12,16 +12,16 @@ Read and summarize completed optimization evidence in an NPUKernelBench-style op
 ## When to use
 
 - The user points at `NPUKernelBench_level_1_2_triton` or a sibling bench export and wants an overview, diff narrative, or perf story.
-- You need to compare PyTorch reference numbers to initial Triton and final Triton using existing `*_perf.txt` files only.
+- You need to compare PyTorch reference numbers to initial and final kernel versions using existing `*_perf.txt` files only.
 - You need the fastest on-ramp to what happened across rounds (`opt-note.md`, `learned_lessons.md`, then selective `opt-round-*`).
 
 ## Directory map
 
 Follow the canonical path and filename semantics in [references/kernel-bench-layout.md](references/kernel-bench-layout.md). That file lists operator-level paths, optional round artifacts, and how to read PyTorch timing lines.
 
-## Triton snapshot and perf filenames (two conventions)
+## Kernel snapshot and perf filenames (two conventions)
 
-Some exports use the historical **`triton_<Operator>.py`** / **`triton_<Operator>_perf.txt`** (initial Triton) and **`opt_triton_<Operator>.py`** / **`opt_triton_<Operator>_perf.txt`** (latest optimized Triton at operator root and under `opt-round-*`). Others use **`opt_<Operator>.py`** for the optimized Triton snapshot at the root and under **`opt-round-*`** (no `triton_*` / `opt_triton_*` filenames). PyTorch reference perf stays **`NN_OperatorName_perf.txt`** (**`<Operator>_perf.txt`**); Triton-side perf in the short scheme is often **`baseline/perf.txt`** or files next to each **`opt_<Operator>.py`**. Treat these as equivalent roles when reading diffs and perf: pick whichever filenames exist for that operator, and compare **baseline** vs **round** vs **top-level latest** consistently.
+Some exports use the historical **`<Language>_<Operator>.py`** / **`<Language>_<Operator>_perf.txt`** (initial kernel) and **`opt_<Language>_<Operator>.py`** / **`opt_<Language>_<Operator>_perf.txt`** (latest optimized kernel at operator root and under `opt-round-*`), where `<Language>` is `triton` or `tilelang` depending on the kernel language used. Others use **`opt_<Operator>.py`** for the optimized kernel snapshot at the root and under **`opt-round-*`** (no `<Language>_*` / `opt_<Language>_*` filenames). PyTorch reference perf stays **`NN_OperatorName_perf.txt`** (**`<Operator>_perf.txt`**); kernel-side perf in the short scheme is often **`baseline/perf.txt`** or files next to each **`opt_<Operator>.py`**. Treat these as equivalent roles when reading diffs and perf: pick whichever filenames exist for that operator, and compare **baseline** vs **round** vs **top-level latest** consistently.
 
 ## Locating bench trees (`workspace/` is gitignored)
 
@@ -42,15 +42,15 @@ If a **git-aware** search or glob returns nothing under `workspace/`, **do not c
 
 1. `opt-note.md` for the cross-round ledger and overall outcome.
 2. `learned_lessons.md` for distilled, reusable rules (not round play-by-play).
-3. `baseline/` versus the top-level **initial** Triton snapshot and its benchmark: either `triton_NN_OperatorName.py` and `triton_NN_OperatorName_perf.txt`, or only **`baseline/`** plus **`baseline/perf.txt`** when there is no `triton_*` pair (exports that use **`opt_<Operator>.py`** at the root instead of `triton_*`).
-4. The top-level **latest optimized** Triton snapshot and its Triton benchmark text: either `opt_triton_NN_OperatorName.py` and `opt_triton_NN_OperatorName_perf.txt`, or **`opt_<Operator>.py`** with Triton perf taken from **`baseline/perf.txt`**, **`opt-round-*`** neighbors, or any `*_perf.txt` that accompanies that kernel file—**not** the PyTorch export **`NN_OperatorName_perf.txt`** / **`<Operator>_perf.txt`**, which stays the reference side in [references/kernel-bench-layout.md](references/kernel-bench-layout.md).
+3. `baseline/` versus the top-level **initial** kernel snapshot and its benchmark: either `<Language>_NN_OperatorName.py` and `<Language>_NN_OperatorName_perf.txt` (`<Language>` = `triton` or `tilelang`), or only **`baseline/`** plus **`baseline/perf.txt`** when there is no `<Language>_*` pair (exports that use **`opt_<Operator>.py`** at the root instead of `<Language>_*`).
+4. The top-level **latest optimized** kernel snapshot and its benchmark text: either `opt_<Language>_NN_OperatorName.py` and `opt_<Language>_NN_OperatorName_perf.txt` (where `<Language>` is `triton` or `tilelang`), or **`opt_<Operator>.py`** with kernel perf taken from **`baseline/perf.txt`**, **`opt-round-*`** neighbors, or any `*_perf.txt` that accompanies that kernel file—**not** the PyTorch export **`NN_OperatorName_perf.txt`** / **`<Operator>_perf.txt`**, which stays the reference side in [references/kernel-bench-layout.md](references/kernel-bench-layout.md).
 5. `opt-round-{i}/` in ascending `i` when the user needs attempt-level detail: `attempts.md`, `summary.md`, `round-state.json`, then optional deeper artifacts (`perf-analysis.md`, `profile/`, `ir/`) when present.
 6. `NN_OperatorName.json` when shapes, dtypes, or case indices need to be tied back to perf lines.
 7. `NN_OperatorName.py` and `NN_OperatorName_perf.txt` for the PyTorch reference implementation and its benchmark export.
 
 ## Perf text conventions
 
-- Triton and optimized Triton benchmark exports use the same `*_perf.txt` pattern family as the PyTorch file: locate per-case blocks and any `raw-op-statistic-case-*` comment lines when you need structured timing JSON.
+- Kernel benchmark exports use the same `*_perf.txt` pattern family as the PyTorch file: locate per-case blocks and any `raw-op-statistic-case-*` comment lines when you need structured timing JSON.
 - For PyTorch timing specifically, read `avg_time_us` (and related fields) under each `raw-op-statistic-case-*` comment’s `"ops"` array in `NN_OperatorName_perf.txt`, as described in the layout reference.
 - `opt-round-{i}/logs/compare-perf.txt` may be absent. When it exists, treat it as a convenient comparison transcript; when it does not, rely on `summary.md`, `attempts.md`, `round-state.json`, paired `*_perf.txt` exports, and `opt-note.md` instead of fabricating a consolidated speedup table.
 
@@ -58,11 +58,13 @@ If a **git-aware** search or glob returns nothing under `workspace/`, **do not c
 
 - Ignore `optimize-logs/` unless the user explicitly requests it.
 - When `logs/compare-perf.txt` exists for a round, cite it instead of rebuilding the same comparison by hand from raw perf exports.
-- For live optimization work, follow `triton-npu-optimize` and its artifact contract; use this skill for retrospective log reading and cross-run synthesis.
+- For live optimization work, follow the corresponding `<Language>-npu-optimize` skill and its artifact contract (where `<Language>` is `triton` or `tilelang`); use this skill for retrospective log reading and cross-run synthesis.
 
-## Distilling lessons into `triton-npu-optimize-knowledge`
+## Distilling lessons into `<Language>-npu-optimize-knowledge`
 
-When the task is to fold bench history into durable optimize knowledge, target the staged `triton-npu-optimize-knowledge` skill (which corresponds to `triton-npu-optimize-knowledge-v2` or `triton-npu-optimize-knowledge-v3` in the source tree, depending on the batch):
+In file paths and skill references below, `<Language>` is `triton` or `tilelang` depending on the kernel language.
+
+When the task is to fold bench history into durable optimize knowledge, target the staged `<Language>-npu-optimize-knowledge` skill (which corresponds to `triton-npu-optimize-knowledge-v2` or `triton-npu-optimize-knowledge-v3` in the source tree for Triton):
 
 - Main objective: learn more precisely when and how each pattern should or should not be tried, and discover new patterns when existing cards do not fit.
 - Follow [references/optimization-lessons-workflow.md](references/optimization-lessons-workflow.md) for the full procedural checklist.
@@ -79,7 +81,7 @@ The bench export root is the directory that **directly contains** the operator w
 
 ### 1) Build the relevant kernel inventory
 
-- Scope kernels with optimization records (`opt-note.md` plus `opt-round-*`) and map **every** round **semantically** against the staged `triton-npu-optimize-knowledge` skill's `references/pattern_index.md` (not keyword matching). The staging system maps both v2 and v3 source trees to the same `triton-npu-optimize-knowledge` logical skill name — always target that staged skill for pattern index reads.
+- Scope kernels with optimization records (`opt-note.md` plus `opt-round-*`) and map **every** round **semantically** against the staged `<Language>-npu-optimize-knowledge` skill's `references/pattern_index.md` (not keyword matching). The staging system maps both v2 and v3 source trees to the same `<Language>-npu-optimize-knowledge` logical skill name — always target that staged skill for pattern index reads.
 - **`attempts.md` citations are optional evidence, not the mapping source of truth.** Rounds that cite no pattern file, cite only `pattern_index.md`, or cite a misleading legacy slug must still be matched by reading the round hypothesis, code diff, and perf/profile outcome against the **full** index and detailed cards. Absence of a citation does **not** mean “skip pattern bookkeeping.”
 - **If no existing pattern’s `## Summary` / `## Use When` is an honest semantic fit** for a round or operator theme after reading the index and the strongest candidate cards, **add a new card** under `references/patterns/<new-slug>.md` in the same knowledge tree (follow `docs/notes/2026-04-29-optimize-pattern-card-authoring.md`), then **register it in `references/pattern_index.md`** for that tree (manual index rules in **§5** below apply to staged knowledge skill indices—do not leave new cards undiscoverable).
 - **Keep the per-card checklist on every touched pattern card for the whole mapping phase.** As soon as a kernel round maps to a card, ensure that card has (or gains) a temporary section with this exact shape:
@@ -92,7 +94,7 @@ The bench export root is the directory that **directly contains** the operator w
 ### 2) Write round narratives on pattern cards
 
 - **Operator order (mandatory):** When choosing which kernels to narrate in each batch, follow **`{bench_export_root}/PATTERN_AND_LOG_SYNC_PROGRESS.md` from the first operator row downward** through the table as printed (do **not** infer ordering from directory name prefixes). Take the **next** operator that still needs narrative coverage for the active knowledge tree—**do not** skip to later rows while earlier rows with **`Pattern card follow-up: todo`** are still incomplete for narratives, **unless the user explicitly names a different subset or ordering.**
-- For each mapped round, append an **expanded narrative** to the **one primary** pattern card under the active staged `triton-npu-optimize-knowledge` skill's `references/patterns/` directory.
+- For each mapped round, append an **expanded narrative** to the **one primary** pattern card under the active staged `<Language>-npu-optimize-knowledge` skill's `references/patterns/` directory.
 - **One primary pattern per ledger round (mandatory):** Pick a **single** best semantic home for each `opt-round-*` narrative. Do **not** paste the same round as a full five-field block on multiple pattern cards. You may add a **one-line cross-reference** in `Interpretation` (for example “see **`tiling`** for this round”) when a second pattern lens is informative.
 - **Compress consecutive same-pattern rounds (optional but encouraged):** When **several consecutive** ledger rounds for the same operator map to the **same** primary pattern and tell one sweep story (for example a tuple ladder or repeated “bounded config retuning”), merge them into **one** five-field block titled `#### Rounds a–b (...)` (or similar). The five fields must still be present at **merged** granularity: **`Kernel / round / parent`** should name the operator and round span; **`Pre-change scenario` / `Change` / `Evidence` / `Interpretation`** should summarize the sweep and point to `opt-note.md` plus one or two representative `opt-round-*/attempts.md` paths—do not require readers to open every round file.
 - **Mandatory five-field template (every narrated round or merged span):**
@@ -101,7 +103,7 @@ The bench export root is the directory that **directly contains** the operator w
   - **`Change`**
   - **`Evidence`**
   - **`Interpretation`**
-- If a pattern truly has no applicable round for an operator (for example no `@triton.autotune` work), write a short non-round note under a `###` heading instead of fabricating a five-field block.
+- If a pattern truly has no applicable round for an operator (for example no `@triton.autotune` or `@tilelang.autotuner.autotune` work), write a short non-round note under a `###` heading instead of fabricating a five-field block.
 - Each **single-round** entry must be detailed enough to reconstruct the scenario without reopening raw logs (`attempts.md`, `summary.md`, profile files, perf files). **Compressed spans** may shorten wording, but must keep all five fields and name the round range plus where the detailed table lives (`opt-note.md`).
 - Include code context, concrete kernel change, profile/perf evidence, and why the attempt worked or failed relative to current card guidance.
 - **New pattern cards vs log citations:** `opt-round-*/attempts.md` only cite a fixed legacy slug set. Absence of a new slug does not prove no new mechanism exists; create a new card in the target knowledge tree when no existing `## Summary` / `## Use When` semantically fits, and update that tree’s **`pattern_index.md`** so agents can find the new slug.
@@ -157,12 +159,12 @@ The bench export root is the directory that **directly contains** the operator w
   - Verify substantive guidance was not dropped during rewrite (examples, technique cases, detection heuristics, implementation notes, caveats).
   - If any substantive content is missing and not clearly invalidated by round evidence, restore it before marking the card done.
 - If unsure about style/shape, compare representative cards:
-  - pre-synthesis style: the original `triton-npu-optimize-knowledge` skill's pattern cards (staged flat alongside this skill)
-  - post-synthesis style: the pattern cards you are actively editing in this workflow under the staged `triton-npu-optimize-knowledge` skill's `references/patterns/` directory
+  - pre-synthesis style: the original `<Language>-npu-optimize-knowledge` skill's pattern cards (staged flat alongside this skill)
+  - post-synthesis style: the pattern cards you are actively editing in this workflow under the staged `<Language>-npu-optimize-knowledge` skill's `references/patterns/` directory
 
 ### 5) Rewrite `pattern_index.md` manually after full synthesis
 
-- After synthesis is complete for all targeted pattern cards, rewrite the staged `triton-npu-optimize-knowledge` skill's `references/pattern_index.md` as a human-authored quick-match index.
+- After synthesis is complete for all targeted pattern cards, rewrite the staged `<Language>-npu-optimize-knowledge` skill's `references/pattern_index.md` as a human-authored quick-match index.
 - Format requirements:
   - one **second-level markdown header** (`##`) per pattern slug,
   - inside each pattern section, write a short **4-5 line** summary of key points, with strongest emphasis on **when the pattern should be used**,
@@ -179,4 +181,4 @@ The bench export root is the directory that **directly contains** the operator w
 
 ## Related skills
 
-- `triton-npu-optimize` for executing new optimization rounds and live artifact discipline.
+- `<Language>-npu-optimize` for executing new optimization rounds and live artifact discipline.
