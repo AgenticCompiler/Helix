@@ -642,6 +642,7 @@ Common options:
 - `--optimize-knowledge v1|v2|v3`
 - `--enable-compiler-source-analysis`
 - `--enable-cann-ext-api`
+- `--post-optimize-command "..."`: run a local shell command in each workspace after that workspace optimize run succeeds.
 - `--min-rounds <N>`
 - `--no-agent-session`
 - `--concurrency <N|max>`: defaults to `1`
@@ -655,6 +656,7 @@ Example:
 uv run triton-agent optimize-batch --input operators_root --prompt "Avoid changing numerics unless correctness requires it."
 uv run triton-agent optimize-batch --input operators_root --optimize-knowledge v2
 uv run triton-agent optimize-batch --input operators_root --optimize-knowledge v3
+uv run triton-agent optimize-batch --input operators_root --post-optimize-command "python summarize.py"
 ```
 
 Batch rerun behavior:
