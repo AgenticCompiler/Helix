@@ -160,6 +160,12 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
     upload_enabled = not bool(getattr(args, "no_upload", False))
     log_tools_enabled = bool(getattr(args, "log_tools", False))
     round_batch_size = 99 if interact else getattr(args, "round_batch_size", 5)
+    post_optimize_command_value = getattr(args, "post_optimize_command", None)
+    post_optimize_command = (
+        post_optimize_command_value
+        if isinstance(post_optimize_command_value, str) and post_optimize_command_value.strip()
+        else None
+    )
     return OptimizeRunOptions(
         agent_name=args.agent,
         interact=interact,
@@ -178,6 +184,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         test_mode=getattr(args, "test_mode", None),
         bench_mode=getattr(args, "bench_mode", None),
         prompt=getattr(args, "prompt", None),
+        post_optimize_command=post_optimize_command,
         target_chip=target_chip,
         optimize_target=optimize_target,
         optimize_knowledge=optimize_knowledge,
