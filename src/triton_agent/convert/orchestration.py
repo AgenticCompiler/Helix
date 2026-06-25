@@ -9,7 +9,7 @@ from triton_agent.backends.factory import create_runner
 from triton_agent.convert.models import ConvertOptions
 from triton_agent.convert.outputs import resolve_convert_output_path
 from triton_agent.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
-from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
+from triton_agent.models import AgentRequest, AgentResult, CommandKind, command_to_skill
 from triton_agent.otel_trace import build_tool_trace_env, new_trace_run_id, trace_path_from_request, write_tool_trace_summary
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
 from triton_agent.remote_execution_env import merge_remote_execution_env
@@ -26,9 +26,10 @@ def build_convert_request(
     workdir: Path,
     options: ConvertOptions,
 ) -> AgentRequest:
-    output_path = resolve_convert_output_path(input_path, explicit_output=options.output)
+    output_path = resolve_convert_output_path(input_path, explicit_output=options.output, language=options.language)
     staged_skill_names, staged_skill_sources = resolve_staged_skills(
         CommandKind.CONVERT,
+        language=options.language,
         enable_mcp=options.enable_mcp,
     )
     prompt = append_additional_user_instructions(
@@ -64,12 +65,13 @@ def build_convert_request(
         output_path=output_path,
         test_mode=options.test_mode,
         bench_mode=None,
+        language=options.language,
         interact=options.interact,
         verbose=options.verbose,
         stream_output=options.stream_output,
         force_overwrite=options.force_overwrite,
         agent_name=options.agent_name,
-        skill_name=COMMAND_TO_SKILL[CommandKind.CONVERT],
+        skill_name=command_to_skill(CommandKind.CONVERT, language=options.language),
         prompt=prompt,
         workdir=workdir,
         remote=options.remote,

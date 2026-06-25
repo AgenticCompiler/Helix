@@ -9,7 +9,7 @@ description: Generate a Chinese optimization report from an existing optimize wo
 
 Generate a human-readable Chinese optimization report (`report.md`) by reading an
 existing optimize workspace. This skill is **read-only** — it reads artifacts that
-were already produced by the `triton-npu-optimize` workflow and synthesizes them
+were already produced by the `<Language>-npu-optimize` workflow (where `<Language>` is `triton` or `tilelang`) and synthesizes them
 into a structured report.
 
 ## Workflow

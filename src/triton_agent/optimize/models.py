@@ -38,6 +38,7 @@ class OptimizeRunOptions:
     test_mode: str | None
     bench_mode: str | None
     prompt: str | None
+    language: Literal["triton", "tilelang"] = "triton"
     round_batch_size: int = 5
     target_chip: Literal["A3", "A5"] = "A5"
     optimize_target: Literal["kernel", "operator"] = "kernel"

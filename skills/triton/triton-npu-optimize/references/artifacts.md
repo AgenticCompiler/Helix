@@ -215,8 +215,8 @@ Keep entries chronological so another engineer can reconstruct how the round evo
 - When IR capture is needed for a round decision, keep the resulting IR directory under `opt-round-N/ir/`.
 - A standard round-local IR workflow looks like:
   ```bash
-  python3 ../ascend-npu-analyze-ir/scripts/capture_ir.py --ir-dir opt-round-N/ir --bench-file bench_<operator>.py --operator-file opt-round-N/<optimized-operator>.py
-  python3 ../ascend-npu-analyze-ir/scripts/inspect_ir.py find-changes --ir-dir opt-round-N/ir --limit 20
+  python3 ../triton-npu-analyze-ir/scripts/capture_ir.py --ir-dir opt-round-N/ir --bench-file bench_<operator>.py --operator-file opt-round-N/<optimized-operator>.py
+  python3 ../triton-npu-analyze-ir/scripts/inspect_ir.py find-changes --ir-dir opt-round-N/ir --limit 20
   ```
 - Prefer preserving profiler and IR evidence inside the round that motivated it instead of scattering those artifacts at the workspace top level.
 - If the same evidence informs multiple later rounds, mention the reused path explicitly in `attempts.md` or `summary.md` rather than copying large directories repeatedly.

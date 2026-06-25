@@ -1,6 +1,6 @@
 # Ascend NPU Profiling Analysis Reference
 
-Use this reference when `ascend-npu-analyze-round-performance` needs deeper interpretation of profiler evidence for a Triton NPU operator.
+Use this reference when `ascend-npu-analyze-round-performance` needs deeper interpretation of profiler evidence for an Ascend NPU operator.
 
 The goal is not to restate every profiler field. The goal is to move from profiler symptoms to likely operator implementation problems.
 

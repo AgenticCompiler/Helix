@@ -683,9 +683,9 @@ class GenerationContractTests(unittest.TestCase):
 
     def test_optimize_skill_documents_round_local_ir_commands(self) -> None:
         optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
-        self.assertIn("python3 ../ascend-npu-analyze-ir/scripts/capture_ir.py", optimize)
+        self.assertIn("python3 ../triton-npu-analyze-ir/scripts/capture_ir.py", optimize)
         self.assertIn("--ir-dir opt-round-N/ir", optimize)
-        self.assertIn("python3 ../ascend-npu-analyze-ir/scripts/inspect_ir.py", optimize)
+        self.assertIn("python3 ../triton-npu-analyze-ir/scripts/inspect_ir.py", optimize)
 
     def test_round_performance_skill_describes_layered_profiler_and_binary_analysis(self) -> None:
         content = _read("skills/common/ascend-npu-analyze-round-performance/SKILL.md")
@@ -732,10 +732,10 @@ class GenerationContractTests(unittest.TestCase):
             "skills/triton/triton-npu-optimize-knowledge/references/symptom_index.md"
         )
         self.assertIn("symptom cards", skill)
-        self.assertIn("triton-npu-optimize-knowledge", skill)
+        self.assertIn("<Language>-npu-optimize-knowledge", skill)
         self.assertIn("torch-npu-optimize-knowledge", skill)
         self.assertIn(
-            "../triton-npu-optimize-knowledge/references/symptom_index.md",
+            "../<Language>-npu-optimize-knowledge/references/symptom_index.md",
             skill,
         )
         self.assertIn(
@@ -1047,12 +1047,12 @@ class GenerationContractTests(unittest.TestCase):
         test_gen = _read("skills/common/ascend-npu-gen-test/SKILL.md")
         bench_gen = _read("skills/common/ascend-npu-gen-bench/SKILL.md")
 
-        self.assertIn("consult the `triton-npu-repair-guide` skill as a diagnostic reference", test_gen)
-        self.assertIn("Do not treat `triton-npu-repair-guide` as permission to edit the operator file here.", test_gen)
+        self.assertIn("the corresponding `<Language>-npu-repair-guide` skill as a diagnostic reference", test_gen)
+        self.assertIn("Do not treat repair-guide skills as permission to edit the operator file here.", test_gen)
         self.assertIn("If the failure is clearly operator-side, stop and report it.", test_gen)
 
-        self.assertIn("consult the `triton-npu-repair-guide` skill as a diagnostic reference", bench_gen)
-        self.assertIn("Do not treat `triton-npu-repair-guide` as permission to edit the operator file here.", bench_gen)
+        self.assertIn("the corresponding `<Language>-npu-repair-guide` skill as a diagnostic reference", bench_gen)
+        self.assertIn("Do not treat the corresponding `<Language>-npu-repair-guide` skill as permission to edit the operator file here.", bench_gen)
         self.assertIn("If the failure is clearly operator-side, stop and report it.", bench_gen)
 
     def test_cross_skill_subcommands_name_owning_skills(self) -> None:
@@ -1094,7 +1094,7 @@ class GenerationContractTests(unittest.TestCase):
         for content in (standalone, differential):
             with self.subTest(spec=content[:40]):
                 self.assertIn("# api-name: <name>", content)
-                self.assertIn("# api-kind: <triton-wrapper|torch-function|torch-module>", content)
+                self.assertIn("# api-kind: <triton-wrapper|tilelang-wrapper|torch-function|torch-module>", content)
                 self.assertIn("# kernels: <name>", content)
                 self.assertIn("# api-name: <resolved_entrypoint>", content)
                 self.assertIn("# api-kind: <resolved_api_kind>", content)

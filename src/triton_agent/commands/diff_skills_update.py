@@ -51,6 +51,7 @@ def _config_from_args(args: argparse.Namespace) -> DiffSkillsUpdateConfig:
         update_skills_dir=update_skills_dir,
         source=source,
         agent_name=str(getattr(args, "agent", "codex")),
+        language=getattr(args, "language", "triton"),
         max_iterations=max_iterations,
         concurrency=concurrency,
         stream_output=bool(getattr(args, "stream_output", True)),

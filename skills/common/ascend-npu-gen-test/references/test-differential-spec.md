@@ -1,8 +1,8 @@
-## Differential test file specification for Triton operators
+## Differential test file specification for Ascend NPU operators
 
-This document describes declarative differential comparison test files for Triton Ascend operators. The goal is to produce an import-only module that declares deterministic NPU test cases while the runner executes them and archives the final result as `<operator>_result.pt`.
+This document describes declarative differential comparison test files for Ascend NPU operators. The goal is to produce an import-only module that declares deterministic NPU test cases while the runner executes them and archives the final result as `<operator>_result.pt`.
 
-The differential test must not call the resolved public entrypoint through a self-executing script flow. Raw `@triton.jit` kernels are not valid direct harness APIs.
+The differential test must not call the resolved public entrypoint through a self-executing script flow. Raw kernel functions (e.g., `@triton.jit`, `@tilelang.jit`, `@T.prim_func`) are not valid direct harness APIs.
 
 ### 1. File naming and location
 
@@ -17,7 +17,7 @@ The test file must include this metadata header near the top of the file:
 # test-mode: differential
 # compute-kind: <compute|non-compute>
 # api-name: <name>
-# api-kind: <triton-wrapper|torch-function|torch-module>
+# api-kind: <triton-wrapper|tilelang-wrapper|torch-function|torch-module>
 # kernels: <name>
 ```
 
@@ -66,16 +66,25 @@ def build_operator_api(operator_module):
     return getattr(operator_module, API_NAME)
 ```
 
-#### 3.2 `torch-function`
+#### 3.2 `tilelang-wrapper`
 
-Use this kind when the public API is a plain PyTorch-facing function or operator entrypoint that may internally call Triton kernels.
+Use this kind when the public API is a Python wrapper function around TileLang kernels.
 
 ```python
 def build_operator_api(operator_module):
     return getattr(operator_module, API_NAME)
 ```
 
-#### 3.3 `torch-module`
+#### 3.3 `torch-function`
+
+Use this kind when the public API is a plain PyTorch-facing function or operator entrypoint that may internally call NPU kernels.
+
+```python
+def build_operator_api(operator_module):
+    return getattr(operator_module, API_NAME)
+```
+
+#### 3.4 `torch-module`
 
 Use this kind when the public API is a `torch.nn.Module` class that can be instantiated without constructor arguments.
 

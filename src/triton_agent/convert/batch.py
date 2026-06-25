@@ -30,7 +30,7 @@ from triton_agent.npu_affinity import (
 )
 from triton_agent.skill_staging import resolve_staged_skills
 
-_BATCH_CONVERT_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_", "triton_")
+_BATCH_CONVERT_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_", "triton_", "tilelang_")
 _BATCH_CONVERT_EXCLUDED_NAMES = {"__init__.py"}
 
 

@@ -90,6 +90,7 @@ class OptimizeSessionArtifactsManager:
         agent_name: str,
         enable_agent_hooks: bool = False,
         source_operator_path: Path | None = None,
+        language: str = "triton",
         optimize_target: str = "kernel",
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
@@ -115,6 +116,7 @@ class OptimizeSessionArtifactsManager:
         subagent_stage_set = self._prepare_subagents(
             agent_name=agent_name,
             workdir=workdir,
+            language=language,
             optimize_target=optimize_target,
             enable_cann_ext_api=enable_cann_ext_api,
             enable_subagent=enable_subagent,
@@ -123,6 +125,7 @@ class OptimizeSessionArtifactsManager:
             memory_file_state = self._memory_files.prepare_round_gated(
                 workdir,
                 agent_name=agent_name,
+                language=language,
                 optimize_target=optimize_target,
                 include_supervisor_handoff=False,
                 compiler_source_path=compiler_source_path,
@@ -150,6 +153,7 @@ class OptimizeSessionArtifactsManager:
         agent_name: str,
         enable_agent_hooks: bool = False,
         source_operator_path: Path | None = None,
+        language: str = "triton",
         optimize_target: str = "kernel",
         compiler_source_path: Path | None = None,
         compiler_source_commit: str | None = None,
@@ -185,6 +189,7 @@ class OptimizeSessionArtifactsManager:
             subagent_stage_set = self._prepare_subagents(
                 agent_name=agent_name,
                 workdir=workdir,
+                language=language,
                 optimize_target=optimize_target,
                 enable_cann_ext_api=enable_cann_ext_api,
                 enable_subagent=enable_subagent,
@@ -192,6 +197,7 @@ class OptimizeSessionArtifactsManager:
             memory_file_state = self._memory_files.prepare_shared(
                 workdir,
                 agent_name=agent_name,
+                language=language,
                 optimize_target=optimize_target,
                 compiler_source_path=compiler_source_path,
                 compiler_source_commit=compiler_source_commit,
@@ -358,6 +364,7 @@ class OptimizeSessionArtifactsManager:
         *,
         agent_name: str,
         workdir: Path,
+        language: str,
         optimize_target: str,
         enable_cann_ext_api: bool,
         enable_subagent: bool,
@@ -365,6 +372,7 @@ class OptimizeSessionArtifactsManager:
         if not enable_subagent:
             return None
         definition = perf_diagnosis_subagent_definition(
+            language=language,
             optimize_target=optimize_target,
             enable_cann_ext_api=enable_cann_ext_api,
         )

@@ -757,7 +757,7 @@ class OptimizeRuntimeTests(unittest.TestCase):
                     "ascend-npu-optimize-start-round",
                     "ascend-npu-profile-operator",
                     "ascend-npu-analyze-round-performance",
-                    "ascend-npu-analyze-ir",
+                    "triton-npu-analyze-ir",
                     "triton-npu-analyze-compiler-source",
                     "triton-npu-repair-guide",
                 ),

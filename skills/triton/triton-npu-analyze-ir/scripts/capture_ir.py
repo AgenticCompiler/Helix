@@ -539,7 +539,8 @@ def _stage_required_files(
 
 def _bench_runtime_script_path() -> Path:
     return (
-        Path(__file__).resolve().parents[2]
+        Path(__file__).resolve().parents[3]
+        / "common"
         / "ascend-npu-run-eval"
         / "scripts"
         / "bench_runtime.py"
@@ -630,7 +631,8 @@ def _format_failed_command_message(
 
 def _load_runtime_helpers() -> dict[str, Any]:
     script = (
-        Path(__file__).resolve().parents[2]
+        Path(__file__).resolve().parents[3]
+        / "common"
         / "ascend-npu-run-eval"
         / "scripts"
         / "run_runtime.py"

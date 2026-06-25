@@ -1,8 +1,8 @@
-## Unified benchmark file specification for Triton operators
+## Unified benchmark file specification for Ascend NPU operators
 
-This document describes the shared benchmark-file contract for Triton Ascend operators. All benchmark files use the same import-only module structure regardless of execution mode. Bench mode is a runtime concern owned by execution tooling; generated files do not carry a `# bench-mode` header.
+This document describes the shared benchmark-file contract for Ascend NPU operators. All benchmark files use the same import-only module structure regardless of execution mode. Bench mode is a runtime concern owned by execution tooling; generated files do not carry a `# bench-mode` header.
 
-The benchmark must call the resolved public entrypoint to run the operator. Raw `@triton.jit` kernels are not valid direct harness APIs.
+The benchmark must call the resolved public entrypoint to run the operator. Raw kernel functions (e.g., `@triton.jit`, `@tilelang.jit`, `@T.prim_func`) are not valid direct harness APIs.
 
 ### 1. File naming and location
 
@@ -22,6 +22,7 @@ The benchmark file must include this metadata header near the top of the file:
 `<resolved_api_kind>` must be replaced with exactly one supported enum value:
 
 - `triton-wrapper`
+- `tilelang-wrapper`
 - `torch-function`
 - `torch-module`
 
@@ -56,16 +57,25 @@ def build_operator_api(operator_module):
     return getattr(operator_module, API_NAME)
 ```
 
-#### 3.2 `torch-function`
+#### 3.2 `tilelang-wrapper`
 
-Use this kind when the public API is a plain PyTorch-facing function or operator entrypoint that may internally call Triton kernels.
+Use this kind when the public API is a Python wrapper function around TileLang kernels.
 
 ```python
 def build_operator_api(operator_module):
     return getattr(operator_module, API_NAME)
 ```
 
-#### 3.3 `torch-module`
+#### 3.3 `torch-function`
+
+Use this kind when the public API is a plain PyTorch-facing function or operator entrypoint that may internally call NPU kernels.
+
+```python
+def build_operator_api(operator_module):
+    return getattr(operator_module, API_NAME)
+```
+
+#### 3.4 `torch-module`
 
 Use this kind when the public API is a `torch.nn.Module` class or module method.
 
@@ -153,4 +163,3 @@ def build_bench_case_fn(operator_api, case):
 
     return _run
 ```
-

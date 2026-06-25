@@ -438,7 +438,7 @@ class CliMCPServerCommandTests(unittest.TestCase):
     def test_top_level_help_groups_commands_and_examples(self) -> None:
         parser = build_parser()
         help_text = parser.format_help()
-        self.assertIn("Generate, run, verify, and optimize Triton NPU operator workflows.", help_text)
+        self.assertIn("Generate, run, verify, and optimize NPU operator workflows.", help_text)
         self.assertIn("Command groups:", help_text)
         self.assertIn("Generation:", help_text)
         self.assertIn("Execution:", help_text)
