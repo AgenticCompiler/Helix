@@ -33,6 +33,7 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
             bench_mode=options.bench_mode,
             target_chip=options.target_chip,
             enable_cann_ext_api=options.enable_cann_ext_api,
+            language=options.language,
         )
     except ValueError as exc:
         parser.error(str(exc))
@@ -117,6 +118,7 @@ def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
             bench_mode=options.bench_mode,
             target_chip=options.target_chip,
             enable_cann_ext_api=options.enable_cann_ext_api,
+            language=options.language,
         )
     except ValueError as exc:
         parser.error(str(exc))

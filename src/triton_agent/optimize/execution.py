@@ -48,7 +48,11 @@ from triton_agent.verbose import emit_verbose, emit_verbose_lines
 
 
 def _request_enables_cann_ext_api(request: AgentRequest) -> bool:
-    return request.staged_skill_names is not None and "triton-npu-cann-ext-api-patterns" in request.staged_skill_names
+    if request.staged_skill_names is None:
+        return False
+    language = getattr(request, "language", "triton") or "triton"
+    cann_ext_skill = f"{language}-npu-cann-ext-api-patterns"
+    return cann_ext_skill in request.staged_skill_names
 
 
 def _request_optimize_knowledge_skill_name(request: AgentRequest) -> str | None:

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from triton_agent.models import CommandKind
 
+_LANGUAGES_REQUIRING_A5_FOR_CANN_EXT = frozenset({"triton"})
+
 
 def validate_optimize_options(
     command_kind: CommandKind,
@@ -15,6 +17,7 @@ def validate_optimize_options(
     bench_mode: str | None,
     target_chip: str,
     enable_cann_ext_api: bool,
+    language: str = "triton",
 ) -> None:
     if min_rounds < 1:
         raise ValueError("--min-rounds must be at least 1")
@@ -24,5 +27,6 @@ def validate_optimize_options(
         raise ValueError("--concurrency must be at least 1")
     if reset_optimize and resume_mode != "fresh":
         raise ValueError("--reset-optimize requires --resume fresh")
-    if enable_cann_ext_api and target_chip != "A5":
-        raise ValueError("--enable-cann-ext-api requires --target-chip A5")
+    if enable_cann_ext_api:
+        if language in _LANGUAGES_REQUIRING_A5_FOR_CANN_EXT and target_chip != "A5":
+            raise ValueError("--enable-cann-ext-api requires --target-chip A5")

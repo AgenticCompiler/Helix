@@ -121,11 +121,11 @@ def _render_common_prompt(
                 "for operator-level Torch NPU pattern guidance."
             ),
         )
-    if enable_cann_ext_api and language == "triton":
+    if enable_cann_ext_api:
         lines.insert(
             7,
             (
-                "Also use skill `triton-npu-cann-ext-api-patterns` and its `index.md` "
+                f"Also use skill `{language}-npu-cann-ext-api-patterns` and its `index.md` "
                 "when the kernel structure may match CANN extension API patterns."
             ),
         )
