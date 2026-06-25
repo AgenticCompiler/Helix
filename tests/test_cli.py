@@ -439,6 +439,8 @@ class CliMCPServerCommandTests(unittest.TestCase):
         parser = build_parser()
         help_text = parser.format_help()
         self.assertIn("Generate, run, verify, and optimize NPU operator workflows.", help_text)
+        self.assertIn("Build info:", help_text)
+        self.assertIn("Git commit:", help_text)
         self.assertIn("Command groups:", help_text)
         self.assertIn("Generation:", help_text)
         self.assertIn("Execution:", help_text)
@@ -1687,6 +1689,26 @@ class CliMCPServerCommandTests(unittest.TestCase):
 
 
 class PathResolutionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self._upload_patches = [
+            patch(
+                "triton_agent.commands.optimize.upload_optimize_workspace",
+                return_value=None,
+            ),
+            patch(
+                "triton_agent.optimize.batch.upload_optimize_workspace",
+                return_value=None,
+            ),
+        ]
+        for p in self._upload_patches:
+            p.start()
+
+    def tearDown(self) -> None:
+        for p in self._upload_patches:
+            p.stop()
+        super().tearDown()
+
     def test_main_status_rejects_missing_root(self) -> None:
         stderr = StringIO()
         with redirect_stderr(stderr):

@@ -20,6 +20,7 @@ from triton_agent.commands.log_check import handle_log_check, handle_log_check_b
 from triton_agent.commands.mcp_server import handle_run_eval_mcp_server
 from triton_agent.commands.trace_analyze import handle_trace_analyze
 from triton_agent.commands.verify import handle_verify, handle_verify_batch
+from triton_agent.build_info import get_build_info_display
 from triton_agent.commands.optimize import (
     handle_optimize,
     handle_optimize_batch,
@@ -680,7 +681,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _build_top_level_epilog() -> str:
-    lines = ["Command groups:"]
+    lines = [
+        "Build info:",
+        f"  Git commit: {get_build_info_display()}",
+        "",
+        "Command groups:",
+    ]
     group_names = (
         "Generation",
         "Conversion",

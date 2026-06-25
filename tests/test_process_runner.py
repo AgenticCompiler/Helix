@@ -559,9 +559,15 @@ class StreamingProcessRunnerTests(unittest.TestCase):
         self.assertEqual(stdout.getvalue(), "")
         self.assertEqual(process.wait.call_count, 2)
 
-    def test_raises_eio_when_child_does_not_exit_within_grace_window(self) -> None:
+    @unittest.skipIf(not hasattr(__import__("os"), "killpg"), "requires POSIX process groups")
+    def test_abnormal_eio_before_child_exit_terminates_process_group_before_raising(self) -> None:
         stdout = StringIO()
-        process = _StreamingFakeProcess(wait_code=0, poll_values=[None], default_poll_return=None)
+        process = _StreamingFakeProcess(
+            wait_code=0,
+            poll_values=[None],
+            pid=4321,
+            default_poll_return=None,
+        )
         process.wait = Mock(side_effect=subprocess.TimeoutExpired(cmd=["codex", "exec"], timeout=0.1))
         with patch("triton_agent.process_runner.pty.openpty", return_value=(11, 12)):
             with patch("triton_agent.process_runner.subprocess.Popen", return_value=process):
@@ -571,13 +577,23 @@ class StreamingProcessRunnerTests(unittest.TestCase):
                         side_effect=OSError(EIO, "Input/output error"),
                     ):
                         with patch("triton_agent.process_runner.os.close"):
-                            with self.assertRaises(OSError):
-                                run_streaming_process(
-                                    ["codex", "exec"],
-                                    "/tmp",
-                                    stall_timeout_seconds=10,
-                                    stdout=stdout,
-                                )
+                            with patch("triton_agent.process_runner.os.killpg") as mocked_killpg:
+                                with patch("triton_agent.process_runner._wait_for_process_exit", return_value=False):
+                                    with self.assertRaises(OSError):
+                                        run_streaming_process(
+                                            ["codex", "exec"],
+                                            "/tmp",
+                                            stall_timeout_seconds=10,
+                                            stdout=stdout,
+                                            interrupt_policy=InterruptPolicy(),
+                                        )
+        self.assertEqual(
+            mocked_killpg.call_args_list,
+            [
+                ((4321, signal.SIGTERM),),
+                ((4321, _SIGKILL),),
+            ],
+        )
 
     def test_zero_timeout_disables_streaming_stall_detection(self) -> None:
         stdout = StringIO()
