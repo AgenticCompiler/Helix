@@ -103,7 +103,7 @@ The bench export root is the directory that **directly contains** the operator w
   - **`Change`**
   - **`Evidence`**
   - **`Interpretation`**
-- If a pattern truly has no applicable round for an operator (for example no `@triton.autotune` or `@tilelang.autotuner.autotune` work), write a short non-round note under a `###` heading instead of fabricating a five-field block.
+- If a pattern truly has no applicable round for an operator (for example no `@triton.autotune` or `@tilelang.autotune` work), write a short non-round note under a `###` heading instead of fabricating a five-field block.
 - Each **single-round** entry must be detailed enough to reconstruct the scenario without reopening raw logs (`attempts.md`, `summary.md`, profile files, perf files). **Compressed spans** may shorten wording, but must keep all five fields and name the round range plus where the detailed table lives (`opt-note.md`).
 - Include code context, concrete kernel change, profile/perf evidence, and why the attempt worked or failed relative to current card guidance.
 - **New pattern cards vs log citations:** `opt-round-*/attempts.md` only cite a fixed legacy slug set. Absence of a new slug does not prove no new mechanism exists; create a new card in the target knowledge tree when no existing `## Summary` / `## Use When` semantically fits, and update that tree’s **`pattern_index.md`** so agents can find the new slug.
