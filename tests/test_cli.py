@@ -439,6 +439,8 @@ class CliMCPServerCommandTests(unittest.TestCase):
         parser = build_parser()
         help_text = parser.format_help()
         self.assertIn("Generate, run, verify, and optimize NPU operator workflows.", help_text)
+        self.assertIn("Build info:", help_text)
+        self.assertIn("Git commit:", help_text)
         self.assertIn("Command groups:", help_text)
         self.assertIn("Generation:", help_text)
         self.assertIn("Execution:", help_text)

@@ -18,11 +18,18 @@ def collect_skills():
     return datas
 
 
+def _collect_build_meta():
+    meta_path = ROOT / "src" / "triton_agent" / "_build_meta.json"
+    if meta_path.is_file():
+        return [(str(meta_path), "triton_agent")]
+    return []
+
+
 a = Analysis(
     [str(ROOT / "src" / "triton_agent" / "cli.py")],
     pathex=[str(ROOT / "src")],
     binaries=[],
-    datas=collect_skills(),
+    datas=collect_skills() + _collect_build_meta(),
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
