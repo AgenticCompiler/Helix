@@ -2,6 +2,7 @@ import importlib
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -2544,6 +2545,135 @@ class OptimizeRuntimeTests(unittest.TestCase):
             for request in captured_requests:
                 self.assertEqual(request.prompt, "")
                 self.assertEqual(request.user_prompt, "Avoid changing numerics.")
+
+    def test_run_optimize_batch_executes_post_optimize_command_after_success(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "kernel_a"
+            workspace.mkdir()
+            operator = workspace / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=1,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                round_mode="checked",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                post_optimize_command="echo done",
+                upload_enabled=False,
+            )
+            seen_post_commands: list[tuple[str, Path]] = []
+
+            def fake_post_optimize_command(command: str, workdir: Path) -> subprocess.CompletedProcess[str]:
+                seen_post_commands.append((command, workdir))
+                return subprocess.CompletedProcess(
+                    args=command,
+                    returncode=0,
+                    stdout="done\n",
+                    stderr="",
+                )
+
+            with patch(
+                "triton_agent.optimize.batch.run_post_optimize_command",
+                side_effect=fake_post_optimize_command,
+            ):
+                with patch(
+                    "triton_agent.optimize.batch.render_batch_optimize_results",
+                    return_value=0,
+                ):
+                    exit_code = run_optimize_batch(
+                        root,
+                        options,
+                        max_concurrency=1,
+                        stdout=StringIO(),
+                        run_request=lambda request, stdout=None, stderr=None: AgentResult(
+                            return_code=0,
+                            stdout="ok",
+                            stderr="",
+                        ),
+                    )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(seen_post_commands, [("echo done", workspace)])
+            status = json.loads((root / "optimize-batch-status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status["workspaces"]["kernel_a"]["status"], "completed")
+
+    def test_run_optimize_batch_marks_workspace_failed_when_post_optimize_command_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "kernel_a"
+            workspace.mkdir()
+            operator = workspace / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=1,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                round_mode="checked",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                post_optimize_command="echo done",
+                upload_enabled=False,
+            )
+            captured_results = []
+
+            def fake_render(results, stdout=None):
+                del stdout
+                captured_results.extend(results)
+                return 1
+
+            with patch(
+                "triton_agent.optimize.batch.run_post_optimize_command",
+                return_value=subprocess.CompletedProcess(
+                    args="echo done",
+                    returncode=3,
+                    stdout="",
+                    stderr="post command failed\n",
+                ),
+            ):
+                with patch(
+                    "triton_agent.optimize.batch.render_batch_optimize_results",
+                    side_effect=fake_render,
+                ):
+                    exit_code = run_optimize_batch(
+                        root,
+                        options,
+                        max_concurrency=1,
+                        stdout=StringIO(),
+                        run_request=lambda request, stdout=None, stderr=None: AgentResult(
+                            return_code=0,
+                            stdout="ok",
+                            stderr="",
+                        ),
+                    )
+
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(len(captured_results), 1)
+            self.assertEqual(captured_results[0].status, "failed")
+            self.assertIn("post command failed", captured_results[0].message)
+            status = json.loads((root / "optimize-batch-status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status["workspaces"]["kernel_a"]["status"], "incomplete")
 
     def test_run_optimize_batch_operator_filter_selects_matching_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

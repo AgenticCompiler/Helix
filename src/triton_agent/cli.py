@@ -610,6 +610,11 @@ def build_parser() -> argparse.ArgumentParser:
             )
             subparser.add_argument("--no-upload", action="store_true")
             subparser.add_argument("--enable-report", action="store_true", default=False)
+            if command_kind == CommandKind.OPTIMIZE_BATCH:
+                subparser.add_argument(
+                    "--post-optimize-command",
+                    help="Run this shell command inside each workspace after a successful optimize run.",
+                )
         if spec.has_prompt:
             subparser.add_argument("--prompt")
         if spec.has_operator_filter:

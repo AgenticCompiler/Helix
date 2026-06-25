@@ -1554,6 +1554,15 @@ class CliMCPServerCommandTests(unittest.TestCase):
         options = optimize_run_options_from_args(args)
         self.assertEqual(options.prompt, "Avoid numerics changes.")
 
+    def test_optimize_batch_accepts_post_optimize_command(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["optimize-batch", "-i", "kernels", "--post-optimize-command", "echo done"]
+        )
+        self.assertEqual(args.post_optimize_command, "echo done")
+        options = optimize_run_options_from_args(args)
+        self.assertEqual(options.post_optimize_command, "echo done")
+
     def test_optimize_batch_defaults_round_batch_size_to_five(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize-batch", "-i", "kernels"])
