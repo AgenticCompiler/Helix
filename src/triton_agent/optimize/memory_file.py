@@ -295,7 +295,7 @@ class MemoryFileManager:
                     else []
                 )
                 + (
-                    optimize_subagent_recommendation_lines()
+                    optimize_subagent_recommendation_lines(language=language)
                     if enable_subagent
                     else []
                 )
@@ -343,7 +343,7 @@ class MemoryFileManager:
                     else []
                 )
                 + (
-                    optimize_subagent_recommendation_lines()
+                    optimize_subagent_recommendation_lines(language=language)
                     if enable_subagent
                     else []
                 )

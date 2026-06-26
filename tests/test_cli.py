@@ -5673,6 +5673,70 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn("Do not begin with blind tiling or launch-parameter search", prompt)
 
+    def test_tilelang_optimize_prompt_stops_at_profiling_diagnosis(self) -> None:
+        prompt = build_prompt(
+            CommandKind.OPTIMIZE,
+            Path("/tmp/op.py"),
+            Path("/tmp/op.py"),
+            Path("/tmp/opt_op.py"),
+            test_mode="differential",
+            bench_mode="torch-npu-profiler",
+            force_overwrite=False,
+            round_mode="checked",
+            language="tilelang",
+            compiler_source_path=Path("/tmp/compiler"),
+            compiler_source_commit="deadbeef",
+        )
+        self.assertIn("Choose the analysis level for the round before editing code.", prompt)
+        self.assertIn(
+            "Escalate analysis in this order: pattern triage, profiling diagnosis.",
+            prompt,
+        )
+        self.assertIn(
+            "Use the staged `tilelang-npu-optimize-knowledge` skill for generic pattern and symptom references.",
+            prompt,
+        )
+        self.assertNotIn("IR attribution", prompt)
+        self.assertNotIn("compiler-source escalation", prompt)
+        self.assertNotIn("tilelang-npu-analyze-ir", prompt)
+        self.assertNotIn("Compiler source analysis is enabled for this optimize run.", prompt)
+
+    def test_tilelang_optimize_resume_prompt_stops_at_profiling_diagnosis(self) -> None:
+        prompt = build_optimize_resume_prompt(
+            "Round gate passed.",
+            language="tilelang",
+            compiler_source_path=Path("/tmp/compiler"),
+            compiler_source_commit="deadbeef",
+        )
+        self.assertIn(
+            "Use the staged `ascend-npu-optimize-start-round` skill before opening the next round.",
+            prompt,
+        )
+        self.assertIn(
+            "Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.",
+            prompt,
+        )
+        self.assertNotIn("Escalate to IR only after profiler evidence narrows the bottleneck", prompt)
+        self.assertNotIn("Use compiler-source analysis only after profiler and IR evidence", prompt)
+        self.assertNotIn("Compiler source analysis is enabled for this optimize run.", prompt)
+
+    def test_tilelang_optimize_supervisor_prompt_stops_at_profiling_diagnosis(self) -> None:
+        prompt = build_optimize_supervisor_prompt(
+            Path("/tmp/workdir"),
+            language="tilelang",
+            latest_round_dir=Path("/tmp/workdir/opt-round-1"),
+        )
+        self.assertIn(
+            "Read the staged `tilelang-npu-optimize`, `ascend-npu-prepare-optimize-baseline`, `ascend-npu-optimize-submit-baseline`, `ascend-npu-optimize-submit-round`, and `ascend-npu-optimize-start-round` skills as the workflow contract that the worker round was supposed to follow.",
+            prompt,
+        )
+        self.assertIn(
+            "Audit the worker against this analysis ladder: pattern triage, profiling diagnosis.",
+            prompt,
+        )
+        self.assertNotIn("IR attribution", prompt)
+        self.assertNotIn("compiler-source escalation", prompt)
+
     def test_optimize_prompt_defaults_to_checked_batch_mode(self) -> None:
         prompt = build_prompt(
             CommandKind.OPTIMIZE,
