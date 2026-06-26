@@ -8,6 +8,12 @@ Fuse or Tritonize simple Torch/CANN auxiliary operators when they only produce i
 
 Simple Torch wrapper glue is acceptable when it is not the target auxiliary computation. This means buffer allocation (`torch.empty`, `torch.zeros`, `torch.ones`), shape/view preparation (`view`, `reshape`, `permute`, `transpose`, `contiguous` when required by the kernel contract), metadata reads (`shape`, `dtype`, `device`, `numel`), and Triton kernel launch setup. Do not use Torch compute functions, tensor arithmetic, reductions, or another complex Torch/CANN operator such as an NPU/CANN aggregation or a pre-baked `aclnn*`/`torch.ops.npu.*` op as the result of this pattern.
 
+**Data rearrangement is not a bypass.** A common rationalization is to re-label a torch arithmetic chain that packs, unpacks, or reorders tensor data as "data rearrangement" or "non-compute glue" so it appears outside the Wrapper Torch API Boundary. Reordering that needs arithmetic (e.g. int4 → int8 pack via `torch.where(idx < 0, x | 0xF0, x & 0x0F)` style, or signed/unsigned conversion with masking) is a compute op, not a layout copy, and falls under the boundary. Only pure layout copies (`view`, `reshape`, `permute`, `transpose`, `contiguous`, `aclnnInplaceCopy`) are glue; anything that combines tensor values with arithmetic is the auxiliary logic itself and must be Tritonized.
+
+When the auxiliary lookup is a small per-element indirect load (e.g. weight/bias indexed by a per-element channel or group id), keep the standard indirect `tl.load(ptr + indirect_offset)` form by default. Consider the Triton-side `tl.gather(small_table, index, axis=0)` follow-up only when the table is small enough to fit in UB and profile or simulator evidence shows the indirect load is a bottleneck — see "Gather Optimization for Small Lookup Tables" under "Tritonize Frequency Count Metadata".
+
+**Variant dispatch across auxiliary flags**: when the operator has multiple auxiliary-flagged cases (e.g. `use_dropout` vs not), each case's wrapper path must be checked against the Wrapper Torch API Boundary independently. A common rationalization is to fuse only the flag-bearing case (e.g. dropout case) and leave the non-flag case as a torch aclnn chain (`aclnnMul + aclnnReduceSum + aclnnSub + aclnnMul*2`). This is a boundary violation for the non-flag case. Every flag branch that computes auxiliary logic must dispatch to a fused or Tritonized compute path; this may be one shared kernel with identity constants for disabled flags (e.g. `dropout_mask=1, inv_keep_prob=1`) or separate specialized Triton variants when that is simpler or faster.
+
 ## Use When
 
 - Source code has a clear **auxiliary-op sequence -> Triton path** structure.
@@ -29,9 +35,23 @@ Simple Torch wrapper glue is acceptable when it is not the target auxiliary comp
 - PyTorch/CANN has special numerical behavior that is hard to reproduce in Triton, such as rounding modes, NaN/Inf behavior, dtype promotion, saturation, or broadcast corner cases.
 - The auxiliary op is a pure layout copy (`aclnnInplaceCopy`, `Transpose`, `Contiguous`, `Copy`). Layout copies belong to `layout-materialization-elision`, not arithmetic fusion.
 - The fused logic would be delegated to a `torch.ops.npu.*`, `aclnn*`, or Torch framework compute op instead of a Triton kernel. Simple wrapper glue is fine; swapping one framework compute op for another is not auxiliary-op fusion.
-- Fusion turns a single-pass kernel into a much more expensive multi-pass kernel for memory-bound or very wide shapes.
+- Fusion adds more full input passes than the original auxiliary-plus-downstream sequence: i.e. the fused kernel rescans the entire input more times than the wrapper's auxiliary ops plus the downstream kernel already do. This usually means the fusion form was chosen wrong, not that the operator is unfit for fusion.
 - Perf shows the auxiliary ops are tiny and the main Triton kernel is already the dominant bottleneck.
 - Simulator suggests the fused kernel introduces too much register pressure, scalar/control overhead, MTE pressure, or occupancy loss.
+
+## Regression Is Not a Permanent Rejection
+
+A common rationalization trap is to treat one failed fusion attempt as proof that fusion is wrong for the operator. Treat the regression as evidence about the attempted form, not as a permanent rejection of the pattern.
+
+**Precondition for this framing**: the dependency graph still admits a fusion form — i.e. there exists an auxiliary-op -> downstream Triton path where the auxiliary output is consumed by one dominant downstream kernel traversing the same base input. If the dependency graph no longer admits any fusion form (e.g. the auxiliary output now has multiple consumers with different traversal patterns), do not apply this framing; follow the "re-rank other candidate patterns" guidance in step 13 of the Implementation Sketch.
+
+When the precondition holds and a fusion attempt regresses:
+
+1. **Use concrete evidence to separate form failure from pattern failure.** Document whether the regression is likely caused by double reads, register/UB pressure, occupancy loss, address-generation overhead, or a correctness/compile blocker. Do not keep the unfused wrapper chain solely because of intuition about those costs.
+2. **Choose at most one evidence-backed follow-up form for the current round.** If the first form regresses but shape, dependency, or simulator evidence still favors fusion, try the single most plausible alternative: single-pass compact fusion for proven small-K rows, a two-pass single-kernel form for wide rows, or shape-dispatched composition when the shape set clearly splits. Defer other variants to later rounds instead of spending the current round on a sequence of speculative benchmarks.
+3. **Keep a Tritonized auxiliary path only with concrete evidence.** A preprocessing kernel plus downstream kernel is valid when shape analysis, profile data, simulator data, or measured results show single-kernel fusion is blocked by compile/correctness issues or loses because of register/UB pressure, occupancy loss, repeated reads, or another measured bottleneck. Record the specific reason.
+
+**Failure signal that this framing itself is wrong**: if a coherent implementation plus one evidence-backed follow-up both regress on net `total-op`, and the bottleneck is no longer the removed auxiliary chain, re-rank other candidate patterns instead of continuing to force fusion in the same round.
 
 ## Signals
 
@@ -55,6 +75,7 @@ Simple Torch wrapper glue is acceptable when it is not the target auxiliary comp
 - Removing auxiliary ops would improve the current triton-agent metric even if pure host wall-clock gaps are not directly scored.
 - Shape-level perf suggests auxiliary-op overhead dominates small or medium shapes, while large shapes may be limited by memory traffic.
 - Repeated runs should be checked for cold-start or profiling outliers before attributing all speedup to fusion.
+- Simulator `report.txt` shows high VGATHER UB conflicts or high SCALAR around indirect `tl.load(ptr + offset)` where `offset` is per-element computed (not a contiguous slice). This signals a candidate for `tl.gather` from a small UB-resident lookup table — see "Gather Optimization for Small Lookup Tables".
 
 ### Simulator
 
@@ -98,8 +119,10 @@ The **downstream Triton path** is the Triton kernel or Triton-kernel sequence th
 
 ### Choose the Implementation Form
 
-- **Single-kernel fusion:** inline the auxiliary logic into the consuming Triton kernel so intermediates stay in registers or UB and never round-trip through GM.
-- **Tritonized auxiliary path plus downstream kernel:** replace Torch/CANN auxiliary ops with a Triton preprocessing kernel while keeping the consuming downstream Triton kernel separate. Use this when single-kernel fusion would force expensive double reads or high register/UB pressure.
+Before picking a form, classify the code by whether the auxiliary logic and the downstream Triton path operate on the same base input and the same row/tile ownership. The examples below cover common fusion shapes; triage should match the target code against each example's applicability conditions first, then adopt the matching form. These examples are not exhaustive: if none fits but the dependency graph still has a clear auxiliary-op -> downstream Triton path, derive another fusion form only if it preserves the following invariants: remove the target Torch/CANN compute ops, avoid unnecessary GM round-trips, and prove the result with correctness plus `total-op` perf.
+
+- **Single-kernel fusion:** inline the auxiliary logic into the consuming Triton kernel so intermediates stay in registers or UB and never round-trip through GM. Preferred when the auxiliary output is a per-row/per-tile scalar or small vector (e.g. scale, amax, mean) consumed by one downstream kernel that traverses the same base input in the same tile — see "Fuse Auxiliary Statistics Into a Downstream Kernel" applicability conditions.
+- **Tritonized auxiliary path plus downstream kernel:** replace Torch/CANN auxiliary ops with a Triton preprocessing kernel while keeping the consuming downstream Triton kernel separate. Use this for count/scatter-style metadata as in "Tritonize Frequency Count Metadata", or as part of shape-dispatched composition when measured shape evidence shows single-kernel fusion loses because of register/UB pressure, repeated reads, or occupancy loss while a Tritonized auxiliary path wins `total-op`.
 - **Shape-dispatched composition:** keep more than one Triton-based path when fusion wins only for some shape ranges. For example, perf comparison across shape buckets shows single-kernel fusion wins for small/medium shapes but regresses on wide shapes (or vice versa). small shapes may prefer single-kernel fusion while wide shapes prefer Tritonized preprocessing plus the optimized downstream kernel.
 
 ## Implementation Sketch
@@ -112,9 +135,10 @@ The **downstream Triton path** is the Triton kernel or Triton-kernel sequence th
    - Must it still be returned to the caller?
 4. Verify the auxiliary logic is expressible in Triton, including NaN/Inf behavior, dtype promotion, saturation, and rounding modes. Simple Torch wrapper glue is allowed, but the target auxiliary computation should not be delegated to a framework compute op.
 5. If the downstream Triton kernel was already optimized in the current operator file or previous local round, use that implementation as the base for the fusion attempt.
-6. Choose the implementation form:
-   - Inline the auxiliary logic into the consuming Triton kernel when load sharing and launch removal dominate.
-   - Write a Triton auxiliary/preprocessing kernel and keep the downstream kernel separate when single-kernel fusion causes double-read or register/UB pressure.
+6. Choose the implementation form from the applicability conditions above:
+   - If the auxiliary logic and the downstream computation belong to the same row/tile path over the same base input and have one dominant consumer, start with single-kernel fusion (the win comes from load sharing + launch removal).
+   - If the auxiliary output domain is misaligned with downstream traversal, requires bounded metadata aggregation, or measured shape evidence shows single-kernel fusion loses (e.g. double-read, register/UB pressure, occupancy loss) while a Tritonized auxiliary path wins `total-op`, use a Tritonized auxiliary path.
+   - If neither applies but the dependency graph still has a clear auxiliary-op -> downstream Triton path, derive a new fusion form only if it preserves the invariants in the form-selection note above; otherwise reject this pattern for the round and re-rank other patterns instead of forcing a weak fusion.
 7. Set the grid by `num_vectorcore` and use manual core-id chunking, not GPU-style SM oversubscription (see "Ascend Mechanics").
 8. If the auxiliary output is public, store it from the Triton path.
 9. Keep the original unfused path available when needed for complex shapes, group paths, or fallback dispatch.
@@ -135,15 +159,160 @@ result = _launch_downstream_kernel(some_tensor, scale, extra_factors)
 
 Perf shows several arithmetic auxiliary ops (`Abs`, `ReduceMax`/`Amax`, `Div`/`RealDiv`, `Clamp`, `Cast`) preceding the downstream kernel, all counted toward `total_op_avg_time_us`.
 
-The fused candidate:
+Applicability conditions for this form:
 
-- One pass: load the row, compute the intermediate statistic (e.g. `max(abs(x))`), derive `scale` from it, then apply the downstream computation and store both the API-visible `scale` and the final result.
-- For wider shapes where the statistic and downstream computation cannot share a single pass, split into two passes inside the same kernel and reload the row, accepting the double read in exchange for eliminating auxiliary-op launches.
-- Follow up with `program-multiple-rows` to amortize per-program fixed cost if the fused kernel becomes launch-bound rather than memory-bound.
+- The auxiliary output is a per-row/per-tile scalar or small vector (e.g. `scale`, `amax`, `mean`), with a single dominant downstream consumer.
+- The auxiliary logic and the downstream computation belong to the same row/tile path over the same base input.
+- For row-wise statistics with one dominant downstream consumer, prefer this form even when the kernel needs to reload the row in a second pass.
+- Prefer a single Triton kernel when the statistic and downstream work can be computed together.
+- If the statistic needs a second pass over the same row inside the same kernel, keep it in the same kernel unless concrete evidence shows the extra read or added in-kernel work is worse than a separate preprocessing kernel.
 
-This removes the external auxiliary ops for the simple path while keeping a fallback dispatch available for shapes where the double read dominates.
+Failure signal: if an attempt for this code class leaves leftover Torch reduction/arithmetic in the wrapper, the implementation form is wrong. Prefer a true single-kernel fusion for row-wise statistics when the same row/tile traversal can compute the statistic and downstream result together. A separate Triton preprocessing kernel is valid only when concrete shape, profile, simulator, compile, correctness, or measurement evidence shows the single-kernel form is a poor fit. Performance concerns such as double-read cost, register-pressure estimates, or bandwidth intuition should be documented as evidence, not used as an unsupported reason to keep the wrapper chain.
+
+The fused candidate keeps the row path in one Triton kernel. When a row is wider than one tile, each pass loops over column blocks; the statistic is accumulated into a scalar register in pass 1, and the downstream work is applied in pass 2 over the same blocks. This is shape pseudocode; adapt block sizes, masks, dtype policy, rounding, and downstream math to the actual operator:
+
+```python
+@triton.jit
+def fused_row_kernel(x_ptr, out_ptr, scale_ptr, n_rows, n_cols,
+                     BLOCK_N: tl.constexpr):
+    row = tl.program_id(0)
+    row_base = row * n_cols
+    row_valid = row < n_rows
+
+    # Pass 1: accumulate the per-row statistic (e.g. max(abs(x))) into a scalar.
+    row_stat = 0.0
+    for col_start in range(0, n_cols, BLOCK_N):
+        offs = row_base + col_start + tl.arange(0, BLOCK_N)
+        mask = row_valid & ((col_start + tl.arange(0, BLOCK_N)) < n_cols)
+        x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+        row_stat = tl.maximum(row_stat, tl.max(tl.abs(x)))
+
+    scale = tl.maximum(row_stat / 127.0, 1e-10)
+    tl.store(scale_ptr + row, scale, mask=row_valid)
+
+    # Pass 2: re-walk the same row and apply the downstream computation.
+    for col_start in range(0, n_cols, BLOCK_N):
+        offs = row_base + col_start + tl.arange(0, BLOCK_N)
+        mask = row_valid & ((col_start + tl.arange(0, BLOCK_N)) < n_cols)
+        x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+        y = downstream_compute(x, scale)
+        tl.store(out_ptr + offs, y, mask=mask)
+```
+
+The two passes re-read the row from GM, but they stay inside one kernel launch and never materialize the statistic or intermediate scale through GM. This is the preferred single-kernel form when the row is wider than one tile; a separate preprocessing kernel is a fallback only when concrete evidence shows the in-kernel re-read or added in-kernel work is worse.
+
+## Example: Single-tile Compact Fusion (K fits in one tile)
+
+A common baseline materializes row-wise preprocessing outside the downstream kernel, and the two-pass single-kernel form (see "Fuse Auxiliary Statistics Into a Downstream Kernel") is used when the row is wider than one tile. But when the row width fits in one tile, the two-pass re-read is unnecessary — the statistic can be accumulated and the downstream computation applied in a single pass.
+
+Shape analysis, profile data, simulator data, or previous measurements may identify the two-pass form's second `tl.load` as a likely cost on small-K cases, especially when the wrapper chain is already cheap or the row fits entirely in one tile. In that case, compact fusion can be selected directly for the small-K path instead of first implementing a two-pass candidate only to prove the second load is expensive.
+
+Applicability conditions for this form — **all must hold**:
+
+- The row width `K` fits in one tile (`K <= BLOCK_K`), so the entire row can be loaded in a single `tl.load`. **This must be verified by host-side dispatch (`if K <= BLOCK_K`), not by agent judgment — loading a partial row in the compact form causes correctness errors.**
+- The downstream computation (e.g. `result = p_a * (grad_scaled - row_sum) * mask`) is elementwise on the same tile and can be computed in the same pass — no cross-row dependency, no second reduction over a different axis.
+- **Objective evidence**: shape facts, dependency analysis, simulator data, or previous measurements show that avoiding the second row load is likely to matter. A prior two-pass benchmark is useful evidence, but it is not required when the small-K path is already proven by static shape or dispatch conditions.
+
+**Distinction from "Fuse Auxiliary Statistics Into a Downstream Kernel"**: both examples cover row-wise reduction fusion (per-row statistic + downstream apply). The difference is row width:
+- "Fuse Auxiliary Statistics" — row wider than one tile, two-pass (pass 1 accumulate, pass 2 re-read + apply). Default form.
+- This example — row fits in one tile (`K <= BLOCK_K`), single-pass (load once, accumulate + apply in-register, store once). Optional form for proven small-K paths when shape, profile, simulator, or measurement evidence indicates the second row load is worth avoiding.
+
+If unsure whether the row fits in one tile, keep the two-pass form — it is correct for all row widths.
+
+```python
+@triton.jit
+def _fused_row_kernel_compact(x_ptr, out_ptr, n_rows, K,
+                              BLOCK_M: tl.constexpr,
+                              BLOCK_K: tl.constexpr):
+    # K <= BLOCK_K verified by host-side dispatch before launch
+    pid = tl.program_id(0)
+    row_start = pid * BLOCK_M
+    row_offs = row_start + tl.arange(0, BLOCK_M)
+    row_mask = row_offs < n_rows
+
+    k_offs = tl.arange(0, BLOCK_K)
+    k_mask = k_offs < K
+    offs = row_offs[:, None] * K + k_offs[None, :]
+    valid = row_mask[:, None] & k_mask[None, :]
+
+    # single load — entire row in one tile
+    x = tl.load(x_ptr + offs, mask=valid, other=0.0).to(tl.float32)
+
+    # accumulate statistic in-register, same pass
+    row_stat = tl.sum(x * x, axis=1)   # per-row scalar in register
+
+    # apply downstream computation in-register, same pass
+    y = downstream_compute(x, row_stat)   # elementwise on the same tile
+
+    tl.store(out_ptr + offs, y, mask=valid)
+```
+
+**Dispatch logic (shape-dispatched composition, host-side)**:
+```python
+if K <= BLOCK_K:
+    _fused_row_kernel_compact[grid](x, out, n_rows, K,
+                                    BLOCK_M=block_m, BLOCK_K=block_k)
+else:
+    _fused_row_kernel_two_pass[grid](x, out, n_rows, K,
+                                     BLOCK_M=block_m, BLOCK_N=block_n)
+```
+
+**Failure signals — revert to the two-pass single-kernel form ("Fuse Auxiliary Statistics Into a Downstream Kernel") if any of these occur**:
+
+- `K > BLOCK_K` (the row does not fit in one tile — the compact form cannot load the whole row at once, correctness error).
+- The compact form causes UB overflow because the downstream computation needs many registers (e.g. multiple intermediate tensors alive simultaneously).
+- Correctness mismatch on boundary shapes (e.g. `K == BLOCK_K` exact vs `K < BLOCK_K` masked, dtype promotion differences between masked load and unmasked load).
+- Benchmark shows the compact form loses to the two-pass form on some `K <= BLOCK_K` shapes (rare, but possible when the downstream computation is heavy and the second `tl.load` is cheap due to cache residency).
+
+**Representative shape (softmax-backward row, small K)**: the row is a backward row of width `K`. When `K <= BLOCK_K` (small-K cases), the compact form loads grad + probability/mask inputs once, computes the scaled gradient, row accumulation, difference, and final masked result, then stores in one pass. This removes both the wrapper arithmetic chain and the second row load that a two-pass form would need. For `K > BLOCK_K`, keep the two-pass fallback.
+
+**Relationship to "Fuse Auxiliary Statistics Into a Downstream Kernel"**: both examples cover row-wise reduction fusion. This example does NOT modify the two-pass form — the two-pass form remains the default and is correct for all row widths. This example only adds an optional single-pass form for the narrow case where the row fits in one tile and shape, profile, simulator, or measurement evidence shows the second `tl.load` is likely to matter. If in doubt, keep the two-pass form.
+
+**Relationship to `tile-selection-heuristic` and `exact-tile-no-boundary-fast-path`**: the `K <= BLOCK_K` dispatch guard composes with `exact-tile-no-boundary-fast-path` (when `K == BLOCK_K` exactly, the compact kernel can drop the `mask = k_offs < K` and become a no-boundary fast path); the host-side BLOCK_K sweep (`tile-selection-heuristic`) helps pick the BLOCK_K that maximizes `K <= BLOCK_K` coverage across the shape set.
+
+## Example: Tritonize Data Pack at Store Time
+
+A common baseline materializes a pack/reorder step outside the downstream kernel:
+
+```python
+quantized = _launch_downstream_kernel(...)  # produces int4/int8 values
+packed = torch.where(idx < 0, quantized | 0xF0, quantized & 0x0F)
+packed = packed.view(...).reshape(...)
+```
+
+Perf shows a 4-6 `aclnn*` chain (`aclnnLtScalar`, `aclnnAdds`, `aclnnSWhere`, `aclnnOr`, `aclnnAnd`, `aclnnReshape`) following the downstream kernel, all counted toward `total_op_avg_time_us`.
+
+Applicability conditions for this form — **all must hold**:
+
+- The auxiliary logic is **elementwise per-element** (mask + shift + OR / div + clamp + round + cast), NOT a reduction across the tile. **Exclusion**: if the auxiliary output is a per-row/per-tile scalar (e.g. `amax`, `mean`, `sum`), this case does NOT apply — use "Fuse Auxiliary Statistics Into a Downstream Kernel" (or "Single-tile Compact Fusion" when the row fits in one tile) instead. Mixing the two forms (single-pass pack for a reduction output) causes correctness errors.
+- The pack/reorder happens at `tl.store` time of the downstream kernel — single-pass, no second load needed.
+- The auxiliary output is consumed by exactly one downstream store (no multi-consumer scatter).
+
+Failure signal: if the auxiliary logic requires reading neighboring elements across tile boundaries (e.g. packing two int4 from different rows into one int8), the single-pass store-time form cannot apply — restructure the tile layout first or fall back to a separate pack kernel.
+
+```python
+@triton.jit
+def _pack_int4_to_int8_at_store_kernel(..., BLOCK_N: tl.constexpr):
+    # downstream computation produces quantized int4 values in-register
+    quantized = downstream_compute(...)  # int4 values, same tile
+
+    # pack two adjacent int4 into one int8 at store time — single pass
+    hi = quantized[::2] & 0x0F
+    lo = quantized[1::2] & 0x0F
+    packed = (hi << 4) | lo  # arithmetic, not layout copy
+
+    tl.store(out_ptr + pack_offs, packed, mask=...)
+```
+
+The pack step is auxiliary logic (it combines tensor values with arithmetic masks), not layout glue. This is the store-time pack form: single-pass, elementwise-into-store, distinct from the two-pass reduction form in "Fuse Auxiliary Statistics Into a Downstream Kernel".
+
+**Representative shape (int4 -> int8 pack at store time)**: int4 quantized output packed into int8 via `torch.where(idx < 0, x | 0xF0, x & 0x0F)` — 6+ `aclnn*` chain. Tritonize as a `_pack_int4_to_int8_kernel` (or fold into the quantization kernel) that packs two adjacent int4 into one int8 byte at `tl.store` time.
+
+**Representative shape (quantize div+clamp+round+cast at store time)**: quantize `div + clamp + round + cast` into int8 via torch chain (`aclnnDiv` + `aclnnClamp` + `aclnnRound` + `aclnnInplaceCopy`). Same sub-form — Tritonize as a `_quantize_output_kernel` that does div+clamp+round+cast at `tl.store` time. The auxiliary logic is elementwise (no reduction), so single-pass store-time form applies.
 
 ## Example: Tritonize Frequency Count Metadata
+
+This form is for scatter-like or bounded-metadata auxiliary paths, not for row-wise statistics that can still live in the consuming kernel.
 
 A common wrapper-side pattern computes per-key counts only so a downstream Triton kernel can normalize or weight each row:
 
@@ -154,6 +323,14 @@ result = _launch_downstream_kernel(grad, keys, scaled, ...)
 ```
 
 Perf may show a count-like framework op, such as `Bincount` or `Histogram`, dominating `total_op_avg_time_us`, especially when the key tensor is large. If the counts are not the public result and are only consumed by the Triton path, replace the count op with a small Triton preprocessing kernel and pass the counts buffer to the downstream kernel.
+
+Applicability conditions for this form:
+
+- The auxiliary output domain does not align with the input tile traversal: the key→bin map is a scatter, so the downstream kernel cannot compute the count while walking the input in a single pass.
+- The auxiliary logic cannot share a `tl.load` with the downstream kernel, so inlining would not save more than a separate preprocessing kernel plus a downstream kernel.
+- The output domain is known/bounded (e.g. `num_keys`, label space), so the auxiliary result can be represented as a compact metadata buffer consumed by the downstream Triton path.
+
+Failure signal: if this form does not improve warm `total-op` on net (the new Triton count kernel time plus the downstream kernel time is not smaller than the removed framework count op), the count-to-Triton rewrite itself has no value for this operator. First retry a different fusion form only if the dependency graph still admits one that preserves the invariants above; otherwise re-rank other candidate patterns instead of forcing the preprocessing form.
 
 ```python
 @triton.jit
@@ -191,6 +368,47 @@ if SCALE_BY_COUNT:
 Use this form when the output domain is large enough that output-owner scanning would be too expensive. After Tritonizing the count path, if profiling or simulator evidence shows the new count kernel is atomic-bound for a small output domain, compare with `atomic-contention-owner-computes-store`. The two patterns can compose: this pattern removes the framework count op, and the owner-computes pattern may remove atomic contention if the Triton count kernel exposes it.
 
 Validation should prioritize `total-op`, not just `kernel`, because the new count kernel may be reported as additional Triton kernel time even while it removes a much larger framework op. Verify ignored keys, invalid keys, empty inputs, count dtype conversion, count overflow assumptions, and count values consumed by the downstream path.
+
+### Gather Optimization for Small Lookup Tables (optional follow-up, not a replacement)
+
+**This subsection is an optional follow-up optimization that applies only when the lookup table is small. It does NOT replace the standard `tl.load(metadata_ptr + key)` form shown above — that form remains the default and is correct for large lookup tables. Apply this follow-up only when its applicability conditions are met; otherwise keep the standard indirect `tl.load`.**
+
+Before using this follow-up, verify that the current Triton Ascend environment supports `tl.gather` with the required tensor rank, dtype, and index shape. If support is unknown, unavailable, or compilation fails, keep the standard `tl.load(metadata_ptr + key)` form and record the compile/support issue instead of forcing a gather rewrite.
+
+When ALL of the following are true:
+
+- The Tritonized metadata buffer is **small enough to fit in UB as one tile** (e.g. `GROUP_SIZE`, `num_heads`, label space — typically <= a few thousand entries; for `num_keys` in the tens of thousands or larger, do NOT apply this follow-up, keep `tl.load(metadata_ptr + key)`).
+- The downstream kernel indexes into the metadata buffer per-element via an indirect `tl.load(metadata_ptr + key)` where `key` is per-element computed (not a contiguous slice).
+- Profiling or simulator evidence shows the indirect `tl.load` is a bottleneck (e.g. high VGATHER UB conflicts, high SCALAR around address generation).
+
+...then it is **optional** to convert the indirect `tl.load` into a `tl.gather` from a UB-resident copy of the small table.
+
+**Before** (standard form — keep when conditions above are NOT met):
+```python
+key = tl.load(key_ptr + offs, mask=mask, other=0)
+val = tl.load(metadata_ptr + key, mask=mask, other=0.0)   # GM indirect load
+result = x * val
+```
+
+**After** (optional follow-up — only when the table is small):
+```python
+group_table = tl.load(metadata_ptr + tl.arange(0, TABLE_SIZE), mask=...)
+key = tl.load(key_ptr + offs, mask=mask, other=0)
+val = tl.gather(group_table, key, axis=0)   # UB-side gather
+result = x * val
+```
+
+**Failure signals — revert to the standard `tl.load(metadata_ptr + key)` form if any of these occur**:
+
+- The current Triton Ascend environment does not support `tl.gather` for this dtype/rank/index shape, or the candidate fails to compile.
+- `TABLE_SIZE` is too large to fit in UB (UB overflow, compile error, or register spill in simulator).
+- The index tensor `key` is contiguous (no indirection) — `tl.gather` adds overhead without benefit.
+- Simulator shows `tl.gather` introduces VGATHER contention worse than the original indirect `tl.load`.
+- Correctness mismatch on boundary shapes.
+
+**Representative shape (group-level weight/bias lookup)**: weight/bias are group-level small tensors (`GROUP_SIZE` entries each). The gather follow-up applies because `GROUP_SIZE` is small enough for UB. For operators with large lookup tables (`num_keys` in the tens of thousands), keep the standard form.
+
+**Relationship to the parent example**: This subsection does NOT modify the standard `tl.load(metadata_ptr + key)` lookup form prescribed by "Tritonize Frequency Count Metadata" above. The standard form remains the default. If in doubt, keep the standard form.
 
 ## Advanced Fusion Forms
 
@@ -286,6 +504,7 @@ This shape uses `extract_slice` / `insert_slice` from `triton.language.extra.can
 ## Related Patterns
 
 - `algebraic-optimization`
+- `atomic-contention-owner-computes-store`
 - `layout-materialization-elision`
 - `program-multiple-rows`
 - `scalar-vector-simulation-signal`
