@@ -6,13 +6,19 @@ from triton_agent.subagents import RenderedSubagent, SubagentDefinition
 
 PERF_DIAGNOSIS_SUBAGENT_ID = "triton-agent-perf-diagnosis-advisor"
 
+def _supports_ir_analysis(language: str) -> bool:
+    return language == "triton"
+
+
 def _common_skill_names(language: str) -> tuple[str, ...]:
-    return (
+    names = [
         f"{language}-npu-optimize-knowledge",
         "ascend-npu-run-eval",
         "ascend-npu-profile-operator",
-        f"{language}-npu-analyze-ir",
-    )
+    ]
+    if _supports_ir_analysis(language):
+        names.append(f"{language}-npu-analyze-ir")
+    return tuple(names)
 
 
 def perf_diagnosis_subagent_definition(
@@ -33,11 +39,15 @@ def perf_diagnosis_subagent_definition(
     )
 
 
-def optimize_subagent_recommendation_lines() -> list[str]:
+def optimize_subagent_recommendation_lines(*, language: str = "triton") -> list[str]:
     return [
         "A diagnosis subagent named `triton-agent-perf-diagnosis-advisor` is available in this workspace.",
         "Use it proactively when the bottleneck hypothesis is still unclear before deeper optimize edits.",
-        "That subagent is diagnosis-only: it may read existing harnesses and evidence, may collect fresh benchmark/profile/IR artifacts, and must not perform optimization work.",
+        (
+            "That subagent is diagnosis-only: it may read existing harnesses and evidence, may collect fresh benchmark/profile/IR artifacts, and must not perform optimization work."
+            if _supports_ir_analysis(language)
+            else "That subagent is diagnosis-only: it may read existing harnesses and evidence, may collect fresh benchmark/profile artifacts, and must not perform optimization work."
+        ),
     ]
 
 
@@ -98,13 +108,27 @@ def _render_common_prompt(
         "Use the staged skill tree in this workspace as your source of truth.",
         f"Start with skill `{language}-npu-optimize-knowledge` and read its `SKILL.md`.",
         "Read its `pattern_index.md` before detailed pattern cards.",
-        "Use its `symptom_index.md` when profile or IR evidence needs symptom routing.",
+        (
+            "Use its `symptom_index.md` when profile or IR evidence needs symptom routing."
+            if _supports_ir_analysis(language)
+            else "Use its `symptom_index.md` when profile evidence needs symptom routing."
+        ),
         (
             f"Use skill `ascend-npu-run-eval`, `ascend-npu-profile-operator`, and "
             f"`{language}-npu-analyze-ir` for documented evidence-collection entrypoints."
+            if _supports_ir_analysis(language)
+            else "Use skill `ascend-npu-run-eval` and `ascend-npu-profile-operator` for documented evidence-collection entrypoints."
         ),
-        "You may inspect existing operator files, generated test and benchmark harnesses, previous perf artifacts, profiler outputs, and archived IR.",
-        "You may collect fresh benchmark, profiler, or IR evidence when diagnosis needs new facts.",
+        (
+            "You may inspect existing operator files, generated test and benchmark harnesses, previous perf artifacts, profiler outputs, and archived IR."
+            if _supports_ir_analysis(language)
+            else "You may inspect existing operator files, generated test and benchmark harnesses, previous perf artifacts, and profiler outputs."
+        ),
+        (
+            "You may collect fresh benchmark, profiler, or IR evidence when diagnosis needs new facts."
+            if _supports_ir_analysis(language)
+            else "You may collect fresh benchmark or profiler evidence when diagnosis needs new facts."
+        ),
         "If you use Bash, use it only for read-only inspection or documented evidence-collection entrypoints.",
         "Do not read staged skill implementation files under the skills' `scripts/` directories just to understand workflow behavior.",
         "You must not perform optimization work.",
@@ -203,8 +227,17 @@ def _render_opencode_agent(
             '    "*": deny',
             '    "python3 .opencode/skills/ascend-npu-run-eval/scripts/run-command.py run-bench*": allow',
             '    "python3 .opencode/skills/ascend-npu-run-eval/scripts/run-command.py profile-bench*": allow',
-            f'    "python3 .opencode/skills/{language}-npu-analyze-ir/scripts/capture_ir.py*": allow',
-            f'    "python3 .opencode/skills/{language}-npu-analyze-ir/scripts/inspect_ir.py*": allow',
+        ]
+    )
+    if _supports_ir_analysis(language):
+        permission_lines.extend(
+            [
+                f'    "python3 .opencode/skills/{language}-npu-analyze-ir/scripts/capture_ir.py*": allow',
+                f'    "python3 .opencode/skills/{language}-npu-analyze-ir/scripts/inspect_ir.py*": allow',
+            ]
+        )
+    permission_lines.extend(
+        [
             "  webfetch: deny",
             "  websearch: deny",
         ]

@@ -25,7 +25,7 @@ Optimize target modes:
 - `baseline/`
 - `opt-round-N/`
 - completed round entries and one final `## Overall Summary` in `opt-note.md`
-- round-local `profile/`, `ir/`, `perf-analysis.md`, or `compiler-analysis.md` artifacts when deeper investigation is needed
+- round-local `profile/` or `perf-analysis.md` artifacts when deeper investigation is needed
 
 ## Core Loop
 
@@ -42,7 +42,7 @@ Optimize target modes:
 - Otherwise use the sibling `npu-prepare-optimize-baseline` skill to establish or repair the baseline before creating `opt-round-1/`.
 - Establish or reuse `baseline/` before treating any `opt-round-N/` directory as a completed optimization round.
 - Read [artifacts.md](references/artifacts.md) before choosing authoritative baseline or round artifact paths.
-- Keep top-level optimize workflow references at the skill boundary: use sibling skills for baseline preparation, evaluation, profiling, IR analysis, compiler-source analysis, and round gating rather than direct helper-script paths here.
+- Keep top-level optimize workflow references at the skill boundary: use sibling skills for baseline preparation, evaluation, profiling, and round gating rather than direct helper-script paths here.
 
 ## Stage 1: Round Entry
 
@@ -60,15 +60,14 @@ Optimize target modes:
 
 Optimize analysis is layered.
 
-- Default escalation order: `pattern triage -> profiling diagnosis -> IR attribution -> compiler-source escalation`.
+- Default escalation order: `pattern triage -> profiling diagnosis`.
 - Start each round at the shallowest level that can justify the next move.
 - Escalate only when the current level is insufficient.
 - Keep `Primary analysis level` distinct from `Supporting evidence` in round records.
-- Using IR as supporting evidence does not automatically change the round's primary analysis level.
 - Record the chosen level and why the round stayed there or escalated deeper.
 - Show the level explicitly in `attempts.md`, for example `Primary analysis level: profiling diagnosis`.
 - When a round escalates, record both `Escalation: <from> -> <to>` and `Escalation reason: <why the previous level was insufficient>`.
-- Do not rely on the presence of `profile/`, `ir/`, or `perf-analysis.md` to imply the current level; state it directly.
+- Do not rely on the presence of `profile/` or `perf-analysis.md` to imply the current level; state it directly.
 
 ### pattern triage
 
@@ -92,29 +91,8 @@ Optimize analysis is layered.
 - Use profiling diagnosis as the default deeper entrypoint when pattern triage is not enough.
 - Use the sibling `npu-profile-operator` skill when benchmark numbers need operator-level performance evidence, hotspot diagnosis, bottleneck analysis, or profiler-backed comparison across runs.
 - Use the sibling `npu-analyze-round-performance` skill when one round needs a deeper diagnosis that should end in `opt-round-N/perf-analysis.md`, especially for scalar/vector/cube imbalance, transfer-heavy behavior, or suspected pipeline overlap issues.
-- Use the sibling knowledge skill's symptom cards to narrow pattern candidates after structured profiler or IR evidence exists, rather than rereading the whole pattern library.
-- This deeper diagnosis may end as either `profile-only diagnosis` or `profile-plus-IR diagnosis`.
+- Use the sibling knowledge skill's symptom cards to narrow pattern candidates after structured profiler evidence exists, rather than rereading the whole pattern library.
 - Write `opt-round-N/perf-analysis.md` when the deeper round-analysis flow is used.
-
-### IR attribution
-
-- Use IR attribution only after profiler-backed symptoms still need explanation.
-- `npu-analyze-round-performance` may still own `opt-round-N/perf-analysis.md` when the round deepens from profiler evidence into IR-backed attribution.
-- In that flow, use `tilelang-npu-analyze-ir` as the IR evidence companion for capture, navigation, and stage-level inspection.
-- Use the sibling `tilelang-npu-analyze-ir` skill when compiler lowering details, stage-to-stage IR changes, or round-local IR evidence are needed to explain benchmark behavior.
-- Keep IR evidence under `opt-round-N/ir/`.
-- In optimize rounds, keep IR capture round-local, for example:
-  ```bash
-  python3 ../tilelang-npu-analyze-ir/scripts/capture_ir.py --ir-dir opt-round-N/ir --bench-file bench_<operator>.py --operator-file opt-round-N/<optimized-operator>.py
-  python3 ../tilelang-npu-analyze-ir/scripts/inspect_ir.py list-stages --ir-dir opt-round-N/ir --sort-by interesting --limit 20
-  ```
-
-### compiler-source escalation
-
-- Use compiler-source escalation only when compiler source analysis is enabled and after profiler and IR evidence have narrowed a concrete compiler-side question.
-- Use the sibling `tilelang-npu-analyze-compiler-source` skill only when the round still needs performance-focused explanation before the next operator change is clear.
-- When compiler source analysis is enabled, treat the compiler source checkout as read-only and use compiler-source evidence only when it is genuinely needed.
-- Write `opt-round-N/compiler-analysis.md`.
 
 ## Stage 3: Validate And Record
 
@@ -148,15 +126,14 @@ Admission criteria:
 Append a lesson only when it passes all admission criteria:
 
 - The lesson generalizes to a family of TileLang Ascend NPU operators, not only the current operator.
-- The lesson is supported by correctness, benchmark, profiler, IR, or compiler-error evidence.
+- The lesson is supported by correctness, benchmark, profiler, or compiler-error evidence.
 - The lesson is written as a reusable rule, diagnostic mapping, or optimization heuristic.
 - The lesson states where it applies or what limits it.
-- The lesson could plausibly be promoted into an optimize skill, profiling analysis reference, IR analysis reference, or pattern reference.
+- The lesson could plausibly be promoted into an optimize skill, profiling analysis reference, or pattern reference.
 
 Use `learned_lessons.md` for concise distilled rules such as:
 
 - profile-to-optimization mappings
-- IR-to-code-change mappings
 - compiler error repairs that reveal recurring TileLang or Ascend NPU constraints
 - new optimization points inferred from recurring TileLang code patterns
 - validated benchmark interpretation rules that would help future rounds start faster
