@@ -179,6 +179,11 @@ _TILELANG_SKILLS: tuple[SkillCatalogEntry, ...] = (
         physical_path="skills/tilelang/tilelang-npu-optimize-knowledge",
     ),
     SkillCatalogEntry(
+        logical_name="tilelang-npu-cann-ext-api-patterns",
+        source_group="tilelang",
+        physical_path="skills/tilelang/tilelang-npu-cann-ext-api-patterns",
+    ),
+    SkillCatalogEntry(
         logical_name="tilelang-npu-repair-guide",
         source_group="tilelang",
         physical_path="skills/tilelang/tilelang-npu-repair-guide",

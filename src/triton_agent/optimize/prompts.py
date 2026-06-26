@@ -151,7 +151,7 @@ def cann_ext_api_lines(*, enabled: bool, language: str) -> list[str]:
             language=language,
         ),
         _resolve(
-            "Use the staged `{language}-npu-cann-ext-api-patterns` skill for the specialized A5-only pattern guidance.",
+            "Use the staged `{language}-npu-cann-ext-api-patterns` skill for the specialized optimization pattern guidance.",
             language=language,
         ),
         "Treat these extension APIs and patterns as a high-value optimization direction when the kernel structure matches.",

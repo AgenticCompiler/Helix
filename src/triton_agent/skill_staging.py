@@ -108,8 +108,8 @@ def resolve_staged_skills(
         and optimize_target == "operator"
     ):
         staged_skill_names = staged_skill_names + ("torch-npu-optimize-knowledge",)
-    if command_kind == CommandKind.OPTIMIZE and staged_skill_names is not None and enable_cann_ext_api and language == "triton":
-        staged_skill_names = staged_skill_names + ("triton-npu-cann-ext-api-patterns",)
+    if command_kind == CommandKind.OPTIMIZE and staged_skill_names is not None and enable_cann_ext_api:
+        staged_skill_names = staged_skill_names + (f"{language}-npu-cann-ext-api-patterns",)
 
     if staged_skill_names is not None:
         staged_skill_names = tuple(
