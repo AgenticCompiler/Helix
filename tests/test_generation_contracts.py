@@ -1028,6 +1028,25 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("Admission criteria:", optimize)
         self.assertIn("Put round-local narrative", optimize)
 
+    def test_tilelang_optimize_skill_stops_at_profiling_diagnosis(self) -> None:
+        optimize = _read("skills/tilelang/tilelang-npu-optimize/SKILL.md")
+
+        self.assertIn("Optimize analysis is layered.", optimize)
+        self.assertIn(
+            "Default escalation order: `pattern triage -> profiling diagnosis`.",
+            optimize,
+        )
+        self.assertIn("### pattern triage", optimize)
+        self.assertIn("### profiling diagnosis", optimize)
+        self.assertNotIn("### IR attribution", optimize)
+        self.assertNotIn("### compiler-source escalation", optimize)
+        self.assertNotIn(
+            "round-local `profile/`, `ir/`, `perf-analysis.md`, or `compiler-analysis.md`",
+            optimize,
+        )
+        self.assertNotIn("Keep IR evidence under `opt-round-N/ir/`.", optimize)
+        self.assertNotIn("Write `opt-round-N/compiler-analysis.md`.", optimize)
+
     def test_optimize_artifacts_document_strict_learned_lessons_boundary(self) -> None:
         artifacts = _read("skills/triton/triton-npu-optimize/references/artifacts.md")
         self.assertIn("strict reusable optimization-knowledge log", artifacts)
