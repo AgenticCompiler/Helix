@@ -197,6 +197,8 @@ The most common semantic repair on Ascend NPU kernels is adding `propagate_nan=t
 - Use `baseline/<operator>_perf.txt` for canonical optimize-session performance comparisons, even when the current round also compares locally against its parent.
 - Once baseline and round perf artifacts both exist, use the `triton-npu-run-eval` skill to run `compare-perf`.
 - Treat the `triton-npu-run-eval` skill's `compare-perf` flow as the only authority for claimed benchmark deltas and speedups, including `Avg improvement`, `Geomean speedup`, and any claimed benchmark delta.
+- If `case_weights.json` exists in the workspace, pass it to every round `compare-perf` call with `--case-weights case_weights.json` and use the weighted summary to judge whether representative-case gains likely transfer to the full case distribution.
+- If no `case_weights.json` exists and the representative subset appears misleading relative to full-case evidence, use the sibling `triton-npu-case-weighting` skill to derive one before judging later rounds.
 - Record exactly one resolved comparison basis in `round-state.json` as `effective_metric_source`, using `kernel`, `total-op`, or `mixed`.
 - In `kernel` target mode, prefer the kernel-oriented comparison result, but if `compare-perf` falls back to total-op for some or all cases, keep the round eligible and record that fallback as a warning.
 - In `operator` target mode, show both kernel and total-op comparison results so you can diagnose whether kernel improvements translated end-to-end, then record `effective_metric_source: total-op` for the official round conclusion.

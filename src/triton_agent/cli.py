@@ -582,6 +582,7 @@ def build_parser() -> argparse.ArgumentParser:
             )
             subparser.add_argument("--no-upload", action="store_true")
             subparser.add_argument("--enable-report", action="store_true", default=False)
+            subparser.add_argument("--derive-case-weights", action="store_true")
         if spec.has_prompt:
             subparser.add_argument("--prompt")
         if command_kind in {CommandKind.LOG_CHECK, CommandKind.LOG_CHECK_BATCH}:
@@ -716,6 +717,7 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--baseline", required=True)
         subparser.add_argument("--compare", required=True)
         subparser.add_argument("--skip-latency-errors", "--skip-error", dest="skip_latency_errors", action="store_true")
+        subparser.add_argument("--case-weights")
         subparser.add_argument(
             "--metric-source",
             default="auto",

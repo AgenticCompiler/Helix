@@ -139,6 +139,7 @@ class ComparePerfFn(Protocol):
         *,
         skip_latency_errors: bool = False,
         metric_source: str = "auto",
+        case_weights: Path | None = None,
     ) -> int: ...
 
 
@@ -234,6 +235,7 @@ def build_parser() -> argparse.ArgumentParser:
     compare_perf.add_argument("--baseline", required=True)
     compare_perf.add_argument("--compare", required=True)
     compare_perf.add_argument("--skip-latency-errors", "--skip-error", dest="skip_latency_errors", action="store_true")
+    compare_perf.add_argument("--case-weights")
     compare_perf.add_argument(
         "--metric-source",
         default="auto",
@@ -289,11 +291,15 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
         compare_perf_files = _load_compare_perf_function()
         baseline_perf = _resolve_existing_path(parser, args.baseline, "Baseline perf")
         compare_perf = _resolve_existing_path(parser, args.compare, "Compare perf")
+        case_weights = _resolve_optional_existing_path(
+            parser, getattr(args, "case_weights", None), "Case weights"
+        )
         return compare_perf_files(
             baseline_perf,
             compare_perf,
             skip_latency_errors=args.skip_latency_errors,
             metric_source=args.metric_source,
+            case_weights=case_weights,
         )
 
     if args.command in {"run-test", "run-test-baseline", "run-test-optimize"}:

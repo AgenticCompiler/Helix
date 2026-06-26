@@ -50,6 +50,7 @@ class OptimizeRunOptions:
     report: bool = False
     log_tools: bool = False
     enable_mcp: bool = False
+    derive_case_weights: bool = False
 
 
 @dataclass(frozen=True)

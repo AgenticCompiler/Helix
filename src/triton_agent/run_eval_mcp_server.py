@@ -284,6 +284,10 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
             str | None,
             Field(description="Metric source selection for the comparison view. Supported values: auto, kernel, total-op, all."),
         ] = None,
+        case_weights: Annotated[
+            str | None,
+            Field(description="Optional path to a representative case weight JSON file."),
+        ] = None,
     ) -> dict[str, object]:
         workspace = current_workspace()
         arguments = ["--baseline", baseline, "--compare", compare]
@@ -291,6 +295,8 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
             arguments.append("--skip-error")
         if metric_source is not None:
             arguments.extend(["--metric-source", metric_source])
+        if case_weights is not None:
+            arguments.extend(["--case-weights", case_weights])
         return _run_subcommand(
             "compare-perf",
             arguments,

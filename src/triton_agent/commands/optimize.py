@@ -183,6 +183,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         report=bool(getattr(args, "enable_report", False)) and not interact,
         log_tools=log_tools_enabled,
         enable_mcp=bool(getattr(args, "enable_mcp", False)),
+        derive_case_weights=bool(getattr(args, "derive_case_weights", False)),
     )
 
 

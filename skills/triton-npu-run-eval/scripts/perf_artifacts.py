@@ -65,14 +65,17 @@ def compare_perf_files(
     *,
     skip_latency_errors: bool = False,
     metric_source: MetricSource = "auto",
+    case_weights: Path | None = None,
 ) -> int:
     if metric_source == "all":
         return _compare_perf_files_all(
             baseline_perf,
             compare_perf,
             skip_latency_errors=skip_latency_errors,
+            case_weights=case_weights,
         )
     try:
+        case_weight_map = _load_case_weights(case_weights) if case_weights is not None else None
         baseline_outcome = _parse_perf_entries_for_comparison(
             baseline_perf,
             skip_latency_errors=skip_latency_errors,
@@ -134,6 +137,19 @@ def compare_perf_files(
     avg_improvement, geomean_speedup = _summarize_perf_metrics(baseline, compare)
     print(f"Avg improvement: {_format_improvement_percent(avg_improvement)}")
     print(f"Geomean speedup: {_format_speedup(geomean_speedup)}")
+    if case_weight_map is not None:
+        try:
+            weighted = _summarize_weighted_perf_metrics(
+                baseline,
+                compare,
+                case_weights=case_weight_map,
+            )
+        except ValueError as exc:
+            print(f"FAIL: {exc}")
+            return 1
+        print(f"Weighted avg improvement: {_format_improvement_percent(weighted[0])}")
+        print(f"Weighted geomean speedup: {_format_speedup(weighted[1])}")
+        print(_format_weight_coverage(weighted[2], weighted[3], comparable_count=len(comparable_ids)))
     compared_entries = {
         latency_id: baseline_outcome.entries[latency_id] for latency_id in comparable_ids
     }
@@ -157,9 +173,15 @@ def _compare_perf_files_all(
     compare_perf: Path,
     *,
     skip_latency_errors: bool,
+    case_weights: Path | None,
 ) -> int:
     exit_codes: list[int] = []
     section_results: list[tuple[str, str]] = []
+    try:
+        case_weight_map = _load_case_weights(case_weights) if case_weights is not None else None
+    except ValueError as exc:
+        print(f"FAIL: {exc}")
+        return 1
     for section_metric_source in ("kernel", "total-op"):
         try:
             baseline_outcome = _parse_perf_entries_for_comparison(
@@ -238,6 +260,25 @@ def _compare_perf_files_all(
         )
         lines.append(f"Avg improvement: {_format_improvement_percent(avg_improvement)}")
         lines.append(f"Geomean speedup: {_format_speedup(geomean_speedup)}")
+        if case_weight_map is not None:
+            try:
+                weighted = _summarize_weighted_perf_metrics(
+                    baseline,
+                    compare,
+                    case_weights=case_weight_map,
+                )
+            except ValueError as exc:
+                section_results.append(
+                    (
+                        section_metric_source,
+                        f"Metric source section: {section_metric_source}\nFAIL: {exc}\n",
+                    )
+                )
+                exit_codes.append(1)
+                continue
+            lines.append(f"Weighted avg improvement: {_format_improvement_percent(weighted[0])}")
+            lines.append(f"Weighted geomean speedup: {_format_speedup(weighted[1])}")
+            lines.append(_format_weight_coverage(weighted[2], weighted[3], comparable_count=len(comparable_ids)))
         lines.append(f"Metric source: {section_metric_source}")
         skipped_latency_errors = {
             **baseline_outcome.skipped_latency_errors,
@@ -992,6 +1033,89 @@ def _summarize_perf_metrics(
     avg_improvement = sum(improvements) / len(improvements)
     geomean_speedup = math.exp(sum(math.log(ratio) for ratio in ratios) / len(ratios))
     return avg_improvement, geomean_speedup
+
+
+def _load_case_weights(path: Path | None) -> dict[str, float]:
+    if path is None:
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path} must contain a JSON object")
+    raw_weights = payload.get("weights")
+    if not isinstance(raw_weights, list):
+        raise ValueError(f"{path} must contain a weights list")
+    weights: dict[str, float] = {}
+    for index, raw_item in enumerate(raw_weights):
+        if not isinstance(raw_item, dict):
+            raise ValueError(f"{path} weights[{index}] must be an object")
+        raw_latency_id = raw_item.get("latency_id")
+        raw_weight = raw_item.get("weight")
+        if not isinstance(raw_latency_id, str) or not raw_latency_id.startswith("latency-"):
+            raise ValueError(f"{path} weights[{index}] must include latency_id")
+        if not isinstance(raw_weight, (int, float)):
+            raise ValueError(f"{path} weights[{index}] must include numeric weight")
+        weight = float(raw_weight)
+        if weight <= 0:
+            raise ValueError(f"{path} weights[{index}] has non-positive weight")
+        if raw_latency_id in weights:
+            raise ValueError(f"{path} duplicates weight for {raw_latency_id}")
+        weights[raw_latency_id] = weight
+    if not weights:
+        raise ValueError(f"{path} did not contain any weights")
+    return weights
+
+
+def _summarize_weighted_perf_metrics(
+    baseline: dict[str, float],
+    compare: dict[str, float],
+    *,
+    case_weights: dict[str, float],
+) -> tuple[float | None, float | None, float, int]:
+    matched: list[tuple[float, float, float]] = []
+    for latency_id in sorted(baseline):
+        weight = _resolve_latency_weight(latency_id, case_weights)
+        if weight is None:
+            continue
+        baseline_value = baseline[latency_id]
+        compare_value = compare[latency_id]
+        if baseline_value <= 0 or compare_value <= 0:
+            return None, None, 0.0, 0
+        matched.append((weight, baseline_value, compare_value))
+    if not matched:
+        raise ValueError("case weight file did not match any comparable latency ids")
+    total_weight = sum(weight for weight, _baseline_value, _compare_value in matched)
+    if total_weight <= 0:
+        raise ValueError("matched case weights sum to zero")
+    weighted_improvement = sum(
+        weight * ((baseline_value - compare_value) / baseline_value)
+        for weight, baseline_value, compare_value in matched
+    ) / total_weight
+    weighted_log_speedup = sum(
+        weight * math.log(baseline_value / compare_value)
+        for weight, baseline_value, compare_value in matched
+    ) / total_weight
+    return weighted_improvement, math.exp(weighted_log_speedup), total_weight, len(matched)
+
+
+def _resolve_latency_weight(latency_id: str, case_weights: dict[str, float]) -> float | None:
+    if latency_id in case_weights:
+        return case_weights[latency_id]
+    alias = _legacy_msprof_latency_id_alias(latency_id)
+    if alias is not None:
+        return case_weights.get(alias)
+    return None
+
+
+def _format_weight_coverage(
+    matched_weight: float,
+    matched_count: int,
+    *,
+    comparable_count: int,
+) -> str:
+    return (
+        f"Weighted coverage: {matched_weight * 100:.1f}% raw weight "
+        f"across {matched_count}/{comparable_count} compared latency entries"
+    )
 
 
 def _format_improvement_percent(value: float | None) -> str:

@@ -10,6 +10,7 @@ from triton_agent.backends.factory import create_runner
 from triton_agent.mcp import managed_mcp_scope, managed_mcp_server_names_for_request
 from triton_agent.models import AgentRequest, AgentResult, COMMAND_TO_SKILL, CommandKind
 from triton_agent.optimize import execution as optimize_execution
+from triton_agent.optimize.case_weights import derive_workspace_case_weights
 from triton_agent.optimize.compiler_source import prepare_compiler_source
 from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsManager
 from triton_agent.optimize.models import OptimizeRunOptions
@@ -56,6 +57,8 @@ def build_optimize_request(
     )
     test_mode = resolution.test_mode or "differential"
     bench_mode = resolution.bench_mode or "torch-npu-profiler"
+    if options.derive_case_weights:
+        derive_workspace_case_weights(input_path, workdir)
 
     output_path = (
         Path(options.output).expanduser().resolve()

@@ -65,6 +65,7 @@ STAGE_RULES: dict[CommandKind, StageRule] = {
     CommandKind.OPTIMIZE: StageRule(
         directives=(
             "+triton-npu-optimize",
+            "+triton-npu-case-weighting",
             "+triton-npu-optimize-knowledge",
             "+triton-npu-prepare-optimize-baseline",
             "+triton-npu-gen-test",

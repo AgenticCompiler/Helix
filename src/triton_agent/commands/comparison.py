@@ -35,6 +35,7 @@ class ComparePerfModule(Protocol):
         *,
         skip_latency_errors: bool = False,
         metric_source: str = "auto",
+        case_weights: Path | None = None,
     ) -> int: ...
 
 
@@ -75,12 +76,14 @@ def compare_perf_files(
     *,
     skip_latency_errors: bool = False,
     metric_source: str = "auto",
+    case_weights: Path | None = None,
 ) -> int:
     return _load_compare_perf().compare_perf_files(
         baseline_perf,
         compare_perf,
         skip_latency_errors=skip_latency_errors,
         metric_source=metric_source,
+        case_weights=case_weights,
     )
 
 
@@ -118,9 +121,15 @@ def handle_compare_perf(parser: argparse.ArgumentParser, args: argparse.Namespac
     compare_perf = Path(args.compare).expanduser().resolve()
     if not compare_perf.exists():
         parser.error(f"Compare perf path does not exist: {compare_perf}")
+    case_weights: Path | None = None
+    if getattr(args, "case_weights", None) is not None:
+        case_weights = Path(args.case_weights).expanduser().resolve()
+        if not case_weights.exists():
+            parser.error(f"Case weights path does not exist: {case_weights}")
     return compare_perf_files(
         baseline_perf,
         compare_perf,
         skip_latency_errors=args.skip_latency_errors,
         metric_source=args.metric_source,
+        case_weights=case_weights,
     )
