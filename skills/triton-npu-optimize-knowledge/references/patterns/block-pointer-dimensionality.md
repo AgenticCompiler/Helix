@@ -69,6 +69,43 @@ In the signals below, `PIPE_cycles%` refers to the `cycles%` column for pipe `PI
 - Verify that `boundary_check` and `padding_option` produce correct results on tail blocks.
 - When an inner dimension was previously part of grid partitioning, verify the grid reduction is correct and that per-program work density improves.
 
+## Common Pitfalls
+
+### Dtype mismatch on `tl.store` with block pointers
+
+When storing computed values via a block pointer destination, the compiler enforces strict dtype matching between the stored value and the block pointer's element type. This differs from flat pointer stores (e.g., `tl.store(output_ptr + offs, val, mask=mask)`) where the compiler handles implicit dtype conversion.
+
+**Symptom**: A compilation error mentioning `_store_block_pointer` or "type mismatch" when `tl.store` targets a block pointer.
+
+**Root cause**: The kernel computes intermediate values in a wider dtype (typically `tl.float32` for numerical stability) but the output block pointer references a narrower storage dtype (e.g., `tl.float16` or `tl.bfloat16`).
+
+**Fix**: Cast the stored value to the block pointer's element type explicitly:
+
+```python
+# INCORRECT — will compile-fail if output_b is float32 and out_ptr element type is float16
+tl.store(out_ptr, output_b, boundary_check=(0,))
+
+# CORRECT — explicit dtype conversion before store
+tl.store(out_ptr, output_b.to(out_ptr.dtype.element_ty), boundary_check=(0,))
+
+# Alternatively, use the input pointer's dtype if it matches the output storage dtype
+tl.store(out_ptr, output_b.to(input_ptr.dtype.element_ty), boundary_check=(0,))
+```
+
+**When this applies**: Any kernel where arithmetic is performed in `tl.float32` but output tensors use `float16` or `bfloat16` storage. This is the common case for fused normalization, activation, and elementwise kernels that use `tl.load(..., other=0.0).to(tl.float32)` for input but write back to the original narrower dtype.
+
+**Do NOT abandon block pointers** after encountering this error. The fix is a single `.to()` call on the store value. The performance benefit of block pointers (reduced scalar address generation, coalesced DMA) typically outweighs the cost of this conversion, which the compiler lowers efficiently.
+
+### Block pointers without inner loops
+
+The common examples in this pattern use `tl.make_block_ptr` inside a loop with `tl.advance`, giving the impression that block pointers are primarily a loop-level optimization. This is **incorrect on Ascend NPU**. Block pointers benefit kernels even without any inner loop (single-pass, single-tile kernels):
+
+- The DMA engine handles address generation that would otherwise execute on the SCALAR pipe, reducing scalar instruction count regardless of whether `tl.advance` is used.
+- `tl.make_block_ptr` + `tl.load` without a loop expresses 2D tile access to the compiler, enabling wider DMA transfers and coalesced access even for a one-shot load.
+- `boundary_check` on block pointers eliminates manual mask-and-branch code that the SCALAR pipe would otherwise execute.
+
+**When testing block pointers, always apply them to the kernel variant with the highest SCALAR overhead first** (the variant with masks, address computation loops, or boundary checks). Do NOT test on an already-optimized no-mask fast path and then generalize "no improvement" to all kernels — the no-mask kernel has minimal scalar overhead, so block pointers will show the smallest benefit there. The correct testing order is: (1) test on the highest-overhead kernel variant, (2) if that shows improvement, propagate to other variants; (3) only reject block pointers entirely if the highest-overhead variant shows no gain.
+
 ---
 
 ## Detail
