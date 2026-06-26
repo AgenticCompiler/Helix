@@ -102,6 +102,7 @@ Load bias with explicit output-column offsets and add in the epilogue shape alre
 - Store merging on noncontiguous destinations breaks correctness.
 - Incorrect block-pointer fields (`shape/strides/offsets/block_shape/order`) can benchmark wrong access patterns.
 - More aggressive vectorized transfers may increase register pressure.
+- **Block-pointer store dtype mismatch**: when kernels compute in `tl.float32` but store to `float16`/`bfloat16` destinations, `tl.store` via block pointers requires explicit dtype conversion — `tl.store(out_ptr, val.to(out_ptr.dtype.element_ty), boundary_check=(0,))` — whereas flat pointer stores handle this implicitly. This is a one-line fix, not a reason to abandon block pointers.
 
 ## What To Verify After Applying
 
@@ -110,6 +111,7 @@ Load bias with explicit output-column offsets and add in the epilogue shape alre
 - Evidence that wins come from transfer-shape improvements (fewer tiny stores, better contiguous access, less transpose overhead).
 - Block-pointer metadata and masks stay valid across dispatched regimes.
 - Record changed shape/axis assumptions in `attempts.md` when running optimization rounds so follow-up passes preserve the same layout contract.
+- **Testing methodology:** When the kernel dispatches to multiple code paths, apply block pointers to the **highest-overhead variant first** — the one with masks, boundary checks, and address computation. Do NOT test on an already-optimized no-mask fast path and generalize a null result. Block pointers reduce scalar address generation on Ascend NPU even without `tl.advance` loops — they are not only a loop-level optimization.
 
 ## Related Patterns
 
