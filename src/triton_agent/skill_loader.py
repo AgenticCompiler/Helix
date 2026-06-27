@@ -19,7 +19,10 @@ def skill_script_root(skill_name: str) -> Path:
 
 
 def skill_script_path(skill_name: str, script_name: str) -> Path:
-    path = skill_script_root(skill_name) / "scripts" / f"{script_name}.py"
+    relative = Path(script_name + ".py")
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError(f"Invalid skill script path: {script_name!r}")
+    path = skill_script_root(skill_name) / "scripts" / relative
     if not path.exists():
         raise FileNotFoundError(f"Skill script does not exist: {path}")
     return path
@@ -36,15 +39,18 @@ def operator_eval_script_path(script_name: str) -> Path:
 @lru_cache(maxsize=None)
 def load_skill_script_module(skill_name: str, script_name: str) -> ModuleType:
     path = skill_script_path(skill_name, script_name)
-    module_name = f"skill_{skill_name.replace('-', '_')}_{script_name}"
+    module_name = (
+        f"skill_{skill_name.replace('-', '_')}_"
+        f"{script_name.replace('/', '_').replace('-', '_')}"
+    )
     spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load skill script: {path}")
     module = importlib.util.module_from_spec(spec)
-    script_dir = str(path.parent)
+    scripts_root = str(skill_script_root(skill_name) / "scripts")
     added = False
-    if script_dir not in sys.path:
-        sys.path.insert(0, script_dir)
+    if scripts_root not in sys.path:
+        sys.path.insert(0, scripts_root)
         added = True
     previous_module = sys.modules.get(module_name)
     sys.modules[module_name] = module
@@ -56,7 +62,7 @@ def load_skill_script_module(skill_name: str, script_name: str) -> ModuleType:
         else:
             sys.modules[module_name] = previous_module
         if added:
-            sys.path.remove(script_dir)
+            sys.path.remove(scripts_root)
     return module
 
 

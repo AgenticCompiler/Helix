@@ -279,29 +279,22 @@ def _parse_round_number(round_dir: str) -> int:
 
 
 def _utc_now() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def _atomic_write_json(state_path: Path, payload: dict[str, object]) -> None:
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        "w",
-        encoding="utf-8",
-        dir=state_path.parent,
-        prefix=f"{state_path.name}.",
+def _atomic_write_json(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_fd, temp_name = tempfile.mkstemp(
+        dir=str(path.parent),
+        prefix=path.name + ".",
         suffix=".tmp",
-        delete=False,
-    ) as handle:
-        temp_path = Path(handle.name)
-        json.dump(payload, handle, ensure_ascii=True, separators=(",", ":"))
-        handle.write("\n")
+    )
     try:
-        os.replace(temp_path, state_path)
-    except Exception:
-        temp_path.unlink(missing_ok=True)
-        raise
+        with os.fdopen(temp_fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=True, separators=(",", ":"))
+            handle.write("\n")
+        os.replace(temp_name, path)
+    finally:
+        temp_path = Path(temp_name)
+        if temp_path.exists():
+            temp_path.unlink()

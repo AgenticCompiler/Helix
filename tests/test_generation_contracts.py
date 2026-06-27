@@ -42,11 +42,11 @@ class GenerationContractTests(unittest.TestCase):
     def test_optimize_contract_updates_require_regenerating_artifacts_reference(self) -> None:
         agents = _read("AGENTS.md")
         self.assertIn(
-            "skills/common/ascend-npu-optimize-submit-baseline/references/contract.json",
+            "skills/common/ascend-npu-optimize-state/references/baseline-contract.json",
             agents,
         )
         self.assertIn(
-            "skills/common/ascend-npu-optimize-submit-round/references/contract.json",
+            "skills/common/ascend-npu-optimize-state/references/round-contract.json",
             agents,
         )
         self.assertIn(
@@ -376,17 +376,9 @@ class GenerationContractTests(unittest.TestCase):
     def test_optimize_baseline_preparation_uses_dedicated_skill(self) -> None:
         optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
         baseline = _read("skills/common/ascend-npu-prepare-optimize-baseline/SKILL.md")
-        baseline_submit_path = (
-            REPO_ROOT / "skills" / "common" / "ascend-npu-optimize-submit-baseline" / "SKILL.md"
-        )
-        round_submit_path = REPO_ROOT / "skills" / "common" / "ascend-npu-optimize-submit-round" / "SKILL.md"
-        start_round_path = REPO_ROOT / "skills" / "common" / "ascend-npu-optimize-start-round" / "SKILL.md"
-        self.assertTrue(baseline_submit_path.exists())
-        self.assertTrue(round_submit_path.exists())
-        self.assertTrue(start_round_path.exists())
-        baseline_submit = baseline_submit_path.read_text(encoding="utf-8")
-        round_submit = round_submit_path.read_text(encoding="utf-8")
-        start_round = start_round_path.read_text(encoding="utf-8")
+        state_skill_path = REPO_ROOT / "skills" / "common" / "ascend-npu-optimize-state" / "SKILL.md"
+        self.assertTrue(state_skill_path.exists())
+        state_skill = state_skill_path.read_text(encoding="utf-8")
         readme = _read("README.md")
 
         self.assertTrue(
@@ -396,13 +388,16 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("ascend-npu-gen-test", baseline)
         self.assertIn("ascend-npu-gen-bench", baseline)
         self.assertIn("ascend-npu-run-eval", baseline)
-        self.assertIn("ascend-npu-optimize-submit-baseline", baseline)
-        self.assertIn("ascend-npu-optimize-submit-round", optimize)
-        self.assertIn("ascend-npu-optimize-start-round", optimize)
+        self.assertIn("ascend-npu-optimize-state", baseline)
+        self.assertIn("submit-baseline", baseline)
+        self.assertIn("ascend-npu-optimize-state", optimize)
+        self.assertIn("submit-round", optimize)
+        self.assertIn("start-round", optimize)
         self.assertNotIn("../ascend-npu-run-eval/scripts/run-command.py", optimize)
-        self.assertIn("Do not use this skill to generate missing harnesses", baseline_submit)
-        self.assertIn("Do not start the next optimize round until this submission passes", round_submit)
-        self.assertIn("Only one optimize round may be active at a time", start_round)
+        self.assertIn("submit-baseline", state_skill)
+        self.assertIn("submit-round", state_skill)
+        self.assertIn("start-round", state_skill)
+        self.assertIn("Only one optimize round may be active at a time", state_skill)
         self.assertIn("ascend-npu-prepare-optimize-baseline", readme)
         self.assertIn("ascend-npu-profile-operator", optimize)
         self.assertIn("ascend-npu-analyze-round-performance", optimize)
@@ -634,27 +629,22 @@ class GenerationContractTests(unittest.TestCase):
         self.assertNotIn("analysis_comparison_sources", artifacts)
         self.assertNotIn("validated_candidate", artifacts)
 
-    def test_submit_optimize_skills_keep_path_rules_out_of_user_facing_skill_text(self) -> None:
-        baseline_submit = _read("skills/common/ascend-npu-optimize-submit-baseline/SKILL.md")
-        round_submit = _read("skills/common/ascend-npu-optimize-submit-round/SKILL.md")
+    def test_optimize_state_skill_keeps_path_rules_out_of_user_facing_skill_text(self) -> None:
+        state_skill = _read("skills/common/ascend-npu-optimize-state/SKILL.md")
 
-        self.assertNotIn("## Baseline-State Path Convention", baseline_submit)
-        self.assertNotIn("## Round-State Path Convention", round_submit)
+        self.assertNotIn("## Baseline-State Path Convention", state_skill)
+        self.assertNotIn("## Round-State Path Convention", state_skill)
         self.assertNotIn(
             "If a declared path is missing there, it retries the same value relative to the operator workspace root",
-            baseline_submit,
-        )
-        self.assertNotIn(
-            "If a declared path is missing there, it retries the same value relative to the operator workspace root",
-            round_submit,
+            state_skill,
         )
 
     def test_optimize_artifacts_reference_matches_generator_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for relative_path in (
-                "skills/common/ascend-npu-optimize-submit-baseline/references/contract.json",
-                "skills/common/ascend-npu-optimize-submit-round/references/contract.json",
+                "skills/common/ascend-npu-optimize-state/references/baseline-contract.json",
+                "skills/common/ascend-npu-optimize-state/references/round-contract.json",
                 "skills/triton/triton-npu-optimize/references/artifacts.md",
                 "skills/triton/triton-npu-optimize/script/update-artifacts.py",
             ):

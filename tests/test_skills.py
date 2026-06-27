@@ -47,7 +47,7 @@ class SkillLinkManagerTests(unittest.TestCase):
         self.assertIn("propagate_nan=tl.PropagateNan.ALL", vec_cmp_text)
         self.assertIn("NaN-input behavior", vec_cmp_text)
 
-    def test_repo_skills_stage_split_optimize_submit_skills_for_codex(self) -> None:
+    def test_repo_skills_stage_unified_optimize_state_skill_for_codex(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
@@ -60,9 +60,7 @@ class SkillLinkManagerTests(unittest.TestCase):
                 skill_names=(
                     "triton-npu-optimize",
                     "ascend-npu-prepare-optimize-baseline",
-                    "ascend-npu-optimize-submit-baseline",
-                    "ascend-npu-optimize-submit-round",
-                    "ascend-npu-optimize-start-round",
+                    "ascend-npu-optimize-state",
                     "ascend-npu-analyze-round-performance",
                 ),
             )
@@ -70,9 +68,7 @@ class SkillLinkManagerTests(unittest.TestCase):
             target = self._skills_target(workspace, "codex")
             self.assertTrue((target / "triton-npu-optimize" / "SKILL.md").exists())
             self.assertTrue((target / "ascend-npu-prepare-optimize-baseline" / "SKILL.md").exists())
-            self.assertTrue((target / "ascend-npu-optimize-submit-baseline" / "SKILL.md").exists())
-            self.assertTrue((target / "ascend-npu-optimize-submit-round" / "SKILL.md").exists())
-            self.assertTrue((target / "ascend-npu-optimize-start-round" / "SKILL.md").exists())
+            self.assertTrue((target / "ascend-npu-optimize-state" / "SKILL.md").exists())
             self.assertTrue((target / "ascend-npu-analyze-round-performance" / "SKILL.md").exists())
             manager.cleanup(links)
 
@@ -304,13 +300,13 @@ class SkillLinkManagerTests(unittest.TestCase):
                     workspace.mkdir()
                     source.mkdir()
                     (source / "common" / "ascend-npu-gen-test").mkdir(parents=True)
-                    (source / "common" / "ascend-npu-optimize-submit-round").mkdir(parents=True)
+                    (source / "common" / "ascend-npu-optimize-state").mkdir(parents=True)
                     (source / "common" / "ascend-npu-gen-test" / "SKILL.md").write_text(
                         "test skill\n",
                         encoding="utf-8",
                     )
-                    (source / "common" / "ascend-npu-optimize-submit-round" / "SKILL.md").write_text(
-                        "optimize-submit-round skill\n",
+                    (source / "common" / "ascend-npu-optimize-state" / "SKILL.md").write_text(
+                        "optimize-state skill\n",
                         encoding="utf-8",
                     )
 
@@ -319,18 +315,18 @@ class SkillLinkManagerTests(unittest.TestCase):
 
                     target = self._skills_target(workspace, backend)
                     copied_skill = target / "ascend-npu-gen-test" / "SKILL.md"
-                    copied_round_submit_skill = target / "ascend-npu-optimize-submit-round" / "SKILL.md"
+                    copied_optimize_state_skill = target / "ascend-npu-optimize-state" / "SKILL.md"
                     self.assertTrue(target.is_dir())
                     self.assertFalse(target.is_symlink())
                     self.assertEqual(copied_skill.read_text(encoding="utf-8"), "test skill\n")
                     self.assertEqual(
-                        copied_round_submit_skill.read_text(encoding="utf-8"),
-                        "optimize-submit-round skill\n",
+                        copied_optimize_state_skill.read_text(encoding="utf-8"),
+                        "optimize-state skill\n",
                     )
                     if backend == "opencode":
                         self.assertEqual(
                             {path.name for path in links.created_paths},
-                            {".opencode", "ascend-npu-gen-test", "ascend-npu-optimize-submit-round"},
+                            {".opencode", "ascend-npu-gen-test", "ascend-npu-optimize-state"},
                         )
                     else:
                         backend_root = workspace / _BACKEND_SKILL_DIRS[backend][0]
@@ -419,7 +415,7 @@ class SkillLinkManagerTests(unittest.TestCase):
                     with self.assertRaises(RuntimeError):
                         manager.prepare_skills(backend, workspace)
 
-    def test_repo_skills_include_split_optimize_submit_skills_for_codex_staging(self) -> None:
+    def test_repo_skills_include_unified_optimize_state_skill_for_codex_staging(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             workspace.mkdir()
@@ -431,17 +427,13 @@ class SkillLinkManagerTests(unittest.TestCase):
                 workspace,
                 skill_names=(
                     "triton-npu-optimize",
-                    "ascend-npu-optimize-submit-baseline",
-                    "ascend-npu-optimize-submit-round",
-                    "ascend-npu-optimize-start-round",
+                    "ascend-npu-optimize-state",
                 ),
             )
 
             target = self._skills_target(workspace, "codex")
             self.assertTrue((target / "triton-npu-optimize" / "SKILL.md").exists())
-            self.assertTrue((target / "ascend-npu-optimize-submit-baseline" / "SKILL.md").exists())
-            self.assertTrue((target / "ascend-npu-optimize-submit-round" / "SKILL.md").exists())
-            self.assertTrue((target / "ascend-npu-optimize-start-round" / "SKILL.md").exists())
+            self.assertTrue((target / "ascend-npu-optimize-state" / "SKILL.md").exists())
             manager.cleanup(links)
 
     def _skills_target(self, workspace: Path, backend: str) -> Path:

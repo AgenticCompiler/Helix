@@ -77,9 +77,7 @@ class AgentRequestTests(unittest.TestCase):
             staged_skill_names=(
                 "triton-npu-optimize",
                 "triton-npu-optimize-knowledge",
-                "ascend-npu-optimize-submit-baseline",
-                "ascend-npu-optimize-submit-round",
-                "ascend-npu-optimize-start-round",
+                "ascend-npu-optimize-state",
                 "ascend-npu-analyze-round-performance",
             ),
             staged_skill_sources={

@@ -5,15 +5,15 @@ from types import ModuleType
 from triton_agent.skill_loader import load_skill_script_module
 
 
-def optimize_submit_baseline_module() -> ModuleType:
+def optimize_state_baseline_module() -> ModuleType:
     return load_skill_script_module(
-        "ascend-npu-optimize-submit-baseline",
-        "optimize_submit_baseline",
+        "ascend-npu-optimize-state",
+        "baseline/check",
     )
 
 
-def optimize_submit_round_module() -> ModuleType:
+def optimize_state_round_module() -> ModuleType:
     return load_skill_script_module(
-        "ascend-npu-optimize-submit-round",
-        "optimize_submit_round",
+        "ascend-npu-optimize-state",
+        "round/check",
     )

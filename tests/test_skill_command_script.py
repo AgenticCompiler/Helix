@@ -36,8 +36,10 @@ def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return out
 """
 
-_RUN_EVAL_SCRIPT_DIR = (
-    Path(__file__).resolve().parents[1] / "skills" / "common" / "ascend-npu-run-eval" / "scripts"
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_RUN_EVAL_SCRIPT_DIR = _REPO_ROOT / "skills" / "common" / "ascend-npu-run-eval" / "scripts"
+_OPTIMIZE_STATE_SCRIPT = (
+    _REPO_ROOT / "skills" / "common" / "ascend-npu-optimize-state" / "scripts" / "cli.py"
 )
 if str(_RUN_EVAL_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_RUN_EVAL_SCRIPT_DIR))
@@ -2077,88 +2079,60 @@ class SkillCommandScriptTests(unittest.TestCase):
 
         self.assertEqual(hints["stderr"], Optional[TextIO])
 
-    def test_optimize_submit_baseline_script_help_runs_without_installed_entrypoint(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "skills"
-            / "common"
-            / "ascend-npu-optimize-submit-baseline"
-            / "scripts"
-            / "optimize_submit_baseline.py"
-        )
+    def test_optimize_state_submit_baseline_help_runs_without_installed_entrypoint(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
         env = os.environ.copy()
-        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        src_dir = str(_REPO_ROOT / "src")
         env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
         completed = subprocess.run(
-            [sys.executable, str(script), "--help"],
+            [sys.executable, str(script), "submit-baseline", "--help"],
             capture_output=True,
             text=True,
             check=False,
             env=env,
         )
         self.assertEqual(completed.returncode, 0)
-        self.assertIn("optimize_submit_baseline.py", completed.stdout)
-        self.assertIn("check-baseline", completed.stdout)
-        self.assertNotIn("check-round", completed.stdout)
+        self.assertIn("cli.py submit-baseline", completed.stdout)
+        self.assertIn("--baseline-dir", completed.stdout)
+        self.assertNotIn("submit-round", completed.stdout)
 
-    def test_optimize_submit_round_script_help_runs_without_installed_entrypoint(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "skills"
-            / "common"
-            / "ascend-npu-optimize-submit-round"
-            / "scripts"
-            / "optimize_submit_round.py"
-        )
+    def test_optimize_state_submit_round_help_runs_without_installed_entrypoint(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
         env = os.environ.copy()
-        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        src_dir = str(_REPO_ROOT / "src")
         env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
         completed = subprocess.run(
-            [sys.executable, str(script), "--help"],
+            [sys.executable, str(script), "submit-round", "--help"],
             capture_output=True,
             text=True,
             check=False,
             env=env,
         )
         self.assertEqual(completed.returncode, 0)
-        self.assertIn("optimize_submit_round.py", completed.stdout)
-        self.assertIn("check-round", completed.stdout)
-        self.assertNotIn("check-baseline", completed.stdout)
+        self.assertIn("cli.py submit-round", completed.stdout)
+        self.assertIn("--round-dir", completed.stdout)
+        self.assertNotIn("submit-baseline", completed.stdout)
 
-    def test_optimize_start_round_script_help_runs_without_installed_entrypoint(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "skills"
-            / "common"
-            / "ascend-npu-optimize-start-round"
-            / "scripts"
-            / "optimize_start_round.py"
-        )
+    def test_optimize_state_start_round_help_runs_without_installed_entrypoint(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
         env = os.environ.copy()
-        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        src_dir = str(_REPO_ROOT / "src")
         env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
         completed = subprocess.run(
-            [sys.executable, str(script), "--help"],
+            [sys.executable, str(script), "start-round", "--help"],
             capture_output=True,
             text=True,
             check=False,
             env=env,
         )
         self.assertEqual(completed.returncode, 0)
-        self.assertIn("optimize_start_round.py", completed.stdout)
-        self.assertIn("start-round", completed.stdout)
+        self.assertIn("cli.py start-round", completed.stdout)
+        self.assertIn("--round-dir", completed.stdout)
 
-    def test_optimize_start_round_returns_json_hint_when_workflow_state_missing(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "skills"
-            / "common"
-            / "ascend-npu-optimize-start-round"
-            / "scripts"
-            / "optimize_start_round.py"
-        )
+    def test_optimize_state_start_round_returns_json_hint_when_workflow_state_missing(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
         env = os.environ.copy()
-        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        src_dir = str(_REPO_ROOT / "src")
         env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -2188,17 +2162,10 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertIn("Only one optimize round may be active at a time.", payload["hard_rules"])
         self.assertEqual(completed.stderr, "")
 
-    def test_optimize_start_round_returns_json_hint_when_baseline_is_pending(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "skills"
-            / "common"
-            / "ascend-npu-optimize-start-round"
-            / "scripts"
-            / "optimize_start_round.py"
-        )
+    def test_optimize_state_start_round_returns_json_hint_when_baseline_is_pending(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
         env = os.environ.copy()
-        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        src_dir = str(_REPO_ROOT / "src")
         env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -2238,21 +2205,15 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 1)
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["status"], "fail")
-        self.assertIn("ascend-npu-optimize-submit-baseline", payload["guideline"])
+        self.assertIn("ascend-npu-optimize-state", payload["guideline"])
+        self.assertIn("submit-baseline", payload["guideline"])
         self.assertIn("hard_rules", payload)
         self.assertEqual(completed.stderr, "")
 
-    def test_optimize_start_round_success_returns_hard_rules(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "skills"
-            / "common"
-            / "ascend-npu-optimize-start-round"
-            / "scripts"
-            / "optimize_start_round.py"
-        )
+    def test_optimize_state_start_round_success_returns_hard_rules(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
         env = os.environ.copy()
-        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        src_dir = str(_REPO_ROOT / "src")
         env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -2300,15 +2261,8 @@ class SkillCommandScriptTests(unittest.TestCase):
         )
         self.assertEqual(completed.stderr, "")
 
-    def test_optimize_submit_baseline_script_supports_runtime_without_pt_cleanup_module(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "skills"
-            / "common"
-            / "ascend-npu-optimize-submit-baseline"
-            / "scripts"
-            / "optimize_submit_baseline.py"
-        )
+    def test_optimize_state_submit_baseline_supports_runtime_without_pt_cleanup_module(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
 
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
@@ -2368,7 +2322,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 [
                     sys.executable,
                     str(script),
-                    "check-baseline",
+                    "submit-baseline",
                     "--baseline-dir",
                     str(workspace / "baseline"),
                 ],
@@ -2387,17 +2341,10 @@ class SkillCommandScriptTests(unittest.TestCase):
             self.assertEqual(completed.stderr, "")
             self.assertTrue((workspace / "baseline" / "test_result.pt").exists())
 
-    def test_optimize_submit_baseline_updates_workflow_state_when_present(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "skills"
-            / "common"
-            / "ascend-npu-optimize-submit-baseline"
-            / "scripts"
-            / "optimize_submit_baseline.py"
-        )
+    def test_optimize_state_submit_baseline_updates_workflow_state_when_present(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
         env = os.environ.copy()
-        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        src_dir = str(_REPO_ROOT / "src")
         script_dir = str(script.parent)
         env["PYTHONPATH"] = ":".join(
             entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
@@ -2446,7 +2393,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 [
                     sys.executable,
                     str(script),
-                    "check-baseline",
+                    "submit-baseline",
                     "--baseline-dir",
                     str(baseline_dir),
                 ],
@@ -2462,17 +2409,10 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(state_payload["phase"], "awaiting_round_start")
         self.assertEqual(state_payload["baseline"]["status"], "passed")
 
-    def test_optimize_submit_baseline_returns_json_hint_when_workflow_state_is_invalid(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "skills"
-            / "common"
-            / "ascend-npu-optimize-submit-baseline"
-            / "scripts"
-            / "optimize_submit_baseline.py"
-        )
+    def test_optimize_state_submit_baseline_returns_json_hint_when_workflow_state_is_invalid(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
         env = os.environ.copy()
-        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        src_dir = str(_REPO_ROOT / "src")
         script_dir = str(script.parent)
         env["PYTHONPATH"] = ":".join(
             entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
@@ -2509,7 +2449,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 [
                     sys.executable,
                     str(script),
-                    "check-baseline",
+                    "submit-baseline",
                     "--baseline-dir",
                     str(baseline_dir),
                 ],
@@ -2526,17 +2466,10 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertIn("restart the optimize session", payload["guideline"])
         self.assertEqual(completed.stderr, "")
 
-    def test_optimize_submit_round_cli_outputs_json_only_with_guideline_and_next_option(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "skills"
-            / "common"
-            / "ascend-npu-optimize-submit-round"
-            / "scripts"
-            / "optimize_submit_round.py"
-        )
+    def test_optimize_state_submit_round_outputs_json_only_with_guideline_and_next_option(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
         env = os.environ.copy()
-        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        src_dir = str(_REPO_ROOT / "src")
         script_dir = str(script.parent)
         env["PYTHONPATH"] = ":".join(
             entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
@@ -2598,7 +2531,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 [
                     sys.executable,
                     str(script),
-                    "check-round",
+                    "submit-round",
                     "--round-dir",
                     str(round_dir),
                     "--current-round",
@@ -2621,22 +2554,15 @@ class SkillCommandScriptTests(unittest.TestCase):
             self.assertNotIn("summary", payload)
             self.assertIn("Round 4/25 in the current worker batch is complete.", payload["guideline"])
             self.assertIn(
-                "Use the staged `ascend-npu-optimize-start-round` skill to open opt-round-5 before beginning the next round.",
+                "Use the staged `ascend-npu-optimize-state` skill's `start-round` subcommand to open opt-round-5 before beginning the next round.",
                 payload["guideline"],
             )
             self.assertEqual(completed.stderr, "")
 
-    def test_optimize_submit_round_returns_json_hint_when_round_has_not_started(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "skills"
-            / "common"
-            / "ascend-npu-optimize-submit-round"
-            / "scripts"
-            / "optimize_submit_round.py"
-        )
+    def test_optimize_state_submit_round_returns_json_hint_when_round_has_not_started(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
         env = os.environ.copy()
-        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        src_dir = str(_REPO_ROOT / "src")
         script_dir = str(script.parent)
         env["PYTHONPATH"] = ":".join(
             entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
@@ -2739,7 +2665,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 [
                     sys.executable,
                     str(script),
-                    "check-round",
+                    "submit-round",
                     "--round-dir",
                     str(round_dir),
                     "--current-round",
@@ -2757,20 +2683,14 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 1)
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["status"], "fail")
-        self.assertIn("ascend-npu-optimize-start-round", payload["guideline"])
+        self.assertIn("ascend-npu-optimize-state", payload["guideline"])
+        self.assertIn("start-round", payload["guideline"])
         self.assertEqual(completed.stderr, "")
 
-    def test_optimize_submit_round_updates_workflow_state_when_present(self) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "skills"
-            / "common"
-            / "ascend-npu-optimize-submit-round"
-            / "scripts"
-            / "optimize_submit_round.py"
-        )
+    def test_optimize_state_submit_round_updates_workflow_state_when_present(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
         env = os.environ.copy()
-        src_dir = str(Path(__file__).resolve().parents[1] / "src")
+        src_dir = str(_REPO_ROOT / "src")
         script_dir = str(script.parent)
         env["PYTHONPATH"] = ":".join(
             entry for entry in (src_dir, script_dir, env.get("PYTHONPATH", "")) if entry
@@ -2854,7 +2774,7 @@ class SkillCommandScriptTests(unittest.TestCase):
                 [
                     sys.executable,
                     str(script),
-                    "check-round",
+                    "submit-round",
                     "--round-dir",
                     str(round_dir),
                     "--current-round",

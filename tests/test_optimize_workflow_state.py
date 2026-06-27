@@ -10,10 +10,34 @@ from triton_agent.skill_loader import load_skill_script_module
 
 
 def load_workflow_state_module():
-    return load_skill_script_module("triton-npu-optimize", "optimize_workflow_state")
+    return load_skill_script_module("ascend-npu-optimize-state", "state_manage/workflow")
 
 
 class OptimizeWorkflowStateTests(unittest.TestCase):
+    def test_start_round_module_is_exposed_from_new_skill(self) -> None:
+        module = load_skill_script_module(
+            "ascend-npu-optimize-state",
+            "state_manage/start_round",
+        )
+        self.assertTrue(hasattr(module, "build_parser"))
+        self.assertTrue(hasattr(module, "main"))
+
+    def test_submit_baseline_module_is_exposed_from_state_manage(self) -> None:
+        module = load_skill_script_module(
+            "ascend-npu-optimize-state",
+            "state_manage/submit_baseline",
+        )
+        self.assertTrue(hasattr(module, "build_parser"))
+        self.assertTrue(hasattr(module, "main"))
+
+    def test_submit_round_module_is_exposed_from_state_manage(self) -> None:
+        module = load_skill_script_module(
+            "ascend-npu-optimize-state",
+            "state_manage/submit_round",
+        )
+        self.assertTrue(hasattr(module, "build_parser"))
+        self.assertTrue(hasattr(module, "main"))
+
     def test_bootstrap_state_writes_expected_hook_gated_baseline_payload(self) -> None:
         module = load_workflow_state_module()
         with tempfile.TemporaryDirectory() as tmp:

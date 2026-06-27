@@ -7,9 +7,9 @@ from triton_agent.batch_utils import (
     is_batch_operator_candidate,
     resolve_batch_operator_file,
 )
-from triton_agent.optimize.skill_contract import optimize_submit_round_module
+from triton_agent.optimize.skill_contract import optimize_state_round_module
 
-_OPTIMIZE_ROUND_MODULE = optimize_submit_round_module()
+_OPTIMIZE_ROUND_MODULE = optimize_state_round_module()
 _BATCH_OPTIMIZE_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")
 _BATCH_OPTIMIZE_EXCLUDED_NAMES = {"__init__.py"}
 
