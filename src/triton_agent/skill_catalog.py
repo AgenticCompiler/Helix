@@ -149,6 +149,11 @@ _TILELANG_SKILLS: tuple[SkillCatalogEntry, ...] = (
         physical_path="skills/tilelang/tilelang-npu-analyze-compiler-source",
     ),
     SkillCatalogEntry(
+        logical_name="tilelang-npu-api-reference",
+        source_group="tilelang",
+        physical_path="skills/tilelang/tilelang-npu-api-reference",
+    ),
+    SkillCatalogEntry(
         logical_name="tilelang-npu-analyze-ir",
         source_group="tilelang",
         physical_path="skills/tilelang/tilelang-npu-analyze-ir",
