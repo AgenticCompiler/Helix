@@ -140,7 +140,7 @@ pass_configs = {
     tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_COMBINE: True,
     tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,
     tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_CROSS_CORE_SYNC: True,
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_SYNC: True,
 }
 
 M = 1024
@@ -286,6 +286,12 @@ class ModelNew(nn.Module):
 - Use the requested standalone or differential correctness validation mode instead of inventing a third validation workflow here.
 - Input validation in the converted operator must limit itself to zero-cost metadata checks (`.dtype`, `.ndim`, `.device`, `.shape`, `.numel()`). Never scan tensor data for bounds or value-range validation — calling `.min().item()`, `.max().item()`, or any reduction+`.item()` on input tensors forces a GPU→CPU synchronization on every forward call and destroys performance. The caller is responsible for providing valid inputs, just as it is for the original PyTorch operator.
 - Prefer Layer 1 base primitives for memory and compute (`T.alloc_shared`, `T.alloc_fragment`, `T.Parallel` + symbolic math). Use Layer 2 `T.tile.*` extensions when Layer 1 cannot express the needed operation. Layer 3 explicit hardware memory and manual sync are available but prefer the auto-managed approach — only use them when the kernel genuinely requires precise hardware-level control.
+
+## When to Stop and Report
+
+Do NOT replace broken TileLang kernels with PyTorch just to get validation green. A partial conversion that genuinely runs at least one TileLang kernel is valid; a conversion where `forward()` uses only PyTorch while TileLang kernels sit unused is not. If you cannot make a kernel correct after thorough debugging, report honestly to the user rather than hiding the problem.
+
+**Litmus test**: if you deleted every `@T.prim_func` definition and `func = ...` call from the file, would `forward()` still produce a correct result? If yes, it is a fake conversion — the kernels are decoration, not the computation. Small PyTorch ops in `forward()` (dtype casts, shape manipulation, or ops TileLang cannot express like fp8 conversion) are acceptable as long as removing the TileLang kernels would break the output.
 
 ## Do Not
 
