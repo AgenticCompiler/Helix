@@ -6,7 +6,7 @@ from pathlib import Path
 
 from round.check import check_round
 from shared.cli import build_check_payload, build_workflow_failure_payload
-from state_manage.workflow import complete_round
+from state_manage.state_machine import complete_round
 
 
 def build_parser(*, prog_name: str | None = None) -> argparse.ArgumentParser:

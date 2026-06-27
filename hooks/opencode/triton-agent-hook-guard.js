@@ -596,6 +596,8 @@ function roundActiveBuiltInEditDenial(roundDir) {
     "Built-in edit tool blocked by optimize workflow policy. " +
     `Current active round is ${roundDir}. Built-in edits must stay inside \`${roundDir}/\`. ` +
     "Edit the round-local snapshot and round artifacts instead of top-level workspace files. " +
+    "If the round's intent or required evidence depth changes mid-round, use " +
+    "`ascend-npu-optimize-state` `set-current-round-state` before continuing edits. " +
     "When this round is ready, use `ascend-npu-optimize-state` `submit-round` to submit it before moving on."
   );
 }

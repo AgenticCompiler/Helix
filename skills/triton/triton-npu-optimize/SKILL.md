@@ -30,7 +30,7 @@ Optimize target modes:
 ## Core Loop
 
 - establish or reuse `baseline/`
-- open `opt-round-N/` and start `attempts.md`
+- open `opt-round-N/`, initialize round strategy state through `ascend-npu-optimize-state start-round`, and start `attempts.md`
 - choose the current analysis level
 - make one coherent optimization attempt
 - validate correctness and benchmark performance
@@ -48,7 +48,9 @@ Optimize target modes:
 ## Stage 1: Round Entry
 
 - Create `opt-round-N/` from a validated parent candidate and keep parent-child traceability explicit.
+- Use the sibling `ascend-npu-optimize-state` skill's `start-round` subcommand to initialize the active round's `round_strategy`, `analysis_policy`, and `reason` before the first code change in that round.
 - Start `attempts.md` immediately so every meaningful attempt and measurement is recorded.
+- Treat the structured `State Update` blocks in `attempts.md` as script-written workflow history; do not manually duplicate the same `round_strategy`, `analysis_policy`, and `reason` bookkeeping in both `attempts.md` and `summary.md`.
 - For round 1, record the initial round hypothesis in `opt-round-1/attempts.md` before the first code change.
 - When pattern triage is used, explicitly record the candidate patterns you considered, the selected pattern if one is chosen, and why that pattern looks plausible in `attempts.md`.
 - When a named pattern guides the round, explicitly record the final selected pattern direction in `summary.md`.
@@ -56,6 +58,7 @@ Optimize target modes:
 - Record why that level may help and what evidence supports starting there.
 - If the round starts from reused deeper evidence, cite the reused evidence path and explain why the shallower level is already established or insufficient.
 - Treat `opt-note.md` as the top-level round ledger plus final `## Overall Summary`.
+- If the active round's intent or required evidence depth changes mid-round, use the sibling `ascend-npu-optimize-state` skill's `set-current-round-state` subcommand instead of silently changing the round contract in prose only.
 
 ## Stage 2: Layered Analysis
 
@@ -143,8 +146,8 @@ Optimize analysis is layered.
 
 ## Round Records
 
-- `attempts.md`: chronological round log for the current round, including `Primary analysis level`, `Supporting evidence`, the starting hypothesis, selected pattern candidates and pivots when pattern triage is used, escalation reasons, meaningful code changes, correctness failures, and benchmark outcomes.
-- `summary.md`: round conclusion, optimization points that mattered, the final selected pattern direction when one guided the round, the final analysis level, supporting evidence that decided the round, and unresolved questions if deeper analysis may still be needed.
+- `attempts.md`: chronological round log for the current round, including the script-written `State Update` history, `Primary analysis level`, `Supporting evidence`, the starting hypothesis, selected pattern candidates and pivots when pattern triage is used, escalation reasons, meaningful code changes, correctness failures, and benchmark outcomes.
+- `summary.md`: round conclusion, optimization points that mattered, the final selected pattern direction when one guided the round, the final analysis level, supporting evidence that decided the round, and unresolved questions if deeper analysis may still be needed. Do not duplicate the full round strategy state history here.
 - `opt-note.md`: top-level round ledger plus final `## Overall Summary`.
 
 ## Learned Lessons

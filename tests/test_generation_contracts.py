@@ -393,11 +393,33 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("ascend-npu-optimize-state", optimize)
         self.assertIn("submit-round", optimize)
         self.assertIn("start-round", optimize)
+        self.assertIn("set-current-round-state", optimize)
         self.assertNotIn("../ascend-npu-run-eval/scripts/run-command.py", optimize)
         self.assertIn("submit-baseline", state_skill)
         self.assertIn("submit-round", state_skill)
         self.assertIn("start-round", state_skill)
-        self.assertIn("Only one optimize round may be active at a time", state_skill)
+        self.assertIn("set-current-round-state", state_skill)
+        self.assertIn(
+            "python3 scripts/cli.py submit-round --round-dir opt-round-2 --current-round 2 --final-round 4",
+            state_skill,
+        )
+        self.assertIn(
+            "python3 scripts/cli.py start-round \\",
+            state_skill,
+        )
+        self.assertIn(
+            "python3 scripts/cli.py set-current-round-state \\",
+            state_skill,
+        )
+        self.assertIn("exploration", state_skill)
+        self.assertIn("structural_change", state_skill)
+        self.assertIn("focused_tuning", state_skill)
+        self.assertIn("stabilization", state_skill)
+        self.assertIn("plateau_review", state_skill)
+        self.assertIn("pattern_entry", state_skill)
+        self.assertIn("profile_required", state_skill)
+        self.assertIn("ir_required", state_skill)
+        self.assertIn("compiler_source_required", state_skill)
         self.assertIn("ascend-npu-prepare-optimize-baseline", readme)
         self.assertIn("ascend-npu-profile-operator", optimize)
         self.assertIn("ascend-npu-analyze-round-performance", optimize)
@@ -931,6 +953,11 @@ class GenerationContractTests(unittest.TestCase):
             "For round 1, record the initial round hypothesis in `opt-round-1/attempts.md`",
             optimize,
         )
+        self.assertIn(
+            "Treat the structured `State Update` blocks in `attempts.md` as script-written workflow history",
+            optimize,
+        )
+        self.assertIn("Do not duplicate the full round strategy state history here.", optimize)
         self.assertIn("top-level round ledger plus final `## Overall Summary`", optimize)
         self.assertIn(
             "completed round records and final outcome summary",

@@ -2128,6 +2128,27 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0)
         self.assertIn("cli.py start-round", completed.stdout)
         self.assertIn("--round-dir", completed.stdout)
+        self.assertIn("--round-strategy", completed.stdout)
+        self.assertIn("--analysis-policy", completed.stdout)
+        self.assertIn("--reason", completed.stdout)
+
+    def test_optimize_state_set_current_round_state_help_runs_without_installed_entrypoint(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        completed = subprocess.run(
+            [sys.executable, str(script), "set-current-round-state", "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        self.assertEqual(completed.returncode, 0)
+        self.assertIn("cli.py set-current-round-state", completed.stdout)
+        self.assertIn("--round-strategy", completed.stdout)
+        self.assertIn("--analysis-policy", completed.stdout)
+        self.assertIn("--reason", completed.stdout)
 
     def test_optimize_state_start_round_returns_json_hint_when_workflow_state_missing(self) -> None:
         script = _OPTIMIZE_STATE_SCRIPT
@@ -2146,6 +2167,12 @@ class SkillCommandScriptTests(unittest.TestCase):
                     "start-round",
                     "--round-dir",
                     str(round_dir),
+                    "--round-strategy",
+                    "exploration",
+                    "--analysis-policy",
+                    "pattern_entry",
+                    "--reason",
+                    "Need to narrow the first promising direction.",
                 ],
                 capture_output=True,
                 text=True,
@@ -2194,6 +2221,12 @@ class SkillCommandScriptTests(unittest.TestCase):
                     "start-round",
                     "--round-dir",
                     str(round_dir),
+                    "--round-strategy",
+                    "exploration",
+                    "--analysis-policy",
+                    "pattern_entry",
+                    "--reason",
+                    "Need to narrow the first promising direction.",
                 ],
                 capture_output=True,
                 text=True,
@@ -2210,7 +2243,7 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertIn("hard_rules", payload)
         self.assertEqual(completed.stderr, "")
 
-    def test_optimize_state_start_round_success_returns_hard_rules(self) -> None:
+    def test_optimize_state_start_round_success_returns_strategy_state(self) -> None:
         script = _OPTIMIZE_STATE_SCRIPT
         env = os.environ.copy()
         src_dir = str(_REPO_ROOT / "src")
@@ -2242,6 +2275,201 @@ class SkillCommandScriptTests(unittest.TestCase):
                     "start-round",
                     "--round-dir",
                     str(round_dir),
+                    "--round-strategy",
+                    "exploration",
+                    "--analysis-policy",
+                    "pattern_entry",
+                    "--reason",
+                    "Need to narrow the first promising direction.",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+            attempts_text = (round_dir / "attempts.md").read_text(encoding="utf-8")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "pass")
+        self.assertEqual(payload["round"], "opt-round-1")
+        self.assertEqual(payload["round_strategy"], "exploration")
+        self.assertEqual(payload["analysis_policy"], "pattern_entry")
+        self.assertEqual(payload["reason"], "Need to narrow the first promising direction.")
+        self.assertIn("hard_rules", payload)
+        self.assertIn(
+            "Do not use agents or subagents to advance multiple rounds in parallel while the current round is still in flight.",
+            payload["hard_rules"],
+        )
+        self.assertIn("## State Update", attempts_text)
+        self.assertIn("Source: start-round", attempts_text)
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_set_current_round_state_success_updates_active_round(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-2"
+            round_dir.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260627-123456-abcdef",
+                        "phase": "round_active",
+                        "source_operator": "kernel.py",
+                        "current_round": 2,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-27T12:34:56Z"},
+                        "rounds": {
+                            "2": {
+                                "status": "active",
+                                "round_dir": "opt-round-2",
+                                "started_at": "2026-06-27T12:40:00Z",
+                                "ended_at": None,
+                                "strategy_state": {
+                                    "round_strategy": "exploration",
+                                    "analysis_policy": "pattern_entry",
+                                    "reason": "Start from pattern triage.",
+                                    "updated_at": "2026-06-27T12:40:00Z",
+                                    "updated_by": "start-round",
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "set-current-round-state",
+                    "--round-strategy",
+                    "structural_change",
+                    "--analysis-policy",
+                    "profile_required",
+                    "--reason",
+                    "Profiler evidence is now required before the main rewrite.",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+            state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+            attempts_text = (round_dir / "attempts.md").read_text(encoding="utf-8")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "pass")
+        self.assertEqual(payload["round"], "opt-round-2")
+        self.assertEqual(payload["round_strategy"], "structural_change")
+        self.assertEqual(payload["analysis_policy"], "profile_required")
+        self.assertEqual(payload["previous_round_strategy"], "exploration")
+        self.assertEqual(payload["previous_analysis_policy"], "pattern_entry")
+        self.assertEqual(payload["reason"], "Profiler evidence is now required before the main rewrite.")
+        self.assertEqual(
+            state_payload["rounds"]["2"]["strategy_state"]["round_strategy"],
+            "structural_change",
+        )
+        self.assertIn("Source: set-current-round-state", attempts_text)
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_set_current_round_state_finds_workspace_from_round_subdirectory(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-5"
+            round_dir.mkdir()
+            nested_cwd = round_dir / "notes"
+            nested_cwd.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260627-123456-abcdef",
+                        "phase": "round_active",
+                        "source_operator": "kernel.py",
+                        "current_round": 5,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-27T12:34:56Z"},
+                        "rounds": {
+                            "5": {
+                                "status": "active",
+                                "round_dir": "opt-round-5",
+                                "started_at": "2026-06-27T12:40:00Z",
+                                "ended_at": None,
+                                "strategy_state": {
+                                    "round_strategy": "exploration",
+                                    "analysis_policy": "pattern_entry",
+                                    "reason": "Start from pattern triage.",
+                                    "updated_at": "2026-06-27T12:40:00Z",
+                                    "updated_by": "start-round",
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "set-current-round-state",
+                    "--analysis-policy",
+                    "profile_required",
+                    "--reason",
+                    "Need profiler evidence before the next edit.",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=nested_cwd,
+                env=env,
+            )
+            state_payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(
+            state_payload["rounds"]["5"]["strategy_state"]["analysis_policy"],
+            "profile_required",
+        )
+
+    def test_optimize_state_start_round_rejects_invalid_strategy_in_argparse(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-1"
+            round_dir.mkdir()
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "start-round",
+                    "--round-dir",
+                    str(round_dir),
+                    "--round-strategy",
+                    "unknown_strategy",
+                    "--analysis-policy",
+                    "pattern_entry",
+                    "--reason",
+                    "Need to narrow the first promising direction.",
                 ],
                 capture_output=True,
                 text=True,
@@ -2250,15 +2478,209 @@ class SkillCommandScriptTests(unittest.TestCase):
                 env=env,
             )
 
-        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.returncode, 2)
+        self.assertEqual(completed.stdout, "")
+        self.assertIn("invalid choice", completed.stderr)
+
+    def test_optimize_state_set_current_round_state_rejects_invalid_policy_in_argparse(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "set-current-round-state",
+                    "--analysis-policy",
+                    "unknown_policy",
+                    "--reason",
+                    "Need to narrow the first promising direction.",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 2)
+        self.assertEqual(completed.stdout, "")
+        self.assertIn("invalid choice", completed.stderr)
+
+    def test_optimize_state_set_current_round_state_returns_json_hint_when_no_active_round(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260627-123456-abcdef",
+                        "phase": "awaiting_round_start",
+                        "source_operator": "kernel.py",
+                        "current_round": None,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-27T12:34:56Z"},
+                        "rounds": {},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "set-current-round-state",
+                    "--round-strategy",
+                    "focused_tuning",
+                    "--reason",
+                    "Need to deepen analysis before the next edit.",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 1)
         payload = json.loads(completed.stdout)
-        self.assertEqual(payload["status"], "pass")
-        self.assertEqual(payload["round"], "opt-round-1")
-        self.assertIn("hard_rules", payload)
-        self.assertIn(
-            "Do not use agents or subagents to advance multiple rounds in parallel while the current round is still in flight.",
-            payload["hard_rules"],
-        )
+        self.assertEqual(payload["status"], "fail")
+        self.assertIn("No optimize round is currently active", payload["guideline"])
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_set_current_round_state_returns_json_hint_for_noop_update(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-3"
+            round_dir.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260627-123456-abcdef",
+                        "phase": "round_active",
+                        "source_operator": "kernel.py",
+                        "current_round": 3,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-27T12:34:56Z"},
+                        "rounds": {
+                            "3": {
+                                "status": "active",
+                                "round_dir": "opt-round-3",
+                                "started_at": "2026-06-27T12:40:00Z",
+                                "ended_at": None,
+                                "strategy_state": {
+                                    "round_strategy": "focused_tuning",
+                                    "analysis_policy": "ir_required",
+                                    "reason": "IR is already required for this round.",
+                                    "updated_at": "2026-06-27T12:40:00Z",
+                                    "updated_by": "start-round",
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "set-current-round-state",
+                    "--round-strategy",
+                    "focused_tuning",
+                    "--analysis-policy",
+                    "ir_required",
+                    "--reason",
+                    "same state",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "fail")
+        self.assertIn("no-op", payload["issues"][0])
+        self.assertEqual(completed.stderr, "")
+
+    def test_optimize_state_set_current_round_state_returns_json_hint_for_policy_rollback(self) -> None:
+        script = _OPTIMIZE_STATE_SCRIPT
+        env = os.environ.copy()
+        src_dir = str(_REPO_ROOT / "src")
+        env["PYTHONPATH"] = src_dir + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            round_dir = workspace / "opt-round-4"
+            round_dir.mkdir()
+            (workspace / ".triton-agent").mkdir()
+            (workspace / ".triton-agent" / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "run_id": "optimize-20260627-123456-abcdef",
+                        "phase": "round_active",
+                        "source_operator": "kernel.py",
+                        "current_round": 4,
+                        "baseline": {"status": "passed", "submitted_at": "2026-06-27T12:34:56Z"},
+                        "rounds": {
+                            "4": {
+                                "status": "active",
+                                "round_dir": "opt-round-4",
+                                "started_at": "2026-06-27T12:40:00Z",
+                                "ended_at": None,
+                                "strategy_state": {
+                                    "round_strategy": "focused_tuning",
+                                    "analysis_policy": "ir_required",
+                                    "reason": "IR is already required for this round.",
+                                    "updated_at": "2026-06-27T12:40:00Z",
+                                    "updated_by": "start-round",
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "set-current-round-state",
+                    "--analysis-policy",
+                    "profile_required",
+                    "--reason",
+                    "Trying to reduce evidence depth should fail.",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=workspace,
+                env=env,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "fail")
+        self.assertIn("shallower", payload["issues"][0])
         self.assertEqual(completed.stderr, "")
 
     def test_optimize_state_submit_baseline_supports_runtime_without_pt_cleanup_module(self) -> None:

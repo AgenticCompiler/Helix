@@ -407,6 +407,7 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             self.assertIn("Current active round is opt-round-2", str(result["message"]))
             self.assertIn("must stay inside `opt-round-2/`", str(result["message"]))
             self.assertIn("ascend-npu-optimize-state", str(result["message"]))
+            self.assertIn("set-current-round-state", str(result["message"]))
             self.assertIn("submit-round", str(result["message"]))
             self.assertNotIn("First-version scope", str(result["message"]))
 
