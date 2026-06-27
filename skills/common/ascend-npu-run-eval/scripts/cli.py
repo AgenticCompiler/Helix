@@ -5,6 +5,7 @@ import contextlib
 import importlib
 import importlib.util
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Iterator, Literal, Protocol, TextIO, cast
@@ -513,6 +514,28 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
                 metric_source=args.metric_source,
             )
     return int(result["return_code"])
+
+
+def _resolve_run_bench_extract_dest_dir(
+    *,
+    raw_extract_dest_dir: str | None,
+    output: str | None,
+    operator_file: Path,
+) -> Path | None:
+    if raw_extract_dest_dir:
+        return Path(raw_extract_dest_dir).expanduser().resolve()
+
+    output_parent = _standard_optimize_artifact_dir(Path(output).expanduser().resolve().parent) if output else None
+    if output_parent is not None:
+        return output_parent
+
+    return _standard_optimize_artifact_dir(operator_file.parent)
+
+
+def _standard_optimize_artifact_dir(path: Path) -> Path | None:
+    if path.name == "baseline" or _OPT_ROUND_DIR_RE.match(path.name):
+        return path.resolve()
+    return None
 
 
 def _resolve_existing_path(

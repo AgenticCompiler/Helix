@@ -15,6 +15,7 @@ Rules:
 - Always pass both `--bench-file` and `--operator-file`.
 - If `--bench-mode` is omitted, defaults to `torch-npu-profiler`.
 - Use `--bench-mode torch-npu-profiler`, `--bench-mode msprof`, or `--bench-mode perf-counter` only when you need to override the default.
+- Hard rule for optimize workflows: always pass `--extract-dest-dir baseline/` during baseline preparation and `--extract-dest-dir opt-round-N/` during optimization rounds so extracted simulation data lands in the correct target directory.
 - Use `--output <path>` when you need the perf artifact at a specific location.
 - Use `--baseline-operator-file <path>` when you want `run-bench` to reuse or generate the baseline perf artifact automatically and then compare it against the candidate perf artifact.
 - Use `--skip-latency-errors` when you want automatic baseline comparison to continue past recoverable latency-error entries.
