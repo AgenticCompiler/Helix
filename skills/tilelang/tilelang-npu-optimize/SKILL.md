@@ -27,6 +27,10 @@ Optimize target modes:
 - completed round entries and one final `## Overall Summary` in `opt-note.md`
 - round-local `profile/` or `perf-analysis.md` artifacts when deeper investigation is needed
 
+## TileLang API Reference
+
+Before any round, read the [TileLang API reference](../tilelang-npu-api-reference/SKILL.md) so you understand the APIs the kernel uses.
+
 ## Core Loop
 
 - establish or reuse `baseline/`

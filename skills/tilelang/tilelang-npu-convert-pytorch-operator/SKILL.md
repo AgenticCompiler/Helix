@@ -63,19 +63,11 @@ TileLang-Ascend APIs are organized in three layers from base to advanced.
 
 1. **Start with Layer 1**: Use `T.alloc_shared` / `T.alloc_fragment` for memory, `T.Parallel` + symbolic math for element-wise, `T.gemm_v0` for matrix multiply, `T.reduce_*` for reductions. The compiler handles CV splitting, sync, and memory planning automatically via `pass_configs`.
 2. **Use Layer 2 when needed**: When Layer 1 primitives cannot express an operation (e.g., sort, topk, compare, cast, gather_mask, transpose), use the corresponding `T.tile.*` extension.
-3. **Layer 3 is available**: Explicit hardware memory (`T.alloc_ub` / `T.alloc_L1` / `T.alloc_L0*`), manual sync primitives, and Expert `pass_configs` offer finer control. Prefer the auto-managed Layer 1 approach; use Layer 3 only when the kernel genuinely requires precise hardware-level control.
+3. **Do not use Layer 3 (Expert) in convert**: `T.alloc_ub` / `T.alloc_L1` / `T.alloc_L0*`, manual sync, and Expert `pass_configs` are for optimize tuning — not convert. Convert produces a correct baseline; Expert-level control belongs in later optimization rounds.
 
 ### Reference Documents
 
-| File | Contents |
-|------|----------|
-| [tilelang-kernel-basics.md](references/tilelang-kernel-basics.md) | Shared infrastructure: `@tilelang.jit`, `T.Kernel`, loops, `pass_configs`, cache, autotune |
-| [tilelang-memory-developer.md](references/tilelang-memory-developer.md) | Layer 1 memory: `T.alloc_shared`, `T.alloc_fragment`, `T.alloc_var`, `T.copy` |
-| [tilelang-memory-expert.md](references/tilelang-memory-expert.md) | Layer 3 memory: `T.alloc_ub`, `T.alloc_L1`, `T.alloc_L0*` |
-| [tilelang-compute-developer.md](references/tilelang-compute-developer.md) | Layer 1 compute: `T.gemm_v0`, `T.reduce_*`, `T.Parallel` + symbolic math |
-| [tilelang-compute-expert.md](references/tilelang-compute-expert.md) | Layer 2 extended `T.tile.*` + Layer 3 sync primitives |
-| [TileLang-Ascend Developer API Reference](../../TileLang-Ascend%20Developer%20API%20Reference.md) | Full Developer mode API reference |
-| [TileLang-Ascend Expert API Reference](../../TileLang-Ascend%20Expert%20API%20Reference.md) | Full Expert mode API reference |
+See the [TileLang API reference](../tilelang-npu-api-reference/SKILL.md) for all TileLang Ascend NPU API documentation.
 
 ## Required Workflow
 
