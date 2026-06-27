@@ -322,6 +322,8 @@ def _round_active_built_in_edit_denial(round_dir: str) -> str:
         "Built-in edit tool blocked by optimize workflow policy. "
         f"Current active round is {round_dir}. Built-in edits must stay inside `{round_dir}/`. "
         "Edit the round-local snapshot and round artifacts instead of top-level workspace files. "
+        "If the round's intent or required evidence depth changes mid-round, use "
+        "`ascend-npu-optimize-state` `set-current-round-state` before continuing edits. "
         "When this round is ready, use `ascend-npu-optimize-state` `submit-round` to submit it before moving on."
     )
 

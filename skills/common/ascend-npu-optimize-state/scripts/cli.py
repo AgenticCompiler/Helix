@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from state_manage import start_round as start_round_check
+from state_manage import set_current_round_state as set_current_round_state_check
 from state_manage import submit_baseline as baseline_submit
 from state_manage import submit_round as submit_round_check
 
@@ -17,6 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Subcommands:\n"
             "  submit-baseline  Validate canonical baseline artifacts and advance workflow state.\n"
             "  start-round     Open the next optimize round through workflow state.\n"
+            "  set-current-round-state  Update the active round's strategy state.\n"
             "  submit-round    Validate and submit a completed optimize round."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -40,6 +42,11 @@ def main(argv: list[str] | None = None) -> int:
         )
     if command == "start-round":
         return start_round_check.main(
+            [command, *remaining],
+            prog_name=f"{parser.prog} {command}",
+        )
+    if command == "set-current-round-state":
+        return set_current_round_state_check.main(
             [command, *remaining],
             prog_name=f"{parser.prog} {command}",
         )
