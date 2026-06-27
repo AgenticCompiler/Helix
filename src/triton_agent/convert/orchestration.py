@@ -45,6 +45,7 @@ def build_convert_request(
             options.remote_workdir,
             None,
             False,
+            language=options.language,
         ),
         options.prompt,
     )

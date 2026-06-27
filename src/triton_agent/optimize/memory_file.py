@@ -68,6 +68,7 @@ _OPTIMIZE_GUIDANCE_RULES_BLOCK = dedent(
     IMPORTANT:
         - Use `ascend-npu-optimize-state` skill `submit-baseline` to submit the initial baseline.
         - Use `ascend-npu-optimize-state` skill `start-round` to start a new optimization round.
+        - Use `ascend-npu-optimize-state` skill `set-current-round-state` if the active round's strategy or required evidence depth changes mid-round.
         - Use `ascend-npu-optimize-state` skill `submit-round` to submit each complete optimization round.
 
     - Read files cautiously. Do not read unrelated files speculatively or just in case.

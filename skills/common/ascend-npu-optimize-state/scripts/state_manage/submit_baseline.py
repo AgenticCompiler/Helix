@@ -6,7 +6,7 @@ from pathlib import Path
 
 from baseline.check import check_baseline
 from shared.cli import build_check_payload, build_workflow_failure_payload
-from state_manage.workflow import mark_baseline_passed
+from state_manage.state_machine import mark_baseline_passed
 
 
 def build_parser(*, prog_name: str | None = None) -> argparse.ArgumentParser:

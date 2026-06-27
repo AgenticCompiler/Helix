@@ -458,6 +458,7 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             self.assertIn("Current active round is opt-round-2", reason)
             self.assertIn("must stay inside `opt-round-2/`", reason)
             self.assertIn("ascend-npu-optimize-state", reason)
+            self.assertIn("set-current-round-state", reason)
             self.assertIn("submit-round", reason)
 
     def test_missing_workflow_state_blocks_native_write_with_restart_hint(self) -> None:

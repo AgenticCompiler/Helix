@@ -5232,6 +5232,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("`submit-baseline`", prompt)
         self.assertIn("`submit-round`", prompt)
         self.assertIn("`start-round`", prompt)
+        self.assertIn("`set-current-round-state`", prompt)
         self.assertIn("Write `supervisor-report.md`", prompt)
         self.assertNotIn(".triton-agent/supervisor-report.md", prompt)
         self.assertIn("The CLI will read that supervisor report", prompt)
@@ -5599,6 +5600,10 @@ class PromptTests(unittest.TestCase):
         self.assertIn("This invocation owns rounds 2 through 4.", prompt)
         self.assertIn("Execute those rounds strictly one at a time.", prompt)
         self.assertIn("Do not pre-plan the full batch before acting.", prompt)
+        self.assertIn(
+            "When a round in this invocation is complete, run `submit-round --round-dir opt-round-N --current-round N --final-round M` with the actual round numbers from this worker batch.",
+            prompt,
+        )
 
     def test_build_optimize_round_prompt_interactive_baseline_guidance(self) -> None:
         prompt = build_optimize_round_prompt(
@@ -5711,6 +5716,10 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn(
             "Use the staged `ascend-npu-optimize-state` skill's `start-round` subcommand before opening the next round.",
+            prompt,
+        )
+        self.assertIn(
+            "That `start-round` call initializes the next round's workflow-owned `round_strategy`, `analysis_policy`, and `reason`.",
             prompt,
         )
         self.assertIn(

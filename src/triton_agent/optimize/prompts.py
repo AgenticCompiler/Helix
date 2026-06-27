@@ -63,6 +63,7 @@ def sequential_round_execution_lines() -> list[str]:
 def next_round_reflection_lines(*, language: str = "triton") -> list[str]:
     lines = [
         "Use the staged `ascend-npu-optimize-state` skill's `start-round` subcommand before opening the next round.",
+        "That `start-round` call initializes the next round's workflow-owned `round_strategy`, `analysis_policy`, and `reason`.",
         "Before editing code for the next round, stop and reflect on the best entrypoint.",
         "Choose which operator, kernel path, or wrapper bottleneck should anchor the round before making the next code change.",
         "Decide whether existing benchmark and compare-perf evidence is already sufficient or whether profiling is needed first.",
@@ -88,6 +89,9 @@ def next_round_reflection_lines(*, language: str = "triton") -> list[str]:
 def layered_analysis_lines(*, round_scope: str, language: str = "triton") -> list[str]:
     lines = [
         f"Choose the analysis level for {round_scope} before editing code.",
+        "Treat the active round strategy state in the runner-managed workflow state as the authority for the latest `round_strategy`, `analysis_policy`, and `reason`.",
+        "Treat structured `State Update` blocks in `opt-round-N/attempts.md` as script-written history mirrors rather than manual bookkeeping.",
+        "If the active round's intent or required evidence depth changes mid-round, use the staged `ascend-npu-optimize-state` skill's `set-current-round-state` subcommand before continuing edits.",
         "Record the round's primary analysis level separately from its supporting evidence.",
         f"Escalate analysis in this order: {_analysis_ladder_text(language)}.",
         "Use pattern triage only to decide whether a strong pattern-backed hypothesis already exists.",
@@ -333,7 +337,7 @@ def build_optimize_supervisor_prompt(
             [
                 "Apply only metadata repairs derived from existing facts.",
                 "Use only existing `compare-perf` results when auditing or restating performance conclusions.",
-                "Read the staged `{language}-npu-optimize`, `ascend-npu-prepare-optimize-baseline`, and `ascend-npu-optimize-state` skills as the workflow contract that the worker round was supposed to follow. In `ascend-npu-optimize-state`, baseline gating belongs to `submit-baseline`, round opening belongs to `start-round`, and completed-round validation belongs to `submit-round`.",
+                "Read the staged `{language}-npu-optimize`, `ascend-npu-prepare-optimize-baseline`, and `ascend-npu-optimize-state` skills as the workflow contract that the worker round was supposed to follow. In `ascend-npu-optimize-state`, baseline gating belongs to `submit-baseline`, round opening belongs to `start-round`, same-round strategy-state changes belong to `set-current-round-state`, and completed-round validation belongs to `submit-round`.",
                 f"Audit the worker against this analysis ladder: {_analysis_ladder_text(language)}.",
                 "Require the recorded analysis level, escalation reason, and cited evidence path to agree with the round artifacts.",
                 "Read the latest `opt-round-N/attempts.md`, `summary.md`, and `round-state.json` before deciding anything.",
@@ -502,6 +506,9 @@ def build_optimize_round_prompt(
             language=language,
             enable_subagent=enable_subagent,
         )
+    )
+    lines.append(
+        "When a round in this invocation is complete, run `submit-round --round-dir opt-round-N --current-round N --final-round M` with the actual round numbers from this worker batch."
     )
     lines.append("Do not self-approve whether the optimize session should continue.")
     lines.append("Before each round, re-evaluate the next bottleneck and choose the right analysis depth from the current evidence.")

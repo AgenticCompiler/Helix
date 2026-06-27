@@ -500,6 +500,14 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 shared_content,
             )
             self.assertIn(
+                "Treat the active round strategy state in the runner-managed workflow state as the authority for the latest `round_strategy`, `analysis_policy`, and `reason`.",
+                shared_content,
+            )
+            self.assertIn(
+                "If the active round's intent or required evidence depth changes mid-round, use the staged `ascend-npu-optimize-state` skill's `set-current-round-state` subcommand before continuing edits.",
+                shared_content,
+            )
+            self.assertIn(
                 "Use the staged `triton-npu-optimize-knowledge` skill for generic pattern and symptom references.",
                 shared_content,
             )

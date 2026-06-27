@@ -4,9 +4,13 @@ import argparse
 import json
 from pathlib import Path
 
-from state_manage.workflow import start_round as start_round_in_workflow_state
+from state_manage.state_machine import (
+    ANALYSIS_POLICIES,
+    ROUND_STRATEGIES,
+    start_round as start_round_in_workflow_state,
+)
 
-_FALLBACK_HARD_RULES = (
+HARD_RULES = (
     "Only one optimize round may be active at a time.",
     "Do not use a script to create multiple optimize rounds where each round only adjusts parameters in order to speed up the optimization process. This is cheating behavior and is strictly prohibited.",
     "Do not use agents or subagents to advance multiple rounds in parallel while the current round is still in flight.",
@@ -18,34 +22,15 @@ _FALLBACK_HARD_RULES = (
 )
 
 
-def _load_hard_rules() -> list[str]:
-    skill_path = Path(__file__).resolve().parents[2] / "SKILL.md"
-    try:
-        lines = skill_path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return list(_FALLBACK_HARD_RULES)
-
-    rules: list[str] = []
-    in_hard_rules = False
-    for line in lines:
-        stripped = line.strip()
-        if not in_hard_rules:
-            if stripped == "## Hard Rules":
-                in_hard_rules = True
-            continue
-        if stripped.startswith("## "):
-            break
-        if stripped.startswith("- "):
-            rules.append(stripped[2:])
-    return rules or list(_FALLBACK_HARD_RULES)
-
-
 def build_parser(*, prog_name: str | None = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=prog_name or Path(__file__).name)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     start = subparsers.add_parser("start-round")
     start.add_argument("--round-dir", required=True)
+    start.add_argument("--round-strategy", required=True, choices=ROUND_STRATEGIES)
+    start.add_argument("--analysis-policy", required=True, choices=ANALYSIS_POLICIES)
+    start.add_argument("--reason", required=True)
     return parser
 
 
@@ -54,7 +39,7 @@ def _build_failure_payload(issue: str, guideline: str) -> dict[str, object]:
         "status": "fail",
         "issues": [issue],
         "guideline": guideline,
-        "hard_rules": _load_hard_rules(),
+        "hard_rules": list(HARD_RULES),
     }
 
 
@@ -100,7 +85,13 @@ def main(argv: list[str] | None = None, *, prog_name: str | None = None) -> int:
             raise RuntimeError(
                 "optimize workflow state is not available; start-round requires --enable-agent-hook"
             )
-        start_round_in_workflow_state(state_path, round_dir.name)
+        workflow_result = start_round_in_workflow_state(
+            state_path,
+            round_dir.name,
+            round_strategy=args.round_strategy,
+            analysis_policy=args.analysis_policy,
+            reason=args.reason,
+        )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(
             json.dumps(
@@ -113,12 +104,20 @@ def main(argv: list[str] | None = None, *, prog_name: str | None = None) -> int:
         json.dumps(
             {
                 "status": "pass",
-                "round": round_dir.name,
+                "round": workflow_result["round"],
                 "guideline": (
                     f"Round {round_dir.name} is now active. Follow the hard rules below while "
                     "working on this round."
                 ),
-                "hard_rules": _load_hard_rules(),
+                "hard_rules": list(HARD_RULES),
+                "round_strategy": workflow_result["round_strategy"],
+                "analysis_policy": workflow_result["analysis_policy"],
+                "reason": workflow_result["reason"],
+                **(
+                    {"warnings": workflow_result["warnings"]}
+                    if "warnings" in workflow_result
+                    else {}
+                ),
             },
             ensure_ascii=True,
         )

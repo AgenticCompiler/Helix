@@ -102,9 +102,9 @@ class RunSkillLoaderTests(unittest.TestCase):
             / "ascend-npu-optimize-state"
             / "scripts"
             / "state_manage"
-            / "workflow.py"
+            / "state_machine.py"
         )
-        path = skill_script_path("ascend-npu-optimize-state", "state_manage/workflow")
+        path = skill_script_path("ascend-npu-optimize-state", "state_manage/state_machine")
         self.assertEqual(path, expected)
 
     def test_load_skill_script_module_returns_cached_split_modules(self) -> None:
@@ -137,11 +137,11 @@ class RunSkillLoaderTests(unittest.TestCase):
     def test_load_skill_script_module_supports_nested_skill_relative_scripts(self) -> None:
         first = load_skill_script_module(
             "ascend-npu-optimize-state",
-            "state_manage/workflow",
+            "state_manage/state_machine",
         )
         second = load_skill_script_module(
             "ascend-npu-optimize-state",
-            "state_manage/workflow",
+            "state_manage/state_machine",
         )
         self.assertIs(first, second)
         self.assertTrue(hasattr(first, "bootstrap_state"))

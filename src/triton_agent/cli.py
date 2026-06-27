@@ -531,7 +531,7 @@ def build_parser() -> argparse.ArgumentParser:
         if spec.has_format:
             subparser.add_argument("--format", default="text", choices=_FORMAT_CHOICES)
         if spec.has_language:
-            subparser.add_argument("-l", "--language", default="triton", choices=_LANGUAGE_CHOICES)
+            subparser.add_argument("-l", "--lang", "--language", default="triton", choices=_LANGUAGE_CHOICES)
         if spec.has_verify_phase:
             subparser.add_argument("--phase", default="all", choices=_VERIFY_PHASE_CHOICES)
         if spec.has_force_verify:
@@ -582,34 +582,54 @@ def build_parser() -> argparse.ArgumentParser:
         if spec.has_npu_devices:
             subparser.add_argument("--npu-devices")
         if spec.has_optimize_options:
-            subparser.add_argument("--min-rounds", "--min-round", dest="min_rounds", type=int, default=5)
-            subparser.add_argument("--round-batch-size", type=int, default=5)
-            subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES)
-            subparser.add_argument("--reset-optimize", action="store_true")
-            subparser.add_argument("--enable-compiler-source-analysis", action="store_true")
-            subparser.add_argument("--enable-cann-ext-api", action="store_true")
-            subparser.add_argument("--enable-subagent", action="store_true")
+            # Round control
+            subparser.add_argument("--min-rounds", "--min-round", dest="min_rounds", type=int, default=5,
+                                   help="Minimum number of optimization rounds to run.")
+            subparser.add_argument("--round-batch-size", type=int, default=5,
+                                   help="Number of candidate kernels to sample per optimization round.")
+            subparser.add_argument(
+                "--round-mode",
+                default="checked",
+                choices=_ROUND_MODE_CHOICES,
+                help="checked: verify output correctness after each agent edit; supervised: full supervisor review cycle per round.",
+            )
+            # Resume / state
+            subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES,
+                                   help="auto: resume existing session or start fresh; continue: require existing session; fresh: always start from scratch.")
+            subparser.add_argument("--reset-optimize", action="store_true",
+                                   help="Delete optimization workspace state before starting.")
+            # Feature toggles
+            subparser.add_argument("--enable-compiler-source-analysis", action="store_true",
+                                   help="Attach compiler source code for deeper kernel analysis.")
+            subparser.add_argument("--enable-cann-ext-api", action="store_true",
+                                   help="Allow the agent to use CANN extension APIs in generated kernels.")
+            subparser.add_argument("--enable-subagent", action="store_true",
+                                   help="Use subagent-based evaluation for faster iteration.")
             if command_kind == CommandKind.OPTIMIZE:
-                subparser.add_argument("--enable-agent-hooks", "--enable-agent-hook", dest="enable_agent_hooks", action="store_true")
-            subparser.add_argument("--target-chip", default="A5", choices=_TARGET_CHIP_CHOICES)
+                subparser.add_argument("--enable-agent-hooks", "--enable-agent-hook", dest="enable_agent_hooks", action="store_true",
+                                       help="Enable agent-level hooks for extended workflow customization.")
+            # Target
+            subparser.add_argument("--target-chip", default="A5", choices=_TARGET_CHIP_CHOICES,
+                                   help="Target NPU chip architecture.")
             subparser.add_argument(
                 "--optimize-target",
                 default="kernel",
                 choices=_OPTIMIZE_TARGET_CHOICES,
+                help="kernel: optimize individual kernels; operator: optimize at the full-operator level.",
             )
             subparser.add_argument(
                 "--optimize-knowledge",
                 default="v1",
                 choices=_OPTIMIZE_KNOWLEDGE_CHOICES,
+                help="Optimization knowledge base version to use.",
             )
-            subparser.add_argument("--no-agent-session", action="store_true")
-            subparser.add_argument(
-                "--round-mode",
-                default="checked",
-                choices=_ROUND_MODE_CHOICES,
-            )
-            subparser.add_argument("--no-upload", action="store_true")
-            subparser.add_argument("--enable-report", action="store_true", default=False)
+            # Session / output
+            subparser.add_argument("--no-agent-session", action="store_true",
+                                   help="Disable agent session persistence for one-shot runs.")
+            subparser.add_argument("--no-upload", action="store_true",
+                                   help="Skip uploading optimization artifacts after the run.")
+            subparser.add_argument("--enable-report", action="store_true", default=False,
+                                   help="Generate an optimization report after the run.")
             if command_kind == CommandKind.OPTIMIZE_BATCH:
                 subparser.add_argument(
                     "--post-optimize-command",
