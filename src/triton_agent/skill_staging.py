@@ -40,6 +40,7 @@ STAGE_RULES: dict[CommandKind, StageRule] = {
     ),
     CommandKind.CONVERT: StageRule(
         directives=(
+            "+{language}-npu-api-reference",
             "+{language}-npu-convert-pytorch-operator",
             "+ascend-npu-gen-test",
             "+ascend-npu-run-eval",
@@ -63,6 +64,7 @@ STAGE_RULES: dict[CommandKind, StageRule] = {
     ),
     CommandKind.OPTIMIZE: StageRule(
         directives=(
+            "+{language}-npu-api-reference",
             "+{language}-npu-optimize",
             "+{language}-npu-optimize-knowledge",
             "+ascend-npu-prepare-optimize-baseline",
