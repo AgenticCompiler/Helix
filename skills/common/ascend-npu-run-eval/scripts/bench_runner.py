@@ -67,6 +67,10 @@ _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched op_statistic csv"
 _PRESERVED_RUN_DIR_NONE_SENTINEL = "__NONE__"
 
 
+def _bench_timeout() -> int:
+    return eval_stall_timeout_seconds()
+
+
 @dataclass(frozen=True)
 class _MsprofCaseOutcome:
     case_id: str
