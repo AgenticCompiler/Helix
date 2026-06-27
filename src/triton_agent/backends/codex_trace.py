@@ -588,9 +588,9 @@ class CodexJsonLineParser:
             return "compare_perf"
         if "compare-result" in lower:
             return "compare_result"
-        if "check-baseline" in lower:
+        if "submit-baseline" in lower:
             return "check_baseline"
-        if "check-round" in lower:
+        if "submit-round" in lower:
             return "check_round"
         if "run-test" in lower or "run-test-baseline" in lower or "run-test-optimize" in lower or "pytest" in lower or "differential_test_" in lower:
             return "correctness_test"

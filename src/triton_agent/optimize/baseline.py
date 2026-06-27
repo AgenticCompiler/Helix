@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from triton_agent.optimize.models import BaselineArtifactsInspection, BaselineState
-from triton_agent.optimize.skill_contract import optimize_submit_baseline_module
+from triton_agent.optimize.skill_contract import optimize_state_baseline_module
 
 
-_OPTIMIZE_BASELINE_MODULE = optimize_submit_baseline_module()
+_OPTIMIZE_BASELINE_MODULE = optimize_state_baseline_module()
 
 
 def baseline_dir(workspace: Path) -> Path:

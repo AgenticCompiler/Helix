@@ -49,15 +49,13 @@ STAGE_RULES: dict[CommandKind, StageRule] = {
     CommandKind.LOG_CHECK: StageRule(
         directives=(
             "+{language}-npu-optimize-knowledge",
-            "+ascend-npu-optimize-submit-baseline",
-            "+ascend-npu-optimize-submit-round",
+            "+ascend-npu-optimize-state",
         ),
     ),
     CommandKind.LOG_CHECK_BATCH: StageRule(
         directives=(
             "+{language}-npu-optimize-knowledge",
-            "+ascend-npu-optimize-submit-baseline",
-            "+ascend-npu-optimize-submit-round",
+            "+ascend-npu-optimize-state",
         ),
     ),
     CommandKind.REPORT: StageRule(
@@ -71,9 +69,7 @@ STAGE_RULES: dict[CommandKind, StageRule] = {
             "+ascend-npu-gen-test",
             "+ascend-npu-gen-bench",
             "+ascend-npu-run-eval",
-            "+ascend-npu-optimize-submit-baseline",
-            "+ascend-npu-optimize-submit-round",
-            "+ascend-npu-optimize-start-round",
+            "+ascend-npu-optimize-state",
             "+ascend-npu-profile-operator",
             "+ascend-npu-analyze-round-performance",
             "+{language}-npu-analyze-ir",

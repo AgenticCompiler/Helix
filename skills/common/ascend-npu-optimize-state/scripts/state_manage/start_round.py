@@ -1,15 +1,10 @@
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
 from pathlib import Path
-import sys
 
-__all__ = [
-    "build_parser",
-    "main",
-]
+from state_manage.workflow import start_round as start_round_in_workflow_state
 
 _FALLBACK_HARD_RULES = (
     "Only one optimize round may be active at a time.",
@@ -23,40 +18,8 @@ _FALLBACK_HARD_RULES = (
 )
 
 
-def _resolve_workflow_state_scripts_dir():
-    script_dir = Path(__file__).resolve().parent
-    skill_dir = script_dir.parent
-    skills_dir = skill_dir.parent
-
-    for candidate in (
-        skill_dir / ".." / "triton-npu-optimize" / "scripts",
-        skills_dir.parent / "triton" / "triton-npu-optimize" / "scripts",
-    ):
-        candidate = candidate.resolve()
-        if (candidate / "optimize_workflow_state.py").exists():
-            return candidate
-    raise FileNotFoundError(
-        "optimize_workflow_state module not found. "
-        "Ensure triton-npu-optimize is staged alongside this skill."
-    )
-
-
-def _load_workflow_state_module():
-    shared_scripts_dir = _resolve_workflow_state_scripts_dir()
-    shared_path = str(shared_scripts_dir)
-    inserted = False
-    if shared_path not in sys.path:
-        sys.path.insert(0, shared_path)
-        inserted = True
-    try:
-        return importlib.import_module("optimize_workflow_state")
-    finally:
-        if inserted:
-            sys.path.remove(shared_path)
-
-
 def _load_hard_rules() -> list[str]:
-    skill_path = Path(__file__).resolve().parents[1] / "SKILL.md"
+    skill_path = Path(__file__).resolve().parents[2] / "SKILL.md"
     try:
         lines = skill_path.read_text(encoding="utf-8").splitlines()
     except OSError:
@@ -77,8 +40,8 @@ def _load_hard_rules() -> list[str]:
     return rules or list(_FALLBACK_HARD_RULES)
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog=Path(__file__).name)
+def build_parser(*, prog_name: str | None = None) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog=prog_name or Path(__file__).name)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     start = subparsers.add_parser("start-round")
@@ -107,8 +70,8 @@ def _workflow_failure_guideline(message: str) -> str:
     if "baseline.status=passed" in message:
         return (
             "Baseline has not been accepted yet. Use the staged "
-            "`ascend-npu-optimize-submit-baseline` skill to repair and submit `baseline/` "
-            "until it passes, then run start-round again."
+            "`ascend-npu-optimize-state` skill's `submit-baseline` subcommand to repair and "
+            "submit `baseline/` until it passes, then run `start-round` again."
         )
     if "cannot reopen completed round" in message:
         return (
@@ -128,8 +91,8 @@ def _workflow_failure_guideline(message: str) -> str:
     return "This start-round request could not be applied. Repair the optimize session and retry."
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+def main(argv: list[str] | None = None, *, prog_name: str | None = None) -> int:
+    args = build_parser(prog_name=prog_name).parse_args(argv)
     round_dir = Path(args.round_dir).expanduser().resolve()
     try:
         state_path = round_dir.parent / ".triton-agent" / "state.json"
@@ -137,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
             raise RuntimeError(
                 "optimize workflow state is not available; start-round requires --enable-agent-hook"
             )
-        _load_workflow_state_module().start_round(state_path, round_dir.name)
+        start_round_in_workflow_state(state_path, round_dir.name)
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(
             json.dumps(

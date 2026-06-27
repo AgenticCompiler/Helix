@@ -107,9 +107,9 @@ Optimize analysis is layered.
 - In `kernel` target mode, prefer the kernel-oriented comparison result, but if `compare-perf` falls back to total-op for some or all cases, keep the round eligible and record that fallback as a warning.
 - In `operator` target mode, show both kernel and total-op comparison results so you can diagnose whether kernel improvements translated end-to-end, then record `effective_metric_source: total-op` for the official round conclusion.
 - Do not hand-calculate speedups or percentage improvements from raw perf files.
-- Use the sibling `npu-optimize-submit-round` skill to submit the current round and repair the round until it passes before continuing or stopping.
+- Use the sibling `ascend-npu-optimize-state` skill's `submit-round` subcommand to submit the current round and repair the round until it passes before continuing or stopping.
 - After the round submission passes, read the JSON `guideline` field for the exit signal: if minimum rounds are satisfied, the session may stop after this round.
-- Before opening the next round, use the sibling `npu-optimize-start-round` skill to re-check the one-round-at-a-time and no-blind-sweep workflow constraints.
+- Before opening the next round, use the sibling `ascend-npu-optimize-state` skill's `start-round` subcommand to re-check the one-round-at-a-time and no-blind-sweep workflow constraints.
 
 ## Round Records
 

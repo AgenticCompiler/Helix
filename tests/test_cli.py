@@ -5228,9 +5228,10 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Read `/tmp/opt-round-3`", prompt)
         self.assertIn("Use only existing `compare-perf` results", prompt)
         self.assertIn("`ascend-npu-prepare-optimize-baseline`", prompt)
-        self.assertIn("`ascend-npu-optimize-submit-baseline`", prompt)
-        self.assertIn("`ascend-npu-optimize-submit-round`", prompt)
-        self.assertIn("`ascend-npu-optimize-start-round`", prompt)
+        self.assertIn("`ascend-npu-optimize-state`", prompt)
+        self.assertIn("`submit-baseline`", prompt)
+        self.assertIn("`submit-round`", prompt)
+        self.assertIn("`start-round`", prompt)
         self.assertIn("Write `supervisor-report.md`", prompt)
         self.assertNotIn(".triton-agent/supervisor-report.md", prompt)
         self.assertIn("The CLI will read that supervisor report", prompt)
@@ -5709,7 +5710,7 @@ class PromptTests(unittest.TestCase):
             compiler_source_commit="deadbeef",
         )
         self.assertIn(
-            "Use the staged `ascend-npu-optimize-start-round` skill before opening the next round.",
+            "Use the staged `ascend-npu-optimize-state` skill's `start-round` subcommand before opening the next round.",
             prompt,
         )
         self.assertIn(
@@ -5727,7 +5728,7 @@ class PromptTests(unittest.TestCase):
             latest_round_dir=Path("/tmp/workdir/opt-round-1"),
         )
         self.assertIn(
-            "Read the staged `tilelang-npu-optimize`, `ascend-npu-prepare-optimize-baseline`, `ascend-npu-optimize-submit-baseline`, `ascend-npu-optimize-submit-round`, and `ascend-npu-optimize-start-round` skills as the workflow contract that the worker round was supposed to follow.",
+            "Read the staged `tilelang-npu-optimize`, `ascend-npu-prepare-optimize-baseline`, and `ascend-npu-optimize-state` skills as the workflow contract that the worker round was supposed to follow.",
             prompt,
         )
         self.assertIn(

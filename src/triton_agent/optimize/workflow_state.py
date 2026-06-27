@@ -6,7 +6,7 @@ from triton_agent.skill_loader import load_skill_script_module
 
 
 def _workflow_module():
-    return load_skill_script_module("triton-npu-optimize", "optimize_workflow_state")
+    return load_skill_script_module("ascend-npu-optimize-state", "state_manage/workflow")
 
 
 def bootstrap_optimize_workflow_state(
