@@ -338,7 +338,8 @@ class OpenCodeHookGuardTests(unittest.TestCase):
 
             self.assertFalse(result["allowed"])
             self.assertIn("awaiting_round_start", str(result["message"]))
-            self.assertIn("ascend-npu-optimize-start-round", str(result["message"]))
+            self.assertIn("ascend-npu-optimize-state", str(result["message"]))
+            self.assertIn("start-round", str(result["message"]))
 
     @_skip_if_no_node
     def test_round_active_allows_native_write_inside_current_round(self) -> None:
@@ -405,7 +406,8 @@ class OpenCodeHookGuardTests(unittest.TestCase):
             self.assertFalse(result["allowed"])
             self.assertIn("Current active round is opt-round-2", str(result["message"]))
             self.assertIn("must stay inside `opt-round-2/`", str(result["message"]))
-            self.assertIn("ascend-npu-optimize-submit-round", str(result["message"]))
+            self.assertIn("ascend-npu-optimize-state", str(result["message"]))
+            self.assertIn("submit-round", str(result["message"]))
             self.assertNotIn("First-version scope", str(result["message"]))
 
     @_skip_if_no_node

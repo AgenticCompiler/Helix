@@ -9,15 +9,13 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Protocol, cast
 
+from shared.round_naming import expected_round_perf_name as shared_expected_round_perf_name
+
 
 _LOCAL_OPTIMUM_WINDOW_ENV = "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW"
 _LOCAL_OPTIMUM_MAX_GAIN_ENV = "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN"
 _DEFAULT_LOCAL_OPTIMUM_WINDOW = 3
 _DEFAULT_LOCAL_OPTIMUM_MAX_GAIN = 0.02
-_BATCH_OPTIMIZE_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_")
-_BATCH_OPTIMIZE_EXCLUDED_NAMES = {"__init__.py"}
-
-
 class PerfArtifactsModule(Protocol):
     def parse_perf_file(self, path: Path) -> dict[str, float]: ...
 
@@ -329,40 +327,17 @@ def _round_number(name: str) -> int | None:
 
 
 def _expected_round_perf_name(workspace: Path) -> str | None:
-    operator_file = _resolve_workspace_operator_file(workspace)
-    if operator_file is None:
+    try:
+        return shared_expected_round_perf_name(workspace)
+    except ValueError:
         return None
-    return f"opt_{operator_file.stem}_perf.txt"
-
-
-def _resolve_workspace_operator_file(workspace: Path) -> Path | None:
-    candidates = [
-        path
-        for path in sorted(workspace.iterdir())
-        if _is_batch_optimize_operator_candidate(path)
-    ]
-    if len(candidates) != 1:
-        return None
-    return candidates[0]
-
-
-def _is_batch_optimize_operator_candidate(path: Path) -> bool:
-    if not path.is_file():
-        return False
-    if path.suffix != ".py":
-        return False
-    if path.name in _BATCH_OPTIMIZE_EXCLUDED_NAMES:
-        return False
-    return not path.name.startswith(_BATCH_OPTIMIZE_EXCLUDED_PREFIXES)
 
 
 @lru_cache(maxsize=1)
 def _load_perf_artifacts_module() -> PerfArtifactsModule:
-    script_path = (
-        Path(__file__).resolve().parents[2]
-        / "ascend-npu-run-eval"
-        / "scripts"
-        / "perf_artifacts.py"
+    script_path = _resolve_sibling_skill_script_path(
+        "ascend-npu-run-eval",
+        "perf_artifacts.py",
     )
     module_name = "skill_triton_npu_run_eval_perf_artifacts"
     spec = importlib.util.spec_from_file_location(module_name, script_path)
@@ -386,3 +361,17 @@ def _load_perf_artifacts_module() -> PerfArtifactsModule:
         if added:
             sys.path.remove(script_dir)
     return cast(PerfArtifactsModule, module)
+
+
+def _resolve_sibling_skill_script_path(skill_name: str, script_filename: str) -> Path:
+    current_path = Path(__file__).resolve()
+    for parent in current_path.parents:
+        flat_candidate = parent / skill_name / "scripts" / script_filename
+        if flat_candidate.is_file():
+            return flat_candidate
+        grouped_candidate = parent / "common" / skill_name / "scripts" / script_filename
+        if grouped_candidate.is_file():
+            return grouped_candidate
+    raise FileNotFoundError(
+        f"Unable to locate sibling skill script {skill_name}/scripts/{script_filename}"
+    )

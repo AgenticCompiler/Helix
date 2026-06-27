@@ -95,8 +95,8 @@ def _round_sort_key(name: str) -> tuple[int, str]:
 
 def _iter_completed_round_dirs(workdir: Path) -> tuple[Path, ...]:
     module = load_skill_script_module(
-        "ascend-npu-optimize-submit-round",
-        "optimize_submit_round",
+        "ascend-npu-optimize-state",
+        "round/check",
     )
     return tuple(cast(tuple[Path, ...], module.iter_completed_round_directories(workdir)))
 

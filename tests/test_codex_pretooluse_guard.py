@@ -399,7 +399,8 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
 
             assert reason is not None
             self.assertIn("awaiting_round_start", reason)
-            self.assertIn("ascend-npu-optimize-start-round", reason)
+            self.assertIn("ascend-npu-optimize-state", reason)
+            self.assertIn("start-round", reason)
 
     def test_round_active_allows_native_write_inside_current_round(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -456,7 +457,8 @@ class CodexPreToolUseGuardTests(unittest.TestCase):
             assert reason is not None
             self.assertIn("Current active round is opt-round-2", reason)
             self.assertIn("must stay inside `opt-round-2/`", reason)
-            self.assertIn("ascend-npu-optimize-submit-round", reason)
+            self.assertIn("ascend-npu-optimize-state", reason)
+            self.assertIn("submit-round", reason)
 
     def test_missing_workflow_state_blocks_native_write_with_restart_hint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

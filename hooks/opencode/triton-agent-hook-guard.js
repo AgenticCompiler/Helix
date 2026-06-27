@@ -410,10 +410,10 @@ function classifyCommand(command) {
   if (normalized.includes("compare-result")) {
     return "compare_result";
   }
-  if (normalized.includes("check-baseline")) {
+  if (normalized.includes("submit-baseline")) {
     return "check_baseline";
   }
-  if (normalized.includes("check-round")) {
+  if (normalized.includes("submit-round")) {
     return "check_round";
   }
   if (normalized.includes("run-test") || normalized.includes("pytest") || normalized.includes("differential_test_")) {
@@ -579,7 +579,7 @@ function baselinePhaseBuiltInEditDenial() {
     "Built-in edit tool blocked by optimize workflow policy. " +
     "Current phase is baseline. During baseline, built-in edits are limited to the baseline-minimal file set: " +
     "the source operator, root-level test/bench harness files, and `baseline/` artifacts. " +
-    "Finish or repair baseline, then submit it through `ascend-npu-optimize-submit-baseline` before opening a round."
+    "Finish or repair baseline, then submit it through `ascend-npu-optimize-state` `submit-baseline` before opening a round."
   );
 }
 
@@ -587,7 +587,7 @@ function awaitingRoundStartBuiltInEditDenial() {
   return (
     "Built-in edit tool blocked by optimize workflow policy. " +
     "Current phase is awaiting_round_start, so no optimize round is active yet. " +
-    "Use `ascend-npu-optimize-start-round` to open the next `opt-round-N/` before editing."
+    "Use `ascend-npu-optimize-state` `start-round` to open the next `opt-round-N/` before editing."
   );
 }
 
@@ -596,7 +596,7 @@ function roundActiveBuiltInEditDenial(roundDir) {
     "Built-in edit tool blocked by optimize workflow policy. " +
     `Current active round is ${roundDir}. Built-in edits must stay inside \`${roundDir}/\`. ` +
     "Edit the round-local snapshot and round artifacts instead of top-level workspace files. " +
-    "When this round is ready, use `ascend-npu-optimize-submit-round` to submit it before moving on."
+    "When this round is ready, use `ascend-npu-optimize-state` `submit-round` to submit it before moving on."
   );
 }
 

@@ -76,7 +76,7 @@ def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
 
 class OptimizeCheckTests(unittest.TestCase):
-    def test_optimize_checks_delegate_to_split_submit_script_modules(self) -> None:
+    def test_optimize_checks_delegate_to_optimize_state_script_modules(self) -> None:
         module = SimpleNamespace(
             check_baseline=lambda path: {
                 "status": "fail",
@@ -103,12 +103,12 @@ class OptimizeCheckTests(unittest.TestCase):
         self.assertEqual(round_result.kind, "round")
         self.assertEqual(round_result.summary, "checked opt-round-1")
         mocked.assert_any_call(
-            "ascend-npu-optimize-submit-baseline",
-            "optimize_submit_baseline",
+            "ascend-npu-optimize-state",
+            "baseline/check",
         )
         mocked.assert_any_call(
-            "ascend-npu-optimize-submit-round",
-            "optimize_submit_round",
+            "ascend-npu-optimize-state",
+            "round/check",
         )
 
     def test_check_baseline_reports_missing_perf_artifact(self) -> None:
@@ -471,7 +471,7 @@ class OptimizeCheckTests(unittest.TestCase):
             self.assertIn("Round 2/4 in the current worker batch is complete.", result.summary)
             self.assertIn("Next round: opt-round-3.", result.summary)
             self.assertIn(
-                "Use the staged `ascend-npu-optimize-start-round` skill to open opt-round-3 before beginning the next round.",
+                "Use the staged `ascend-npu-optimize-state` skill's `start-round` subcommand to open opt-round-3 before beginning the next round.",
                 result.summary,
             )
             self.assertNotIn("Do not rush into the next code change.", result.summary)

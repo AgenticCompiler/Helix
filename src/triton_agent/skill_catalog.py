@@ -28,19 +28,9 @@ class SkillCatalogEntry:
 
 _COMMON_SKILLS: tuple[SkillCatalogEntry, ...] = (
     SkillCatalogEntry(
-        logical_name="ascend-npu-optimize-start-round",
+        logical_name="ascend-npu-optimize-state",
         source_group="common",
-        physical_path="skills/common/ascend-npu-optimize-start-round",
-    ),
-    SkillCatalogEntry(
-        logical_name="ascend-npu-optimize-submit-baseline",
-        source_group="common",
-        physical_path="skills/common/ascend-npu-optimize-submit-baseline",
-    ),
-    SkillCatalogEntry(
-        logical_name="ascend-npu-optimize-submit-round",
-        source_group="common",
-        physical_path="skills/common/ascend-npu-optimize-submit-round",
+        physical_path="skills/common/ascend-npu-optimize-state",
     ),
     SkillCatalogEntry(
         logical_name="ascend-npu-prepare-optimize-baseline",

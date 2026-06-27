@@ -18,9 +18,9 @@ class OptimizeContractTests(unittest.TestCase):
             Path(__file__).resolve().parents[1]
             / "skills"
             / "common"
-            / "ascend-npu-optimize-submit-baseline"
+            / "ascend-npu-optimize-state"
             / "references"
-            / "contract.json"
+            / "baseline-contract.json"
         )
         data = json.loads(contract_path.read_text(encoding="utf-8"))
 
@@ -41,9 +41,9 @@ class OptimizeContractTests(unittest.TestCase):
             Path(__file__).resolve().parents[1]
             / "skills"
             / "common"
-            / "ascend-npu-optimize-submit-round"
+            / "ascend-npu-optimize-state"
             / "references"
-            / "contract.json"
+            / "round-contract.json"
         )
         data = json.loads(contract_path.read_text(encoding="utf-8"))
 
