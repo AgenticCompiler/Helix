@@ -68,6 +68,10 @@ class OptimizeUploadCollectorTests(unittest.TestCase):
         (tmp / "triton-agent-logs").mkdir()
         (tmp / "triton-agent-logs" / "run-001").mkdir()
         (tmp / "triton-agent-logs" / "run-001" / "show-output.log").write_text("", encoding="utf-8")
+        (tmp / "triton-agent-logs" / "run-001" / "agent-session-batch-1-5.json").write_text(
+            '{"session_id":"abc"}\n',
+            encoding="utf-8",
+        )
         # Excluded paths
         (tmp / "opt-round-1" / "ir").mkdir()
         (tmp / "opt-round-1" / "ir" / "dummy.txt").write_text("", encoding="utf-8")
@@ -92,7 +96,7 @@ class OptimizeUploadCollectorTests(unittest.TestCase):
         self.assertIn("opt-note.md", included_names)
         self.assertIn("learned_lessons.md", included_names)
         self.assertIn("state.json", included_names)  # baseline
-        self.assertIn("opt_kernel_perf.txt", included_names)  # round perf
+        self.assertIn("round-state.json", included_names)
         self.assertIn("show-output.log", included_names)
 
     def test_collect_excludes_forbidden_paths(self) -> None:
@@ -106,6 +110,7 @@ class OptimizeUploadCollectorTests(unittest.TestCase):
             self.assertNotIn(".pt", name)
             self.assertNotIn("PROF_", name)
             self.assertNotIn("archive.tar.gz", name)
+            self.assertNotIn("agent-session-batch-1-5.json", name)
 
     def test_collect_validates_workspace_exists(self) -> None:
         with self.assertRaises(ValueError):
@@ -129,6 +134,7 @@ class OptimizeUploadPackagerTests(unittest.TestCase):
     def test_tarball_contains_expected_members(self) -> None:
         workspace = Path(tempfile.mkdtemp())
         (workspace / "kernel.py").write_text("code", encoding="utf-8")
+        (workspace / "opt-note.md").write_text("", encoding="utf-8")
         (workspace / "baseline").mkdir()
         (workspace / "baseline" / "state.json").write_text("{}", encoding="utf-8")
         (workspace / "opt-round-1").mkdir()
@@ -157,8 +163,10 @@ class OptimizeUploadPackagerTests(unittest.TestCase):
     def test_tarball_no_extra_top_level_wrapper(self) -> None:
         workspace = Path(tempfile.mkdtemp())
         (workspace / "kernel.py").write_text("code", encoding="utf-8")
+        (workspace / "opt-note.md").write_text("", encoding="utf-8")
         (workspace / "baseline").mkdir()
         (workspace / "baseline" / "state.json").write_text("{}", encoding="utf-8")
+        (workspace / "opt-round-1").mkdir()
         from triton_agent.optimize_upload.naming import build_upload_identity
         from triton_agent.optimize_upload.collector import collect_workspace_upload_files
         identity = build_upload_identity(workspace)
@@ -176,11 +184,11 @@ class OptimizeUploadPackagerTests(unittest.TestCase):
 
 
 class OptimizeUploadClientTests(unittest.TestCase):
-    def test_load_upload_url_raises_when_unset(self) -> None:
-        from triton_agent.optimize_upload.client import load_upload_url
-        with self.assertRaises(ValueError):
-            with patch.dict(os.environ, {}, clear=True):
-                load_upload_url()
+    def test_load_upload_url_returns_default_when_unset(self) -> None:
+        from triton_agent.optimize_upload.client import _DEFAULT_UPLOAD_URL, load_upload_url
+
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(load_upload_url(), _DEFAULT_UPLOAD_URL)
 
     def test_load_upload_url_returns_from_env(self) -> None:
         from triton_agent.optimize_upload.client import load_upload_url
@@ -389,15 +397,33 @@ class OptimizeUploadClientTests(unittest.TestCase):
 
 
 class OptimizeUploadWorkflowTests(unittest.TestCase):
-    def test_workflow_missing_url_raises(self) -> None:
+    def test_workflow_uses_default_url_when_env_unset(self) -> None:
         workspace = Path(tempfile.mkdtemp())
         (workspace / "kernel.py").write_text("code", encoding="utf-8")
+        (workspace / "opt-note.md").write_text("", encoding="utf-8")
         (workspace / "baseline").mkdir()
         (workspace / "baseline" / "state.json").write_text("{}", encoding="utf-8")
+        (workspace / "opt-round-1").mkdir()
+        from triton_agent.optimize_upload.client import _DEFAULT_UPLOAD_URL
+        from triton_agent.optimize_upload.models import UploadResponse
         from triton_agent.optimize_upload.workflow import upload_optimize_workspace
+
+        mock_response = UploadResponse(
+            ok=True,
+            upload_uid="uid",
+            upload_timestamp="ts",
+            workspace_name="ws",
+            workspace_slug="ws",
+            stored_path="/store/path",
+        )
         with patch.dict(os.environ, {}, clear=True):
-            with self.assertRaises(ValueError):
+            with patch(
+                "triton_agent.optimize_upload.workflow.upload_tarball", return_value=mock_response
+            ) as mock_upload:
                 upload_optimize_workspace(workspace, verbose=True)
+            mock_upload.assert_called_once()
+            _, _, call_url = mock_upload.call_args[0]
+            self.assertTrue(call_url.startswith(_DEFAULT_UPLOAD_URL))
 
     def test_workflow_invalid_workspace_raises(self) -> None:
         from triton_agent.optimize_upload.workflow import upload_optimize_workspace
@@ -437,8 +463,10 @@ class OptimizeUploadWorkflowTests(unittest.TestCase):
 
         workspace = Path(tempfile.mkdtemp())
         (workspace / "kernel.py").write_text("code", encoding="utf-8")
+        (workspace / "opt-note.md").write_text("", encoding="utf-8")
         (workspace / "baseline").mkdir()
         (workspace / "baseline" / "state.json").write_text("{}", encoding="utf-8")
+        (workspace / "opt-round-1").mkdir()
 
         upload_url = f"http://127.0.0.1:{port}/uploads"
         with patch.dict(os.environ, {"TRITON_AGENT_OPTIMIZE_UPLOAD_URL": upload_url}):

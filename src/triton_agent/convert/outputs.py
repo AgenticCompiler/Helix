@@ -7,10 +7,11 @@ def resolve_convert_output_path(
     input_path: Path,
     *,
     explicit_output: str | None,
+    language: str = "triton",
 ) -> Path:
     if explicit_output:
         return Path(explicit_output).expanduser().resolve()
-    return input_path.with_name(f"triton_{input_path.stem}.py")
+    return input_path.with_name(f"{language}_{input_path.stem}.py")
 
 
 def prepare_convert_target(

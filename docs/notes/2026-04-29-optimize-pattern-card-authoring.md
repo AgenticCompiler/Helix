@@ -1,8 +1,8 @@
 # Optimize Pattern Card Authoring
 
-The Markdown files under `skills/triton-npu-optimize-knowledge/references/patterns/` are the authored source of truth for generic optimize pattern knowledge.
+The Markdown files under `skills/triton/triton-npu-optimize-knowledge/references/patterns/` are the authored source of truth for generic optimize pattern knowledge.
 
-Do not hand-edit `skills/triton-npu-optimize-knowledge/references/pattern_index.md`. It is generated from the pattern cards in that directory.
+Do not hand-edit `skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md`. It is generated from the pattern cards in that directory.
 
 ## Authoring Contract
 
@@ -55,16 +55,16 @@ The generated `pattern_index.md` also includes a `## High Priority Patterns` sec
 After editing any pattern card, regenerate the checked-in index:
 
 ```bash
-python3 skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
-  --patterns-dir skills/triton-npu-optimize-knowledge/references/patterns \
-  --output skills/triton-npu-optimize-knowledge/references/pattern_index.md
+python3 skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
+  --patterns-dir skills/triton/triton-npu-optimize-knowledge/references/patterns \
+  --output skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md
 ```
 
 To verify that the checked-in index is up to date without rewriting it:
 
 ```bash
-python3 skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
-  --patterns-dir skills/triton-npu-optimize-knowledge/references/patterns \
-  --output skills/triton-npu-optimize-knowledge/references/pattern_index.md \
+python3 skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
+  --patterns-dir skills/triton/triton-npu-optimize-knowledge/references/patterns \
+  --output skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md \
   --check
 ```

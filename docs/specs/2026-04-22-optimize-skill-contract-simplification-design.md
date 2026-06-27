@@ -2,8 +2,8 @@
 
 ## Summary
 
-- Make `skills/triton-npu-optimize/SKILL.md` the only primary workflow contract for optimize.
-- Delete `skills/triton-npu-optimize/references/workflow.md`.
+- Make `skills/triton/triton-npu-optimize/SKILL.md` the only primary workflow contract for optimize.
+- Delete `skills/triton/triton-npu-optimize/references/workflow.md`.
 - Replace the current long numbered optimize workflow with a small set of structured stages.
 - Move reference-reading instructions into the relevant stage instead of keeping a separate `Required References` section.
 - Reduce duplicated guidance across `Required References`, `Pattern References`, `Default Analysis Ladder`, `Workflow`, and `Quality Rules`.
@@ -224,7 +224,7 @@ Rules that simply restate a stage should move into that stage and leave this sec
 
 ## Deleting `workflow.md`
 
-Delete `skills/triton-npu-optimize/references/workflow.md`.
+Delete `skills/triton/triton-npu-optimize/references/workflow.md`.
 
 Rationale:
 
@@ -251,7 +251,7 @@ They should check that:
 - reference reads are embedded under the relevant stage rather than under a global `Required References` section
 - `workflow.md` no longer exists
 
-Existing tests that read `skills/triton-npu-optimize/references/workflow.md` should be updated or removed.
+Existing tests that read `skills/triton/triton-npu-optimize/references/workflow.md` should be updated or removed.
 
 ## Migration Notes
 

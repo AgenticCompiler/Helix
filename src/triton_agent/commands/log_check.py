@@ -18,8 +18,9 @@ def handle_log_check(parser: argparse.ArgumentParser, args: argparse.Namespace) 
         output_json=str(getattr(args, "check_result_file", "log_check_result.json")),
         agent_name=str(getattr(args, "agent", "codex")),
         verbose=bool(getattr(args, "verbose", False)),
-        show_output=bool(getattr(args, "show_output", False)),
+        show_output=bool(getattr(args, "stream_output", True)),
         log_tools=bool(getattr(args, "log_tools", False)),
+        language=getattr(args, "language", "triton"),
     )
 
 
@@ -38,8 +39,8 @@ def handle_log_check_batch(parser: argparse.ArgumentParser, args: argparse.Names
         summary_file=str(getattr(args, "summary_file", "log_check_summary.md")),
         agent_name=str(getattr(args, "agent", "codex")),
         verbose=bool(getattr(args, "verbose", False)),
-        show_output=bool(getattr(args, "show_output", False)),
+        show_output=bool(getattr(args, "stream_output", True)),
         log_tools=bool(getattr(args, "log_tools", False)),
+        language=getattr(args, "language", "triton"),
         max_concurrency=concurrency,
     )
-

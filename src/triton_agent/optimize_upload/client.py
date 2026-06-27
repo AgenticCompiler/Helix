@@ -19,10 +19,13 @@ class UploadUrlMissingError(ValueError):
         )
 
 
+_DEFAULT_UPLOAD_URL = "http://1.94.98.20/triton-uploads"
+
+
 def load_upload_url() -> str:
     url = os.environ.get("TRITON_AGENT_OPTIMIZE_UPLOAD_URL")
     if not url:
-        raise UploadUrlMissingError()
+        return _DEFAULT_UPLOAD_URL
     return url
 
 

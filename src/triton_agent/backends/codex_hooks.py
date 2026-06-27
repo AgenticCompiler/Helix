@@ -13,12 +13,21 @@ _CODEX_HOOK_DIR = Path(".codex") / "triton-agent-hooks"
 _CODEX_HOOKS_JSON = Path(".codex") / "hooks.json"
 _CODEX_DENY_MESSAGE = (
     "This read is blocked by triton-agent workspace policy. Stay within the current workspace "
-    "and do not inspect protected files (staged skill implementation files under "
-    ".codex/skills/*/scripts/ or triton-agent-logs/ output). "
+    "and do not inspect protected runner-managed files (temporary optimize runtime files, "
+    "staged skill implementation files under .codex/skills/*/scripts/, or triton-agent-logs/ "
+    "output). "
     "Use the skill instructions and documented command interface instead."
 )
-_SHARED_DENY_READ_GLOBS = (Path("triton-agent-logs") / "**",)
-_CODEX_DENY_READ_GLOBS = _SHARED_DENY_READ_GLOBS + (Path(".codex") / "skills" / "*" / "scripts" / "**",)
+_SHARED_DENY_READ_GLOBS = (
+    Path(".triton-agent"),
+    Path(".triton-agent") / "**",
+    Path("triton-agent-logs") / "**",
+)
+_CODEX_DENY_READ_GLOBS = _SHARED_DENY_READ_GLOBS + (
+    Path(".codex") / "triton-agent-hooks",
+    Path(".codex") / "triton-agent-hooks" / "**",
+    Path(".codex") / "skills" / "*" / "scripts" / "**",
+)
 
 
 def prepare_codex_hooks(
@@ -35,8 +44,17 @@ def prepare_codex_hooks(
     workspace = workdir.absolute()
     policy_workspace = workspace.resolve()
     template_dir = hooks_root / "codex"
+    shared_template_dir = hooks_root / "shared"
     if not template_dir.is_dir():
         raise RuntimeError(f"Codex hook template directory does not exist: {template_dir}")
+    if not shared_template_dir.is_dir():
+        raise RuntimeError(f"Shared hook template directory does not exist: {shared_template_dir}")
+    guard_template = template_dir / "pretooluse_guard.py"
+    policy_engine_template = shared_template_dir / "tool_use_guard_policy.py"
+    if not guard_template.is_file():
+        raise RuntimeError(f"Codex hook guard template does not exist: {guard_template}")
+    if not policy_engine_template.is_file():
+        raise RuntimeError(f"Shared guard policy template does not exist: {policy_engine_template}")
 
     hooks_json = workspace / _CODEX_HOOKS_JSON
     hook_dir = workspace / _CODEX_HOOK_DIR
@@ -53,7 +71,8 @@ def prepare_codex_hooks(
         created_paths.append(hooks_json)
 
         hook_dir.mkdir(parents=True)
-        shutil.copy2(template_dir / "pretooluse_guard.py", hook_dir / "pretooluse_guard.py")
+        shutil.copy2(guard_template, hook_dir / "pretooluse_guard.py")
+        shutil.copy2(policy_engine_template, hook_dir / "tool_use_guard_policy.py")
         shutil.copy2(template_dir / "tool_trace_hook.py", hook_dir / "tool_trace_hook.py")
         created_paths.append(hook_dir)
         _write_codex_policy(

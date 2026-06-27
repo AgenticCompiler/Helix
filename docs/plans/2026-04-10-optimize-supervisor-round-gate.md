@@ -339,7 +339,7 @@ Expected: FAIL because the new skill does not exist and optimize staging does no
 
 - [ ] **Step 3: Implement the minimal skill wiring**
 
-Write `skills/optimize-supervisor/SKILL.md` as an audit-first companion to `skills/triton-npu-optimize/SKILL.md`:
+Write `skills/optimize-supervisor/SKILL.md` as an audit-first companion to `skills/triton/triton-npu-optimize/SKILL.md`:
 
 - read the optimize workflow and current round artifacts first
 - decide against the five gate states

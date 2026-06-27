@@ -27,9 +27,14 @@ def is_batch_optimize_operator_candidate(path: Path) -> bool:
     )
 
 
-def resolve_batch_optimize_operator_file(workspace: Path) -> Path:
+def resolve_batch_optimize_operator_file(
+    workspace: Path,
+    *,
+    operator_filter: str | None = None,
+) -> Path:
     return resolve_batch_operator_file(
         workspace,
         is_operator_candidate=is_batch_optimize_operator_candidate,
         no_candidate_message=NO_CANDIDATE_OPERATOR_FILE,
+        operator_filter=operator_filter,
     )

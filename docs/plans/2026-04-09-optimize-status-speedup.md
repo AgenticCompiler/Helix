@@ -67,8 +67,8 @@ Expected: PASS
 ### Task 3: Align Optimize Workflow Records
 
 **Files:**
-- Modify: `skills/triton-npu-optimize/references/opt-note-format.md`
-- Modify: `skills/triton-npu-optimize/references/workflow.md`
+- Modify: `skills/triton/triton-npu-optimize/references/opt-note-format.md`
+- Modify: `skills/triton/triton-npu-optimize/references/workflow.md`
 - Modify: `src/triton_agent/optimize/guidance.py`
 - Modify: `docs/notes/2026-04-07-optimize-status-subcommand.md`
 

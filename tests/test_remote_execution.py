@@ -9,6 +9,7 @@ from unittest.mock import patch
 import tempfile
 import subprocess
 import shutil
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -107,7 +108,39 @@ class RemoteExecutionTests(unittest.TestCase):
             )
 
         self.assertIn("[remote]", stderr.getvalue())
-        self.assertIn("scp -P 2200 /tmp/local.txt alice@example.com:/tmp/remote.txt", stderr.getvalue())
+        self.assertIn("scp -P 2200 local.txt alice@example.com:/tmp/remote.txt", stderr.getvalue())
+
+    def test_copy_file_to_remote_avoids_windows_drive_letter_in_scp_source_argument(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "", "")) as mocked:
+            module.copy_file_to_remote(
+                module.parse_remote_spec("alice@example.com"),
+                Path("D:/Project/input.py"),
+                "/tmp/input.py",
+            )
+
+        self.assertEqual(
+            mocked.call_args.args[0],
+            ["scp", "input.py", "alice@example.com:/tmp/input.py"],
+        )
+        self.assertEqual(mocked.call_args.args[1], "D:/Project")
+
+    def test_copy_file_from_remote_avoids_windows_drive_letter_in_scp_destination_argument(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        with patch.object(module, "run_buffered_process", return_value=make_skill_result(0, "", "")) as mocked:
+            module.copy_file_from_remote(
+                module.parse_remote_spec("alice@example.com"),
+                "/tmp/result.pt",
+                Path("D:/Project/result.pt"),
+            )
+
+        self.assertEqual(
+            mocked.call_args.args[0],
+            ["scp", "alice@example.com:/tmp/result.pt", "result.pt"],
+        )
+        self.assertEqual(mocked.call_args.args[1], "D:/Project")
 
     def test_remote_execution_env_prefers_explicit_flags_over_environment(self) -> None:
         remote, remote_workdir = remote_env_module.resolve_remote_execution(
@@ -166,7 +199,7 @@ class RemoteExecutionTests(unittest.TestCase):
             (
                 '{"case_label":"case-a","kernel_names":["KernelA"],"kernel_source":"metadata",'
                 '"metrics":{"kernel_avg_time_us":1.0,"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},'
-                '"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                '"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
             ),
             "",
         )
@@ -194,7 +227,7 @@ from triton_agent.skill_loader import load_operator_eval_script_module
 module = load_operator_eval_script_module("bench_runner")
 result = {
     "return_code": 0,
-    "stdout": '{"case_label":"case-a","kernel_names":["KernelA"],"kernel_source":"metadata","metrics":{"kernel_avg_time_us":1.0,"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},"error_message":null,"case_wall_clock_seconds":0.0}\\n',
+    "stdout": '{"case_label":"case-a","kernel_names":["KernelA"],"kernel_source":"metadata","metrics":{"kernel_avg_time_us":1.0,"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\\n',
     "stderr": "",
     "stalled": False,
     "session_id": None,
@@ -312,6 +345,165 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
         self.assertEqual(result["return_code"], 0)
         self.assertTrue(process.stdout.closed)
         self.assertTrue(process.stderr.closed)
+
+    def test_run_runtime_buffered_zero_timeout_disables_stall_termination(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        class _FakeStdout:
+            def readline(self) -> str:
+                return ""
+
+            def close(self) -> None:
+                return None
+
+        class _FakeStderr:
+            def __iter__(self):
+                return iter(())
+
+            def close(self) -> None:
+                return None
+
+        class _FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = _FakeStdout()
+                self.stderr = _FakeStderr()
+                self.returncode = 0
+                self._poll_values = [None, 0]
+
+            def poll(self):
+                if self._poll_values:
+                    return self._poll_values.pop(0)
+                return 0
+
+            def terminate(self) -> None:
+                self.returncode = 1
+
+        with patch.object(module.time, "monotonic", side_effect=[0.0, 1.0]), patch.object(
+            module.subprocess,
+            "Popen",
+            return_value=_FakeProcess(),
+        ):
+            result = module.run_buffered_process(["python3", "bench.py"], ".", 0)
+
+        self.assertFalse(result["stalled"])
+        self.assertEqual(result["return_code"], 0)
+
+    def test_run_runtime_buffered_process_decodes_utf8_output_from_bytes(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        class _FakeStdout:
+            def __init__(self) -> None:
+                self._lines = [b"\xe8\xbf\x9c\xe7\xab\xaf\xe8\xbe\x93\xe5\x87\xba\n", b""]
+                self.closed = False
+
+            def readline(self) -> bytes:
+                return self._lines.pop(0)
+
+            def close(self) -> None:
+                self.closed = True
+
+        class _FakeStderr:
+            def __init__(self) -> None:
+                self.closed = False
+
+            def __iter__(self):
+                return iter([b"\xe6\x9d\x83\xe9\x99\x90\xe9\x94\x99\xe8\xaf\xaf\n"])
+
+            def close(self) -> None:
+                self.closed = True
+
+        class _FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = _FakeStdout()
+                self.stderr = _FakeStderr()
+                self.returncode = 1
+
+            def poll(self):
+                return 1
+
+        with patch.object(module.subprocess, "Popen", return_value=_FakeProcess()):
+            result = module.run_buffered_process(["ssh", "alice@example.com"], ".", 10)
+
+        self.assertEqual(result["stdout"], "远端输出\n")
+        self.assertEqual(result["stderr"], "权限错误\n")
+
+    def test_run_runtime_streaming_windows_zero_timeout_disables_stall_termination(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        class _FakeStdout:
+            def read(self, _size: int) -> bytes:
+                return b""
+
+        class _FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = _FakeStdout()
+                self.returncode = 0
+                self._poll_values = [None, 0]
+
+            def poll(self):
+                if self._poll_values:
+                    return self._poll_values.pop(0)
+                return 0
+
+            def wait(self) -> int:
+                return self.returncode
+
+            def terminate(self) -> None:
+                self.returncode = 1
+
+        with patch.object(module.time, "monotonic", side_effect=[0.0, 1.0]), patch.object(
+            module.subprocess,
+            "Popen",
+            return_value=_FakeProcess(),
+        ):
+            result = module._run_streaming_windows(["python3", "bench.py"], ".", 0)
+
+        self.assertFalse(result["stalled"])
+        self.assertEqual(result["return_code"], 0)
+
+    def test_run_runtime_streaming_pty_zero_timeout_disables_stall_termination(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        class _FakeProcess:
+            def __init__(self) -> None:
+                self.returncode = 0
+                self._poll_values = [None, 0]
+
+            def poll(self):
+                if self._poll_values:
+                    return self._poll_values.pop(0)
+                return 0
+
+            def wait(self, timeout=None) -> int:
+                del timeout
+                return self.returncode
+
+            def terminate(self) -> None:
+                self.returncode = 1
+
+        fake_pty = SimpleNamespace(openpty=lambda: (11, 12))
+        fake_select = SimpleNamespace(select=lambda _r, _w, _x, _t: ([], [], []))
+
+        with patch.object(module, "pty", fake_pty), patch.object(
+            module,
+            "select",
+            fake_select,
+        ), patch.object(module.time, "monotonic", side_effect=[0.0, 1.0]), patch.object(
+            module.subprocess,
+            "Popen",
+            return_value=_FakeProcess(),
+        ), patch.object(module.os, "close"):
+            result = module._run_streaming_pty(["python3", "bench.py"], ".", 0)
+
+        self.assertFalse(result["stalled"])
+        self.assertEqual(result["return_code"], 0)
+
+    def test_eval_timeout_env_rejects_negative_values(self) -> None:
+        module = load_operator_eval_script_module("run_runtime")
+
+        with patch.dict(module.os.environ, {"TRITON_AGENT_EVAL_TIMEOUT_SECONDS": "-1"}, clear=False):
+            with self.assertRaises(ValueError):
+                module.eval_stall_timeout_seconds()
 
     def test_run_remote_command_streaming_shell_joins_sequence_args(self) -> None:
         module = load_operator_eval_script_module("run_runtime")
@@ -460,7 +652,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             compare_script,
             Path(__file__).resolve().parents[1]
             / "skills"
-            / "triton-npu-run-eval"
+            / "common"
+            / "ascend-npu-run-eval"
             / "scripts"
             / "compare_result.py",
         )
@@ -500,7 +693,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                 "copy_file_from_remote",
                 create=True,
                 side_effect=lambda _spec, _remote_path, local_path, **_kwargs: local_path.write_text(
-                    '{"case_label":"case-a","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":1.0,"ops":[{"op_type":"k","avg_time_us":1.0}],"total_op_avg_time_us":1.0,"error_message":null,"case_wall_clock_seconds":0.0}\n',
+                    '{"case_label":"case-a","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":1.0,"ops":[{"op_type":"k","avg_time_us":1.0}],"total_op_avg_time_us":1.0,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n',
                     encoding="utf-8",
                 ),
                 ) as copy_back, patch.object(module, "cleanup_remote_workspace") as cleanup:
@@ -611,7 +804,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                     (
                         '{"case_label":"'
                         + case_id
-                        + '","kernel_names":["KernelA"],"kernel_source":"metadata","metrics":{"kernel_avg_time_us":1.0,"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                        + '","kernel_names":["KernelA"],"kernel_source":"metadata","metrics":{"kernel_avg_time_us":1.0,"ops":[{"op_type":"KernelA","avg_time_us":1.0}]},"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
                     ),
                     "",
                 )
@@ -767,8 +960,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"case-1","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":2.5,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
-                    '{"case_label":"case-2","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelA","avg_time_us":3.0},{"op_type":"KernelB","avg_time_us":5.0}],"total_op_avg_time_us":8.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"case-1","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":2.5,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
+                    '{"case_label":"case-2","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelA","avg_time_us":3.0},{"op_type":"KernelB","avg_time_us":5.0}],"total_op_avg_time_us":8.0,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
                 ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
@@ -1218,8 +1411,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"case-1","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":null,"total_op_avg_time_us":null,"error_message":"msprof command failed with return code 1","case_wall_clock_seconds":0.0}\n'
-                    '{"case_label":"case-2","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelB","avg_time_us":5.0}],"total_op_avg_time_us":5.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"case-1","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":null,"total_op_avg_time_us":null,"error_message":"msprof command failed with return code 1","case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
+                    '{"case_label":"case-2","kernel_names":["KernelB"],"kernel_source":"metadata","kernel_avg_time_us":5.0,"ops":[{"op_type":"KernelB","avg_time_us":5.0}],"total_op_avg_time_us":5.0,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
                 ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
@@ -1292,7 +1485,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"case-1","kernel_names":["MissingKernel"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":"no resolved kernels matched op_statistic csv","case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"case-1","kernel_names":["MissingKernel"],"kernel_source":"metadata","kernel_avg_time_us":null,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":"no resolved kernels matched op_statistic csv","case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
                 ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
@@ -1365,7 +1558,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             self.assertEqual(
                 perf_path.read_text(encoding="utf-8"),
                 (
-                    '{"case_label":"case-1","kernel_names":["KernelA","KernelB"],"kernel_source":"metadata","kernel_avg_time_us":4.0,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0}\n'
+                    '{"case_label":"case-1","kernel_names":["KernelA","KernelB"],"kernel_source":"metadata","kernel_avg_time_us":4.0,"ops":[{"op_type":"KernelA","avg_time_us":1.5},{"op_type":"KernelB","avg_time_us":2.5}],"total_op_avg_time_us":4.0,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n'
                 ),
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
@@ -1393,7 +1586,7 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                 "copy_file_from_remote",
                 create=True,
                 side_effect=lambda _spec, _remote_path, local_path, **_kwargs: local_path.write_text(
-                    '{"case_label":"case-a","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":1.0,"ops":[{"op_type":"k","avg_time_us":1.0}],"total_op_avg_time_us":1.0,"error_message":null,"case_wall_clock_seconds":0.0}\n',
+                    '{"case_label":"case-a","kernel_names":["k"],"kernel_source":"metadata","kernel_avg_time_us":1.0,"ops":[{"op_type":"k","avg_time_us":1.0}],"total_op_avg_time_us":1.0,"error_message":null,"case_wall_clock_seconds":0.0,"bench_mode":"msprof"}\n',
                     encoding="utf-8",
                 ),
             ), patch.object(module, "cleanup_remote_workspace"):

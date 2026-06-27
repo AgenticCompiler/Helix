@@ -10,6 +10,7 @@ from typing import Optional
 from triton_agent.commands.convert import handle_convert, handle_convert_batch
 from triton_agent.commands.clean import handle_clean
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
+from triton_agent.commands.diff_skills_update import handle_diff_skills_update
 from triton_agent.commands.execution import handle_run_bench, handle_run_simulator, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
 from triton_agent.commands.generation import handle_gen_eval
@@ -19,6 +20,7 @@ from triton_agent.commands.log_check import handle_log_check, handle_log_check_b
 from triton_agent.commands.mcp_server import handle_run_eval_mcp_server
 from triton_agent.commands.trace_analyze import handle_trace_analyze
 from triton_agent.commands.verify import handle_verify, handle_verify_batch
+from triton_agent.build_info import get_build_info_display
 from triton_agent.commands.optimize import (
     handle_optimize,
     handle_optimize_batch,
@@ -37,19 +39,20 @@ from triton_agent.remote_ssh_preflight import ensure_remote_ssh_ready
 
 _Handler = Callable[[argparse.ArgumentParser, argparse.Namespace], int]
 _AGENT_CHOICES = ("codex", "opencode", "pi", "claude", "openhands", "traecli")
+_LANGUAGE_CHOICES = ("triton", "tilelang")
 _FORMAT_CHOICES = ("text", "markdown")
 _TEST_MODE_CHOICES = ("standalone", "differential")
-_BENCH_MODE_CHOICES = ("torch-npu-profiler", "msprof", "msprof-simulator")
+_BENCH_MODE_CHOICES = ("torch-npu-profiler", "msprof", "msprof-simulator", "perf-counter")
 _RESUME_CHOICES = ("auto", "continue", "fresh")
 _ROUND_MODE_CHOICES = ("checked", "supervised")
 _TARGET_CHIP_CHOICES = ("A3", "A5")
 _OPTIMIZE_TARGET_CHOICES = ("kernel", "operator")
 _OPTIMIZE_KNOWLEDGE_CHOICES = ("v1", "v2", "v3")
 _VERIFY_PHASE_CHOICES = ("all", "test", "bench")
-_TOP_LEVEL_DESCRIPTION = "Generate, run, verify, and optimize Triton NPU operator workflows."
+_TOP_LEVEL_DESCRIPTION = "Generate, run, verify, and optimize NPU operator workflows."
 _TOP_LEVEL_EXAMPLES = (
     "triton-agent gen-test -i kernel.py",
-    "triton-agent convert -i kernel.py",
+    "triton-agent convert -i kernel.py -l triton",
     "triton-agent convert-batch -i kernels",
     "triton-agent run-test --test-file test_kernel.py --operator-file kernel.py",
     "triton-agent compare-perf --baseline baseline.txt --compare candidate.txt",
@@ -57,7 +60,8 @@ _TOP_LEVEL_EXAMPLES = (
     "triton-agent status -i .",
     "triton-agent log-check -i .",
     "triton-agent log-check-batch -i kernels",
-    "triton-agent optimize -i kernel.py --agent codex",
+    "triton-agent optimize -i kernel.py --agent codex -l triton",
+    "triton-agent diff-skills-update -i kernels --agent codex",
     "triton-agent report-batch -i kernels",
     "triton-agent clean -i .",
 )
@@ -100,7 +104,7 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW",
-                "Recent comparable round count for advisory local-optimum warnings in triton-npu-optimize-submit-round (default: 3).",
+                "Recent comparable round count for advisory local-optimum warnings in ascend-npu-optimize-submit-round (default: 3).",
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN",
@@ -135,15 +139,7 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
             ),
             (
                 "TRITON_AGENT_EVAL_TIMEOUT_SECONDS",
-                "Stall timeout in seconds for remote command execution (default: 900).",
-            ),
-            (
-                "TRITON_AGENT_TEST_TIMEOUT_SECONDS",
-                "Stall timeout in seconds for test execution (default: 900).",
-            ),
-            (
-                "TRITON_AGENT_BENCH_TIMEOUT_SECONDS",
-                "Stall timeout in seconds for benchmark execution (default: 900).",
+                "Stall timeout in seconds for run-test and run-bench execution (default: 300).",
             ),
             (
                 "TRITON_AGENT_PROFILE_TIMEOUT_SECONDS",
@@ -189,10 +185,13 @@ class _CommandSpec:
     report_workers_default: int | None = None
     has_force_overwrite: bool = False
     has_format: bool = False
+    has_language: bool = False
     has_verify_phase: bool = False
     has_force_verify: bool = False
     has_log_tools: bool = False
     has_url: bool = False
+    has_diff_skills_update_options: bool = False
+    has_operator_filter: bool = False
 
 
 _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
@@ -230,16 +229,18 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         concurrency_default=1,
         concurrency_accepts_max=True,
         has_log_tools=True,
+        has_operator_filter=True,
     ),
     CommandKind.CONVERT: _CommandSpec(
         handler=handle_convert,
         help_group="Conversion",
-        help_summary="Convert one PyTorch operator into a Triton NPU-backed PyTorch operator.",
-        description="Convert one PyTorch operator file into a Triton NPU-backed PyTorch operator.",
+        help_summary="Convert one PyTorch operator into an NPU-backed PyTorch operator.",
+        description="Convert one PyTorch operator file into an NPU-backed PyTorch operator.",
         has_remote=True,
         has_agent=True,
         has_interact=True,
         has_show_output=True,
+        has_language=True,
         has_test_mode=True,
         test_mode_default="differential",
         has_prompt=True,
@@ -255,12 +256,14 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_remote=True,
         has_agent=True,
         has_show_output=True,
+        has_language=True,
         has_test_mode=True,
         test_mode_default="differential",
         has_prompt=True,
         concurrency_default=1,
         concurrency_accepts_max=True,
         has_log_tools=True,
+        has_operator_filter=True,
     ),
     CommandKind.GEN_TEST: _CommandSpec(
         handler=handle_gen_test,
@@ -356,6 +359,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_output=False,
         has_agent=True,
         has_show_output=True,
+        has_language=True,
         has_log_tools=True,
     ),
     CommandKind.LOG_CHECK_BATCH: _CommandSpec(
@@ -366,14 +370,15 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_output=False,
         has_agent=True,
         has_show_output=True,
+        has_language=True,
         concurrency_default=1,
         has_log_tools=True,
     ),
     CommandKind.TRACE_ANALYZE: _CommandSpec(
         handler=handle_trace_analyze,
         help_group="Optimization",
-        help_summary="Analyze an otel trace file and generate summary.json.",
-        description="Parse an otel trace file and generate a structured JSON summary report.",
+        help_summary="Analyze a trace file and generate a JSON summary.",
+        description="Parse a trace JSONL file and generate a structured JSON summary report.",
         has_output=False,
         has_verbose=False,
         input_mode="trace-analyze",
@@ -418,6 +423,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_agent=True,
         has_interact=True,
         has_show_output=True,
+        has_language=True,
         has_test_mode=True,
         has_bench_mode=True,
         has_optimize_options=True,
@@ -433,6 +439,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_remote=True,
         has_agent=True,
         has_show_output=True,
+        has_language=True,
         has_test_mode=True,
         has_bench_mode=True,
         has_optimize_options=True,
@@ -440,6 +447,19 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         concurrency_default=1,
         concurrency_accepts_max=True,
         has_log_tools=True,
+        has_operator_filter=True,
+    ),
+    CommandKind.DIFF_SKILLS_UPDATE: _CommandSpec(
+        handler=handle_diff_skills_update,
+        help_group="Optimization",
+        help_summary="Update optimize skills from baseline/opt diffs and simulate regeneration.",
+        description="Scan operator directories, update optimize skills from opt diffs, and run a simulate loop.",
+        has_output=False,
+        has_agent=True,
+        has_show_output=True,
+        has_language=True,
+        concurrency_default=1,
+        has_diff_skills_update_options=True,
     ),
     CommandKind.UPLOAD_OPTIMIZE: _CommandSpec(
         handler=handle_upload_optimize,
@@ -510,6 +530,8 @@ def build_parser() -> argparse.ArgumentParser:
         _add_primary_arguments(subparser, spec)
         if spec.has_format:
             subparser.add_argument("--format", default="text", choices=_FORMAT_CHOICES)
+        if spec.has_language:
+            subparser.add_argument("-l", "--language", default="triton", choices=_LANGUAGE_CHOICES)
         if spec.has_verify_phase:
             subparser.add_argument("--phase", default="all", choices=_VERIFY_PHASE_CHOICES)
         if spec.has_force_verify:
@@ -528,7 +550,13 @@ def build_parser() -> argparse.ArgumentParser:
         if spec.has_interact:
             subparser.add_argument("--interact", action="store_true")
         if spec.has_show_output:
-            subparser.add_argument("--show-output", action="store_true")
+            subparser.add_argument(
+                "--no-stream-output",
+                dest="stream_output",
+                action="store_false",
+                default=True,
+                help="Disable live streaming of non-interactive agent output.",
+            )
         if spec.has_log_tools:
             subparser.add_argument("--log-tools", "--log-tool", dest="log_tools", action="store_true")
         if spec.has_agent:
@@ -555,7 +583,7 @@ def build_parser() -> argparse.ArgumentParser:
             subparser.add_argument("--npu-devices")
         if spec.has_optimize_options:
             subparser.add_argument("--min-rounds", "--min-round", dest="min_rounds", type=int, default=5)
-            subparser.add_argument("--round-batch-size", type=int, default=10)
+            subparser.add_argument("--round-batch-size", type=int, default=5)
             subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES)
             subparser.add_argument("--reset-optimize", action="store_true")
             subparser.add_argument("--enable-compiler-source-analysis", action="store_true")
@@ -582,8 +610,54 @@ def build_parser() -> argparse.ArgumentParser:
             )
             subparser.add_argument("--no-upload", action="store_true")
             subparser.add_argument("--enable-report", action="store_true", default=False)
+            if command_kind == CommandKind.OPTIMIZE_BATCH:
+                subparser.add_argument(
+                    "--post-optimize-command",
+                    help="Run this shell command inside each workspace after a successful optimize run.",
+                )
         if spec.has_prompt:
             subparser.add_argument("--prompt")
+        if spec.has_operator_filter:
+            subparser.add_argument(
+                "--operator-filter",
+                help="Shell-style glob matched against the selected operator filename basename after built-in exclusions.",
+            )
+        if spec.has_diff_skills_update_options:
+            subparser.add_argument(
+                "--source",
+                choices=("code-diff", "optimize-process", "git-repo"),
+                default="code-diff",
+                help=(
+                    "Input source: code-diff uses opt_*.py pairs; "
+                    "optimize-process uses optimize workspaces with learned_lessons.md; "
+                    "git-repo extracts operator workspaces from git commit history."
+                ),
+            )
+            subparser.add_argument(
+                "--skills-dir",
+                help="Editable skills workspace. Defaults to <input>/skills.",
+            )
+            subparser.add_argument(
+                "--update-skills-dir",
+                help="Export directory for updated pattern cards. Defaults to <input>/update_skills.",
+            )
+            subparser.add_argument("--max-iterations", type=_parse_positive_int_value, default=3)
+            subparser.add_argument("--force", action="store_true", help="Overwrite existing simulate artifacts.")
+            subparser.add_argument(
+                "--skip-existing",
+                action="store_true",
+                help="Skip pairs whose existing simulate report is already aligned.",
+            )
+            subparser.add_argument(
+                "--promote-converged-skills",
+                action="store_true",
+                help="After a pair converges, overwrite the bundled optimize knowledge skill and rebuild its pattern index.",
+            )
+            subparser.add_argument(
+                "--git-base",
+                default=None,
+                help="Base branch used to compute the fork point (merge-base). Auto-detected from origin/HEAD when omitted.",
+            )
         if command_kind in {CommandKind.LOG_CHECK, CommandKind.LOG_CHECK_BATCH}:
             subparser.add_argument(
                 "--check-result-file",
@@ -612,7 +686,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _build_top_level_epilog() -> str:
-    lines = ["Command groups:"]
+    lines = [
+        "Build info:",
+        f"  Git commit: {get_build_info_display()}",
+        "",
+        "Command groups:",
+    ]
     group_names = (
         "Generation",
         "Conversion",
@@ -726,7 +805,7 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
         subparser.add_argument("--port", type=int, default=0)
         return
     if spec.input_mode == "trace-analyze":
-        subparser.add_argument("-t", "--trace", required=True, help="Path to the otel trace.jsonl file.")
+        subparser.add_argument("-t", "--trace", required=True, help="Path to the trace JSONL file.")
         return
     subparser.add_argument("-i", "--input", required=True)
 
@@ -750,6 +829,7 @@ def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]
         "optimize_batch": "optimize-batch",
         "log_check": "log-check",
         "log_check_batch": "log-check-batch",
+        "diff_skills_update": "diff-skills-update",
         "report_batch": "report-batch",
         "report": "report",
         "clean": "clean",

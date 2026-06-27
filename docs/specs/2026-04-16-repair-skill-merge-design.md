@@ -19,9 +19,9 @@ Merge `triton-npu-log-repair` into `triton-npu-repair-guide` so operator repair 
 
 ## Design
 
-- Keep `skills/triton-npu-repair-guide/` as the surviving skill.
-- Move `skills/triton-npu-log-repair/output.md` to `skills/triton-npu-repair-guide/output.md`.
-- Extend `skills/triton-npu-repair-guide/SKILL.md` with append-only logging instructions for novel successful repairs.
+- Keep `skills/triton/triton-npu-repair-guide/` as the surviving skill.
+- Move `skills/triton-npu-log-repair/output.md` to `skills/triton/triton-npu-repair-guide/output.md`.
+- Extend `skills/triton/triton-npu-repair-guide/SKILL.md` with append-only logging instructions for novel successful repairs.
 - Delete `skills/triton-npu-log-repair/`.
 - Update repository references so flows that previously pointed to `triton-npu-log-repair` now point to `triton-npu-repair-guide` and `../triton-npu-repair-guide/output.md`.
 

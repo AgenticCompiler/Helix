@@ -696,14 +696,24 @@ class CodexJsonLineParser:
         parts = normalized.split("/")
         for marker in (".codex", ".opencode"):
             if len(parts) >= 4 and parts[0] == marker and parts[1] == "skills":
-                skill_name = parts[2]
-                if len(parts) == 4 and parts[3] == "SKILL.md":
-                    return "skill_md", skill_name
-                if len(parts) >= 4 and parts[3] == "references":
-                    return "skill_reference", skill_name
-                if len(parts) >= 4 and parts[3] == "scripts":
-                    return "skill_script", skill_name
-                return "skill_other", skill_name
+                if len(parts) >= 5 and parts[2] in ("common", "triton"):
+                    skill_name = parts[3]
+                    if len(parts) == 5 and parts[4] == "SKILL.md":
+                        return "skill_md", skill_name
+                    if len(parts) >= 5 and parts[4] == "references":
+                        return "skill_reference", skill_name
+                    if len(parts) >= 5 and parts[4] == "scripts":
+                        return "skill_script", skill_name
+                    return "skill_other", skill_name
+                else:
+                    skill_name = parts[2]
+                    if len(parts) == 4 and parts[3] == "SKILL.md":
+                        return "skill_md", skill_name
+                    if len(parts) >= 4 and parts[3] == "references":
+                        return "skill_reference", skill_name
+                    if len(parts) >= 4 and parts[3] == "scripts":
+                        return "skill_script", skill_name
+                    return "skill_other", skill_name
         if "/opt-round-" in f"/{normalized}":
             return "round_artifact", None
         if normalized.startswith("baseline/"):

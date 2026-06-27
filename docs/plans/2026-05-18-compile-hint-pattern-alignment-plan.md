@@ -13,8 +13,8 @@
 ### Task 1: Rewrite The Authored Pattern Card
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/skills/triton-npu-optimize-knowledge/references/patterns/compile_hint.md`
-- Reference: `/Users/cdj/Projects/triton-agent/skills/triton-npu-optimize-knowledge-v3/references/patterns/compile_hint.md`
+- Modify: `/Users/cdj/Projects/triton-agent/skills/triton/triton-npu-optimize-knowledge/references/patterns/compile_hint.md`
+- Reference: `/Users/cdj/Projects/triton-agent/skills/triton/triton-npu-optimize-knowledge-v3/references/patterns/compile_hint.md`
 
 - [ ] **Step 1: Rewrite the title and opening sections to match the broader hinting strategy**
 
@@ -44,17 +44,17 @@ and that `## Summary` describes what the pattern is while `## Use When` describe
 ### Task 2: Regenerate And Verify The Pattern Index
 
 **Files:**
-- Modify: `/Users/cdj/Projects/triton-agent/skills/triton-npu-optimize-knowledge/references/pattern_index.md`
-- Script: `/Users/cdj/Projects/triton-agent/skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py`
+- Modify: `/Users/cdj/Projects/triton-agent/skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md`
+- Script: `/Users/cdj/Projects/triton-agent/skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py`
 
 - [ ] **Step 1: Regenerate the checked-in pattern index**
 
 Run:
 
 ```bash
-python3 skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
-  --patterns-dir skills/triton-npu-optimize-knowledge/references/patterns \
-  --output skills/triton-npu-optimize-knowledge/references/pattern_index.md
+python3 skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
+  --patterns-dir skills/triton/triton-npu-optimize-knowledge/references/patterns \
+  --output skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md
 ```
 
 Expected: the generated `compile_hint` summary in `pattern_index.md` matches the new authored framing.
@@ -64,9 +64,9 @@ Expected: the generated `compile_hint` summary in `pattern_index.md` matches the
 Run:
 
 ```bash
-python3 skills/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
-  --patterns-dir skills/triton-npu-optimize-knowledge/references/patterns \
-  --output skills/triton-npu-optimize-knowledge/references/pattern_index.md \
+python3 skills/triton/triton-npu-optimize-knowledge/scripts/build_pattern_index.py \
+  --patterns-dir skills/triton/triton-npu-optimize-knowledge/references/patterns \
+  --output skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md \
   --check
 ```
 
@@ -79,8 +79,8 @@ Confirm the change stays scoped to:
 ```text
 - docs/specs/2026-05-18-compile-hint-pattern-alignment-design.md
 - docs/plans/2026-05-18-compile-hint-pattern-alignment-plan.md
-- skills/triton-npu-optimize-knowledge/references/patterns/compile_hint.md
-- skills/triton-npu-optimize-knowledge/references/pattern_index.md
+- skills/triton/triton-npu-optimize-knowledge/references/patterns/compile_hint.md
+- skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md
 ```
 
 and note any unrelated pre-existing worktree changes separately instead of overwriting them.

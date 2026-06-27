@@ -46,7 +46,7 @@ class CodexRunner(AgentRunner):
         ]
         if request.command_kind != request.command_kind.OPTIMIZE or request.no_agent_session:
             command.append("--ephemeral")
-        if request.show_output or request.log_tools:
+        if request.stream_output or request.log_tools:
             command.append("--json")
         command.append(request.prompt)
         return command
@@ -58,7 +58,7 @@ class CodexRunner(AgentRunner):
         if request.interact:
             return None
         trace_path = trace_path_from_request(request)
-        if request.show_output or request.log_tools:
+        if request.stream_output or request.log_tools:
             from triton_agent.backends.codex_trace import CodexJsonOutputFilter, build_codex_trace_env
             extra_env = request.extra_env
             if request.log_tools and trace_path is not None:

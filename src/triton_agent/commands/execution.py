@@ -4,9 +4,9 @@ import argparse
 import sys
 from pathlib import Path
 
-from triton_agent.commands.comparison import compare_result_files
+from triton_agent.commands.comparison import compare_remote_result_files, compare_result_files
 from triton_agent.execution import (
-    resolve_bench_mode_from_metadata,
+    resolve_bench_mode_default,
     resolve_test_mode_from_metadata,
     run_local_bench,
     run_local_simulator,
@@ -61,13 +61,19 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    render_result(result, show_output=True)
+    render_result(result, skip_stdout=remote is not None)
     print(f"Return code: {result.return_code}")
     final_code = result.return_code
     if archived_result is not None:
         print(f"Archived result: {archived_result}")
         if ref_result is not None:
-            final_code = compare_result_files(ref_result, archived_result)
+            final_code = _compare_run_test_result(
+                ref_result,
+                archived_result,
+                remote,
+                remote_workdir,
+                verbose=args.verbose,
+            )
         else:
             print(_RUN_TEST_HINT)
     elif ref_result is not None:
@@ -81,9 +87,33 @@ def handle_run_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -
     return final_code
 
 
+def _compare_run_test_result(
+    ref_result: Path,
+    archived_result: Path,
+    remote: str | None,
+    remote_workdir: str | None,
+    *,
+    verbose: bool,
+) -> int:
+    if remote is None:
+        return compare_result_files(ref_result, archived_result)
+    try:
+        return compare_remote_result_files(
+            ref_result,
+            archived_result,
+            remote,
+            remote_workdir,
+            verbose=verbose,
+            stderr=sys.stderr,
+        )
+    except (RuntimeError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+
 def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     bench_file, operator_file = resolve_run_bench_paths(parser, args)
-    resolved_bench_mode = args.bench_mode or resolve_bench_mode_from_metadata(bench_file)
+    resolved_bench_mode = args.bench_mode or resolve_bench_mode_default()
     remote, remote_workdir = resolve_remote_execution(
         getattr(args, "remote", None),
         getattr(args, "remote_workdir", None),
@@ -117,7 +147,7 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
         print(str(exc), file=sys.stderr)
         return 1
     if args.verbose or result.return_code != 0:
-        render_result(result, show_output=False)
+        render_result(result, skip_stdout=remote is not None and args.verbose)
     if remote is not None and args.keep_remote_workdir and remote_workspace is not None:
         print(f"Remote workspace: {remote_workspace}")
     if perf_path is not None:
@@ -203,7 +233,7 @@ def resolve_run_test_comparison_inputs(
                 verbose=args.verbose,
                 stderr=sys.stderr,
             )
-            render_result(ref_run_result, show_output=True)
+            render_result(ref_run_result, skip_stdout=True)
             print(f"Return code: {ref_run_result.return_code}")
             if archived_result is not None:
                 print(f"Archived result: {archived_result}")
@@ -216,7 +246,7 @@ def resolve_run_test_comparison_inputs(
                 resolved_test_mode,
                 verbose=args.verbose,
             )
-            render_result(ref_run_result, show_output=True)
+            render_result(ref_run_result, skip_stdout=False)
             print(f"Return code: {ref_run_result.return_code}")
             if archived_result is not None:
                 print(f"Archived result: {archived_result}")

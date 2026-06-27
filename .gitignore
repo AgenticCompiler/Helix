@@ -8,3 +8,5 @@ workspace/
 .worktrees/
 .vscode/
 .sisyphus/
+simulate-foo-*.json
+src/triton_agent/_build_meta.json

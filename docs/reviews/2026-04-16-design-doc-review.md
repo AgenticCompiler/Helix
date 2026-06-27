@@ -111,7 +111,7 @@ supervisor round-gate 相关文档引用 `.triton-agent/roles/optimize-worker.md
 | `2026-04-08-inspect-ir-script.md` | IR 检查脚本 | **路径过时** | 引用 `skills/ascend-operator-ir-analyzer/`（已改名为 `skills/triton-npu-analyze-ir/`）；引用 `quick_validate.py` 硬编码路径 |
 | `2026-04-08-ir-dir-flag-alignment.md` | --ir-dir 标志对齐 | **路径过时** | 引用 `skills/ascend-operator-ir-analyzer/`（已改名）；引用 `quick_validate.py` 硬编码路径 |
 | `2026-04-08-inspect-ir-ranking-and-change-scan.md` | IR 排名和变更扫描 | **路径过时** | 引用 `skills/ascend-operator-ir-analyzer/`（已改名） |
-| `2026-04-08-opt-note-overall-summary.md` | opt-note 总体摘要 | **路径过时** | 引用 `skills/optimize/references/`（已改名为 `skills/triton-npu-optimize/references/`） |
+| `2026-04-08-opt-note-overall-summary.md` | opt-note 总体摘要 | **路径过时** | 引用 `skills/optimize/references/`（已改名为 `skills/triton/triton-npu-optimize/references/`） |
 | `2026-04-08-optimize-artifact-directories.md` | 优化产物目录 | **可能过时** | 称 `optimize-status` 仅依赖 `perf.txt`，可能已扩展 |
 | `2026-04-08-optimize-round-failure-handling-name.md` | 重命名 contracts.md | **已实现** | 无明显问题 |
 | `2026-04-09-gen-eval-force-overwrite.md` | gen-eval --force-overwrite | **与代码一致** | 无明显问题 |
@@ -153,7 +153,7 @@ supervisor round-gate 相关文档引用 `.triton-agent/roles/optimize-worker.md
 |---|---|---|---|
 | `2026-04-02-optimize-continue-mode.md` | --continue 模式 | **已取代** | `--continue` 已被 `--resume` 取代 |
 | `2026-04-03-pi-backend.md` | Pi 后端 | **路径过时** | 引用 `src/triton_agent/pi_runner.py`（已迁移到 `backends/pi.py`） |
-| `2026-04-03-remote-profiler-support.md` | 远程 profiler | **路径过时** | 引用 `skills/run-validation/`、`skills/ascend-npu-operator-profiler/`、`skills/optimize/`（均已改名） |
+| `2026-04-03-remote-profiler-support.md` | 远程 profiler | **路径过时** | 引用 `skills/run-validation/`、`skills/common/ascend-npu-operator-profiler/`、`skills/optimize/`（均已改名） |
 | `2026-04-07-ascend-operator-ir-analyzer-skill.md` | IR 分析 skill | **路径过时** | 引用 `skills/ascend-operator-ir-analyzer/`（已改名）；引用 `quick_validate.py` 硬编码路径 |
 | `2026-04-07-cli-optimize-refactor-layering.md` | Optimize 分层 | **多处过时** | 引用 `optimize/runtime.py`（已改名 `orchestration.py`）；引用 `OptimizeSupervisor`（已改名）；引用 `--continue`（已取代）；提议 `gate.py`（未创建） |
 | `2026-04-07-optimize-graceful-interrupt.md` | 优雅中断 | **路径过时** | 引用顶层 runner 模块（已迁移到 `backends/`）；引用 `OptimizeSupervisor`（已改名） |

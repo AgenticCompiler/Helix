@@ -30,7 +30,7 @@ from triton_agent.npu_affinity import (
 )
 from triton_agent.skill_staging import resolve_staged_skills
 
-_BATCH_CONVERT_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_", "triton_")
+_BATCH_CONVERT_EXCLUDED_PREFIXES = ("test_", "differential_test_", "bench_", "opt_", "triton_", "tilelang_")
 _BATCH_CONVERT_EXCLUDED_NAMES = {"__init__.py"}
 
 
@@ -52,13 +52,17 @@ def run_convert_batch(
     options: ConvertOptions,
     *,
     max_concurrency: int,
+    operator_filter: str | None = None,
     stdout: TextIO | None = None,
     run_request: Callable[..., AgentResult] | None = None,
 ) -> int:
     convert_request_runner = run_request or run_convert_request
     discovered, failures = discover_batch_workspaces(
         root,
-        resolve_operator_file=resolve_batch_convert_operator_file,
+        resolve_operator_file=lambda workspace: resolve_batch_convert_operator_file(
+            workspace,
+            operator_filter=operator_filter,
+        ),
         no_candidate_message=NO_CANDIDATE_OPERATOR_FILE,
     )
     runnable = [
@@ -120,7 +124,7 @@ def run_convert_batch(
     with scope, ThreadPoolExecutor(max_workers=max_concurrency) as executor:
         futures: dict[Future[AgentResult], BatchConvertWorkspace] = {}
         for item in runnable:
-            if options.show_output:
+            if options.stream_output:
                 prefix = f"[{item.workspace.name}] "
                 prefixed_stream = PrefixedTextStream(stream, prefix, output_lock)
                 forwarded_stream = cast(TextIO, prefixed_stream)
@@ -161,11 +165,16 @@ def run_convert_batch(
     return render_batch_convert_results(results, stdout=stream)
 
 
-def resolve_batch_convert_operator_file(workspace: Path) -> Path:
+def resolve_batch_convert_operator_file(
+    workspace: Path,
+    *,
+    operator_filter: str | None = None,
+) -> Path:
     return resolve_batch_operator_file(
         workspace,
         is_operator_candidate=is_batch_convert_operator_candidate,
         no_candidate_message=NO_CANDIDATE_OPERATOR_FILE,
+        operator_filter=operator_filter,
     )
 
 

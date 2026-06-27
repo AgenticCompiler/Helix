@@ -27,7 +27,7 @@ def handle_report(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
 
     agent_name = getattr(args, "agent", "codex")
     interact = bool(getattr(args, "interact", False))
-    show_output = bool(getattr(args, "show_output", False))
+    stream_output = bool(getattr(args, "stream_output", True))
     verbose = bool(getattr(args, "verbose", False))
     user_prompt = getattr(args, "prompt", None)
 
@@ -54,7 +54,7 @@ def handle_report(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         prompt=built_prompt,
         interact=interact,
         verbose=verbose,
-        show_output=show_output,
+        show_output=stream_output,
         staged_skill_names=staged_skill_names,
         staged_skill_sources=staged_skill_sources,
     )
@@ -97,7 +97,7 @@ def handle_report(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         for warning in cleanup_warnings:
             emit_verbose(verbose_stream, "skills", warning)
 
-    render_result(result, show_output=show_output)
+    render_result(result, skip_stdout=stream_output)
     if result.succeeded:
         report_path = workspace / "report.md"
         if report_path.exists():
@@ -110,10 +110,9 @@ def handle_report(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         else:
             print("[report] warning: agent completed but report.md was not created", file=sys.stderr, flush=True)
     else:
-        if show_output:
+        if stream_output:
             detail = result.stderr.strip() or f"agent execution failed; see show-output log: {show_output_log_path(request)}"
         else:
             detail = result.stderr.strip() or result.stdout.strip() or "agent execution failed"
         print(f"[report] failed: {detail}", file=sys.stderr, flush=True)
     return result.return_code
-

@@ -36,8 +36,8 @@ The new symptom card should route cases where:
 
 ## Required Documentation Changes
 
-- Add `skills/triton-npu-optimize-knowledge/references/patterns/argsort-avoid-aicpu-fallback.md`
-- Add `skills/triton-npu-optimize-knowledge/references/symptoms/unsupported-dtype-fallback.md`
+- Add `skills/triton/triton-npu-optimize-knowledge/references/patterns/argsort-avoid-aicpu-fallback.md`
+- Add `skills/triton/triton-npu-optimize-knowledge/references/symptoms/unsupported-dtype-fallback.md`
 - Regenerate the checked-in pattern and symptom indexes
 
 ## Non-Goals

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `skills/triton-npu-optimize/SKILL.md` the sole optimize workflow contract, delete `references/workflow.md`, and update the optimize doc-contract tests to match the new single-source structure.
+**Goal:** Make `skills/triton/triton-npu-optimize/SKILL.md` the sole optimize workflow contract, delete `references/workflow.md`, and update the optimize doc-contract tests to match the new single-source structure.
 
 **Architecture:** This is a documentation-contract refactor, not a runtime behavior change. Rewrite the optimize doc tests first so they stop reading `references/workflow.md` and instead assert the new stage-based `SKILL.md` structure, then rewrite `SKILL.md` around the approved stage model and delete `workflow.md`, and finally verify there are no remaining live references to the deleted file before finishing.
 
@@ -17,13 +17,13 @@
 
 - [ ] **Step 1: Replace the workflow-file assertions with single-source `SKILL.md` assertions**
 
-Update the optimize-specific contract tests in `tests/test_generation_contracts.py` so they no longer call `_read("skills/triton-npu-optimize/references/workflow.md")`.
+Update the optimize-specific contract tests in `tests/test_generation_contracts.py` so they no longer call `_read("skills/triton/triton-npu-optimize/references/workflow.md")`.
 
 Replace the existing workflow-backed assertions with code shaped like:
 
 ```python
     def test_optimize_skills_document_compiler_source_escalation(self) -> None:
-        optimize = _read("skills/triton-npu-optimize/SKILL.md")
+        optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
         round_analysis = _read("skills/triton-npu-analyze-round-performance/SKILL.md")
 
         self.assertIn("compiler-source escalation", optimize)
@@ -32,13 +32,13 @@ Replace the existing workflow-backed assertions with code shaped like:
         self.assertIn("opt-round-N/compiler-analysis.md", optimize)
         self.assertIn("compiler source analysis is enabled", round_analysis)
         self.assertFalse(
-            (REPO_ROOT / "skills/triton-npu-optimize/references/workflow.md").exists()
+            (REPO_ROOT / "skills/triton/triton-npu-optimize/references/workflow.md").exists()
         )
 
     def test_optimize_docs_keep_opt_note_round_only_and_put_initial_hypothesis_in_attempts(self) -> None:
-        optimize = _read("skills/triton-npu-optimize/SKILL.md")
-        opt_note = _read("skills/triton-npu-optimize/references/opt-note-format.md")
-        artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
+        optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
+        opt_note = _read("skills/triton/triton-npu-optimize/references/opt-note-format.md")
+        artifacts = _read("skills/triton/triton-npu-optimize/references/artifacts.md")
 
         self.assertIn("opt-note.md", optimize)
         self.assertIn("top-level round ledger plus final `## Overall Summary`", optimize)
@@ -57,8 +57,8 @@ Replace the existing workflow-backed assertions with code shaped like:
         )
 
     def test_optimize_docs_make_layered_analysis_default_and_remove_require_analysis_flag(self) -> None:
-        optimize = _read("skills/triton-npu-optimize/SKILL.md")
-        artifacts = _read("skills/triton-npu-optimize/references/artifacts.md")
+        optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
+        artifacts = _read("skills/triton/triton-npu-optimize/references/artifacts.md")
         readme = _read("README.md")
 
         self.assertIn("## Core Loop", optimize)
@@ -90,17 +90,17 @@ Run:
 uv run python -m unittest tests.test_generation_contracts -v
 ```
 
-Expected: FAIL because `skills/triton-npu-optimize/SKILL.md` still has the old section layout and `skills/triton-npu-optimize/references/workflow.md` still exists.
+Expected: FAIL because `skills/triton/triton-npu-optimize/SKILL.md` still has the old section layout and `skills/triton/triton-npu-optimize/references/workflow.md` still exists.
 
 ### Task 2: Rewrite `SKILL.md` Around The Stage Model And Delete `workflow.md`
 
 **Files:**
-- Modify: `skills/triton-npu-optimize/SKILL.md`
-- Delete: `skills/triton-npu-optimize/references/workflow.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
+- Delete: `skills/triton/triton-npu-optimize/references/workflow.md`
 
 - [ ] **Step 1: Replace the old optimize sections with the new stage-based structure**
 
-Rewrite `skills/triton-npu-optimize/SKILL.md` so it no longer has these top-level sections:
+Rewrite `skills/triton/triton-npu-optimize/SKILL.md` so it no longer has these top-level sections:
 
 - `## Required References`
 - `## Pattern References`
@@ -207,7 +207,7 @@ Keep the existing durable constraints that are still valid:
 
 - [ ] **Step 2: Delete the redundant workflow reference file**
 
-Delete `skills/triton-npu-optimize/references/workflow.md` entirely.
+Delete `skills/triton/triton-npu-optimize/references/workflow.md` entirely.
 
 Do not replace it with a stub, redirect file, or deprecation notice.
 
@@ -224,9 +224,9 @@ Expected: PASS.
 ### Task 3: Sweep For Stale Live References And Re-Verify The Repo
 
 **Files:**
-- Verify: `skills/triton-npu-optimize/SKILL.md`
-- Verify: `skills/triton-npu-optimize/references/artifacts.md`
-- Verify: `skills/triton-npu-optimize/references/opt-note-format.md`
+- Verify: `skills/triton/triton-npu-optimize/SKILL.md`
+- Verify: `skills/triton/triton-npu-optimize/references/artifacts.md`
+- Verify: `skills/triton/triton-npu-optimize/references/opt-note-format.md`
 - Verify: `README.md`
 - Verify: `src/`
 - Verify: `tests/`
@@ -236,7 +236,7 @@ Expected: PASS.
 Run:
 
 ```bash
-rg -n "skills/triton-npu-optimize/references/workflow.md|Read \\[workflow.md\\]|references/workflow.md" README.md skills tests src
+rg -n "skills/triton/triton-npu-optimize/references/workflow.md|Read \\[workflow.md\\]|references/workflow.md" README.md skills tests src
 ```
 
 Expected: no output.
@@ -258,7 +258,7 @@ Expected: PASS.
 Run:
 
 ```bash
-git add tests/test_generation_contracts.py skills/triton-npu-optimize/SKILL.md skills/triton-npu-optimize/references/workflow.md
+git add tests/test_generation_contracts.py skills/triton/triton-npu-optimize/SKILL.md skills/triton/triton-npu-optimize/references/workflow.md
 git commit -m "docs: simplify optimize skill contract"
 ```
 

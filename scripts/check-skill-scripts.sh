@@ -1,0 +1,1 @@
+../.codex/skills/create-pr/scripts/check-skill-scripts.sh

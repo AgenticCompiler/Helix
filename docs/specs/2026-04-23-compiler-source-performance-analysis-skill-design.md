@@ -198,7 +198,7 @@ The redesign should turn compiler-source navigation into repo-owned reference ma
 
 Add:
 
-- `skills/triton-npu-analyze-compiler-source/references/navigation-map.md`
+- `skills/triton/triton-npu-analyze-compiler-source/references/navigation-map.md`
 
 This document should organize navigation by source subtree. It should include:
 
@@ -218,7 +218,7 @@ The directory atlas should explain:
 
 Add:
 
-- `skills/triton-npu-analyze-compiler-source/references/perf-question-playbook.md`
+- `skills/triton/triton-npu-analyze-compiler-source/references/perf-question-playbook.md`
 
 This document should organize navigation by performance question instead of by directory layout. It should include playbooks for:
 
@@ -252,7 +252,7 @@ The detailed subtree mapping and question playbooks should live in the reference
 
 Add one light script:
 
-- `skills/triton-npu-analyze-compiler-source/scripts/inspect_compiler_source.py`
+- `skills/triton/triton-npu-analyze-compiler-source/scripts/inspect_compiler_source.py`
 
 This script should narrow likely source locations. It should not diagnose performance issues automatically and should not write `compiler-analysis.md`.
 

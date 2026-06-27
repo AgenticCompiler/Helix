@@ -10,6 +10,6 @@
 
 ## Implementation Notes
 
-- Add a new `skills/triton-npu-optimize/references/pattern_index.md` file with concise summaries for each optimization pattern.
-- Update `skills/triton-npu-optimize/SKILL.md` to require reading the pattern index before any detailed pattern file.
+- Add a new `skills/triton/triton-npu-optimize/references/pattern_index.md` file with concise summaries for each optimization pattern.
+- Update `skills/triton/triton-npu-optimize/SKILL.md` to require reading the pattern index before any detailed pattern file.
 - Keep the detailed pattern files as the second-level drill-down references under `references/patterns/`.
