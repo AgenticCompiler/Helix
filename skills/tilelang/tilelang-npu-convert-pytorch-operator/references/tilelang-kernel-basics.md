@@ -106,6 +106,15 @@ tilelang.jit(
 
 `out_idx` marks kernel output parameters (negative = from end). `workspace_idx` marks workspace buffers auto-managed by the compiler.
 
+> **Critical**: When `out_idx` marks a parameter as output, the compiled `@tilelang.jit` kernel **returns** a new tensor for each output index — it does **not** modify the passed-in Python tensor in-place. Always capture the return value:
+> ```python
+> # CORRECT
+> y = kernel(x, y)
+> # WRONG — y stays uninitialized / zeros
+> kernel(x, y)
+> ```
+> This is the single most common convert bug. If you pass a pre-allocated tensor and do not capture the return, the kernel allocates a fresh output and returns it — silently discarding your buffer.
+
 ## Kernel Launch Variants
 
 ```python
@@ -124,6 +133,8 @@ with T.Kernel(m_num * n_num, threads=2, is_npu=True) as (cid):
 - `threads` — vector core parallelism. Ascend: `1` or `2`
 - Yields `(cid, vid)` or `(cid,)` depending on thread count
 
+> **Syntax trap**: `as (cid,)` with a trailing comma tries to unpack the return value as a tuple, causing `TypeError: cannot unpack non-iterable Var object`. Use `as cid` (simple variable) or `as (cid)` (single-element tuple without trailing comma). When `threads=1` (no vid), the context manager yields a single value — same syntax applies.
+
 ### Vid Elimination
 
 When `threads=2`, vid is eliminated — the compiler handles vector core partitioning automatically:
@@ -139,6 +150,16 @@ with T.Kernel(n_blocks, threads=2, is_npu=True) as (cid):
     a_ub = T.alloc_shared((block_M, block_N), dtype)
     T.copy(A[bx * block_M, ...], a_ub)
 ```
+
+> **Vid elimination only splits `T.Parallel`**: the compiler auto-splits `T.Parallel` iteration spaces across the two cores, but does **not** split `T.serial`. Both cores independently execute the identical `T.serial` body — redundant work, wasting half the vector compute. Simultaneous writes from both cores to the same GM address are also a hardware-level data race:
+> 
+> | Loop on vid-split dim | Safe? |
+> |---|---|
+> | `T.Parallel(block_M, ...)` | ✅ compiler auto-splits |
+> | `T.serial(block_M)` | ❌ both cores do identical work, race on output |
+> | `T.serial(num_k)` on K dim | ✅ K is not the split dim |
+> 
+> **Fix**: rewrite `T.serial` on the split dimension as `T.Parallel`, or use `threads=1`.
 
 ## Loop Constructs
 
@@ -173,39 +194,28 @@ for i, j in T.Parallel(block_M, block_N):
 
 ## PassConfigKey Reference
 
-### Developer Mode (recommended for convert)
-
 ```python
 pass_configs = {
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_COMBINE: True,        # auto CV splitting
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,              # auto sync insertion
-    tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,        # auto memory planning
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_SYNC: True,   # auto cross-core sync
+    # Split Cube (matrix) and Vector (element-wise) ops across cores automatically
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_COMBINE: True,
+    # Auto-insert barrier / set_flag / wait_flag between copies and compute
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,
+    # Analyze buffer lifetimes, reuse freed memory to reduce peak footprint
+    tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,
+    # Auto-insert set_cross_flag / wait_cross_flag between Cube and Vector cores
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_SYNC: True,
 }
 ```
 
-All four auto passes enabled — the compiler handles CV splitting, sync, memory, and cross-core synchronization. This is the recommended configuration for convert tasks.
-
-### Expert Mode
-
-```python
-pass_configs = {
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_COMBINE: False,
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: False,
-    tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: False,
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_SYNC: False,
-}
-```
-
-All auto passes disabled — manual control via explicit memory allocation, scope management, and sync primitives. Use when the auto-managed approach is insufficient.
+All four auto passes enabled — the compiler handles partitioning, synchronization, memory reuse, and cross-core coordination. This is the recommended configuration for convert tasks.
 
 ### Additional Advanced Keys
 
 | Key | Type | Effect |
 |-----|------|--------|
 | `tir.disable_vectorize` | `bool` | Disable vectorization |
-| `tl.disable_tma_lower` | `bool` | Disable TMA lower |
-| `tl.disable_warp_specialized` | `bool` | Disable warp specialization |
+| `tl.disable_tma_lower` | `bool` | Disable TMA lower (GPU only, not applicable to Ascend) |
+| `tl.disable_warp_specialized` | `bool` | Disable warp specialization (GPU only) |
 | `tl.config_index_bitwidth` | `int` | Config index bitwidth |
 | `tl.disable_dynamic_tail_split` | `bool` | Disable dynamic tail split |
 | `tl.disable_safe_memory_legalize` | `bool` | Disable safe memory legalize |

@@ -101,6 +101,12 @@ T.reduce_sum(src_ub, dst_ub, dim=-1, clear=True)
 T.reduce_max(src_ub, dst_ub, dim=-1, clear=False)
 ```
 
+> **Precision**:
+> - `T.reduce_sum` accumulates in the buffer's element dtype. For float16 input this may produce noticeably less precise results than PyTorch (which accumulates in float32). Use `"float32"` buffers for `T.reduce_sum` when precision matters.
+> - `T.reduce_max` and `T.reduce_min` compare elements directly — no accumulation, so float16 is usually sufficient.
+> - For `T.gemm_v0`, always prefer `"float32"` accumulator (`accum_dtype`).
+
+
 ## 3. Element-wise: `T.Parallel` + Symbolic Math
 
 `T.Parallel` expresses data-parallel element-wise compute. Inside the loop body, use Python symbolic math operators. The compiler auto-vectorizes.
@@ -149,6 +155,10 @@ for i, j in T.Parallel(block_M, block_N):
 for i, j in T.Parallel(block_M, block_N):
     c_ub[i, j] = a_ub[i, j] * b_ub[i, j] + a_ub[i, j] / b_ub[i, j]
 ```
+
+> **Restrictions**:
+> - **float constants are downcast to the buffer dtype**: TIR parser folds Python float literals to float32. Inside `T.Parallel`, float32 constants are implicitly cast to the buffer's element dtype — if the buffer is float16, `1e-10` underflows to `0`. Pass constants as kernel parameters or pre-compute them in the `@tilelang.jit` factory function at the intended dtype.
+> - **No per-element divergence in `T.Parallel`**: the compiler does not predicate (mask) per-element branches. `if True` / `if False` compile-time constants fold away, but `if tensor_value > threshold` that differs per element is not supported. Use `T.serial` when per-element conditional logic is needed.
 
 ## 4. Complete Example: RMSNorm
 
