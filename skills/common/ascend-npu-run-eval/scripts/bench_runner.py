@@ -49,7 +49,6 @@ from run_runtime import (
     cleanup_remote_workspace,
     copy_file_from_remote,
     copy_file_to_remote,
-    env_int,
     eval_stall_timeout_seconds,
     create_remote_workspace,
     emit_verbose,
@@ -80,7 +79,7 @@ _PRESERVED_RUN_DIR_NONE_SENTINEL = "__NONE__"
 
 
 def _bench_timeout() -> int:
-    return env_int("TRITON_AGENT_BENCH_TIMEOUT_SECONDS", 900)
+    return eval_stall_timeout_seconds()
 
 
 @dataclass(frozen=True)
