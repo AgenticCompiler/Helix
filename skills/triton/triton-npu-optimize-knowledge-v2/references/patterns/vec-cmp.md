@@ -85,4 +85,4 @@ out = tl.where(valid, x, 0.0)
 - Value-range assumptions for converted compare operands are valid.
 - Hot-path scalar pressure is reduced in profile after rewrite.
 - End-to-end benchmark shows net gain after including cast overhead.
-- Any `propagate_nan` choice on compare helpers is intentional and documented as a semantics choice.
+- Any `propagate_nan` choice on compare helpers is intentional and benchmarked — on Ascend NPU it can affect instruction selection and kernel performance, not only NaN propagation semantics.

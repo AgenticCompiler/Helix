@@ -100,9 +100,9 @@ def kernel(x_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 - Some compare families are fundamentally better than others on Ascend (for example manual tie-resolution can outperform mask-argmax style forms in certain reductions).
 - Index width is part of compare strategy: moving to wider index types without a real compare-path win can regress or flatten gains.
-- Keep NaN behavior explicit when compare helpers (`tl.maximum`, `tl.minimum`) are involved; `propagate_nan` changes semantics.
+- Keep NaN behavior explicit when compare helpers (`tl.maximum`, `tl.minimum`) are involved; `propagate_nan` changes semantics on all platforms and also acts as a compiler instruction-selection hint on Ascend NPU.
 - Do not blindly rewrite inlined `tl.load(..., mask=offsets < n)` / `tl.store(..., mask=...)` when current lowering is already optimal; focus first on explicit hot compare paths feeding `tl.where` or branch logic.
-- For compare helpers on hot paths, choose `propagate_nan` intentionally (for example `tl.PropagateNan.ALL`) only when semantics require it; this is correctness-sensitive and not a pure performance toggle.
+- **For compare helpers on hot paths, always benchmark both with and without `propagate_nan`.** On Ascend NPU the flag may significantly improve performance even when NaN-propagation semantics are irrelevant. Do not dismiss it as "only a correctness flag" without measurement.
 
 ## What To Verify After Applying
 

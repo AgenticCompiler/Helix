@@ -26,11 +26,21 @@ Mode notes:
 - In `msprof` mode, kernel-miss cases still write `latency-<case-id>: NA`, but also include raw op statistics plus a `# latency-error-case-*` explanation.
 - In `perf-counter` mode, the runner measures per-iteration wall-clock time with `time.perf_counter()` instead of using NPU profiling. Results include `kernel_avg_time_us` (per-iteration average) but `ops` is empty. `total_op_avg_time_us` equals `kernel_avg_time_us`. Results are only comparable within the same mode; `compare-perf` rejects cross-mode comparisons.
 
+In `msprof` mode, kernel-miss cases still write `latency-<case-id>: NA`, but also include raw op statistics plus a `# latency-error-case-*` explanation.
+In `msprof-simulator` and `torch-npu-profiler` modes, the extracted simulation data (`extracted_bin_data/`) is copied to the directory specified by `--extract-dest-dir` if provided; otherwise it defaults to the parent directory of `--bench-file`. Pass `--extract-dest-dir baseline/` during baseline preparation, and pass `--extract-dest-dir opt-round-N/` to keep each round's data separate.
+- In `msprof-simulator` and `torch-npu-profiler` mode, `--simulator-case-idx <N>` specifies which benchmark case to run for simulation. Use this when a prior optimization round has identified a specific case as the focus.
+
 Examples:
 
 ```bash
 python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench-mode torch-npu-profiler
+python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file baseline/<operator>.py --bench-mode torch-npu-profiler --extract-dest-dir baseline
+python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode torch-npu-profiler --extract-dest-dir opt-round-N/
+python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode torch-npu-profiler --simulator-case-idx 3 --extract-dest-dir opt-round-N/
 python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof
+python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file baseline/<operator>.py --bench-mode msprof-simulator --extract-dest-dir baseline
+python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof-simulator --extract-dest-dir opt-round-N/
+python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof-simulator --simulator-case-idx 3 --extract-dest-dir opt-round-N/
 ```
 
 Remote examples:

@@ -1,0 +1,158 @@
+## msprof benchmark file specification for Triton operators
+
+This document describes the msprof-specific benchmark-file contract for Triton Ascend operators. This spec targets `msprof` execution, including `msprof op simulator`, where direct NPU-side random tensor generation produces all-zero outputs. The benchmark file uses the same import-only module structure as the unified spec, with a stricter tensor-creation rule.
+
+The benchmark must call the resolved public entrypoint to run the operator. Raw `@triton.jit` kernels are not valid direct harness APIs.
+
+### 1. File naming and location
+
+- For an operator implemented in `<op>.py`, the msprof benchmark file **must** be named **`bench_<op>_msprof.py`** in the **same directory** as `<op>.py`.
+- Example: `dataset/Flaggems/abs/abs.py` -> `dataset/Flaggems/abs/bench_abs_msprof.py`.
+
+### 2. Module contract and metadata
+
+The benchmark file must include this metadata header near the top of the file:
+
+```python
+# bench-mode: msprof
+# api-name: <resolved_entrypoint>
+# api-kind: <resolved_api_kind>
+# kernels: <resolved_kernel_names>
+```
+
+`<resolved_api_kind>` must be replaced with exactly one supported enum value:
+
+- `triton-wrapper`
+- `torch-function`
+- `torch-module`
+
+The file must be **import-only**:
+
+- Do not make the benchmark file a self-executing command-line program.
+- Do not execute the benchmark when the module is imported.
+
+The module must export:
+
+- `build_operator_api(operator_module)`
+- `build_bench_cases()`
+- `build_bench_case_fn(operator_api, case)`
+
+External execution tooling owns module loading, case selection, profiling wrapping, perf artifact generation, and latency rendering.
+
+### 3. Operator API loading
+
+- The benchmark file **must not** hard-code an import of the operator module.
+- External execution tooling provides the imported operator module object to `build_operator_api(operator_module)`.
+- `build_operator_api(operator_module)` must return the final callable object that external execution tooling should invoke.
+- If the named API does not exist in the runtime operator module, fail explicitly instead of guessing.
+- Stable `# kernels: <resolved_kernel_names>` metadata remains required so runtime tooling can resolve the benchmark's target kernels after execution.
+- For `torch-module`, this hook owns any safe constructor arguments or method binding needed to produce the final callable. If constructor arguments cannot be determined safely, fail explicitly instead of guessing.
+
+#### 3.1 `triton-wrapper`
+
+```python
+def build_operator_api(operator_module):
+    return getattr(operator_module, API_NAME)
+```
+
+#### 3.2 `torch-function`
+
+```python
+def build_operator_api(operator_module):
+    return getattr(operator_module, API_NAME)
+```
+
+#### 3.3 `torch-module`
+
+```python
+def build_operator_api(operator_module):
+    entrypoint_cls = getattr(operator_module, API_NAME)
+    model = entrypoint_cls(*MODEL_INIT_ARGS)
+    model = model.npu().eval()
+    return model
+```
+
+### 4. Benchmark case declaration
+
+- `build_bench_cases()` must return the full benchmark case list in stable execution order.
+- Each case must be a mapping with:
+  - `id`: required, non-empty string, unique within the file
+  - optional execution hints such as `warmup`, `repeats`, and `seed`
+  - additional operator-specific shape, dtype, layout, and attribute fields as needed
+- `build_bench_cases()` must be a cheap declaration step:
+  - do not allocate NPU tensors
+  - do not execute the operator
+  - do not depend on single-use side effects
+- The total number of benchmark cases must be **<= 20**.
+- When the operator's shape space is broad enough, prefer **8-20 representative cases** instead of tiny suites.
+- The declared case list should cover small, medium, and large representative shapes unless the operator's valid inputs are genuinely narrow.
+- Case declarations should be deterministic and repeatable across local, remote, parallel, and IR-capture workflows.
+
+### 5. Benchmark callable construction
+
+- `build_bench_case_fn(operator_api, case)` must return a zero-argument callable for one benchmark case.
+- This hook is where benchmark-specific input construction belongs:
+  - tensor allocation
+  - deterministic random seeding
+  - attribute binding
+  - closure creation
+- Randomized input generation is allowed, but the hook must explicitly fix the seed so repeated runs of the same harness produce identical inputs.
+- Build setup outside the returned callable whenever practical so the measured callable contains only the benchmarked operator body.
+- Do not turn the returned callable into a custom benchmark loop or profiler driver.
+
+### 6. Simulator tensor-creation rule (msprof only)
+
+When the msprof benchmark file runs under `msprof op simulator`, creating random tensors directly on device `"npu"` produces all-zero data. Therefore:
+
+- **All tensor creation in `build_bench_case_fn` must use `torch.rand(... device="cpu").to("npu")` instead of `torch.rand(... device="npu")`.**
+- This applies to all tensor factory functions: `torch.rand`, `torch.randn`, `torch.rand_like`, `torch.randint`, `torch.full`, `torch.ones`, `torch.zeros`, etc.
+
+```python
+# Correct (msprof simulator)
+x = torch.rand(case["shape"], device="cpu", dtype=case["dtype"]).to("npu")
+
+# Incorrect (will produce all zeros in simulator)
+x = torch.rand(case["shape"], device="npu", dtype=case["dtype"])
+```
+
+### 7. Execution rules
+
+- **Execution device:** The harness **must** exercise the operator on **Ascend NPU only**. Do **not** generate benchmarks intended to run primarily on CUDA, CPU, or other accelerators.
+- All tensors must reside on device **`"npu"`** before operator invocation.
+- Do **not** perform correctness checks in this file.
+- Do **not** call `torch.npu.synchronize()` in the benchmark file.
+- The benchmark file must not print latency lines directly.
+
+### 8. Example
+
+```python
+# bench-mode: msprof
+# api-name: <resolved_entrypoint>
+# api-kind: <resolved_api_kind>
+# kernels: <resolved_kernel_names>
+
+import torch
+
+API_NAME = "<resolved_entrypoint>"
+
+
+def build_operator_api(operator_module):
+    return getattr(operator_module, API_NAME)
+
+
+def build_bench_cases():
+    return [
+        {"id": "fp16_1024", "shape": (1024,), "dtype": torch.float16, "seed": 0},
+        {"id": "fp16_4096", "shape": (4096,), "dtype": torch.float16, "seed": 1},
+    ]
+
+
+def build_bench_case_fn(operator_api, case):
+    torch.manual_seed(case["seed"])
+    x = torch.rand(case["shape"], device="cpu", dtype=case["dtype"]).to("npu")
+
+    def _run():
+        return operator_api(x)
+
+    return _run
+```

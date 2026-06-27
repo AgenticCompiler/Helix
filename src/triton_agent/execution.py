@@ -224,3 +224,13 @@ def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
 
 def resolve_bench_mode_default() -> str:
     return "torch-npu-profiler"
+
+
+def resolve_bench_mode_from_metadata(bench_file: Path) -> str:
+    metadata = parse_bench_metadata(bench_file)
+    mode = metadata.get("bench-mode")
+    if mode == "standalone":
+        return "torch-npu-profiler"
+    if mode not in {"torch-npu-profiler", "msprof", "msprof-simulator"}:
+        raise ValueError(f"Benchmark metadata is missing required 'bench-mode' entry: {bench_file}")
+    return str(mode)

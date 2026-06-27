@@ -20,6 +20,7 @@ Read this generated index first. Then read only the one or two most relevant det
   - `padded_row_col_copy`
   - `vec-cmp`
   - `classic-matmul`
+  - `block-pointer-dimensionality`
 - Common Non-Matches:
   - Scalar-looking code at the edges does not matter if the hot loop is actually cube-bound.
   - Small-shape kernels can show scalar overhead even when the better answer is dispatch or specialization rather than a local rewrite.

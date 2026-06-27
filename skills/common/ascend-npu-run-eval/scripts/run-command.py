@@ -93,7 +93,9 @@ class RunLocalBenchFn(Protocol):
         operator_file: Path,
         bench_mode: str,
         npu_devices: str | None = None,
+        extract_dest_dir: Path | None = None,
         output: str | None = None,
+        simulator_case_idx: int = 1,
     ) -> tuple[ResultPayload, Path | None]: ...
 
 
@@ -196,12 +198,15 @@ def build_parser() -> argparse.ArgumentParser:
     run_bench.add_argument("--remote-workdir")
     run_bench.add_argument("--keep-remote-workdir", action="store_true")
     run_bench.add_argument("--verbose", action="store_true")
-    run_bench.add_argument("--bench-mode", choices=["torch-npu-profiler", "msprof", "perf-counter"])
+    run_bench.add_argument("--bench-mode", choices=["torch-npu-profiler", "msprof", "msprof-simulator", "perf-counter"])
     run_bench.add_argument("--npu-devices")
+    run_bench.add_argument("--simulator-case-idx", type=int, default=1)
+    run_bench.add_argument("--extract-dest-dir")
 
     profile_bench = subparsers.add_parser("profile-bench")
     profile_bench.add_argument("--bench-file", required=True)
     profile_bench.add_argument("--operator-file", required=True)
+    profile_bench.add_argument("--bench-mode", choices=["torch-npu-profiler", "msprof", "msprof-simulator", "perf-counter"])
     profile_bench.add_argument("--case-id")
     profile_bench.add_argument("--kernel-name", help=argparse.SUPPRESS)
     profile_bench.add_argument("--target-op")
@@ -430,11 +435,14 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
                 output=args.output,
             )
         else:
+            extract_dest_dir = Path(args.extract_dest_dir).resolve() if getattr(args, "extract_dest_dir", None) else None
             result, perf_path = run_local_bench(
                 bench_file,
                 operator_file,
                 resolved_bench_mode,
                 args.npu_devices,
+                simulator_case_idx=args.simulator_case_idx,
+                extract_dest_dir=extract_dest_dir,
                 output=args.output,
             )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:

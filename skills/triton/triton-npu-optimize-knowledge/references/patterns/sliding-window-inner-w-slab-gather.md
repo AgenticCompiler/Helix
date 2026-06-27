@@ -82,6 +82,7 @@ The overlapping columns (**`2`**, **`4`**, **`6`**) are loaded once from global 
 - A common **2D** grid is **`(batch * channels * out_h, cdiv(out_w, BLOCK_OW))`**.
 - A common **3D** variant folds **`out_d * out_h`** into the row axis.
 - Pair with **`program-multiple-rows`** when consecutive flat spatial rows can share enough setup to amortize slab overhead.
+- **Dispatch threshold:** use slab+gather for **`out_w > 1`** (i.e., almost always). For **`out_w <= 1`** only, fall back to a simple baseline flat kernel. Do **not** add restrictive gates like `out_w >= 16` or `kw <= 7` — these limit slab coverage and force evaluation groups onto slower flat-kernel paths.
 
 ## Avoid When
 
@@ -153,6 +154,82 @@ Pick **`BLOCK_OW`** from **`out_w`** with a **small candidate list** (e.g. 128�
 
 - If **`tl.gather`** on **`f16`/`bf16`** faults, try **`slab = load(...).to(tl.float32)`** before **`gather`**, then accumulate in **`f32`**—validate numerics for **avg** and **max**.
 - After edit, confirm IR shows **`gather`** on the **slab tensor**, not only **`memref.copy`** loops without consumption—or **repeated per-`kw` loads**.
+
+### 6. Candidate Follow-On Optimizations After Slab-Gather
+
+After **slab + gather** is correct, use fresh profile evidence to select at most one compatible follow-on direction per round. Record the applicable shape, padding, stride, dilation, and boundary conditions; none of these candidates is universally beneficial.
+
+#### 6a. Closed-form divisor when the semantics permit it
+
+Replace per-tap `valid_count` accumulation only when the divisor is mathematically identical to the framework semantics. `count_include_pad=True` may use the full kernel volume when there is no `divisor_override`. For clipped windows, the simple extent formula below is valid only with unit dilation; otherwise keep exact tap counting (or derive an equivalent exact arithmetic count).
+
+```python
+if COUNT_INCLUDE_PAD and DIVISOR_OVERRIDE is None:
+    divisor = tl.full([BLOCK_OW], KERNEL_D * KERNEL_H * KERNEL_W, dtype=tl.float32)
+elif DILATION_D == 1 and DILATION_H == 1 and DILATION_W == 1:
+    w_len = tl.maximum(0, tl.minimum(in_w, w_end) - tl.maximum(0, w_start))
+    divisor = (d_len * h_len * w_len).to(tl.float32)
+```
+
+Validate `ceil_mode`, padding, dilation, and `divisor_override` against the framework reference before replacing the counter. See also `simt-clip-window-closed-reduction` for the SIMT-specific version.
+
+#### 6b. `BLOCK_DH` spatial batching (3D window only)
+
+Batch multiple D×H rows per program by mapping `program_id(0)` to a block of output rows instead of one row. This amortizes per-program fixed overhead (kh/kd loop setup, slab loads, out_offs computation).
+
+```python
+odh_start = (pid_outer % grid_dh) * BLOCK_DH
+for i in tl.static_range(0, BLOCK_DH):
+    odh = odh_start + i
+    odh_mask = odh < out_d * out_h
+    od = odh // out_h
+    oh = odh % out_h
+    ...
+```
+
+`BLOCK_DH` must be `tl.constexpr`; mask the final block and tune it as a measured configuration. The grid outer dimension becomes `batch * channels * cdiv(out_d * out_h, BLOCK_DH)`. **Only applicable to 3D;** 2D should use `program-multiple-rows` or `BLOCK_OH` instead.
+
+#### 6c. `USE_INTERIOR_WINDOW_FASTPATH` (no boundary validity checks)
+
+When the current full tile is in-bounds on **D/H/W**, eliminate boundary validity checks from the inner loops. Compute this host-side flag with the effective kernel span and only after validating output-shape and `ceil_mode` semantics.
+
+```python
+use_interior_window_fastpath = (
+    full_output_tile  # no tail lanes on any batched output axis
+    and all_windows_in_bounds(in_d, in_h, in_w, kernel_size, stride, dilation, padding)
+)
+```
+
+`all_windows_in_bounds` must use `(kernel_size - 1) * dilation + 1` on every axis. When true, use absolute input indices for D/H/W address computation instead of `tl.where(..., 0)` boundary branches. Boundary and tail tiles remain on the masked slab or generic path.
+
+#### 6d. Eliminate validity checks on the interior path
+
+When `USE_INTERIOR_WINDOW_FASTPATH` proves every requested element for the current program is in-bounds, the per-kw validity checks and `tl.where(window_mask, ...)` on accumulate are redundant. The kw loop body becomes:
+
+```python
+if USE_INTERIOR_WINDOW_FASTPATH:
+    values = tl.gather(slab, lane_offsets + kw, axis=0)
+    acc += values.to(tl.float32)  # direct, no tl.where
+```
+
+This removes redundant masking only on proven interior tiles; measure it independently from the slab rewrite.
+
+#### 6e. Shape-family dispatch selection
+
+Benchmark slab and flat paths by shape family. Use `out_w > 1` only as a candidate condition, preserve a fallback for small or reuse-poor shapes, and keep a dispatch gate only when the measurements justify it.
+
+#### 6f. Lane-level divisor for varied `w_len`
+
+When lanes have different `w_len` (e.g., tail tiles or `ceil_mode` boundaries), compute the divisor per lane rather than using a single scalar. This contiguous-extent form is valid only for `DILATION_W == 1`:
+
+```python
+w_start_per_lane = ow * STRIDE_W - PAD_W
+w_end_per_lane = w_start_per_lane + KERNEL_W
+w_len = tl.maximum(0, tl.minimum(in_w, w_end_per_lane) - tl.maximum(0, w_start_per_lane))
+divisor = (d_len * h_len * w_len).to(tl.float32)
+```
+
+For `DILATION_W > 1`, use the actual tap positions (or an exact dilated-count formula); do not treat the dilated receptive field as a contiguous count. Combine this with `ow_mask` for tail lanes and validate against the reference.
 
 ## Detection Pattern
 
@@ -264,7 +341,8 @@ kernel[grid](..., BLOCK_OW=block_ow, W_SLAB_LEN=w_slab_len,
 - `program-multiple-rows`
 - `scalar-latency-traps` (supporting lens for boundary math—not a substitute for W staging)
 - `a5-simt-sliding-window-tuning` — A5 SIMT fixed-window tuning (use before W-slab on `force_simt_only` paths)
-- `simt-clip-window-closed-reduction` — closed normalizer inner loop; not the default include-pad path on A5 SIMT
+- `simt-clip-window-closed-reduction` — closed normalizer inner loop for SIMT paths; also applicable on non-SIMT slab paths as §6a follow-on
+- `exact-tile-no-boundary-fast-path` — drop per-kw validity checks when fully in-bounds (pairs with §6c §6d)
 
 ## What To Verify After Applying
 

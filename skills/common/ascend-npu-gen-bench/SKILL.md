@@ -31,13 +31,16 @@ In skill references below, `<Language>` is `triton` or `tilelang` depending on t
 
 ## Outputs
 
-- A runnable Python benchmark file
-- A brief note describing benchmark assumptions and what the script measures
+- **Two** runnable Python benchmark files:
+  - `bench_<op>.py` — `torch-npu-profiler` benchmark following [bench-spec.md](references/bench-spec.md)
+  - `bench_<op>_msprof.py` — `msprof` benchmark following [bench-msprof-spec.md](references/bench-msprof-spec.md)
+- A brief note describing benchmark assumptions and what each script measures
 
 ## Required Spec Compliance
 
-- The generated file must follow [bench-spec.md](references/bench-spec.md).
-- Treat that spec file as the mandatory output contract for both benchmark modes.
+- The generated `bench_<op>.py` must follow [bench-spec.md](references/bench-spec.md).
+- The generated `bench_<op>_msprof.py` must follow [bench-msprof-spec.md](references/bench-msprof-spec.md).
+- Treat each spec file as the mandatory output contract for its respective benchmark file.
 
 ## Generated File Metadata and Contract
 
@@ -47,13 +50,18 @@ The generated benchmark file must include a short metadata header near the top o
 - `# api-kind: <triton-wrapper|tilelang-wrapper|torch-function|torch-module>`
 - `# kernels: <resolved_kernel_names>`
 
-The generated file must be an **import-only** module that exports:
+The generator must not omit `# bench-mode:`:
+
+- In `bench_<op>.py`: set `# bench-mode: torch-npu-profiler`
+- In `bench_<op>_msprof.py`: set `# bench-mode: msprof`
+
+Across both benchmark files, the generated file must be an **import-only** module that exports:
 
 - `build_operator_api(operator_module)`
 - `build_bench_cases()`
 - `build_bench_case_fn(operator_api, case)`
 
-Across benchmark modes, keep the generated benchmark focused on the benchmark contract itself:
+Across both benchmark files, keep the generated benchmark focused on the benchmark contract itself:
 
 - do not turn the benchmark file into a self-executing command-line program
 - do not add extra runtime interfaces beyond the required metadata and hooks
@@ -76,19 +84,26 @@ Use `run-bench` as the standard execution command for generated benchmarks.
 1. Read the operator file and resolve the public entrypoint, `api-kind`, one or more NPU kernel names, and realistic benchmark inputs.
    - When the file has a `Model -> wrapper -> kernel` structure, resolve the module class as the entrypoint if it is a valid no-argument `torch-module`.
 2. If the public entrypoint is missing, ambiguous, or unsafe to use, stop and report the problem instead of guessing.
-3. Read the unified benchmark spec. The requested bench mode informs the generation agent but is not written into the file header.
-4. Generate a benchmark harness that follows the shared spec, keeps setup separate from measurement when practical, and writes the required metadata header.
-   - If the harness uses randomized input generation, fix the seed inside case construction so repeated runs of the same harness produce identical inputs.
-   - For both modes, implement `build_operator_api(operator_module)`, `build_bench_cases()`, and `build_bench_case_fn(operator_api, case)` instead of a directly executable timing script.
-5. If auto-fix is active, validate the generated benchmark with `run-bench` through the focused run-eval guide instead of doing a separate syntax-only check.
-6. If validation fails, repair only the benchmark file according to the self-repair rules below, retry, and then return a runnable script plus a short assumptions summary.
-   - For Ascend NPU compile, JIT, launch, or kernel-side failures, consult the corresponding `<Language>-npu-repair-guide` skill as a diagnostic reference before deciding on the smallest safe benchmark-side change.
-   - This workflow still owns only the generated benchmark file. Do not treat the corresponding `<Language>-npu-repair-guide` skill as permission to edit the operator file here.
+3. Read the unified benchmark spec [bench-spec.md](references/bench-spec.md).
+4. **Generate `bench_<op>.py`**: Create a benchmark harness with `# bench-mode: torch-npu-profiler` following the unified spec.
+   - If the harness uses randomized input generation, fix the seed inside case construction.
+   - Implement `build_operator_api(operator_module)`, `build_bench_cases()`, and `build_bench_case_fn(operator_api, case)`.
+5. **Generate `bench_<op>_msprof.py`**: Read [bench-msprof-spec.md](references/bench-msprof-spec.md) and create a second benchmark harness with `# bench-mode: msprof`.
+   - **Critical**: In `build_bench_case_fn`, all tensor creation must use `torch.rand(..., device="cpu").to("npu")` instead of `torch.rand(..., device="npu")`. Under `msprof op simulator`, direct NPU-side random tensor generation produces all-zero data.
+   - This rule applies to all tensor factory functions: `torch.rand`, `torch.randn`, `torch.randint`, `torch.full`, `torch.ones`, `torch.zeros`, etc.
+   - The msprof file should otherwise mirror the same cases, shapes, and entrypoint as the torch-npu-profiler file, differing only in the tensor-creation pattern.
+6. If auto-fix is active, validate the generated `bench_<op>.py` with `run-bench` through the focused run-eval guide instead of doing a separate syntax-only check.
+7. If validation fails, repair only the benchmark file according to the self-repair rules below, retry, and then return both runnable scripts plus a short assumptions summary.
+   - For Triton Ascend compile, JIT, launch, or kernel-side failures, consult the `triton-npu-repair-guide` skill as a diagnostic reference before deciding on the smallest safe benchmark-side change.
+   - This workflow still owns only the generated benchmark file. Do not treat `triton-npu-repair-guide` as permission to edit the operator file here.
 
 ## Quality Rules
 
 - Generated benchmarks **must run on Ascend NPU** (`torch.npu`). Do **not** generate harnesses whose primary path executes the operator on CUDA, CPU, or other devices. See the unified spec for normative device rules.
-- Bench mode is a runtime concern; do not emit a `# bench-mode:` metadata line.
+- Always emit the required `# bench-mode:` metadata line in each file: `torch-npu-profiler` for `bench_<op>.py` and `msprof` for `bench_<op>_msprof.py`.
+- Always generate **both** benchmark files. Do not skip the msprof variant.
+- For `bench_<op>_msprof.py`: all tensor creation in `build_bench_case_fn` must use `torch.rand(..., device="cpu").to("npu")` instead of `torch.rand(..., device="npu")`. Direct NPU-side random tensor generation produces all-zero data under `msprof op simulator`.
+- The msprof benchmark file should mirror the same cases and entrypoint as the torch-npu-profiler file, diverging only in the tensor-creation pattern.
 - Measure the operator body, not one-time setup.
 - Prefer stable repeated timing over a single run.
 - Keep generated code easy to edit by hand.
@@ -114,6 +129,6 @@ For Ascend NPU compile, JIT, launch, or kernel-side failures, you may consult th
 | **General error** (CLI, shape mismatch, runtime, etc.) | Apply a minimal targeted fix — preserve the overall benchmark structure |
 | **ModuleNotFoundError** or environment issue | Report that the benchmark cannot be fixed from inside the benchmark file alone |
 
-After any repair, always preserve the metadata header and the shared import-only hook export pattern.
+After any repair, always preserve the metadata header and the shared import-only hook export pattern in both files.
 
-Always enforce the unified benchmark spec first.
+Always enforce the respective benchmark spec first.
