@@ -49,6 +49,7 @@ from run_runtime import (
     cleanup_remote_workspace,
     copy_file_from_remote,
     copy_file_to_remote,
+    env_int,
     eval_stall_timeout_seconds,
     create_remote_workspace,
     emit_verbose,
@@ -76,6 +77,10 @@ _bench_runtime_module_lock = threading.Lock()
 _T = TypeVar("_T")
 _MISSING_KERNEL_MATCH_ERROR = "no resolved kernels matched op_statistic csv"
 _PRESERVED_RUN_DIR_NONE_SENTINEL = "__NONE__"
+
+
+def _bench_timeout() -> int:
+    return env_int("TRITON_AGENT_BENCH_TIMEOUT_SECONDS", 900)
 
 
 @dataclass(frozen=True)
