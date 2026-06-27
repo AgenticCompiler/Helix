@@ -58,8 +58,8 @@
 ### Task 5: Update docs and workflow prompts
 
 **Files:**
-- Modify: `skills/triton-npu-optimize/SKILL.md`
-- Modify: `skills/triton-npu-optimize/references/artifacts.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/references/artifacts.md`
 - Modify: `src/triton_agent/optimize/prompts.py`
 
 - [ ] Update optimize workflow text to require `opt_<original>.py` in each round.

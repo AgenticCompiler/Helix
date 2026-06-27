@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Callable, Literal, Optional
 
 
 class CommandKind(str, Enum):
@@ -31,34 +31,21 @@ class CommandKind(str, Enum):
     REPORT = "report"
     REPORT_BATCH = "report-batch"
     CLEAN = "clean"
+    DIFF_SKILLS_UPDATE = "diff-skills-update"
 
 
-COMMAND_TO_SKILL = {
-    CommandKind.GEN_EVAL: "triton-npu-gen-eval-suite",
-    CommandKind.GEN_EVAL_BATCH: "",
-    CommandKind.CONVERT: "triton-npu-convert-pytorch-operator",
-    CommandKind.CONVERT_BATCH: "",
-    CommandKind.GEN_TEST: "triton-npu-gen-test",
-    CommandKind.RUN_TEST: "",
-    CommandKind.GEN_BENCH: "triton-npu-gen-bench",
-    CommandKind.RUN_BENCH: "",
-    CommandKind.RUN_SIMULATOR: "",
-    CommandKind.COMPARE_RESULT: "",
-    CommandKind.COMPARE_PERF: "",
-    CommandKind.VERIFY: "",
-    CommandKind.VERIFY_BATCH: "",
-    CommandKind.STATUS: "",
-    CommandKind.LOG_CHECK: "",
-    CommandKind.LOG_CHECK_BATCH: "",
-    CommandKind.TRACE_ANALYZE: "",
-    CommandKind.RUN_EVAL_MCP_SERVER: "",
-    CommandKind.OPTIMIZE: "triton-npu-optimize",
-    CommandKind.OPTIMIZE_BATCH: "",
-    CommandKind.UPLOAD_OPTIMIZE: "",
-    CommandKind.REPORT: "",
-    CommandKind.REPORT_BATCH: "",
-    CommandKind.CLEAN: "",
-}
+def command_to_skill(command_kind: CommandKind, language: str = "triton") -> str:
+    return {
+        CommandKind.GEN_EVAL: "ascend-npu-gen-eval-suite",
+        CommandKind.CONVERT: f"{language}-npu-convert-pytorch-operator",
+        CommandKind.GEN_TEST: "ascend-npu-gen-test",
+        CommandKind.GEN_BENCH: "ascend-npu-gen-bench",
+        CommandKind.OPTIMIZE: f"{language}-npu-optimize",
+    }.get(command_kind, "")
+
+
+
+ProgressProbe = Callable[[], Optional[float]]
 
 
 @dataclass
@@ -71,7 +58,7 @@ class AgentRequest:
     bench_mode: Optional[str]
     interact: bool
     verbose: bool
-    show_output: bool
+    stream_output: bool
     force_overwrite: bool
     agent_name: str
     skill_name: str
@@ -84,13 +71,14 @@ class AgentRequest:
     continue_optimize: bool = False
     no_agent_session: bool = False
     round_mode: Literal["checked", "supervised"] = "checked"
-    round_batch_size: int = 10
+    round_batch_size: int = 5
     current_round: int = 1
     final_round: int = 1
     user_prompt: Optional[str] = None
     staged_skill_names: tuple[str, ...] | None = None
     staged_skill_sources: dict[str, str] | None = None
     supervisor_report_path: Optional[Path] = None
+    language: Literal["triton", "tilelang"] = "triton"
     target_chip: Literal["A3", "A5"] = "A5"
     optimize_target: Literal["kernel", "operator"] = "kernel"
     compiler_source_analysis: Literal["off", "auto"] = "off"
@@ -103,6 +91,8 @@ class AgentRequest:
     mcp_servers: tuple[str, ...] | None = None
     show_output_label: str = ""
     run_id: str = ""
+    disable_backend_retry: bool = False
+    progress_probe: ProgressProbe | None = None
 
     def with_prompt(self, prompt: str) -> "AgentRequest":
         return replace(self, prompt=prompt)

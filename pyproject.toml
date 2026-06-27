@@ -30,6 +30,10 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.cmdclass]
+build_py = "triton_agent._setuptools_hooks.BuildPyWithMeta"
+sdist = "triton_agent._setuptools_hooks.SdistWithMeta"
+
 [tool.ruff]
 target-version = "py39"
 exclude = ["workspace"]

@@ -404,8 +404,7 @@ class OptimizeStatusTests(unittest.TestCase):
                             "comparison_target": "baseline/perf.txt",
                             "effective_metric_source": "total-op",
                             "summary_path": "summary.md",
-                            "opt_note_updated": True,
-                            "round_disposition": "continue",
+                            "opt_note_updated": True
                         }
                     ),
                     encoding="utf-8",

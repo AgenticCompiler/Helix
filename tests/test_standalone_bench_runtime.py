@@ -16,6 +16,52 @@ from tests.run_skill_test_utils import (
 
 
 class StandaloneBenchRuntimeTests(unittest.TestCase):
+    def test_load_bench_cases_bootstraps_torch_before_user_module_exec(self) -> None:
+        module = load_bench_runtime_module()
+        import_events: list[str] = []
+
+        def fake_import(name: str, package: Optional[str] = None):
+            import_events.append(name)
+            if name == "torch":
+                return SimpleNamespace(npu=SimpleNamespace())
+            if name == "torch_npu":
+                return SimpleNamespace()
+            return original_import(name, package)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            bench_file.write_text(
+                """# bench-mode: torch-npu-profiler
+# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_bench_cases():
+    return [{"id": "case-a"}]
+
+def build_bench_case_fn(operator_api, case):
+    return lambda: operator_api(case["id"])
+""",
+                encoding="utf-8",
+            )
+            operator_file.write_text(
+                """def build_api():
+    return lambda *_args, **_kwargs: None
+""",
+                encoding="utf-8",
+            )
+            original_import = module.importlib.import_module
+            with patch.object(module.importlib, "import_module", side_effect=fake_import):
+                cases, _resolution = module.load_bench_cases(bench_file, operator_file)
+
+        self.assertEqual([case.case_id for case in cases], ["case-a"])
+        self.assertGreaterEqual(import_events[:2], ["torch", "torch_npu"])
+
     def test_load_bench_cases_builds_callables_without_eager_execution(self) -> None:
         module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -264,7 +310,7 @@ def build_bench_case_fn(operator_api, case):
         self.assertEqual(
             perf_text,
             (
-                '{"case_label":"case-a","kernel_names":["KernelA","KernelB"],"kernel_source":"metadata","kernel_avg_time_us":11.0,"ops":[{"op_type":"KernelA","avg_time_us":5.0},{"op_type":"KernelB","avg_time_us":6.0}],"total_op_avg_time_us":11.0,"error_message":null,"case_wall_clock_seconds":1.5}\n'
+                '{"case_label":"case-a","kernel_names":["KernelA","KernelB"],"kernel_source":"metadata","kernel_avg_time_us":11.0,"ops":[{"op_type":"KernelA","avg_time_us":5.0},{"op_type":"KernelB","avg_time_us":6.0}],"total_op_avg_time_us":11.0,"error_message":null,"case_wall_clock_seconds":1.5,"bench_mode":"torch-npu-profiler"}\n'
             ),
         )
 
@@ -996,6 +1042,176 @@ def build_bench_case_fn(operator_api, case):
         self.assertIsNone(error_message)
         self.assertEqual(stdout.getvalue(), "")
         self.assertEqual(stderr.getvalue(), "")
+
+    # ------------------------------------------------------------------
+    # perf-counter timing functions
+    # ------------------------------------------------------------------
+
+    def test_time_case_iterations_returns_per_iteration_average_us(self) -> None:
+        module = load_bench_runtime_module()
+        call_count = 0
+
+        def fake_fn() -> None:
+            nonlocal call_count
+            call_count += 1
+
+        metrics = module._time_case_iterations(
+            fn=fake_fn,
+            warmup=2,
+            repeats=3,
+        )
+        self.assertEqual(call_count, 5)  # 2 warmup + 3 measurement
+        self.assertIsInstance(metrics["kernel_avg_time_us"], float)
+        self.assertGreater(metrics["kernel_avg_time_us"], 0.0)
+        self.assertEqual(metrics["ops"], [])
+
+    def test_time_all_bench_cases_produces_jsonl_with_perf_counter_bench_mode(self) -> None:
+        module = load_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            bench_file.write_text(
+                """# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_bench_cases():
+    return [{"id": "case-a"}]
+
+def build_bench_case_fn(operator_api, case):
+    def run_case():
+        operator_api(case["id"])
+    return run_case
+""",
+                encoding="utf-8",
+            )
+            operator_file.write_text(
+                "def build_api():\n    return lambda *_args, **_kwargs: None\n",
+                encoding="utf-8",
+            )
+
+            result, perf_path = module.time_all_bench_cases(
+                bench_file, operator_file, bench_mode="perf-counter",
+            )
+            perf_text = perf_path.read_text(encoding="utf-8")
+
+        self.assertEqual(result["return_code"], 0)
+        self.assertIn('"bench_mode":"perf-counter"', perf_text)
+        self.assertIn('"kernel_avg_time_us":', perf_text)
+        self.assertIn('"ops":[]', perf_text)
+        self.assertIn('"case_wall_clock_seconds":', perf_text)
+        self.assertNotIn('"bench_mode":null', perf_text)
+
+    def test_time_all_bench_cases_sets_triton_always_compile(self) -> None:
+        module = load_bench_runtime_module()
+        saved = os.environ.get("TRITON_ALWAYS_COMPILE")
+
+        try:
+            if "TRITON_ALWAYS_COMPILE" in os.environ:
+                del os.environ["TRITON_ALWAYS_COMPILE"]
+
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                bench_file = root / "bench_case.py"
+                operator_file = root / "operator_case.py"
+                bench_file.write_text(
+                    """# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_bench_cases():
+    return [{"id": "case-a", "warmup": 0, "repeats": 2}]
+
+def build_bench_case_fn(operator_api, case):
+    def run_case():
+        pass
+    return run_case
+""",
+                    encoding="utf-8",
+                )
+                operator_file.write_text(
+                    "def build_api():\n    return lambda: None\n",
+                    encoding="utf-8",
+                )
+
+                observed_value: list[Optional[str]] = []
+
+                _original_time_iterations = module._time_case_iterations
+
+                def _wrap_time_iterations(
+                    fn, warmup, repeats,
+                ):
+                    observed_value.append(
+                        os.environ.get("TRITON_ALWAYS_COMPILE"),
+                    )
+                    return _original_time_iterations(
+                        fn=fn, warmup=warmup, repeats=repeats,
+                    )
+
+                with patch.object(
+                    module,
+                    "_time_case_iterations",
+                    side_effect=_wrap_time_iterations,
+                ):
+                    module.time_all_bench_cases(
+                        bench_file, operator_file,
+                        bench_mode="perf-counter",
+                    )
+
+            self.assertEqual(observed_value, ["1"])
+            self.assertNotIn("TRITON_ALWAYS_COMPILE", os.environ)
+        finally:
+            if saved is not None:
+                os.environ["TRITON_ALWAYS_COMPILE"] = saved
+            elif "TRITON_ALWAYS_COMPILE" in os.environ:
+                del os.environ["TRITON_ALWAYS_COMPILE"]
+
+    def test_time_all_bench_cases_records_error_on_case_fn_exception(self) -> None:
+        module = load_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bench_file = root / "bench_case.py"
+            operator_file = root / "operator_case.py"
+            bench_file.write_text(
+                """# api-name: build_api
+# api-kind: torch-function
+# kernels: KernelA
+
+def build_operator_api(operator_module):
+    return operator_module.build_api()
+
+def build_bench_cases():
+    return [{"id": "case-fail", "warmup": 0, "repeats": 2}]
+
+def build_bench_case_fn(operator_api, case):
+    def run_case():
+        raise RuntimeError("boom")
+    return run_case
+""",
+                encoding="utf-8",
+            )
+            operator_file.write_text(
+                "def build_api():\n    return lambda: None\n",
+                encoding="utf-8",
+            )
+
+            result, perf_path = module.time_all_bench_cases(
+                bench_file, operator_file, bench_mode="perf-counter",
+            )
+            perf_text = perf_path.read_text(encoding="utf-8")
+
+        self.assertEqual(result["return_code"], 1)
+        self.assertIn('"error_message":"RuntimeError: boom"', perf_text)
+        self.assertIn('"case_wall_clock_seconds":', perf_text)
+        self.assertIn('"bench_mode":"perf-counter"', perf_text)
+        self.assertIn('"case_label":"case-fail"', perf_text)
 
 
 if __name__ == "__main__":

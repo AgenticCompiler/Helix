@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable, Iterable
+from fnmatch import fnmatchcase
 from io import TextIOBase
 from pathlib import Path
 from typing import TextIO
@@ -76,14 +77,30 @@ def resolve_batch_operator_file(
     *,
     is_operator_candidate: Callable[[Path], bool],
     no_candidate_message: str = NO_CANDIDATE_OPERATOR_FILE,
+    operator_filter: str | None = None,
 ) -> Path:
+    normalized_operator_filter = (
+        operator_filter if operator_filter is None or operator_filter.strip() else None
+    )
     candidates = [
         path for path in sorted(workspace.iterdir()) if path.is_file() and is_operator_candidate(path)
     ]
+    if normalized_operator_filter is not None:
+        candidates = [path for path in candidates if fnmatchcase(path.name, normalized_operator_filter)]
     if not candidates:
+        if normalized_operator_filter is not None:
+            raise ValueError(
+                "found no candidate operator file after applying "
+                f"--operator-filter {normalized_operator_filter!r}"
+            )
         raise ValueError(no_candidate_message)
     if len(candidates) > 1:
         names = ", ".join(path.name for path in candidates)
+        if normalized_operator_filter is not None:
+            raise ValueError(
+                "found multiple candidate operator files after applying "
+                f"--operator-filter {normalized_operator_filter!r}: {names}"
+            )
         raise ValueError(f"found multiple candidate operator files: {names}")
     return candidates[0]
 

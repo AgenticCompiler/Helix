@@ -2,6 +2,11 @@ import fs from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
 
+// ---------------------------------------------------------------------------
+// Static policy constants
+// ---------------------------------------------------------------------------
+
+// Unique tool-use ID counter shared across all invocations in a session.
 const toolLifecycleCache = new Map();
 let _toolUseIdCounter = 0;
 function generateToolUseId() {
@@ -12,19 +17,29 @@ function generateToolUseId() {
 const READ_COMMANDS = new Set([
   "awk",
   "cat",
+  "find",
+  "grep",
   "head",
   "less",
+  "ls",
   "more",
   "rg",
   "sed",
+  "stat",
   "tail",
+  "tree",
 ]);
-const PROTECTED_RELATIVE_PATH_PREFIXES = ["triton-agent-logs/"];
+const PROTECTED_RELATIVE_PATH_PREFIXES = [".triton-agent/", "triton-agent-logs/"];
 
 const PATH_FRAGMENT_RE =
-  /(?:^|[^A-Za-z0-9_./-])(?<path>(?:\/|\.\.?\/|\.opencode\/|triton-agent-logs\/)[A-Za-z0-9_./*?{}+@%:,=-]+)/g;
+  /(?:^|[^A-Za-z0-9_./-])(?<path>(?:\/|\.\.?\/|\.triton-agent\/|\.opencode\/|triton-agent-logs\/)[A-Za-z0-9_./*?{}+@%:,=-]+)/g;
 const WINDOWS_PATH_FRAGMENT_RE = /[A-Za-z]:[\\/][A-Za-z0-9_ .\\/(){}+@%:,=-]+/g;
 const EDIT_TOOLS = new Set(["edit", "write", "patch", "update", "multiedit", "multi_edit"]);
+const WORKFLOW_STATE_RELATIVE_PATH = ".triton-agent/state.json";
+
+// ---------------------------------------------------------------------------
+// Hook entrypoints
+// ---------------------------------------------------------------------------
 
 export async function TritonAgentHookGuard(context) {
   const policy = await loadPolicy(context);
@@ -41,7 +56,7 @@ export async function TritonAgentHookGuard(context) {
       });
 
       await appendTraceEvents(policy, input, output);
-      const reason = await evaluateOutput(policy, input, output);
+      const reason = await denyReasonForToolUse(policy, input, output);
       if (reason) {
         throw new Error(reason);
       }
@@ -59,8 +74,12 @@ export async function TritonAgentHookGuard(context) {
 
 export default TritonAgentHookGuard;
 
+// ---------------------------------------------------------------------------
+// Policy loading
+// ---------------------------------------------------------------------------
+
 async function loadPolicy(context) {
-  for (const root of contextRoots(context)) {
+  for (const root of policySearchRoots(context)) {
     try {
       const policyPath = path.join(root, ".opencode", "triton-agent-hooks", "policy.json");
       return JSON.parse(await fs.readFile(policyPath, "utf8"));
@@ -71,16 +90,16 @@ async function loadPolicy(context) {
   return null;
 }
 
-function contextRoots(context) {
+function policySearchRoots(context) {
   const roots = [];
-  addContextRoot(roots, context?.directory);
-  addContextRoot(roots, context?.experimental_workspace?.root);
-  addContextRoot(roots, context?.project?.path?.root);
-  addContextRoot(roots, context?.project?.root);
+  appendPolicySearchRoot(roots, context?.directory);
+  appendPolicySearchRoot(roots, context?.experimental_workspace?.root);
+  appendPolicySearchRoot(roots, context?.project?.path?.root);
+  appendPolicySearchRoot(roots, context?.project?.root);
   return roots;
 }
 
-function addContextRoot(roots, value) {
+function appendPolicySearchRoot(roots, value) {
   if (typeof value !== "string" || value.length === 0) {
     return;
   }
@@ -90,7 +109,11 @@ function addContextRoot(roots, value) {
   }
 }
 
-async function evaluateOutput(policy, input, output) {
+// ---------------------------------------------------------------------------
+// Tool-use denial checks
+// ---------------------------------------------------------------------------
+
+async function denyReasonForToolUse(policy, input, output) {
   const guardPolicy = guardPolicyFor(policy);
   if (guardPolicy.enabled === false) {
     return null;
@@ -105,8 +128,8 @@ async function evaluateOutput(policy, input, output) {
   }
 
   const cwd = resolveToolCwd(output.args?.cwd ?? input.cwd, workspaceRoot);
-  const allowRoots = allowRootsForPolicy(guardPolicy, workspaceRoot);
-  const denyGlobs = Array.isArray(guardPolicy.deny_read_globs)
+  const allowReadRoots = allowReadRootsForPolicy(guardPolicy, workspaceRoot);
+  const denyReadGlobs = Array.isArray(guardPolicy.deny_read_globs)
     ? guardPolicy.deny_read_globs.filter((item) => typeof item === "string")
     : [];
   const denyMessage =
@@ -114,12 +137,23 @@ async function evaluateOutput(policy, input, output) {
       ? guardPolicy.deny_message
       : "This read is blocked by workspace policy.";
 
+  // Built-in edit tools (write, edit, patch, …) are checked against
+  // .triton-agent/state.json for phase enforcement before falling
+  // through to the read/Bash deny_globs layer.
+  if (EDIT_TOOLS.has(String(input.tool).toLowerCase())) {
+    const filePath = firstToolPath(output.args);
+    if (typeof filePath !== "string") {
+      return null;
+    }
+    return denyReasonForBuiltInEditPath(filePath, cwd, workspaceRoot);
+  }
+
   if (input.tool === "read") {
     const filePath = output.args?.filePath;
     if (typeof filePath !== "string") {
       return null;
     }
-    return evaluateCandidate(filePath, cwd, allowRoots, denyGlobs, denyMessage);
+    return denyReasonForPathAccess(filePath, cwd, allowReadRoots, denyReadGlobs, denyMessage);
   }
 
   if (input.tool !== "bash") {
@@ -135,14 +169,15 @@ async function evaluateOutput(policy, input, output) {
     return null;
   }
 
-  for (const candidate of candidatePaths(command, tokens)) {
-    const reason = await evaluateCandidate(
-      candidate.path,
+  // We scan path-like references from read-oriented shell commands instead of
+  // trying to model the full shell grammar.
+  for (const pathText of collectCommandPathReferences(command, tokens)) {
+    const reason = await denyReasonForPathAccess(
+      pathText,
       cwd,
-      allowRoots,
-      denyGlobs,
+      allowReadRoots,
+      denyReadGlobs,
       denyMessage,
-      candidate.allowProtectedScriptEntrypoint,
     );
     if (reason) {
       return reason;
@@ -151,6 +186,10 @@ async function evaluateOutput(policy, input, output) {
 
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Trace output
+// ---------------------------------------------------------------------------
 
 async function appendTraceEvents(policy, input, output) {
   const tracePolicy = tracePolicyFor(policy);
@@ -165,7 +204,7 @@ async function appendTraceEvents(policy, input, output) {
   const timestamp = new Date().toISOString();
   const tool = typeof input?.tool === "string" ? input.tool : "unknown";
   const args = output?.args ?? {};
-  const baseEvent = {
+  const toolCallStartEvent = {
     schema_version: 1,
     timestamp,
     run_id: typeof tracePolicy.run_id === "string" ? tracePolicy.run_id : "",
@@ -174,36 +213,32 @@ async function appendTraceEvents(policy, input, output) {
     tool,
     status: "started",
     summary: toolSummary(tool, args),
-    source: "opencode_hook",
-    confidence: "high",
   };
-  await appendTraceEvent(tracePolicy.path, baseEvent);
+  await appendTraceEvent(tracePolicy.path, toolCallStartEvent);
 
   if (tool === "bash" && typeof args.command === "string") {
     const command = args.command;
     await appendTraceEvent(tracePolicy.path, {
       schema_version: 1,
       timestamp,
-      run_id: baseEvent.run_id,
+      run_id: toolCallStartEvent.run_id,
       type: "command",
       phase: "start",
       command_kind: classifyCommand(command),
       command,
       remote: extractRemote(command),
       status: "started",
-      source: "opencode_hook",
-      confidence: "high",
     });
 
     const tokens = splitCommand(command);
     if (containsReadCommand(tokens)) {
       const cwd = resolveToolCwd(args.cwd ?? input?.cwd, workspaceRoot);
-      for (const candidate of candidatePaths(command, tokens)) {
-        const resolved = await resolveCandidate(candidate.path, cwd);
-        if (!resolved) {
+      for (const pathText of collectCommandPathReferences(command, tokens)) {
+        const resolvedPath = await resolvePathText(pathText, cwd);
+        if (!resolvedPath) {
           continue;
         }
-        await appendFileAccessTrace(tracePolicy.path, baseEvent, workspaceRoot, resolved, "read");
+        await appendFileAccessTrace(tracePolicy.path, toolCallStartEvent, workspaceRoot, resolvedPath, "read");
       }
     }
   }
@@ -212,9 +247,9 @@ async function appendTraceEvents(policy, input, output) {
     const filePath = args.filePath;
     if (typeof filePath === "string") {
       const cwd = resolveToolCwd(input?.cwd, workspaceRoot);
-      const resolved = await resolveCandidate(filePath, cwd);
-      if (resolved) {
-        await appendFileAccessTrace(tracePolicy.path, baseEvent, workspaceRoot, resolved, "read");
+      const resolvedPath = await resolvePathText(filePath, cwd);
+      if (resolvedPath) {
+        await appendFileAccessTrace(tracePolicy.path, toolCallStartEvent, workspaceRoot, resolvedPath, "read");
       }
     }
   }
@@ -223,41 +258,37 @@ async function appendTraceEvents(policy, input, output) {
     const filePath = firstToolPath(args);
     if (typeof filePath === "string") {
       const cwd = resolveToolCwd(args.cwd ?? input?.cwd, workspaceRoot);
-      const resolved = await resolveCandidate(filePath, cwd);
-      if (resolved) {
+      const resolvedPath = await resolvePathText(filePath, cwd);
+      if (resolvedPath) {
         const stats = editStats(tool, args);
         await appendTraceEvent(tracePolicy.path, {
           schema_version: 1,
           timestamp,
-          run_id: baseEvent.run_id,
+          run_id: toolCallStartEvent.run_id,
           type: "edit",
           phase: "instant",
-          path: displayPath(resolved, workspaceRoot),
-          edit_kind: classifyEditPath(resolved),
+          path: displayPath(resolvedPath, workspaceRoot),
+          edit_kind: classifyEditPath(resolvedPath),
           added_lines: stats.addedLines,
           removed_lines: stats.removedLines,
           diff_digest: stats.diffDigest,
           status: "started",
-          source: "opencode_hook",
-          confidence: "high",
         });
       }
     }
   }
 }
 
-async function appendFileAccessTrace(tracePath, baseEvent, workspaceRoot, resolved, action) {
+async function appendFileAccessTrace(tracePath, toolCallStartEvent, workspaceRoot, resolvedPath, action) {
   await appendTraceEvent(tracePath, {
     schema_version: 1,
-    timestamp: baseEvent.timestamp,
-    run_id: baseEvent.run_id,
+    timestamp: toolCallStartEvent.timestamp,
+    run_id: toolCallStartEvent.run_id,
     type: "file_access",
     phase: "instant",
     action,
-    path: displayPath(resolved, workspaceRoot),
+    path: displayPath(resolvedPath, workspaceRoot),
     status: "started",
-    source: "opencode_hook",
-    confidence: "high",
   });
 }
 
@@ -265,6 +296,10 @@ async function appendTraceEvent(tracePath, event) {
   await fs.mkdir(path.dirname(tracePath), { recursive: true });
   await fs.appendFile(tracePath, `${JSON.stringify(event)}\n`, "utf8");
 }
+
+// ---------------------------------------------------------------------------
+// Shared policy and trace metadata helpers
+// ---------------------------------------------------------------------------
 
 function guardPolicyFor(policy) {
   return policy && typeof policy.guard === "object" && policy.guard !== null ? policy.guard : policy;
@@ -275,8 +310,8 @@ function tracePolicyFor(policy) {
 }
 
 function toolSummary(tool, args) {
-  if (tool === "bash" && typeof args.command === "string") {
-    return args.command;
+  if ((tool === "bash" || tool === "shell") && typeof args.command === "string") {
+    return `${tool}: ${classifyCommand(args.command)}`;
   }
   if (typeof args.filePath === "string") {
     return args.filePath;
@@ -404,37 +439,170 @@ function extractRemote(command) {
   return null;
 }
 
-function displayPath(candidate, workspaceRoot) {
-  const relative = path.relative(workspaceRoot, candidate);
+function displayPath(resolvedPath, workspaceRoot) {
+  const relative = path.relative(workspaceRoot, resolvedPath);
   if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) {
     return relative.split(path.sep).join("/");
   }
-  return candidate.split(path.sep).join("/");
+  return resolvedPath.split(path.sep).join("/");
 }
 
-async function evaluateCandidate(
-  candidate,
+async function denyReasonForPathAccess(
+  pathText,
   cwd,
-  allowRoots,
-  denyGlobs,
+  allowReadRoots,
+  denyReadGlobs,
   denyMessage,
-  allowProtectedScriptEntrypoint = false,
 ) {
-  const resolved = await resolveCandidate(candidate, cwd);
-  if (!resolved) {
+  const resolvedPath = await resolvePathText(pathText, cwd);
+  if (!resolvedPath) {
     return null;
   }
-  if (!isUnderAnyRoot(resolved, allowRoots)) {
+  if (!isUnderAnyRoot(resolvedPath, allowReadRoots)) {
     return denyMessage;
   }
-  if (allowProtectedScriptEntrypoint && isProtectedScriptPath(resolved, allowRoots[0])) {
-    return null;
-  }
-  if (matchesAnyGlob(resolved, denyGlobs)) {
+  if (matchesAnyGlob(resolvedPath, denyReadGlobs)) {
     return denyMessage;
   }
   return null;
 }
+
+async function denyReasonForBuiltInEditPath(pathText, cwd, workspaceRoot) {
+  const resolvedPath = await resolvePathText(pathText, cwd);
+  if (!resolvedPath) {
+    return null;
+  }
+  if (!isUnderRoot(resolvedPath, workspaceRoot)) {
+    return builtInEditOutsideWorkspaceDenial();
+  }
+
+  const state = await loadWorkflowState(workspaceRoot);
+  if (!state) {
+    return builtInEditMissingStateDenial();
+  }
+
+  const workspaceRelativePath = displayPath(resolvedPath, workspaceRoot);
+  if (state.phase === "baseline") {
+    if (isAllowedBaselineEditPath(workspaceRelativePath, state.source_operator)) {
+      return null;
+    }
+    return baselinePhaseBuiltInEditDenial();
+  }
+  if (state.phase === "awaiting_round_start") {
+    return awaitingRoundStartBuiltInEditDenial();
+  }
+  if (state.phase === "round_active") {
+    const roundDir = activeRoundDir(state);
+    if (!roundDir) {
+      return builtInEditMissingStateDenial();
+    }
+    if (workspaceRelativePath === roundDir || workspaceRelativePath.startsWith(`${roundDir}/`)) {
+      return null;
+    }
+    return roundActiveBuiltInEditDenial(roundDir);
+  }
+
+  return builtInEditMissingStateDenial();
+}
+
+// ---------------------------------------------------------------------------
+// Built-in edit workflow-state helpers
+// ---------------------------------------------------------------------------
+
+async function loadWorkflowState(workspaceRoot) {
+  const statePath = path.join(workspaceRoot, WORKFLOW_STATE_RELATIVE_PATH);
+  try {
+    const state = JSON.parse(await fs.readFile(statePath, "utf8"));
+    if (!state || typeof state !== "object") {
+      return null;
+    }
+    if (typeof state.phase !== "string" || state.phase.length === 0) {
+      return null;
+    }
+    if (typeof state.source_operator !== "string" || state.source_operator.length === 0) {
+      return null;
+    }
+    return state;
+  } catch {
+    return null;
+  }
+}
+
+function isAllowedBaselineEditPath(relativePath, sourceOperator) {
+  if (relativePath === "baseline" || relativePath.startsWith("baseline/")) {
+    return true;
+  }
+  if (relativePath === sourceOperator) {
+    return true;
+  }
+  if (relativePath.includes("/")) {
+    return false;
+  }
+  return (
+    relativePath.startsWith("test_") ||
+    relativePath.startsWith("differential_test_") ||
+    relativePath.startsWith("bench_")
+  );
+}
+
+function activeRoundDir(state) {
+  if (!Number.isInteger(state.current_round) || !state.rounds || typeof state.rounds !== "object") {
+    return null;
+  }
+  const roundEntry = state.rounds[String(state.current_round)];
+  if (!roundEntry || typeof roundEntry !== "object") {
+    return null;
+  }
+  if (roundEntry.status !== "active" || typeof roundEntry.round_dir !== "string" || roundEntry.round_dir.length === 0) {
+    return null;
+  }
+  return roundEntry.round_dir;
+}
+
+function builtInEditMissingStateDenial() {
+  return (
+    "Built-in edit tool blocked by optimize workflow policy. " +
+    "The temporary optimize workflow state is missing or invalid. " +
+    "Ask the runner to restart the optimize session so workflow state can be rebuilt."
+  );
+}
+
+function builtInEditOutsideWorkspaceDenial() {
+  return (
+    "Built-in edit tool blocked by optimize workflow policy. " +
+    "Keep built-in edits inside the current optimize workspace."
+  );
+}
+
+function baselinePhaseBuiltInEditDenial() {
+  return (
+    "Built-in edit tool blocked by optimize workflow policy. " +
+    "Current phase is baseline. During baseline, built-in edits are limited to the baseline-minimal file set: " +
+    "the source operator, root-level test/bench harness files, and `baseline/` artifacts. " +
+    "Finish or repair baseline, then submit it through `ascend-npu-optimize-submit-baseline` before opening a round."
+  );
+}
+
+function awaitingRoundStartBuiltInEditDenial() {
+  return (
+    "Built-in edit tool blocked by optimize workflow policy. " +
+    "Current phase is awaiting_round_start, so no optimize round is active yet. " +
+    "Use `ascend-npu-optimize-start-round` to open the next `opt-round-N/` before editing."
+  );
+}
+
+function roundActiveBuiltInEditDenial(roundDir) {
+  return (
+    "Built-in edit tool blocked by optimize workflow policy. " +
+    `Current active round is ${roundDir}. Built-in edits must stay inside \`${roundDir}/\`. ` +
+    "Edit the round-local snapshot and round artifacts instead of top-level workspace files. " +
+    "When this round is ready, use `ascend-npu-optimize-submit-round` to submit it before moving on."
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Read-path extraction from shell commands
+// ---------------------------------------------------------------------------
 
 function splitCommand(command) {
   const tokens = [];
@@ -488,43 +656,111 @@ function isReadCommandToken(token) {
   return READ_COMMANDS.has(path.basename(token));
 }
 
-function candidatePaths(command, tokens) {
-  const candidates = [];
-  const explicitPathTokens = new Set(tokens.filter((token) => looksLikePath(token)));
+function collectCommandPathReferences(command, tokens) {
+  const scanCommand = stripHeredocPayload(command);
+  const scanTokens = filterTokensForReadScan(splitCommand(scanCommand));
+  const scanText = scanTokens.join(" ");
+  const pathTexts = [];
+  const explicitPathTokens = new Set(scanTokens.filter((token) => looksLikePath(token)));
 
-  for (const [index, token] of tokens.entries()) {
+  for (const token of scanTokens) {
     if (isReadCommandToken(token)) {
       continue;
     }
     if (looksLikePath(token)) {
-      candidates.push({ path: token, allowProtectedScriptEntrypoint: false });
+      pathTexts.push(token);
     }
   }
 
-  for (const match of command.matchAll(PATH_FRAGMENT_RE)) {
-    const candidate = match.groups?.path;
-    if (typeof candidate !== "string") {
+  for (const match of scanText.matchAll(PATH_FRAGMENT_RE)) {
+    const pathText = match.groups?.path;
+    if (typeof pathText !== "string") {
       continue;
     }
-    if (!isReadCommandToken(candidate) && !isNestedPathFragment(candidate, explicitPathTokens)) {
-      candidates.push({ path: candidate, allowProtectedScriptEntrypoint: false });
+    if (!isReadCommandToken(pathText) && !isNestedPathFragment(pathText, explicitPathTokens)) {
+      pathTexts.push(pathText);
     }
   }
-  for (const match of command.matchAll(WINDOWS_PATH_FRAGMENT_RE)) {
-    const candidate = match[0].replace(/['"),]+$/g, "");
-    if (!isReadCommandToken(candidate) && !isNestedPathFragment(candidate, explicitPathTokens)) {
-      candidates.push({ path: candidate, allowProtectedScriptEntrypoint: false });
+  for (const match of scanText.matchAll(WINDOWS_PATH_FRAGMENT_RE)) {
+    const pathText = match[0].replace(/['"),]+$/g, "");
+    if (!isReadCommandToken(pathText) && !isNestedPathFragment(pathText, explicitPathTokens)) {
+      pathTexts.push(pathText);
     }
   }
 
-  return candidates;
+  return pathTexts;
+}
+
+function stripHeredocPayload(command) {
+  if (!command.includes("<<") || !command.includes("\n")) {
+    return command;
+  }
+  return command.split(/\r?\n/, 1)[0];
+}
+
+function filterTokensForReadScan(tokens) {
+  const filtered = [];
+  for (let index = 0; index < tokens.length;) {
+    const token = tokens[index];
+    if (isHeredocOperatorToken(token)) {
+      index += 1;
+      if ((token === "<<" || token === "<<-") && index < tokens.length) {
+        index += 1;
+      }
+      continue;
+    }
+
+    const outputTarget = outputRedirectionTarget(token);
+    if (outputTarget !== null) {
+      index += outputTarget.length === 0 ? 2 : 1;
+      continue;
+    }
+
+    const inputTarget = inputRedirectionTarget(token);
+    if (inputTarget !== null) {
+      if (inputTarget.length === 0) {
+        index += 1;
+        if (index < tokens.length) {
+          filtered.push(tokens[index]);
+          index += 1;
+        }
+        continue;
+      }
+      filtered.push(inputTarget);
+      index += 1;
+      continue;
+    }
+
+    filtered.push(token);
+    index += 1;
+  }
+  return filtered;
+}
+
+function isHeredocOperatorToken(token) {
+  return token === "<<" || token === "<<-" || token.startsWith("<<");
+}
+
+function outputRedirectionTarget(token) {
+  const match = token.match(/^(?:(?:\d+)?>>|(?:\d+)?>\||(?:\d+)?>|&>>|&>)(.*)$/);
+  return match ? match[1] : null;
+}
+
+function inputRedirectionTarget(token) {
+  if (token.startsWith("<<")) {
+    return null;
+  }
+  const match = token.match(/^(?:(?:\d+)?<>|(?:\d+)?<)(.*)$/);
+  return match ? match[1] : null;
 }
 
 function looksLikePath(token) {
   return (
+    token === ".triton-agent" ||
     token.startsWith("/") ||
     token.startsWith("./") ||
     token.startsWith("../") ||
+    token.startsWith(".triton-agent/") ||
     token.startsWith(".opencode/") ||
     PROTECTED_RELATIVE_PATH_PREFIXES.some((prefix) => token.startsWith(prefix)) ||
     token.includes("\\") ||
@@ -532,23 +768,18 @@ function looksLikePath(token) {
   );
 }
 
-function isNestedPathFragment(candidate, explicitPathTokens) {
+function isNestedPathFragment(pathText, explicitPathTokens) {
   for (const token of explicitPathTokens) {
-    if (candidate !== token && token.includes(candidate)) {
+    if (pathText !== token && token.includes(pathText)) {
       return true;
     }
   }
   return false;
 }
 
-function isProtectedScriptPath(candidate, workspaceRoot) {
-  const relative = path.relative(workspaceRoot, candidate);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    return false;
-  }
-  const parts = relative.split(path.sep);
-  return parts.length >= 5 && parts[0] === ".opencode" && parts[1] === "skills" && parts[3] === "scripts";
-}
+// ---------------------------------------------------------------------------
+// Low-level path and policy helpers
+// ---------------------------------------------------------------------------
 
 function resolvePolicyPath(value) {
   if (typeof value !== "string" || value.length === 0) {
@@ -568,7 +799,7 @@ function resolveToolCwd(value, workspaceRoot) {
   return resolveCwd(value, workspaceRoot);
 }
 
-function allowRootsForPolicy(policy, workspaceRoot) {
+function allowReadRootsForPolicy(policy, workspaceRoot) {
   const roots = [workspaceRoot];
   if (!Array.isArray(policy.allow_read_roots)) {
     return roots;
@@ -582,33 +813,38 @@ function allowRootsForPolicy(policy, workspaceRoot) {
   return roots;
 }
 
-async function resolveCandidate(candidate, cwd) {
-  if (candidate.includes("*") || candidate.includes("?") || candidate.includes("{") || candidate.includes("}")) {
+async function resolvePathText(pathText, cwd) {
+  if (pathText.includes("*") || pathText.includes("?") || pathText.includes("{") || pathText.includes("}")) {
     return null;
   }
-  const resolved = path.resolve(cwd, candidate);
+  const resolvedPath = path.resolve(cwd, pathText);
   try {
-    return await fs.realpath(resolved);
+    return await fs.realpath(resolvedPath);
   } catch {
-    return resolved;
+    try {
+      const realParent = await fs.realpath(path.dirname(resolvedPath));
+      return path.join(realParent, path.basename(resolvedPath));
+    } catch {
+      return resolvedPath;
+    }
   }
 }
 
-function isUnderAnyRoot(candidate, roots) {
-  return roots.some((root) => isUnderRoot(candidate, root));
+function isUnderAnyRoot(resolvedPath, roots) {
+  return roots.some((root) => isUnderRoot(resolvedPath, root));
 }
 
-function isUnderRoot(candidate, root) {
-  const relative = path.relative(root, candidate);
+function isUnderRoot(resolvedPath, root) {
+  const relative = path.relative(root, resolvedPath);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-function matchesAnyGlob(candidate, patterns) {
-  return patterns.some((pattern) => globMatches(candidate, pattern));
+function matchesAnyGlob(resolvedPath, patterns) {
+  return patterns.some((pattern) => globMatches(resolvedPath, pattern));
 }
 
-function globMatches(candidate, pattern) {
-  return new RegExp(`^${globToRegexSource(pattern)}$`).test(candidate);
+function globMatches(resolvedPath, pattern) {
+  return new RegExp(`^${globToRegexSource(pattern)}$`).test(resolvedPath);
 }
 
 function globToRegexSource(pattern) {
@@ -633,6 +869,10 @@ function globToRegexSource(pattern) {
   return source;
 }
 
+// ---------------------------------------------------------------------------
+// Tool lifecycle completion trace
+// ---------------------------------------------------------------------------
+
 async function handleToolAfter(policy, input, output) {
   const tracePolicy = tracePolicyFor(policy);
   if (tracePolicy.enabled !== true || typeof tracePolicy.path !== "string" || tracePolicy.path.length === 0) {
@@ -640,10 +880,10 @@ async function handleToolAfter(policy, input, output) {
   }
 
   const toolUseId = output?.meta?.tool_use_id;
-  const cached = toolUseId ? toolLifecycleCache.get(toolUseId) : undefined;
+  const toolLifecycleRecord = toolUseId ? toolLifecycleCache.get(toolUseId) : undefined;
   const endTime = Date.now();
-  const durationMs = cached ? endTime - cached.startTime : 0;
-  const tool = input?.tool || cached?.tool || "unknown";
+  const durationMs = toolLifecycleRecord ? endTime - toolLifecycleRecord.startTime : 0;
+  const tool = input?.tool || toolLifecycleRecord?.tool || "unknown";
   const isError = output?.error != null;
   const status = isError ? "error" : "ok";
 
@@ -658,14 +898,11 @@ async function handleToolAfter(policy, input, output) {
     tool,
     tool_use_id: toolUseId,
     duration_ms: durationMs,
-    duration_source: "hook_clock_join",
     status,
-    source: "opencode_hook",
-    confidence: "high",
   });
 
   if (tool === "bash" || tool === "shell") {
-    const command = cached?.args?.command ?? output?.args?.command ?? "";
+    const command = toolLifecycleRecord?.args?.command ?? output?.args?.command ?? "";
     await appendTraceEvent(tracePolicy.path, {
       schema_version: 1,
       timestamp,
@@ -677,10 +914,7 @@ async function handleToolAfter(policy, input, output) {
       command,
       remote: command ? extractRemote(command) : null,
       duration_ms: durationMs,
-      duration_source: "hook_clock_join",
       status,
-      source: "opencode_hook",
-      confidence: "high",
     });
   }
 

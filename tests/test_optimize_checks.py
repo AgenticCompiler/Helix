@@ -103,11 +103,11 @@ class OptimizeCheckTests(unittest.TestCase):
         self.assertEqual(round_result.kind, "round")
         self.assertEqual(round_result.summary, "checked opt-round-1")
         mocked.assert_any_call(
-            "triton-npu-optimize-submit-baseline",
+            "ascend-npu-optimize-submit-baseline",
             "optimize_submit_baseline",
         )
         mocked.assert_any_call(
-            "triton-npu-optimize-submit-round",
+            "ascend-npu-optimize-submit-round",
             "optimize_submit_round",
         )
 
@@ -146,7 +146,7 @@ class OptimizeCheckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             self._write_baseline(workdir)
-            round_dir = self._write_round(workdir, "opt-round-1", round_disposition="continue")
+            round_dir = self._write_round(workdir, "opt-round-1")
 
             result = optimize_checks.check_round(round_dir)
 
@@ -158,7 +158,7 @@ class OptimizeCheckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             self._write_baseline(workdir)
-            round_dir = self._write_round(workdir, "opt-round-1", round_disposition="continue")
+            round_dir = self._write_round(workdir, "opt-round-1")
             pt_file = round_dir / "test_result.pt"
             pt_file.write_text("stub\n", encoding="utf-8")
 
@@ -172,7 +172,7 @@ class OptimizeCheckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             self._write_baseline(workdir)
-            round_dir = self._write_round(workdir, "opt-round-1", round_disposition="continue")
+            round_dir = self._write_round(workdir, "opt-round-1")
             pt_file = round_dir / "test_result.pt"
             pt_file.write_text("stub\n", encoding="utf-8")
 
@@ -187,7 +187,7 @@ class OptimizeCheckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             self._write_baseline(workdir)
-            round_dir = self._write_round(workdir, "opt-round-1", round_disposition="continue")
+            round_dir = self._write_round(workdir, "opt-round-1")
 
             result = optimize_checks.check_round(round_dir)
 
@@ -200,7 +200,6 @@ class OptimizeCheckTests(unittest.TestCase):
             round_dir = self._write_round(
                 workdir,
                 "opt-round-1",
-                round_disposition="continue",
                 perf_analysis_path="perf-analysis.md",
             )
 
@@ -216,7 +215,6 @@ class OptimizeCheckTests(unittest.TestCase):
             round_dir = self._write_round(
                 workdir,
                 "opt-round-1",
-                round_disposition="continue",
                 operator_source=PURE_TORCH_ROUND_OPERATOR,
             )
 
@@ -225,7 +223,7 @@ class OptimizeCheckTests(unittest.TestCase):
             self.assertEqual(result.status, "fail")
             self.assertEqual(result.kind, "round")
             self.assertIn(
-                "round operator no longer preserves a recognizable Triton kernel launch path",
+                "round operator no longer preserves a recognizable Ascend kernel launch path",
                 result.issues,
             )
 
@@ -236,7 +234,6 @@ class OptimizeCheckTests(unittest.TestCase):
             round_dir = self._write_round(
                 workdir,
                 "opt-round-1",
-                round_disposition="continue",
                 operator_source=MULTILINE_TRITON_ROUND_OPERATOR,
             )
 
@@ -270,7 +267,6 @@ class OptimizeCheckTests(unittest.TestCase):
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,
-                        "round_disposition": "continue",
                     }
                 ),
                 encoding="utf-8",
@@ -306,7 +302,6 @@ class OptimizeCheckTests(unittest.TestCase):
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,
-                        "round_disposition": "continue",
                     }
                 ),
                 encoding="utf-8",
@@ -324,7 +319,6 @@ class OptimizeCheckTests(unittest.TestCase):
             round_dir = self._write_round(
                 workdir,
                 "opt-round-1",
-                round_disposition="continue",
             )
             payload = json.loads((round_dir / "round-state.json").read_text(encoding="utf-8"))
             payload["effective_metric_source"] = "total-op"
@@ -342,7 +336,6 @@ class OptimizeCheckTests(unittest.TestCase):
             round_dir = self._write_round(
                 workdir,
                 "opt-round-1",
-                round_disposition="continue",
             )
             payload = json.loads((round_dir / "round-state.json").read_text(encoding="utf-8"))
             payload["effective_metric_source"] = "mixed"
@@ -371,19 +364,16 @@ class OptimizeCheckTests(unittest.TestCase):
             self._write_round(
                 workdir,
                 "opt-round-1",
-                round_disposition="continue",
                 round_perf_text="latency-a: 8.5\n",
             )
             self._write_round(
                 workdir,
                 "opt-round-2",
-                round_disposition="continue",
                 round_perf_text="latency-a: 8.4\n",
             )
             round_dir = self._write_round(
                 workdir,
                 "opt-round-3",
-                round_disposition="continue",
                 round_perf_text="latency-a: 8.3\n",
             )
 
@@ -411,19 +401,16 @@ class OptimizeCheckTests(unittest.TestCase):
             self._write_round(
                 workdir,
                 "opt-round-1",
-                round_disposition="continue",
                 round_perf_text="latency-a: 8.5\n",
             )
             self._write_round(
                 workdir,
                 "opt-round-2",
-                round_disposition="continue",
                 round_perf_text="latency-a: 8.4\n",
             )
             round_dir = self._write_round(
                 workdir,
                 "opt-round-3",
-                round_disposition="continue",
                 round_perf_text="latency-a: 7.0\n",
             )
 
@@ -450,20 +437,17 @@ class OptimizeCheckTests(unittest.TestCase):
             self._write_round(
                 workdir,
                 "opt-round-1",
-                round_disposition="continue",
                 round_perf_text=baseline_perf.replace("10.0", "8.5").replace("50.0", "45.0"),
             )
             self._write_round(
                 workdir,
                 "opt-round-2",
-                round_disposition="continue",
                 round_perf_text=baseline_perf.replace("10.0", "8.4").replace("50.0", "42.0"),
                 effective_metric_source="total-op",
             )
             round_dir = self._write_round(
                 workdir,
                 "opt-round-3",
-                round_disposition="continue",
                 round_perf_text=baseline_perf.replace("10.0", "8.3").replace("50.0", "41.5"),
             )
 
@@ -474,11 +458,11 @@ class OptimizeCheckTests(unittest.TestCase):
                 any("optimization may be stagnating in the current direction" in issue for issue in result.issues)
             )
 
-    def test_check_round_with_remaining_batch_rounds_names_next_round_and_reflection(self) -> None:
+    def test_check_round_with_remaining_batch_rounds_names_next_round_without_reflection_rules(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             self._write_baseline(workdir)
-            round_dir = self._write_round(workdir, "opt-round-2", round_disposition="continue")
+            round_dir = self._write_round(workdir, "opt-round-2")
 
             result = optimize_checks.check_round(round_dir, current_round=2, final_round=4)
 
@@ -486,29 +470,21 @@ class OptimizeCheckTests(unittest.TestCase):
             self.assertEqual(result.next_option, "opt-round-3")
             self.assertIn("Round 2/4 in the current worker batch is complete.", result.summary)
             self.assertIn("Next round: opt-round-3.", result.summary)
-            self.assertIn("Do not rush into the next code change.", result.summary)
             self.assertIn(
-                "First decide which operator, kernel path, or wrapper bottleneck should anchor the next round.",
+                "Use the staged `ascend-npu-optimize-start-round` skill to open opt-round-3 before beginning the next round.",
                 result.summary,
             )
-            self.assertIn(
-                "Decide whether existing evidence is already sufficient or whether profiling, IR, or compiler-source analysis is needed first.",
-                result.summary,
-            )
-            self.assertIn(
-                "Do not use agents or subagents to optimize multiple rounds in parallel.",
-                result.summary,
-            )
-            self.assertIn(
-                "Do not treat the next round as a parameter-only tuning sweep.",
-                result.summary,
-            )
+            self.assertNotIn("Do not rush into the next code change.", result.summary)
+            self.assertNotIn("First decide which operator, kernel path, or wrapper bottleneck", result.summary)
+            self.assertNotIn("Decide whether existing evidence is already sufficient", result.summary)
+            self.assertNotIn("Do not use agents or subagents to optimize multiple rounds in parallel.", result.summary)
+            self.assertNotIn("Do not treat the next round as a parameter-only tuning sweep.", result.summary)
 
     def test_check_round_final_batch_round_says_batch_target_is_complete(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             self._write_baseline(workdir)
-            round_dir = self._write_round(workdir, "opt-round-4", round_disposition="continue")
+            round_dir = self._write_round(workdir, "opt-round-4")
 
             result = optimize_checks.check_round(round_dir, current_round=4, final_round=4)
 
@@ -520,7 +496,7 @@ class OptimizeCheckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workdir = Path(tmp)
             self._write_baseline(workdir)
-            round_dir = self._write_round(workdir, "opt-round-1", round_disposition="continue")
+            round_dir = self._write_round(workdir, "opt-round-1")
 
             with patch.dict(
                 os.environ,
@@ -587,7 +563,6 @@ class OptimizeCheckTests(unittest.TestCase):
                         "effective_metric_source": "kernel",
                         "summary_path": "summary.md",
                         "opt_note_updated": True,
-                        "round_disposition": "continue",
                     }
                 ),
                 encoding="utf-8",
@@ -657,7 +632,6 @@ class OptimizeCheckTests(unittest.TestCase):
         workdir: Path,
         round_name: str,
         *,
-        round_disposition: str,
         perf_analysis_path: Optional[str] = None,
         operator_source: str = TRITON_ROUND_OPERATOR,
         round_perf_text: str = "latency-a: 1.0\n",
@@ -684,7 +658,6 @@ class OptimizeCheckTests(unittest.TestCase):
             "effective_metric_source": effective_metric_source,
             "summary_path": "summary.md",
             "opt_note_updated": True,
-            "round_disposition": round_disposition,
         }
         if perf_analysis_path is not None:
             payload["perf_analysis_path"] = perf_analysis_path

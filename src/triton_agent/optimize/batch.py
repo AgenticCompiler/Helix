@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 import threading
 from collections.abc import Callable
@@ -43,6 +45,7 @@ def run_optimize_batch(
     options: OptimizeRunOptions,
     *,
     max_concurrency: int,
+    operator_filter: str | None = None,
     stdout: TextIO | None = None,
     run_request: Callable[..., AgentResult] | None = None,
 ) -> int:
@@ -52,7 +55,10 @@ def run_optimize_batch(
     batch_status = load_optimize_batch_status(root)
     discovered, failures = discover_batch_workspaces(
         root,
-        resolve_operator_file=resolve_batch_optimize_operator_file,
+        resolve_operator_file=lambda workspace: resolve_batch_optimize_operator_file(
+            workspace,
+            operator_filter=operator_filter,
+        ),
         no_candidate_message=NO_CANDIDATE_OPERATOR_FILE,
     )
     runnable = [
@@ -157,7 +163,7 @@ def run_optimize_batch(
                     status="incomplete",
                 )
                 continue
-            if options.show_output:
+            if options.stream_output:
                 prefix = f"[{item.workspace.name}] "
                 prefixed_stream = PrefixedTextStream(stream, prefix, output_lock)
                 forwarded_stream = cast(TextIO, prefixed_stream)
@@ -185,6 +191,43 @@ def run_optimize_batch(
                 )
                 continue
             if result.succeeded:
+                if options.post_optimize_command is not None:
+                    if options.verbose:
+                        print(
+                            f"[{item.workspace.name}] Running post-optimize command: "
+                            f"{options.post_optimize_command}",
+                            file=sys.stderr,
+                        )
+                    completed = run_post_optimize_command(
+                        options.post_optimize_command,
+                        item.workspace,
+                    )
+                    if options.stream_output:
+                        prefix = f"[{item.workspace.name}] "
+                        forwarded_stream = cast(TextIO, PrefixedTextStream(stream, prefix, output_lock))
+                        forward_post_optimize_command_output(
+                            completed,
+                            stdout=forwarded_stream,
+                            stderr=forwarded_stream,
+                        )
+                    if completed.returncode != 0:
+                        results.append(
+                            BatchOptimizeResult(
+                                workspace=item.workspace,
+                                status="failed",
+                                message=(
+                                    "post-optimize command failed: "
+                                    f"{summarize_post_optimize_command_failure(completed)}"
+                                ),
+                            )
+                        )
+                        update_optimize_batch_workspace_status(
+                            root,
+                            item.workspace,
+                            item.operator_file,
+                            status="incomplete",
+                        )
+                        continue
                 if options.upload_enabled:
                     try:
                         upload_optimize_workspace(item.workspace, verbose=options.verbose)
@@ -213,7 +256,7 @@ def run_optimize_batch(
                         report_ok, report_msg = generate_workspace_report(
                             workspace=item.workspace,
                             agent_name=options.agent_name,
-                            show_output=options.show_output,
+                            show_output=options.stream_output,
                         )
                         if options.verbose:
                             status = "completed" if report_ok else f"warning: {report_msg}"
@@ -257,12 +300,68 @@ def run_optimize_batch(
 
     return render_batch_optimize_results(results, stdout=stream)
 
+
 def summarize_batch_optimize_failure(result: AgentResult) -> str:
-    for output in (result.stderr, result.stdout):
+    return summarize_process_outputs(
+        result.stderr,
+        result.stdout,
+        fallback=f"optimize exited with return code {result.return_code}",
+    )
+
+
+def run_post_optimize_command(
+    command: str,
+    workdir: Path,
+) -> subprocess.CompletedProcess[str]:
+    shell_executable = os.environ.get("SHELL")
+    if shell_executable:
+        return subprocess.run(
+            command,
+            shell=True,
+            cwd=workdir,
+            executable=shell_executable,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    return subprocess.run(
+        command,
+        shell=True,
+        cwd=workdir,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def forward_post_optimize_command_output(
+    completed: subprocess.CompletedProcess[str],
+    *,
+    stdout: TextIO | None,
+    stderr: TextIO | None,
+) -> None:
+    if stdout is not None and completed.stdout:
+        stdout.write(completed.stdout)
+        stdout.flush()
+    if stderr is not None and completed.stderr:
+        stderr.write(completed.stderr)
+        stderr.flush()
+
+
+def summarize_post_optimize_command_failure(completed: subprocess.CompletedProcess[str]) -> str:
+    return summarize_process_outputs(
+        completed.stderr,
+        completed.stdout,
+        fallback=f"post-optimize command exited with return code {completed.returncode}",
+    )
+
+
+def summarize_process_outputs(*outputs: str, fallback: str) -> str:
+    for output in outputs:
         lines = [line.strip() for line in output.splitlines() if line.strip()]
         if lines:
             return lines[-1]
-    return f"optimize exited with return code {result.return_code}"
+    return fallback
 
 
 def optimize_batch_status_file(root: Path) -> Path:

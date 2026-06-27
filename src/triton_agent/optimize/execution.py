@@ -9,11 +9,23 @@ from typing import Any, TextIO, cast
 from triton_agent.backends.base import AgentRunner
 from triton_agent.models import AgentRequest, AgentResult, CommandKind
 from triton_agent.optimize.checks import check_baseline, check_round
+from triton_agent.optimize.recovery import (
+    RecoveryBudget,
+    build_optimize_progress_probe,
+    classify_worker_failure,
+    compute_range_progress,
+    render_stall_recovery_note,
+    render_transient_recovery_note,
+)
 from triton_agent.prompts import append_additional_user_instructions, build_prompt
 from triton_agent.skill_loader import load_skill_script_module
 from triton_agent.optimize.session_artifacts import (
     OptimizeSessionArtifactsManager,
     OptimizeSessionArtifactsState,
+)
+from triton_agent.optimize.workflow_state import (
+    bootstrap_optimize_workflow_state,
+    render_optimize_phase_summary,
 )
 from triton_agent.optimize.models import (
     BaselinePreflightResult,
@@ -43,6 +55,7 @@ def _request_optimize_knowledge_skill_name(request: AgentRequest) -> str | None:
     return resolve_generic_optimize_knowledge_skill_name(
         request.staged_skill_names,
         request.staged_skill_sources,
+        language=request.language,
     )
 
 
@@ -82,7 +95,7 @@ def _round_sort_key(name: str) -> tuple[int, str]:
 
 def _iter_completed_round_dirs(workdir: Path) -> tuple[Path, ...]:
     module = load_skill_script_module(
-        "triton-npu-optimize-submit-round",
+        "ascend-npu-optimize-submit-round",
         "optimize_submit_round",
     )
     return tuple(cast(tuple[Path, ...], module.iter_completed_round_directories(workdir)))
@@ -140,6 +153,9 @@ def execute_multi_invocation_optimize(
         artifacts_state = artifacts_manager.prepare_supervised_session(
             request.workdir,
             agent_name=request.agent_name,
+            enable_agent_hooks=request.enable_agent_hooks,
+            source_operator_path=request.input_path,
+            language=request.language,
             optimize_target=request.optimize_target,
             compiler_source_path=request.compiler_source_path,
             compiler_source_commit=request.compiler_source_commit,
@@ -154,6 +170,9 @@ def execute_multi_invocation_optimize(
         artifacts_state = artifacts_manager.prepare_checked_session(
             request.workdir,
             agent_name=request.agent_name,
+            enable_agent_hooks=request.enable_agent_hooks,
+            source_operator_path=request.input_path,
+            language=request.language,
             optimize_target=request.optimize_target,
             compiler_source_path=request.compiler_source_path,
             compiler_source_commit=request.compiler_source_commit,
@@ -181,6 +200,16 @@ def execute_multi_invocation_optimize(
         )
         if not request.interact:
             baseline_result = controller.preflight_baseline(request)
+            if (
+                baseline_result.state is BaselinePreflightState.READY
+                and artifacts_state.workflow_state_path is not None
+            ):
+                bootstrap_optimize_workflow_state(
+                    artifacts_state.workflow_state_path,
+                    run_id=artifacts_state.archive.run_id,
+                    source_operator=request.input_path,
+                    baseline_reused=True,
+                )
             if baseline_result.state is not BaselinePreflightState.READY:
                 baseline_fix_result = controller.run_baseline_phase(request, baseline_result)
                 if not baseline_fix_result.succeeded:
@@ -235,6 +264,7 @@ class MultiInvocationOptimizeController:
         self._stdout = stdout
         self._stderr = stderr
         self._verbose_stream = verbose_stream
+        self._worker_recovery_budget = RecoveryBudget()
 
     def preflight_baseline(self, request: AgentRequest) -> BaselinePreflightResult:
         baseline_dir = request.workdir / "baseline"
@@ -264,11 +294,13 @@ class MultiInvocationOptimizeController:
             "optimize",
             f"baseline preflight: {preflight.state.value}, launching baseline repair",
         )
+        phase_summary = render_optimize_phase_summary(self._artifacts_state.workflow_state_path)
         baseline_request = replace(
             request,
             prompt=build_optimize_baseline_prompt(
                 request.input_path,
                 request.output_path,
+                language=request.language,
                 test_mode=request.test_mode,
                 bench_mode=request.bench_mode,
                 target_chip=request.target_chip,
@@ -280,6 +312,7 @@ class MultiInvocationOptimizeController:
                 base_prompt=_request_user_prompt(request),
                 remote=request.remote,
                 remote_workdir=request.remote_workdir,
+                workflow_phase_summary=phase_summary,
             ),
             interact=False,
         )
@@ -299,9 +332,11 @@ class MultiInvocationOptimizeController:
                 batch_end=batch_end,
             )
 
-            round_result = self._run_request(
+            worker_request, round_result = self._run_worker_with_recovery(
+                request,
                 worker_request,
-                show_output_label=f"batch-{batch_start}-{batch_end}",
+                issues=previous_batch_issues,
+                original_batch_start=batch_start,
             )
             if not round_result.succeeded:
                 return round_result
@@ -331,6 +366,100 @@ class MultiInvocationOptimizeController:
             batch_start, batch_end = self._advance_batch_bounds(request, current_batch_end=batch_end)
 
         return AgentResult(return_code=0, stdout="", stderr="")
+
+    def _run_worker_with_recovery(
+        self,
+        request: AgentRequest,
+        worker_request: AgentRequest,
+        *,
+        issues: str | None,
+        original_batch_start: int,
+    ) -> tuple[AgentRequest, AgentResult]:
+        active_request = worker_request
+        attempt = 0
+        while True:
+            attempt += 1
+            result = self._run_request(
+                active_request,
+                show_output_label=(
+                    f"batch-{active_request.current_round}-{active_request.final_round}-r{attempt}"
+                ),
+            )
+            if result.succeeded:
+                return active_request, result
+
+            failure_kind = classify_worker_failure(result)
+            if failure_kind == "fatal":
+                return active_request, result
+
+            progress = compute_range_progress(
+                request.workdir,
+                batch_start=active_request.current_round,
+                batch_end=active_request.final_round,
+                optimize_target=request.optimize_target,
+            )
+            unresolved_round = progress.first_unresolved_round
+            if unresolved_round > active_request.final_round:
+                return active_request, AgentResult(
+                    return_code=0,
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                    session_id=result.session_id,
+                )
+
+            self._worker_recovery_budget.consume(unresolved_round)
+            if self._worker_recovery_budget.exhausted(unresolved_round):
+                return active_request, AgentResult(
+                    return_code=1,
+                    stdout=result.stdout,
+                    stderr=self._build_recovery_budget_exhausted_message(
+                        unresolved_round=unresolved_round,
+                        failure_kind=failure_kind,
+                        last_error=result.stderr or result.stdout,
+                    ),
+                    stalled=result.stalled,
+                    session_id=result.session_id,
+                    retryable_failure=result.retryable_failure,
+                )
+
+            next_batch_start = progress.first_unresolved_round if failure_kind == "stall" else active_request.current_round
+            if failure_kind == "stall":
+                note = render_stall_recovery_note(
+                    original_batch_start=original_batch_start,
+                    last_accepted_round=progress.last_accepted_round,
+                    first_unresolved_round=progress.first_unresolved_round,
+                    batch_end=active_request.final_round,
+                )
+            else:
+                note = render_transient_recovery_note(
+                    batch_start=next_batch_start,
+                    batch_end=active_request.final_round,
+                )
+
+            active_request = self._request_with_recovery_note(
+                request,
+                issues=issues,
+                batch_start=next_batch_start,
+                batch_end=active_request.final_round,
+                note=note,
+            )
+
+    def _request_with_recovery_note(
+        self,
+        request: AgentRequest,
+        *,
+        issues: str | None,
+        batch_start: int,
+        batch_end: int,
+        note: str,
+    ) -> AgentRequest:
+        worker_request = self._request_with_fresh_batch_prompt(
+            request,
+            issues=issues,
+            batch_start=batch_start,
+            batch_end=batch_end,
+        )
+        return replace(worker_request, prompt=f"{worker_request.prompt}\n\n{note}")
 
     def check_batch_round(
         self,
@@ -415,13 +544,18 @@ class MultiInvocationOptimizeController:
             request,
             prompt=build_optimize_supervisor_prompt(
                 request.workdir,
+                language=request.language,
                 latest_round_dir=latest_round_dir,
                 optimize_target=request.optimize_target,
                 cli_followup_summary=batch_round_summary,
+                workflow_phase_summary=render_optimize_phase_summary(
+                    self._artifacts_state.workflow_state_path
+                ),
             ),
-            skill_name="triton-npu-optimize",
+            skill_name=f"{request.language}-npu-optimize",
             interact=False,
-            no_agent_session=True,
+            disable_backend_retry=False,
+            progress_probe=None,
         )
         supervisor_result = self._run_request(supervisor_request, show_output_label="supervisor")
         if not supervisor_result.succeeded:
@@ -483,17 +617,17 @@ class MultiInvocationOptimizeController:
 
     def _run_request(self, request: AgentRequest, *, show_output_label: str = "") -> AgentResult:
         run_id = self._artifacts_state.archive.run_id
+        launch_label = show_output_label or "run"
         env = dict(request.extra_env or {})
         env[TRACE_RUN_ID_ENV] = run_id
         env[TRACE_WORKSPACE_ROOT_ENV] = str(request.workdir)
         if request.log_tools:
-            env[TRACE_PATH_ENV] = str(self._artifacts_state.archive.otel_trace_path)
+            env[TRACE_PATH_ENV] = str(self._artifacts_state.archive.trace_path(launch_label))
         request = replace(
             request,
             run_id=run_id,
             extra_env=env,
             show_output_label=show_output_label,
-            no_agent_session=True,
             supervisor_report_path=self._artifacts_state.supervisor_report_path,
         )
         try:
@@ -514,6 +648,7 @@ class MultiInvocationOptimizeController:
                 pass
         self._artifacts_manager.record_agent_session(
             self._artifacts_state,
+            label=launch_label,
             session_id=result.session_id,
             agent=request.agent_name,
         )
@@ -525,6 +660,7 @@ class MultiInvocationOptimizeController:
         batch_start: int,
         batch_end: int,
     ) -> AgentRequest:
+        phase_summary = render_optimize_phase_summary(self._artifacts_state.workflow_state_path)
         prompt = append_additional_user_instructions(
             build_prompt(
                 CommandKind.OPTIMIZE,
@@ -541,6 +677,7 @@ class MultiInvocationOptimizeController:
                 round_mode=cast(Any, request.round_mode),
                 target_chip=request.target_chip,
                 optimize_target=request.optimize_target,
+                language=request.language,
                 compiler_source_path=request.compiler_source_path,
                 compiler_source_commit=request.compiler_source_commit,
                 enable_cann_ext_api=_request_enables_cann_ext_api(request),
@@ -549,6 +686,7 @@ class MultiInvocationOptimizeController:
                 final_round=batch_end,
                 round_batch_size=request.round_batch_size,
                 optimize_baseline_ready=not request.interact,
+                workflow_phase_summary=phase_summary,
             ),
             _request_user_prompt(request),
         )
@@ -557,6 +695,8 @@ class MultiInvocationOptimizeController:
             prompt=prompt,
             current_round=batch_start,
             final_round=batch_end,
+            disable_backend_retry=True,
+            progress_probe=build_optimize_progress_probe(request.workdir),
         )
 
     def _request_with_fresh_batch_prompt(
@@ -599,6 +739,22 @@ class MultiInvocationOptimizeController:
             f"{batch_summary}"
         )
 
+    def _build_recovery_budget_exhausted_message(
+        self,
+        *,
+        unresolved_round: int,
+        failure_kind: str,
+        last_error: str,
+    ) -> str:
+        lines = [
+            f"optimize worker recovery budget exhausted for unresolved round {unresolved_round}.",
+            f"Last recoverable failure kind: {failure_kind}.",
+        ]
+        detail = last_error.strip()
+        if detail:
+            lines.append(detail)
+        return "\n".join(lines)
+
     def _serialize_check_result(self, result: object) -> dict[str, object]:
         payload: dict[str, object] = {
             "kind": getattr(result, "kind"),
@@ -612,21 +768,21 @@ class MultiInvocationOptimizeController:
         return payload
 
     def _snapshot_live_handoff_files(self) -> None:
-        history_dir = self._artifacts_state.supervisor_history_dir
+        handoff_dir = self._artifacts_state.supervisor_handoff_dir
         supervisor_report_path = self._artifacts_state.supervisor_report_path
-        if history_dir is None or supervisor_report_path is None:
+        if handoff_dir is None or supervisor_report_path is None:
             return
-        history_dir.mkdir(parents=True, exist_ok=True)
-        round_label = self._next_history_round_label(history_dir)
+        handoff_dir.mkdir(parents=True, exist_ok=True)
+        round_label = self._next_handoff_round_label(handoff_dir)
         report_content = supervisor_report_path.read_text(encoding="utf-8")
-        (history_dir / f"{round_label}-supervisor-report.md").write_text(
+        (handoff_dir / f"{round_label}-supervisor-report.md").write_text(
             report_content,
             encoding="utf-8",
         )
 
-    def _next_history_round_label(self, history_dir: Path) -> str:
+    def _next_handoff_round_label(self, handoff_dir: Path) -> str:
         max_index = 0
-        for path in history_dir.glob("round-*.md"):
+        for path in handoff_dir.glob("round-*.md"):
             if not path.is_file():
                 continue
             match = re.match(r"round-(\d+)-", path.name)

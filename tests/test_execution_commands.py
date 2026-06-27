@@ -164,6 +164,75 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 archive,
             )
 
+    def test_handle_run_test_auto_compares_remote_differential_result_via_remote_helper(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            operator = root / "kernel.py"
+            test_file = root / "differential_test_kernel.py"
+            ref_result = root / "ref_result.pt"
+            archive = root / "kernel_result.pt"
+            operator.write_text("print('x')", encoding="utf-8")
+            test_file.write_text("# test-mode: differential\nprint('test')\n", encoding="utf-8")
+            ref_result.write_text("baseline", encoding="utf-8")
+
+            args = parser.parse_args(
+                [
+                    "run-test",
+                    "--test-file",
+                    str(test_file),
+                    "--operator-file",
+                    str(operator),
+                    "--ref-result",
+                    str(ref_result),
+                    "--remote",
+                    "alice@example.com",
+                    "--remote-workdir",
+                    "/tmp/triton-agent",
+                ]
+            )
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            stdout = StringIO()
+
+            with patch(
+                "triton_agent.commands.execution.run_remote_test",
+                return_value=(fake_result, archive, "/tmp/triton-agent-123"),
+            ) as run_mock:
+                with patch(
+                    "triton_agent.commands.execution.compare_result_files",
+                    side_effect=AssertionError("local comparison should not run for remote tests"),
+                ):
+                    with patch(
+                        "triton_agent.commands.execution.compare_remote_result_files",
+                        return_value=0,
+                    ) as compare_remote_mock:
+                        with redirect_stdout(stdout):
+                            exit_code = handle_run_test(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            run_mock.assert_called_once_with(
+                test_file.resolve(),
+                operator.resolve(),
+                "differential",
+                "alice@example.com",
+                "/tmp/triton-agent",
+                keep_remote_workdir=False,
+                verbose=False,
+                stderr=sys.stderr,
+            )
+            compare_remote_mock.assert_called_once_with(
+                ref_result.resolve(),
+                archive,
+                "alice@example.com",
+                "/tmp/triton-agent",
+                verbose=False,
+                stderr=sys.stderr,
+            )
+            self.assertEqual(
+                stdout.getvalue(),
+                f"Return code: 0\nArchived result: {archive}\n",
+            )
+
     def test_handle_run_test_threads_verbose_to_local_runner(self) -> None:
         parser = build_parser()
         with tempfile.TemporaryDirectory() as tmp:

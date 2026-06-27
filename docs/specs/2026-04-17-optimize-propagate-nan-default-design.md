@@ -30,13 +30,13 @@
 
 ## Design
 
-- Add a quality rule to `skills/triton-npu-optimize/SKILL.md` stating:
+- Add a quality rule to `skills/triton/triton-npu-optimize/SKILL.md` stating:
   - during kernel optimization work, inspect kernel compare-helper call sites such as `tl.maximum()` and `tl.minimum()` broadly rather than only the lines directly touched for the primary optimization
   - if any such kernel call does not already specify `propagate_nan`, the optimizer may add `propagate_nan=tl.PropagateNan.ALL` as a consistency repair
   - the optimizer should recognize that this can change NaN-input behavior and should not present it as a semantics-free cleanup
 - Phrase the rule as explicit semantic guidance so agents can make the tradeoff intentionally instead of treating it as a mandatory style normalization.
 - Keep the rule in the main optimize workflow guidance, not inside `learned_lessons.md` examples. Lesson examples describe what may be recorded after a round; they are not reliable execution instructions for the current round.
-- Mirror the rule in `skills/triton-npu-optimize/references/patterns/index.md` as a common boundary check, because optimize agents are instructed to read the pattern index before choosing detailed pattern references.
+- Mirror the rule in `skills/triton/triton-npu-optimize/references/patterns/index.md` as a common boundary check, because optimize agents are instructed to read the pattern index before choosing detailed pattern references.
 
 ## Expected Outcome
 

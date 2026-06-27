@@ -20,7 +20,7 @@ def show_output_log_path(request: AgentRequest) -> Path:
 
 @contextmanager
 def open_show_output_log(request: AgentRequest) -> Iterator[TextIO | None]:
-    if request.interact or not request.show_output:
+    if request.interact or not request.stream_output:
         yield None
         return
     path = show_output_log_path(request)

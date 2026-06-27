@@ -21,7 +21,7 @@ class AgentRequestTests(unittest.TestCase):
             bench_mode="torch-npu-profiler",
             interact=False,
             verbose=False,
-            show_output=False,
+            stream_output=False,
             force_overwrite=False,
             agent_name="codex",
             skill_name="triton-npu-optimize",
@@ -30,7 +30,7 @@ class AgentRequestTests(unittest.TestCase):
         )
 
         self.assertEqual(request.round_mode, "checked")
-        self.assertEqual(request.round_batch_size, 10)
+        self.assertEqual(request.round_batch_size, 5)
 
     def test_agent_request_supports_mcp_server_names(self) -> None:
         request = AgentRequest(
@@ -42,10 +42,10 @@ class AgentRequestTests(unittest.TestCase):
             bench_mode=None,
             interact=False,
             verbose=False,
-            show_output=False,
+            stream_output=False,
             force_overwrite=False,
             agent_name="codex",
-            skill_name="triton-npu-gen-test",
+            skill_name="ascend-npu-gen-test",
             prompt="original",
             workdir=Path("/tmp"),
             mcp_servers=("triton-agent-run-eval",),
@@ -63,7 +63,7 @@ class AgentRequestTests(unittest.TestCase):
             bench_mode="torch-npu-profiler",
             interact=False,
             verbose=True,
-            show_output=False,
+            stream_output=False,
             force_overwrite=False,
             agent_name="codex",
             skill_name="triton-npu-optimize",
@@ -77,10 +77,10 @@ class AgentRequestTests(unittest.TestCase):
             staged_skill_names=(
                 "triton-npu-optimize",
                 "triton-npu-optimize-knowledge",
-                "triton-npu-optimize-submit-baseline",
-                "triton-npu-optimize-submit-round",
-                "triton-npu-optimize-start-round",
-                "triton-npu-analyze-round-performance",
+                "ascend-npu-optimize-submit-baseline",
+                "ascend-npu-optimize-submit-round",
+                "ascend-npu-optimize-start-round",
+                "ascend-npu-analyze-round-performance",
             ),
             staged_skill_sources={
                 "triton-npu-optimize-knowledge": "triton-npu-optimize-knowledge-v2",

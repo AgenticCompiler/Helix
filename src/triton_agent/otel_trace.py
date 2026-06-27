@@ -13,6 +13,7 @@ from triton_agent.models import AgentRequest, AgentResult
 TRACE_PATH_ENV = "TRITON_AGENT_OTEL_TRACE_PATH"
 TRACE_RUN_ID_ENV = "TRITON_AGENT_OTEL_RUN_ID"
 TRACE_WORKSPACE_ROOT_ENV = "TRITON_AGENT_WORKSPACE_ROOT"
+_RUN_ID_COLLISION_COUNTS: Counter[str] = Counter()
 
 
 def utc_timestamp() -> str:
@@ -20,8 +21,11 @@ def utc_timestamp() -> str:
 
 
 def new_trace_run_id(prefix: str = "") -> str:
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
-    return f"{prefix}-{ts}" if prefix else ts
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    base = f"{prefix}-{ts}" if prefix else ts
+    _RUN_ID_COLLISION_COUNTS[base] += 1
+    count = _RUN_ID_COLLISION_COUNTS[base]
+    return base if count == 1 else f"{base}-{count}"
 
 
 def append_trace_event(trace_path: Path | str | None, event: Mapping[str, Any]) -> None:
@@ -46,6 +50,13 @@ def trace_path_from_request(request: AgentRequest) -> Path | None:
 
 def tool_trace_path(run_dir: Path) -> Path:
     return run_dir / "tool-traces.jsonl"
+
+
+def trace_summary_path(trace_path: Path) -> Path:
+    name = trace_path.name
+    if name.startswith("trace-") and name.endswith(".jsonl"):
+        return trace_path.with_name(name[:-6] + ".summary.json")
+    return trace_path.parent / "summary.json"
 
 
 def build_trace_env(
@@ -91,7 +102,7 @@ def write_tool_trace_summary(
     show_output_path: Path | None = None,
 ) -> list[str]:
     warnings: list[str] = []
-    summary_path = trace_path.parent / "summary.json"
+    summary_path = trace_summary_path(trace_path)
     try:
         trace_path.parent.mkdir(parents=True, exist_ok=True)
         trace_path.touch(exist_ok=True)
@@ -125,7 +136,7 @@ def build_tool_trace_summary(
     evidence_gaps = _tool_trace_evidence_gaps(capabilities)
     paths = {
         "trace": trace_path.as_posix(),
-        "summary": (trace_path.parent / "summary.json").as_posix(),
+        "summary": trace_summary_path(trace_path).as_posix(),
     }
     if show_output_path is not None:
         paths["show_output"] = show_output_path.as_posix()

@@ -14,6 +14,10 @@ from pathlib import Path
 from typing import Any
 
 
+# ---------------------------------------------------------------------------
+# Static policy constants
+# ---------------------------------------------------------------------------
+
 READ_COMMANDS = {
     "awk",
     "cat",
@@ -40,6 +44,10 @@ READ_TOOLS = {"Read", "Grep", "Glob"}
 EDIT_TOOLS = {"Edit", "MultiEdit", "Write"}
 
 
+# ---------------------------------------------------------------------------
+# Hook entrypoints
+# ---------------------------------------------------------------------------
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--policy", required=True)
@@ -59,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.event == "PreToolUse":
-            reason = evaluate_payload(policy, payload)
+            reason = deny_reason_for_tool_use(policy, payload)
             append_trace_events(policy, payload, blocked=reason is not None, event=args.event)
             if reason is not None:
                 json.dump(build_denial_output(reason), sys.stdout)
@@ -71,7 +79,12 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def evaluate_payload(policy: dict[str, Any], payload: dict[str, Any]) -> str | None:
+# ---------------------------------------------------------------------------
+# Tool-use denial checks
+# ---------------------------------------------------------------------------
+
+
+def deny_reason_for_tool_use(policy: dict[str, Any], payload: dict[str, Any]) -> str | None:
     guard_policy = _guard_policy(policy)
     if not guard_policy.get("enabled", True):
         return None
@@ -94,20 +107,25 @@ def evaluate_payload(policy: dict[str, Any], payload: dict[str, Any]) -> str | N
         return None
 
     cwd = _resolve_cwd(tool_input.get("cwd"), workspace_root)
-    allow_roots = _allow_roots(guard_policy, workspace_root)
-    deny_globs = [str(item) for item in guard_policy.get("deny_read_globs", []) if isinstance(item, str)]
+    allow_read_roots = _allow_read_roots(guard_policy, workspace_root)
+    deny_read_globs = [str(item) for item in guard_policy.get("deny_read_globs", []) if isinstance(item, str)]
     deny_message = str(guard_policy.get("deny_message") or "This read is blocked by workspace policy.")
 
-    for candidate in _candidate_paths(command, tokens):
-        resolved = _resolve_candidate(candidate, cwd, workspace_root)
-        if resolved is None:
+    for path_text in _collect_command_path_references(command, tokens):
+        resolved_path = _resolve_path_text(path_text, cwd, workspace_root)
+        if resolved_path is None:
             continue
-        if not _is_under_any_root(resolved, allow_roots):
+        if not _is_under_any_root(resolved_path, allow_read_roots):
             return deny_message
-        if _matches_any_glob(resolved, deny_globs):
+        if _matches_any_glob(resolved_path, deny_read_globs):
             return deny_message
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Trace output
+# ---------------------------------------------------------------------------
 
 
 def append_trace_events(policy: dict[str, Any], payload: dict[str, Any], *, blocked: bool, event: str) -> None:
@@ -128,7 +146,7 @@ def append_trace_events(policy: dict[str, Any], payload: dict[str, Any], *, bloc
     timestamp = _timestamp()
     run_id = str(trace_policy.get("run_id") or os.environ.get(TRACE_RUN_ID_ENV) or "")
 
-    base_event = {
+    tool_call_start_event = {
         "timestamp": timestamp,
         "schema_version": 1,
         "run_id": run_id,
@@ -142,7 +160,7 @@ def append_trace_events(policy: dict[str, Any], payload: dict[str, Any], *, bloc
         "source": "codex_posttooluse",
         "confidence": "high",
     }
-    _append_trace_event(Path(trace_path), base_event)
+    _append_trace_event(Path(trace_path), tool_call_start_event)
 
     if tool_name == "Bash":
         command = tool_input.get("command")
@@ -169,9 +187,9 @@ def append_trace_events(policy: dict[str, Any], payload: dict[str, Any], *, bloc
                 )
                 if workspace_root is not None:
                     cwd = _resolve_cwd(tool_input.get("cwd"), workspace_root)
-                    for candidate in _candidate_paths(command, tokens):
-                        resolved = _resolve_candidate(candidate, cwd, workspace_root)
-                        if resolved is None:
+                    for path_text in _collect_command_path_references(command, tokens):
+                        resolved_path = _resolve_path_text(path_text, cwd, workspace_root)
+                        if resolved_path is None:
                             continue
                         file_event = {
                             "timestamp": timestamp,
@@ -180,7 +198,7 @@ def append_trace_events(policy: dict[str, Any], payload: dict[str, Any], *, bloc
                             "type": "file_access",
                             "phase": "instant",
                             "action": "read",
-                            "path": _display_path(resolved, workspace_root),
+                            "path": _display_path(resolved_path, workspace_root),
                             "status": "blocked" if blocked else "started",
                             "source": "codex_posttooluse",
                             "confidence": "high",
@@ -273,6 +291,11 @@ def append_posttooluse_trace(policy: dict[str, Any], payload: dict[str, Any]) ->
         _append_trace_event(Path(trace_path), command_event)
 
 
+# ---------------------------------------------------------------------------
+# Shared trace metadata helpers
+# ---------------------------------------------------------------------------
+
+
 def _guard_policy(policy: dict[str, Any]) -> dict[str, Any]:
     guard = policy.get("guard")
     if isinstance(guard, dict):
@@ -308,6 +331,11 @@ def _tool_summary(tool_name: str, tool_input: dict[str, Any]) -> str:
     return tool_name
 
 
+# ---------------------------------------------------------------------------
+# Non-Bash trace helpers
+# ---------------------------------------------------------------------------
+
+
 def _append_non_bash_file_access_trace(
     trace_path: Path,
     trace_policy: dict[str, Any],
@@ -321,8 +349,8 @@ def _append_non_bash_file_access_trace(
     run_id: str,
 ) -> None:
     for raw_path in _tool_input_paths(tool_name, tool_input):
-        resolved = _resolve_candidate(raw_path, cwd, workspace_root)
-        if resolved is None:
+        resolved_path = _resolve_path_text(raw_path, cwd, workspace_root)
+        if resolved_path is None:
             continue
         event: dict[str, Any] = {
             "timestamp": timestamp,
@@ -331,15 +359,15 @@ def _append_non_bash_file_access_trace(
             "type": "file_access",
             "phase": "instant",
             "action": "search" if tool_name in {"Grep", "Glob"} else "read",
-            "path": _display_path(resolved, workspace_root),
-            "resolved_under_workspace": _is_relative_to(resolved, workspace_root),
+            "path": _display_path(resolved_path, workspace_root),
+            "resolved_under_workspace": _is_relative_to(resolved_path, workspace_root),
             "status": "blocked" if blocked else "started",
             "source": "codex_posttooluse",
             "confidence": "high",
         }
         try:
-            if resolved.is_file():
-                event["bytes"] = resolved.stat().st_size
+            if resolved_path.is_file():
+                event["bytes"] = resolved_path.stat().st_size
         except OSError:
             pass
         _append_trace_event(trace_path, event)
@@ -360,8 +388,8 @@ def _append_non_bash_edit_trace(
     raw_path = _first_tool_input_path(tool_input)
     if raw_path is None:
         return
-    resolved = _resolve_candidate(raw_path, cwd, workspace_root)
-    if resolved is None:
+    resolved_path = _resolve_path_text(raw_path, cwd, workspace_root)
+    if resolved_path is None:
         return
     added_lines, removed_lines, digest = _edit_stats(tool_name, tool_input)
     event: dict[str, Any] = {
@@ -370,8 +398,8 @@ def _append_non_bash_edit_trace(
         "run_id": run_id,
         "type": "edit",
         "phase": "instant",
-        "path": _display_path(resolved, workspace_root),
-        "edit_kind": _classify_edit_path(resolved),
+        "path": _display_path(resolved_path, workspace_root),
+        "edit_kind": _classify_edit_path(resolved_path),
         "added_lines": added_lines,
         "removed_lines": removed_lines,
         "diff_digest": digest,
@@ -456,6 +484,11 @@ def _classify_edit_path(path: Path) -> str:
     if name.endswith(".py"):
         return "operator"
     return "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Command and path helpers
+# ---------------------------------------------------------------------------
 
 
 def _classify_command(command: str) -> str:
@@ -547,24 +580,24 @@ def _is_read_command_token(token: str) -> bool:
     return Path(token).name in READ_COMMANDS
 
 
-def _candidate_paths(command: str, tokens: list[str]) -> list[str]:
-    candidates: list[str] = []
+def _collect_command_path_references(command: str, tokens: list[str]) -> list[str]:
+    path_texts: list[str] = []
     for token in tokens:
         if _is_read_command_token(token):
             continue
         if _looks_like_path(token):
-            candidates.append(token)
+            path_texts.append(token)
 
     for match in PATH_FRAGMENT_RE.finditer(command):
-        path = match.group("path")
-        if not _is_read_command_token(path):
-            candidates.append(path)
+        path_text = match.group("path")
+        if not _is_read_command_token(path_text):
+            path_texts.append(path_text)
     for match in WINDOWS_PATH_FRAGMENT_RE.finditer(command):
-        path = match.group("path").rstrip("'\"),")
-        if not _is_read_command_token(path):
-            candidates.append(path)
+        path_text = match.group("path").rstrip("'\"),")
+        if not _is_read_command_token(path_text):
+            path_texts.append(path_text)
 
-    return candidates
+    return path_texts
 
 
 def _looks_like_path(token: str) -> bool:
@@ -598,7 +631,7 @@ def _resolve_cwd(value: object, workspace_root: Path) -> Path:
     return path.resolve()
 
 
-def _allow_roots(policy: dict[str, Any], workspace_root: Path) -> list[Path]:
+def _allow_read_roots(policy: dict[str, Any], workspace_root: Path) -> list[Path]:
     roots = [workspace_root]
     for raw_root in policy.get("allow_read_roots", []):
         root = _resolve_policy_path(raw_root)
@@ -607,16 +640,16 @@ def _allow_roots(policy: dict[str, Any], workspace_root: Path) -> list[Path]:
     return roots
 
 
-def _resolve_candidate(candidate: str, cwd: Path, workspace_root: Path) -> Path | None:
-    if "*" in candidate or "?" in candidate or "{" in candidate or "}" in candidate:
+def _resolve_path_text(path_text: str, cwd: Path, workspace_root: Path) -> Path | None:
+    if "*" in path_text or "?" in path_text or "{" in path_text or "}" in path_text:
         return None
-    path = Path(candidate).expanduser()
+    path = Path(path_text).expanduser()
     if not path.is_absolute():
         path = cwd / path
     try:
         return path.resolve()
     except OSError:
-        return (workspace_root / candidate).resolve()
+        return (workspace_root / path_text).resolve()
 
 
 def _is_under_any_root(path: Path, roots: list[Path]) -> bool:

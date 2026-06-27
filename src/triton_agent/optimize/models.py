@@ -26,7 +26,7 @@ class OptimizeRunOptions:
     agent_name: str
     interact: bool
     verbose: bool
-    show_output: bool
+    stream_output: bool
     remote: str | None
     remote_workdir: str | None
     min_rounds: int
@@ -38,7 +38,9 @@ class OptimizeRunOptions:
     test_mode: str | None
     bench_mode: str | None
     prompt: str | None
-    round_batch_size: int = 10
+    post_optimize_command: str | None = None
+    language: Literal["triton", "tilelang"] = "triton"
+    round_batch_size: int = 5
     target_chip: Literal["A3", "A5"] = "A5"
     optimize_target: Literal["kernel", "operator"] = "kernel"
     optimize_knowledge: Literal["v1", "v2", "v3"] = "v1"

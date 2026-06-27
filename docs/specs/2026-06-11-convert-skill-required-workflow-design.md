@@ -2,7 +2,7 @@
 
 ## Goals
 
-- Make `skills/triton-npu-convert-pytorch-operator/SKILL.md` easier to scan during convert work.
+- Make `skills/triton/triton-npu-convert-pytorch-operator/SKILL.md` easier to scan during convert work.
 - Separate ordered workflow steps from always-on constraints and validation rules.
 - Preserve the existing conversion contract while reducing repetition across nearby sections.
 

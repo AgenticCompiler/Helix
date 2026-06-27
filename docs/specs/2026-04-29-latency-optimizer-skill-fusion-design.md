@@ -13,7 +13,7 @@ The current repository treats `skills/triton-npu-optimize` as the public optimiz
 ## Integration Shape
 
 - Keep `triton-npu-optimize/SKILL.md` as the optimize workflow owner.
-- Add grouped pattern references under `skills/triton-npu-optimize/references/patterns/` for latency-specific knowledge that is not already covered.
+- Add grouped pattern references under `skills/triton/triton-npu-optimize/references/patterns/` for latency-specific knowledge that is not already covered.
 - Update the pattern index with symptom-based entries and boundaries.
 - Route validation through the existing round and `compare-perf` authority instead of direct verifier commands from the external skill.
 - Preserve English project-facing prose and avoid copying Chinese source text verbatim.

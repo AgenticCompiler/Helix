@@ -35,11 +35,11 @@
 ## Task 3: Add the New Torch NPU Knowledge Skill And Migrate References
 
 **Files:**
-- Create: `skills/torch-npu-optimize-knowledge/SKILL.md`
-- Create: `skills/torch-npu-optimize-knowledge/references/patterns/argsort-avoid-aicpu-fallback.md`
-- Create: `skills/torch-npu-optimize-knowledge/references/pattern_index.md`
-- Delete: `skills/triton-npu-optimize-knowledge/references/patterns/argsort-avoid-aicpu-fallback.md`
-- Modify: `skills/triton-npu-optimize-knowledge/references/pattern_index.md`
+- Create: `skills/triton/torch-npu-optimize-knowledge/SKILL.md`
+- Create: `skills/triton/torch-npu-optimize-knowledge/references/patterns/argsort-avoid-aicpu-fallback.md`
+- Create: `skills/triton/torch-npu-optimize-knowledge/references/pattern_index.md`
+- Delete: `skills/triton/triton-npu-optimize-knowledge/references/patterns/argsort-avoid-aicpu-fallback.md`
+- Modify: `skills/triton/triton-npu-optimize-knowledge/references/pattern_index.md`
 
 - Keep the detailed pattern content intact except for ownership wording if needed.
 - Regenerate the checked-in pattern index for the Torch NPU knowledge skill from the shared builder script.
@@ -48,7 +48,7 @@
 
 **Files:**
 - Modify: `src/triton_agent/optimize/prompts.py`
-- Modify: `skills/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
 - Modify: `skills/triton-npu-analyze-round-performance/SKILL.md`
 - Modify: `tests/test_generation_contracts.py`
 

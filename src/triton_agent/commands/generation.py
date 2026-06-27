@@ -30,7 +30,12 @@ def handle_gen_eval_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
         max_concurrency = resolve_batch_concurrency(args.concurrency)
     except ValueError as exc:
         parser.error(str(exc))
-    return run_gen_eval_batch(root, generation_options_from_args(args), max_concurrency=max_concurrency)
+    return run_gen_eval_batch(
+        root,
+        generation_options_from_args(args),
+        max_concurrency=max_concurrency,
+        operator_filter=getattr(args, "operator_filter", None),
+    )
 
 
 def handle_gen_test(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -84,7 +89,7 @@ def _handle_generation_command(
             f"Agent executable not found: {exc}. "
             f"Make sure the '{options.agent_name}' CLI is installed and available in PATH."
         )
-    render_result(result, show_output=request.show_output)
+    render_result(result, skip_stdout=request.stream_output)
     return result.return_code
 
 
@@ -97,7 +102,7 @@ def generation_options_from_args(args: argparse.Namespace) -> GenerationOptions:
     return GenerationOptions(
         interact=bool(getattr(args, "interact", False)),
         verbose=bool(getattr(args, "verbose", False)),
-        show_output=bool(getattr(args, "show_output", False)),
+        stream_output=bool(getattr(args, "stream_output", True)),
         force_overwrite=bool(getattr(args, "force_overwrite", False)),
         agent_name=args.agent,
         remote=getattr(args, "remote", None),

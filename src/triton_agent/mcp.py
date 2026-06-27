@@ -31,7 +31,7 @@ def managed_mcp_server_names_for_request(
 ) -> tuple[str, ...] | None:
     if not enable_mcp or staged_skill_names is None:
         return None
-    if "triton-npu-run-eval" not in staged_skill_names:
+    if "ascend-npu-run-eval" not in staged_skill_names:
         return None
     return (RUN_EVAL_MCP_SERVER_NAME,)
 

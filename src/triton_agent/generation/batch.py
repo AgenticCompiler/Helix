@@ -52,13 +52,17 @@ def run_gen_eval_batch(
     options: GenerationOptions,
     *,
     max_concurrency: int,
+    operator_filter: str | None = None,
     stdout: TextIO | None = None,
     run_request: Callable[..., AgentResult] | None = None,
 ) -> int:
     generation_request_runner = run_request or run_generation_request
     discovered, failures = discover_batch_workspaces(
         root,
-        resolve_operator_file=resolve_batch_gen_eval_operator_file,
+        resolve_operator_file=lambda workspace: resolve_batch_gen_eval_operator_file(
+            workspace,
+            operator_filter=operator_filter,
+        ),
         no_candidate_message=NO_CANDIDATE_OPERATOR_FILE,
     )
     runnable = [
@@ -121,7 +125,7 @@ def run_gen_eval_batch(
     with scope, ThreadPoolExecutor(max_workers=max_concurrency) as executor:
         futures: dict[Future[AgentResult], BatchGenEvalWorkspace] = {}
         for item in runnable:
-            if options.show_output:
+            if options.stream_output:
                 prefix = f"[{item.workspace.name}] "
                 prefixed_stream = PrefixedTextStream(stream, prefix, output_lock)
                 forwarded_stream = cast(TextIO, prefixed_stream)
@@ -162,11 +166,16 @@ def run_gen_eval_batch(
     return render_batch_gen_eval_results(results, stdout=stream)
 
 
-def resolve_batch_gen_eval_operator_file(workspace: Path) -> Path:
+def resolve_batch_gen_eval_operator_file(
+    workspace: Path,
+    *,
+    operator_filter: str | None = None,
+) -> Path:
     return resolve_batch_operator_file(
         workspace,
         is_operator_candidate=is_batch_gen_eval_operator_candidate,
         no_candidate_message=NO_CANDIDATE_OPERATOR_FILE,
+        operator_filter=operator_filter,
     )
 
 

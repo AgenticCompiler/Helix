@@ -19,11 +19,11 @@
 
 - [ ] **Step 1: Extend the optimize skill contract test**
 
-Require `skills/triton-npu-optimize/SKILL.md` to mention strict admission criteria, evidence support, applicability or limitations, and the ban on round narrative.
+Require `skills/triton/triton-npu-optimize/SKILL.md` to mention strict admission criteria, evidence support, applicability or limitations, and the ban on round narrative.
 
 - [ ] **Step 2: Add an artifact contract assertion**
 
-Require `skills/triton-npu-optimize/references/artifacts.md` to state that command failures, local operator details, and round narrative belong outside `learned_lessons.md`.
+Require `skills/triton/triton-npu-optimize/references/artifacts.md` to state that command failures, local operator details, and round narrative belong outside `learned_lessons.md`.
 
 - [ ] **Step 3: Add prompt assertions**
 
@@ -38,8 +38,8 @@ Expected: FAIL because the strict wording is not present yet.
 ### Task 2: Update Skill And Artifact Wording
 
 **Files:**
-- Modify: `skills/triton-npu-optimize/SKILL.md`
-- Modify: `skills/triton-npu-optimize/references/artifacts.md`
+- Modify: `skills/triton/triton-npu-optimize/SKILL.md`
+- Modify: `skills/triton/triton-npu-optimize/references/artifacts.md`
 
 - [ ] **Step 1: Rewrite `## Learned Lessons`**
 
@@ -97,6 +97,6 @@ Expected: PASS.
 
 - [ ] **Step 2: Review diff**
 
-Run: `git diff -- docs/specs/2026-04-20-strict-learned-lessons-design.md docs/plans/2026-04-20-strict-learned-lessons.md skills/triton-npu-optimize/SKILL.md skills/triton-npu-optimize/references/artifacts.md src/triton_agent/prompts.py tests/test_generation_contracts.py tests/test_cli.py tests/test_backends_base.py`
+Run: `git diff -- docs/specs/2026-04-20-strict-learned-lessons-design.md docs/plans/2026-04-20-strict-learned-lessons.md skills/triton/triton-npu-optimize/SKILL.md skills/triton/triton-npu-optimize/references/artifacts.md src/triton_agent/prompts.py tests/test_generation_contracts.py tests/test_cli.py tests/test_backends_base.py`
 
 Expected: Only strict learned-lessons docs, prompt wording, and matching tests changed.

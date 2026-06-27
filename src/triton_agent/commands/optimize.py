@@ -58,7 +58,7 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
             f"Agent executable not found: {exc}. "
             f"Make sure the '{options.agent_name}' CLI is installed and available in PATH."
         )
-    render_result(result, show_output=request.show_output)
+    render_result(result, skip_stdout=request.stream_output)
 
     # Auto-upload after successful optimize
     if result.return_code == 0 and options.upload_enabled:
@@ -84,7 +84,7 @@ def handle_optimize(parser: argparse.ArgumentParser, args: argparse.Namespace) -
             report_ok, report_msg = generate_workspace_report(
                 workspace=workdir,
                 agent_name=options.agent_name,
-                show_output=options.show_output,
+                show_output=options.stream_output,
             )
             if options.verbose:
                 if report_ok:
@@ -126,7 +126,12 @@ def handle_optimize_batch(parser: argparse.ArgumentParser, args: argparse.Namesp
         parser.error(f"Input path does not exist: {root}")
     if not root.is_dir():
         parser.error(f"Input path is not a directory: {root}")
-    return run_optimize_batch(root, options, max_concurrency=max_concurrency)
+    return run_optimize_batch(
+        root,
+        options,
+        max_concurrency=max_concurrency,
+        operator_filter=getattr(args, "operator_filter", None),
+    )
 
 
 def _validate_round_mode(args: argparse.Namespace) -> Literal["checked", "supervised"]:
@@ -154,12 +159,19 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
     subagent_enabled = bool(getattr(args, "enable_subagent", False))
     upload_enabled = not bool(getattr(args, "no_upload", False))
     log_tools_enabled = bool(getattr(args, "log_tools", False))
-    round_batch_size = 99 if interact else getattr(args, "round_batch_size", 10)
+    round_batch_size = 99 if interact else getattr(args, "round_batch_size", 5)
+    post_optimize_command_value = getattr(args, "post_optimize_command", None)
+    post_optimize_command = (
+        post_optimize_command_value
+        if isinstance(post_optimize_command_value, str) and post_optimize_command_value.strip()
+        else None
+    )
     return OptimizeRunOptions(
         agent_name=args.agent,
         interact=interact,
+        language=getattr(args, "language", "triton"),
         verbose=bool(getattr(args, "verbose", False)),
-        show_output=bool(getattr(args, "show_output", False)),
+        stream_output=bool(getattr(args, "stream_output", True)),
         remote=getattr(args, "remote", None),
         remote_workdir=getattr(args, "remote_workdir", None),
         min_rounds=getattr(args, "min_rounds", 5),
@@ -172,6 +184,7 @@ def optimize_run_options_from_args(args: argparse.Namespace) -> OptimizeRunOptio
         test_mode=getattr(args, "test_mode", None),
         bench_mode=getattr(args, "bench_mode", None),
         prompt=getattr(args, "prompt", None),
+        post_optimize_command=post_optimize_command,
         target_chip=target_chip,
         optimize_target=optimize_target,
         optimize_knowledge=optimize_knowledge,

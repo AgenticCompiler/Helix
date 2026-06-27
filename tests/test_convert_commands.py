@@ -67,7 +67,7 @@ class ConvertRuntimeTests(unittest.TestCase):
             ConvertOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote=None,
@@ -83,8 +83,8 @@ class ConvertRuntimeTests(unittest.TestCase):
             request.staged_skill_names,
             (
                 "triton-npu-convert-pytorch-operator",
-                "triton-npu-gen-test",
-                "triton-npu-run-eval",
+                "ascend-npu-gen-test",
+                "ascend-npu-run-eval",
                 "triton-npu-repair-guide",
             ),
         )
@@ -103,7 +103,7 @@ class ConvertRuntimeTests(unittest.TestCase):
             ConvertOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote=None,
@@ -117,7 +117,7 @@ class ConvertRuntimeTests(unittest.TestCase):
 
         self.assertEqual(
             request.staged_skill_sources,
-            {"triton-npu-run-eval": "triton-npu-run-eval-mcp"},
+            {"ascend-npu-run-eval": "ascend-npu-run-eval-mcp"},
         )
         self.assertEqual(request.mcp_servers, ("triton-agent-run-eval",))
 
@@ -131,7 +131,7 @@ class ConvertRuntimeTests(unittest.TestCase):
             ConvertOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote="alice@example.com",
@@ -159,7 +159,7 @@ class ConvertRuntimeTests(unittest.TestCase):
             ConvertOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote=None,
@@ -185,7 +185,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 ConvertOptions(
                     interact=False,
                     verbose=False,
-                    show_output=False,
+                    stream_output=False,
                     force_overwrite=False,
                     agent_name="codex",
                     remote=None,
@@ -252,8 +252,8 @@ class ConvertRuntimeTests(unittest.TestCase):
                 captured["staged_skill_names"],
                 (
                     "triton-npu-convert-pytorch-operator",
-                    "triton-npu-gen-test",
-                    "triton-npu-run-eval",
+                    "ascend-npu-gen-test",
+                    "ascend-npu-run-eval",
                     "triton-npu-repair-guide",
                 ),
             )
@@ -374,7 +374,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-convert-pytorch-operator",
@@ -407,7 +407,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-convert-pytorch-operator",
@@ -440,7 +440,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-convert-pytorch-operator",
@@ -473,7 +473,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-convert-pytorch-operator",
@@ -522,7 +522,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-convert-pytorch-operator",
@@ -569,7 +569,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-convert-pytorch-operator",
@@ -614,7 +614,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-convert-pytorch-operator",
@@ -748,7 +748,7 @@ class ConvertRuntimeTests(unittest.TestCase):
                 ConvertOptions(
                     interact=False,
                     verbose=False,
-                    show_output=False,
+                    stream_output=False,
                     force_overwrite=False,
                     agent_name="codex",
                     remote=None,
@@ -804,6 +804,47 @@ class ConvertBatchTests(unittest.TestCase):
 
             self.assertEqual(resolved, workspace / "kernel.py")
 
+    def test_run_convert_batch_operator_filter_does_not_reinclude_triton_prefixed_files(self) -> None:
+        from triton_agent.convert.batch import run_convert_batch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "kernel_workspace"
+            workspace.mkdir()
+            (workspace / "kernel.py").write_text("print('x')\n", encoding="utf-8")
+            (workspace / "triton_kernel.py").write_text("print('y')\n", encoding="utf-8")
+
+            stream = StringIO()
+            exit_code = run_convert_batch(
+                root,
+                ConvertOptions(
+                    interact=False,
+                    verbose=False,
+                    stream_output=False,
+                    force_overwrite=False,
+                    agent_name="codex",
+                    remote=None,
+                    remote_workdir=None,
+                    output=None,
+                    test_mode="differential",
+                    prompt=None,
+                ),
+                max_concurrency=1,
+                operator_filter="triton_*.py",
+                stdout=stream,
+                run_request=lambda request, stdout=None, stderr=None: AgentResult(
+                    return_code=0,
+                    stdout="ok",
+                    stderr="",
+                ),
+            )
+
+            self.assertEqual(exit_code, 1)
+            self.assertIn(
+                "found no candidate operator file after applying --operator-filter 'triton_*.py'",
+                stream.getvalue(),
+            )
+
     def test_run_convert_batch_accepts_root_as_single_workspace(self) -> None:
         from triton_agent.convert.batch import run_convert_batch
 
@@ -823,7 +864,7 @@ class ConvertBatchTests(unittest.TestCase):
                 ConvertOptions(
                     interact=False,
                     verbose=False,
-                    show_output=False,
+                    stream_output=False,
                     force_overwrite=False,
                     agent_name="codex",
                     remote=None,
@@ -853,7 +894,7 @@ class ConvertBatchTests(unittest.TestCase):
             options = ConvertOptions(
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 remote=None,
@@ -907,7 +948,7 @@ class ConvertBatchTests(unittest.TestCase):
                     ConvertOptions(
                         interact=False,
                         verbose=False,
-                        show_output=False,
+                        stream_output=False,
                         force_overwrite=False,
                         agent_name="codex",
                         remote=None,
@@ -950,7 +991,7 @@ class ConvertBatchTests(unittest.TestCase):
                     ConvertOptions(
                         interact=False,
                         verbose=False,
-                        show_output=False,
+                        stream_output=False,
                         force_overwrite=False,
                         agent_name="codex",
                         remote=None,
@@ -990,7 +1031,7 @@ class ConvertBatchTests(unittest.TestCase):
                     ConvertOptions(
                         interact=False,
                         verbose=False,
-                        show_output=False,
+                        stream_output=False,
                         force_overwrite=False,
                         agent_name="codex",
                         remote=None,
@@ -1021,7 +1062,7 @@ class ConvertBatchTests(unittest.TestCase):
                 bench_mode=None,
                 interact=False,
                 verbose=False,
-                show_output=False,
+                stream_output=False,
                 force_overwrite=False,
                 agent_name="codex",
                 skill_name="triton-npu-convert-pytorch-operator",
@@ -1094,7 +1135,7 @@ class ConvertBatchTests(unittest.TestCase):
 
             with patch("triton_agent.convert.batch.run_convert_request", side_effect=_fake_run):
                 with redirect_stdout(stdout):
-                    exit_code = main(["convert-batch", "-i", str(root), "--show-output"])
+                    exit_code = main(["convert-batch", "-i", str(root)])
 
             self.assertEqual(exit_code, 0)
             rendered = stdout.getvalue()

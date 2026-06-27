@@ -7,6 +7,7 @@ from pathlib import Path
 from types import ModuleType
 
 from triton_agent.resources import application_root
+from triton_agent.skill_catalog import resolve_skill_source_dir
 
 
 def repo_root() -> Path:
@@ -14,7 +15,7 @@ def repo_root() -> Path:
 
 
 def skill_script_root(skill_name: str) -> Path:
-    return repo_root() / "skills" / skill_name
+    return resolve_skill_source_dir(skill_name)
 
 
 def skill_script_path(skill_name: str, script_name: str) -> Path:
@@ -25,11 +26,11 @@ def skill_script_path(skill_name: str, script_name: str) -> Path:
 
 
 def operator_eval_skill_root() -> Path:
-    return skill_script_root("triton-npu-run-eval")
+    return skill_script_root("ascend-npu-run-eval")
 
 
 def operator_eval_script_path(script_name: str) -> Path:
-    return skill_script_path("triton-npu-run-eval", script_name)
+    return skill_script_path("ascend-npu-run-eval", script_name)
 
 
 @lru_cache(maxsize=None)
@@ -60,4 +61,4 @@ def load_skill_script_module(skill_name: str, script_name: str) -> ModuleType:
 
 
 def load_operator_eval_script_module(script_name: str) -> ModuleType:
-    return load_skill_script_module("triton-npu-run-eval", script_name)
+    return load_skill_script_module("ascend-npu-run-eval", script_name)

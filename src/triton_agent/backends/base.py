@@ -93,6 +93,7 @@ class AgentRunner(ABC):
     ) -> AgentResult:
         resumed_prompt = build_optimize_resume_prompt(
             summary,
+            language=request.language,
             base_prompt=request.prompt,
             round_mode=request.round_mode,
             optimize_target=request.optimize_target,
@@ -123,7 +124,7 @@ class AgentRunner(ABC):
     def _select_mode(self, request: AgentRequest) -> str:
         if request.interact:
             return "interactive"
-        if request.show_output:
+        if request.stream_output:
             return "streaming"
         return "buffered"
 
@@ -142,7 +143,7 @@ class AgentRunner(ABC):
 
                 rendered_chunk_sink = _write_rendered_chunk
 
-            collect_stdout = not request.show_output
+            collect_stdout = not request.stream_output
             result = self._run_once(
                 command,
                 request,
@@ -155,7 +156,11 @@ class AgentRunner(ABC):
 
             max_retries = _code_agent_max_retries()
             attempt = 0
-            while _is_transient_agent_failure(result) and attempt < max_retries:
+            while (
+                not request.disable_backend_retry
+                and _is_transient_agent_failure(result)
+                and attempt < max_retries
+            ):
                 attempt += 1
                 time.sleep(_retry_delay_seconds(attempt))
                 result = self._run_once(
@@ -193,6 +198,7 @@ class AgentRunner(ABC):
                 extra_env=request.extra_env,
                 rendered_chunk_sink=rendered_chunk_sink,
                 collect_stdout=collect_stdout,
+                progress_probe=request.progress_probe,
             )
             return result
         except BaseException as exc:

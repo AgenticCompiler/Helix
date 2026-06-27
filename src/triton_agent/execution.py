@@ -222,6 +222,10 @@ def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
     return _load_bench_runner().parse_bench_metadata(bench_file)
 
 
+def resolve_bench_mode_default() -> str:
+    return "torch-npu-profiler"
+
+
 def resolve_bench_mode_from_metadata(bench_file: Path) -> str:
     metadata = parse_bench_metadata(bench_file)
     mode = metadata.get("bench-mode")

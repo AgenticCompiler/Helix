@@ -37,7 +37,7 @@ class SubagentManagerTests(unittest.TestCase):
                 "Use its `symptom_index.md` when profile or IR evidence needs symptom routing.",
                 content,
             )
-            self.assertNotIn(".codex/skills/triton-npu-optimize-knowledge/", content)
+            self.assertNotIn(".codex/skills/triton/triton-npu-optimize-knowledge/", content)
             self.assertIn("must not perform optimization work", content)
 
             self.assertEqual(manager.cleanup(state), [])
@@ -100,7 +100,7 @@ class SubagentManagerTests(unittest.TestCase):
             self.assertIn("mode: subagent", content)
             self.assertIn("Start with skill `triton-npu-optimize-knowledge`", content)
             self.assertIn(
-                "Use skill `triton-npu-run-eval`, `triton-npu-profile-operator`, and `triton-npu-analyze-ir`",
+                "Use skill `ascend-npu-run-eval`, `ascend-npu-profile-operator`, and `triton-npu-analyze-ir`",
                 content,
             )
             self.assertIn("must not perform optimization work", content)
