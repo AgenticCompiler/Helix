@@ -5,6 +5,7 @@ import contextlib
 import importlib
 import importlib.util
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Iterator, Protocol, TextIO, cast
@@ -17,6 +18,7 @@ _RUN_TEST_HINT = "Hint: use `compare-result` to inspect this archived result ins
 _BLOCKS_PARALLEL_ENV = "TRITON_ALL_BLOCKS_PARALLEL"
 _BLOCKS_PARALLEL_UNSAFE_VALUE = "1"
 _BLOCKS_PARALLEL_SAFE_VALUE = "0"
+_OPT_ROUND_DIR_RE = re.compile(r"^opt-round-\d+$")
 
 
 def _profile_bench_hint(profile_dir: Path) -> str:
@@ -435,7 +437,11 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
                 output=args.output,
             )
         else:
-            extract_dest_dir = Path(args.extract_dest_dir).resolve() if getattr(args, "extract_dest_dir", None) else None
+            extract_dest_dir = _resolve_run_bench_extract_dest_dir(
+                raw_extract_dest_dir=getattr(args, "extract_dest_dir", None),
+                output=getattr(args, "output", None),
+                operator_file=operator_file,
+            )
             result, perf_path = run_local_bench(
                 bench_file,
                 operator_file,
@@ -456,6 +462,28 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
         print(f"Perf file: {perf_path}")
         print(_RUN_BENCH_HINT)
     return int(result["return_code"])
+
+
+def _resolve_run_bench_extract_dest_dir(
+    *,
+    raw_extract_dest_dir: str | None,
+    output: str | None,
+    operator_file: Path,
+) -> Path | None:
+    if raw_extract_dest_dir:
+        return Path(raw_extract_dest_dir).expanduser().resolve()
+
+    output_parent = _standard_optimize_artifact_dir(Path(output).expanduser().resolve().parent) if output else None
+    if output_parent is not None:
+        return output_parent
+
+    return _standard_optimize_artifact_dir(operator_file.parent)
+
+
+def _standard_optimize_artifact_dir(path: Path) -> Path | None:
+    if path.name == "baseline" or _OPT_ROUND_DIR_RE.match(path.name):
+        return path.resolve()
+    return None
 
 
 def _resolve_existing_path(
