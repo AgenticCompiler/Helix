@@ -68,15 +68,14 @@ See [tilelang-compute-expert.md](tilelang-compute-expert.md) for sync primitives
 
 ```python
 pass_configs = {
-    # Expert model: disable all automatic passes
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_COMBINE: False,
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: False,
-    tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: False,
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_SYNC: False,
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_COMBINE: False,   # required — manual T.Scope
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: False,         # recommended
+    tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,    # either
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_SYNC: False,      # recommended
 }
 ```
 
-> In practice, `TL_ASCEND_MEMORY_PLANNING` and `TL_ASCEND_AUTO_SYNC` are sometimes kept `True` to reduce manual sync burden. Adjust per kernel.
+> Only `AUTO_CV_COMBINE` is **required** to be `False` — the compiler must not interfere with manual `T.Scope`. The other three are recommendations for full manual control; leaving them `True` adds redundant compiler passes but will not break correctness.
 
 ## Expert GEMM Example — Double Buffering
 
@@ -89,8 +88,8 @@ import tilelang.language as T
 
 pass_configs = {
     tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_COMBINE: False,
-    tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: False,      # manual sync
-    tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: False,
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: False,
+    tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,
     tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_SYNC: False,
 }
 
