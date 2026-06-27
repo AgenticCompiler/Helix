@@ -13,6 +13,7 @@ Rules:
 - Always pass both `--bench-file` and `--operator-file`.
 - If `--bench-mode` is omitted, defaults to `torch-npu-profiler`.
 - Use `--bench-mode torch-npu-profiler`, `--bench-mode msprof`, or `--bench-mode perf-counter` only when you need to override the default.
+- Hard rule for optimize workflows: always pass `--extract-dest-dir baseline/` during baseline preparation and `--extract-dest-dir opt-round-N/` during optimization rounds so extracted simulation data lands in the correct target directory.
 - Use `--output <path>` when you need the perf artifact at a specific location.
 - On success, `run-bench` prints `Perf file: <path>` and a short hint to use `compare-perf` instead of reading perf files directly.
 - On failure, `run-bench` prints the captured benchmark output so the error remains diagnosable.
@@ -33,7 +34,6 @@ In `msprof-simulator` and `torch-npu-profiler` modes, the extracted simulation d
 Examples:
 
 ```bash
-python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench-mode torch-npu-profiler
 python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file baseline/<operator>.py --bench-mode torch-npu-profiler --extract-dest-dir baseline
 python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode torch-npu-profiler --extract-dest-dir opt-round-N/
 python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode torch-npu-profiler --simulator-case-idx 3 --extract-dest-dir opt-round-N/
