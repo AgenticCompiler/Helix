@@ -32,7 +32,36 @@ This skill provides pattern references for optimize runs that use the Expert pro
 | Memory | `T.alloc_shared`, `T.alloc_fragment` | `T.alloc_ub`, `T.alloc_L1`, `T.alloc_L0A/L0B/L0C` |
 | Sync | Auto (pass_configs) | `T.set_flag`/`T.wait_flag`, `T.barrier_all` |
 | Scope | Compiler-inferred | `T.Scope("C")`, `T.Scope("V")` |
-| Pass configs | All auto-passes ON | All auto-passes OFF |
+| Pass configs | All auto-passes ON | See below |
+
+### Switching pass_configs for Expert Mode
+
+When moving from Developer to Expert mode, change `pass_configs`:
+
+```python
+# Developer (default for convert)
+pass_configs = {
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_COMBINE: True,
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,
+    tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_SYNC: True,
+}
+
+# Expert — recommended for full manual control
+pass_configs = {
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_COMBINE: False,   # required
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: False,         # recommended
+    tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,    # doesn't matter
+    tilelang.PassConfigKey.TL_ASCEND_AUTO_CV_SYNC: False,      # recommended
+}
+```
+
+| Key | Expert | Why | What changes |
+|-----|--------|-----|--------------|
+| `AUTO_CV_COMBINE` | `False` **(required)** | You use `T.Scope("C")` / `T.Scope("V")` manually — if the compiler also splits, it will conflict | Must wrap Cube work in `T.Scope("C")`, Vector work in `T.Scope("V")` |
+| `AUTO_SYNC` | `False` (recommended) | Turning it off forces you to see missing barriers; leaving it on only adds redundant sync, not correctness bugs | Write `T.barrier_all()`, `T.set_flag` / `T.wait_flag` by hand |
+| `AUTO_CV_SYNC` | `False` (recommended) | Same — off so you verify your cross-core handshakes are complete; on just adds redundant sync | Write `T.set_cross_flag` / `T.wait_cross_flag` at Cube↔Vector boundaries |
+| `MEMORY_PLANNING` | either | Pure memory optimization — no impact on correctness or your manual control | None |
 
 ### CV scope architecture
 
