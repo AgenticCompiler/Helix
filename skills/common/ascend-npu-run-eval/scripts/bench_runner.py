@@ -1593,6 +1593,17 @@ def _run_local_msprof_single_case_for_kernel(
     return hottest_name
 
 
+def _resolve_simulator_lib_path():
+    import glob as _glob
+    for cann_root in ["/usr/local/Ascend/cann-9.0.0", "/usr/local/Ascend/ascend-toolkit/latest"]:
+        for soc in ["Ascend910B4", "Ascend910B1", "Ascend910B", "Ascend910ProB"]:
+            sim_lib = f"{cann_root}/aarch64-linux/simulator/{soc}/lib"
+            if __import__("os").path.isdir(sim_lib) and __import__("os").path.isfile(f"{sim_lib}/libruntime_camodel.so"):
+                return sim_lib
+    return None
+
+
+
 def _run_local_bench_msprof_simulator(
     bench_file: Path,
     operator_file: Path,
@@ -1625,12 +1636,18 @@ def _run_local_bench_msprof_simulator(
         ]
         print(f"[msprof-simulator] kernel-name={kernel_name}, cmd: {' '.join(command)})", flush=True)
         t0 = time.monotonic()
+        sim_lib = _resolve_simulator_lib_path()
+        extra_env = None
+        if sim_lib:
+            ld = os.environ.get("LD_LIBRARY_PATH", "")
+            extra_env = {"LD_LIBRARY_PATH": f"{sim_lib}:{ld}"}
         with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
             result = run_streaming_process(
                 command,
                 str(bench_file.parent),
                 stall_timeout_seconds=_bench_timeout(),
                 stdout=quiet_stdout,
+                extra_env=extra_env,
             )
         elapsed = time.monotonic() - t0
         stdout_chunks.append(str(result["stdout"]))
@@ -1751,12 +1768,18 @@ def _run_local_bench_msprof_simulator_standalone(
         ]
         print(f"[standalone-msprof-simulator] kernel-name={kernel_name}, cmd: {' '.join(command)}", flush=True)
         t0 = time.monotonic()
+        sim_lib = _resolve_simulator_lib_path()
+        extra_env = None
+        if sim_lib:
+            ld = os.environ.get("LD_LIBRARY_PATH", "")
+            extra_env = {"LD_LIBRARY_PATH": f"{sim_lib}:{ld}"}
         with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
             result = run_streaming_process(
                 command,
                 str(bench_file.parent),
                 stall_timeout_seconds=_bench_timeout(),
                 stdout=quiet_stdout,
+                extra_env=extra_env,
             )
         elapsed = time.monotonic() - t0
         stdout_text = str(result["stdout"])
