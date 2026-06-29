@@ -5,6 +5,8 @@ Run a generated benchmark with:
 ```bash
 python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py
 python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py
+python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --baseline-operator-file <operator>.py
+python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --baseline-operator-file <operator>.py --metric-source all --skip-latency-errors
 python3 ./scripts/run-command.py run-bench --bench-file bench_a.py --operator-file a.py --output ./artifacts/a_perf.txt
 ```
 
@@ -14,8 +16,18 @@ Rules:
 - If `--bench-mode` is omitted, defaults to `torch-npu-profiler`.
 - Use `--bench-mode torch-npu-profiler`, `--bench-mode msprof`, or `--bench-mode perf-counter` only when you need to override the default.
 - Use `--output <path>` when you need the perf artifact at a specific location.
-- On success, `run-bench` prints `Perf file: <path>` and a short hint to use `compare-perf` instead of reading perf files directly.
+- Use `--baseline-operator-file <path>` when you want `run-bench` to reuse or generate the baseline perf artifact automatically and then compare it against the candidate perf artifact.
+- Use `--skip-latency-errors` when you want automatic baseline comparison to continue past recoverable latency-error entries.
+- Use `--metric-source auto|kernel|total-op|all` when you want automatic baseline comparison to use a specific comparison basis.
+- On success without `--baseline-operator-file`, `run-bench` prints `Perf file: <path>` and a short hint to use `compare-perf` instead of reading perf files directly.
+- On success with `--baseline-operator-file`, `run-bench` prints `Baseline perf file: <path>`, `Perf file: <path>`, and the automatic comparison output.
 - On failure, `run-bench` prints the captured benchmark output so the error remains diagnosable.
+
+Baseline compare notes:
+
+- The baseline perf artifact path is derived from `--baseline-operator-file` using the normal `<operator-stem>_perf.txt` naming rule beside that file.
+- If that baseline perf artifact already exists, `run-bench` reuses it and does not rerun the baseline benchmark.
+- If that baseline perf artifact does not exist, `run-bench` benchmarks the baseline operator first to create it, then benchmarks the candidate operator from `--operator-file`, then compares the two perf files automatically.
 
 Mode notes:
 
@@ -31,6 +43,8 @@ Examples:
 ```bash
 python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench-mode torch-npu-profiler
 python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof
+python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --baseline-operator-file <operator>.py
+python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --baseline-operator-file <operator>.py --metric-source kernel
 ```
 
 Remote examples:

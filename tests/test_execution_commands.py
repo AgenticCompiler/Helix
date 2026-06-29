@@ -434,6 +434,282 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 output=None,
             )
 
+    def test_handle_run_bench_reuses_existing_baseline_perf_and_auto_compares(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_kernel.py"
+            operator = root / "opt_kernel.py"
+            bench_file = root / "bench_kernel.py"
+            baseline_perf = root / "baseline_kernel_perf.txt"
+            candidate_perf = root / "opt_kernel_perf.txt"
+            baseline.write_text("print('baseline')", encoding="utf-8")
+            operator.write_text("print('opt')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
+            baseline_perf.write_text("latency-a: 1.0\n", encoding="utf-8")
+
+            args = parser.parse_args(
+                [
+                    "run-bench",
+                    "--bench-file",
+                    str(bench_file),
+                    "--operator-file",
+                    str(operator),
+                    "--baseline-operator-file",
+                    str(baseline),
+                ]
+            )
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            stdout = StringIO()
+
+            with patch(
+                "triton_agent.commands.execution.run_local_bench",
+                return_value=(fake_result, candidate_perf),
+            ) as run_mock:
+                with patch(
+                    "triton_agent.commands.execution.compare_perf_files",
+                    return_value=0,
+                ) as compare_mock:
+                    with redirect_stdout(stdout):
+                        exit_code = handle_run_bench(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            run_mock.assert_called_once_with(
+                bench_file.resolve(),
+                operator.resolve(),
+                "torch-npu-profiler",
+                None,
+                verbose=False,
+                output=None,
+            )
+            compare_mock.assert_called_once_with(
+                baseline_perf.resolve(),
+                candidate_perf,
+                skip_latency_errors=False,
+                metric_source="auto",
+            )
+            self.assertEqual(
+                stdout.getvalue(),
+                (
+                    f"Baseline perf file: {baseline_perf.resolve()}\n"
+                    f"Perf file: {candidate_perf}\n"
+                ),
+            )
+
+    def test_handle_run_bench_generates_missing_baseline_perf_before_compare(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_kernel.py"
+            operator = root / "opt_kernel.py"
+            bench_file = root / "bench_kernel.py"
+            baseline_perf = root / "baseline_kernel_perf.txt"
+            candidate_perf = root / "opt_kernel_perf.txt"
+            baseline.write_text("print('baseline')", encoding="utf-8")
+            operator.write_text("print('opt')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
+
+            args = parser.parse_args(
+                [
+                    "run-bench",
+                    "--bench-file",
+                    str(bench_file),
+                    "--operator-file",
+                    str(operator),
+                    "--baseline-operator-file",
+                    str(baseline),
+                ]
+            )
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            stdout = StringIO()
+
+            with patch(
+                "triton_agent.commands.execution.run_local_bench",
+                side_effect=[(fake_result, baseline_perf), (fake_result, candidate_perf)],
+            ) as run_mock:
+                with patch(
+                    "triton_agent.commands.execution.compare_perf_files",
+                    return_value=0,
+                ) as compare_mock:
+                    with redirect_stdout(stdout):
+                        exit_code = handle_run_bench(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(run_mock.call_count, 2)
+            self.assertEqual(
+                run_mock.call_args_list[0].args,
+                (
+                    bench_file.resolve(),
+                    baseline.resolve(),
+                    "torch-npu-profiler",
+                    None,
+                ),
+            )
+            self.assertEqual(
+                run_mock.call_args_list[1].args,
+                (
+                    bench_file.resolve(),
+                    operator.resolve(),
+                    "torch-npu-profiler",
+                    None,
+                ),
+            )
+            compare_mock.assert_called_once_with(
+                baseline_perf,
+                candidate_perf,
+                skip_latency_errors=False,
+                metric_source="auto",
+            )
+            self.assertEqual(
+                stdout.getvalue(),
+                (
+                    f"Baseline perf file: {baseline_perf}\n"
+                    f"Perf file: {candidate_perf}\n"
+                ),
+            )
+
+    def test_handle_run_bench_remote_prints_both_kept_workspaces_when_baseline_is_generated(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_kernel.py"
+            operator = root / "opt_kernel.py"
+            bench_file = root / "bench_kernel.py"
+            baseline_perf = root / "baseline_kernel_perf.txt"
+            candidate_perf = root / "opt_kernel_perf.txt"
+            baseline.write_text("print('baseline')", encoding="utf-8")
+            operator.write_text("print('opt')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
+
+            args = parser.parse_args(
+                [
+                    "run-bench",
+                    "--bench-file",
+                    str(bench_file),
+                    "--operator-file",
+                    str(operator),
+                    "--baseline-operator-file",
+                    str(baseline),
+                    "--remote",
+                    "alice@example.com",
+                    "--keep-remote-workdir",
+                ]
+            )
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+            stdout = StringIO()
+
+            with patch(
+                "triton_agent.commands.execution.run_remote_bench",
+                side_effect=[
+                    (fake_result, baseline_perf, "/tmp/baseline-ws"),
+                    (fake_result, candidate_perf, "/tmp/candidate-ws"),
+                ],
+            ):
+                with patch(
+                    "triton_agent.commands.execution.compare_perf_files",
+                    return_value=0,
+                ):
+                    with redirect_stdout(stdout):
+                        exit_code = handle_run_bench(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(
+                stdout.getvalue(),
+                (
+                    f"Baseline perf file: {baseline_perf}\n"
+                    "Remote workspace: /tmp/baseline-ws\n"
+                    "Remote workspace: /tmp/candidate-ws\n"
+                    f"Perf file: {candidate_perf}\n"
+                ),
+            )
+
+    def test_handle_run_bench_remote_failure_with_perf_prints_baseline_workspace_once(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_kernel.py"
+            operator = root / "opt_kernel.py"
+            bench_file = root / "bench_kernel.py"
+            baseline_perf = root / "baseline_kernel_perf.txt"
+            baseline.write_text("print('baseline')", encoding="utf-8")
+            operator.write_text("print('opt')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
+
+            args = parser.parse_args(
+                [
+                    "run-bench",
+                    "--bench-file",
+                    str(bench_file),
+                    "--operator-file",
+                    str(operator),
+                    "--baseline-operator-file",
+                    str(baseline),
+                    "--remote",
+                    "alice@example.com",
+                    "--keep-remote-workdir",
+                ]
+            )
+            failing_result = AgentResult(return_code=1, stdout="", stderr="")
+            stdout = StringIO()
+
+            with patch(
+                "triton_agent.commands.execution.run_remote_bench",
+                return_value=(failing_result, baseline_perf, "/tmp/baseline-ws"),
+            ):
+                with redirect_stdout(stdout):
+                    exit_code = handle_run_bench(parser, args)
+
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(stdout.getvalue().count("Remote workspace: /tmp/baseline-ws\n"), 1)
+
+    def test_handle_run_bench_forwards_compare_perf_options(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline_kernel.py"
+            operator = root / "opt_kernel.py"
+            bench_file = root / "bench_kernel.py"
+            baseline_perf = root / "baseline_kernel_perf.txt"
+            candidate_perf = root / "opt_kernel_perf.txt"
+            baseline.write_text("print('baseline')", encoding="utf-8")
+            operator.write_text("print('opt')", encoding="utf-8")
+            bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
+            baseline_perf.write_text("latency-a: 1.0\n", encoding="utf-8")
+
+            args = parser.parse_args(
+                [
+                    "run-bench",
+                    "--bench-file",
+                    str(bench_file),
+                    "--operator-file",
+                    str(operator),
+                    "--baseline-operator-file",
+                    str(baseline),
+                    "--skip-latency-errors",
+                    "--metric-source",
+                    "kernel",
+                ]
+            )
+            fake_result = AgentResult(return_code=0, stdout="", stderr="")
+
+            with patch(
+                "triton_agent.commands.execution.run_local_bench",
+                return_value=(fake_result, candidate_perf),
+            ):
+                with patch(
+                    "triton_agent.commands.execution.compare_perf_files",
+                    return_value=0,
+                ) as compare_mock:
+                    exit_code = handle_run_bench(parser, args)
+
+            self.assertEqual(exit_code, 0)
+            compare_mock.assert_called_once_with(
+                baseline_perf.resolve(),
+                candidate_perf,
+                skip_latency_errors=True,
+                metric_source="kernel",
+            )
+
 
 class ProbeBenchHandlerTests(unittest.TestCase):
     def _write_inputs(self, tmp: str) -> tuple[Path, Path, Path]:

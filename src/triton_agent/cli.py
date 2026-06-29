@@ -819,6 +819,13 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
     if spec.input_mode == "run-bench":
         subparser.add_argument("--bench-file", required=True)
         subparser.add_argument("--operator-file", required=True)
+        subparser.add_argument("--baseline-operator-file")
+        subparser.add_argument("--skip-latency-errors", "--skip-error", dest="skip_latency_errors", action="store_true")
+        subparser.add_argument(
+            "--metric-source",
+            default="auto",
+            choices=("auto", "kernel", "total-op", "all"),
+        )
         return
     if spec.input_mode == "probe-bench":
         subparser.add_argument("--bench-file", required=True)
