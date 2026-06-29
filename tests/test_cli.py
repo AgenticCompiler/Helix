@@ -942,6 +942,126 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.COMPARE_PERF)
         self.assertEqual(args.metric_source, "auto")
 
+    def test_probe_bench_requires_bench_operator_and_baseline_files(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "probe-bench",
+                "--bench-file",
+                "bench_kernel.py",
+                "--operator-file",
+                "opt_kernel.py",
+                "--baseline-operator-file",
+                "baseline_kernel.py",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.PROBE_BENCH)
+        self.assertEqual(args.bench_file, "bench_kernel.py")
+        self.assertEqual(args.operator_file, "opt_kernel.py")
+        self.assertEqual(args.baseline_operator_file, "baseline_kernel.py")
+
+    def test_probe_bench_requires_baseline_operator_file(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(
+                [
+                    "probe-bench",
+                    "--bench-file",
+                    "bench_kernel.py",
+                    "--operator-file",
+                    "opt_kernel.py",
+                ]
+            )
+
+    def test_probe_bench_accepts_metric_source_flag(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "probe-bench",
+                "--bench-file",
+                "bench_kernel.py",
+                "--operator-file",
+                "opt_kernel.py",
+                "--baseline-operator-file",
+                "baseline_kernel.py",
+                "--metric-source",
+                "total-op",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.PROBE_BENCH)
+        self.assertEqual(args.metric_source, "total-op")
+
+    def test_probe_bench_defaults_metric_source_to_auto(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "probe-bench",
+                "--bench-file",
+                "bench_kernel.py",
+                "--operator-file",
+                "opt_kernel.py",
+                "--baseline-operator-file",
+                "baseline_kernel.py",
+            ]
+        )
+        self.assertEqual(args.metric_source, "auto")
+
+    def test_probe_bench_rejects_metric_source_all(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(
+                [
+                    "probe-bench",
+                    "--bench-file",
+                    "bench_kernel.py",
+                    "--operator-file",
+                    "opt_kernel.py",
+                    "--baseline-operator-file",
+                    "baseline_kernel.py",
+                    "--metric-source",
+                    "all",
+                ]
+            )
+
+    def test_probe_bench_rejects_output_flag(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(
+                [
+                    "probe-bench",
+                    "--bench-file",
+                    "bench_kernel.py",
+                    "--operator-file",
+                    "opt_kernel.py",
+                    "--baseline-operator-file",
+                    "baseline_kernel.py",
+                    "-o",
+                    "out.txt",
+                ]
+            )
+
+    def test_probe_bench_has_common_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "probe-bench",
+                "--bench-file",
+                "bench_kernel.py",
+                "--operator-file",
+                "opt_kernel.py",
+                "--baseline-operator-file",
+                "baseline_kernel.py",
+                "--bench-mode",
+                "torch-npu-profiler",
+                "--npu-devices",
+                "0,2-3",
+                "--verbose",
+            ]
+        )
+        self.assertEqual(args.bench_mode, "torch-npu-profiler")
+        self.assertEqual(args.npu_devices, "0,2-3")
+        self.assertTrue(args.verbose)
+
     def test_verbose_option_is_available(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["gen-test", "-i", "kernel.py", "--verbose"])

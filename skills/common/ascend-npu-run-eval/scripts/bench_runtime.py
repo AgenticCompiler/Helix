@@ -233,11 +233,12 @@ def profile_all_bench_cases(
     *,
     verbose: bool = False,
     output: str | None = None,
+    preloaded: tuple[list[BenchCase], KernelResolution] | None = None,
 ) -> tuple[ResultPayload, Path]:
     prev = os.environ.get("TRITON_ALWAYS_COMPILE")
     os.environ["TRITON_ALWAYS_COMPILE"] = "1"
     try:
-        cases, resolution = load_bench_cases(bench_file, operator_file)
+        cases, resolution = preloaded or load_bench_cases(bench_file, operator_file)
         case_records: list[PerfCaseRecord] = []
         had_failures = False
         stderr_chunks: list[str] = []

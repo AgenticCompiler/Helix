@@ -9,9 +9,11 @@ from triton_agent.execution import (
     resolve_bench_mode_default,
     resolve_test_mode_from_metadata,
     run_local_bench,
+    run_local_probe_bench,
     run_local_simulator,
     run_local_test,
     run_remote_bench,
+    run_remote_probe_bench,
     run_remote_test,
 )
 from triton_agent.output import render_result
@@ -156,6 +158,56 @@ def handle_run_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) 
     return result.return_code
 
 
+def handle_probe_bench(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    bench_file, operator_file, baseline_operator_file = resolve_probe_bench_paths(parser, args)
+    resolved_bench_mode = args.bench_mode or resolve_bench_mode_default()
+    remote, remote_workdir = resolve_remote_execution(
+        getattr(args, "remote", None),
+        getattr(args, "remote_workdir", None),
+    )
+    try:
+        if remote is not None:
+            result = run_remote_probe_bench(
+                bench_file,
+                operator_file,
+                baseline_operator_file,
+                resolved_bench_mode,
+                remote,
+                remote_workdir,
+                metric_source=args.metric_source,
+                npu_devices=args.npu_devices,
+                keep_remote_workdir=args.keep_remote_workdir,
+                verbose=args.verbose,
+                stderr=sys.stderr,
+            )
+        else:
+            result = run_local_probe_bench(
+                bench_file,
+                operator_file,
+                baseline_operator_file,
+                resolved_bench_mode,
+                metric_source=args.metric_source,
+                npu_devices=args.npu_devices,
+                verbose=args.verbose,
+            )
+    except (FileNotFoundError, ValueError, RuntimeError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    for line in result.default_lines:
+        print(line)
+    if args.verbose:
+        for line in result.verbose_lines:
+            print(line)
+    if result.warnings:
+        print("Warnings:")
+        for warning in result.warnings:
+            print(f"  - {warning}")
+    remote_workspace = getattr(result, "remote_workspace", None)
+    if remote is not None and remote_workspace is not None and (args.verbose or args.keep_remote_workdir):
+        print(f"Remote workspace: {remote_workspace}")
+    return result.return_code
+
+
 def handle_run_simulator(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     bench_file, operator_file = resolve_run_bench_paths(parser, args)
     try:
@@ -270,3 +322,19 @@ def resolve_run_bench_paths(
     if not operator_file.exists():
         parser.error(f"Operator file path does not exist: {operator_file}")
     return bench_file, operator_file
+
+
+def resolve_probe_bench_paths(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+) -> tuple[Path, Path, Path]:
+    bench_file = Path(args.bench_file).expanduser().resolve()
+    if not bench_file.exists():
+        parser.error(f"Bench file path does not exist: {bench_file}")
+    operator_file = Path(args.operator_file).expanduser().resolve()
+    if not operator_file.exists():
+        parser.error(f"Operator file path does not exist: {operator_file}")
+    baseline_operator_file = Path(args.baseline_operator_file).expanduser().resolve()
+    if not baseline_operator_file.exists():
+        parser.error(f"Baseline operator file path does not exist: {baseline_operator_file}")
+    return bench_file, operator_file, baseline_operator_file

@@ -224,3 +224,94 @@ def parse_bench_metadata(bench_file: Path) -> dict[str, str]:
 
 def resolve_bench_mode_default() -> str:
     return "torch-npu-profiler"
+
+
+class ProbeBenchResult(Protocol):
+    return_code: int
+    default_lines: list[str]
+    verbose_lines: list[str]
+    warnings: list[str]
+
+
+class ProbeRunnerModule(Protocol):
+    def run_local_probe_bench(
+        self,
+        bench_file: Path,
+        operator_file: Path,
+        baseline_operator_file: Path,
+        bench_mode: str,
+        *,
+        metric_source: str = "auto",
+        npu_devices: str | None = None,
+        verbose: bool = False,
+    ) -> ProbeBenchResult: ...
+
+    def run_remote_probe_bench(
+        self,
+        bench_file: Path,
+        operator_file: Path,
+        baseline_operator_file: Path,
+        bench_mode: str,
+        remote: str,
+        remote_workdir: str | None,
+        *,
+        metric_source: str = "auto",
+        npu_devices: str | None = None,
+        keep_remote_workdir: bool = False,
+        verbose: bool = False,
+        stderr: TextIO | None = None,
+    ) -> ProbeBenchResult: ...
+
+
+def _load_probe_runner() -> ProbeRunnerModule:
+    return cast(ProbeRunnerModule, load_operator_eval_script_module("probe_runner"))
+
+
+def run_local_probe_bench(
+    bench_file: Path,
+    operator_file: Path,
+    baseline_operator_file: Path,
+    bench_mode: str,
+    *,
+    metric_source: str = "auto",
+    npu_devices: str | None = None,
+    verbose: bool = False,
+) -> ProbeBenchResult:
+    return _load_probe_runner().run_local_probe_bench(
+        bench_file,
+        operator_file,
+        baseline_operator_file,
+        bench_mode,
+        metric_source=metric_source,
+        npu_devices=npu_devices,
+        verbose=verbose,
+    )
+
+
+def run_remote_probe_bench(
+    bench_file: Path,
+    operator_file: Path,
+    baseline_operator_file: Path,
+    bench_mode: str,
+    remote: str,
+    remote_workdir: str | None,
+    *,
+    metric_source: str = "auto",
+    npu_devices: str | None = None,
+    keep_remote_workdir: bool = False,
+    verbose: bool = False,
+    stderr: TextIO | None = None,
+) -> ProbeBenchResult:
+    return _load_probe_runner().run_remote_probe_bench(
+        bench_file,
+        operator_file,
+        baseline_operator_file,
+        bench_mode,
+        remote,
+        remote_workdir,
+        metric_source=metric_source,
+        npu_devices=npu_devices,
+        keep_remote_workdir=keep_remote_workdir,
+        verbose=verbose,
+        stderr=stderr,
+    )
