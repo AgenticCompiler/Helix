@@ -12,7 +12,7 @@ _TRITON_LAUNCH_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\s*\[[^\]]+\]\s*\(", re
 _TILELANG_IMPORT_RE = re.compile(r"(?m)^\s*(?:import\s+tilelang\b|from\s+tilelang\b)")
 _TILELANG_DECORATOR_RE = re.compile(r"(?m)^\s*@\s*(?:T\.prim_func|jit)\b")
 _TILELANG_LANGUAGE_RE = re.compile(r"(?m)\btilelang\.language\b|\bT\.\b")
-_TILELANG_LAUNCH_RE = re.compile(r"(?m)with\s+T\.Kernel\s*\([^)]*\)\s*as\s+\(")
+_TILELANG_LAUNCH_RE = re.compile(r"(?m)with\s+T\.Kernel\s*\([^)]*\)\s*as\s+[\w\(]")
 
 
 @dataclass(frozen=True)

@@ -135,15 +135,72 @@ def double_buffered_gemm(
 | t₂ | copy tile 2 (A_L1_0, B_L1_0) | gemm tile 1 |
 | t₃ | | gemm tile 2 |
 
+### L0A/L0B/L0C Double Buffering
+
+When an inner K-loop is replaced by per-NR-block MMA, double-buffer the L0 registers (L0A, L0B, L0C) with depth 2:
+
+```python
+l0a = T.alloc_L0A([2, block_M, dim], dtype)
+l0b = T.alloc_L0B([2, dim, block_N], dtype)
+l0c = T.alloc_L0C([2, block_M, block_N], accum_dtype)
+```
+
+Each iteration uses slot `nr % 2`:
+
+```python
+SIG_L0AB = 3
+SIG_L0C  = 5
+
+for nr in T.serial(NR):
+    s = nr % 2  # ping-pong slot
+
+    # Load K tile and L0A
+    T.wait_flag("MTE1", "MTE2", SIG_K_L1)
+    T.copy(K[...], k_l1)
+    T.set_flag("MTE2", "MTE1", SIG_K_L1)
+
+    T.wait_flag("M", "MTE1", SIG_L0AB + s)
+    T.copy(q_l1, l0a[s, :, :])
+
+    T.wait_flag("MTE2", "MTE1", SIG_K_L1)
+    T.copy(k_l1, l0b[s, :, :], transpose=True)
+    T.set_flag("MTE1", "MTE2", SIG_K_L1)
+    T.set_flag("MTE1", "M", SIG_L0AB + s)
+
+    # MMA
+    T.wait_flag("MTE1", "M", SIG_L0AB + s)
+    T.wait_flag("FIX", "M", SIG_L0C + s)
+    T.mma(l0a[s, :, :], l0b[s, :, :], l0c[s, :, :], init=True)
+    T.set_flag("M", "MTE1", SIG_L0AB + s)
+    T.set_flag("M", "FIX", SIG_L0C + s)
+
+    # Write out
+    T.wait_flag("M", "FIX", SIG_L0C + s)
+    T.copy(l0c[s, :, :], workspace[...])
+    T.set_flag("FIX", "M", SIG_L0C + s)
+```
+
+The signal chain per slot `s`:
+1. `MTE1 → M` (`SIG_L0AB + s`): MTE1 signals L0A/L0B data is loaded (producer).
+2. `M → MTE1` (`SIG_L0AB + s`): Cube signals L0A/L0B slot is consumed and free (consumer done → producer can refill).
+3. `FIX → M` (`SIG_L0C + s`): FIX signals L0C slot is free for the next MMA.
+4. `M → FIX` (`SIG_L0C + s`): Cube signals L0C has a result ready for write-out.
+
+See `flash_attn_opt.py` for a production example of L0 double-buffering combined with cross-core workspace ring pipeline.
+
 ## What To Verify After Applying
 
+- Run `python3 scripts/tl_sync_lint.py --tier1 --tier2 --tier3 --tier4 <kernel>.py` to verify flag balance before any on-device test.
 - The kernel compiles without sync-related errors.
 - Results match the reference — off-by-one in event IDs or missing `init=(k==0)` can silently corrupt the accumulator.
 - The first iteration's `init=True` correctly zeros the accumulator.
-- L1 capacity is sufficient for two complete buffer pairs.
-- `T.set_flag` uses `"mte3"` → `"m"` direction (MTE → Cube), matching the producer-consumer relationship.
+- L1 capacity is sufficient for two complete buffer pairs. L0A/L0B/L0C double-buffering adds 2x the L0 register pressure.
+- `T.set_flag` uses `"mte3"` → `"m"` direction (MTE → Cube) for L1 buffering; `"MTE1"` → `"M"` and `"M"` → `"FIX"` for L0 buffering.
+- For L0 double-buffering, each slot's `SIG_L0AB + s` and `SIG_L0C + s` are separate event IDs — the two slots are independent.
 
 ## Related Patterns
 
 - `cv-sync`: basic CV scope separation with manual sync — use this before upgrading to double buffering.
 - `explicit-memory`: use `T.alloc_L1`/`T.alloc_L0C` for the double-buffered buffers.
+- `layout-affinity`: add `T.annotate_layout` to L1 buffers for optimal MTE-to-L0 copy performance.
+- `workspace-pipeline`: cross-core ring pipeline that combines L0 double-buffering with workspace communication.

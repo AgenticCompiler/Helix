@@ -96,9 +96,13 @@ with T.Scope("V"):
 
 - Each `T.alloc_*` call targets the correct hardware level for its use: L1 for GEMM operands, UB for Vector workspace, L0C for accumulator.
 - Buffer sizes fit within hardware limits. L1 is typically ~64KB per block; UB is ~192KB per core.
+- `L0_MAX_SIZE = 64 * 1024` (64KB) — total L0A + L0B + L0C allocation per core must fit within this limit.
 - When using `T.Scope("C")` and `T.Scope("V")`, shared buffers are allocated before both scopes.
+- If the kernel uses manual sync, run `python3 scripts/tl_sync_lint.py --tier1 --tier2 --tier3 --tier4 <kernel>.py` to verify flag balance.
 
 ## Related Patterns
 
 - `cv-sync`: use explicit sync with explicit memory for full Expert-mode control.
 - `double-buffer`: allocate two sets of explicit buffers for compute/memory overlap.
+- `layout-affinity`: use `T.annotate_layout` on explicit L1 buffers for optimal MMA throughput.
+- `workspace-pipeline`: workspace tensors use explicit L1/L0 buffers for MMA operands.
