@@ -40,7 +40,6 @@ STAGE_RULES: dict[CommandKind, StageRule] = {
     ),
     CommandKind.CONVERT: StageRule(
         directives=(
-            "+{language}-npu-api-reference",
             "+{language}-npu-convert-pytorch-operator",
             "+ascend-npu-gen-test",
             "+ascend-npu-run-eval",
@@ -64,7 +63,6 @@ STAGE_RULES: dict[CommandKind, StageRule] = {
     ),
     CommandKind.OPTIMIZE: StageRule(
         directives=(
-            "+{language}-npu-api-reference",
             "+{language}-npu-optimize",
             "+{language}-npu-optimize-knowledge",
             "+ascend-npu-prepare-optimize-baseline",
@@ -113,6 +111,15 @@ def resolve_staged_skills(
         staged_skill_names = tuple(
             name.replace("{language}", language) for name in staged_skill_names
         )
+
+    # Conditional: only tilelang has an api-reference skill; staging a
+    # {language}-templated directive would stage non-existent triton-npu-api-reference.
+    if (
+        staged_skill_names is not None
+        and command_kind in (CommandKind.CONVERT, CommandKind.OPTIMIZE)
+        and language == "tilelang"
+    ):
+        staged_skill_names = staged_skill_names + (f"{language}-npu-api-reference",)
 
     staged_skill_sources = _resolve_skill_sources(
         command_kind,

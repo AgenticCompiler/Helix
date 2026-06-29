@@ -868,6 +868,8 @@ def _run_local_bench_msprof(
                 operator_arg,
                 "--case-id",
                 case.case_id,
+                "--iterations",
+                str(case.warmup + case.repeats),
             ]
             t0 = time.monotonic()
             with stream_target_for_verbosity(verbose) as stream_target:
@@ -962,6 +964,7 @@ def _run_local_bench_msprof_parallel(
     stderr_chunks: list[str] = []
     preserved_run_dir = _create_local_msprof_preserved_run_dir()
     case_ids = [case.case_id for case in cases]
+    iterations_by_case = {case.case_id: case.warmup + case.repeats for case in cases}
     pool = NpuDevicePool(devices)
 
     def _worker(case_id: str) -> _MsprofCaseOutcome:
@@ -978,6 +981,7 @@ def _run_local_bench_msprof_parallel(
             source_root,
             json_search_root,
             verbose,
+            iterations_by_case[case_id],
         )
 
     outcomes = _run_parallel_case_workers(
@@ -1045,6 +1049,8 @@ def _run_remote_bench_msprof(
                         operator_file.name,
                         "--case-id",
                         case.case_id,
+                        "--iterations",
+                        str(case.warmup + case.repeats),
                     ],
                     stdout=stream_target,
                     verbose=verbose,
@@ -1146,6 +1152,7 @@ def _run_remote_bench_msprof_parallel(
     stdout_chunks: list[str] = []
     stderr_chunks: list[str] = []
     case_ids = [case.case_id for case in cases]
+    iterations_by_case = {case.case_id: case.warmup + case.repeats for case in cases}
     pool = NpuDevicePool(devices)
 
     def _worker(case_id: str) -> _MsprofCaseOutcome:
@@ -1161,6 +1168,7 @@ def _run_remote_bench_msprof_parallel(
             json_search_root,
             verbose,
             stderr,
+            iterations_by_case[case_id],
         )
 
     outcomes = _run_parallel_case_workers(
@@ -1990,6 +1998,7 @@ def _run_local_msprof_case_parallel(
     source_root: Path,
     json_search_root: Path,
     verbose: bool,
+    iterations: int,
 ) -> _MsprofCaseOutcome:
     case_workspace, cleanup = _create_local_msprof_case_workspace(
         bench_file,
@@ -2016,6 +2025,8 @@ def _run_local_msprof_case_parallel(
                 operator_arg,
                 "--case-id",
                 case_id,
+                "--iterations",
+                str(iterations),
             ]
             t0 = time.monotonic()
             with stream_target_for_verbosity(verbose) as stream_target:
@@ -2047,6 +2058,7 @@ def _run_remote_msprof_case_parallel(
     json_search_root: Path,
     verbose: bool,
     stderr: TextIO | None,
+    iterations: int,
 ) -> _MsprofCaseOutcome:
     case_workspace = f"{remote_workspace}/case-{case_id}"
     run_remote_command_buffered(
@@ -2089,6 +2101,8 @@ def _run_remote_msprof_case_parallel(
                     operator_arg,
                     "--case-id",
                     case_id,
+                    "--iterations",
+                    str(iterations),
                 ],
                 verbose=verbose,
                 stderr=stderr,

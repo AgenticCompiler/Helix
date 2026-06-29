@@ -174,7 +174,7 @@ def tilelang_add(M: int, N: int, block_M: int, block_N: int, dtype: str = "float
 func = tilelang_add(M, N, block_M, block_N)
 
 
-class ModelNew(nn.Module):
+class Model(nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
@@ -197,7 +197,7 @@ In this kind of conversion:
 - `tilelang_add(...)` is the factory function that builds and returns a compiled TileLang kernel
 - `add_kernel` is the `@T.prim_func` kernel definition — all compute happens here
 - `func = tilelang_add(M, N, block_M, block_N)` compiles the kernel at module load time via `@tilelang.jit`
-- `class ModelNew` is the converted public architecture — `forward()` just calls the compiled kernel
+- `class Model` is the converted public architecture — `forward()` just calls the compiled kernel
 - The trailing `get_init_inputs()` / `get_inputs()` block is preserved in the converted output instead of being dropped
 - The original source operator remains the correctness oracle for differential validation
 - This example uses **Layer 1 (Developer mode)**: `T.alloc_shared` for memory, `T.Parallel` + symbolic math for compute, auto-managed `pass_configs` with all four auto-passes enabled, and `threads=2` vid elimination
@@ -239,7 +239,7 @@ def forward(self, x, w):
 def matmul_kernel(...):
     pass
 
-class ModelNew(nn.Module):
+class Model(nn.Module):
     def forward(self, x, w):
         return torch.matmul(x, w)  # Forbidden: kernel never called
 ```
@@ -264,7 +264,7 @@ def forward(self, x, w):
 # Kernel compiled at module level
 kernel = tile_operator(M, N, block_M, block_N)
 
-class ModelNew(nn.Module):
+class Model(nn.Module):
     def forward(self, x, y):
         return kernel(x, y)  # Allowed: call compiled TileLang kernel
 ```

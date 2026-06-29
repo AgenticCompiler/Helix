@@ -116,6 +116,10 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
                 "Defaults to ~/.triton-agent.",
             ),
             (
+                "TRITON_AGENT_RESET_GIT_REPO",
+                "When truthy, remove the temporary workspace-local .git repo created by skill staging during cleanup.",
+            ),
+            (
                 "TRITON_AGENT_OPTIMIZE_UPLOAD_URL",
                 "Base URL of the optimize upload server. /uploads is appended automatically. "
                 "Required for the upload-optimize subcommand and auto-upload after optimize.",
@@ -165,6 +169,7 @@ class _CommandSpec:
     help_summary: str
     description: str
     input_mode: str = "input"
+    input_default: str | None = None
     has_output: bool = True
     has_verbose: bool = True
     has_remote: bool = False
@@ -360,6 +365,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         help_group="Status",
         help_summary="Show optimization status for one workspace.",
         description="Show optimization status for one workspace.",
+        input_default=".",
         has_output=False,
         has_format=True,
     ),
@@ -509,6 +515,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         help_group="Status",
         help_summary="Remove known generated artifacts from one workspace or a batch root.",
         description="Remove known generated artifacts from one operator workspace or a batch root.",
+        input_default=".",
     ),
 }
 
@@ -849,7 +856,10 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
     if spec.input_mode == "trace-analyze":
         subparser.add_argument("-t", "--trace", required=True, help="Path to the trace JSONL file.")
         return
-    subparser.add_argument("-i", "--input", required=True)
+    if spec.input_default is None:
+        subparser.add_argument("-i", "--input", required=True)
+        return
+    subparser.add_argument("-i", "--input", default=spec.input_default)
 
 
 def _normalize_command_aliases(argv: Optional[list[str]]) -> Optional[list[str]]:

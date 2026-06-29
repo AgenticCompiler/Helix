@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -63,6 +64,13 @@ def staged_skill_dir(backend: str) -> Path:
 class SkillLinkSet:
     created_paths: List[Path]
     temporary_git_dir: Path | None = None
+
+
+def _reset_temporary_git_repo_enabled() -> bool:
+    value = os.environ.get("TRITON_AGENT_RESET_GIT_REPO")
+    if value is None:
+        return False
+    return value.strip().lower() not in {"", "0", "false", "no", "off"}
 
 
 class SkillLinkManager:
@@ -218,7 +226,7 @@ class SkillLinkManager:
                 self._remove_path(path)
             except OSError as exc:
                 warnings.append(f"Failed to remove skill copy {path}: {exc}")
-        if link_set.temporary_git_dir is not None:
+        if link_set.temporary_git_dir is not None and _reset_temporary_git_repo_enabled():
             try:
                 self._remove_path(link_set.temporary_git_dir)
             except OSError as exc:
@@ -237,7 +245,10 @@ class SkillLinkManager:
     def describe_cleanup(self, link_set: SkillLinkSet) -> list[str]:
         messages = [f"removed skill copy {path}" for path in reversed(link_set.created_paths)]
         if link_set.temporary_git_dir is not None:
-            messages.append(f"removed temporary git repo {link_set.temporary_git_dir}")
+            if _reset_temporary_git_repo_enabled():
+                messages.append(f"removed temporary git repo {link_set.temporary_git_dir}")
+            else:
+                messages.append(f"preserved temporary git repo {link_set.temporary_git_dir}")
         if not messages:
             return ["No skill copies needed cleanup."]
         return messages

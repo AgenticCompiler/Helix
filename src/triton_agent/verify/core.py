@@ -49,6 +49,14 @@ class BenchPerfParserModule(Protocol):
         metric_source: str = "auto",
     ) -> dict[str, float]: ...
 
+    def parse_perf_pair_for_comparison(
+        self,
+        baseline_perf: Path,
+        compare_perf: Path,
+        *,
+        metric_source: str = "auto",
+    ) -> tuple[dict[str, float], dict[str, float], dict[str, str]]: ...
+
 
 @dataclass(frozen=True)
 class VerifyOptions:
@@ -461,10 +469,10 @@ def _build_speedup_state(
         resolved_best_perf_path = cast(Path, best_perf_path)
         metric_source = _metric_source_for_verification(target.effective_metric_source)
         if metric_source == "auto":
-            baseline_values = parser.parse_perf_file(resolved_baseline_perf_path)
-            verify_values = parser.parse_required_perf_file(
+            baseline_values, verify_values, _comparison_modes = parser.parse_perf_pair_for_comparison(
+                resolved_baseline_perf_path,
                 resolved_best_perf_path,
-                baseline_values,
+                metric_source=metric_source,
             )
         else:
             baseline_values = parser.parse_perf_file_for_metric_source(

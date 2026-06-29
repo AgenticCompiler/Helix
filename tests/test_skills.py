@@ -196,7 +196,7 @@ class SkillLinkManagerTests(unittest.TestCase):
             self.assertFalse((target / "triton-npu-optimize-knowledge-v3").exists())
             manager.cleanup(links)
 
-    def test_prepare_skills_creates_and_cleans_temporary_git_repo(self) -> None:
+    def test_prepare_skills_preserves_temporary_git_repo_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             source = Path(tmp) / "skills-source"
@@ -212,6 +212,24 @@ class SkillLinkManagerTests(unittest.TestCase):
             self.assertTrue(temporary_git_dir.is_dir())
             self.assertEqual(links.temporary_git_dir, temporary_git_dir)
             manager.cleanup(links)
+            self.assertTrue(temporary_git_dir.exists())
+
+    def test_prepare_skills_cleans_temporary_git_repo_when_reset_env_is_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            source = Path(tmp) / "skills-source"
+            workspace.mkdir()
+            source.mkdir()
+            (source / "common" / "ascend-npu-gen-test").mkdir(parents=True)
+            (source / "common" / "ascend-npu-gen-test" / "SKILL.md").write_text("test skill\n", encoding="utf-8")
+
+            manager = SkillLinkManager(source)
+            links = manager.prepare_skills("codex", workspace, skill_names=("ascend-npu-gen-test",))
+
+            temporary_git_dir = workspace / ".git"
+            self.assertTrue(temporary_git_dir.is_dir())
+            with mock.patch.dict("os.environ", {"TRITON_AGENT_RESET_GIT_REPO": "1"}, clear=False):
+                manager.cleanup(links)
             self.assertFalse(temporary_git_dir.exists())
 
     def test_prepare_skills_preserves_existing_local_git_repo(self) -> None:
@@ -249,7 +267,7 @@ class SkillLinkManagerTests(unittest.TestCase):
             self.assertTrue((workspace / ".git").is_dir())
             self.assertEqual(links.temporary_git_dir, workspace / ".git")
             manager.cleanup(links)
-            self.assertFalse((workspace / ".git").exists())
+            self.assertTrue((workspace / ".git").exists())
             self.assertTrue((repo_root / ".git").exists())
 
     def test_prepare_skills_rolls_back_temporary_git_repo_on_failure(self) -> None:

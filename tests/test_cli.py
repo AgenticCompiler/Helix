@@ -1705,6 +1705,11 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertFalse(hasattr(args, "remote"))
         self.assertFalse(hasattr(args, "output"))
 
+    def test_status_defaults_input_to_current_directory(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["status"])
+        self.assertEqual(args.input, ".")
+
     def test_status_accepts_markdown_format(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["status", "-i", "kernels", "--format", "markdown"])
@@ -1789,6 +1794,11 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(args.command_kind, CommandKind.CLEAN)
         self.assertFalse(args.deep)
         self.assertFalse(hasattr(args, "agent"))
+
+    def test_clean_defaults_input_to_current_directory(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["clean"])
+        self.assertEqual(args.input, ".")
 
     def test_clean_accepts_deep_option(self) -> None:
         parser = build_parser()
@@ -1897,6 +1907,35 @@ class PathResolutionTests(unittest.TestCase):
             self.assertIn("Best round: round-1", rendered)
             self.assertNotIn("[NO-SESSION] opt-round-1", rendered)
 
+    def test_main_status_defaults_input_to_current_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            (workspace / "kernel.py").write_text("print('source')\n", encoding="utf-8")
+            (workspace / "kernel_perf.txt").write_text(
+                "latency-a: 10\nlatency-b: 20\n",
+                encoding="utf-8",
+            )
+            round_one = workspace / "opt-round-1"
+            round_one.mkdir()
+            (round_one / "opt_kernel_perf.txt").write_text(
+                "latency-a: 8\nlatency-b: 16\n",
+                encoding="utf-8",
+            )
+
+            stdout = StringIO()
+            previous_cwd = os.getcwd()
+            try:
+                os.chdir(workspace)
+                with redirect_stdout(stdout):
+                    exit_code = main(["status"])
+            finally:
+                os.chdir(previous_cwd)
+
+            self.assertEqual(exit_code, 0)
+            rendered = stdout.getvalue()
+            self.assertIn(f"[OK] {workspace.name}", rendered)
+            self.assertIn("Best round: round-1", rendered)
+
     def test_main_clean_single_workspace_preserves_cases_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
@@ -1922,6 +1961,25 @@ class PathResolutionTests(unittest.TestCase):
             self.assertFalse(generated_operator.exists())
             self.assertFalse(extra_info.exists())
             self.assertFalse(prof_dir.exists())
+
+    def test_main_clean_defaults_input_to_current_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            operator.write_text("print('source')\n", encoding="utf-8")
+            generated_operator = workspace / "triton_kernel.py"
+            generated_operator.write_text("print('gen')\n", encoding="utf-8")
+
+            previous_cwd = os.getcwd()
+            try:
+                os.chdir(workspace)
+                exit_code = main(["clean"])
+            finally:
+                os.chdir(previous_cwd)
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(operator.exists())
+            self.assertFalse(generated_operator.exists())
 
     def test_main_clean_single_workspace_deep_removes_cases(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

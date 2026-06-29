@@ -798,7 +798,11 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                         command,
                     )
                 )
-                case_id = command[-2]
+                case_id = (
+                    command[command.index("--case-id") + 1]
+                    if "--case-id" in command
+                    else command[-2]
+                )
                 return make_skill_result(
                     0,
                     (
@@ -1203,6 +1207,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                             "kernel.py",
                             "--case-id",
                             "case-1",
+                            "--iterations",
+                            "55",
                         ],
                     )
                 ],
@@ -1327,6 +1333,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
                             "opt-round-13/opt_kernel.py",
                             "--case-id",
                             "case-1",
+                            "--iterations",
+                            "55",
                         ],
                     )
                 ],
@@ -1378,7 +1386,8 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
 
             def _fake_remote_streaming(spec, remote_workspace, command, **kwargs):
                 self.assertEqual(command[0], "msprof")
-                if command[-1] == "case-1":
+                case_id = command[command.index("--case-id") + 1]
+                if case_id == "case-1":
                     return make_skill_result(1, "", "case one failed\n")
                 return make_skill_result(0, "profile stdout\n", "")
 

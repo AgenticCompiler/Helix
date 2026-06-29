@@ -40,6 +40,14 @@ class PerfArtifactsModule(Protocol):
         metric_source: str = "auto",
     ) -> dict[str, float]: ...
 
+    def parse_perf_pair_for_comparison(
+        self,
+        baseline_perf: Path,
+        compare_perf: Path,
+        *,
+        metric_source: str = "auto",
+    ) -> tuple[dict[str, float], dict[str, float], dict[str, str]]: ...
+
 
 @dataclass(frozen=True)
 class LocalOptimumConfig:
@@ -164,18 +172,11 @@ def _build_round_speedup_sample(
     if perf_path is None:
         return None
 
-    baseline_values = baseline_cache.get(state.metric_basis)
-    if baseline_values is None:
-        baseline_values = _parse_baseline_values(
-            baseline_perf_path,
-            metric_basis=state.metric_basis,
-        )
-        baseline_cache[state.metric_basis] = baseline_values
-
-    round_values = _parse_round_values(
+    baseline_values, round_values = _parse_perf_pair(
+        baseline_perf_path,
         perf_path,
-        baseline_values=baseline_values,
         metric_basis=state.metric_basis,
+        baseline_cache=baseline_cache,
     )
     latency_ids = sorted(baseline_values)
     if set(latency_ids) != set(round_values):
@@ -290,6 +291,33 @@ def _parse_round_values(
         baseline_values,
         metric_source=metric_basis,
     )
+
+
+def _parse_perf_pair(
+    baseline_perf_path: Path,
+    perf_path: Path,
+    *,
+    metric_basis: str,
+    baseline_cache: dict[str, dict[str, float]],
+) -> tuple[dict[str, float], dict[str, float]]:
+    module = _load_perf_artifacts_module()
+    if metric_basis == "auto":
+        baseline_values, round_values, _comparison_modes = module.parse_perf_pair_for_comparison(
+            baseline_perf_path,
+            perf_path,
+            metric_source=metric_basis,
+        )
+        return baseline_values, round_values
+    baseline_values = baseline_cache.get(metric_basis)
+    if baseline_values is None:
+        baseline_values = _parse_baseline_values(baseline_perf_path, metric_basis=metric_basis)
+        baseline_cache[metric_basis] = baseline_values
+    round_values = _parse_round_values(
+        perf_path,
+        baseline_values=baseline_values,
+        metric_basis=metric_basis,
+    )
+    return baseline_values, round_values
 
 
 def _build_local_optimum_warning(samples: list[RoundSpeedupSample], adjacent_gains: list[float]) -> str:

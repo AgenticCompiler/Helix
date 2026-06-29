@@ -1214,5 +1214,30 @@ def build_bench_case_fn(operator_api, case):
         self.assertIn('"case_label":"case-fail"', perf_text)
 
 
+class ExecuteBenchCaseIterationsTests(unittest.TestCase):
+    def _run(self, *, iterations: Optional[int]) -> int:
+        module = load_bench_runtime_module()
+        call_count = 0
+
+        def _fn() -> None:
+            nonlocal call_count
+            call_count += 1
+
+        fake_case = SimpleNamespace(case_id="case-a", fn=_fn)
+        with patch.object(module, "load_bench_cases", return_value=([fake_case], object())), patch.object(
+            module, "select_bench_case", return_value=fake_case
+        ), patch.object(module, "_synchronize"):
+            kwargs = {} if iterations is None else {"iterations": iterations}
+            result = module.execute_bench_case(Path("bench.py"), Path("op.py"), "case-a", **kwargs)
+        self.assertEqual(result["return_code"], 0)
+        return call_count
+
+    def test_defaults_to_single_invocation(self) -> None:
+        self.assertEqual(self._run(iterations=None), 1)
+
+    def test_runs_requested_iteration_count(self) -> None:
+        self.assertEqual(self._run(iterations=55), 55)
+
+
 if __name__ == "__main__":
     unittest.main()
