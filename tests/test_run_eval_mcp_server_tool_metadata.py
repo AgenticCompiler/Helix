@@ -59,6 +59,18 @@ class RunEvalMCPServerToolMetadataTests(unittest.TestCase):
             tools["run-bench"].parameters["properties"]["bench_mode"]["description"],
             "Optional benchmark mode override. Supported values: torch-npu-profiler, msprof, perf-counter.",
         )
+        self.assertEqual(
+            tools["run-bench"].parameters["properties"]["baseline_operator_file"]["description"],
+            "Optional absolute path to the baseline operator file used for automatic perf comparison.",
+        )
+        self.assertEqual(
+            tools["run-bench"].parameters["properties"]["metric_source"]["description"],
+            "Optional perf comparison metric-source override for automatic baseline comparison.",
+        )
+        self.assertEqual(
+            tools["run-bench"].parameters["properties"]["skip_latency_errors"]["description"],
+            "Optional flag to keep automatic baseline comparison running when latency-error entries are present.",
+        )
 
         self.assertEqual(
             tools["profile-bench"].description,

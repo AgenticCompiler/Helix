@@ -621,6 +621,41 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(args.bench_file, "bench_kernel.py")
         self.assertEqual(args.operator_file, "kernel.py")
 
+    def test_run_bench_accepts_baseline_operator_file(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run-bench",
+                "--bench-file",
+                "bench_kernel.py",
+                "--operator-file",
+                "opt_kernel.py",
+                "--baseline-operator-file",
+                "kernel.py",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.RUN_BENCH)
+        self.assertEqual(args.baseline_operator_file, "kernel.py")
+
+    def test_run_bench_accepts_compare_perf_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run-bench",
+                "--bench-file",
+                "bench_kernel.py",
+                "--operator-file",
+                "opt_kernel.py",
+                "--baseline-operator-file",
+                "kernel.py",
+                "--skip-latency-errors",
+                "--metric-source",
+                "all",
+            ]
+        )
+        self.assertTrue(args.skip_latency_errors)
+        self.assertEqual(args.metric_source, "all")
+
     def test_agent_commands_accept_pi_backend(self) -> None:
         parser = build_parser()
         gen_eval_batch_args = parser.parse_args(["gen-eval-batch", "-i", "kernels", "--agent", "pi"])

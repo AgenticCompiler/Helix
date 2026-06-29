@@ -191,6 +191,13 @@ def build_parser() -> argparse.ArgumentParser:
     run_bench = subparsers.add_parser("run-bench")
     run_bench.add_argument("--bench-file", required=True)
     run_bench.add_argument("--operator-file", required=True)
+    run_bench.add_argument("--baseline-operator-file")
+    run_bench.add_argument("--skip-latency-errors", "--skip-error", dest="skip_latency_errors", action="store_true")
+    run_bench.add_argument(
+        "--metric-source",
+        default="auto",
+        choices=["auto", "kernel", "total-op", "all"],
+    )
     run_bench.add_argument("--output")
     run_bench.add_argument("--remote")
     run_bench.add_argument("--remote-workdir")
@@ -412,31 +419,60 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
 
     bench_file = _resolve_existing_path(parser, args.bench_file, "Bench file")
     operator_file = _resolve_existing_path(parser, args.operator_file, "Operator file")
+    baseline_operator_file = _resolve_optional_existing_path(
+        parser,
+        getattr(args, "baseline_operator_file", None),
+        "Baseline operator file",
+    )
     _parse_bench_metadata, run_local_bench, run_remote_bench = _load_bench_functions()
     resolved_bench_mode = args.bench_mode or "torch-npu-profiler"
     remote_workspace: str | None = None
+    baseline_remote_workspace: str | None = None
+    baseline_perf_path = _derived_perf_path(baseline_operator_file) if baseline_operator_file is not None else None
+    if baseline_perf_path is not None and baseline_perf_path.exists():
+        print(f"Baseline perf file: {baseline_perf_path}")
     try:
-        if remote is not None:
-            result, perf_path, remote_workspace = run_remote_bench(
+        if baseline_operator_file is not None and baseline_perf_path is not None and not baseline_perf_path.exists():
+            baseline_result, baseline_generated_perf, baseline_remote_workspace = _run_bench_once(
+                run_local_bench,
+                run_remote_bench,
                 bench_file,
-                operator_file,
+                baseline_operator_file,
                 resolved_bench_mode,
                 remote,
                 remote_workdir,
-                args.npu_devices,
+                npu_devices=args.npu_devices,
                 keep_remote_workdir=args.keep_remote_workdir,
                 verbose=args.verbose,
                 stderr=sys.stderr,
-                output=args.output,
+                output=None,
             )
-        else:
-            result, perf_path = run_local_bench(
-                bench_file,
-                operator_file,
-                resolved_bench_mode,
-                args.npu_devices,
-                output=args.output,
-            )
+            if int(baseline_result["return_code"]) != 0:
+                _render_result(baseline_result, skip_stdout=remote is not None and args.verbose)
+            if baseline_generated_perf is not None:
+                baseline_perf_path = baseline_generated_perf
+                print(f"Baseline perf file: {baseline_perf_path}")
+            if int(baseline_result["return_code"]) != 0 or baseline_generated_perf is None:
+                if remote is not None and args.keep_remote_workdir and baseline_remote_workspace is not None:
+                    print(f"Remote workspace: {baseline_remote_workspace}")
+                return int(baseline_result["return_code"]) or 1
+            if remote is not None and args.keep_remote_workdir and baseline_remote_workspace is not None:
+                print(f"Remote workspace: {baseline_remote_workspace}")
+
+        result, perf_path, remote_workspace = _run_bench_once(
+            run_local_bench,
+            run_remote_bench,
+            bench_file,
+            operator_file,
+            resolved_bench_mode,
+            remote,
+            remote_workdir,
+            npu_devices=args.npu_devices,
+            keep_remote_workdir=args.keep_remote_workdir,
+            verbose=args.verbose,
+            stderr=sys.stderr,
+            output=args.output,
+        )
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -446,7 +482,16 @@ def _dispatch_command(parser: argparse.ArgumentParser, args: argparse.Namespace)
         print(f"Remote workspace: {remote_workspace}")
     if perf_path is not None:
         print(f"Perf file: {perf_path}")
-        print(_RUN_BENCH_HINT)
+        if baseline_perf_path is None:
+            print(_RUN_BENCH_HINT)
+        else:
+            compare_perf_files = _load_compare_perf_function()
+            return compare_perf_files(
+                baseline_perf_path,
+                perf_path,
+                skip_latency_errors=args.skip_latency_errors,
+                metric_source=args.metric_source,
+            )
     return int(result["return_code"])
 
 
@@ -473,6 +518,10 @@ def _resolve_optional_existing_path(
 
 def _derived_result_path(operator_file: Path) -> Path:
     return operator_file.parent / f"{operator_file.stem}_result.pt"
+
+
+def _derived_perf_path(operator_file: Path) -> Path:
+    return operator_file.parent / f"{operator_file.stem}_perf.txt"
 
 
 def _resolve_test_mode_from_metadata(test_file: Path) -> str:
@@ -709,6 +758,45 @@ def _load_compare_perf_function() -> ComparePerfFn:
         from perf_artifacts import compare_perf_files
 
     return cast(ComparePerfFn, compare_perf_files)
+
+
+def _run_bench_once(
+    run_local_bench: RunLocalBenchFn,
+    run_remote_bench: RunRemoteBenchFn,
+    bench_file: Path,
+    operator_file: Path,
+    resolved_bench_mode: str,
+    remote: str | None,
+    remote_workdir: str | None,
+    *,
+    npu_devices: str | None,
+    keep_remote_workdir: bool,
+    verbose: bool,
+    stderr: TextIO | None,
+    output: str | None,
+) -> tuple[ResultPayload, Path | None, str | None]:
+    if remote is not None:
+        result, perf_path, remote_workspace = run_remote_bench(
+            bench_file,
+            operator_file,
+            resolved_bench_mode,
+            remote,
+            remote_workdir,
+            npu_devices,
+            keep_remote_workdir=keep_remote_workdir,
+            verbose=verbose,
+            stderr=stderr,
+            output=output,
+        )
+        return result, perf_path, remote_workspace
+    result, perf_path = run_local_bench(
+        bench_file,
+        operator_file,
+        resolved_bench_mode,
+        npu_devices,
+        output=output,
+    )
+    return result, perf_path, None
 
 
 def _load_remote_execution_function() -> ResolveRemoteExecutionFn:

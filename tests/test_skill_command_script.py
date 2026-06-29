@@ -97,6 +97,68 @@ class SkillCommandScriptTests(unittest.TestCase):
 
         self.assertEqual(args.npu_devices, "0,1,4-5")
 
+    def test_run_bench_parser_accepts_baseline_operator_file(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_baseline_flag", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        args = module.build_parser().parse_args(
+            [
+                "run-bench",
+                "--bench-file",
+                "bench_abs.py",
+                "--operator-file",
+                "opt_abs.py",
+                "--baseline-operator-file",
+                "baseline_abs.py",
+            ]
+        )
+
+        self.assertEqual(args.baseline_operator_file, "baseline_abs.py")
+
+    def test_run_bench_parser_accepts_compare_perf_options(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_bench_compare_flags", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        args = module.build_parser().parse_args(
+            [
+                "run-bench",
+                "--bench-file",
+                "bench_abs.py",
+                "--operator-file",
+                "opt_abs.py",
+                "--baseline-operator-file",
+                "baseline_abs.py",
+                "--skip-latency-errors",
+                "--metric-source",
+                "all",
+            ]
+        )
+
+        self.assertTrue(args.skip_latency_errors)
+        self.assertEqual(args.metric_source, "all")
+
     def test_script_run_bench_threads_npu_devices_to_local_runner(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]
@@ -260,6 +322,376 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertEqual(
             observed,
             [bench_file.resolve(), operator.resolve(), "torch-npu-profiler", None, str(perf_file)],
+        )
+
+    def test_script_run_bench_with_baseline_operator_auto_compares(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_baseline_compare", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline.py"
+            operator = root / "opt_kernel.py"
+            bench_file = root / "bench_kernel.py"
+            baseline_perf = root / "baseline_perf.txt"
+            candidate_perf = root / "opt_kernel_perf.txt"
+            baseline.write_text("print('baseline')\n", encoding="utf-8")
+            operator.write_text("print('x')\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\nprint('bench')\n", encoding="utf-8")
+            baseline_perf.write_text("latency-a: 1.0\n", encoding="utf-8")
+
+            observed: list[object] = []
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+
+            def fake_run_local_bench(
+                bench_path: Path,
+                operator_path: Path,
+                bench_mode: str,
+                npu_devices: Optional[str] = None,
+                **kwargs: object,
+            ) -> tuple[dict[str, object], Path]:
+                observed.extend([bench_path, operator_path, bench_mode, npu_devices, kwargs.get("output")])
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    candidate_perf,
+                )
+
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_bench_functions",
+                    return_value=(
+                        lambda _path: {"bench-mode": "msprof"},
+                        fake_run_local_bench,
+                        lambda *_args, **_kwargs: None,
+                    ),
+                ):
+                    with patch.object(module, "_load_compare_perf_function", return_value=lambda baseline_path, new_path, **_kwargs: 0):
+                        exit_code = module.main(
+                            [
+                                "run-bench",
+                                "--bench-file",
+                                str(bench_file),
+                                "--operator-file",
+                                str(operator),
+                                "--baseline-operator-file",
+                                str(baseline),
+                            ]
+                        )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            observed,
+            [bench_file.resolve(), operator.resolve(), "torch-npu-profiler", None, None],
+        )
+        self.assertEqual(
+            stdout.getvalue(),
+            (
+                f"Baseline perf file: {baseline_perf.resolve()}\n"
+                f"Perf file: {candidate_perf}\n"
+            ),
+        )
+
+    def test_script_run_bench_remote_prints_both_kept_workspaces_when_baseline_is_generated(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_remote_baseline_compare", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline.py"
+            operator = root / "opt_kernel.py"
+            bench_file = root / "bench_kernel.py"
+            baseline_perf = root / "baseline_perf.txt"
+            candidate_perf = root / "opt_kernel_perf.txt"
+            baseline.write_text("print('baseline')\n", encoding="utf-8")
+            operator.write_text("print('x')\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\nprint('bench')\n", encoding="utf-8")
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+
+            def fake_run_remote_bench(
+                bench_path: Path,
+                operator_path: Path,
+                bench_mode: str,
+                remote: str,
+                remote_workdir: Optional[str],
+                npu_devices: Optional[str] = None,
+                keep_remote_workdir: bool = False,
+                verbose: bool = False,
+                stderr: Optional[object] = None,
+                **kwargs: object,
+            ) -> tuple[dict[str, object], Path, str]:
+                del bench_path, bench_mode, remote, remote_workdir, npu_devices, keep_remote_workdir, verbose, stderr, kwargs
+                if operator_path == baseline.resolve():
+                    return (
+                        {
+                            "return_code": 0,
+                            "stdout": "",
+                            "stderr": "",
+                            "stalled": False,
+                            "session_id": None,
+                        },
+                        baseline_perf,
+                        "/tmp/baseline-ws",
+                    )
+                return (
+                    {
+                        "return_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    candidate_perf,
+                    "/tmp/candidate-ws",
+                )
+
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_bench_functions",
+                    return_value=(
+                        lambda _path: {"bench-mode": "msprof"},
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("local runner should not be used")),
+                        fake_run_remote_bench,
+                    ),
+                ):
+                    with patch.object(module, "_load_compare_perf_function", return_value=lambda baseline_path, new_path, **_kwargs: 0):
+                        exit_code = module.main(
+                            [
+                                "run-bench",
+                                "--bench-file",
+                                str(bench_file),
+                                "--operator-file",
+                                str(operator),
+                                "--baseline-operator-file",
+                                str(baseline),
+                                "--remote",
+                                "alice@example.com",
+                                "--keep-remote-workdir",
+                            ]
+                        )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            stdout.getvalue(),
+            (
+                f"Baseline perf file: {baseline_perf}\n"
+                "Remote workspace: /tmp/baseline-ws\n"
+                "Remote workspace: /tmp/candidate-ws\n"
+                f"Perf file: {candidate_perf}\n"
+            ),
+        )
+
+    def test_script_run_bench_remote_failure_with_perf_prints_baseline_workspace_once(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_remote_baseline_failure", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline.py"
+            operator = root / "opt_kernel.py"
+            bench_file = root / "bench_kernel.py"
+            baseline_perf = root / "baseline_perf.txt"
+            baseline.write_text("print('baseline')\n", encoding="utf-8")
+            operator.write_text("print('x')\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\nprint('bench')\n", encoding="utf-8")
+
+            stdout = StringIO()
+            stderr = StringIO()
+            original_stdout = sys.stdout
+            original_stderr = sys.stderr
+
+            def fake_run_remote_bench(
+                bench_path: Path,
+                operator_path: Path,
+                bench_mode: str,
+                remote: str,
+                remote_workdir: Optional[str],
+                npu_devices: Optional[str] = None,
+                keep_remote_workdir: bool = False,
+                verbose: bool = False,
+                stderr: Optional[object] = None,
+                **kwargs: object,
+            ) -> tuple[dict[str, object], Path, str]:
+                del bench_path, operator_path, bench_mode, remote, remote_workdir, npu_devices, keep_remote_workdir, verbose, stderr, kwargs
+                return (
+                    {
+                        "return_code": 1,
+                        "stdout": "",
+                        "stderr": "",
+                        "stalled": False,
+                        "session_id": None,
+                    },
+                    baseline_perf,
+                    "/tmp/baseline-ws",
+                )
+
+            try:
+                sys.stdout = stdout
+                sys.stderr = stderr
+                with patch.object(
+                    module,
+                    "_load_bench_functions",
+                    return_value=(
+                        lambda _path: {"bench-mode": "msprof"},
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("local runner should not be used")),
+                        fake_run_remote_bench,
+                    ),
+                ):
+                    exit_code = module.main(
+                        [
+                            "run-bench",
+                            "--bench-file",
+                            str(bench_file),
+                            "--operator-file",
+                            str(operator),
+                            "--baseline-operator-file",
+                            str(baseline),
+                            "--remote",
+                            "alice@example.com",
+                            "--keep-remote-workdir",
+                        ]
+                    )
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout.getvalue().count("Remote workspace: /tmp/baseline-ws\n"), 1)
+
+    def test_script_run_bench_forwards_compare_perf_options(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "skills"
+            / "common"
+            / "ascend-npu-run-eval"
+            / "scripts"
+            / "run-command.py"
+        )
+        spec = importlib.util.spec_from_file_location("run_command_test_compare_flags", script)
+        if spec is None or spec.loader is None:
+            self.fail(f"Unable to load module spec for {script}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline = root / "baseline.py"
+            operator = root / "opt_kernel.py"
+            bench_file = root / "bench_kernel.py"
+            baseline_perf = root / "baseline_perf.txt"
+            candidate_perf = root / "opt_kernel_perf.txt"
+            baseline.write_text("print('baseline')\n", encoding="utf-8")
+            operator.write_text("print('x')\n", encoding="utf-8")
+            bench_file.write_text("# bench-mode: msprof\nprint('bench')\n", encoding="utf-8")
+            baseline_perf.write_text("latency-a: 1.0\n", encoding="utf-8")
+
+            observed_compare: list[object] = []
+
+            def fake_compare_perf(
+                baseline_path: Path,
+                compare_path: Path,
+                *,
+                skip_latency_errors: bool = False,
+                metric_source: str = "auto",
+            ) -> int:
+                observed_compare.extend([baseline_path, compare_path, skip_latency_errors, metric_source])
+                return 0
+
+            with patch.object(
+                module,
+                "_load_bench_functions",
+                return_value=(
+                    lambda _path: {"bench-mode": "msprof"},
+                    lambda *_args, **_kwargs: (
+                        {
+                            "return_code": 0,
+                            "stdout": "",
+                            "stderr": "",
+                            "stalled": False,
+                            "session_id": None,
+                        },
+                        candidate_perf,
+                    ),
+                    lambda *_args, **_kwargs: None,
+                ),
+            ):
+                with patch.object(module, "_load_compare_perf_function", return_value=fake_compare_perf):
+                    exit_code = module.main(
+                        [
+                            "run-bench",
+                            "--bench-file",
+                            str(bench_file),
+                            "--operator-file",
+                            str(operator),
+                            "--baseline-operator-file",
+                            str(baseline),
+                            "--skip-latency-errors",
+                            "--metric-source",
+                            "total-op",
+                        ]
+                    )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            observed_compare,
+            [baseline_perf.resolve(), candidate_perf, True, "total-op"],
         )
 
     def test_script_run_bench_uses_remote_env_when_flag_missing(self) -> None:
@@ -2017,6 +2449,9 @@ class SkillCommandScriptTests(unittest.TestCase):
         self.assertIn("--bench-file", completed.stdout)
         self.assertIn("--operator-file", completed.stdout)
         self.assertIn("--output", completed.stdout)
+        self.assertIn("--baseline-operator-file", completed.stdout)
+        self.assertIn("--skip-latency-errors", completed.stdout)
+        self.assertIn("--metric-source", completed.stdout)
 
     def test_load_compare_perf_function_reuses_perf_artifacts_implementation(self) -> None:
         script = (

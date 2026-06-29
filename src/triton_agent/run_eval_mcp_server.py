@@ -163,6 +163,18 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
     def run_bench(
         bench_file: Annotated[str, Field(description="Absolute path to the benchmark entry file.")],
         operator_file: Annotated[str, Field(description="Absolute path to the operator implementation file.")],
+        baseline_operator_file: Annotated[
+            str | None,
+            Field(description="Optional absolute path to the baseline operator file used for automatic perf comparison."),
+        ] = None,
+        skip_latency_errors: Annotated[
+            bool,
+            Field(description="Optional flag to keep automatic baseline comparison running when latency-error entries are present."),
+        ] = False,
+        metric_source: Annotated[
+            str,
+            Field(description="Optional perf comparison metric-source override for automatic baseline comparison."),
+        ] = "auto",
         bench_mode: Annotated[
             str | None,
             Field(description="Optional benchmark mode override. Supported values: torch-npu-profiler, msprof, perf-counter."),
@@ -177,6 +189,12 @@ def create_server(*, slot_pool: NpuDevicePool | None = None) -> "FastMCP":
             "--operator-file",
             operator_file,
         ]
+        if baseline_operator_file is not None:
+            arguments.extend(["--baseline-operator-file", baseline_operator_file])
+        if skip_latency_errors:
+            arguments.append("--skip-latency-errors")
+        if metric_source != "auto":
+            arguments.extend(["--metric-source", metric_source])
         if bench_mode is not None:
             arguments.extend(["--bench-mode", bench_mode])
         _append_common_remote_arguments(

@@ -41,6 +41,7 @@ uv run triton-agent convert-batch --input operators_root
 
 uv run triton-agent gen-bench --input a.py
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py
+uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py --baseline-operator-file a.py
 
 uv run triton-agent optimize --input a.py
 uv run triton-agent run-eval-mcp-server
@@ -333,6 +334,9 @@ Common options:
 
 - `--bench-mode torch-npu-profiler|msprof`: override the mode recorded in the benchmark file.
 - `--output <path>`: write the perf artifact to an explicit path instead of the default path beside the operator file.
+- `--baseline-operator-file <path>`: reuse or generate the baseline perf artifact for that operator, then automatically compare it against the candidate perf artifact from `--operator-file`.
+- `--skip-latency-errors`: keep automatic baseline comparison running when recoverable latency-error entries are present.
+- `--metric-source auto|kernel|total-op|all`: choose which metric source automatic baseline comparison uses.
 - `--npu-devices 0,1,4-7`: run benchmark cases concurrently across the listed Ascend devices. Supports inclusive numeric ranges and preserves current serial behavior when omitted.
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -344,8 +348,16 @@ Example:
 ```bash
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file a.py --output ./artifacts/a_perf.txt
+uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py --baseline-operator-file a.py
+uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py --baseline-operator-file a.py --metric-source all --skip-latency-errors
 uv run triton-agent run-bench --bench-file bench_a.py --operator-file opt_a.py --bench-mode msprof --npu-devices 0,1,2,3
 ```
+
+Automatic baseline compare:
+
+- when `--baseline-operator-file` is set, `run-bench` first checks for the default baseline perf artifact beside that baseline operator
+- if the baseline perf artifact is missing, `run-bench` benchmarks the baseline operator once to create it
+- after the candidate benchmark succeeds, `run-bench` automatically runs `compare-perf` with the selected `--metric-source` / `--skip-latency-errors` behavior
 
 For `torch-npu-profiler` benchmarks:
 
