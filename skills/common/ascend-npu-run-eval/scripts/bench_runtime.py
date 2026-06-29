@@ -435,8 +435,8 @@ def _profile_case_with_profiler(
                 case.fn()
                 _synchronize(torch)
 
-            skip_first = 1 + case.warmup
-            total_steps = skip_first + case.repeats
+            skip_first = 1
+            total_steps = skip_first + case.warmup + case.repeats
 
             with profiler_api.profile(
                 activities=[
