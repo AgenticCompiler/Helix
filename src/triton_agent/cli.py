@@ -11,7 +11,7 @@ from triton_agent.commands.convert import handle_convert, handle_convert_batch
 from triton_agent.commands.clean import handle_clean
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
 from triton_agent.commands.diff_skills_update import handle_diff_skills_update
-from triton_agent.commands.execution import handle_run_bench, handle_run_simulator, handle_run_test
+from triton_agent.commands.execution import handle_probe_bench, handle_run_bench, handle_run_simulator, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
 from triton_agent.commands.generation import handle_gen_eval
 from triton_agent.commands.generation import handle_gen_eval_batch
@@ -315,6 +315,18 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         keep_remote_workdir=True,
         has_bench_mode=True,
         has_npu_devices=True,
+    ),
+    CommandKind.PROBE_BENCH: _CommandSpec(
+        handler=handle_probe_bench,
+        help_group="Execution",
+        help_summary="Fast-screen one candidate operator against a baseline operator.",
+        description="Run a fast probe benchmark comparing one candidate operator against one baseline operator file.",
+        input_mode="probe-bench",
+        has_remote=True,
+        keep_remote_workdir=True,
+        has_bench_mode=True,
+        has_npu_devices=True,
+        has_output=False,
     ),
     CommandKind.RUN_SIMULATOR: _CommandSpec(
         handler=handle_run_simulator,
@@ -800,6 +812,16 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
     if spec.input_mode == "run-bench":
         subparser.add_argument("--bench-file", required=True)
         subparser.add_argument("--operator-file", required=True)
+        return
+    if spec.input_mode == "probe-bench":
+        subparser.add_argument("--bench-file", required=True)
+        subparser.add_argument("--operator-file", required=True)
+        subparser.add_argument("--baseline-operator-file", required=True)
+        subparser.add_argument(
+            "--metric-source",
+            default="auto",
+            choices=("auto", "kernel", "total-op"),
+        )
         return
     if spec.input_mode == "run-simulator":
         subparser.add_argument("--bench-file", required=True)

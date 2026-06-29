@@ -4,12 +4,13 @@ import unittest
 from io import StringIO
 from pathlib import Path
 from contextlib import redirect_stderr, redirect_stdout
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from triton_agent.cli import build_parser
-from triton_agent.commands.execution import handle_run_bench, handle_run_simulator, handle_run_test
+from triton_agent.commands.execution import handle_probe_bench, handle_run_bench, handle_run_simulator, handle_run_test
 from triton_agent.models import AgentResult
 from triton_agent.remote_execution_env import remote_target_env_name, remote_workdir_env_name
 
@@ -432,6 +433,208 @@ class ExecutionCommandHandlerTests(unittest.TestCase):
                 stderr=sys.stderr,
                 output=None,
             )
+
+
+class ProbeBenchHandlerTests(unittest.TestCase):
+    def _write_inputs(self, tmp: str) -> tuple[Path, Path, Path]:
+        root = Path(tmp)
+        baseline = root / "baseline_kernel.py"
+        operator = root / "opt_kernel.py"
+        bench_file = root / "bench_kernel.py"
+        baseline.write_text("print('baseline')", encoding="utf-8")
+        operator.write_text("print('opt')", encoding="utf-8")
+        bench_file.write_text("# bench-mode: torch-npu-profiler\nprint('bench')", encoding="utf-8")
+        return bench_file, operator, baseline
+
+    def test_handle_probe_bench_local_prints_classification_and_returns_zero(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            bench_file, operator, baseline = self._write_inputs(tmp)
+            args = parser.parse_args(
+                [
+                    "probe-bench",
+                    "--bench-file",
+                    str(bench_file),
+                    "--operator-file",
+                    str(operator),
+                    "--baseline-operator-file",
+                    str(baseline),
+                ]
+            )
+            fake_result = SimpleNamespace(
+                return_code=0,
+                default_lines=["Probe classification: likely_gain", "Summary: ok"],
+                verbose_lines=[],
+                warnings=[],
+            )
+            stdout = StringIO()
+            with patch(
+                "triton_agent.commands.execution.run_local_probe_bench",
+                return_value=fake_result,
+            ) as mocked:
+                with redirect_stdout(stdout):
+                    exit_code = handle_probe_bench(parser, args)
+            self.assertEqual(exit_code, 0)
+            self.assertIn("Probe classification: likely_gain", stdout.getvalue())
+            mocked.assert_called_once_with(
+                bench_file.resolve(),
+                operator.resolve(),
+                baseline.resolve(),
+                "torch-npu-profiler",
+                metric_source="auto",
+                npu_devices=None,
+                verbose=False,
+            )
+
+    def test_handle_probe_bench_missing_baseline_operator_file_errors(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            bench_file, operator, _ = self._write_inputs(tmp)
+            args = parser.parse_args(
+                [
+                    "probe-bench",
+                    "--bench-file",
+                    str(bench_file),
+                    "--operator-file",
+                    str(operator),
+                    "--baseline-operator-file",
+                    str(bench_file / "missing.py"),
+                ]
+            )
+            with self.assertRaises(SystemExit):
+                handle_probe_bench(parser, args)
+
+    def test_handle_probe_bench_verbose_prints_verbose_lines(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            bench_file, operator, baseline = self._write_inputs(tmp)
+            args = parser.parse_args(
+                [
+                    "probe-bench",
+                    "--bench-file",
+                    str(bench_file),
+                    "--operator-file",
+                    str(operator),
+                    "--baseline-operator-file",
+                    str(baseline),
+                    "--verbose",
+                ]
+            )
+            fake_result = SimpleNamespace(
+                return_code=0,
+                default_lines=["Probe classification: inconclusive"],
+                verbose_lines=["Baseline cache: hit", "Baseline probe perf: /tmp/x"],
+                warnings=[],
+            )
+            stdout = StringIO()
+            with patch(
+                "triton_agent.commands.execution.run_local_probe_bench",
+                return_value=fake_result,
+            ):
+                with redirect_stdout(stdout):
+                    exit_code = handle_probe_bench(parser, args)
+            self.assertEqual(exit_code, 0)
+            output = stdout.getvalue()
+            self.assertIn("Baseline cache: hit", output)
+            self.assertIn("Baseline probe perf: /tmp/x", output)
+
+    def test_handle_probe_bench_failure_returns_nonzero(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            bench_file, operator, baseline = self._write_inputs(tmp)
+            args = parser.parse_args(
+                [
+                    "probe-bench",
+                    "--bench-file",
+                    str(bench_file),
+                    "--operator-file",
+                    str(operator),
+                    "--baseline-operator-file",
+                    str(baseline),
+                ]
+            )
+            fake_result = SimpleNamespace(
+                return_code=1,
+                default_lines=["FAIL: baseline probe execution failed"],
+                verbose_lines=[],
+                warnings=[],
+            )
+            stdout = StringIO()
+            with patch(
+                "triton_agent.commands.execution.run_local_probe_bench",
+                return_value=fake_result,
+            ):
+                with redirect_stdout(stdout):
+                    exit_code = handle_probe_bench(parser, args)
+            self.assertEqual(exit_code, 1)
+            self.assertIn("FAIL: baseline probe execution failed", stdout.getvalue())
+
+    def test_handle_probe_bench_remote_calls_remote_runner(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            bench_file, operator, baseline = self._write_inputs(tmp)
+            args = parser.parse_args(
+                [
+                    "probe-bench",
+                    "--bench-file",
+                    str(bench_file),
+                    "--operator-file",
+                    str(operator),
+                    "--baseline-operator-file",
+                    str(baseline),
+                    "--remote",
+                    "user@host",
+                    "--keep-remote-workdir",
+                ]
+            )
+            fake_result = SimpleNamespace(
+                return_code=0,
+                default_lines=["Probe classification: likely_gain"],
+                verbose_lines=[],
+                warnings=[],
+                remote_workspace="/tmp/remote-ws",
+            )
+            stdout = StringIO()
+            with patch(
+                "triton_agent.commands.execution.run_remote_probe_bench",
+                return_value=fake_result,
+            ) as mocked:
+                with redirect_stdout(stdout):
+                    exit_code = handle_probe_bench(parser, args)
+            self.assertEqual(exit_code, 0)
+            self.assertIn("Remote workspace: /tmp/remote-ws", stdout.getvalue())
+            mocked.assert_called_once()
+            self.assertEqual(mocked.call_args.args[4], "user@host")
+
+    def test_handle_probe_bench_propagates_metric_source(self) -> None:
+        parser = build_parser()
+        with tempfile.TemporaryDirectory() as tmp:
+            bench_file, operator, baseline = self._write_inputs(tmp)
+            args = parser.parse_args(
+                [
+                    "probe-bench",
+                    "--bench-file",
+                    str(bench_file),
+                    "--operator-file",
+                    str(operator),
+                    "--baseline-operator-file",
+                    str(baseline),
+                    "--metric-source",
+                    "total-op",
+                ]
+            )
+            fake_result = SimpleNamespace(
+                return_code=0,
+                default_lines=["Probe classification: inconclusive"],
+                verbose_lines=[],
+                warnings=[],
+            )
+            with patch(
+                "triton_agent.commands.execution.run_local_probe_bench",
+                return_value=fake_result,
+            ) as mocked:
+                handle_probe_bench(parser, args)
+            self.assertEqual(mocked.call_args.kwargs["metric_source"], "total-op")
 
 
 if __name__ == "__main__":

@@ -1735,5 +1735,113 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             self.assertIn('"case_wall_clock_seconds":2.5', perf_text)
 
 
+class RemoteProbeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.bench = load_bench_runner_module()
+        run_runtime = load_operator_eval_script_module("run_runtime")
+        self.spec = run_runtime.parse_remote_spec("user@host")
+
+    def test_probe_remote_script_includes_clamp_and_preloaded(self) -> None:
+        script = self.bench._build_remote_torch_npu_profiler_probe_run_all_script(
+            verbose=False, warmup_cap=1, repeats_cap=3
+        )
+        self.assertIn("dataclasses.replace", script)
+        self.assertIn("min(c.warmup, 1)", script)
+        self.assertIn("min(c.repeats, 3)", script)
+        self.assertIn("preloaded=(clamped, resolution)", script)
+        self.assertIn("runtime.load_bench_cases", script)
+
+    def test_canonical_remote_script_does_not_clamp(self) -> None:
+        script = self.bench._build_remote_torch_npu_profiler_run_all_script(verbose=False)
+        self.assertNotIn("dataclasses.replace", script)
+        self.assertNotIn("preloaded=", script)
+
+    def test_remote_profiler_uses_probe_script_when_caps_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            self.bench, "_stage_remote_bench_runtime_support_files"
+        ), patch.object(
+            self.bench, "run_remote_command_streaming", return_value=make_skill_result(0, "", "")
+        ) as mocked_run, patch.object(self.bench, "copy_file_from_remote"):
+            self.bench._run_remote_bench_torch_npu_profiler(
+                self.spec,
+                "ws",
+                Path(tmp) / "bench.py",
+                Path(tmp) / "op.py",
+                probe_caps=(1, 3),
+            )
+        command = mocked_run.call_args.args[2]
+        script = command[2]
+        self.assertIn("preloaded=(clamped, resolution)", script)
+        self.assertIn("min(c.warmup, 1)", script)
+
+    def test_remote_profiler_uses_canonical_script_without_caps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            self.bench, "_stage_remote_bench_runtime_support_files"
+        ), patch.object(
+            self.bench, "run_remote_command_streaming", return_value=make_skill_result(0, "", "")
+        ) as mocked_run, patch.object(self.bench, "copy_file_from_remote"):
+            self.bench._run_remote_bench_torch_npu_profiler(
+                self.spec,
+                "ws",
+                Path(tmp) / "bench.py",
+                Path(tmp) / "op.py",
+            )
+        command = mocked_run.call_args.args[2]
+        script = command[2]
+        self.assertNotIn("preloaded=", script)
+        self.assertNotIn("dataclasses.replace", script)
+
+    def test_run_remote_probe_threads_probe_caps(self) -> None:
+        sentinel = ({"return_code": 0, "stdout": "", "stderr": ""}, None, "ws")
+        with patch.object(self.bench, "run_remote_bench", return_value=sentinel) as mocked:
+            self.bench.run_remote_probe(
+                Path("bench.py"),
+                Path("op.py"),
+                "torch-npu-profiler",
+                "user@host",
+                None,
+                warmup_cap=1,
+                repeats_cap=3,
+            )
+        self.assertEqual(mocked.call_args.kwargs.get("probe_caps"), (1, 3))
+
+    def test_remote_profiler_passes_devices_env_when_caps_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            self.bench, "_stage_remote_bench_runtime_support_files"
+        ), patch.object(
+            self.bench, "run_remote_command_streaming", return_value=make_skill_result(0, "", "")
+        ) as mocked_run, patch.object(self.bench, "copy_file_from_remote"):
+            self.bench._run_remote_bench_torch_npu_profiler(
+                self.spec,
+                "ws",
+                Path(tmp) / "bench.py",
+                Path(tmp) / "op.py",
+                probe_caps=(1, 3),
+                devices=("4", "5"),
+            )
+        self.assertEqual(
+            mocked_run.call_args.kwargs["extra_env"]["ASCEND_RT_VISIBLE_DEVICES"],
+            "4,5",
+        )
+
+    def test_remote_profiler_omits_devices_env_without_devices(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            self.bench, "_stage_remote_bench_runtime_support_files"
+        ), patch.object(
+            self.bench, "run_remote_command_streaming", return_value=make_skill_result(0, "", "")
+        ) as mocked_run, patch.object(self.bench, "copy_file_from_remote"):
+            self.bench._run_remote_bench_torch_npu_profiler(
+                self.spec,
+                "ws",
+                Path(tmp) / "bench.py",
+                Path(tmp) / "op.py",
+                probe_caps=(1, 3),
+            )
+        self.assertNotIn(
+            "ASCEND_RT_VISIBLE_DEVICES",
+            mocked_run.call_args.kwargs["extra_env"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

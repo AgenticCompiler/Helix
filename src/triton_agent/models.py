@@ -15,6 +15,7 @@ class CommandKind(str, Enum):
     RUN_TEST = "run-test"
     GEN_BENCH = "gen-bench"
     RUN_BENCH = "run-bench"
+    PROBE_BENCH = "probe-bench"
     RUN_SIMULATOR = "run-simulator"
     COMPARE_RESULT = "compare-result"
     COMPARE_PERF = "compare-perf"
