@@ -118,7 +118,7 @@ def triton_add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return out
 
 
-class ModelNew(nn.Module):
+class Model(nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
@@ -142,7 +142,7 @@ def get_init_inputs():
 In this kind of conversion:
 
 - `def triton_add(...)` is the PyTorch-facing wrapper that calls the Triton kernel
-- `class ModelNew` is the converted public architecture
+- `class Model` is the converted public architecture
 - the trailing `get_init_inputs()` / `get_inputs()` block is preserved in the converted output instead of being dropped
 - the original source operator remains the correctness oracle for differential validation
 
@@ -213,7 +213,7 @@ def add_kernel(x_ptr, y_ptr, output_ptr, n, BLOCK_SIZE: tl.constexpr):
     output = x + y  # compute inside kernel
     tl.store(output_ptr + idx, output)
 
-class ModelNew(nn.Module):
+class Model(nn.Module):
     def forward(self, x, y):
         output = torch.empty_like(x)  # Allowed: buffer alloc
         add_kernel[(1,)](x, y, output, x.numel(), BLOCK_SIZE=128)  # Allowed: kernel launch

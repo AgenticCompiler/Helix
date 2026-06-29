@@ -186,10 +186,15 @@ def execute_bench_case(
     bench_file: Path,
     operator_file: Path,
     case_id: str | None = None,
+    *,
+    iterations: int = 1,
 ) -> ResultPayload:
+    import torch
     cases, _resolution = load_bench_cases(bench_file, operator_file)
     case = select_bench_case(cases, case_id)
-    case.fn()
+    for _ in range(iterations):
+        case.fn()
+        _synchronize(torch)
     return make_result(return_code=0, stdout="", stderr="")
 
 
@@ -723,6 +728,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_one = subparsers.add_parser("run-one")
     _add_common_case_arguments(run_one)
+    run_one.add_argument(
+        "--iterations",
+        type=int,
+        default=1,
+        help="Number of times to invoke the case (default 1). msprof mode passes warmup + repeats.",
+    )
 
     profile_one = subparsers.add_parser("profile-one")
     _add_common_case_arguments(profile_one)
@@ -768,10 +779,13 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "run-one":
+            if args.iterations < 1:
+                raise SystemExit("--iterations must be >= 1")
             result = execute_bench_case(
                 bench_file,
                 operator_file,
                 args.case_id,
+                iterations=args.iterations,
             )
             return _emit_result(result)
 

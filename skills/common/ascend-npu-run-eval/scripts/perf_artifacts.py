@@ -46,6 +46,13 @@ class PerfParseOutcome:
     skipped_latency_errors: dict[str, str]
 
 
+@dataclass(frozen=True)
+class PerfPairOutcome:
+    baseline_entries: dict[str, PerfEntry]
+    compare_entries: dict[str, PerfEntry]
+    skipped_latency_errors: dict[str, str]
+
+
 class PerfValueMap(dict[str, float]):
     def __init__(
         self,
@@ -149,14 +156,24 @@ def compare_perf_files(
         print(f"FAIL: {exc}")
         return 1
 
-    comparable_ids = sorted(set(baseline_outcome.entries) & set(compare_outcome.entries))
+    try:
+        pair_outcome = _normalize_perf_pair_for_comparison(
+            baseline_perf=baseline_perf,
+            compare_perf=compare_perf,
+            baseline_entries=baseline_outcome.entries,
+            compare_entries=compare_outcome.entries,
+            metric_source=metric_source,
+            tolerate_latency_errors=skip_latency_errors,
+        )
+    except ValueError as exc:
+        print(f"FAIL: {exc}")
+        return 1
+    comparable_ids = sorted(set(pair_outcome.baseline_entries) & set(pair_outcome.compare_entries))
     baseline = {
-        latency_id: baseline_outcome.entries[latency_id].numeric_value
-        for latency_id in comparable_ids
+        latency_id: pair_outcome.baseline_entries[latency_id].numeric_value for latency_id in comparable_ids
     }
     compare = {
-        latency_id: compare_outcome.entries[latency_id].numeric_value
-        for latency_id in comparable_ids
+        latency_id: pair_outcome.compare_entries[latency_id].numeric_value for latency_id in comparable_ids
     }
     invalid_metric_errors = _collect_invalid_metric_errors(
         baseline,
@@ -170,11 +187,11 @@ def compare_perf_files(
                 latency_id for latency_id in comparable_ids if latency_id not in invalid_metric_errors
             ]
             baseline = {
-                latency_id: baseline_outcome.entries[latency_id].numeric_value
+                latency_id: pair_outcome.baseline_entries[latency_id].numeric_value
                 for latency_id in comparable_ids
             }
             compare = {
-                latency_id: compare_outcome.entries[latency_id].numeric_value
+                latency_id: pair_outcome.compare_entries[latency_id].numeric_value
                 for latency_id in comparable_ids
             }
         else:
@@ -185,8 +202,8 @@ def compare_perf_files(
     for latency_id in comparable_ids:
         baseline_value = baseline[latency_id]
         compare_value = compare[latency_id]
-        baseline_display = baseline_outcome.entries[latency_id].display_value
-        compare_display = compare_outcome.entries[latency_id].display_value
+        baseline_display = pair_outcome.baseline_entries[latency_id].display_value
+        compare_display = pair_outcome.compare_entries[latency_id].display_value
         print(
             f"{latency_id}: baseline={baseline_display}, "
             f"compare={compare_display}, "
@@ -196,12 +213,13 @@ def compare_perf_files(
     print(f"Avg improvement: {_format_improvement_percent(avg_improvement)}")
     print(f"Geomean speedup: {_format_speedup(geomean_speedup)}")
     compared_entries = {
-        latency_id: baseline_outcome.entries[latency_id] for latency_id in comparable_ids
+        latency_id: pair_outcome.baseline_entries[latency_id] for latency_id in comparable_ids
     }
     print(f"Metric source: {_summarize_metric_source(compared_entries, metric_source=metric_source)}")
     skipped_latency_errors = {
         **baseline_outcome.skipped_latency_errors,
         **compare_outcome.skipped_latency_errors,
+        **pair_outcome.skipped_latency_errors,
         **invalid_metric_errors,
     }
     if skipped_latency_errors:
@@ -249,14 +267,30 @@ def _compare_perf_files_all(
             exit_codes.append(1)
             continue
 
-        comparable_ids = sorted(set(baseline_outcome.entries) & set(compare_outcome.entries))
+        try:
+            pair_outcome = _normalize_perf_pair_for_comparison(
+                baseline_perf=baseline_perf,
+                compare_perf=compare_perf,
+                baseline_entries=baseline_outcome.entries,
+                compare_entries=compare_outcome.entries,
+                metric_source=cast(MetricSource, section_metric_source),
+                tolerate_latency_errors=skip_latency_errors,
+            )
+        except ValueError as exc:
+            section_results.append(
+                (
+                    section_metric_source,
+                    f"Metric source section: {section_metric_source}\nFAIL: {exc}\n",
+                )
+            )
+            exit_codes.append(1)
+            continue
+        comparable_ids = sorted(set(pair_outcome.baseline_entries) & set(pair_outcome.compare_entries))
         baseline = {
-            latency_id: baseline_outcome.entries[latency_id].numeric_value
-            for latency_id in comparable_ids
+            latency_id: pair_outcome.baseline_entries[latency_id].numeric_value for latency_id in comparable_ids
         }
         compare = {
-            latency_id: compare_outcome.entries[latency_id].numeric_value
-            for latency_id in comparable_ids
+            latency_id: pair_outcome.compare_entries[latency_id].numeric_value for latency_id in comparable_ids
         }
         invalid_metric_errors = _collect_invalid_metric_errors(
             baseline,
@@ -270,11 +304,11 @@ def _compare_perf_files_all(
                     latency_id for latency_id in comparable_ids if latency_id not in invalid_metric_errors
                 ]
                 baseline = {
-                    latency_id: baseline_outcome.entries[latency_id].numeric_value
+                    latency_id: pair_outcome.baseline_entries[latency_id].numeric_value
                     for latency_id in comparable_ids
                 }
                 compare = {
-                    latency_id: compare_outcome.entries[latency_id].numeric_value
+                    latency_id: pair_outcome.compare_entries[latency_id].numeric_value
                     for latency_id in comparable_ids
                 }
             else:
@@ -292,8 +326,8 @@ def _compare_perf_files_all(
         for latency_id in comparable_ids:
             baseline_value = baseline[latency_id]
             compare_value = compare[latency_id]
-            baseline_display = baseline_outcome.entries[latency_id].display_value
-            compare_display = compare_outcome.entries[latency_id].display_value
+            baseline_display = pair_outcome.baseline_entries[latency_id].display_value
+            compare_display = pair_outcome.compare_entries[latency_id].display_value
             lines.append(
                 f"{latency_id}: baseline={baseline_display}, "
                 f"compare={compare_display}, "
@@ -308,6 +342,7 @@ def _compare_perf_files_all(
         skipped_latency_errors = {
             **baseline_outcome.skipped_latency_errors,
             **compare_outcome.skipped_latency_errors,
+            **pair_outcome.skipped_latency_errors,
             **invalid_metric_errors,
         }
         if skipped_latency_errors:
@@ -399,13 +434,21 @@ def parse_perf_pair_for_comparison(
         skip_latency_errors=False,
         metric_source=metric_source,
     )
+    pair_outcome = _normalize_perf_pair_for_comparison(
+        baseline_perf=baseline_perf,
+        compare_perf=compare_perf,
+        baseline_entries=baseline_outcome.entries,
+        compare_entries=compare_outcome.entries,
+        metric_source=metric_source,
+        tolerate_latency_errors=False,
+    )
     baseline_values = {
         latency_id: entry.numeric_value
-        for latency_id, entry in baseline_outcome.entries.items()
+        for latency_id, entry in pair_outcome.baseline_entries.items()
     }
     compare_values = {
         latency_id: entry.numeric_value
-        for latency_id, entry in compare_outcome.entries.items()
+        for latency_id, entry in pair_outcome.compare_entries.items()
     }
     invalid_metric_errors = _collect_invalid_metric_errors(
         baseline_values,
@@ -418,7 +461,7 @@ def parse_perf_pair_for_comparison(
         raise ValueError(invalid_metric_errors[first_latency_id])
     comparison_modes: dict[str, ComparisonMode] = {
         latency_id: entry.comparison_mode
-        for latency_id, entry in baseline_outcome.entries.items()
+        for latency_id, entry in pair_outcome.baseline_entries.items()
     }
     return baseline_values, compare_values, comparison_modes
 
@@ -960,6 +1003,21 @@ def _legacy_msprof_latency_id_alias(latency_id: str) -> str | None:
     return None
 
 
+def _rebuild_entry_for_mode(
+    path: Path,
+    latency_id: str,
+    *,
+    target_mode: ComparisonMode,
+) -> PerfEntry:
+    metric_source: MetricSource = "kernel" if target_mode == "latency" else "total-op"
+    return _parse_required_perf_entries_for_comparison(
+        path,
+        {latency_id},
+        skip_latency_errors=False,
+        metric_source=metric_source,
+    ).entries[latency_id]
+
+
 def _require_raw_total(
     path: Path,
     line_no: int,
@@ -1089,6 +1147,55 @@ def _collect_invalid_metric_errors(
                 f"{compare_value} must be > 0"
             )
     return errors
+
+
+def _normalize_perf_pair_for_comparison(
+    *,
+    baseline_perf: Path,
+    compare_perf: Path,
+    baseline_entries: dict[str, PerfEntry],
+    compare_entries: dict[str, PerfEntry],
+    metric_source: MetricSource,
+    tolerate_latency_errors: bool,
+) -> PerfPairOutcome:
+    if metric_source != "auto":
+        return PerfPairOutcome(
+            baseline_entries=dict(baseline_entries),
+            compare_entries=dict(compare_entries),
+            skipped_latency_errors={},
+        )
+
+    normalized_baseline = dict(baseline_entries)
+    normalized_compare = dict(compare_entries)
+    skipped_latency_errors: dict[str, str] = {}
+    shared_ids = sorted(set(normalized_baseline) & set(normalized_compare))
+    for latency_id in shared_ids:
+        baseline_entry = normalized_baseline[latency_id]
+        compare_entry = normalized_compare[latency_id]
+        if baseline_entry.comparison_mode == compare_entry.comparison_mode:
+            continue
+        try:
+            normalized_baseline[latency_id] = _rebuild_entry_for_mode(
+                baseline_perf,
+                latency_id,
+                target_mode="total-op",
+            )
+            normalized_compare[latency_id] = _rebuild_entry_for_mode(
+                compare_perf,
+                latency_id,
+                target_mode="total-op",
+            )
+        except ValueError as exc:
+            if not tolerate_latency_errors:
+                raise
+            skipped_latency_errors[latency_id] = str(exc)
+            normalized_baseline.pop(latency_id, None)
+            normalized_compare.pop(latency_id, None)
+    return PerfPairOutcome(
+        baseline_entries=normalized_baseline,
+        compare_entries=normalized_compare,
+        skipped_latency_errors=skipped_latency_errors,
+    )
 
 
 def _summarize_perf_metrics(

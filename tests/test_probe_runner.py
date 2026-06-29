@@ -469,6 +469,34 @@ class ParsePerfPairValidationTests(unittest.TestCase):
             self.assertEqual(baseline_values, {"latency-a": 100.0})
             self.assertEqual(candidate_values, {"latency-a": 80.0})
 
+    def test_auto_pair_normalizes_mixed_sources_per_case_to_total_op(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base = root / "base.perf.txt"
+            cand = root / "cand.perf.txt"
+            base.write_text(
+                (
+                    "latency-a: 22.6848\n"
+                    '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":22.6848}]}\n'
+                ),
+                encoding="utf-8",
+            )
+            cand.write_text(
+                (
+                    "latency-a: NA\n"
+                    '# raw-op-statistic-a: {"ops":[{"op_type":"OpA","avg_time_us":10.7328}]}\n'
+                ),
+                encoding="utf-8",
+            )
+
+            baseline_values, candidate_values, comparison_modes = self.perf.parse_perf_pair_for_comparison(
+                base, cand, metric_source="auto"
+            )
+
+            self.assertEqual(baseline_values, {"latency-a": 22.6848})
+            self.assertEqual(candidate_values, {"latency-a": 10.7328})
+            self.assertEqual(comparison_modes, {"latency-a": "total-op"})
+
 
 class RemoteVerboseTests(unittest.TestCase):
     def setUp(self) -> None:
