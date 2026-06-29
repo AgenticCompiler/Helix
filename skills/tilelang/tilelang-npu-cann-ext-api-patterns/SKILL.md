@@ -28,13 +28,33 @@ The Developer docs ([memory-developer](../tilelang-npu-api-reference/references/
 ## How To Use This Skill
 
 1. Use this skill only when optimize explicitly stages it.
-2. Read `references/patterns/index.md` first.
+2. Read `references/pattern_index.md` first.
 3. Pick only the most relevant detailed pattern file for the current bottleneck.
 4. Avoid bulk-loading all detailed pattern references unless the kernel genuinely shows multiple independent Expert-mode opportunities.
 
+## Lint Verification
+
+Expert-mode kernels with manual sync are error-prone. **Always run the sync linter after applying any pattern**, before attempting on-device compilation:
+
+```bash
+python3 scripts/tl_sync_lint.py --tier1 --tier2 --tier3 --tier4 <kernel>.py
+```
+
+The linter has four tiers; map findings to on-device symptoms:
+
+| Tier | Flag | Symptom on device |
+|------|------|-------------------|
+| **0** | `FLAG_IMBALANCE`, `CROSS_DEADLOCK`, `NO_INTRA_FENCE` | **Deadlock** — AICore timeout (`507014`), ~10 min hang |
+| **1** (`--tier1`) | `DATA_RACE` | **Precision / correctness errors** — output mismatches ref |
+| **2** (`--tier2`) | `LATE_RELEASE` | **Throughput-collapse deadlock** — buffer-reuse credit released too late |
+| **3** (`--tier3`) | `PRIME_UNDERFLOW` | **First-iteration deadlock** — unconditional wait_flag whose credit is only primed under a guard |
+| **4** (`--tier4`) | `SHARED_MAILBOX` | **Illegal vec config crash** — alloc_shared used as cross-lane mailbox (error `507015`) |
+
+Tier 0 checks set/wait flag balance (liveness). Tier 1 checks happens-before between cross-pipe buffer accesses. Tier 2 catches deferred-credit late releases. Tier 3 catches first-iteration credit underflow. Tier 4 detects illegal cross-vid memory sharing.
+
 ## Patterns
 
-All Expert-mode patterns are documented in `references/patterns/`. Start with [index.md](references/patterns/index.md) then read the specific pattern file for your bottleneck. If patterns don't cover what you need, explore the full Expert API docs linked above — the memory-expert and compute-expert references cover the complete surface.
+All Expert-mode patterns are documented in `references/patterns/`. Start with [pattern_index.md](references/pattern_index.md) then read the specific pattern file for your bottleneck. If patterns don't cover what you need, explore the full Expert API docs linked above — the memory-expert and compute-expert references cover the complete surface.
 
 ## Reading Contract
 
