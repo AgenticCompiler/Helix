@@ -38,6 +38,7 @@ Treat this pattern as a routing rule: try fully automatic autotune first, add `h
 - Verify the searched parameters are Ascend-relevant for the config-space search, especially `BLOCK_*`, `multibuffer`, and `unit_flag`, rather than treating GPU-only defaults such as `num_warps` or `num_stages` as the default search surface.
 - Verify the selected block sizes still satisfy semantic constraints such as `BLOCK_SIZE <= tiled logical extent` when padding would otherwise change results.
 - Verify `TRITON_PRINT_AUTOTUNING=1` or equivalent logs show the inferred axes, candidate count, and chosen best configuration during debugging.
+- Verify any custom `early_config_prune` / `prune_configs_by` callback reads runtime shape arguments from the positional `nargs` argument, not from the `**kwargs` / `**named_args` meta dict. The autotuner calls the prune callable as `early_config_prune(configs, nargs, **kwargs)`: `nargs` (built from `dict(zip(arg_names, args))`) holds runtime args like `n_cols`, while `**kwargs` holds only constexpr/meta such as `BLOCK_SIZE`. Reading a runtime shape via `named_args.get(...)` silently returns the default and disables pruning, so a too-small config can win and regress both perf and correctness.
 
 ## Route 1: Automatic Autotune First
 
@@ -178,6 +179,131 @@ Prefer `hints` or custom configs when you see one or more of the following:
 - If you are applying `a5-force-simt-only-discrete-access`, recheck `num_warps` and grid decomposition there after enabling `force_simt_only=True`.
 - For update-style kernels, repeated autotune evaluation can write outputs multiple times. Add `reset_to_zero`, `restore_value`, `pre_hook`, or `post_hook` before trusting benchmarks.
 - Start debugging with `TRITON_PRINT_AUTOTUNING=1`.
+
+## Failure mode: prune callback reads a runtime arg from the wrong dict
+
+A custom `early_config_prune` / `prune_configs_by` callback can silently disable pruning by looking up a **runtime** shape argument in the **meta/constexpr** argument dict. When pruning never fires, illegal or too-small configs survive the search and can win, producing **both** a performance regression **and** a numeric error at the same time. This is a prune-contract bug, not an autotune search bug — and it is easy to misattribute to autotune itself, so confirm the prune callback before blaming configs or keys.
+
+### How Triton splits arguments (the "why")
+
+The autotuner keeps two argument channels, and a prune callback must read from the right one:
+
+- **Runtime arguments** — tensor pointers, scalar sizes such as `n_cols`, strides: anything the kernel receives as a positional argument at launch. These are packed into `self.nargs`:
+
+  ```python
+  self.nargs = dict(zip(self.arg_names, args))   # built in run()/warmup() from positional *args
+  ```
+
+- **Meta / constexpr arguments** — the `Config` tunables such as `BLOCK_SIZE`, `num_warps`, `num_stages`. These arrive as keyword arguments to `run()` and are forwarded as the `**kwargs` tail.
+
+The prune callable is invoked as:
+
+```python
+pruned_configs = self.early_config_prune(self.configs, self.nargs, **kwargs)
+#                                                ^^^^^^^^^^^^   ^^^^^^^^
+#                                                runtime args    constexpr/meta
+```
+
+So the **positional** second argument holds runtime shapes; the `**kwargs`/`**named_args` tail holds only constexpr/meta values. Runtime shapes are **never** in the `**kwargs`/`**named_args` tail.
+
+This split has been stable across versions: runtime shapes have lived in the positional `nargs` argument from Triton 2.x through 3.2 (and triton-ascend 3.2.1). The only cross-version change is whether the constexpr `**kwargs` tail is forwarded at all — Triton 2.x calls `self.early_config_prune(self.configs, self.nargs)` with no `**kwargs`, while Triton 3.0+ forwards the constexpr `**kwargs` tail as well. In every version, runtime shapes are in `nargs`, never in `**kwargs`. Do not write a prune callback that reads a runtime shape from `**named_args`/`**kwargs` on the assumption that "shapes moved there" — they did not.
+
+### Buggy shape (the "so what")
+
+A common mistake is to read a runtime shape from the `**named_args`/`**kwargs` tail, expecting it to be there:
+
+```python
+def _prune_configs(configs, nargs, **named_args):
+    n = named_args.get("n_cols", 0)   # BUG: n_cols is a runtime arg -> it lives in nargs, not named_args
+    return [c for c in configs if c.kwargs.get("BLOCK_SIZE", 0) >= n]
+```
+
+`named_args` is the `**kwargs` tail = constexpr/meta only, so it never contains `n_cols`. `.get("n_cols", 0)` always returns the `0` default, the predicate `BLOCK_SIZE >= 0` is always true, and **no config is ever pruned**. A `BLOCK_SIZE` smaller than the runtime extent it must cover then survives the search and can be picked as best — which both regresses performance and breaks numerics when the kernel body assumes `BLOCK_SIZE` covers the whole logical dimension (for example a reduction or mask that is only correct when `BLOCK_SIZE >= n_cols`).
+
+Corrected shape — read runtime shape args from the positional `nargs` argument:
+
+```python
+def _prune_configs(configs, nargs, **named_args):
+    n = nargs.get("n_cols", 0)              # runtime arg -> read from the positional nargs
+    return [c for c in configs if c.kwargs.get("BLOCK_SIZE", 0) >= n]
+```
+
+### Correct template
+
+Use this as a starting point when writing a new `early_config_prune` / `prune_configs_by` callback. The key rule: **runtime shapes live in `nargs`, constexpr/meta tunables live in `**named_args`**.
+
+```python
+from typing import Any
+
+def prune_configs_by(
+    configs: list[Any],
+    nargs: dict[str, Any],
+    **named_args: Any,
+) -> list[Any]:
+    """Prune invalid or suboptimal configs before autotune benchmarks them.
+
+    Parameters
+    ----------
+    configs : list[triton.Config]
+        Candidate configs to filter.
+    nargs : dict
+        Runtime arguments (built from ``dict(zip(arg_names, args))`` in the
+        autotuner).  Contains tensor pointers, scalar shapes like ``n_cols``,
+        strides, dtypes — everything the kernel receives as a positional arg.
+    **named_args
+        Constexpr / meta arguments forwarded by the autotuner (3.0+).
+        Contains the ``Config`` tunables such as ``BLOCK_SIZE``, ``num_warps``,
+        ``num_stages``, plus any keyword arguments passed to ``run()``.
+        Runtime shapes are **not** in this dict.
+
+    Returns
+    -------
+    list[triton.Config]
+        Subset of *configs* that should be benchmarked.
+
+    Notes
+    -----
+    - Triton 2.x calls this as ``(configs, nargs)`` with no ``**named_args``.
+      If you need to support 2.x, omit ``**named_args`` from the signature.
+    - The caller is ``Autotuner.prune_configs``, which invokes:
+      ``self.early_config_prune(self.configs, self.nargs, **kwargs)``
+    """
+    pruned: list[Any] = []
+
+    for config in configs:
+        # --- EXAMPLE: filter out configs whose BLOCK_SIZE is too small for the
+        #     runtime column count.  n_cols comes from kernel positional args
+        #     -> read it from nargs, NOT from named_args. ---------------------
+        block_size = config.kwargs.get("BLOCK_SIZE", 0)
+        n_cols = nargs.get("n_cols", 0)            # <-- runtime -> nargs
+        if block_size < n_cols:
+            continue                                # prune
+
+        # --- EXAMPLE: filter by a config-owned constexpr tunable.  BLOCK_M is
+        #     a Config value -> it lives in config.kwargs (or **named_args for
+        #     autotuner-internal forwarding). ---------------------------------
+        block_m = config.kwargs.get("BLOCK_M")
+        if block_m is not None and block_m > 512:
+            continue                                # prune
+
+        # --- EXAMPLE: filter by a tensor's dtype, which is a runtime property
+        #     attached to a tensor argument.  Read the tensor from nargs, then
+        #     inspect its .dtype. --------------------------------------------
+        x = nargs.get("x_ptr")
+        if hasattr(x, "dtype") and getattr(x, "dtype", None) not in (triton.float16, triton.bfloat16):
+            continue                                # prune
+
+        pruned.append(config)
+
+    return pruned
+```
+
+### Detection signals
+
+- a prune predicate is keyed on a runtime shape (for example `n_cols`, `hidden_dim`) but reads it via `.get(...)` on the `**named_args` / `**kwargs` meta dict instead of the positional `nargs`.
+- `TRITON_PRINT_AUTOTUNING=1` shows candidate configs that should have been pruned still being benchmarked, and a too-small `BLOCK_SIZE` selected as best.
+- the selected `BLOCK_SIZE` is smaller than the runtime extent it is supposed to cover (for example `BLOCK_SIZE < n_cols`), and a numeric mismatch appears together with a performance regression at the same time.
+- autotune regresses on both perf and correctness at once with no structural change to the kernel body — suspect the prune contract before suspecting the search.
 
 ## Related Patterns
 
