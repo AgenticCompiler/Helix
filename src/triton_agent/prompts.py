@@ -3,14 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from triton_agent.models import COMMAND_TO_SKILL, CommandKind
+from triton_agent.models import CommandKind, command_to_skill
 from triton_agent.optimize.prompts import (
     build_optimize_round_prompt,
 )
 from triton_agent.paths import default_generated_output_path
 PROMPT_INTROS = {
     CommandKind.GEN_EVAL: "Repair the operator when needed, then generate correctness tests and a benchmark.",
-    CommandKind.CONVERT: "Convert the PyTorch operator into a Triton NPU-backed PyTorch operator and validate it with the requested correctness test mode.",
+    CommandKind.CONVERT: "Convert the PyTorch operator into a {backend} NPU-backed PyTorch operator and validate it with the requested correctness test mode.",
     CommandKind.GEN_TEST: "Generate correctness tests for the operator file.",
     CommandKind.RUN_TEST: "Run the generated correctness tests for the operator file.",
     CommandKind.GEN_BENCH: "Generate a benchmark for the operator file.",
@@ -51,6 +51,7 @@ def build_prompt(
     round_mode: Literal["checked", "supervised"] = "checked",
     target_chip: str | None = None,
     optimize_target: str = "kernel",
+    language: str = "triton",
     compiler_source_path: Path | None = None,
     compiler_source_commit: str | None = None,
     enable_cann_ext_api: bool = False,
@@ -66,8 +67,9 @@ def build_prompt(
     )
     resolved_min_rounds = 5 if min_rounds is None else min_rounds
     resolved_final_round = resolved_min_rounds if final_round is None else final_round
-    skill_name = COMMAND_TO_SKILL[command_kind]
-    lines = [PROMPT_INTROS[command_kind]]
+    skill_name = command_to_skill(command_kind, language=language)
+    backend = language.capitalize()
+    lines = [PROMPT_INTROS[command_kind].format(backend=backend)]
     if skill_name:
         lines.extend(
             [
@@ -127,7 +129,7 @@ def build_prompt(
     if command_kind == CommandKind.GEN_TEST:
         lines.append(
             "When a `class Model` (or equivalent `torch.nn.Module`) calls a wrapper function "
-            "and that wrapper launches the Triton kernel, prefer that module class as the "
+            f"and that wrapper launches the {backend} kernel, prefer that module class as the "
             "public entrypoint rather than selecting the intermediate wrapper function."
         )
         lines.append(
@@ -141,7 +143,7 @@ def build_prompt(
     if command_kind == CommandKind.GEN_BENCH:
         lines.append(
             "When a `class Model` (or equivalent `torch.nn.Module`) calls a wrapper function "
-            "and that wrapper launches the Triton kernel, prefer that module class as the "
+            f"and that wrapper launches the {backend} kernel, prefer that module class as the "
             "public entrypoint rather than selecting the intermediate wrapper function."
         )
         lines.append(
@@ -156,7 +158,7 @@ def build_prompt(
         lines.extend(
             [
                 "When a `class Model` (or equivalent `torch.nn.Module`) calls a wrapper function "
-                "and that wrapper launches the Triton kernel, prefer that module class as the "
+                f"and that wrapper launches the {backend} kernel, prefer that module class as the "
                 "public entrypoint rather than selecting the intermediate wrapper function.",
                 "If either generated harness uses randomized inputs, explicitly fix the seed during "
                 "case construction so repeated runs of the same harness produce identical inputs.",
@@ -179,7 +181,7 @@ def build_prompt(
                 "This includes existing standalone or differential test cases when they already cover the operator workspace.",
                 "Only generate a new test when no suitable reusable test exists or the user explicitly asks to regenerate it.",
                 "Do not introduce unnecessary wrappers, compatibility branches, helper layers, or scaffolding.",
-                "Keep the converted artifact as a PyTorch-facing operator backed by a real Triton Ascend NPU kernel path.",
+                f"Keep the converted artifact as a PyTorch-facing operator backed by a real {backend} Ascend NPU kernel path.",
                 "A PyTorch-facing wrapper or module API may remain when that is the intended public interface.",
                 "A pure PyTorch rewrite does not satisfy this convert task, even if differential validation passes.",
                 "Target Ascend NPU only for this conversion flow and do not add CUDA, CPU, MPS, or generic multi-backend fallback logic unless the source file already requires shared import structure around the public API.",
@@ -207,6 +209,7 @@ def build_prompt(
             build_optimize_round_prompt(
                 input_path,
                 output_path,
+                language=language,
                 test_mode=test_mode,
                 bench_mode=bench_mode,
                 target_chip=target_chip or "A5",

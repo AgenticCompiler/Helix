@@ -11,6 +11,9 @@ class StageRule:
     skill_sources: dict[str, str] | None = None
 
 
+# Skill names use {language} as a placeholder that is resolved at runtime.
+#   +{language}-npu-xxx  → language-based (triton-npu-xxx / tilelang-npu-xxx)
+#   +npu-xxx             → common (shared across languages)
 STAGE_RULES: dict[CommandKind, StageRule] = {
     CommandKind.GEN_EVAL: StageRule(
         directives=(
@@ -18,77 +21,66 @@ STAGE_RULES: dict[CommandKind, StageRule] = {
             "+ascend-npu-gen-test",
             "+ascend-npu-gen-bench",
             "+ascend-npu-run-eval",
-            "+triton-npu-repair-guide",
+            "+{language}-npu-repair-guide",
         ),
     ),
     CommandKind.GEN_TEST: StageRule(
         directives=(
             "+ascend-npu-gen-test",
             "+ascend-npu-run-eval",
-            "+triton-npu-repair-guide",
+            "+{language}-npu-repair-guide",
         )
     ),
     CommandKind.GEN_BENCH: StageRule(
         directives=(
             "+ascend-npu-gen-bench",
             "+ascend-npu-run-eval",
-            "+triton-npu-repair-guide",
+            "+{language}-npu-repair-guide",
         ),
     ),
     CommandKind.CONVERT: StageRule(
         directives=(
-            "+triton-npu-convert-pytorch-operator",
+            "+{language}-npu-api-reference",
+            "+{language}-npu-convert-pytorch-operator",
             "+ascend-npu-gen-test",
             "+ascend-npu-run-eval",
-            "+triton-npu-repair-guide",
+            "+{language}-npu-repair-guide",
         ),
     ),
     CommandKind.LOG_CHECK: StageRule(
         directives=(
-            "+triton-npu-optimize-knowledge",
-            "+ascend-npu-optimize-submit-baseline",
-            "+ascend-npu-optimize-submit-round",
+            "+{language}-npu-optimize-knowledge",
+            "+ascend-npu-optimize-state",
         ),
     ),
     CommandKind.LOG_CHECK_BATCH: StageRule(
         directives=(
-            "+triton-npu-optimize-knowledge",
-            "+ascend-npu-optimize-submit-baseline",
-            "+ascend-npu-optimize-submit-round",
+            "+{language}-npu-optimize-knowledge",
+            "+ascend-npu-optimize-state",
         ),
     ),
     CommandKind.REPORT: StageRule(
-        directives=(
-            "+ascend-npu-report",
-        ),
+        directives=("+ascend-npu-report",),
     ),
     CommandKind.OPTIMIZE: StageRule(
         directives=(
-            "+triton-npu-optimize",
-            "+triton-npu-optimize-knowledge",
+            "+{language}-npu-api-reference",
+            "+{language}-npu-optimize",
+            "+{language}-npu-optimize-knowledge",
             "+ascend-npu-prepare-optimize-baseline",
             "+ascend-npu-gen-test",
             "+ascend-npu-gen-bench",
             "+ascend-npu-run-eval",
-            "+ascend-npu-optimize-submit-baseline",
-            "+ascend-npu-optimize-submit-round",
-            "+ascend-npu-optimize-start-round",
+            "+ascend-npu-optimize-state",
             "+ascend-npu-profile-operator",
             "+ascend-npu-analyze-round-performance",
-            "+ascend-npu-analyze-ir",
-            "+triton-npu-analyze-compiler-source",
-            "+triton-npu-repair-guide",
+            "+{language}-npu-analyze-ir",
+            "+{language}-npu-analyze-compiler-source",
+            "+{language}-npu-repair-guide",
         ),
     ),
     CommandKind.DIFF_SKILLS_UPDATE: StageRule(
-        directives=(
-            "+triton-npu-optimize-knowledge",
-        ),
-    ),
-    CommandKind.TRACE_ANALYZE: StageRule(
-        directives=(
-            "+triton-npu-optimize-knowledge",
-        ),
+        directives=("+{language}-npu-optimize-knowledge",),
     ),
 }
 
@@ -96,6 +88,7 @@ STAGE_RULES: dict[CommandKind, StageRule] = {
 def resolve_staged_skills(
     command_kind: CommandKind,
     *,
+    language: str = "triton",
     optimize_knowledge: str | None = None,
     optimize_target: str = "kernel",
     enable_cann_ext_api: bool = False,
@@ -106,6 +99,7 @@ def resolve_staged_skills(
         return None, None
 
     staged_skill_names = _apply_stage_directives(rule.directives)
+
     if (
         command_kind == CommandKind.OPTIMIZE
         and staged_skill_names is not None
@@ -113,11 +107,17 @@ def resolve_staged_skills(
     ):
         staged_skill_names = staged_skill_names + ("torch-npu-optimize-knowledge",)
     if command_kind == CommandKind.OPTIMIZE and staged_skill_names is not None and enable_cann_ext_api:
-        staged_skill_names = staged_skill_names + ("triton-npu-cann-ext-api-patterns",)
+        staged_skill_names = staged_skill_names + (f"{language}-npu-cann-ext-api-patterns",)
+
+    if staged_skill_names is not None:
+        staged_skill_names = tuple(
+            name.replace("{language}", language) for name in staged_skill_names
+        )
 
     staged_skill_sources = _resolve_skill_sources(
         command_kind,
         staged_skill_names,
+        language=language,
         optimize_knowledge=optimize_knowledge,
         enable_mcp=enable_mcp,
     )
@@ -156,17 +156,20 @@ def _resolve_skill_sources(
     command_kind: CommandKind,
     staged_skill_names: tuple[str, ...] | None,
     *,
+    language: str = "triton",
     optimize_knowledge: str | None = None,
     enable_mcp: bool = False,
 ) -> dict[str, str] | None:
     sources: dict[str, str] = {}
-    if enable_mcp and staged_skill_names is not None and "ascend-npu-run-eval" in staged_skill_names:
-        sources["ascend-npu-run-eval"] = "ascend-npu-run-eval-mcp"
-    if command_kind == CommandKind.OPTIMIZE and staged_skill_names is not None:
-        if "triton-npu-optimize-knowledge" not in staged_skill_names:
-            return sources or None
+
+    run_eval_name = "ascend-npu-run-eval"
+    if enable_mcp and staged_skill_names is not None and run_eval_name in staged_skill_names:
+        sources[run_eval_name] = f"{run_eval_name}-mcp"
+
+    knowledge_name = f"{language}-npu-optimize-knowledge"
+    if command_kind == CommandKind.OPTIMIZE and staged_skill_names is not None and knowledge_name in staged_skill_names:
         if optimize_knowledge == "v2":
-            sources["triton-npu-optimize-knowledge"] = "triton-npu-optimize-knowledge-v2"
+            sources[knowledge_name] = knowledge_name + "-v2"
         if optimize_knowledge == "v3":
-            sources["triton-npu-optimize-knowledge"] = "triton-npu-optimize-knowledge-v3"
+            sources[knowledge_name] = knowledge_name + "-v3"
     return sources or None

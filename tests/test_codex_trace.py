@@ -120,7 +120,7 @@ class TestCodexJsonLineParser(unittest.TestCase):
         self.assertEqual(parser._classify_command("python run-command.py run-test-baseline --test-file test.py"), "correctness_test")
         self.assertEqual(parser._classify_command("python run-command.py run-test-optimize --test-file differential_test.py"), "correctness_test")
         self.assertEqual(parser._classify_command("compare-perf"), "compare_perf")
-        self.assertEqual(parser._classify_command("check-round"), "check_round")
+        self.assertEqual(parser._classify_command("submit-round"), "check_round")
 
     def test_flush_writes_pending_events(self) -> None:
         _, trace_path = self._make_trace_path()

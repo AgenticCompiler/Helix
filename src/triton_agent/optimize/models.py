@@ -6,13 +6,13 @@ from pathlib import Path
 from typing import Literal
 
 from triton_agent.optimize.skill_contract import (
-    optimize_submit_baseline_module,
-    optimize_submit_round_module,
+    optimize_state_baseline_module,
+    optimize_state_round_module,
 )
 
 
-_OPTIMIZE_BASELINE_MODULE = optimize_submit_baseline_module()
-_OPTIMIZE_ROUND_MODULE = optimize_submit_round_module()
+_OPTIMIZE_BASELINE_MODULE = optimize_state_baseline_module()
+_OPTIMIZE_ROUND_MODULE = optimize_state_round_module()
 
 BaselineState = _OPTIMIZE_BASELINE_MODULE.BaselineState  # type: ignore[reportUnknownVariableType]
 BaselineArtifactsInspection = _OPTIMIZE_BASELINE_MODULE.BaselineArtifactsInspection  # type: ignore[reportUnknownVariableType]
@@ -38,6 +38,8 @@ class OptimizeRunOptions:
     test_mode: str | None
     bench_mode: str | None
     prompt: str | None
+    post_optimize_command: str | None = None
+    language: Literal["triton", "tilelang"] = "triton"
     round_batch_size: int = 5
     target_chip: Literal["A3", "A5"] = "A5"
     optimize_target: Literal["kernel", "operator"] = "kernel"

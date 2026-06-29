@@ -93,6 +93,7 @@ class AgentRunner(ABC):
     ) -> AgentResult:
         resumed_prompt = build_optimize_resume_prompt(
             summary,
+            language=request.language,
             base_prompt=request.prompt,
             round_mode=request.round_mode,
             optimize_target=request.optimize_target,

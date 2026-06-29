@@ -305,7 +305,7 @@ def _baseline_phase_built_in_edit_denial() -> str:
         "Built-in edit tool blocked by optimize workflow policy. "
         "Current phase is baseline. During baseline, built-in edits are limited to the baseline-minimal file set: "
         "the source operator, root-level test/bench harness files, and `baseline/` artifacts. "
-        "Finish or repair baseline, then submit it through `ascend-npu-optimize-submit-baseline` before opening a round."
+        "Finish or repair baseline, then submit it through `ascend-npu-optimize-state` `submit-baseline` before opening a round."
     )
 
 
@@ -313,7 +313,7 @@ def _awaiting_round_start_built_in_edit_denial() -> str:
     return (
         "Built-in edit tool blocked by optimize workflow policy. "
         "Current phase is awaiting_round_start, so no optimize round is active yet. "
-        "Use `ascend-npu-optimize-start-round` to open the next `opt-round-N/` before editing."
+        "Use `ascend-npu-optimize-state` `start-round` to open the next `opt-round-N/` before editing."
     )
 
 
@@ -322,7 +322,9 @@ def _round_active_built_in_edit_denial(round_dir: str) -> str:
         "Built-in edit tool blocked by optimize workflow policy. "
         f"Current active round is {round_dir}. Built-in edits must stay inside `{round_dir}/`. "
         "Edit the round-local snapshot and round artifacts instead of top-level workspace files. "
-        "When this round is ready, use `ascend-npu-optimize-submit-round` to submit it before moving on."
+        "If the round's intent or required evidence depth changes mid-round, use "
+        "`ascend-npu-optimize-state` `set-current-round-state` before continuing edits. "
+        "When this round is ready, use `ascend-npu-optimize-state` `submit-round` to submit it before moving on."
     )
 
 

@@ -30,7 +30,7 @@ Optimize target modes:
 ## Core Loop
 
 - establish or reuse `baseline/`
-- open `opt-round-N/` and start `attempts.md`
+- open `opt-round-N/`, initialize round strategy state through `ascend-npu-optimize-state start-round`, and start `attempts.md`
 - choose the current analysis level
 - make one coherent optimization attempt
 - validate correctness and benchmark performance
@@ -48,7 +48,9 @@ Optimize target modes:
 ## Stage 1: Round Entry
 
 - Create `opt-round-N/` from a validated parent candidate and keep parent-child traceability explicit.
+- Use the sibling `ascend-npu-optimize-state` skill's `start-round` subcommand to initialize the active round's `round_strategy`, `analysis_policy`, and `reason` before the first code change in that round.
 - Start `attempts.md` immediately so every meaningful attempt and measurement is recorded.
+- Treat the structured `State Update` blocks in `attempts.md` as script-written workflow history; do not manually duplicate the same `round_strategy`, `analysis_policy`, and `reason` bookkeeping in both `attempts.md` and `summary.md`.
 - For round 1, record the initial round hypothesis in `opt-round-1/attempts.md` before the first code change.
 - When pattern triage is used, explicitly record the candidate patterns you considered, the selected pattern if one is chosen, and why that pattern looks plausible in `attempts.md`.
 - When a named pattern guides the round, explicitly record the final selected pattern direction in `summary.md`.
@@ -56,6 +58,7 @@ Optimize target modes:
 - Record why that level may help and what evidence supports starting there.
 - If the round starts from reused deeper evidence, cite the reused evidence path and explain why the shallower level is already established or insufficient.
 - Treat `opt-note.md` as the top-level round ledger plus final `## Overall Summary`.
+- If the active round's intent or required evidence depth changes mid-round, use the sibling `ascend-npu-optimize-state` skill's `set-current-round-state` subcommand instead of silently changing the round contract in prose only.
 
 ## Stage 2: Layered Analysis
 
@@ -102,10 +105,10 @@ Optimize analysis is layered.
 
 - Use IR attribution only after profiler-backed symptoms still need explanation.
 - `ascend-npu-analyze-round-performance` may still own `opt-round-N/perf-analysis.md` when the round deepens from profiler evidence into IR-backed attribution.
-- In that flow, use `ascend-npu-analyze-ir` as the IR evidence companion for capture, navigation, and stage-level inspection.
-- Use the sibling `ascend-npu-analyze-ir` skill when compiler lowering details, stage-to-stage IR changes, or round-local IR evidence are needed to explain benchmark behavior.
+- In that flow, use `triton-npu-analyze-ir` as the IR evidence companion for capture, navigation, and stage-level inspection.
+- Use the sibling `triton-npu-analyze-ir` skill when compiler lowering details, stage-to-stage IR changes, or round-local IR evidence are needed to explain benchmark behavior.
 - Keep IR evidence under `opt-round-N/ir/`.
-- In optimize rounds, keep IR capture round-local. Use the `ascend-npu-analyze-ir` skill's helpers with argument shapes such as:
+- In optimize rounds, keep IR capture round-local. Use the `triton-npu-analyze-ir` skill's helpers with argument shapes such as:
   ```text
   capture_ir.py --ir-dir opt-round-N/ir --bench-file bench_<operator>.py --operator-file opt-round-N/<optimized-operator>.py
   inspect_ir.py list-stages --ir-dir opt-round-N/ir --sort-by interesting --limit 20
@@ -137,14 +140,14 @@ Optimize analysis is layered.
 - In `kernel` target mode, prefer the kernel-oriented comparison result, but if `compare-perf` falls back to total-op for some or all cases, keep the round eligible and record that fallback as a warning.
 - In `operator` target mode, show both kernel and total-op comparison results so you can diagnose whether kernel improvements translated end-to-end, then record `effective_metric_source: total-op` for the official round conclusion.
 - Do not hand-calculate speedups or percentage improvements from raw perf files.
-- Use the sibling `ascend-npu-optimize-submit-round` skill to submit the current round (with `--min-rounds <N>` when the session has a minimum round requirement) and repair the round until it passes before continuing or stopping.
+- Use the sibling `ascend-npu-optimize-state` skill's `submit-round` subcommand to submit the current round (with `--min-rounds <N>` when the session has a minimum round requirement) and repair the round until it passes before continuing or stopping.
 - After the round submission passes, read the JSON `guideline` field for the exit signal: if minimum rounds are satisfied, the session may stop after this round.
-- Before opening the next round, use the sibling `ascend-npu-optimize-start-round` skill to re-check the one-round-at-a-time and no-blind-sweep workflow constraints.
+- Before opening the next round, use the sibling `ascend-npu-optimize-state` skill's `start-round` subcommand to re-check the one-round-at-a-time and no-blind-sweep workflow constraints.
 
 ## Round Records
 
-- `attempts.md`: chronological round log for the current round, including `Primary analysis level`, `Supporting evidence`, the starting hypothesis, selected pattern candidates and pivots when pattern triage is used, escalation reasons, meaningful code changes, correctness failures, and benchmark outcomes.
-- `summary.md`: round conclusion, optimization points that mattered, the final selected pattern direction when one guided the round, the final analysis level, supporting evidence that decided the round, and unresolved questions if deeper analysis may still be needed.
+- `attempts.md`: chronological round log for the current round, including the script-written `State Update` history, `Primary analysis level`, `Supporting evidence`, the starting hypothesis, selected pattern candidates and pivots when pattern triage is used, escalation reasons, meaningful code changes, correctness failures, and benchmark outcomes.
+- `summary.md`: round conclusion, optimization points that mattered, the final selected pattern direction when one guided the round, the final analysis level, supporting evidence that decided the round, and unresolved questions if deeper analysis may still be needed. Do not duplicate the full round strategy state history here.
 - `opt-note.md`: top-level round ledger plus final `## Overall Summary`.
 
 ## Learned Lessons

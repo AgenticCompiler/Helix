@@ -12,7 +12,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TextIO, TypeVar, cast
 
@@ -90,7 +90,7 @@ def _collect_env_copy_files(search_dir: Path) -> list[Path]:
     return paths
 
 
-def _normalize_bench_mode(bench_mode: str) -> str:
+def normalize_bench_mode(bench_mode: str) -> str:
     return "torch-npu-profiler" if bench_mode == "standalone" else bench_mode
 
 
@@ -102,7 +102,7 @@ def run_local_bench(
     verbose: bool = False,
     output: str | None = None,
 ) -> tuple[ResultPayload, Path | None]:
-    bench_mode = _normalize_bench_mode(bench_mode)
+    bench_mode = normalize_bench_mode(bench_mode)
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
     maybe_print_visible_devices()
@@ -173,8 +173,9 @@ def run_remote_bench(
     verbose: bool = False,
     stderr: TextIO | None = None,
     output: str | None = None,
+    probe_caps: tuple[int, int] | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
-    bench_mode = _normalize_bench_mode(bench_mode)
+    bench_mode = normalize_bench_mode(bench_mode)
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
     maybe_print_visible_devices()
@@ -257,7 +258,7 @@ def run_remote_bench(
                 stderr=stderr,
                 output=output,
             )
-        if devices is not None:
+        if devices is not None and probe_caps is None:
             source_root, json_search_root = _resolve_case_workspace_roots(
                 bench_file,
                 operator_file,
@@ -283,10 +284,82 @@ def run_remote_bench(
             verbose=verbose,
             stderr=stderr,
             output=output,
+            probe_caps=probe_caps,
+            devices=devices,
         )
     finally:
         if not keep_remote_workdir:
             cleanup_remote_workspace(spec, remote_workspace, verbose=verbose, stderr=stderr)
+
+
+def run_local_probe(
+    bench_file: Path,
+    operator_file: Path,
+    bench_mode: str,
+    *,
+    warmup_cap: int,
+    repeats_cap: int,
+    npu_devices: str | None = None,
+    verbose: bool = False,
+    output: str | None = None,
+) -> tuple[ResultPayload, Path | None]:
+    bench_mode = normalize_bench_mode(bench_mode)
+    if bench_mode != "torch-npu-profiler":
+        return run_local_bench(
+            bench_file,
+            operator_file,
+            bench_mode,
+            npu_devices=npu_devices,
+            verbose=verbose,
+            output=output,
+        )
+    runtime = _load_bench_runtime_module()
+    cases, resolution = runtime.load_bench_cases(bench_file, operator_file)
+    clamped = [
+        replace(
+            case,
+            warmup=min(case.warmup, warmup_cap),
+            repeats=min(case.repeats, repeats_cap),
+        )
+        for case in cases
+    ]
+    return runtime.profile_all_bench_cases(
+        bench_file,
+        operator_file,
+        preloaded=(clamped, resolution),
+        verbose=verbose,
+        output=output,
+    )
+
+
+def run_remote_probe(
+    bench_file: Path,
+    operator_file: Path,
+    bench_mode: str,
+    remote: str,
+    remote_workdir: str | None,
+    *,
+    warmup_cap: int,
+    repeats_cap: int,
+    npu_devices: str | None = None,
+    keep_remote_workdir: bool = False,
+    verbose: bool = False,
+    stderr: TextIO | None = None,
+    output: str | None = None,
+) -> tuple[ResultPayload, Path | None, str]:
+    return run_remote_bench(
+        bench_file,
+        operator_file,
+        bench_mode,
+        remote,
+        remote_workdir,
+        npu_devices=npu_devices,
+        keep_remote_workdir=keep_remote_workdir,
+        verbose=verbose,
+        stderr=stderr,
+        output=output,
+        probe_caps=(warmup_cap, repeats_cap),
+    )
 
 
 def _run_local_bench_torch_npu_profiler(
@@ -543,6 +616,8 @@ def _run_remote_bench_torch_npu_profiler(
     verbose: bool = False,
     stderr: TextIO | None = None,
     output: str | None = None,
+    probe_caps: tuple[int, int] | None = None,
+    devices: tuple[str, ...] | None = None,
 ) -> tuple[ResultPayload, Path | None, str]:
     _stage_remote_bench_runtime_support_files(
         spec,
@@ -551,7 +626,15 @@ def _run_remote_bench_torch_npu_profiler(
         stderr=stderr,
     )
     perf_path = _resolve_perf_output_path(operator_file, output=output)
-    extra_env: dict[str, str] | None = {"TRITON_ALWAYS_COMPILE": "1"}
+    if probe_caps is not None:
+        script = _build_remote_torch_npu_profiler_probe_run_all_script(
+            verbose=verbose, warmup_cap=probe_caps[0], repeats_cap=probe_caps[1]
+        )
+    else:
+        script = _build_remote_torch_npu_profiler_run_all_script(verbose=verbose)
+    extra_env: dict[str, str] = {"TRITON_ALWAYS_COMPILE": "1"}
+    if devices is not None:
+        extra_env["ASCEND_RT_VISIBLE_DEVICES"] = ",".join(devices)
     with stream_target_for_verbosity(verbose) as stream_target:
         result = run_remote_command_streaming(
             spec,
@@ -559,7 +642,7 @@ def _run_remote_bench_torch_npu_profiler(
             [
                 "python3",
                 "-c",
-                _build_remote_torch_npu_profiler_run_all_script(verbose=verbose),
+                script,
                 bench_file.name,
                 operator_file.name,
                 perf_path.name,
@@ -1497,6 +1580,24 @@ def _build_remote_torch_npu_profiler_run_all_script(*, verbose: bool = False) ->
         "operator_file = pathlib.Path(sys.argv[2]); "
         "target_path = pathlib.Path(sys.argv[3]); "
         f"result, perf_path = runtime.profile_all_bench_cases(bench_file, operator_file, verbose={verbose}); "
+        "target_path.parent.mkdir(parents=True, exist_ok=True); "
+        "shutil.copyfile(perf_path, target_path) if perf_path != target_path else None; "
+        "raise SystemExit(int(result['return_code']))"
+    )
+
+
+def _build_remote_torch_npu_profiler_probe_run_all_script(
+    *, verbose: bool = False, warmup_cap: int, repeats_cap: int
+) -> str:
+    return (
+        "import dataclasses, pathlib, shutil, sys; "
+        "import bench_runtime as runtime; "
+        "bench_file = pathlib.Path(sys.argv[1]); "
+        "operator_file = pathlib.Path(sys.argv[2]); "
+        "target_path = pathlib.Path(sys.argv[3]); "
+        "cases, resolution = runtime.load_bench_cases(bench_file, operator_file); "
+        f"clamped = [dataclasses.replace(c, warmup=min(c.warmup, {warmup_cap}), repeats=min(c.repeats, {repeats_cap})) for c in cases]; "
+        f"result, perf_path = runtime.profile_all_bench_cases(bench_file, operator_file, preloaded=(clamped, resolution), verbose={verbose}); "
         "target_path.parent.mkdir(parents=True, exist_ok=True); "
         "shutil.copyfile(perf_path, target_path) if perf_path != target_path else None; "
         "raise SystemExit(int(result['return_code']))"

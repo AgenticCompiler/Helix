@@ -127,3 +127,19 @@ class RemoteSshPreflightTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(RuntimeError, r"SSH preflight timed out while connecting to alice@example.com"):
                 module.ensure_remote_ssh_ready("alice@example.com")
+
+    def test_ensure_remote_ssh_ready_decodes_utf8_failure_output_from_bytes(self) -> None:
+        result = subprocess.CompletedProcess(
+            args=["ssh"],
+            returncode=255,
+            stdout=b"",
+            stderr="无法解析主机名".encode("utf-8"),
+        )
+
+        with patch.object(
+            module,
+            "build_remote_ssh_preflight_command",
+            return_value=["ssh", "alice@example.com", "true"],
+        ), patch.object(module.subprocess, "run", return_value=result):
+            with self.assertRaisesRegex(RuntimeError, "无法解析主机名"):
+                module.ensure_remote_ssh_ready("alice@example.com")

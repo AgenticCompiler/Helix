@@ -1,8 +1,8 @@
-## Standalone test file specification for Triton operators
+## Standalone test file specification for Ascend NPU operators
 
-This document describes standalone correctness test files for Triton Ascend operators. The goal is to produce an importable test module that creates deterministic NPU inputs, calls the resolved operator entrypoint provided by the runner, and verifies correctness against a PyTorch reference implementation through the shared NPU comparison helper.
+This document describes standalone correctness test files for Ascend NPU operators. The goal is to produce an importable test module that creates deterministic NPU inputs, calls the resolved operator entrypoint provided by the runner, and verifies correctness against a PyTorch reference implementation through the shared NPU comparison helper.
 
-The test must call the resolved public entrypoint directly. Raw `@triton.jit` kernels are not valid direct harness APIs.
+The test must call the resolved public entrypoint directly. Raw kernel functions (e.g., `@triton.jit`, `@tilelang.jit`, `@T.prim_func`) are not valid direct harness APIs.
 
 ### 1. File naming and location
 
@@ -17,7 +17,7 @@ The test file must include this metadata header near the top of the file:
 # test-mode: standalone
 # compute-kind: <compute|non-compute>
 # api-name: <name>
-# api-kind: <triton-wrapper|torch-function|torch-module>
+# api-kind: <triton-wrapper|tilelang-wrapper|torch-function|torch-module>
 # kernels: <name>
 ```
 
@@ -55,13 +55,19 @@ Use this kind when the public API is a Python wrapper function around Triton ker
 
 No loader code is required in the generated standalone file.
 
-#### 3.2 `torch-function`
+#### 3.2 `tilelang-wrapper`
 
-Use this kind when the public API is a plain PyTorch-facing function or operator entrypoint that may internally call Triton kernels.
+Use this kind when the public API is a Python wrapper function around TileLang kernels.
 
 No loader code is required in the generated standalone file.
 
-#### 3.3 `torch-module`
+#### 3.3 `torch-function`
+
+Use this kind when the public API is a plain PyTorch-facing function or operator entrypoint that may internally call NPU kernels.
+
+No loader code is required in the generated standalone file.
+
+#### 3.4 `torch-module`
 
 Use this kind when the public API is a `torch.nn.Module` class that can be instantiated without constructor arguments.
 

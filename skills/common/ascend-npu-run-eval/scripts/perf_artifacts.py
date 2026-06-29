@@ -379,6 +379,50 @@ def parse_required_perf_file_for_metric_source(
     )
 
 
+def parse_perf_pair_for_comparison(
+    baseline_perf: Path,
+    compare_perf: Path,
+    *,
+    metric_source: MetricSource = "auto",
+) -> tuple[dict[str, float], dict[str, float], dict[str, ComparisonMode]]:
+    if metric_source == "all":
+        raise ValueError("parse_perf_pair_for_comparison does not support metric_source='all'")
+    _check_cross_mode(baseline_perf, compare_perf)
+    baseline_outcome = _parse_perf_entries_for_comparison(
+        baseline_perf,
+        skip_latency_errors=False,
+        metric_source=metric_source,
+    )
+    compare_outcome = _parse_required_perf_entries_for_comparison(
+        compare_perf,
+        baseline_outcome.entries,
+        skip_latency_errors=False,
+        metric_source=metric_source,
+    )
+    baseline_values = {
+        latency_id: entry.numeric_value
+        for latency_id, entry in baseline_outcome.entries.items()
+    }
+    compare_values = {
+        latency_id: entry.numeric_value
+        for latency_id, entry in compare_outcome.entries.items()
+    }
+    invalid_metric_errors = _collect_invalid_metric_errors(
+        baseline_values,
+        compare_values,
+        baseline_perf=baseline_perf,
+        compare_perf=compare_perf,
+    )
+    if invalid_metric_errors:
+        first_latency_id = sorted(invalid_metric_errors)[0]
+        raise ValueError(invalid_metric_errors[first_latency_id])
+    comparison_modes: dict[str, ComparisonMode] = {
+        latency_id: entry.comparison_mode
+        for latency_id, entry in baseline_outcome.entries.items()
+    }
+    return baseline_values, compare_values, comparison_modes
+
+
 def perf_output_path(operator_file: Path) -> Path:
     return operator_file.parent / f"{operator_file.stem}_perf.txt"
 

@@ -42,11 +42,11 @@ class GenerationContractTests(unittest.TestCase):
     def test_optimize_contract_updates_require_regenerating_artifacts_reference(self) -> None:
         agents = _read("AGENTS.md")
         self.assertIn(
-            "skills/common/ascend-npu-optimize-submit-baseline/references/contract.json",
+            "skills/common/ascend-npu-optimize-state/references/baseline-contract.json",
             agents,
         )
         self.assertIn(
-            "skills/common/ascend-npu-optimize-submit-round/references/contract.json",
+            "skills/common/ascend-npu-optimize-state/references/round-contract.json",
             agents,
         )
         self.assertIn(
@@ -376,17 +376,9 @@ class GenerationContractTests(unittest.TestCase):
     def test_optimize_baseline_preparation_uses_dedicated_skill(self) -> None:
         optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
         baseline = _read("skills/common/ascend-npu-prepare-optimize-baseline/SKILL.md")
-        baseline_submit_path = (
-            REPO_ROOT / "skills" / "common" / "ascend-npu-optimize-submit-baseline" / "SKILL.md"
-        )
-        round_submit_path = REPO_ROOT / "skills" / "common" / "ascend-npu-optimize-submit-round" / "SKILL.md"
-        start_round_path = REPO_ROOT / "skills" / "common" / "ascend-npu-optimize-start-round" / "SKILL.md"
-        self.assertTrue(baseline_submit_path.exists())
-        self.assertTrue(round_submit_path.exists())
-        self.assertTrue(start_round_path.exists())
-        baseline_submit = baseline_submit_path.read_text(encoding="utf-8")
-        round_submit = round_submit_path.read_text(encoding="utf-8")
-        start_round = start_round_path.read_text(encoding="utf-8")
+        state_skill_path = REPO_ROOT / "skills" / "common" / "ascend-npu-optimize-state" / "SKILL.md"
+        self.assertTrue(state_skill_path.exists())
+        state_skill = state_skill_path.read_text(encoding="utf-8")
         readme = _read("README.md")
 
         self.assertTrue(
@@ -396,13 +388,38 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("ascend-npu-gen-test", baseline)
         self.assertIn("ascend-npu-gen-bench", baseline)
         self.assertIn("ascend-npu-run-eval", baseline)
-        self.assertIn("ascend-npu-optimize-submit-baseline", baseline)
-        self.assertIn("ascend-npu-optimize-submit-round", optimize)
-        self.assertIn("ascend-npu-optimize-start-round", optimize)
+        self.assertIn("ascend-npu-optimize-state", baseline)
+        self.assertIn("submit-baseline", baseline)
+        self.assertIn("ascend-npu-optimize-state", optimize)
+        self.assertIn("submit-round", optimize)
+        self.assertIn("start-round", optimize)
+        self.assertIn("set-current-round-state", optimize)
         self.assertNotIn("../ascend-npu-run-eval/scripts/run-command.py", optimize)
-        self.assertIn("Do not use this skill to generate missing harnesses", baseline_submit)
-        self.assertIn("Do not start the next optimize round until this submission passes", round_submit)
-        self.assertIn("Only one optimize round may be active at a time", start_round)
+        self.assertIn("submit-baseline", state_skill)
+        self.assertIn("submit-round", state_skill)
+        self.assertIn("start-round", state_skill)
+        self.assertIn("set-current-round-state", state_skill)
+        self.assertIn(
+            "python3 scripts/cli.py submit-round --round-dir opt-round-2 --current-round 2 --final-round 4",
+            state_skill,
+        )
+        self.assertIn(
+            "python3 scripts/cli.py start-round \\",
+            state_skill,
+        )
+        self.assertIn(
+            "python3 scripts/cli.py set-current-round-state \\",
+            state_skill,
+        )
+        self.assertIn("exploration", state_skill)
+        self.assertIn("structural_change", state_skill)
+        self.assertIn("focused_tuning", state_skill)
+        self.assertIn("stabilization", state_skill)
+        self.assertIn("plateau_review", state_skill)
+        self.assertIn("pattern_entry", state_skill)
+        self.assertIn("profile_required", state_skill)
+        self.assertIn("ir_required", state_skill)
+        self.assertIn("compiler_source_required", state_skill)
         self.assertIn("ascend-npu-prepare-optimize-baseline", readme)
         self.assertIn("ascend-npu-profile-operator", optimize)
         self.assertIn("ascend-npu-analyze-round-performance", optimize)
@@ -634,27 +651,22 @@ class GenerationContractTests(unittest.TestCase):
         self.assertNotIn("analysis_comparison_sources", artifacts)
         self.assertNotIn("validated_candidate", artifacts)
 
-    def test_submit_optimize_skills_keep_path_rules_out_of_user_facing_skill_text(self) -> None:
-        baseline_submit = _read("skills/common/ascend-npu-optimize-submit-baseline/SKILL.md")
-        round_submit = _read("skills/common/ascend-npu-optimize-submit-round/SKILL.md")
+    def test_optimize_state_skill_keeps_path_rules_out_of_user_facing_skill_text(self) -> None:
+        state_skill = _read("skills/common/ascend-npu-optimize-state/SKILL.md")
 
-        self.assertNotIn("## Baseline-State Path Convention", baseline_submit)
-        self.assertNotIn("## Round-State Path Convention", round_submit)
+        self.assertNotIn("## Baseline-State Path Convention", state_skill)
+        self.assertNotIn("## Round-State Path Convention", state_skill)
         self.assertNotIn(
             "If a declared path is missing there, it retries the same value relative to the operator workspace root",
-            baseline_submit,
-        )
-        self.assertNotIn(
-            "If a declared path is missing there, it retries the same value relative to the operator workspace root",
-            round_submit,
+            state_skill,
         )
 
     def test_optimize_artifacts_reference_matches_generator_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for relative_path in (
-                "skills/common/ascend-npu-optimize-submit-baseline/references/contract.json",
-                "skills/common/ascend-npu-optimize-submit-round/references/contract.json",
+                "skills/common/ascend-npu-optimize-state/references/baseline-contract.json",
+                "skills/common/ascend-npu-optimize-state/references/round-contract.json",
                 "skills/triton/triton-npu-optimize/references/artifacts.md",
                 "skills/triton/triton-npu-optimize/script/update-artifacts.py",
             ):
@@ -683,7 +695,7 @@ class GenerationContractTests(unittest.TestCase):
 
     def test_optimize_skill_documents_round_local_ir_commands(self) -> None:
         optimize = _read("skills/triton/triton-npu-optimize/SKILL.md")
-        self.assertIn("`ascend-npu-analyze-ir` skill's helpers", optimize)
+        self.assertIn("`triton-npu-analyze-ir` skill's helpers", optimize)
         self.assertIn("capture_ir.py --ir-dir opt-round-N/ir", optimize)
         self.assertIn("--ir-dir opt-round-N/ir", optimize)
         self.assertIn("inspect_ir.py list-stages", optimize)
@@ -734,10 +746,10 @@ class GenerationContractTests(unittest.TestCase):
             "skills/triton/triton-npu-optimize-knowledge/references/symptom_index.md"
         )
         self.assertIn("symptom cards", skill)
-        self.assertIn("triton-npu-optimize-knowledge", skill)
+        self.assertIn("<Language>-npu-optimize-knowledge", skill)
         self.assertIn("torch-npu-optimize-knowledge", skill)
         self.assertIn(
-            "staged `triton-npu-optimize-knowledge` skill's `references/symptom_index.md`",
+            "staged `<Language>-npu-optimize-knowledge` skill's `references/symptom_index.md`",
             skill,
         )
         self.assertIn(
@@ -941,6 +953,11 @@ class GenerationContractTests(unittest.TestCase):
             "For round 1, record the initial round hypothesis in `opt-round-1/attempts.md`",
             optimize,
         )
+        self.assertIn(
+            "Treat the structured `State Update` blocks in `attempts.md` as script-written workflow history",
+            optimize,
+        )
+        self.assertIn("Do not duplicate the full round strategy state history here.", optimize)
         self.assertIn("top-level round ledger plus final `## Overall Summary`", optimize)
         self.assertIn(
             "completed round records and final outcome summary",
@@ -1028,6 +1045,25 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("Admission criteria:", optimize)
         self.assertIn("Put round-local narrative", optimize)
 
+    def test_tilelang_optimize_skill_stops_at_profiling_diagnosis(self) -> None:
+        optimize = _read("skills/tilelang/tilelang-npu-optimize/SKILL.md")
+
+        self.assertIn("Optimize analysis is layered.", optimize)
+        self.assertIn(
+            "Default escalation order: `pattern triage -> profiling diagnosis`.",
+            optimize,
+        )
+        self.assertIn("### pattern triage", optimize)
+        self.assertIn("### profiling diagnosis", optimize)
+        self.assertNotIn("### IR attribution", optimize)
+        self.assertNotIn("### compiler-source escalation", optimize)
+        self.assertNotIn(
+            "round-local `profile/`, `ir/`, `perf-analysis.md`, or `compiler-analysis.md`",
+            optimize,
+        )
+        self.assertNotIn("Keep IR evidence under `opt-round-N/ir/`.", optimize)
+        self.assertNotIn("Write `opt-round-N/compiler-analysis.md`.", optimize)
+
     def test_optimize_artifacts_document_strict_learned_lessons_boundary(self) -> None:
         artifacts = _read("skills/triton/triton-npu-optimize/references/artifacts.md")
         self.assertIn("strict reusable optimization-knowledge log", artifacts)
@@ -1049,12 +1085,12 @@ class GenerationContractTests(unittest.TestCase):
         test_gen = _read("skills/common/ascend-npu-gen-test/SKILL.md")
         bench_gen = _read("skills/common/ascend-npu-gen-bench/SKILL.md")
 
-        self.assertIn("consult the `triton-npu-repair-guide` skill as a diagnostic reference", test_gen)
-        self.assertIn("Do not treat `triton-npu-repair-guide` as permission to edit the operator file here.", test_gen)
+        self.assertIn("the corresponding `<Language>-npu-repair-guide` skill as a diagnostic reference", test_gen)
+        self.assertIn("Do not treat repair-guide skills as permission to edit the operator file here.", test_gen)
         self.assertIn("If the failure is clearly operator-side, stop and report it.", test_gen)
 
-        self.assertIn("consult the `triton-npu-repair-guide` skill as a diagnostic reference", bench_gen)
-        self.assertIn("Do not treat `triton-npu-repair-guide` as permission to edit the operator file here.", bench_gen)
+        self.assertIn("the corresponding `<Language>-npu-repair-guide` skill as a diagnostic reference", bench_gen)
+        self.assertIn("Do not treat the corresponding `<Language>-npu-repair-guide` skill as permission to edit the operator file here.", bench_gen)
         self.assertIn("If the failure is clearly operator-side, stop and report it.", bench_gen)
 
     def test_cross_skill_subcommands_name_owning_skills(self) -> None:
@@ -1092,7 +1128,7 @@ class GenerationContractTests(unittest.TestCase):
 
     def test_live_skill_docs_avoid_cross_skill_relative_paths(self) -> None:
         relative_paths = (
-            "skills/common/ascend-npu-analyze-ir/SKILL.md",
+            "skills/triton/triton-npu-analyze-ir/SKILL.md",
             "skills/common/ascend-npu-analyze-round-performance/SKILL.md",
             "skills/common/ascend-npu-gen-eval-suite/SKILL.md",
             "skills/common/ascend-npu-profile-operator/SKILL.md",
@@ -1116,7 +1152,7 @@ class GenerationContractTests(unittest.TestCase):
         for content in (standalone, differential):
             with self.subTest(spec=content[:40]):
                 self.assertIn("# api-name: <name>", content)
-                self.assertIn("# api-kind: <triton-wrapper|torch-function|torch-module>", content)
+                self.assertIn("# api-kind: <triton-wrapper|tilelang-wrapper|torch-function|torch-module>", content)
                 self.assertIn("# kernels: <name>", content)
                 self.assertIn("# api-name: <resolved_entrypoint>", content)
                 self.assertIn("# api-kind: <resolved_api_kind>", content)

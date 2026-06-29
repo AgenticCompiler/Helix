@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import locale
 import subprocess
 from typing import Protocol, TypedDict, cast
 
@@ -62,7 +63,7 @@ def ensure_remote_ssh_ready(remote: str) -> None:
         result = subprocess.run(
             command,
             capture_output=True,
-            text=True,
+            text=False,
             check=False,
             timeout=_PRECHECK_TIMEOUT_SECONDS,
         )
@@ -72,7 +73,7 @@ def ensure_remote_ssh_ready(remote: str) -> None:
     if result.returncode == 0:
         return
 
-    detail = (result.stderr or result.stdout).strip() or f"SSH preflight failed for {remote}."
+    detail = _decode_subprocess_output(result.stderr or result.stdout).strip() or f"SSH preflight failed for {remote}."
     if _is_auth_failure(detail):
         raise RuntimeError(
             f"Remote target {remote} is not ready for key-based SSH access.\n"
@@ -84,3 +85,18 @@ def ensure_remote_ssh_ready(remote: str) -> None:
 def _is_auth_failure(detail: str) -> bool:
     lowered = detail.lower()
     return any(marker in lowered for marker in _AUTH_FAILURE_MARKERS)
+
+
+def _decode_subprocess_output(data: bytes | str | None) -> str:
+    # This intentionally duplicates the UTF-8-first decoding logic from the
+    # staged run_runtime skill helper instead of importing skill-side code into
+    # src/.
+    if data is None:
+        return ""
+    if isinstance(data, str):
+        return data
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        preferred = locale.getpreferredencoding(False) or "utf-8"
+        return data.decode(preferred, errors="replace")

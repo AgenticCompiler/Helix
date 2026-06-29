@@ -11,7 +11,7 @@ from triton_agent.commands.convert import handle_convert, handle_convert_batch
 from triton_agent.commands.clean import handle_clean
 from triton_agent.commands.comparison import handle_compare_perf, handle_compare_result
 from triton_agent.commands.diff_skills_update import handle_diff_skills_update
-from triton_agent.commands.execution import handle_run_bench, handle_run_simulator, handle_run_test
+from triton_agent.commands.execution import handle_probe_bench, handle_run_bench, handle_run_simulator, handle_run_test
 from triton_agent.commands.generation import handle_gen_bench, handle_gen_test
 from triton_agent.commands.generation import handle_gen_eval
 from triton_agent.commands.generation import handle_gen_eval_batch
@@ -20,6 +20,7 @@ from triton_agent.commands.log_check import handle_log_check, handle_log_check_b
 from triton_agent.commands.mcp_server import handle_run_eval_mcp_server
 from triton_agent.commands.trace_analyze import handle_trace_analyze
 from triton_agent.commands.verify import handle_verify, handle_verify_batch
+from triton_agent.build_info import get_build_info_display
 from triton_agent.commands.optimize import (
     handle_optimize,
     handle_optimize_batch,
@@ -38,6 +39,7 @@ from triton_agent.remote_ssh_preflight import ensure_remote_ssh_ready
 
 _Handler = Callable[[argparse.ArgumentParser, argparse.Namespace], int]
 _AGENT_CHOICES = ("codex", "opencode", "pi", "claude", "openhands", "traecli")
+_LANGUAGE_CHOICES = ("triton", "tilelang")
 _FORMAT_CHOICES = ("text", "markdown")
 _TEST_MODE_CHOICES = ("standalone", "differential")
 _BENCH_MODE_CHOICES = ("torch-npu-profiler", "msprof", "perf-counter")
@@ -47,10 +49,10 @@ _TARGET_CHIP_CHOICES = ("A3", "A5")
 _OPTIMIZE_TARGET_CHOICES = ("kernel", "operator")
 _OPTIMIZE_KNOWLEDGE_CHOICES = ("v1", "v2", "v3")
 _VERIFY_PHASE_CHOICES = ("all", "test", "bench")
-_TOP_LEVEL_DESCRIPTION = "Generate, run, verify, and optimize Triton NPU operator workflows."
+_TOP_LEVEL_DESCRIPTION = "Generate, run, verify, and optimize NPU operator workflows."
 _TOP_LEVEL_EXAMPLES = (
     "triton-agent gen-test -i kernel.py",
-    "triton-agent convert -i kernel.py",
+    "triton-agent convert -i kernel.py -l triton",
     "triton-agent convert-batch -i kernels",
     "triton-agent run-test --test-file test_kernel.py --operator-file kernel.py",
     "triton-agent compare-perf --baseline baseline.txt --compare candidate.txt",
@@ -58,7 +60,7 @@ _TOP_LEVEL_EXAMPLES = (
     "triton-agent status -i .",
     "triton-agent log-check -i .",
     "triton-agent log-check-batch -i kernels",
-    "triton-agent optimize -i kernel.py --agent codex",
+    "triton-agent optimize -i kernel.py --agent codex -l triton",
     "triton-agent diff-skills-update -i kernels --agent codex",
     "triton-agent report-batch -i kernels",
     "triton-agent clean -i .",
@@ -102,7 +104,7 @@ _TOP_LEVEL_ENVIRONMENT_VARIABLE_GROUPS = (
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_WINDOW",
-                "Recent comparable round count for advisory local-optimum warnings in ascend-npu-optimize-submit-round (default: 3).",
+                "Recent comparable round count for advisory local-optimum warnings in `ascend-npu-optimize-state` `submit-round` (default: 3).",
             ),
             (
                 "TRITON_AGENT_OPTIMIZE_LOCAL_OPTIMUM_MAX_GEOMEAN_GAIN",
@@ -183,6 +185,7 @@ class _CommandSpec:
     report_workers_default: int | None = None
     has_force_overwrite: bool = False
     has_format: bool = False
+    has_language: bool = False
     has_verify_phase: bool = False
     has_force_verify: bool = False
     has_log_tools: bool = False
@@ -231,12 +234,13 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
     CommandKind.CONVERT: _CommandSpec(
         handler=handle_convert,
         help_group="Conversion",
-        help_summary="Convert one PyTorch operator into a Triton NPU-backed PyTorch operator.",
-        description="Convert one PyTorch operator file into a Triton NPU-backed PyTorch operator.",
+        help_summary="Convert one PyTorch operator into an NPU-backed PyTorch operator.",
+        description="Convert one PyTorch operator file into an NPU-backed PyTorch operator.",
         has_remote=True,
         has_agent=True,
         has_interact=True,
         has_show_output=True,
+        has_language=True,
         has_test_mode=True,
         test_mode_default="differential",
         has_prompt=True,
@@ -252,6 +256,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_remote=True,
         has_agent=True,
         has_show_output=True,
+        has_language=True,
         has_test_mode=True,
         test_mode_default="differential",
         has_prompt=True,
@@ -311,6 +316,18 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_bench_mode=True,
         has_npu_devices=True,
     ),
+    CommandKind.PROBE_BENCH: _CommandSpec(
+        handler=handle_probe_bench,
+        help_group="Execution",
+        help_summary="Fast-screen one candidate operator against a baseline operator.",
+        description="Run a fast probe benchmark comparing one candidate operator against one baseline operator file.",
+        input_mode="probe-bench",
+        has_remote=True,
+        keep_remote_workdir=True,
+        has_bench_mode=True,
+        has_npu_devices=True,
+        has_output=False,
+    ),
     CommandKind.RUN_SIMULATOR: _CommandSpec(
         handler=handle_run_simulator,
         help_group="Execution",
@@ -354,6 +371,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_output=False,
         has_agent=True,
         has_show_output=True,
+        has_language=True,
         has_log_tools=True,
     ),
     CommandKind.LOG_CHECK_BATCH: _CommandSpec(
@@ -364,6 +382,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_output=False,
         has_agent=True,
         has_show_output=True,
+        has_language=True,
         concurrency_default=1,
         has_log_tools=True,
     ),
@@ -416,6 +435,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_agent=True,
         has_interact=True,
         has_show_output=True,
+        has_language=True,
         has_test_mode=True,
         has_bench_mode=True,
         has_optimize_options=True,
@@ -431,6 +451,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_remote=True,
         has_agent=True,
         has_show_output=True,
+        has_language=True,
         has_test_mode=True,
         has_bench_mode=True,
         has_optimize_options=True,
@@ -448,6 +469,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_output=False,
         has_agent=True,
         has_show_output=True,
+        has_language=True,
         concurrency_default=1,
         has_diff_skills_update_options=True,
     ),
@@ -520,6 +542,8 @@ def build_parser() -> argparse.ArgumentParser:
         _add_primary_arguments(subparser, spec)
         if spec.has_format:
             subparser.add_argument("--format", default="text", choices=_FORMAT_CHOICES)
+        if spec.has_language:
+            subparser.add_argument("-l", "--lang", "--language", default="triton", choices=_LANGUAGE_CHOICES)
         if spec.has_verify_phase:
             subparser.add_argument("--phase", default="all", choices=_VERIFY_PHASE_CHOICES)
         if spec.has_force_verify:
@@ -570,34 +594,59 @@ def build_parser() -> argparse.ArgumentParser:
         if spec.has_npu_devices:
             subparser.add_argument("--npu-devices")
         if spec.has_optimize_options:
-            subparser.add_argument("--min-rounds", "--min-round", dest="min_rounds", type=int, default=5)
-            subparser.add_argument("--round-batch-size", type=int, default=5)
-            subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES)
-            subparser.add_argument("--reset-optimize", action="store_true")
-            subparser.add_argument("--enable-compiler-source-analysis", action="store_true")
-            subparser.add_argument("--enable-cann-ext-api", action="store_true")
-            subparser.add_argument("--enable-subagent", action="store_true")
+            # Round control
+            subparser.add_argument("--min-rounds", "--min-round", dest="min_rounds", type=int, default=5,
+                                   help="Minimum number of optimization rounds to run.")
+            subparser.add_argument("--round-batch-size", type=int, default=5,
+                                   help="Number of candidate kernels to sample per optimization round.")
+            subparser.add_argument(
+                "--round-mode",
+                default="checked",
+                choices=_ROUND_MODE_CHOICES,
+                help="checked: verify output correctness after each agent edit; supervised: full supervisor review cycle per round.",
+            )
+            # Resume / state
+            subparser.add_argument("--resume", default="auto", choices=_RESUME_CHOICES,
+                                   help="auto: resume existing session or start fresh; continue: require existing session; fresh: always start from scratch.")
+            subparser.add_argument("--reset-optimize", action="store_true",
+                                   help="Delete optimization workspace state before starting.")
+            # Feature toggles
+            subparser.add_argument("--enable-compiler-source-analysis", action="store_true",
+                                   help="Attach compiler source code for deeper kernel analysis.")
+            subparser.add_argument("--enable-cann-ext-api", action="store_true",
+                                   help="Allow the agent to use CANN extension APIs in generated kernels.")
+            subparser.add_argument("--enable-subagent", action="store_true",
+                                   help="Use subagent-based evaluation for faster iteration.")
             if command_kind == CommandKind.OPTIMIZE:
-                subparser.add_argument("--enable-agent-hooks", "--enable-agent-hook", dest="enable_agent_hooks", action="store_true")
-            subparser.add_argument("--target-chip", default="A5", choices=_TARGET_CHIP_CHOICES)
+                subparser.add_argument("--enable-agent-hooks", "--enable-agent-hook", dest="enable_agent_hooks", action="store_true",
+                                       help="Enable agent-level hooks for extended workflow customization.")
+            # Target
+            subparser.add_argument("--target-chip", default="A5", choices=_TARGET_CHIP_CHOICES,
+                                   help="Target NPU chip architecture.")
             subparser.add_argument(
                 "--optimize-target",
                 default="kernel",
                 choices=_OPTIMIZE_TARGET_CHOICES,
+                help="kernel: optimize individual kernels; operator: optimize at the full-operator level.",
             )
             subparser.add_argument(
                 "--optimize-knowledge",
                 default="v1",
                 choices=_OPTIMIZE_KNOWLEDGE_CHOICES,
+                help="Optimization knowledge base version to use.",
             )
-            subparser.add_argument("--no-agent-session", action="store_true")
-            subparser.add_argument(
-                "--round-mode",
-                default="checked",
-                choices=_ROUND_MODE_CHOICES,
-            )
-            subparser.add_argument("--no-upload", action="store_true")
-            subparser.add_argument("--enable-report", action="store_true", default=False)
+            # Session / output
+            subparser.add_argument("--no-agent-session", action="store_true",
+                                   help="Disable agent session persistence for one-shot runs.")
+            subparser.add_argument("--no-upload", action="store_true",
+                                   help="Skip uploading optimization artifacts after the run.")
+            subparser.add_argument("--enable-report", action="store_true", default=False,
+                                   help="Generate an optimization report after the run.")
+            if command_kind == CommandKind.OPTIMIZE_BATCH:
+                subparser.add_argument(
+                    "--post-optimize-command",
+                    help="Run this shell command inside each workspace after a successful optimize run.",
+                )
         if spec.has_prompt:
             subparser.add_argument("--prompt")
         if spec.has_operator_filter:
@@ -669,7 +718,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _build_top_level_epilog() -> str:
-    lines = ["Command groups:"]
+    lines = [
+        "Build info:",
+        f"  Git commit: {get_build_info_display()}",
+        "",
+        "Command groups:",
+    ]
     group_names = (
         "Generation",
         "Conversion",
@@ -758,6 +812,16 @@ def _add_primary_arguments(subparser: argparse.ArgumentParser, spec: _CommandSpe
     if spec.input_mode == "run-bench":
         subparser.add_argument("--bench-file", required=True)
         subparser.add_argument("--operator-file", required=True)
+        return
+    if spec.input_mode == "probe-bench":
+        subparser.add_argument("--bench-file", required=True)
+        subparser.add_argument("--operator-file", required=True)
+        subparser.add_argument("--baseline-operator-file", required=True)
+        subparser.add_argument(
+            "--metric-source",
+            default="auto",
+            choices=("auto", "kernel", "total-op"),
+        )
         return
     if spec.input_mode == "run-simulator":
         subparser.add_argument("--bench-file", required=True)

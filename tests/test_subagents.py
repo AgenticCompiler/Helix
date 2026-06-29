@@ -100,10 +100,41 @@ class SubagentManagerTests(unittest.TestCase):
             self.assertIn("mode: subagent", content)
             self.assertIn("Start with skill `triton-npu-optimize-knowledge`", content)
             self.assertIn(
-                "Use skill `ascend-npu-run-eval`, `ascend-npu-profile-operator`, and `ascend-npu-analyze-ir`",
+                "Use skill `ascend-npu-run-eval`, `ascend-npu-profile-operator`, and `triton-npu-analyze-ir`",
                 content,
             )
             self.assertIn("must not perform optimization work", content)
+            self.assertEqual(manager.cleanup(state), [])
+            self.assertFalse((workspace / ".opencode").exists())
+
+    def test_prepare_tilelang_subagent_omits_ir_collection_guidance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            manager = SubagentManager()
+            definition = perf_diagnosis_subagent_definition(
+                language="tilelang",
+                optimize_target="kernel",
+                enable_cann_ext_api=False,
+            )
+
+            state = manager.prepare("opencode", workspace, (definition,))
+
+            agent_path = (
+                workspace
+                / ".opencode"
+                / "agents"
+                / "triton-agent-perf-diagnosis-advisor.md"
+            )
+            self.assertTrue(agent_path.exists())
+            content = agent_path.read_text(encoding="utf-8")
+            self.assertIn("Start with skill `tilelang-npu-optimize-knowledge`", content)
+            self.assertIn("collect fresh benchmark or profiler evidence", content)
+            self.assertNotIn("tilelang-npu-analyze-ir", content)
+            self.assertNotIn("collect fresh benchmark, profiler, or IR evidence", content)
+            self.assertNotIn("capture_ir.py", content)
+            self.assertNotIn("inspect_ir.py", content)
+
             self.assertEqual(manager.cleanup(state), [])
             self.assertFalse((workspace / ".opencode").exists())
 

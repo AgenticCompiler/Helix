@@ -500,6 +500,14 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 shared_content,
             )
             self.assertIn(
+                "Treat the active round strategy state in the runner-managed workflow state as the authority for the latest `round_strategy`, `analysis_policy`, and `reason`.",
+                shared_content,
+            )
+            self.assertIn(
+                "If the active round's intent or required evidence depth changes mid-round, use the staged `ascend-npu-optimize-state` skill's `set-current-round-state` subcommand before continuing edits.",
+                shared_content,
+            )
+            self.assertIn(
                 "Use the staged `triton-npu-optimize-knowledge` skill for generic pattern and symptom references.",
                 shared_content,
             )
@@ -525,6 +533,38 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
                 shared_content,
             )
             self.assertIn("Do not begin with blind tiling or launch-parameter search.", shared_content)
+
+            warnings = manager.cleanup_supervised_session(state)
+            self.assertEqual(warnings, [])
+
+    def test_prepare_shared_guidance_uses_tilelang_specific_analysis_ladder(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+
+            manager = OptimizeSessionArtifactsManager()
+            state = manager.prepare_supervised_session(
+                workdir,
+                agent_name="codex",
+                language="tilelang",
+                compiler_source_path=Path("/tmp/compiler"),
+                compiler_source_commit="deadbeef",
+            )
+
+            shared_content = state.guidance_path.read_text(encoding="utf-8")
+            self.assertIn(
+                "Escalate analysis in this order: pattern triage, profiling diagnosis.",
+                shared_content,
+            )
+            self.assertIn(
+                "Use the staged `tilelang-npu-optimize-knowledge` skill for generic pattern and symptom references.",
+                shared_content,
+            )
+            self.assertNotIn("IR attribution", shared_content)
+            self.assertNotIn("compiler-source escalation", shared_content)
+            self.assertNotIn("tilelang-npu-analyze-ir", shared_content)
+            self.assertNotIn("Compiler source analysis is enabled for this optimize run.", shared_content)
 
             warnings = manager.cleanup_supervised_session(state)
             self.assertEqual(warnings, [])

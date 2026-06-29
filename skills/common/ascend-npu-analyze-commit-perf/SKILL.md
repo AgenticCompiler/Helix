@@ -1,6 +1,6 @@
 ---
 name: ascend-npu-analyze-commit-perf
-description: Analyze Git commits on a local Triton Ascend NPU operator branch and organize changed operators into workspace directories for downstream optimization.
+description: Analyze Git commits on a local Ascend NPU operator branch and organize changed operators into workspace directories for downstream optimization.
 ---
 
 # Git Commit Operator Organization
@@ -27,8 +27,7 @@ Read these before writing:
 
 - [references/output-contract.md](references/output-contract.md)
 
-When available, use the sibling `triton-npu-optimize-knowledge` skill as the generic
-optimization pattern and symptom library.
+When available, use the corresponding `<Language>-npu-optimize-knowledge` skill as the generic optimization pattern and symptom library, where `<Language>` is `triton` or `tilelang`.
 
 ## Workflow
 

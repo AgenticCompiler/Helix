@@ -28,19 +28,9 @@ class SkillCatalogEntry:
 
 _COMMON_SKILLS: tuple[SkillCatalogEntry, ...] = (
     SkillCatalogEntry(
-        logical_name="ascend-npu-optimize-start-round",
+        logical_name="ascend-npu-optimize-state",
         source_group="common",
-        physical_path="skills/common/ascend-npu-optimize-start-round",
-    ),
-    SkillCatalogEntry(
-        logical_name="ascend-npu-optimize-submit-baseline",
-        source_group="common",
-        physical_path="skills/common/ascend-npu-optimize-submit-baseline",
-    ),
-    SkillCatalogEntry(
-        logical_name="ascend-npu-optimize-submit-round",
-        source_group="common",
-        physical_path="skills/common/ascend-npu-optimize-submit-round",
+        physical_path="skills/common/ascend-npu-optimize-state",
     ),
     SkillCatalogEntry(
         logical_name="ascend-npu-prepare-optimize-baseline",
@@ -88,11 +78,6 @@ _COMMON_SKILLS: tuple[SkillCatalogEntry, ...] = (
         physical_path="skills/common/ascend-npu-profile-operator",
     ),
     SkillCatalogEntry(
-        logical_name="ascend-npu-analyze-ir",
-        source_group="common",
-        physical_path="skills/common/ascend-npu-analyze-ir",
-    ),
-    SkillCatalogEntry(
         logical_name="ascend-npu-analyze-round-performance",
         source_group="common",
         physical_path="skills/common/ascend-npu-analyze-round-performance",
@@ -119,6 +104,11 @@ _TRITON_SKILLS: tuple[SkillCatalogEntry, ...] = (
         logical_name="triton-npu-repair-guide",
         source_group="triton",
         physical_path="skills/triton/triton-npu-repair-guide",
+    ),
+    SkillCatalogEntry(
+        logical_name="triton-npu-analyze-ir",
+        source_group="triton",
+        physical_path="skills/triton/triton-npu-analyze-ir",
     ),
     SkillCatalogEntry(
         logical_name="triton-npu-analyze-compiler-source",
@@ -152,7 +142,50 @@ _TRITON_SKILLS: tuple[SkillCatalogEntry, ...] = (
     ),
 )
 
-SKILL_CATALOG: tuple[SkillCatalogEntry, ...] = _COMMON_SKILLS + _TRITON_SKILLS
+_TILELANG_SKILLS: tuple[SkillCatalogEntry, ...] = (
+    SkillCatalogEntry(
+        logical_name="tilelang-npu-analyze-compiler-source",
+        source_group="tilelang",
+        physical_path="skills/tilelang/tilelang-npu-analyze-compiler-source",
+    ),
+    SkillCatalogEntry(
+        logical_name="tilelang-npu-api-reference",
+        source_group="tilelang",
+        physical_path="skills/tilelang/tilelang-npu-api-reference",
+    ),
+    SkillCatalogEntry(
+        logical_name="tilelang-npu-analyze-ir",
+        source_group="tilelang",
+        physical_path="skills/tilelang/tilelang-npu-analyze-ir",
+    ),
+    SkillCatalogEntry(
+        logical_name="tilelang-npu-convert-pytorch-operator",
+        source_group="tilelang",
+        physical_path="skills/tilelang/tilelang-npu-convert-pytorch-operator",
+    ),
+    SkillCatalogEntry(
+        logical_name="tilelang-npu-optimize",
+        source_group="tilelang",
+        physical_path="skills/tilelang/tilelang-npu-optimize",
+    ),
+    SkillCatalogEntry(
+        logical_name="tilelang-npu-optimize-knowledge",
+        source_group="tilelang",
+        physical_path="skills/tilelang/tilelang-npu-optimize-knowledge",
+    ),
+    SkillCatalogEntry(
+        logical_name="tilelang-npu-cann-ext-api-patterns",
+        source_group="tilelang",
+        physical_path="skills/tilelang/tilelang-npu-cann-ext-api-patterns",
+    ),
+    SkillCatalogEntry(
+        logical_name="tilelang-npu-repair-guide",
+        source_group="tilelang",
+        physical_path="skills/tilelang/tilelang-npu-repair-guide",
+    ),
+)
+
+SKILL_CATALOG: tuple[SkillCatalogEntry, ...] = _COMMON_SKILLS + _TRITON_SKILLS + _TILELANG_SKILLS
 
 _SKILL_BY_NAME: dict[str, SkillCatalogEntry] = {
     entry.logical_name: entry for entry in SKILL_CATALOG

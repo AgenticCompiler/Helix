@@ -30,6 +30,7 @@ class DiffSkillsUpdateConfig:
     force: bool
     skip_existing: bool
     promote_converged_skills: bool
+    language: Literal["triton", "tilelang"] = "triton"
     base_revision: str = ""  # empty → auto-detect from origin/HEAD
 
 
