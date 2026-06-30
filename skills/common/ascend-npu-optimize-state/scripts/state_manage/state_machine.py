@@ -729,7 +729,7 @@ def _atomic_write_json(path: Path, payload: dict[str, object]) -> None:
     )
     try:
         with os.fdopen(temp_fd, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=True, separators=(",", ":"))
+            json.dump(payload, handle, ensure_ascii=True, indent=2)
             handle.write("\n")
         os.replace(temp_name, path)
     finally:

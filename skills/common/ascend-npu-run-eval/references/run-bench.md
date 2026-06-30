@@ -3,11 +3,11 @@
 Run a generated benchmark with:
 
 ```bash
-python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py
-python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py
-python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --baseline-operator-file <operator>.py
-python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --baseline-operator-file <operator>.py --metric-source all --skip-latency-errors
-python3 ./scripts/run-command.py run-bench --bench-file bench_a.py --operator-file a.py --output ./artifacts/a_perf.txt
+python3 <skill-path>/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py
+python3 <skill-path>/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py
+python3 <skill-path>/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --baseline-operator-file <operator>.py
+python3 <skill-path>/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --baseline-operator-file <operator>.py --metric-source all --skip-latency-errors
+python3 <skill-path>/scripts/run-command.py run-bench --bench-file bench_a.py --operator-file a.py --output ./artifacts/a_perf.txt
 ```
 
 Rules:
@@ -41,15 +41,15 @@ Mode notes:
 Examples:
 
 ```bash
-python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench-mode torch-npu-profiler
-python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof
-python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --baseline-operator-file <operator>.py
-python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --baseline-operator-file <operator>.py --metric-source kernel
+python3 <skill-path>/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --bench-mode torch-npu-profiler
+python3 <skill-path>/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof
+python3 <skill-path>/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --baseline-operator-file <operator>.py
+python3 <skill-path>/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --baseline-operator-file <operator>.py --metric-source kernel
 ```
 
 Remote examples:
 
 ```bash
-python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --remote user@host:2222
-python3 ./scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof --remote user@host:2222 --remote-workdir /tmp/triton-agent
+python3 <skill-path>/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py --remote user@host:2222
+python3 <skill-path>/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file opt_<operator>.py --bench-mode msprof --remote user@host:2222 --remote-workdir /tmp/triton-agent
 ```

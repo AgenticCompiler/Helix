@@ -4,7 +4,7 @@
 
 **Goal:** Add a repository build script that produces a self-contained Claude Code plugin directory for the optimize hook workflow, including one optimize agent, the minimum optimize skills, and plugin-managed `.triton-agent/` lifecycle hooks.
 
-**Architecture:** Reuse the repository's existing optimize guidance and skill staging contracts to render one plugin-scoped optimize agent and copy only the required optimize skills into a generated plugin tree. Move Claude optimize runtime bootstrap from CLI request-scoped staging into plugin-local `SessionStart`, `SessionEnd`, and `PreToolUse` hooks that conservatively recover `.triton-agent/state.json` from durable optimize artifacts.
+**Architecture:** Reuse the repository's existing optimize guidance and skill staging contracts to render one plugin-scoped optimize agent and copy only the required optimize skills into a generated plugin tree. Move Claude optimize runtime bootstrap from CLI request-scoped staging into plugin-local `SessionStart`, `SessionEnd`, and `PreToolUse` hooks that create `.triton-agent/`, validate existing workflow state when present, and otherwise direct the agent back through optimize-state commands instead of inferring workflow state from durable artifacts.
 
 **Tech Stack:** Python 3.12, existing `triton_agent` prompt/guidance modules, Claude plugin manifest + hooks, `unittest`, `claude plugin validate`
 
@@ -167,7 +167,7 @@ git add docs/plans/2026-06-30-claude-optimize-plugin-hook.md tests/test_claude_o
 git commit -m "feat: add claude optimize plugin builder helpers"
 ```
 
-### Task 2: Add Plugin Hook Assets And Conservative Workflow-State Bootstrap
+### Task 2: Add Plugin Hook Assets, Namespaced Agent Gating, And Command-Only Workflow-State Repair
 
 **Files:**
 - Create: `hooks/claude_plugin/hooks.json`
@@ -188,22 +188,19 @@ class ClaudeOptimizePluginHookTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0)
             self.assertTrue((workspace / ".triton-agent").is_dir())
 
-    def test_session_start_recovers_awaiting_round_start_when_baseline_state_exists(self) -> None:
+    def test_session_start_creates_runtime_dir_without_inferred_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
-            baseline_dir = workspace / "baseline"
-            baseline_dir.mkdir()
-            (baseline_dir / "state.json").write_text(json.dumps({"established": True}), encoding="utf-8")
-            run_session_start(workspace, agent_name="triton-agent-optimize")
-            payload = json.loads((workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8"))
-            self.assertEqual(payload["phase"], "awaiting_round_start")
+            run_session_start(workspace, agent_name="triton-agent-optimize:triton-agent-optimize")
+            self.assertTrue((workspace / ".triton-agent").is_dir())
+            self.assertFalse((workspace / ".triton-agent" / "state.json").exists())
 
     def test_session_end_removes_runtime_dir_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
             (workspace / ".triton-agent").mkdir()
             (workspace / "baseline").mkdir()
-            run_session_end(workspace, agent_name="triton-agent-optimize")
+            run_session_end(workspace, agent_name="triton-agent-optimize:triton-agent-optimize")
             self.assertFalse((workspace / ".triton-agent").exists())
             self.assertTrue((workspace / "baseline").exists())
 ```
@@ -214,7 +211,7 @@ Run: `uv run python -m unittest tests.test_claude_optimize_plugin_hooks -v`
 
 Expected: FAIL because `hooks/claude_plugin/` files and test helpers are missing.
 
-- [ ] **Step 3: Add a self-contained plugin bootstrap helper that conservatively reconstructs workflow state**
+- [ ] **Step 3: Add a self-contained plugin bootstrap helper that creates `.triton-agent/`, validates existing state, and otherwise returns command-based repair guidance**
 
 ```python
 # hooks/claude_plugin/state_bootstrap.py
@@ -225,18 +222,13 @@ def bootstrap_runtime_state(workspace: Path) -> BootstrapResult:
     if state_path.exists():
         return validate_existing_state(state_path)
 
-    phase = infer_phase_from_workspace(workspace)
-    payload = build_minimal_state_payload(workspace=workspace, phase=phase)
-    state_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    return BootstrapResult(created_runtime_dir=True, wrote_state=True, phase=phase)
-```
-
-```python
-def infer_phase_from_workspace(workspace: Path) -> str:
-    baseline_state = workspace / "baseline" / "state.json"
-    if baseline_state.is_file() and baseline_looks_established(baseline_state):
-        return "awaiting_round_start"
-    return "baseline"
+    return BootstrapResult(
+        additional_context=(
+            "Created `.triton-agent/`. Workflow state is still missing. "
+            "Use `ascend-npu-optimize-state` `submit-baseline` to repair session state, "
+            "then `start-round` before round edits."
+        )
+    )
 ```
 
 - [ ] **Step 4: Add SessionStart, SessionEnd, and plugin-local PreToolUse wrappers**
@@ -245,7 +237,7 @@ def infer_phase_from_workspace(workspace: Path) -> str:
 # hooks/claude_plugin/session_start.py
 def main() -> int:
     payload = json.load(sys.stdin)
-    if payload.get("agent_type") != "triton-agent-optimize":
+    if not should_manage_payload(payload):
         return 0
     result = bootstrap_runtime_state(Path(payload["cwd"]))
     if result.additional_context:
@@ -265,7 +257,7 @@ def main() -> int:
 # hooks/claude_plugin/session_end.py
 def main() -> int:
     payload = json.load(sys.stdin)
-    if payload.get("agent_type") != "triton-agent-optimize":
+    if not should_manage_payload(payload):
         return 0
     cleanup_runtime_tree(Path(payload["cwd"]) / ".triton-agent")
     return 0

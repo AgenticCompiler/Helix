@@ -245,7 +245,7 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("references/compare-result.md", skill)
         self.assertIn("references/compare-perf.md", skill)
         self.assertIn("do not read unrelated command guides", skill)
-        self.assertIn("do not reread Python files under `./scripts/`", skill)
+        self.assertIn("do not reread Python files under `<skill-path>/scripts/`", skill)
         self.assertNotIn("## Run Test", skill)
         self.assertNotIn("## Run Bench", skill)
         self.assertNotIn("## Profile Bench", skill)
@@ -286,16 +286,36 @@ class GenerationContractTests(unittest.TestCase):
         self.assertIn("Geomean speedup", compare_perf)
         self.assertIn("authority for claimed benchmark deltas and speedups", compare_perf)
 
-    def test_run_eval_skill_keeps_legacy_script_path(self) -> None:
+    def test_run_eval_skill_uses_explicit_skill_path_helper(self) -> None:
         skill = _read("skills/common/ascend-npu-run-eval/SKILL.md")
+        run_test = _read("skills/common/ascend-npu-run-eval/references/run-test.md")
+        run_bench = _read("skills/common/ascend-npu-run-eval/references/run-bench.md")
+        probe_bench = _read("skills/common/ascend-npu-run-eval/references/probe-bench.md")
+        profile_bench = _read("skills/common/ascend-npu-run-eval/references/profile-bench.md")
+        profile_report = _read("skills/common/ascend-npu-run-eval/references/profile-report.md")
+        compare_result = _read("skills/common/ascend-npu-run-eval/references/compare-result.md")
+        compare_perf = _read("skills/common/ascend-npu-run-eval/references/compare-perf.md")
 
         self.assertIn("Use the bundled helper script in this skill", skill)
         self.assertIn("run-test-baseline", skill)
         self.assertIn("run-test-optimize", skill)
         self.assertIn("run-bench", skill)
         self.assertIn("profile-bench", skill)
-        self.assertIn("call `python3 ./scripts/run-command.py <subcommand> ...` directly", skill)
+        self.assertIn("<skill-path>/scripts/run-command.py", skill)
+        self.assertIn("call `python3 <skill-path>/scripts/run-command.py <subcommand> ...` directly", skill)
         self.assertNotIn("use the corresponding MCP tool", skill)
+
+        for doc in (
+            skill,
+            run_test,
+            run_bench,
+            probe_bench,
+            profile_bench,
+            profile_report,
+            compare_result,
+            compare_perf,
+        ):
+            self.assertNotIn("python3 ./scripts/run-command.py", doc)
 
     def test_run_eval_mcp_skill_is_tool_first_and_omits_compare_result(self) -> None:
         skill = _read("skills/common/ascend-npu-run-eval-mcp/SKILL.md")
