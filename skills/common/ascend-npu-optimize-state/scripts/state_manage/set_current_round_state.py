@@ -33,11 +33,13 @@ def _build_failure_payload(issue: str, guideline: str) -> dict[str, object]:
 def _workflow_failure_guideline(message: str) -> str:
     if (
         "workflow state is not available" in message
-        or "--enable-agent-hook" in message
+        or ".triton-agent/state.json" in message
     ):
         return (
-            "Optimize workflow state is unavailable. This script only works in optimize "
-            "sessions started with --enable-agent-hook."
+            "Optimize workflow state is unavailable. Use the staged "
+            "`ascend-npu-optimize-state` skill's `submit-baseline` subcommand to repair "
+            "session state, then reopen the intended `opt-round-N/` with `start-round` "
+            "before retrying `set-current-round-state`."
         )
     if "no optimize round is currently active" in message:
         return (
@@ -80,9 +82,7 @@ def main(argv: list[str] | None = None, *, prog_name: str | None = None) -> int:
     try:
         state_path = _find_state_path_from_cwd(Path.cwd())
         if state_path is None:
-            raise RuntimeError(
-                "optimize workflow state is not available; set-current-round-state requires --enable-agent-hook"
-            )
+            raise RuntimeError("optimize workflow state is not available")
         workflow_result = set_current_round_state_in_workflow(
             state_path,
             round_strategy=args.round_strategy,
