@@ -82,6 +82,19 @@ class CliParserTests(unittest.TestCase):
         args = parser.parse_args(["gen-eval-batch", "-i", "kernels", "--concurrency", "max"])
         self.assertEqual(args.concurrency, "max")
 
+    def test_concurrency_short_alias_is_parseable_for_supported_commands(self) -> None:
+        parser = build_parser()
+        for argv, expected in (
+            (["gen-eval-batch", "-i", "kernels", "-c", "max"], "max"),
+            (["convert-batch", "-i", "kernels", "-c", "2"], 2),
+            (["log-check-batch", "-i", "kernels", "-c", "4"], 4),
+            (["optimize-batch", "-i", "kernels", "-c", "3"], 3),
+            (["diff-skills-update", "-i", "operators", "-c", "2"], 2),
+        ):
+            with self.subTest(argv=argv):
+                args = parser.parse_args(argv)
+                self.assertEqual(args.concurrency, expected)
+
     def test_gen_eval_batch_accepts_operator_filter(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
@@ -1466,6 +1479,14 @@ class CliMCPServerCommandTests(unittest.TestCase):
         options = optimize_run_options_from_args(args)
         self.assertTrue(options.enable_subagent)
 
+    def test_optimize_batch_accepts_agent_hooks_option(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["optimize-batch", "-i", "operators", "--enable-agent-hook"])
+
+        self.assertTrue(args.enable_agent_hooks)
+        options = optimize_run_options_from_args(args)
+        self.assertTrue(options.enable_agent_hooks)
+
     def test_optimize_batch_accepts_log_tools_option(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["optimize-batch", "-i", "operators", "--log-tool"])
@@ -1497,6 +1518,10 @@ class CliMCPServerCommandTests(unittest.TestCase):
 
         # --enable-agent-hooks (optimize)
         args = parser.parse_args(["optimize", "-i", "kernel.py", "--enable-agent-hooks"])
+        self.assertTrue(args.enable_agent_hooks)
+
+        # --enable-agent-hooks (optimize-batch)
+        args = parser.parse_args(["optimize-batch", "-i", "kernels", "--enable-agent-hooks"])
         self.assertTrue(args.enable_agent_hooks)
 
         # --skip-latency-errors (compare-perf)

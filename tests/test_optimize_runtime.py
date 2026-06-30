@@ -2544,6 +2544,62 @@ class OptimizeRuntimeTests(unittest.TestCase):
                 self.assertEqual(request.prompt, "")
                 self.assertEqual(request.user_prompt, "Avoid changing numerics.")
 
+    def test_run_optimize_batch_passes_agent_hooks_to_each_workspace_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("kernel_a", "kernel_b"):
+                workspace = root / name
+                workspace.mkdir()
+                operator = workspace / "kernel.py"
+                operator.write_text("print('x')\n", encoding="utf-8")
+
+            options = OptimizeRunOptions(
+                agent_name="codex",
+                interact=False,
+                verbose=False,
+                stream_output=False,
+                remote=None,
+                remote_workdir=None,
+                min_rounds=1,
+                resume_mode="auto",
+                reset_optimize=False,
+                no_agent_session=False,
+                round_mode="checked",
+                output=None,
+                test_mode=None,
+                bench_mode=None,
+                prompt=None,
+                enable_agent_hooks=True,
+            )
+
+            captured_requests: List[AgentRequest] = []
+
+            def fake_run_request(
+                request: AgentRequest,
+                stdout: Optional[object] = None,
+                stderr: Optional[object] = None,
+            ) -> AgentResult:
+                del stdout, stderr
+                captured_requests.append(request)
+                return AgentResult(return_code=0, stdout="ok", stderr="")
+
+            with patch(
+                "triton_agent.optimize.batch.render_batch_optimize_results",
+                return_value=0,
+            ):
+                exit_code = run_optimize_batch(
+                    root,
+                    options,
+                    max_concurrency=1,
+                    stdout=StringIO(),
+                    run_request=fake_run_request,
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(len(captured_requests), 2)
+            for request in captured_requests:
+                self.assertTrue(request.enable_agent_hooks)
+
     def test_run_optimize_batch_executes_post_optimize_command_after_success(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

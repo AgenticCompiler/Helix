@@ -401,7 +401,7 @@ Common options:
 - `--optimize-knowledge v1|v2|v3`: default is `v1`. Select which optimize knowledge library is staged before the agent starts (`v3` uses `skills/triton/triton-npu-optimize-knowledge-v3/`).
 - `--enable-compiler-source-analysis`: allow the optimize agent to use compiler source as an escalation after benchmark, profiler, and IR evidence.
 - `--enable-cann-ext-api`: allow A5-only CANN Triton extension API optimization patterns during optimize runs.
-- `--enable-agent-hooks`: enable the workspace-local Codex hook guard for this optimize run. Agent hooks are disabled by default.
+- `--enable-agent-hooks`: enable the workspace-local agent hook guard for this optimize run. Agent hooks are disabled by default.
 - `--min-rounds <N>`: require at least N optimization rounds.
 - `--round-mode checked|supervised`: default is `checked`. Controls how the optimize session is structured:
   - `checked`: the CLI launches a worker for a bounded batch of rounds, validates each newly created round in order, and decides whether to continue, stop, or fail.
@@ -494,9 +494,9 @@ uv run triton-agent optimize-batch --input operators_root --concurrency 4
 When this variable is set:
 
 - `gen-eval-batch`, `convert-batch`, and `optimize-batch` assign one device per running workspace.
-- `--concurrency` may be a positive integer or `max`.
-- `--concurrency max` resolves to the effective batch affinity capacity.
-- numeric `--concurrency` values must not exceed the number of configured devices unless per-device sharing is enabled.
+- `-c, --concurrency` may be a positive integer or `max`.
+- `-c max` / `--concurrency max` resolves to the effective batch affinity capacity.
+- numeric `-c` / `--concurrency` values must not exceed the number of configured devices unless per-device sharing is enabled.
 - The assigned device is exported as `ASCEND_RT_VISIBLE_DEVICES` for launched workspace processes.
 
 By default each device hosts at most one concurrent workspace. Set `TRITON_AGENT_BATCH_WORKERS_PER_NPU` to allow multiple workers to share the same device:
@@ -510,8 +510,8 @@ uv run triton-agent optimize-batch --input operators_root --concurrency max
 When `TRITON_AGENT_BATCH_WORKERS_PER_NPU` is set:
 
 - Effective capacity is `device_count × workers_per_npu`.
-- numeric `--concurrency` values must not exceed the effective capacity.
-- `--concurrency max` resolves to that effective capacity.
+- numeric `-c` / `--concurrency` values must not exceed the effective capacity.
+- `-c max` / `--concurrency max` resolves to that effective capacity.
 - Multiple concurrent workspaces may receive the same `ASCEND_RT_VISIBLE_DEVICES` value, up to the configured per-device limit.
 - This variable is ignored when `TRITON_AGENT_BATCH_NPU_DEVICES` is unset.
 
@@ -526,7 +526,7 @@ Common options:
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--test-mode standalone|differential`
 - `--bench-mode torch-npu-profiler|msprof`
-- `--concurrency <N|max>`: defaults to `1`
+- `-c, --concurrency <N|max>`: defaults to `1`
 - `--no-stream-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -541,7 +541,7 @@ Common options:
 
 - `--agent codex|opencode|pi|claude|openhands|traecli`
 - `--test-mode standalone|differential`: default is `differential`
-- `--concurrency <N|max>`: defaults to `1`
+- `-c, --concurrency <N|max>`: defaults to `1`
 - `--no-stream-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -654,10 +654,11 @@ Common options:
 - `--optimize-knowledge v1|v2|v3`
 - `--enable-compiler-source-analysis`
 - `--enable-cann-ext-api`
+- `--enable-agent-hooks`
 - `--post-optimize-command "..."`: run a local shell command in each workspace after that workspace optimize run succeeds.
 - `--min-rounds <N>`
 - `--no-agent-session`
-- `--concurrency <N|max>`: defaults to `1`
+- `-c, --concurrency <N|max>`: defaults to `1`
 - `--no-stream-output`
 - `--remote user@host[:port]`
 - `--remote-workdir <path>`
@@ -668,6 +669,7 @@ Example:
 uv run triton-agent optimize-batch --input operators_root --prompt "Avoid changing numerics unless correctness requires it."
 uv run triton-agent optimize-batch --input operators_root --optimize-knowledge v2
 uv run triton-agent optimize-batch --input operators_root --optimize-knowledge v3
+uv run triton-agent optimize-batch --input operators_root --enable-agent-hooks --agent codex
 uv run triton-agent optimize-batch --input operators_root --post-optimize-command "python summarize.py"
 ```
 
@@ -761,9 +763,9 @@ These options appear on multiple commands:
 
 ## Optional Agent Hook Guard
 
-When `optimize --enable-agent-hooks` launches with a supported backend,
-`triton-agent` stages temporary workspace-local agent hooks before the agent
-starts. Agent hooks are disabled by default.
+When `optimize` or `optimize-batch` launches with `--enable-agent-hooks` and a
+supported backend, `triton-agent` stages temporary workspace-local agent hooks
+before the agent starts. Agent hooks are disabled by default.
 
 For `--agent codex`, the staged files are:
 

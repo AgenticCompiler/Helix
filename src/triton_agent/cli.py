@@ -624,7 +624,7 @@ def build_parser() -> argparse.ArgumentParser:
                                    help="Allow the agent to use CANN extension APIs in generated kernels.")
             subparser.add_argument("--enable-subagent", action="store_true",
                                    help="Use subagent-based evaluation for faster iteration.")
-            if command_kind == CommandKind.OPTIMIZE:
+            if command_kind in {CommandKind.OPTIMIZE, CommandKind.OPTIMIZE_BATCH}:
                 subparser.add_argument("--enable-agent-hooks", "--enable-agent-hook", dest="enable_agent_hooks", action="store_true",
                                        help="Enable agent-level hooks for extended workflow customization.")
             # Target
@@ -713,7 +713,12 @@ def build_parser() -> argparse.ArgumentParser:
             concurrency_type = (
                 _parse_concurrency_value if spec.concurrency_accepts_max else _parse_positive_int_value
             )
-            subparser.add_argument("--concurrency", type=concurrency_type, default=spec.concurrency_default)
+            subparser.add_argument(
+                "-c",
+                "--concurrency",
+                type=concurrency_type,
+                default=spec.concurrency_default,
+            )
         if spec.report_workers_default is not None:
             subparser.add_argument("--report-workers", type=int, default=spec.report_workers_default)
         if spec.has_force_overwrite:
