@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from dataclasses import fields
 from pathlib import Path
 from unittest.mock import patch
 
@@ -37,9 +38,18 @@ class ComparisonCommandHandlerTests(unittest.TestCase):
             stdout = io.StringIO()
             with redirect_stdout(stdout):
                 exit_code = compare_perf_files(baseline, compare)
-
             self.assertEqual(exit_code, 0)
             self.assertIn("latency-a", stdout.getvalue())
+
+
+class PerfArtifactsStructureTests(unittest.TestCase):
+    def test_metric_source_section_result_has_named_fields(self) -> None:
+        module = load_perf_artifacts_module()
+
+        self.assertEqual(
+            [field.name for field in fields(module.MetricSourceSectionResult)],
+            ["metric_source", "rendered_output"],
+        )
 
     def test_compare_perf_files_forwards_skip_latency_errors_flag(self) -> None:
         module = comparison_module._load_compare_perf()

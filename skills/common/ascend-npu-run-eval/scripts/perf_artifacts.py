@@ -13,9 +13,13 @@ class PerfOpRow(TypedDict):
     avg_time_us: float
 
 
-class PerfMetrics(TypedDict):
+class PerfMetricsRequired(TypedDict):
     kernel_avg_time_us: float | None
     ops: list[PerfOpRow]
+
+
+class PerfMetrics(PerfMetricsRequired, total=False):
+    total_op_avg_time_us: float | None
 
 
 @dataclass(frozen=True)
@@ -53,6 +57,12 @@ class PerfPairOutcome:
     skipped_latency_errors: dict[str, str]
 
 
+@dataclass(frozen=True)
+class MetricSourceSectionResult:
+    metric_source: str
+    rendered_output: str
+
+
 class PerfValueMap(dict[str, float]):
     def __init__(
         self,
@@ -65,6 +75,9 @@ class PerfValueMap(dict[str, float]):
 
 
 RequiredLatencyIds = Union[Collection[str], dict[str, PerfEntry], PerfValueMap]
+PerfPairValues = tuple[dict[str, float], dict[str, float], dict[str, ComparisonMode]]
+RequiredLatencyIdResolution = tuple[set[str], dict[str, ComparisonMode]]
+PerfMetricSummary = tuple[float | None, float | None]
 
 
 def _read_bench_mode_from_jsonl(path: Path) -> str | None:
@@ -243,7 +256,7 @@ def _compare_perf_files_all(
         print(f"FAIL: {exc}")
         return 1
     exit_codes: list[int] = []
-    section_results: list[tuple[str, str]] = []
+    section_results: list[MetricSourceSectionResult] = []
     for section_metric_source in ("kernel", "total-op"):
         try:
             baseline_outcome = _parse_perf_entries_for_comparison(
@@ -259,9 +272,9 @@ def _compare_perf_files_all(
             )
         except ValueError as exc:
             section_results.append(
-                (
-                    section_metric_source,
-                    f"Metric source section: {section_metric_source}\nunavailable: {exc}\n",
+                MetricSourceSectionResult(
+                    metric_source=section_metric_source,
+                    rendered_output=f"Metric source section: {section_metric_source}\nunavailable: {exc}\n",
                 )
             )
             exit_codes.append(1)
@@ -278,9 +291,9 @@ def _compare_perf_files_all(
             )
         except ValueError as exc:
             section_results.append(
-                (
-                    section_metric_source,
-                    f"Metric source section: {section_metric_source}\nFAIL: {exc}\n",
+                MetricSourceSectionResult(
+                    metric_source=section_metric_source,
+                    rendered_output=f"Metric source section: {section_metric_source}\nFAIL: {exc}\n",
                 )
             )
             exit_codes.append(1)
@@ -314,10 +327,12 @@ def _compare_perf_files_all(
             else:
                 first_latency_id = sorted(invalid_metric_errors)[0]
                 section_results.append(
-                    (
-                        section_metric_source,
-                        "Metric source section: "
-                        f"{section_metric_source}\nFAIL: {invalid_metric_errors[first_latency_id]}\n",
+                    MetricSourceSectionResult(
+                        metric_source=section_metric_source,
+                        rendered_output=(
+                            "Metric source section: "
+                            f"{section_metric_source}\nFAIL: {invalid_metric_errors[first_latency_id]}\n"
+                        ),
                     )
                 )
                 exit_codes.append(1)
@@ -355,10 +370,15 @@ def _compare_perf_files_all(
         else:
             lines.append(f"PASS: compared {len(baseline)} latency entries")
             exit_codes.append(0)
-        section_results.append((section_metric_source, "\n".join(lines) + "\n"))
+        section_results.append(
+            MetricSourceSectionResult(
+                metric_source=section_metric_source,
+                rendered_output="\n".join(lines) + "\n",
+            )
+        )
 
-    for _section_name, output in section_results:
-        print(output, end="")
+    for section_result in section_results:
+        print(section_result.rendered_output, end="")
     return 0 if section_results and all(code == 0 for code in exit_codes) else 1
 
 
@@ -419,7 +439,7 @@ def parse_perf_pair_for_comparison(
     compare_perf: Path,
     *,
     metric_source: MetricSource = "auto",
-) -> tuple[dict[str, float], dict[str, float], dict[str, ComparisonMode]]:
+) -> PerfPairValues:
     if metric_source == "all":
         raise ValueError("parse_perf_pair_for_comparison does not support metric_source='all'")
     _check_cross_mode(baseline_perf, compare_perf)
@@ -551,7 +571,10 @@ def render_perf_case_record_jsonl(
     if metrics is not None:
         kernel_avg_time_us = metrics["kernel_avg_time_us"]
         ops = metrics["ops"]
-        if ops:
+        explicit_total_op_avg_time_us = metrics.get("total_op_avg_time_us")
+        if explicit_total_op_avg_time_us is not None:
+            total_op_avg_time_us = explicit_total_op_avg_time_us
+        elif ops:
             total_op_avg_time_us = sum(op["avg_time_us"] for op in ops)
         elif record.bench_mode == "perf-counter":
             total_op_avg_time_us = kernel_avg_time_us
@@ -951,7 +974,7 @@ def _parse_latency_errors(path: Path, lines: list[str]) -> dict[str, str]:
 
 def _resolve_required_latency_requirements(
     required_latency_ids: RequiredLatencyIds,
-) -> tuple[set[str], dict[str, ComparisonMode]]:
+) -> RequiredLatencyIdResolution:
     required_ids = set(required_latency_ids)
     comparison_modes: dict[str, ComparisonMode] = {
         latency_id: "latency" for latency_id in required_ids
@@ -1201,7 +1224,7 @@ def _normalize_perf_pair_for_comparison(
 def _summarize_perf_metrics(
     baseline: dict[str, float],
     compare: dict[str, float],
-) -> tuple[float | None, float | None]:
+) -> PerfMetricSummary:
     pairs = [(baseline[latency_id], compare[latency_id]) for latency_id in sorted(baseline)]
     if not pairs:
         return None, None

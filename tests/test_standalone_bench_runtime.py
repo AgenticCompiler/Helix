@@ -668,7 +668,7 @@ def build_bench_case_fn(operator_api, case):
             self.assertEqual(record.case_label, "case-b")
             self.assertEqual(record.metrics["kernel_avg_time_us"], 3.5)
 
-    def test_read_profiler_metrics_filters_zero_duration_non_kernel_rows(self) -> None:
+    def test_read_profiler_metrics_prefers_kernel_details_and_uses_step_totals(self) -> None:
         module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             profile_root = Path(tmp)
@@ -676,10 +676,21 @@ def build_bench_case_fn(operator_api, case):
                 "\n".join(
                     [
                         "Name,Device Self Duration(us)",
-                        "aten::view,0",
-                        "KernelA,10",
-                        "aten::empty,0",
-                        "KernelB,20",
+                        "aclnnMul,999",
+                        "aclnnInplaceCopy,111",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (profile_root / "kernel_details.csv").write_text(
+                "\n".join(
+                    [
+                        "Step Id,Name,Duration(us),Wait Time(us),Block Dim",
+                        "6,KernelA_kernel,5.0,0,3",
+                        "6,HelperKernel,3.0,0,3",
+                        "7,KernelA_kernel,8.0,0,3",
+                        "7,HelperKernel,4.0,0,3",
                     ]
                 )
                 + "\n",
@@ -688,20 +699,21 @@ def build_bench_case_fn(operator_api, case):
 
             metrics = module._read_profiler_metrics(
                 profile_root,
-                active_count=5,
-                kernel_names=["KernelA", "KernelB"],
+                active_count=2,
+                kernel_names=["KernelA"],
             )
 
         self.assertEqual(
             metrics["ops"],
             [
-                {"op_type": "KernelA", "avg_time_us": 2.0},
-                {"op_type": "KernelB", "avg_time_us": 4.0},
+                {"op_type": "KernelA_kernel", "avg_time_us": 6.5},
+                {"op_type": "HelperKernel", "avg_time_us": 3.5},
             ],
         )
-        self.assertEqual(metrics["kernel_avg_time_us"], 6.0)
+        self.assertEqual(metrics["kernel_avg_time_us"], 6.5)
+        self.assertEqual(metrics["total_op_avg_time_us"], 10.0)
 
-    def test_read_profiler_metrics_preserves_zero_duration_resolved_kernel_rows(self) -> None:
+    def test_read_profiler_metrics_ignores_operator_details_without_kernel_view_csv(self) -> None:
         module = load_bench_runtime_module()
         with tempfile.TemporaryDirectory() as tmp:
             profile_root = Path(tmp)
@@ -709,27 +721,20 @@ def build_bench_case_fn(operator_api, case):
                 "\n".join(
                     [
                         "Name,Device Self Duration(us)",
-                        "aten::view,0",
-                        "KernelZero,0",
+                        "aclnnMul,10",
+                        "aclnnInplaceCopy,2",
                     ]
                 )
                 + "\n",
                 encoding="utf-8",
             )
 
-            metrics = module._read_profiler_metrics(
-                profile_root,
-                active_count=5,
-                kernel_names=["KernelZero"],
-            )
-
-        self.assertEqual(
-            metrics["ops"],
-            [
-                {"op_type": "KernelZero", "avg_time_us": 0.0},
-            ],
-        )
-        self.assertEqual(metrics["kernel_avg_time_us"], 0.0)
+            with self.assertRaisesRegex(FileNotFoundError, "No kernel_details.csv or op_statistic.csv found"):
+                module._read_profiler_metrics(
+                    profile_root,
+                    active_count=5,
+                    kernel_names=["KernelZero"],
+                )
 
     def test_read_profiler_metrics_falls_back_to_op_statistic_when_operator_details_is_missing(self) -> None:
         module = load_bench_runtime_module()
@@ -761,6 +766,7 @@ def build_bench_case_fn(operator_api, case):
             ],
         )
         self.assertEqual(metrics["kernel_avg_time_us"], 1.0)
+        self.assertEqual(metrics["total_op_avg_time_us"], 5.0)
 
     def test_read_profiler_metrics_falls_back_to_kernel_details_when_operator_details_is_missing(self) -> None:
         module = load_bench_runtime_module()
@@ -769,10 +775,10 @@ def build_bench_case_fn(operator_api, case):
             (profile_root / "kernel_details.csv").write_text(
                 "\n".join(
                     [
-                        "Name,Duration(us),Wait Time(us),Block Dim",
-                        "KernelA,9.0,0,3",
-                        "KernelA,6.0,0,3",
-                        "KernelB,3.0,0,1",
+                        "Step Id,Name,Duration(us),Wait Time(us),Block Dim",
+                        "6,KernelA,9.0,0,3",
+                        "7,KernelA,6.0,0,3",
+                        "8,KernelB,3.0,0,1",
                     ]
                 )
                 + "\n",
@@ -793,6 +799,7 @@ def build_bench_case_fn(operator_api, case):
             ],
         )
         self.assertEqual(metrics["kernel_avg_time_us"], 5.0)
+        self.assertEqual(metrics["total_op_avg_time_us"], 6.0)
 
     def test_read_profiler_metrics_falls_back_to_kernel_details_when_operator_details_total_is_zero(self) -> None:
         module = load_bench_runtime_module()
@@ -812,8 +819,10 @@ def build_bench_case_fn(operator_api, case):
             (profile_root / "kernel_details.csv").write_text(
                 "\n".join(
                     [
-                        "Name,Duration(us),Wait Time(us),Block Dim",
-                        "KernelFromKernelDetails,15.0,0,3",
+                        "Step Id,Name,Duration(us),Wait Time(us),Block Dim",
+                        "6,KernelFromKernelDetails,5.0,0,3",
+                        "7,KernelFromKernelDetails,5.0,0,3",
+                        "8,KernelFromKernelDetails,5.0,0,3",
                     ]
                 )
                 + "\n",
@@ -843,6 +852,71 @@ def build_bench_case_fn(operator_api, case):
             ],
         )
         self.assertEqual(metrics["kernel_avg_time_us"], 5.0)
+        self.assertEqual(metrics["total_op_avg_time_us"], 5.0)
+
+    def test_read_profiler_metrics_falls_back_to_op_statistic_with_kernel_suffix_alias(self) -> None:
+        module = load_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            profile_root = Path(tmp)
+            (profile_root / "op_statistic.csv").write_text(
+                "\n".join(
+                    [
+                        "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                        "0,KernelA_kernel,AI_CORE,2,13,5,6.5,8,65",
+                        "0,HelperKernel,AI_VECTOR_CORE,2,7,3,3.5,4,35",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            metrics = module._read_profiler_metrics(
+                profile_root,
+                active_count=2,
+                kernel_names=["KernelA"],
+            )
+
+        self.assertEqual(
+            metrics["ops"],
+            [
+                {"op_type": "KernelA_kernel", "avg_time_us": 6.5},
+                {"op_type": "HelperKernel", "avg_time_us": 3.5},
+            ],
+        )
+        self.assertEqual(metrics["kernel_avg_time_us"], 6.5)
+        self.assertEqual(metrics["total_op_avg_time_us"], 10.0)
+
+    def test_read_profiler_metrics_op_statistic_fallback_prefers_active_count_over_count_proxy(self) -> None:
+        module = load_bench_runtime_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            profile_root = Path(tmp)
+            (profile_root / "op_statistic.csv").write_text(
+                "\n".join(
+                    [
+                        "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                        "0,engram_hash_kernel_kernel,MIX_AIC,45,9227.36,204.78,205.052,205.34,56.884",
+                        "0,BroadcastTo,AI_VECTOR_CORE,180,1913.52,5.72,10.63,16.4,11.796",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            metrics = module._read_profiler_metrics(
+                profile_root,
+                active_count=50,
+                kernel_names=["engram_hash_kernel"],
+            )
+
+        self.assertAlmostEqual(metrics["kernel_avg_time_us"], 184.5472, places=6)
+        self.assertEqual(
+            metrics["ops"],
+            [
+                {"op_type": "engram_hash_kernel_kernel", "avg_time_us": 184.5472},
+                {"op_type": "BroadcastTo", "avg_time_us": 38.2704},
+            ],
+        )
+        self.assertAlmostEqual(metrics["total_op_avg_time_us"], 222.8176, places=6)
 
     def test_profile_case_with_profiler_suppresses_profiler_output(self) -> None:
         module = load_bench_runtime_module()
@@ -860,12 +934,12 @@ def build_bench_case_fn(operator_api, case):
             def __exit__(self, exc_type, exc, tb):
                 del exc_type, exc, tb
                 self.profile_root.mkdir(parents=True, exist_ok=True)
-                csv_path = self.profile_root / "operator_details.csv"
+                csv_path = self.profile_root / "kernel_details.csv"
                 csv_path.write_text(
                     "\n".join(
                         [
-                            "Name,Device Self Duration(us),Count",
-                            "KernelA,4.0,1",
+                            "Name,Duration(us),Wait Time(us),Block Dim",
+                            "KernelA,4.0,0,1",
                         ]
                     )
                     + "\n",
@@ -959,11 +1033,11 @@ def build_bench_case_fn(operator_api, case):
             def __exit__(self, exc_type, exc, tb):
                 del exc_type, exc, tb
                 self.profile_root.mkdir(parents=True, exist_ok=True)
-                (self.profile_root / "operator_details.csv").write_text(
+                (self.profile_root / "kernel_details.csv").write_text(
                     "\n".join(
                         [
-                            "Name,Device Self Duration(us),Count",
-                            "KernelA,4.0,1",
+                            "Name,Duration(us),Wait Time(us),Block Dim",
+                            "KernelA,4.0,0,1",
                         ]
                     )
                     + "\n",
@@ -1106,11 +1180,11 @@ def build_bench_case_fn(operator_api, case):
                 del exc_type, exc, tb
                 _FakeProfilerApi.current_context = None
                 self.profile_root.mkdir(parents=True, exist_ok=True)
-                (self.profile_root / "operator_details.csv").write_text(
+                (self.profile_root / "kernel_details.csv").write_text(
                     "\n".join(
                         [
-                            "Name,Device Self Duration(us)",
-                            f"KernelA,{self.recorded_iterations * per_iteration_us}",
+                            "Name,Duration(us),Wait Time(us),Block Dim",
+                            f"KernelA,{self.recorded_iterations * per_iteration_us},0,1",
                         ]
                     )
                     + "\n",
