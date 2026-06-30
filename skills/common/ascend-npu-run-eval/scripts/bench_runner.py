@@ -14,7 +14,7 @@ from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TextIO, TypeAlias, TypeVar, cast
+from typing import TextIO, TypeVar, cast
 
 from bench_contract import (  # noqa: F401
     KernelResolution,
@@ -55,16 +55,16 @@ from run_runtime import (
 )
 
 
-NpuDevices: TypeAlias = tuple[str, ...]
-ProbeCaps: TypeAlias = tuple[int, int]
-BenchRunResult: TypeAlias = tuple[ResultPayload, Path | None]
-BenchRunResultWithPerfPath: TypeAlias = tuple[ResultPayload, Path]
-RemoteBenchRunResult: TypeAlias = tuple[ResultPayload, Path | None, str]
-RemoteBenchRunResultWithPerfPath: TypeAlias = tuple[ResultPayload, Path, str]
-ResolvedProfileOutputRoot: TypeAlias = tuple[str | None, str]
-PreservedRunDir: TypeAlias = tuple[Path, tempfile.TemporaryDirectory[str] | None]
-CaseWorkspaceRoots: TypeAlias = tuple[Path, Path]
-CaseWorkspace: TypeAlias = tuple[Path, Callable[[], None]]
+NpuDevices = tuple[str, ...]
+ProbeCaps = tuple[int, int]
+BenchRunResult = tuple[ResultPayload, Path | None]
+BenchRunResultWithPerfPath = tuple[ResultPayload, Path]
+RemoteBenchRunResult = tuple[ResultPayload, Path | None, str]
+RemoteBenchRunResultWithPerfPath = tuple[ResultPayload, Path, str]
+ResolvedProfileOutputRoot = tuple[str | None, str]
+PreservedRunDir = tuple[Path, tempfile.TemporaryDirectory[str] | None]
+CaseWorkspaceRoots = tuple[Path, Path]
+CaseWorkspace = tuple[Path, Callable[[], None]]
 
 _LOCAL_BENCH_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_OUTPUT_DIR"
 _BENCH_COPY_FILES_ENV = "TRITON_AGENT_BENCH_COPY_FILES"

@@ -14,7 +14,7 @@ import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, TypeAlias, cast
+from typing import Any, Iterator, cast
 
 from bench_contract import KernelResolution, resolve_bench_kernel_resolution
 from perf_artifacts import (
@@ -38,11 +38,11 @@ from result_payload import ResultPayload, make_result
 # Constants & data model
 # ---------------------------------------------------------------------------
 
-LoadedBenchCases: TypeAlias = tuple[list["BenchCase"], KernelResolution]
-RuntimeBenchResult: TypeAlias = tuple[ResultPayload, Path]
-ProfileCaseOutcome: TypeAlias = tuple[PerfMetrics | None, str | None]
-ResolvedProfileOutputRoot: TypeAlias = tuple[str | None, str]
-PreservedRunDir: TypeAlias = tuple[Path, tempfile.TemporaryDirectory[str] | None]
+LoadedBenchCases = tuple[list["BenchCase"], KernelResolution]
+RuntimeBenchResult = tuple[ResultPayload, Path]
+ProfileCaseOutcome = tuple[PerfMetrics | None, str | None]
+ResolvedProfileOutputRoot = tuple[str | None, str]
+PreservedRunDir = tuple[Path, tempfile.TemporaryDirectory[str] | None]
 
 WARMUP_DEFAULT = 5
 REPEATS_DEFAULT = 50

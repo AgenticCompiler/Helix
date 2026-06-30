@@ -203,6 +203,16 @@ class LocalBenchRunnerTests(unittest.TestCase):
         self.assertNotIn("class _BenchRunnerDeps", source)
         self.assertNotIn("_DEPS =", source)
 
+    def test_runtime_support_scripts_avoid_typealias_runtime_imports(self) -> None:
+        module = load_bench_runner_module()
+        module_file = module.__file__
+        assert module_file is not None
+        support_paths = [Path(module_file)] + list(module._bench_runtime_support_paths())
+
+        for support_path in support_paths:
+            source = support_path.read_text(encoding="utf-8")
+            self.assertNotIn("TypeAlias", source, str(support_path))
+
     def test_run_local_bench_torch_npu_profiler_delegates_to_hook_runtime(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
