@@ -74,6 +74,25 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             self.assertEqual(payload["phase"], "awaiting_round_start")
             self.assertEqual(payload["baseline"], {"status": "passed", "submitted_at": None})
 
+    def test_bootstrap_state_writes_pretty_printed_json(self) -> None:
+        module = load_state_machine_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state_path = root / ".triton-agent" / "state.json"
+            state_path.parent.mkdir()
+
+            module.bootstrap_state(
+                state_path,
+                run_id="optimize-20260630-123456-abcdef",
+                source_operator="kernel.py",
+                baseline_reused=False,
+            )
+            text = state_path.read_text(encoding="utf-8")
+
+        self.assertTrue(text.startswith("{\n"))
+        self.assertIn('\n  "schema_version": 1,\n', text)
+        self.assertTrue(text.endswith("}\n"))
+
     def test_start_round_is_idempotent_for_same_active_round(self) -> None:
         module = load_state_machine_module()
         with tempfile.TemporaryDirectory() as tmp:

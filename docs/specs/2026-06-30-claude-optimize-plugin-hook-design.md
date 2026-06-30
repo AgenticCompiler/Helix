@@ -15,7 +15,7 @@ Add a repository script that builds a distributable Claude Code plugin directory
   - plugin-scoped Claude hooks under `hooks/`
 - The generated plugin does not include standalone `CLAUDE.md` or `prompts.md` files. Their durable guidance content is embedded directly into the optimize agent definition.
 - When a Claude session starts with the plugin's optimize agent, the plugin initializes `.triton-agent/` if it is missing.
-- When `.triton-agent/state.json` is missing, the plugin attempts a conservative workflow-state bootstrap from durable optimize artifacts already present in the workspace.
+- When `.triton-agent/state.json` is missing, the plugin does not infer or recreate workflow state from durable artifacts. It creates `.triton-agent/` only and returns command-based repair guidance so the agent can restore workflow state through the bundled `ascend-npu-optimize-state` commands.
 - When a Claude session ends, the plugin removes the live `.triton-agent/` runtime directory.
 - The plugin never deletes durable optimize artifacts such as `baseline/`, `opt-round-*`, or `triton-agent-logs/`.
 - The bundled `ascend-npu-optimize-state` command helpers treat missing workflow state differently by subcommand:
@@ -56,7 +56,7 @@ In scope:
 - optimize-only Claude agent packaging
 - optimize-only skill packaging
 - plugin hook bootstrap and cleanup for `.triton-agent/`
-- conservative recovery of missing workflow state
+- command-based repair guidance when workflow state is missing or malformed
 - hook-side diagnostics when workflow state is missing or malformed
 
 Out of scope:
@@ -140,46 +140,48 @@ The hook config should invoke plugin-local scripts via `${CLAUDE_PLUGIN_ROOT}` s
 Behavior:
 
 - If the current session is not using the plugin's optimize agent, do nothing.
+- Treat Claude's namespaced plugin agent payload (for example `triton-agent-optimize:triton-agent-optimize`) as the optimize agent identity for hook gating.
 - Ensure the workspace-local `.triton-agent/` directory exists.
 - If `.triton-agent/state.json` already exists:
   - validate that it is well-formed enough for optimize-state consumers
   - leave it untouched when valid
-  - surface clear additional context when malformed instead of silently replacing it
+  - surface command-based repair guidance when malformed instead of silently replacing it
 - If `.triton-agent/state.json` does not exist:
-  - attempt conservative recovery from durable workspace artifacts
-  - if recovery succeeds, write the recovered workflow state
-  - if recovery cannot determine enough information, create only `.triton-agent/` and emit clear guidance about what is still missing
+  - do not infer phase or source operator from durable artifacts
+  - create only `.triton-agent/`
+  - emit clear guidance telling the agent to use the bundled optimize-state commands to rebuild workflow state before continuing
 
 The hook may return `hookSpecificOutput.additionalContext` so Claude sees a short status summary when bootstrap work was necessary.
 
-### 6. Workflow-State Recovery Policy
+### 6. Workflow-State Repair Policy
 
-The plugin must prefer conservative recovery over speculative reconstruction.
+The plugin must prefer explicit command-based repair over speculative reconstruction.
 
-#### Recovery inputs
+#### Repair inputs
 
-Recovery may inspect:
+Repair guidance may refer to:
 
-- `baseline/state.json`
-- existing `opt-round-*` directories
-- the absence or presence of durable optimize artifacts needed to infer baseline status
+- `baseline/`
+- the bundled `ascend-npu-optimize-state` commands
+- the current `opt-round-N/` directory the agent intends to reopen
 
-Recovery must not depend on transient CLI-only artifacts such as request-scoped trace/session files.
+Repair guidance must not instruct the agent to edit internal runtime files directly.
 
-#### Recovery outputs
+#### Repair outputs
 
 If `state.json` is missing:
 
-- recover to `awaiting_round_start` only when the workspace clearly contains an accepted baseline
-- otherwise recover to `baseline`
+- do not auto-recover to any workflow phase
+- instruct the agent to use `submit-baseline` first
+- instruct the agent to use `start-round` again before same-round updates or round submission when needed
 
-The first implementation must not auto-recover to `round_active`.
+The first implementation must not auto-recover to `baseline`, `awaiting_round_start`, or `round_active`.
 
 Rationale:
 
-- an existing `opt-round-N/` directory does not prove that the round was still active when the prior session ended
-- treating partially completed or interrupted rounds as active can mis-gate edits into the wrong round directory
-- requiring a fresh `start-round` call preserves the current workflow-state contract and keeps recovery deterministic
+- the plugin cannot know whether durable artifacts still reflect the exact workflow phase that should be active now
+- even a conservative inferred phase leaks control away from the explicit optimize-state command contract
+- requiring `submit-baseline` and `start-round` preserves one command-owned repair path across CLI and plugin-managed sessions
 
 ### 7. PreToolUse Responsibilities
 
@@ -193,7 +195,7 @@ In addition to current policy checks, the plugin path should distinguish:
 - baseline not yet established
 - workflow phase that does not allow the requested edit
 
-This should not degrade into a generic denial when the real problem is missing bootstrap state.
+This should not degrade into a generic denial when the real problem is missing or malformed workflow state.
 
 The shared guard policy logic should remain the base decision engine for path protection, while plugin-specific bootstrap diagnosis can live in a small helper layer that runs before or around the current denial logic.
 
@@ -236,8 +238,8 @@ Add focused coverage for:
 - generated optimize agent content
 - generated optimize skill subset
 - `SessionStart` creating `.triton-agent/`
-- `SessionStart` conservative recovery to `baseline`
-- `SessionStart` conservative recovery to `awaiting_round_start`
+- `SessionStart` namespaced plugin-agent payload handling
+- `SessionStart` creating `.triton-agent/` without writing `state.json` when workflow state is missing
 - malformed `state.json` detection
 - `SessionEnd` removing `.triton-agent/` only
 - `PreToolUse` plugin-mode diagnostics for missing or malformed workflow state
@@ -260,11 +262,11 @@ Mitigation:
 
 ### Over-eager recovery
 
-Recovering to `round_active` without strong evidence can gate edits into stale round directories.
+Recovering any workflow phase without strong evidence can gate edits into the wrong workflow state.
 
 Mitigation:
 
-- first implementation only recovers to `baseline` or `awaiting_round_start`
+- first implementation does not auto-recover workflow phase at all
 
 ### Over-broad hook activation
 
