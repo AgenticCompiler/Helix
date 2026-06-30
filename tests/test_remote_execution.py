@@ -1426,6 +1426,61 @@ print(json.dumps({"case_label": record.case_label, "kernel_avg_time_us": record.
             )
             cleanup.assert_called_once_with("spec", "/tmp/remote-msprof", verbose=False, stderr=None)
 
+    def test_read_remote_msprof_metrics_supports_kernel_suffix_alias_and_total_op(self) -> None:
+        module = load_bench_runner_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            remote_workspace = Path(tmp) / "remote-workspace"
+            remote_workspace.mkdir()
+            for support_path in module._bench_runtime_support_paths():
+                shutil.copy2(support_path, remote_workspace / support_path.name)
+
+            output_dir = remote_workspace / "ASCEND_PROFILER_OUTPUT"
+            output_dir.mkdir()
+            (output_dir / "op_statistic_1.csv").write_text(
+                "\n".join(
+                    [
+                        "Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)",
+                        "0,KernelA_kernel,AI_CORE,2,13,5,6.5,8,65",
+                        "0,HelperKernel,AI_VECTOR_CORE,2,7,3,3.5,4,35",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            def _fake_remote_buffered(spec, remote_workspace_arg, command, **kwargs):
+                del kwargs
+                self.assertEqual(spec, "spec")
+                self.assertEqual(remote_workspace_arg, str(remote_workspace))
+                self.assertEqual(command[:2], ["python3", "-c"])
+                completed = subprocess.run(
+                    command,
+                    cwd=remote_workspace,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                return make_skill_result(completed.returncode, completed.stdout, completed.stderr)
+
+            with patch.object(module, "run_remote_command_buffered", side_effect=_fake_remote_buffered):
+                metrics = module._read_remote_msprof_metrics(
+                    "spec",
+                    str(remote_workspace),
+                    str(output_dir),
+                    ["KernelA"],
+                )
+
+        self.assertEqual(metrics["kernel_avg_time_us"], 6.5)
+        self.assertEqual(
+            metrics["ops"],
+            [
+                {"op_type": "KernelA_kernel", "avg_time_us": 6.5},
+                {"op_type": "HelperKernel", "avg_time_us": 3.5},
+            ],
+        )
+        self.assertEqual(metrics["total_op_avg_time_us"], 10.0)
+
     def test_run_remote_bench_msprof_records_na_when_remote_kernel_row_is_missing(self) -> None:
         module = load_bench_runner_module()
 

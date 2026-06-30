@@ -203,6 +203,16 @@ class LocalBenchRunnerTests(unittest.TestCase):
         self.assertNotIn("class _BenchRunnerDeps", source)
         self.assertNotIn("_DEPS =", source)
 
+    def test_runtime_support_scripts_avoid_typealias_runtime_imports(self) -> None:
+        module = load_bench_runner_module()
+        module_file = module.__file__
+        assert module_file is not None
+        support_paths = [Path(module_file)] + list(module._bench_runtime_support_paths())
+
+        for support_path in support_paths:
+            source = support_path.read_text(encoding="utf-8")
+            self.assertNotIn("TypeAlias", source, str(support_path))
+
     def test_run_local_bench_torch_npu_profiler_delegates_to_hook_runtime(self) -> None:
         module = load_bench_runner_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -2667,7 +2677,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
         self.assertIn('"total_op_avg_time_us":12.5', line)
         self.assertIn('"kernel_avg_time_us":12.5', line)
 
-    def test_total_op_avg_time_us_still_sums_ops_for_profiler_modes(self) -> None:
+    def test_profiler_mode_jsonl_uses_explicit_total_op_avg_time_us(self) -> None:
         module = load_perf_artifacts_module()
         record = module.PerfCaseRecord(
             case_label="case-e",
@@ -2679,12 +2689,13 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                     {"op_type": "KA", "avg_time_us": 5.0},
                     {"op_type": "KB", "avg_time_us": 6.0},
                 ],
+                "total_op_avg_time_us": 13.5,
             },
             case_wall_clock_seconds=1.5,
             bench_mode="torch-npu-profiler",
         )
         line = module.render_perf_case_record_jsonl(record)
-        self.assertIn('"total_op_avg_time_us":11.0', line)
+        self.assertIn('"total_op_avg_time_us":13.5', line)
 
     # ------------------------------------------------------------------
     # cross-mode comparison guards
