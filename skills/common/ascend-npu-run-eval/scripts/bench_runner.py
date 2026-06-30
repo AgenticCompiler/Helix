@@ -1593,6 +1593,44 @@ def _run_local_msprof_single_case_for_kernel(
     return hottest_name
 
 
+def _resolve_simulator_lib_path():
+    env_path = __import__("os").environ.get("SIMULATOR_LIB_PATH", "").strip()
+    if env_path and __import__("os").path.isdir(env_path):
+        return env_path
+
+    import platform as _platform
+    import glob as _glob
+
+    machine = _platform.machine()
+    arch = "aarch64-linux" if machine in ("aarch64", "arm64", "aarch64_be") else "arm64-linux"
+
+    candidates = _glob.glob(
+        "/usr/local/Ascend/**/simulator/*/lib/libruntime_camodel.so",
+        recursive=True,
+    )
+
+    preferred_chips = ["Ascend910B4", "Ascend910B3", "Ascend910B2C", "Ascend910B2",
+                       "Ascend910B1", "Ascend910B", "Ascend910ProB",
+                       "Ascend310P", "Ascend310B", "Ascend920", "Ascend950"]
+
+    for chip in preferred_chips:
+        for so in candidates:
+            if f"/{arch}/simulator/{chip}/" in so:
+                lib_dir = __import__("os").path.dirname(so)
+                return lib_dir
+
+    for so in candidates:
+        if f"/{arch}/simulator/" in so:
+            lib_dir = __import__("os").path.dirname(so)
+            return lib_dir
+
+    for so in candidates:
+        lib_dir = __import__("os").path.dirname(so)
+        return lib_dir
+
+    return None
+
+
 def _run_local_bench_msprof_simulator(
     bench_file: Path,
     operator_file: Path,
@@ -1601,6 +1639,14 @@ def _run_local_bench_msprof_simulator(
     simulator_case_idx: int = 1,
     verbose: bool = False,
 ) -> tuple[ResultPayload, Path | None]:
+    return _run_local_bench_msprof_simulator_standalone(
+        bench_file, operator_file,
+        extract_dest_dir=extract_dest_dir,
+        kernel_name=kernel_name,
+        case_id=None,
+        verbose=verbose,
+    )
+
     resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
     stdout_chunks: list[str] = []
     stderr_chunks: list[str] = []
@@ -1625,10 +1671,15 @@ def _run_local_bench_msprof_simulator(
         ]
         print(f"[msprof-simulator] kernel-name={kernel_name}, cmd: {' '.join(command)})", flush=True)
         t0 = time.monotonic()
+        sim_lib = _resolve_simulator_lib_path()
+        extra_env = {}
+        if sim_lib:
+            extra_env["LD_LIBRARY_PATH"] = sim_lib + ":" + __import__("os").environ.get("LD_LIBRARY_PATH", "")
         with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
             result = run_streaming_process(
                 command,
                 str(bench_file.parent),
+                extra_env=extra_env,
                 stall_timeout_seconds=_bench_timeout(),
                 stdout=quiet_stdout,
             )
@@ -1751,10 +1802,15 @@ def _run_local_bench_msprof_simulator_standalone(
         ]
         print(f"[standalone-msprof-simulator] kernel-name={kernel_name}, cmd: {' '.join(command)}", flush=True)
         t0 = time.monotonic()
+        sim_lib = _resolve_simulator_lib_path()
+        extra_env = {}
+        if sim_lib:
+            extra_env["LD_LIBRARY_PATH"] = sim_lib + ":" + __import__("os").environ.get("LD_LIBRARY_PATH", "")
         with open(os.devnull, "w", encoding="utf-8") as quiet_stdout:
             result = run_streaming_process(
                 command,
                 str(bench_file.parent),
+                extra_env=extra_env,
                 stall_timeout_seconds=_bench_timeout(),
                 stdout=quiet_stdout,
             )
