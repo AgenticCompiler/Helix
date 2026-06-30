@@ -305,13 +305,13 @@ Before scanning the full list, first analyze whether the operator matches any hi
 
 ### `reduce-avoid-transpose-copy`
 
-- Summary: Avoid implementing a non-last-dimension single-axis reduction by first doing `movedim(...).contiguous()` or an equivalent layout materialization. For contiguous row-major input, compute `[outer, reduce, inner]` from the original shape and reduce directly from the original layout with a strided/tiled kernel.
+- Summary: Avoid implementing a non-last-dimension single-axis operation (reduction, prefix scan, or other axis-wise computation) by first doing `movedim(...).contiguous()` or an equivalent layout materialization. For contiguous row-major input, compute `[outer, scan, inner]` from the original shape and operate directly from the original layout with a strided/tiled kernel. Applies to cumsum, cumprod, sum, mean, max, and similar axis-wise operators.
 - Source: [reduce-avoid-transpose-copy.md](patterns/reduce-avoid-transpose-copy.md)
 - Use When:
-  - The operator reduces exactly one logical axis.
-  - The reduce dimension is not the last dimension.
+  - The operator performs an axis-wise computation along exactly one logical axis (reductions, prefix scans, etc.).
+  - The target axis is not the last dimension.
   - The input tensor is contiguous in its original row-major layout.
-  - The current implementation uses `movedim(...).contiguous()`, `transpose(...).contiguous()`, `permute(...).contiguous()`, or another full layout materialization before reduction.
+  - The current implementation uses `movedim(...).contiguous()`, `transpose(...).contiguous()`, `permute(...).contiguous()`, or another full layout materialization before the kernel.
   - Profiling shows `Transpose`, `Memcpy`, `DataCopy`, `Contiguous`, or similar layout-conversion work before the reduction kernel.
   - The copy time is comparable to or larger than the reduction-kernel time.
   - The suffix dimension after the reduced axis is large enough to provide reasonably coalesced loads along `inner`.
