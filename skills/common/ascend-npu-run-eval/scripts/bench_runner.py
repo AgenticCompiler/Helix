@@ -14,7 +14,7 @@ from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TextIO, TypeVar, cast
+from typing import TextIO, TypeAlias, TypeVar, cast
 
 from bench_contract import (  # noqa: F401
     KernelResolution,
@@ -53,6 +53,18 @@ from run_runtime import (
     run_remote_command_streaming,
     run_streaming_process,
 )
+
+
+NpuDevices: TypeAlias = tuple[str, ...]
+ProbeCaps: TypeAlias = tuple[int, int]
+BenchRunResult: TypeAlias = tuple[ResultPayload, Path | None]
+BenchRunResultWithPerfPath: TypeAlias = tuple[ResultPayload, Path]
+RemoteBenchRunResult: TypeAlias = tuple[ResultPayload, Path | None, str]
+RemoteBenchRunResultWithPerfPath: TypeAlias = tuple[ResultPayload, Path, str]
+ResolvedProfileOutputRoot: TypeAlias = tuple[str | None, str]
+PreservedRunDir: TypeAlias = tuple[Path, tempfile.TemporaryDirectory[str] | None]
+CaseWorkspaceRoots: TypeAlias = tuple[Path, Path]
+CaseWorkspace: TypeAlias = tuple[Path, Callable[[], None]]
 
 _LOCAL_BENCH_OUTPUT_DIR_ENV = "TRITON_AGENT_BENCH_OUTPUT_DIR"
 _BENCH_COPY_FILES_ENV = "TRITON_AGENT_BENCH_COPY_FILES"
@@ -101,7 +113,7 @@ def run_local_bench(
     npu_devices: str | None = None,
     verbose: bool = False,
     output: str | None = None,
-) -> tuple[ResultPayload, Path | None]:
+ ) -> BenchRunResult:
     bench_mode = normalize_bench_mode(bench_mode)
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
@@ -173,8 +185,8 @@ def run_remote_bench(
     verbose: bool = False,
     stderr: TextIO | None = None,
     output: str | None = None,
-    probe_caps: tuple[int, int] | None = None,
-) -> tuple[ResultPayload, Path | None, str]:
+    probe_caps: ProbeCaps | None = None,
+) -> RemoteBenchRunResult:
     bench_mode = normalize_bench_mode(bench_mode)
     invocation_root = Path.cwd().resolve()
     devices = parse_npu_devices(npu_devices)
@@ -302,7 +314,7 @@ def run_local_probe(
     npu_devices: str | None = None,
     verbose: bool = False,
     output: str | None = None,
-) -> tuple[ResultPayload, Path | None]:
+) -> BenchRunResult:
     bench_mode = normalize_bench_mode(bench_mode)
     if bench_mode != "torch-npu-profiler":
         return run_local_bench(
@@ -346,7 +358,7 @@ def run_remote_probe(
     verbose: bool = False,
     stderr: TextIO | None = None,
     output: str | None = None,
-) -> tuple[ResultPayload, Path | None, str]:
+) -> RemoteBenchRunResult:
     return run_remote_bench(
         bench_file,
         operator_file,
@@ -368,7 +380,7 @@ def _run_local_bench_torch_npu_profiler(
     *,
     verbose: bool = False,
     output: str | None = None,
-) -> tuple[ResultPayload, Path | None]:
+) -> BenchRunResult:
     runtime = _load_bench_runtime_module()
     return runtime.profile_all_bench_cases(
         bench_file,
@@ -384,7 +396,7 @@ def _run_local_bench_perf_counter(
     *,
     verbose: bool = False,
     output: str | None = None,
-) -> tuple[ResultPayload, Path | None]:
+) -> BenchRunResult:
     runtime = _load_bench_runtime_module()
     return runtime.time_all_bench_cases(
         bench_file,
@@ -397,13 +409,13 @@ def _run_local_bench_perf_counter(
 def _run_local_bench_perf_counter_parallel(
     bench_file: Path,
     operator_file: Path,
-    devices: tuple[str, ...],
+    devices: NpuDevices,
     *,
     source_root: Path,
     json_search_root: Path,
     verbose: bool = False,
     output: str | None = None,
-) -> tuple[ResultPayload, Path | None]:
+) -> BenchRunResult:
     runtime = _load_bench_runtime_module()
     cases, _resolution = runtime.load_bench_cases(bench_file, operator_file)
     case_ids = [case.case_id for case in cases]
@@ -466,7 +478,7 @@ def _run_remote_bench_perf_counter(
     verbose: bool = False,
     stderr: TextIO | None = None,
     output: str | None = None,
-) -> tuple[ResultPayload, Path | None, str]:
+) -> RemoteBenchRunResult:
     _stage_remote_bench_runtime_support_files(
         spec,
         remote_workspace,
@@ -514,14 +526,14 @@ def _run_remote_bench_perf_counter_parallel(
     remote_workspace: str,
     bench_file: Path,
     operator_file: Path,
-    devices: tuple[str, ...],
+    devices: NpuDevices,
     *,
     source_root: Path,
     json_search_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
     output: str | None = None,
-) -> tuple[ResultPayload, Path | None, str]:
+) -> RemoteBenchRunResult:
     runtime = _load_bench_runtime_module()
     cases, _resolution = runtime.load_bench_cases(bench_file, operator_file)
     case_ids = [case.case_id for case in cases]
@@ -616,9 +628,9 @@ def _run_remote_bench_torch_npu_profiler(
     verbose: bool = False,
     stderr: TextIO | None = None,
     output: str | None = None,
-    probe_caps: tuple[int, int] | None = None,
-    devices: tuple[str, ...] | None = None,
-) -> tuple[ResultPayload, Path | None, str]:
+    probe_caps: ProbeCaps | None = None,
+    devices: NpuDevices | None = None,
+) -> RemoteBenchRunResult:
     _stage_remote_bench_runtime_support_files(
         spec,
         remote_workspace,
@@ -672,13 +684,13 @@ def _run_remote_bench_torch_npu_profiler(
 def _run_local_bench_torch_npu_profiler_parallel(
     bench_file: Path,
     operator_file: Path,
-    devices: tuple[str, ...],
+    devices: NpuDevices,
     *,
     source_root: Path,
     json_search_root: Path,
     verbose: bool = False,
     output: str | None = None,
-) -> tuple[ResultPayload, Path]:
+) -> BenchRunResultWithPerfPath:
     runtime = _load_bench_runtime_module()
     cases, _resolution = runtime.load_bench_cases(bench_file, operator_file)
     case_ids = [case.case_id for case in cases]
@@ -726,14 +738,14 @@ def _run_remote_bench_torch_npu_profiler_parallel(
     remote_workspace: str,
     bench_file: Path,
     operator_file: Path,
-    devices: tuple[str, ...],
+    devices: NpuDevices,
     *,
     source_root: Path,
     json_search_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
     output: str | None = None,
-) -> tuple[ResultPayload, Path, str]:
+) -> RemoteBenchRunResultWithPerfPath:
     runtime = _load_bench_runtime_module()
     cases, _resolution = runtime.load_bench_cases(bench_file, operator_file)
     case_ids = [case.case_id for case in cases]
@@ -840,7 +852,7 @@ def _run_local_bench_msprof(
     *,
     verbose: bool = False,
     output: str | None = None,
-) -> tuple[ResultPayload, Path | None]:
+) -> BenchRunResult:
     runtime = _load_bench_runtime_module()
     cases, _ignored_resolution = runtime.load_bench_cases(bench_file, operator_file)
     resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
@@ -947,13 +959,13 @@ def _run_local_bench_msprof(
 def _run_local_bench_msprof_parallel(
     bench_file: Path,
     operator_file: Path,
-    devices: tuple[str, ...],
+    devices: NpuDevices,
     *,
     source_root: Path,
     json_search_root: Path,
     verbose: bool = False,
     output: str | None = None,
-) -> tuple[ResultPayload, Path | None]:
+) -> BenchRunResult:
     runtime = _load_bench_runtime_module()
     cases, _ignored_resolution = runtime.load_bench_cases(bench_file, operator_file)
     resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
@@ -1006,7 +1018,7 @@ def _run_remote_bench_msprof(
     verbose: bool = False,
     stderr: TextIO | None = None,
     output: str | None = None,
-) -> tuple[ResultPayload, Path | None, str]:
+) -> RemoteBenchRunResult:
     runtime = _load_bench_runtime_module()
     cases, _ignored_resolution = runtime.load_bench_cases(bench_file, operator_file)
     resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
@@ -1138,14 +1150,14 @@ def _run_remote_bench_msprof_parallel(
     remote_workspace: str,
     bench_file: Path,
     operator_file: Path,
-    devices: tuple[str, ...],
+    devices: NpuDevices,
     *,
     source_root: Path,
     json_search_root: Path,
     verbose: bool = False,
     stderr: TextIO | None = None,
     output: str | None = None,
-) -> tuple[ResultPayload, Path | None, str]:
+) -> RemoteBenchRunResult:
     runtime = _load_bench_runtime_module()
     cases, _ignored_resolution = runtime.load_bench_cases(bench_file, operator_file)
     resolution = resolve_bench_kernel_resolution(bench_file, operator_file)
@@ -1200,7 +1212,7 @@ def _sort_case_records(case_records: list[PerfCaseRecord], ordered_case_labels: 
     case_records.sort(key=lambda record: case_order[record.case_label])
 
 
-def _resolve_local_bench_profile_output_root() -> tuple[str | None, str]:
+def _resolve_local_bench_profile_output_root() -> ResolvedProfileOutputRoot:
     configured_root = os.environ.get(_LOCAL_BENCH_OUTPUT_DIR_ENV)
     if configured_root:
         return str(Path(configured_root).expanduser().resolve()), _LOCAL_BENCH_OUTPUT_DIR_ENV
@@ -1210,7 +1222,7 @@ def _resolve_local_bench_profile_output_root() -> tuple[str | None, str]:
 def _create_local_msprof_output_dir(
     case_label: str,
     preserved_run_dir: Path | None,
-) -> tuple[Path, tempfile.TemporaryDirectory[str] | None]:
+) -> PreservedRunDir:
     if preserved_run_dir is None:
         temp_dir = tempfile.TemporaryDirectory(prefix="triton-agent-msprof-")
         return Path(temp_dir.name), temp_dir
@@ -1261,7 +1273,7 @@ def _resolve_case_workspace_roots(
     operator_file: Path,
     *,
     invocation_root: Path | None,
-) -> tuple[Path, Path]:
+) -> CaseWorkspaceRoots:
     if invocation_root is not None:
         resolved_invocation_root = invocation_root.resolve()
         workspace_dirs = [bench_file.parent.resolve(), operator_file.parent.resolve()]
@@ -1304,7 +1316,7 @@ def _create_local_case_workspace(
     flat_input_paths: Sequence[Path] = (),
     source_root: Path,
     verbose: bool = False,
-) -> tuple[Path, Callable[[], None]]:
+) -> CaseWorkspace:
     temp_dir = tempfile.TemporaryDirectory(prefix=prefix)
     workspace = Path(temp_dir.name)
     workspace_root = workspace / _case_workspace_root_name(source_root)
@@ -1334,7 +1346,7 @@ def _create_local_msprof_case_workspace(
     source_root: Path,
     json_search_root: Path,
     verbose: bool = False,
-) -> tuple[Path, Callable[[], None]]:
+) -> CaseWorkspace:
     return _create_local_case_workspace(
         prefix=f"triton-agent-msprof-case-{case_id}-",
         input_paths=_bench_case_input_paths(
@@ -1477,44 +1489,7 @@ def _read_remote_msprof_metrics(
     verbose: bool = False,
     stderr: TextIO | None = None,
 ) -> PerfMetrics:
-    script = """
-import csv
-import json
-import pathlib
-import sys
-
-root = pathlib.Path(sys.argv[1])
-kernel_names = set(json.loads(sys.argv[2]))
-matches = sorted(path for path in root.rglob("op_statistic_*.csv") if path.is_file())
-if not matches:
-    raise SystemExit(f"No op_statistic_*.csv found under {root}")
-csv_path = max(matches, key=lambda path: path.stat().st_mtime_ns)
-
-with csv_path.open("r", encoding="utf-8", newline="") as handle:
-    reader = csv.DictReader(handle)
-    fieldnames = reader.fieldnames or []
-    if "Avg Time(us)" not in fieldnames:
-        raise SystemExit(f"Missing required column 'Avg Time(us)' in {csv_path}")
-    if "OP Type" not in fieldnames:
-        raise SystemExit(f"Missing required column 'OP Type' in {csv_path}")
-    ops = []
-    row_count = 0
-    for row in reader:
-        value = (row.get("Avg Time(us)") or "").strip()
-        if not value:
-            raise SystemExit(f"Empty 'Avg Time(us)' value in {csv_path}")
-        op_type = (row.get("OP Type") or "").strip()
-        if not op_type:
-            raise SystemExit(f"Empty 'OP Type' value in {csv_path}")
-        ops.append({"op_type": op_type, "avg_time_us": float(value)})
-        row_count += 1
-
-if row_count == 0:
-    raise SystemExit(f"No rows found in {csv_path}")
-matched = [row["avg_time_us"] for row in ops if row["op_type"] in kernel_names]
-kernel_avg_time_us = sum(matched) if matched else None
-print(json.dumps({"kernel_avg_time_us": kernel_avg_time_us, "ops": ops}, separators=(",", ":")))
-""".strip()
+    script = _build_remote_msprof_metrics_script()
     result = run_remote_command_buffered(
         spec,
         remote_workspace,
@@ -1528,7 +1503,7 @@ print(json.dumps({"kernel_avg_time_us": kernel_avg_time_us, "ops": ops}, separat
     if not value:
         raise RuntimeError(f"Remote msprof statistic parser did not return a value for {output_dir}.")
     parsed = json.loads(value)
-    return {
+    metrics: PerfMetrics = {
         "kernel_avg_time_us": (
             None if parsed["kernel_avg_time_us"] is None else float(parsed["kernel_avg_time_us"])
         ),
@@ -1540,6 +1515,37 @@ print(json.dumps({"kernel_avg_time_us": kernel_avg_time_us, "ops": ops}, separat
             for row in parsed["ops"]
         ],
     }
+    total_op_avg_time_us_raw = parsed.get("total_op_avg_time_us")
+    if total_op_avg_time_us_raw is not None:
+        metrics["total_op_avg_time_us"] = float(total_op_avg_time_us_raw)
+    return metrics
+
+
+def _build_remote_msprof_metrics_script() -> str:
+    return """
+import json
+import pathlib
+import sys
+
+from profile_csv_parser import (
+    find_latest_op_statistic_csv,
+    parse_op_statistic_csv,
+    resolve_perf_metrics,
+)
+
+root = pathlib.Path(sys.argv[1])
+kernel_names = json.loads(sys.argv[2])
+csv_path = find_latest_op_statistic_csv(root)
+if csv_path is None:
+    raise SystemExit(f"No op_statistic_*.csv or op_statistic.csv found under {root}")
+rows = parse_op_statistic_csv(csv_path)
+metrics = resolve_perf_metrics(
+    rows.ops,
+    kernel_names,
+    total_op_avg_time_us=rows.total_op_avg_time_us,
+)
+print(json.dumps(metrics, separators=(",", ":")))
+""".strip()
 
 
 def _cleanup_remote_msprof_output_dir(
@@ -1566,7 +1572,7 @@ def _create_local_torch_npu_profiler_case_workspace(
     source_root: Path,
     json_search_root: Path,
     verbose: bool = False,
-) -> tuple[Path, Callable[[], None]]:
+) -> CaseWorkspace:
     return _create_local_case_workspace(
         prefix=f"triton-agent-torch-npu-profiler-case-{case_id}-",
         input_paths=_bench_case_input_paths(
@@ -1961,7 +1967,7 @@ def _write_torch_npu_profiler_perf(
         _resolve_perf_output_path(operator_file, output=output),
         render_perf_case_records_jsonl(
             case_records,
-            missing_kernel_match_error="no resolved kernels matched profiler operator details",
+            missing_kernel_match_error="no resolved kernels matched profiler kernel view",
         ),
     )
 

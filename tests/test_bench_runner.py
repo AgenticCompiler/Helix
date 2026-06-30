@@ -2667,7 +2667,7 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
         self.assertIn('"total_op_avg_time_us":12.5', line)
         self.assertIn('"kernel_avg_time_us":12.5', line)
 
-    def test_total_op_avg_time_us_still_sums_ops_for_profiler_modes(self) -> None:
+    def test_profiler_mode_jsonl_uses_explicit_total_op_avg_time_us(self) -> None:
         module = load_perf_artifacts_module()
         record = module.PerfCaseRecord(
             case_label="case-e",
@@ -2679,12 +2679,13 @@ def profile_bench_case(bench_file, operator_file, case_id, preserved_run_dir=Non
                     {"op_type": "KA", "avg_time_us": 5.0},
                     {"op_type": "KB", "avg_time_us": 6.0},
                 ],
+                "total_op_avg_time_us": 13.5,
             },
             case_wall_clock_seconds=1.5,
             bench_mode="torch-npu-profiler",
         )
         line = module.render_perf_case_record_jsonl(record)
-        self.assertIn('"total_op_avg_time_us":11.0', line)
+        self.assertIn('"total_op_avg_time_us":13.5', line)
 
     # ------------------------------------------------------------------
     # cross-mode comparison guards
