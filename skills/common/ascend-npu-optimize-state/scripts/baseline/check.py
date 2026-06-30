@@ -61,7 +61,7 @@ def inspect_baseline_artifacts(workspace: Path) -> BaselineArtifactsInspection:
         operator_path = declared_state_file(root, workspace, declared_operator)
 
     if state is None and perf_path is None:
-        perf_path = existing_file(root / "perf.txt")
+        perf_path = _find_fallback_perf_artifact(root)
     if state is None and operator_path is None:
         operator_path = _find_baseline_operator_snapshot(root)
 
@@ -69,7 +69,7 @@ def inspect_baseline_artifacts(workspace: Path) -> BaselineArtifactsInspection:
     if state_path is None:
         issues.append("missing baseline/state.json")
     if perf_path is None:
-        issues.append(missing_issue(declared_perf, default_path="baseline/perf.txt"))
+        issues.append(missing_issue(declared_perf, default_path="baseline perf artifact"))
     if operator_path is None:
         if declared_operator is None:
             issues.append("missing baseline operator snapshot")
@@ -139,5 +139,15 @@ def _find_baseline_operator_snapshot(root: Path) -> Path | None:
         preferred_python = [path for path in candidates if path.suffix == ".py"]
         if len(preferred_python) == 1:
             return preferred_python[0]
+        return candidates[0]
+    return None
+
+
+def _find_fallback_perf_artifact(root: Path) -> Path | None:
+    legacy_perf = existing_file(root / "perf.txt")
+    if legacy_perf is not None:
+        return legacy_perf
+    candidates = sorted(path for path in root.glob("*_perf.txt") if path.is_file())
+    if len(candidates) == 1:
         return candidates[0]
     return None

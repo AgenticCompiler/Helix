@@ -452,7 +452,6 @@ def build_optimize_resume_prompt(
     lines.extend(["", f"Progress summary:\n{summary}"])
     return _resolve("\n".join(lines), language=language)
 
-
 def build_optimize_round_prompt(
     input_path: Path,
     output_path: Path | None,

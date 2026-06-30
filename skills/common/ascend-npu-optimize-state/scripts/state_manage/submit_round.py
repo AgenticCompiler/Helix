@@ -6,6 +6,7 @@ from pathlib import Path
 
 from round.check import check_round
 from shared.cli import build_check_payload, build_workflow_failure_payload
+from shared.results import build_check_result
 from state_manage.state_machine import complete_round
 
 
@@ -25,6 +26,16 @@ def build_parser(*, prog_name: str | None = None) -> argparse.ArgumentParser:
     return parser
 
 def _workflow_failure_guideline(message: str) -> str:
+    if (
+        "workflow state is not available" in message
+        or ".triton-agent/state.json" in message
+    ):
+        return (
+            "Optimize workflow state is unavailable. Use the staged "
+            "`ascend-npu-optimize-state` skill's `submit-baseline` subcommand to repair "
+            "session state, then reopen this `opt-round-N/` with `start-round` before "
+            "retrying `submit-round`."
+        )
     if (
         "workflow phase is awaiting_round_start" in message
         or "current_round=None" in message
@@ -52,10 +63,26 @@ def _workflow_failure_guideline(message: str) -> str:
     )
 
 
+def _missing_round_directory_payload(round_dir: Path) -> dict[str, object]:
+    result = build_check_result(
+        kind="round",
+        status="fail",
+        issues=(f"missing round directory: {round_dir.name}",),
+        summary=(
+            f"round check requires fixes: missing round directory: {round_dir.name}. "
+            "Create or reopen the expected `opt-round-N/` directory before submitting the round."
+        ),
+    )
+    return build_check_payload(result)
+
+
 def main(argv: list[str] | None = None, *, prog_name: str | None = None) -> int:
     parser = build_parser(prog_name=prog_name)
     args = parser.parse_args(argv)
     round_dir = Path(args.round_dir).expanduser().resolve()
+    if not round_dir.is_dir():
+        print(json.dumps(_missing_round_directory_payload(round_dir), ensure_ascii=True))
+        return 1
 
     result = check_round(
         round_dir,
@@ -64,7 +91,19 @@ def main(argv: list[str] | None = None, *, prog_name: str | None = None) -> int:
         optimize_target=args.optimize_target,
     )
     state_path = round_dir.parent / ".triton-agent" / "state.json"
-    if result.status == "pass" and state_path.exists():
+    if result.status == "pass":
+        if not state_path.exists():
+            print(
+                json.dumps(
+                    build_workflow_failure_payload(
+                        kind="round",
+                        issue="optimize workflow state is not available",
+                        guideline=_workflow_failure_guideline("optimize workflow state is not available"),
+                    ),
+                    ensure_ascii=True,
+                )
+            )
+            return 1
         try:
             complete_round(
                 state_path,

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 
-from baseline.check import check_baseline
+from baseline.check import check_baseline, load_baseline_state
 from shared.cli import build_check_payload, build_workflow_failure_payload
-from state_manage.state_machine import mark_baseline_passed
+from state_manage.state_machine import bootstrap_state, mark_baseline_passed
 
 
 def build_parser(*, prog_name: str | None = None) -> argparse.ArgumentParser:
@@ -30,14 +31,31 @@ def _workflow_failure_guideline(message: str) -> str:
     )
 
 
+def _bootstrap_missing_workflow_state(baseline_dir: Path, state_path: Path) -> None:
+    baseline_state = load_baseline_state(baseline_dir.parent)
+    bootstrap_state(
+        state_path,
+        run_id=_bootstrap_run_id(),
+        source_operator=baseline_state.source_operator,
+        baseline_reused=False,
+    )
+
+
+def _bootstrap_run_id() -> str:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"submit-baseline-{timestamp}"
+
+
 def main(argv: list[str] | None = None, *, prog_name: str | None = None) -> int:
     parser = build_parser(prog_name=prog_name)
     args = parser.parse_args(argv)
     baseline_dir = Path(args.baseline_dir).expanduser().resolve()
     result = check_baseline(baseline_dir)
     state_path = baseline_dir.parent / ".triton-agent" / "state.json"
-    if result.status == "pass" and state_path.exists():
+    if result.status == "pass":
         try:
+            if not state_path.exists():
+                _bootstrap_missing_workflow_state(baseline_dir, state_path)
             mark_baseline_passed(state_path)
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
             print(
