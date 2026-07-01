@@ -25,6 +25,23 @@ Read this generated index first. Then read only the one or two most relevant det
   - Scalar-looking code at the edges does not matter if the hot loop is actually cube-bound.
   - Small-shape kernels can show scalar overhead even when the better answer is dispatch or specialization rather than a local rewrite.
 
+### `sequential-launch-loop-sync`
+
+- Summary: A Python `for`/`while` loop drives an NPU kernel (Triton or aclnn) **per iteration** over a shrinking per-iteration work set, and each iteration also reads per-iteration state back to the host (`.item()`/`.cpu()`/`.tolist()`) to pick the next item. The cost is **launch×count + GPU→CPU sync×count**, not useful compute. Host-side structural symptom, distinct from in-kernel scalar overhead.
+- Source: [sequential-launch-loop-sync.md](symptoms/sequential-launch-loop-sync.md)
+- Evidence To Confirm:
+  - Code: a loop body that **both** launches an NPU kernel **and** reads a scalar/small tensor back via `.item()`/`.cpu()`/`.tolist()` in the same iteration, where the read-back gates the next iteration's item selection.
+  - Profile: the per-iteration NPU kernel has an **invocation count in the thousands** (≈ loop trip count) and dominates NPU time, while each invocation's useful compute is small and per-block time is nearly constant regardless of tail size (launch/DMA-setup-bound).
+  - The per-iteration work is **embarrassingly vectorizable over a tail** of remaining candidates.
+  - **Redundant-compute signal:** the tensor the per-iteration kernel writes is never read back (the loop reads a CPU mirror or recomputes the same quantity on CPU) → the NPU kernel is pure wasted work.
+- Candidate Pattern Directions:
+  - `cpu-offload-dedup` (Flavor B — **open the full file and run its Step 1 diagnostic before dismissing**)
+  - `auxiliary-op-fusion` (only if the kernel output is read *after* the loop, i.e. the dependency is not actually per-iteration)
+  - `grid-flatten-and-ub-buffering` (only for large/dense per-iteration work sets; a purely sequential algorithm usually regresses)
+- Common Non-Matches:
+  - A loop that launches an NPU kernel but does **no per-iteration host read-back** is not this symptom — it is likely collapsible; prefer `auxiliary-op-fusion`.
+  - If the per-iteration compute is **not** vectorizable over a tail, CPU offload just makes a slower Python scalar loop — do not apply `cpu-offload-dedup` Flavor B.
+
 ### `high-transfer-pressure`
 
 - Summary: The round looks dominated by data movement, staging cost, or transfer-heavy execution rather than useful cube or vector work.
