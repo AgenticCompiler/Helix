@@ -4,11 +4,11 @@ Use `run-test-baseline` for baseline or generation validation, and use `run-test
 
 
 ```bash
-python3 <skill-path>/scripts/run-command.py run-test-baseline --test-file test_<operator>.py --operator-file <operator>.py --test-mode standalone
-python3 <skill-path>/scripts/run-command.py run-test-baseline --test-file differential_test_<operator>.py --operator-file <operator>.py --test-mode differential
+python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py run-test-baseline --test-file test_<operator>.py --operator-file <operator>.py --test-mode standalone
+python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py run-test-baseline --test-file differential_test_<operator>.py --operator-file <operator>.py --test-mode differential
 
-python3 <skill-path>/scripts/run-command.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode differential --ref-operator-file <operator>.py
-python3 <skill-path>/scripts/run-command.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode standalone
+python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode differential --ref-operator-file <operator>.py
+python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --test-mode standalone
 ```
 
 Rules:
@@ -25,6 +25,6 @@ Rules:
 Remote examples:
 
 ```bash
-python3 <skill-path>/scripts/run-command.py run-test-baseline --test-file test_<operator>.py --operator-file <operator>.py --remote user@host:2222
-python3 <skill-path>/scripts/run-command.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --ref-operator-file <operator>.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
+python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py run-test-baseline --test-file test_<operator>.py --operator-file <operator>.py --remote user@host:2222
+python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py run-test-optimize --test-file differential_test_<operator>.py --operator-file opt_<operator>.py --ref-operator-file <operator>.py --remote user@host:2222 --remote-workdir /tmp/triton-agent
 ```

@@ -36,6 +36,11 @@ const PATH_FRAGMENT_RE =
 const WINDOWS_PATH_FRAGMENT_RE = /[A-Za-z]:[\\/][A-Za-z0-9_ .\\/(){}+@%:,=-]+/g;
 const EDIT_TOOLS = new Set(["edit", "write", "patch", "update", "multiedit", "multi_edit"]);
 const WORKFLOW_STATE_RELATIVE_PATH = ".triton-agent/state.json";
+const ROUND_ACTIVE_ALLOWED_TOP_LEVEL_FILES = new Set([
+  "opt-note.md",
+  "learned_lessons.md",
+  "supervisor-report.md",
+]);
 
 // ---------------------------------------------------------------------------
 // Hook entrypoints
@@ -476,17 +481,18 @@ async function denyReasonForBuiltInEditPath(pathText, cwd, workspaceRoot) {
     return builtInEditOutsideWorkspaceDenial();
   }
 
+  const workspaceRelativePath = displayPath(resolvedPath, workspaceRoot);
+  if (isProtectedRuntimeEditPath(workspaceRelativePath)) {
+    return protectedRuntimeEditDenial(workspaceRelativePath);
+  }
+
   const state = await loadWorkflowState(workspaceRoot);
   if (!state) {
     return builtInEditMissingStateDenial();
   }
 
-  const workspaceRelativePath = displayPath(resolvedPath, workspaceRoot);
   if (state.phase === "baseline") {
-    if (isAllowedBaselineEditPath(workspaceRelativePath, state.source_operator)) {
-      return null;
-    }
-    return baselinePhaseBuiltInEditDenial();
+    return null;
   }
   if (state.phase === "awaiting_round_start") {
     return awaitingRoundStartBuiltInEditDenial();
@@ -496,7 +502,7 @@ async function denyReasonForBuiltInEditPath(pathText, cwd, workspaceRoot) {
     if (!roundDir) {
       return builtInEditMissingStateDenial();
     }
-    if (workspaceRelativePath === roundDir || workspaceRelativePath.startsWith(`${roundDir}/`)) {
+    if (isAllowedRoundActiveEditPath(workspaceRelativePath, roundDir)) {
       return null;
     }
     return roundActiveBuiltInEditDenial(roundDir);
@@ -519,30 +525,10 @@ async function loadWorkflowState(workspaceRoot) {
     if (typeof state.phase !== "string" || state.phase.length === 0) {
       return null;
     }
-    if (typeof state.source_operator !== "string" || state.source_operator.length === 0) {
-      return null;
-    }
     return state;
   } catch {
     return null;
   }
-}
-
-function isAllowedBaselineEditPath(relativePath, sourceOperator) {
-  if (relativePath === "baseline" || relativePath.startsWith("baseline/")) {
-    return true;
-  }
-  if (relativePath === sourceOperator) {
-    return true;
-  }
-  if (relativePath.includes("/")) {
-    return false;
-  }
-  return (
-    relativePath.startsWith("test_") ||
-    relativePath.startsWith("differential_test_") ||
-    relativePath.startsWith("bench_")
-  );
 }
 
 function activeRoundDir(state) {
@@ -557,6 +543,41 @@ function activeRoundDir(state) {
     return null;
   }
   return roundEntry.round_dir;
+}
+
+function isProtectedRuntimeEditPath(relativePath) {
+  if (relativePath === ".triton-agent" || relativePath.startsWith(".triton-agent/")) {
+    return true;
+  }
+  if (relativePath === "triton-agent-logs" || relativePath.startsWith("triton-agent-logs/")) {
+    return true;
+  }
+  if (relativePath.startsWith(".codex/skills/") && relativePath.includes("/scripts/")) {
+    return true;
+  }
+  if (relativePath.startsWith(".claude/skills/") && relativePath.includes("/scripts/")) {
+    return true;
+  }
+  if (relativePath.startsWith(".opencode/skills/") && relativePath.includes("/scripts/")) {
+    return true;
+  }
+  if (relativePath.startsWith(".codex/triton-agent-hooks/")) {
+    return true;
+  }
+  if (relativePath.startsWith(".claude/triton-agent-hooks/")) {
+    return true;
+  }
+  if (relativePath.startsWith(".opencode/triton-agent-hooks/")) {
+    return true;
+  }
+  return false;
+}
+
+function isAllowedRoundActiveEditPath(relativePath, roundDir) {
+  if (relativePath === roundDir || relativePath.startsWith(`${roundDir}/`)) {
+    return true;
+  }
+  return !relativePath.includes("/") && ROUND_ACTIVE_ALLOWED_TOP_LEVEL_FILES.has(relativePath);
 }
 
 function builtInEditMissingStateDenial() {
@@ -577,9 +598,16 @@ function builtInEditOutsideWorkspaceDenial() {
 function baselinePhaseBuiltInEditDenial() {
   return (
     "Built-in edit tool blocked by optimize workflow policy. " +
-    "Current phase is baseline. During baseline, built-in edits are limited to the baseline-minimal file set: " +
-    "the source operator, root-level test/bench harness files, and `baseline/` artifacts. " +
+    "Current phase is baseline. " +
     "Finish or repair baseline, then submit it through `ascend-npu-optimize-state` `submit-baseline` before opening a round."
+  );
+}
+
+function protectedRuntimeEditDenial(relativePath) {
+  return (
+    "Built-in edit tool blocked by optimize workflow policy. " +
+    `\`${relativePath}\` is a protected internal runtime path. ` +
+    "Do not edit `.triton-agent/`, `triton-agent-logs/`, or backend-managed staged hook/skill implementation files."
   );
 }
 

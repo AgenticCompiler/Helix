@@ -7,13 +7,30 @@ instead of relying on a runner-generated policy.json file.
 """
 from __future__ import annotations
 
-import importlib.util
 import json
 import sys
 from pathlib import Path
-from typing import Any, Callable, cast
+from typing import Any
 
 from state_bootstrap import missing_state_denial_reason, resolve_workspace, should_manage_payload
+
+
+def _bootstrap_support_import() -> None:
+    current_dir = Path(__file__).resolve().parent
+    candidates = (
+        current_dir.parent.parent / "src",
+        current_dir.parent,
+        current_dir,
+    )
+    for candidate in candidates:
+        candidate_str = str(candidate)
+        if candidate.is_dir() and candidate_str not in sys.path:
+            sys.path.insert(0, candidate_str)
+
+
+_bootstrap_support_import()
+
+from hook_runtime.pretooluse_adapter import build_denial_output, run_with_policy  # noqa: E402
 
 
 _DENY_MESSAGE = (
@@ -39,17 +56,14 @@ def main() -> int:
     if tool_name in {"Edit", "MultiEdit", "Write"}:
         state_reason = missing_state_denial_reason(workspace)
         if state_reason is not None:
-            json.dump(_build_denial_output(state_reason), sys.stdout)
+            json.dump(build_denial_output(state_reason), sys.stdout)
             return 0
 
-    try:
-        reason = _deny_reason_for_tool_use(_policy(workspace), payload)
-    except Exception as exc:  # noqa: BLE001 - hook must fail open
-        print(f"triton-agent claude plugin PreToolUse failed open: {exc}", file=sys.stderr)
-        return 0
-    if reason is not None:
-        json.dump(_build_denial_output(reason), sys.stdout)
-    return 0
+    return run_with_policy(
+        policy=_policy(workspace),
+        payload=payload,
+        failure_prefix="triton-agent claude plugin PreToolUse",
+    )
 
 
 def _policy(workspace: Path) -> dict[str, Any]:
@@ -64,45 +78,6 @@ def _policy(workspace: Path) -> dict[str, Any]:
         ],
         "deny_message": _DENY_MESSAGE,
     }
-
-
-def _build_denial_output(reason: str) -> dict[str, Any]:
-    return {
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": reason,
-        }
-    }
-
-
-def _deny_reason_for_tool_use(policy: dict[str, Any], payload: dict[str, Any]) -> str | None:
-    module = _load_policy_module()
-    deny_reason = cast(
-        Callable[[dict[str, Any], dict[str, Any]], str | None] | None,
-        getattr(module, "deny_reason_for_tool_use", None),
-    )
-    if not callable(deny_reason):
-        raise RuntimeError("shared guard policy module does not export deny_reason_for_tool_use")
-    return deny_reason(policy, payload)
-
-
-def _load_policy_module() -> Any:
-    current_dir = Path(__file__).resolve().parent
-    candidates = [
-        current_dir / "tool_use_guard_policy.py",
-        current_dir.parent / "shared" / "tool_use_guard_policy.py",
-    ]
-    for candidate in candidates:
-        if not candidate.is_file():
-            continue
-        spec = importlib.util.spec_from_file_location("tool_use_guard_policy", candidate)
-        if spec is None or spec.loader is None:
-            continue
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
-    raise RuntimeError("unable to locate shared guard policy module")
 
 
 if __name__ == "__main__":

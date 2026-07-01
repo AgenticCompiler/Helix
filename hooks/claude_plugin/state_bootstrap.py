@@ -5,14 +5,27 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import shutil
+import sys
 
 
 PLUGIN_AGENT_NAME = "triton-agent-optimize"
-WORKFLOW_SCHEMA_VERSION = 1
-PHASE_BASELINE = "baseline"
-PHASE_AWAITING_ROUND_START = "awaiting_round_start"
-PHASE_ROUND_ACTIVE = "round_active"
-_VALID_PHASES = {PHASE_BASELINE, PHASE_AWAITING_ROUND_START, PHASE_ROUND_ACTIVE}
+
+
+def _bootstrap_support_import() -> None:
+    current_dir = Path(__file__).resolve().parent
+    candidates = (
+        current_dir.parent.parent / "src",
+        current_dir.parent,
+    )
+    for candidate in candidates:
+        candidate_str = str(candidate)
+        if candidate.is_dir() and candidate_str not in sys.path:
+            sys.path.insert(0, candidate_str)
+
+
+_bootstrap_support_import()
+
+from hook_runtime.optimize.workflow_state import prepare_or_restore_optimize_workflow_state  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -24,14 +37,16 @@ def bootstrap_runtime_state(workspace: Path) -> BootstrapResult:
     runtime_dir = workspace / ".triton-agent"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     state_path = runtime_dir / "state.json"
-    if state_path.exists():
-        return validate_existing_state(state_path)
-
-    return BootstrapResult(
-        _workflow_repair_guidance(
-            "Optimize runtime state is not initialized for this session."
+    try:
+        prepare_or_restore_optimize_workflow_state(
+            None,
+            workspace,
+            state_path=state_path,
+            run_id=_plugin_run_id(),
         )
-    )
+    except ValueError as exc:
+        return BootstrapResult(_workflow_repair_guidance(str(exc)))
+    return BootstrapResult(None)
 
 
 def validate_existing_state(state_path: Path) -> BootstrapResult:
@@ -52,7 +67,12 @@ def validate_existing_state(state_path: Path) -> BootstrapResult:
             )
         )
     try:
-        _validate_state_payload(payload)
+        prepare_or_restore_optimize_workflow_state(
+            None,
+            state_path.parent.parent,
+            state_path=state_path,
+            run_id=_plugin_run_id(),
+        )
     except ValueError as exc:
         return BootstrapResult(
             _workflow_repair_guidance(
@@ -91,29 +111,24 @@ def missing_state_denial_reason(workspace: Path) -> str | None:
     state_path = runtime_dir / "state.json"
     if not runtime_dir.exists():
         return _edit_blocked_workflow_guidance(
+            _workflow_repair_guidance(
             "Optimize workflow state is not initialized for this session."
+            )
         )
     if not state_path.exists():
         return _edit_blocked_workflow_guidance(
+            _workflow_repair_guidance(
             "Optimize workflow state is missing for this session."
+            )
         )
-    try:
-        payload = json.loads(state_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        return _edit_blocked_workflow_guidance(
-            f"Optimize workflow state is malformed: {exc}."
-        )
-    if not isinstance(payload, dict):
-        return _edit_blocked_workflow_guidance(
-            "Optimize workflow state is invalid."
-        )
-    try:
-        _validate_state_payload(payload)
-    except ValueError as exc:
-        return _edit_blocked_workflow_guidance(
-            f"Optimize workflow state is invalid: {exc}."
-        )
-    return None
+    result = validate_existing_state(state_path)
+    if result.additional_context is None:
+        return None
+    return _edit_blocked_workflow_guidance(result.additional_context)
+
+
+def _plugin_run_id() -> str:
+    return "claude-plugin-session"
 
 
 def _workflow_repair_guidance(problem: str) -> str:
@@ -128,30 +143,9 @@ def _workflow_repair_guidance(problem: str) -> str:
 def _edit_blocked_workflow_guidance(problem: str) -> str:
     return (
         "Built-in edit tool blocked by optimize workflow policy. "
-        + _workflow_repair_guidance(problem)
+        + problem
     )
 
-
-def _validate_state_payload(payload: dict[str, object]) -> None:
-    if payload.get("schema_version") != WORKFLOW_SCHEMA_VERSION:
-        raise ValueError("unsupported workflow state schema_version")
-    phase = payload.get("phase")
-    if phase not in _VALID_PHASES:
-        raise ValueError("unknown workflow state phase")
-    source_operator = payload.get("source_operator")
-    if not isinstance(source_operator, str) or not source_operator.strip():
-        raise ValueError("workflow state source_operator must be a non-empty string")
-    baseline = payload.get("baseline")
-    if not isinstance(baseline, dict):
-        raise ValueError("workflow state baseline must be an object")
-    if baseline.get("status") not in {"pending", "passed"}:
-        raise ValueError("workflow state baseline.status must be pending or passed")
-    current_round = payload.get("current_round")
-    if phase != PHASE_ROUND_ACTIVE and current_round is not None:
-        raise ValueError("non-active workflow phases require current_round=null")
-    rounds = payload.get("rounds")
-    if not isinstance(rounds, dict):
-        raise ValueError("workflow state rounds must be an object")
 
 __all__ = [
     "BootstrapResult",

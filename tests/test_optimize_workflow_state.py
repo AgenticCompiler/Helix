@@ -7,6 +7,7 @@ from typing import Any, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+import triton_agent.optimize.workflow_state as workflow_state_module
 from triton_agent.skill_loader import load_skill_script_module
 
 
@@ -14,7 +15,156 @@ def load_state_machine_module():
     return load_skill_script_module("ascend-npu-optimize-state", "state_manage/state_machine")
 
 
+def _write_resumable_optimize_workspace(workspace: Path, operator: Path) -> None:
+    baseline_dir = workspace / "baseline"
+    baseline_dir.mkdir()
+    (baseline_dir / "state.json").write_text(
+        json.dumps(
+            {
+                "baseline_kind": "original",
+                "source_operator": f"../{operator.name}",
+                "baseline_operator": "opt_kernel.py",
+                "test_file": f"../differential_test_{operator.stem}.py",
+                "test_mode": "differential",
+                "bench_file": f"../bench_{operator.stem}.py",
+                "bench_mode": "torch-npu-profiler",
+                "perf_artifact": "perf.txt",
+                "correctness_status": "passed",
+                "benchmark_status": "passed",
+                "baseline_established": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+    (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+    (workspace / "opt-note.md").write_text("history\n", encoding="utf-8")
+    (workspace / "differential_test_{}".format(operator.stem + ".py")).write_text(
+        "# test-mode: differential\nprint('test')\n",
+        encoding="utf-8",
+    )
+    (workspace / "bench_{}".format(operator.stem + ".py")).write_text(
+        "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
+        encoding="utf-8",
+    )
+    (workspace / "opt-round-1").mkdir()
+
+
 class OptimizeWorkflowStateTests(unittest.TestCase):
+    def test_prepare_or_restore_workflow_state_reuses_existing_valid_state(self) -> None:
+        module = load_state_machine_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            state_path = workspace / ".triton-agent" / "state.json"
+            state_path.parent.mkdir()
+            module.bootstrap_state(
+                state_path,
+                run_id="existing-run",
+                baseline_reused=True,
+            )
+
+            result = workflow_state_module.prepare_or_restore_optimize_workflow_state(
+                operator,
+                workspace,
+                state_path=state_path,
+                run_id="new-run",
+            )
+            payload = json.loads(state_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result.mode, "reused-existing-state")
+        self.assertEqual(payload["run_id"], "existing-run")
+        self.assertEqual(payload["phase"], "awaiting_round_start")
+        self.assertNotIn("source_operator", payload)
+
+    def test_prepare_or_restore_workflow_state_rebuilds_from_resumable_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            _write_resumable_optimize_workspace(workspace, operator)
+            state_path = workspace / ".triton-agent" / "state.json"
+            state_path.parent.mkdir()
+
+            result = workflow_state_module.prepare_or_restore_optimize_workflow_state(
+                operator,
+                workspace,
+                state_path=state_path,
+                run_id="resume-run",
+            )
+            payload = json.loads(state_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result.mode, "rebuilt-from-durable-artifacts")
+        self.assertEqual(payload["run_id"], "resume-run")
+        self.assertEqual(payload["phase"], "awaiting_round_start")
+        self.assertEqual(payload["baseline"], {"status": "passed", "submitted_at": None})
+        self.assertIsNone(payload["current_round"])
+        self.assertNotIn("source_operator", payload)
+
+    def test_prepare_or_restore_workflow_state_bootstraps_fresh_baseline_when_workspace_is_new(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            state_path = workspace / ".triton-agent" / "state.json"
+            state_path.parent.mkdir()
+
+            result = workflow_state_module.prepare_or_restore_optimize_workflow_state(
+                operator,
+                workspace,
+                state_path=state_path,
+                run_id="fresh-run",
+            )
+            payload = json.loads(state_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result.mode, "bootstrapped-fresh-baseline")
+        self.assertEqual(payload["run_id"], "fresh-run")
+        self.assertEqual(payload["phase"], "baseline")
+        self.assertEqual(payload["baseline"], {"status": "pending", "submitted_at": None})
+        self.assertNotIn("source_operator", payload)
+
+    def test_prepare_or_restore_workflow_state_rejects_invalid_existing_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            operator = workspace / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            state_path = workspace / ".triton-agent" / "state.json"
+            state_path.parent.mkdir()
+            state_path.write_text("{", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "malformed workflow state JSON"):
+                workflow_state_module.prepare_or_restore_optimize_workflow_state(
+                    operator,
+                    workspace,
+                    state_path=state_path,
+                    run_id="broken-run",
+                )
+
+    def test_prepare_or_restore_without_hint_rejects_optimize_markers_when_baseline_state_is_invalid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            baseline_dir = workspace / "baseline"
+            baseline_dir.mkdir()
+            (baseline_dir / "state.json").write_text("{", encoding="utf-8")
+            (workspace / "opt-note.md").write_text("history\n", encoding="utf-8")
+            (workspace / "opt-round-1").mkdir()
+            state_path = workspace / ".triton-agent" / "state.json"
+            state_path.parent.mkdir()
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "cannot determine source operator from baseline/state.json",
+            ):
+                workflow_state_module.prepare_or_restore_optimize_workflow_state(
+                    None,
+                    workspace,
+                    state_path=state_path,
+                    run_id="broken-baseline-run",
+                )
+
+            self.assertFalse(state_path.exists())
+
     def test_start_round_module_is_exposed_from_new_skill(self) -> None:
         module = load_skill_script_module(
             "ascend-npu-optimize-state",
@@ -57,22 +207,22 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             module.bootstrap_state(
                 state_path,
                 run_id="optimize-20260622-123456-abcdef",
-                source_operator="kernel.py",
                 baseline_reused=False,
             )
             payload = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertEqual(payload["phase"], "baseline")
             self.assertEqual(payload["baseline"], {"status": "pending", "submitted_at": None})
+            self.assertNotIn("source_operator", payload)
 
             module.bootstrap_state(
                 state_path,
                 run_id="optimize-20260622-123456-abcdef",
-                source_operator="kernel.py",
                 baseline_reused=True,
             )
             payload = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertEqual(payload["phase"], "awaiting_round_start")
             self.assertEqual(payload["baseline"], {"status": "passed", "submitted_at": None})
+            self.assertNotIn("source_operator", payload)
 
     def test_bootstrap_state_writes_pretty_printed_json(self) -> None:
         module = load_state_machine_module()
@@ -84,7 +234,6 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             module.bootstrap_state(
                 state_path,
                 run_id="optimize-20260630-123456-abcdef",
-                source_operator="kernel.py",
                 baseline_reused=False,
             )
             text = state_path.read_text(encoding="utf-8")
@@ -101,7 +250,6 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             module.bootstrap_state(
                 state_path,
                 run_id="optimize-20260622-123456-abcdef",
-                source_operator="kernel.py",
                 baseline_reused=True,
             )
 
@@ -136,7 +284,6 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             module.bootstrap_state(
                 state_path,
                 run_id="optimize-20260627-123456-abcdef",
-                source_operator="kernel.py",
                 baseline_reused=True,
             )
 
@@ -167,7 +314,6 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             module.bootstrap_state(
                 state_path,
                 run_id="optimize-20260627-123456-abcdef",
-                source_operator="kernel.py",
                 baseline_reused=True,
             )
 
@@ -204,7 +350,6 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             module.bootstrap_state(
                 state_path,
                 run_id="optimize-20260627-123456-abcdef",
-                source_operator="kernel.py",
                 baseline_reused=True,
             )
             module.start_round(
@@ -245,7 +390,6 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
                         "schema_version": 1,
                         "run_id": "optimize-20260627-123456-abcdef",
                         "phase": "round_active",
-                        "source_operator": "kernel.py",
                         "current_round": 4,
                         "baseline": {"status": "passed", "submitted_at": "2026-06-27T12:34:56Z"},
                         "rounds": {
@@ -283,7 +427,6 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             module.bootstrap_state(
                 state_path,
                 run_id="optimize-20260627-123456-abcdef",
-                source_operator="kernel.py",
                 baseline_reused=True,
             )
             module.start_round(
@@ -315,7 +458,6 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             module.bootstrap_state(
                 state_path,
                 run_id="optimize-20260622-123456-abcdef",
-                source_operator="kernel.py",
                 baseline_reused=True,
             )
             module.start_round(
@@ -343,7 +485,6 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             module.bootstrap_state(
                 state_path,
                 run_id="optimize-20260622-123456-abcdef",
-                source_operator="kernel.py",
                 baseline_reused=True,
             )
             module.start_round(
@@ -390,7 +531,6 @@ class OptimizeWorkflowStateTests(unittest.TestCase):
             module.bootstrap_state(
                 state_path,
                 run_id="optimize-20260623-123456-abcdef",
-                source_operator="kernel.py",
                 baseline_reused=True,
             )
             module.start_round(

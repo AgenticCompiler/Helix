@@ -15,16 +15,9 @@ import os
 import re
 import shlex
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
-# ---------------------------------------------------------------------------
-# Static policy constants
-# ---------------------------------------------------------------------------
-
-# Read-oriented shell commands. If any of these appear in a Bash command, the
-# command is scanned for path references and each referenced path is checked
-# against the read-deny policy.
 READ_COMMANDS = {
     "awk",
     "cat",
@@ -41,8 +34,6 @@ READ_COMMANDS = {
     "tree",
 }
 
-# Built-in edit tools are checked against workflow phase rules. Bash-based
-# writes remain intentionally out of scope for this first version.
 EDIT_TOOLS = {"Edit", "MultiEdit", "Write"}
 READ_TOOL_PATH_KEYS = ("file_path", "filePath")
 EDIT_TOOL_PATH_KEYS = ("file_path", "path", "filePath", "notebook_path", "notebookPath")
@@ -53,6 +44,13 @@ PROTECTED_RELATIVE_PATH_PREFIXES = (
     "triton-agent-logs/",
 )
 WORKFLOW_STATE_RELATIVE_PATH = Path(".triton-agent") / "state.json"
+ROUND_ACTIVE_ALLOWED_TOP_LEVEL_FILES = frozenset(
+    {
+        "opt-note.md",
+        "learned_lessons.md",
+        "supervisor-report.md",
+    }
+)
 
 PATH_FRAGMENT_RE = re.compile(
     r"(?:^|[^A-Za-z0-9_./-])(?P<path>(?:/|\.\.?/|\.triton-agent/|\.codex/|\.claude/|\.opencode/|triton-agent-logs/)[A-Za-z0-9_./*?{}+@%:,=-]+)"
@@ -62,14 +60,7 @@ WINDOWS_PATH_FRAGMENT_RE = re.compile(
 )
 
 
-# ---------------------------------------------------------------------------
-# Data containers
-# ---------------------------------------------------------------------------
-
-
 class PathAccessContext:
-    """Resolved policy inputs reused across read and edit checks."""
-
     __slots__ = ("workspace_root", "cwd", "allow_read_roots", "deny_read_globs", "deny_message")
 
     def __init__(
@@ -88,21 +79,16 @@ class PathAccessContext:
         self.deny_message = deny_message
 
 
-# ---------------------------------------------------------------------------
-# Public entrypoint
-# ---------------------------------------------------------------------------
-
-
 def deny_reason_for_tool_use(policy: dict[str, Any], payload: dict[str, Any]) -> str | None:
-    """Return a denial reason string, or None when the tool call is allowed."""
     guard_policy = _guard_policy(policy)
     if guard_policy.get("enabled") is False:
         return None
 
     tool_name = payload.get("tool_name")
-    tool_input = payload.get("tool_input")
-    if not isinstance(tool_input, dict):
+    raw_tool_input = payload.get("tool_input")
+    if not isinstance(raw_tool_input, dict):
         return None
+    tool_input = cast(dict[str, Any], raw_tool_input)
 
     context = _build_path_access_context(policy, guard_policy, payload, tool_input)
     if context is None:
@@ -129,15 +115,10 @@ def deny_reason_for_tool_use(policy: dict[str, Any], payload: dict[str, Any]) ->
     return _deny_reason_for_bash_command(command, context)
 
 
-# ---------------------------------------------------------------------------
-# Policy/context construction
-# ---------------------------------------------------------------------------
-
-
 def _guard_policy(policy: dict[str, Any]) -> dict[str, Any]:
     guard_policy = policy.get("guard")
     if isinstance(guard_policy, dict):
-        return guard_policy
+        return cast(dict[str, Any], guard_policy)
     return policy
 
 
@@ -168,15 +149,7 @@ def _build_path_access_context(
     )
 
 
-# ---------------------------------------------------------------------------
-# Tool-specific dispatch
-# ---------------------------------------------------------------------------
-
-
 def _deny_reason_for_bash_command(command: str, context: PathAccessContext) -> str | None:
-    # We do not try to interpret shell semantics fully. Instead we collect
-    # path-like references from clearly read-oriented commands and deny as soon
-    # as one referenced path violates policy.
     for path_text in _collect_command_path_references(command):
         reason = _deny_reason_for_path_access(path_text, context)
         if reason is not None:
@@ -205,18 +178,18 @@ def _deny_reason_for_built_in_edit_path(path_text: str, context: PathAccessConte
     if not _is_relative_to(resolved_path, context.workspace_root):
         return _built_in_edit_outside_workspace_denial()
 
+    workspace_relative_path = resolved_path.relative_to(context.workspace_root).as_posix()
+    if _is_protected_runtime_edit_path(workspace_relative_path):
+        return _protected_runtime_edit_denial(workspace_relative_path)
+
     workflow_state = _workflow_state_or_none(context.workspace_root)
     if workflow_state is None:
         return _built_in_edit_missing_state_denial()
 
     phase = _require_state_string(workflow_state, "phase")
-    source_operator = _require_state_string(workflow_state, "source_operator")
-    workspace_relative_path = resolved_path.relative_to(context.workspace_root).as_posix()
 
     if phase == "baseline":
-        if _is_allowed_baseline_edit_path(workspace_relative_path, source_operator):
-            return None
-        return _baseline_phase_built_in_edit_denial()
+        return None
 
     if phase == "awaiting_round_start":
         return _awaiting_round_start_built_in_edit_denial()
@@ -225,16 +198,11 @@ def _deny_reason_for_built_in_edit_path(path_text: str, context: PathAccessConte
         active_round_dir = _active_round_dir(workflow_state)
         if active_round_dir is None:
             return _built_in_edit_missing_state_denial()
-        if workspace_relative_path == active_round_dir or workspace_relative_path.startswith(f"{active_round_dir}/"):
+        if _is_allowed_round_active_edit_path(workspace_relative_path, active_round_dir):
             return None
         return _round_active_built_in_edit_denial(active_round_dir)
 
     return _built_in_edit_missing_state_denial()
-
-
-# ---------------------------------------------------------------------------
-# Built-in edit workflow-state helpers
-# ---------------------------------------------------------------------------
 
 
 def _workflow_state_or_none(workspace_root: Path) -> dict[str, Any] | None:
@@ -242,7 +210,6 @@ def _workflow_state_or_none(workspace_root: Path) -> dict[str, Any] | None:
     try:
         state = _load_json(state_path)
         _require_state_string(state, "phase")
-        _require_state_string(state, "source_operator")
     except (FileNotFoundError, ValueError, TypeError):
         return None
     return state
@@ -255,34 +222,49 @@ def _require_state_string(state: dict[str, Any], key: str) -> str:
     return value
 
 
-def _is_allowed_baseline_edit_path(workspace_relative_path: str, source_operator: str) -> bool:
-    if workspace_relative_path == "baseline" or workspace_relative_path.startswith("baseline/"):
-        return True
-    if workspace_relative_path == source_operator:
-        return True
-    if "/" in workspace_relative_path:
-        return False
-    file_name = Path(workspace_relative_path).name
-    return (
-        file_name.startswith("test_")
-        or file_name.startswith("differential_test_")
-        or file_name.startswith("bench_")
-    )
-
-
 def _active_round_dir(state: dict[str, Any]) -> str | None:
     current_round = state.get("current_round")
-    rounds = state.get("rounds")
-    if not isinstance(current_round, int) or not isinstance(rounds, dict):
+    raw_rounds = state.get("rounds")
+    if not isinstance(current_round, int) or not isinstance(raw_rounds, dict):
         return None
+    rounds = cast(dict[str, Any], raw_rounds)
     round_entry = rounds.get(str(current_round))
     if not isinstance(round_entry, dict):
         return None
-    status = round_entry.get("status")
-    round_dir = round_entry.get("round_dir")
+    round_entry_dict = cast(dict[str, Any], round_entry)
+    status = round_entry_dict.get("status")
+    round_dir = round_entry_dict.get("round_dir")
     if status != "active" or not isinstance(round_dir, str) or not round_dir:
         return None
     return round_dir
+
+
+def _is_protected_runtime_edit_path(workspace_relative_path: str) -> bool:
+    if workspace_relative_path == ".triton-agent" or workspace_relative_path.startswith(".triton-agent/"):
+        return True
+    if workspace_relative_path == "triton-agent-logs" or workspace_relative_path.startswith("triton-agent-logs/"):
+        return True
+    if workspace_relative_path.startswith(".codex/skills/") and "/scripts/" in workspace_relative_path:
+        return True
+    if workspace_relative_path.startswith(".claude/skills/") and "/scripts/" in workspace_relative_path:
+        return True
+    if workspace_relative_path.startswith(".opencode/skills/") and "/scripts/" in workspace_relative_path:
+        return True
+    if workspace_relative_path.startswith(".codex/triton-agent-hooks/"):
+        return True
+    if workspace_relative_path.startswith(".claude/triton-agent-hooks/"):
+        return True
+    if workspace_relative_path.startswith(".opencode/triton-agent-hooks/"):
+        return True
+    return False
+
+
+def _is_allowed_round_active_edit_path(workspace_relative_path: str, active_round_dir: str) -> bool:
+    if workspace_relative_path == active_round_dir or workspace_relative_path.startswith(f"{active_round_dir}/"):
+        return True
+    if "/" not in workspace_relative_path and workspace_relative_path in ROUND_ACTIVE_ALLOWED_TOP_LEVEL_FILES:
+        return True
+    return False
 
 
 def _built_in_edit_missing_state_denial() -> str:
@@ -300,12 +282,11 @@ def _built_in_edit_outside_workspace_denial() -> str:
     )
 
 
-def _baseline_phase_built_in_edit_denial() -> str:
+def _protected_runtime_edit_denial(workspace_relative_path: str) -> str:
     return (
         "Built-in edit tool blocked by optimize workflow policy. "
-        "Current phase is baseline. During baseline, built-in edits are limited to the baseline-minimal file set: "
-        "the source operator, root-level test/bench harness files, and `baseline/` artifacts. "
-        "Finish or repair baseline, then submit it through `ascend-npu-optimize-state` `submit-baseline` before opening a round."
+        f"`{workspace_relative_path}` is a protected internal runtime path. "
+        "Do not edit `.triton-agent/`, `triton-agent-logs/`, or backend-managed staged hook/skill implementation files."
     )
 
 
@@ -326,11 +307,6 @@ def _round_active_built_in_edit_denial(round_dir: str) -> str:
         "`ascend-npu-optimize-state` `set-current-round-state` before continuing edits. "
         "When this round is ready, use `ascend-npu-optimize-state` `submit-round` to submit it before moving on."
     )
-
-
-# ---------------------------------------------------------------------------
-# Read-path extraction from tool input / shell commands
-# ---------------------------------------------------------------------------
 
 
 def _first_path_text(tool_input: dict[str, Any], keys: tuple[str, ...]) -> str | None:
@@ -511,17 +487,12 @@ def _is_nested_path_fragment(path_text: str, explicit_path_tokens: set[str]) -> 
     return any(path_text != token and path_text in token for token in explicit_path_tokens)
 
 
-# ---------------------------------------------------------------------------
-# Low-level path and policy helpers
-# ---------------------------------------------------------------------------
-
-
 def _load_json(path: Path) -> dict[str, Any]:
     with path.open(encoding="utf-8") as file:
         data = json.load(file)
     if not isinstance(data, dict):
         raise ValueError(f"expected JSON object in {path}")
-    return data
+    return cast(dict[str, Any], data)
 
 
 def _resolve_policy_path(value: object) -> Path | None:

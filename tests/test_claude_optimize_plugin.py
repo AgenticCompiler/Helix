@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -94,6 +95,83 @@ class ClaudeOptimizePluginBuilderTests(unittest.TestCase):
             )
             self.assertEqual(plugin_manifest["name"], "triton-agent-optimize")
             self.assertEqual(plugin_manifest["version"], "0.1.0")
+            self.assertTrue((built_dir / "hooks" / "state_bootstrap.py").exists())
+            self.assertTrue((built_dir / "hooks" / "session_start.py").exists())
+            self.assertTrue(
+                (built_dir / "hooks" / "hook_runtime" / "__init__.py").exists()
+            )
+            self.assertTrue(
+                (built_dir / "hooks" / "hook_runtime" / "optimize" / "workflow_state.py").exists()
+            )
+            self.assertFalse((built_dir / "python_support").exists())
+            self.assertTrue((built_dir / "skills" / "ascend-npu-optimize-state").is_dir())
+
+    def test_build_plugin_copies_latest_hook_runtime_tool_use_decision(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "triton-agent-optimize"
+
+            built_dir = build_claude_optimize_plugin(output_dir)
+
+            shared_guard = (
+                Path(__file__).resolve().parents[1]
+                / "src"
+                / "hook_runtime"
+                / "tool_use_decision.py"
+            )
+            built_guard = built_dir / "hooks" / "hook_runtime" / "tool_use_decision.py"
+
+            self.assertTrue(built_guard.exists())
+            self.assertEqual(
+                built_guard.read_text(encoding="utf-8"),
+                shared_guard.read_text(encoding="utf-8"),
+            )
+
+    def test_build_plugin_copies_hook_runtime_pretooluse_adapter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "triton-agent-optimize"
+
+            built_dir = build_claude_optimize_plugin(output_dir)
+
+            shared_helper = (
+                Path(__file__).resolve().parents[1]
+                / "src"
+                / "hook_runtime"
+                / "pretooluse_adapter.py"
+            )
+            built_helper = built_dir / "hooks" / "hook_runtime" / "pretooluse_adapter.py"
+
+            self.assertTrue(built_helper.exists())
+            self.assertEqual(
+                built_helper.read_text(encoding="utf-8"),
+                shared_helper.read_text(encoding="utf-8"),
+            )
+
+    def test_built_plugin_session_start_bootstraps_baseline_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            plugin_dir = build_claude_optimize_plugin(tmpdir / "triton-agent-optimize")
+            workspace = tmpdir / "workspace"
+            workspace.mkdir()
+
+            completed = subprocess.run(
+                [sys.executable, str(plugin_dir / "hooks" / "session_start.py")],
+                input=json.dumps(
+                    {
+                        "agent_type": "triton-agent-optimize:triton-agent-optimize",
+                        "cwd": str(workspace),
+                    }
+                ),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            state_payload = json.loads(
+                (workspace / ".triton-agent" / "state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state_payload["phase"], "baseline")
+            self.assertEqual(state_payload["baseline"], {"status": "pending", "submitted_at": None})
 
 
 if __name__ == "__main__":

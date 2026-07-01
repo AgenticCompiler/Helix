@@ -9,7 +9,7 @@ from triton_agent.optimize.memory_file import MemoryFileManager, MemoryFileState
 from triton_agent.optimize.subagents import perf_diagnosis_subagent_definition
 from triton_agent.optimize.workflow_state import (
     archive_round_timings_from_state,
-    bootstrap_optimize_workflow_state,
+    prepare_or_restore_optimize_workflow_state,
 )
 from triton_agent.subagents import SubagentManager, SubagentStageSet
 
@@ -107,11 +107,11 @@ class OptimizeSessionArtifactsManager:
                 raise RuntimeError("source_operator_path is required when enable_agent_hooks=True")
             hidden_triton_agent_dir = self._prepare_hidden_triton_agent_dir(workdir)
             workflow_state_path = hidden_triton_agent_dir / "state.json"
-            bootstrap_optimize_workflow_state(
-                workflow_state_path,
+            prepare_or_restore_optimize_workflow_state(
+                source_operator_path,
+                workdir,
+                state_path=workflow_state_path,
                 run_id=archive_state.run_id,
-                source_operator=source_operator_path,
-                baseline_reused=False,
             )
         subagent_stage_set = self._prepare_subagents(
             agent_name=agent_name,
@@ -178,11 +178,11 @@ class OptimizeSessionArtifactsManager:
             if source_operator_path is None:
                 raise RuntimeError("source_operator_path is required when enable_agent_hooks=True")
             workflow_state_path = hidden_triton_agent_dir / "state.json"
-            bootstrap_optimize_workflow_state(
-                workflow_state_path,
+            prepare_or_restore_optimize_workflow_state(
+                source_operator_path,
+                workdir,
+                state_path=workflow_state_path,
                 run_id=archive_state.run_id,
-                source_operator=source_operator_path,
-                baseline_reused=False,
             )
         subagent_stage_set: SubagentStageSet | None = None
         try:

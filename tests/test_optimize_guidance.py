@@ -10,6 +10,41 @@ import triton_agent.optimize.memory_file as optimize_memory_file
 from triton_agent.optimize.session_artifacts import OptimizeSessionArtifactsManager
 
 
+def _write_resumable_optimize_workspace(workspace: Path, operator: Path) -> None:
+    baseline_dir = workspace / "baseline"
+    baseline_dir.mkdir()
+    (baseline_dir / "state.json").write_text(
+        json.dumps(
+            {
+                "baseline_kind": "original",
+                "source_operator": f"../{operator.name}",
+                "baseline_operator": "opt_kernel.py",
+                "test_file": f"../differential_test_{operator.stem}.py",
+                "test_mode": "differential",
+                "bench_file": f"../bench_{operator.stem}.py",
+                "bench_mode": "torch-npu-profiler",
+                "perf_artifact": "perf.txt",
+                "correctness_status": "passed",
+                "benchmark_status": "passed",
+                "baseline_established": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (baseline_dir / "perf.txt").write_text("latency-a: 1.0\n", encoding="utf-8")
+    (baseline_dir / "opt_kernel.py").write_text("print('baseline')\n", encoding="utf-8")
+    (workspace / "opt-note.md").write_text("history\n", encoding="utf-8")
+    (workspace / f"differential_test_{operator.stem}.py").write_text(
+        "# test-mode: differential\nprint('test')\n",
+        encoding="utf-8",
+    )
+    (workspace / f"bench_{operator.stem}.py").write_text(
+        "# bench-mode: torch-npu-profiler\n# kernel: k\nprint('bench')\n",
+        encoding="utf-8",
+    )
+    (workspace / "opt-round-1").mkdir()
+
+
 class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
     def test_memory_file_manager_selects_agents_by_default(self) -> None:
         from triton_agent.optimize.memory_file import MemoryFileManager
@@ -261,6 +296,51 @@ class OptimizeSessionArtifactsManagerTests(unittest.TestCase):
             warnings = manager.cleanup_checked_session(state_with_hooks)
             self.assertEqual(warnings, [])
             self.assertFalse((workdir / ".triton-agent").exists())
+
+    def test_prepare_checked_session_rebuilds_state_from_resumable_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            _write_resumable_optimize_workspace(workdir, operator)
+            manager = OptimizeSessionArtifactsManager()
+
+            state = manager.prepare_checked_session(
+                workdir,
+                agent_name="codex",
+                enable_agent_hooks=True,
+                source_operator_path=operator,
+            )
+            assert state.workflow_state_path is not None
+            payload = json.loads(state.workflow_state_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(payload["phase"], "awaiting_round_start")
+            self.assertEqual(payload["baseline"], {"status": "passed", "submitted_at": None})
+
+            warnings = manager.cleanup_checked_session(state)
+            self.assertEqual(warnings, [])
+            self.assertFalse((workdir / ".triton-agent").exists())
+
+    def test_prepare_checked_session_still_rejects_stale_hidden_runtime_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            operator = workdir / "kernel.py"
+            operator.write_text("print('x')\n", encoding="utf-8")
+            runtime_dir = workdir / ".triton-agent"
+            runtime_dir.mkdir()
+            (runtime_dir / "junk.txt").write_text("stale\n", encoding="utf-8")
+            manager = OptimizeSessionArtifactsManager()
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "Existing \\.triton-agent/ directory contains data; remove it before starting optimize.",
+            ):
+                manager.prepare_checked_session(
+                    workdir,
+                    agent_name="codex",
+                    enable_agent_hooks=True,
+                    source_operator_path=operator,
+                )
 
     def test_prepare_creates_shared_guidance_without_eager_handoff_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

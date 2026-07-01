@@ -42,12 +42,15 @@ def prepare_claude_hooks(
 
     workspace = workdir.absolute()
     policy_workspace = workspace.resolve()
+    settings_template = hooks_root / "claude" / "settings.json"
     guard_template = hooks_root / "claude" / "pretooluse_guard.py"
-    policy_engine_template = hooks_root / "shared" / "tool_use_guard_policy.py"
+    hook_runtime_template = hooks_root.parent / "src" / "hook_runtime"
+    if not settings_template.is_file():
+        raise RuntimeError(f"Claude hook settings template does not exist: {settings_template}")
     if not guard_template.is_file():
         raise RuntimeError(f"Claude hook guard template does not exist: {guard_template}")
-    if not policy_engine_template.is_file():
-        raise RuntimeError(f"Shared guard policy template does not exist: {policy_engine_template}")
+    if not hook_runtime_template.is_dir():
+        raise RuntimeError(f"Hook runtime template directory does not exist: {hook_runtime_template}")
 
     hook_dir = workspace / _CLAUDE_HOOK_DIR
     settings_json = workspace / _CLAUDE_SETTINGS_JSON
@@ -60,14 +63,14 @@ def prepare_claude_hooks(
         hook_dir.parent.mkdir(parents=True, exist_ok=True)
         hook_dir.mkdir(parents=True)
         shutil.copy2(guard_template, hook_dir / "pretooluse_guard.py")
-        shutil.copy2(policy_engine_template, hook_dir / "tool_use_guard_policy.py")
+        shutil.copytree(hook_runtime_template, hook_dir / "hook_runtime")
         _write_claude_policy(
             hook_dir / "policy.json",
             policy_workspace,
             options,
             extra_allowed_read_roots=extra_allowed_read_roots,
         )
-        _write_claude_settings(settings_json, hook_dir)
+        shutil.copy2(settings_template, settings_json)
         created_paths.append(settings_json)
         created_paths.append(hook_dir)
     except Exception:
@@ -99,32 +102,6 @@ def _write_claude_policy(
         "deny_message": _CLAUDE_DENY_MESSAGE,
     }
     policy_path.write_text(json.dumps(policy, indent=2) + "\n", encoding="utf-8")
-
-
-def _write_claude_settings(settings_path: Path, hook_dir: Path) -> None:
-    settings = {
-        "hooks": {
-            "PreToolUse": [
-                {
-                    "matcher": "Bash|Read|Grep|Glob|Edit|MultiEdit|Write",
-                    "hooks": [
-                        {
-                            "type": "command",
-                            "command": "python3",
-                            "args": [
-                                str(hook_dir / "pretooluse_guard.py"),
-                                "--policy",
-                                str(hook_dir / "policy.json"),
-                            ],
-                        }
-                    ],
-                }
-            ]
-        }
-    }
-    settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
-
-
 def _allow_read_roots(workspace: Path, extra_allowed_read_roots: Sequence[Path]) -> list[str]:
     roots = [str(workspace)]
     seen = {workspace}

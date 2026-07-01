@@ -21,7 +21,7 @@ triton-agent probe-bench \
 If the staged helper script in this skill already exposes the subcommand, the equivalent helper form is:
 
 ```bash
-python3 <skill-path>/scripts/run-command.py probe-bench \
+python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py probe-bench \
   --bench-file bench_<operator>.py \
   --operator-file opt_<operator>.py \
   --baseline-operator-file baseline/<operator>.py

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 
-from baseline.check import check_baseline, load_baseline_state
+from baseline.check import check_baseline
 from shared.cli import build_check_payload, build_workflow_failure_payload
 from state_manage.state_machine import bootstrap_state, mark_baseline_passed
 
@@ -32,11 +32,9 @@ def _workflow_failure_guideline(message: str) -> str:
 
 
 def _bootstrap_missing_workflow_state(baseline_dir: Path, state_path: Path) -> None:
-    baseline_state = load_baseline_state(baseline_dir.parent)
     bootstrap_state(
         state_path,
         run_id=_bootstrap_run_id(),
-        source_operator=baseline_state.source_operator,
         baseline_reused=False,
     )
 

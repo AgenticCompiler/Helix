@@ -80,14 +80,12 @@ def bootstrap_state(
     state_path: Path,
     *,
     run_id: str,
-    source_operator: str,
     baseline_reused: bool,
 ) -> None:
     payload: dict[str, object] = {
         "schema_version": WORKFLOW_SCHEMA_VERSION,
         "run_id": run_id,
         "phase": PHASE_AWAITING_ROUND_START if baseline_reused else PHASE_BASELINE,
-        "source_operator": source_operator,
         "current_round": None,
         "baseline": {
             "status": "passed" if baseline_reused else "pending",

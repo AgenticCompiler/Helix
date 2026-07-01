@@ -10,7 +10,10 @@ def application_root() -> Path:
         if bundle_root:
             return Path(str(bundle_root)).resolve()
         return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[2]
+    if (root / "skills").is_dir():
+        return root
+    return root
 
 
 def skills_root() -> Path:

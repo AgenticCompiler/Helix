@@ -4,7 +4,7 @@
 
 **Goal:** Replace current-directory-relative `./scripts/run-command.py` guidance in the live `ascend-npu-run-eval` skill docs with explicit staged-skill-path placeholders, and lock the behavior with a contract test.
 
-**Architecture:** Keep the change documentation-only. First tighten `tests/test_generation_contracts.py` so it fails until the new `<skill-path>/scripts/run-command.py` contract is present. Then update the top-level run-eval skill doc and each focused reference under `skills/common/ascend-npu-run-eval/` to use the same backend-neutral placeholder and one shared explanation of what `<skill-path>` means.
+**Architecture:** Keep the change documentation-only. First tighten `tests/test_generation_contracts.py` so it fails until the new `<ascend-npu-run-eval-skill-path>/scripts/run-command.py` contract is present. Then update the top-level run-eval skill doc and each focused reference under `skills/common/ascend-npu-run-eval/` to use the same backend-neutral placeholder and one shared explanation of what `<ascend-npu-run-eval-skill-path>` means.
 
 **Tech Stack:** Markdown skill docs, `pytest`
 
@@ -41,8 +41,8 @@
         compare_result = _read("skills/common/ascend-npu-run-eval/references/compare-result.md")
         compare_perf = _read("skills/common/ascend-npu-run-eval/references/compare-perf.md")
 
-        self.assertIn("<skill-path>/scripts/run-command.py", skill)
-        self.assertIn("call `python3 <skill-path>/scripts/run-command.py <subcommand> ...` directly", skill)
+        self.assertIn("<ascend-npu-run-eval-skill-path>/scripts/run-command.py", skill)
+        self.assertIn("call `python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py <subcommand> ...` directly", skill)
 
         for doc in (
             skill,
@@ -63,7 +63,7 @@ Run: `uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/tes
 
 Expected: FAIL because the live run-eval skill docs still use `python3 ./scripts/run-command.py`.
 
-### Task 2: Update the live run-eval skill docs to use `<skill-path>`
+### Task 2: Update the live run-eval skill docs to use `<ascend-npu-run-eval-skill-path>`
 
 **Files:**
 - Modify: `skills/common/ascend-npu-run-eval/SKILL.md`
@@ -79,25 +79,26 @@ Expected: FAIL because the live run-eval skill docs still use `python3 ./scripts
 - [ ] **Step 1: Update the top-level router guidance**
 
 ```md
-Use the bundled helper script in this skill. Treat `<skill-path>` as the
-staged path to this skill for the active backend:
+Use the bundled helper script in this skill. Treat
+`<ascend-npu-run-eval-skill-path>` as the staged path to the
+`ascend-npu-run-eval` skill for the active backend:
 
 ```bash
-python3 <skill-path>/scripts/run-command.py <subcommand> ...
+python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py <subcommand> ...
 ```
 
 ...
 
-- call `python3 <skill-path>/scripts/run-command.py <subcommand> ...` directly
+- call `python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py <subcommand> ...` directly
 ```
 
 - [ ] **Step 2: Rewrite each focused reference example with the explicit placeholder**
 
 ```md
-python3 <skill-path>/scripts/run-command.py run-test-baseline --test-file test_<operator>.py --operator-file <operator>.py --test-mode standalone
-python3 <skill-path>/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py
-python3 <skill-path>/scripts/run-command.py compare-perf \
-python3 <skill-path>/scripts/run-command.py probe-bench \
+python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py run-test-baseline --test-file test_<operator>.py --operator-file <operator>.py --test-mode standalone
+python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py run-bench --bench-file bench_<operator>.py --operator-file <operator>.py
+python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py compare-perf \
+python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py probe-bench \
 ```
 
 - [ ] **Step 3: Preserve existing semantics while removing only the ambiguous path form**
@@ -106,7 +107,7 @@ python3 <skill-path>/scripts/run-command.py probe-bench \
 If the staged helper script in this skill already exposes the subcommand, the equivalent helper form is:
 
 ```bash
-python3 <skill-path>/scripts/run-command.py probe-bench \
+python3 <ascend-npu-run-eval-skill-path>/scripts/run-command.py probe-bench \
   --bench-file bench_<operator>.py \
   --operator-file opt_<operator>.py \
   --baseline-operator-file baseline/<operator>.py
@@ -117,7 +118,7 @@ python3 <skill-path>/scripts/run-command.py probe-bench \
 
 Run: `uv run python -m pytest -q --tb=short --no-header -p no:warnings tests/test_generation_contracts.py -k run_eval_skill`
 
-Expected: PASS with the live run-eval docs using `<skill-path>/scripts/run-command.py` and no remaining `python3 ./scripts/run-command.py` strings in the covered files.
+Expected: PASS with the live run-eval docs using `<ascend-npu-run-eval-skill-path>/scripts/run-command.py` and no remaining `python3 ./scripts/run-command.py` strings in the covered files.
 
 ### Task 3: Run final verification for the touched contract area
 
