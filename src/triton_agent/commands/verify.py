@@ -11,6 +11,9 @@ from triton_agent.verify.core import VerifyOptions, prepare_verify_target, run_v
 
 
 def handle_verify(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    if getattr(args, "concurrency", None) is not None:
+        print("Warning: verify batch ignores --concurrency; running verify-batch.", file=sys.stderr)
+        return handle_verify_batch(parser, args)
     workspace = Path(args.input).expanduser().resolve()
     if not workspace.exists():
         parser.error(f"Input path does not exist: {workspace}")

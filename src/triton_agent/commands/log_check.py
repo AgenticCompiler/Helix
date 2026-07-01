@@ -8,6 +8,8 @@ from triton_agent.log_check.log_check_launcher import run_log_check
 
 
 def handle_log_check(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    if getattr(args, "concurrency", None) is not None:
+        return handle_log_check_batch(parser, args)
     target_path = Path(args.input).expanduser().resolve()
     if not target_path.exists():
         parser.error(f"Input path does not exist: {target_path}")

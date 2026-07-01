@@ -85,15 +85,35 @@ class CliParserTests(unittest.TestCase):
     def test_concurrency_short_alias_is_parseable_for_supported_commands(self) -> None:
         parser = build_parser()
         for argv, expected in (
+            (["gen-eval", "-i", "kernels", "-c", "max"], "max"),
             (["gen-eval-batch", "-i", "kernels", "-c", "max"], "max"),
+            (["convert", "-i", "kernels", "-c", "2"], 2),
             (["convert-batch", "-i", "kernels", "-c", "2"], 2),
+            (["log-check", "-i", "kernels", "-c", "4"], 4),
             (["log-check-batch", "-i", "kernels", "-c", "4"], 4),
+            (["optimize", "-i", "kernels", "-c", "3"], 3),
             (["optimize-batch", "-i", "kernels", "-c", "3"], 3),
+            (["report", "-i", "kernels", "-c", "2"], 2),
+            (["verify", "-i", "kernels", "-c", "2"], 2),
             (["diff-skills-update", "-i", "operators", "-c", "2"], 2),
         ):
             with self.subTest(argv=argv):
                 args = parser.parse_args(argv)
                 self.assertEqual(args.concurrency, expected)
+
+    def test_single_commands_do_not_default_to_batch_mode(self) -> None:
+        parser = build_parser()
+        for command, input_value in (
+            ("gen-eval", "kernel.py"),
+            ("convert", "kernel.py"),
+            ("log-check", "workspace"),
+            ("optimize", "kernel.py"),
+            ("report", "workspace"),
+            ("verify", "workspace"),
+        ):
+            with self.subTest(command=command):
+                args = parser.parse_args([command, "-i", input_value])
+                self.assertIsNone(args.concurrency)
 
     def test_gen_eval_batch_accepts_operator_filter(self) -> None:
         parser = build_parser()
@@ -126,6 +146,71 @@ class CliParserTests(unittest.TestCase):
         self.assertEqual(args.concurrency, 4)
         self.assertTrue(args.verbose)
         self.assertFalse(args.stream_output)
+
+    def test_log_check_with_explicit_concurrency_accepts_batch_result_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "log-check",
+                "-i",
+                "kernels",
+                "--check-result-file",
+                "custom_check.txt",
+                "--summary-file",
+                "custom_summary.txt",
+                "--concurrency",
+                "4",
+            ]
+        )
+        self.assertEqual(args.command, "log-check")
+        self.assertEqual(args.command_kind, CommandKind.LOG_CHECK)
+        self.assertEqual(args.check_result_file, "custom_check.txt")
+        self.assertEqual(args.summary_file, "custom_summary.txt")
+        self.assertEqual(args.concurrency, 4)
+
+    def test_log_check_with_explicit_concurrency_uses_batch_handler(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+
+            def _fake_run_log_check_batch(
+                root_path,
+                *,
+                output_file,
+                summary_file,
+                agent_name,
+                verbose,
+                show_output,
+                log_tools,
+                language,
+                max_concurrency,
+            ):
+                del output_file, agent_name, verbose, show_output, log_tools, language
+                captured["root"] = root_path
+                captured["summary_file"] = summary_file
+                captured["max_concurrency"] = max_concurrency
+                return 0
+
+            with patch(
+                "triton_agent.commands.log_check.run_log_check_batch",
+                side_effect=_fake_run_log_check_batch,
+            ):
+                exit_code = main(
+                    [
+                        "log-check",
+                        "-i",
+                        str(root),
+                        "--concurrency",
+                        "4",
+                        "--summary-file",
+                        "custom_summary.md",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["root"], root.resolve())
+            self.assertEqual(captured["summary_file"], "custom_summary.md")
+            self.assertEqual(captured["max_concurrency"], 4)
 
     def test_log_check_batch_rejects_max_concurrency_keyword(self) -> None:
         parser = build_parser()
@@ -580,6 +665,48 @@ class CliMCPServerCommandTests(unittest.TestCase):
         self.assertEqual(args.remote, "alice@example.com")
         self.assertEqual(args.remote_workdir, "/tmp/triton-agent")
         self.assertTrue(args.keep_remote_workdir)
+
+    def test_verify_with_explicit_concurrency_accepts_batch_options(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "verify",
+                "-i",
+                "workspace-root",
+                "--concurrency",
+                "4",
+                "--force-verify",
+            ]
+        )
+        self.assertEqual(args.command_kind, CommandKind.VERIFY)
+        self.assertEqual(args.concurrency, 4)
+        self.assertTrue(args.force_verify)
+
+    def test_verify_with_explicit_concurrency_uses_batch_handler_and_warns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+            stderr = StringIO()
+
+            def _fake_run_verify_batch(root_path, *, force_verify, options):
+                del options
+                captured["root"] = root_path
+                captured["force_verify"] = force_verify
+                return 0
+
+            with patch(
+                "triton_agent.commands.verify.run_verify_batch",
+                side_effect=_fake_run_verify_batch,
+            ):
+                with redirect_stderr(stderr):
+                    exit_code = main(
+                        ["verify", "-i", str(root), "--concurrency", "4", "--force-verify"]
+                    )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["root"], root.resolve())
+            self.assertTrue(captured["force_verify"])
+            self.assertIn("ignores --concurrency", stderr.getvalue())
 
     def test_run_bench_has_common_options(self) -> None:
         parser = build_parser()
@@ -2651,6 +2778,42 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(captured["max_concurrency"], 1)
             self.assertEqual(captured["operator_filter"], "kernel*.py")
 
+    def test_main_optimize_with_explicit_concurrency_uses_batch_handler(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+
+            def _fake_run_optimize_batch(root, options, max_concurrency, operator_filter=None):
+                captured["root"] = root
+                captured["max_concurrency"] = max_concurrency
+                captured["operator_filter"] = operator_filter
+                captured["post_optimize_command"] = options.post_optimize_command
+                return 0
+
+            with patch(
+                "triton_agent.commands.optimize.run_optimize_batch",
+                side_effect=_fake_run_optimize_batch,
+            ):
+                exit_code = main(
+                    [
+                        "optimize",
+                        "-i",
+                        str(root),
+                        "--concurrency",
+                        "2",
+                        "--operator-filter",
+                        "kernel*.py",
+                        "--post-optimize-command",
+                        "echo done",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["root"], root.resolve())
+            self.assertEqual(captured["max_concurrency"], 2)
+            self.assertEqual(captured["operator_filter"], "kernel*.py")
+            self.assertEqual(captured["post_optimize_command"], "echo done")
+
     def test_main_optimize_batch_show_output_prefixes_workspace_streams(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2989,6 +3152,31 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(captured["max_concurrency"], 1)
             self.assertEqual(captured["operator_filter"], "kernel*.py")
 
+    def test_main_gen_eval_with_explicit_concurrency_uses_batch_handler(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+
+            def _fake_run(root_path, options, max_concurrency, operator_filter=None):
+                del options
+                captured["root"] = root_path
+                captured["max_concurrency"] = max_concurrency
+                captured["operator_filter"] = operator_filter
+                return 0
+
+            with patch(
+                "triton_agent.commands.generation.run_gen_eval_batch",
+                side_effect=_fake_run,
+            ):
+                exit_code = main(
+                    ["gen-eval", "-i", str(root), "--concurrency", "2", "--operator-filter", "kernel*.py"]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["root"], root.resolve())
+            self.assertEqual(captured["max_concurrency"], 2)
+            self.assertEqual(captured["operator_filter"], "kernel*.py")
+
     def test_main_convert_batch_forwards_operator_filter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -3012,6 +3200,31 @@ class PathResolutionTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertEqual(captured["root"], root.resolve())
             self.assertEqual(captured["max_concurrency"], 1)
+            self.assertEqual(captured["operator_filter"], "kernel*.py")
+
+    def test_main_convert_with_explicit_concurrency_uses_batch_handler(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captured: dict[str, object] = {}
+
+            def _fake_run(root_path, options, max_concurrency, operator_filter=None):
+                del options
+                captured["root"] = root_path
+                captured["max_concurrency"] = max_concurrency
+                captured["operator_filter"] = operator_filter
+                return 0
+
+            with patch(
+                "triton_agent.commands.convert.run_convert_batch",
+                side_effect=_fake_run,
+            ):
+                exit_code = main(
+                    ["convert", "-i", str(root), "--concurrency", "2", "--operator-filter", "kernel*.py"]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["root"], root.resolve())
+            self.assertEqual(captured["max_concurrency"], 2)
             self.assertEqual(captured["operator_filter"], "kernel*.py")
 
     def test_main_gen_eval_batch_show_output_prefixes_workspace_streams(self) -> None:

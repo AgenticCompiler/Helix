@@ -188,6 +188,7 @@ class _CommandSpec:
     has_optimize_options: bool = False
     has_prompt: bool = False
     concurrency_default: int | None = None
+    optional_concurrency: bool = False
     concurrency_accepts_max: bool = False
 
     has_force_overwrite: bool = False
@@ -218,6 +219,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_prompt=True,
         has_force_overwrite=True,
         has_log_tools=True,
+        optional_concurrency=True,
+        concurrency_accepts_max=True,
+        has_operator_filter=True,
     ),
     CommandKind.GEN_EVAL_BATCH: _CommandSpec(
         handler=handle_gen_eval_batch,
@@ -253,6 +257,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_prompt=True,
         has_force_overwrite=True,
         has_log_tools=True,
+        optional_concurrency=True,
+        concurrency_accepts_max=True,
+        has_operator_filter=True,
     ),
     CommandKind.CONVERT_BATCH: _CommandSpec(
         handler=handle_convert_batch,
@@ -381,6 +388,7 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_show_output=True,
         has_language=True,
         has_log_tools=True,
+        optional_concurrency=True,
     ),
     CommandKind.LOG_CHECK_BATCH: _CommandSpec(
         handler=handle_log_check_batch,
@@ -423,6 +431,8 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_test_mode=True,
         has_bench_mode=True,
         has_verify_phase=True,
+        has_force_verify=True,
+        optional_concurrency=True,
     ),
     CommandKind.VERIFY_BATCH: _CommandSpec(
         handler=handle_verify_batch,
@@ -449,6 +459,9 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         has_optimize_options=True,
         has_prompt=True,
         has_log_tools=True,
+        optional_concurrency=True,
+        concurrency_accepts_max=True,
+        has_operator_filter=True,
     ),
     CommandKind.OPTIMIZE_BATCH: _CommandSpec(
         handler=handle_optimize_batch,
@@ -497,9 +510,11 @@ _COMMAND_SPECS: dict[CommandKind, _CommandSpec] = {
         description="Launch an agent to read workspace artifacts and render report.md.",
         has_output=False,
         has_agent=True,
+        agent_default="opencode",
         has_interact=True,
         has_show_output=True,
         has_prompt=True,
+        optional_concurrency=True,
     ),
     CommandKind.REPORT_BATCH: _CommandSpec(
         handler=handle_report_batch,
@@ -695,7 +710,7 @@ def build_parser() -> argparse.ArgumentParser:
                                    help="Skip uploading optimization artifacts after the run.")
             subparser.add_argument("--enable-report", action="store_true", default=False,
                                    help="Generate an optimization report after the run.")
-            if command_kind == CommandKind.OPTIMIZE_BATCH:
+            if command_kind in {CommandKind.OPTIMIZE, CommandKind.OPTIMIZE_BATCH}:
                 subparser.add_argument(
                     "--post-optimize-command",
                     help="Run this shell command inside each workspace after a successful optimize run.",
@@ -755,7 +770,13 @@ def build_parser() -> argparse.ArgumentParser:
                 default="log_check_summary.md",
                 help="Root-relative batch log check summary file name.",
             )
-        if spec.concurrency_default is not None:
+        if command_kind == CommandKind.LOG_CHECK:
+            subparser.add_argument(
+                "--summary-file",
+                default="log_check_summary.md",
+                help="Root-relative batch log check summary file name used when --concurrency is provided.",
+            )
+        if spec.concurrency_default is not None or spec.optional_concurrency:
             concurrency_type = (
                 _parse_concurrency_value if spec.concurrency_accepts_max else _parse_positive_int_value
             )
@@ -763,7 +784,7 @@ def build_parser() -> argparse.ArgumentParser:
                 "-c",
                 "--concurrency",
                 type=concurrency_type,
-                default=spec.concurrency_default,
+                default=spec.concurrency_default if spec.concurrency_default is not None else None,
             )
 
         if spec.has_force_overwrite:
