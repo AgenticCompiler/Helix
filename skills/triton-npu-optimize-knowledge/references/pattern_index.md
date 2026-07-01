@@ -180,10 +180,11 @@ Before scanning the full list, first analyze whether the operator matches any hi
 - Summary: Split exact-tile hot paths from generic masked kernels when dispatch-time shape guards can prove there are no tail tiles, so Ascend lowering can avoid boundary-only masks, padding values, block-pointer `boundary_check`, and related control branches.
 - Source: [exact-tile-no-boundary-fast-path.md](patterns/exact-tile-no-boundary-fast-path.md)
 - Use When:
-  - A dominant benchmark shape is exactly tile-divisible, such as `M % BLOCK_M == 0` and `N % BLOCK_N == 0`.
+  - A dominant benchmark shape is exactly tile-divisible:
+    - **1D elementwise**: `n_elements % BLOCK_SIZE == 0`.
+    - **2D tiled**: `M % BLOCK_M == 0` and `N % BLOCK_N == 0`.
   - Python dispatch can guard the aligned branch before launch and keep the original masked kernel as fallback.
   - MLIR, LLVM, or profiler traces still show boundary checks, masks, padding, or branch/control overhead on the exact-tile hot path.
-  - The kernel is already structurally reasonable, so a bounded control-overhead cleanup can matter.
 
 ### `flat-index-decode-tiling`
 
